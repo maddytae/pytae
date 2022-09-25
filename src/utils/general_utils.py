@@ -5,7 +5,7 @@ from pathlib import Path
 import tarfile
 import yaml
 from yaml.loader import SafeLoader
-import nzpy
+# import nzpy
 import warnings
 warnings.filterwarnings('ignore')
 from pyarrow.parquet import ParquetFile
