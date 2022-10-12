@@ -7,11 +7,22 @@ def clip(self):
 
 
 
-def agg_df(self):
-    # non_num_cols=self.select_dtypes(exclude='number').columns.to_list()
-    non_num_cols = self.columns[self.dtypes !=np.number].tolist()
+def agg_df(self,count=False):
+    
+    #add functionality for count
+    if count==True:
+        self=self.assign(count=1.0)
+        
+    #address categorical columns if any   
+    cat_columns = self.select_dtypes(['category']).columns
+    for x in cat_columns:
+        self[x] = self[x].astype("object")
+        
+    #identify string columns
+    non_num_cols = self.columns[(self.dtypes =='object')].tolist()
     if len(non_num_cols)>0:
         self=self.groupby(non_num_cols,dropna=False).sum().reset_index()
+        
     return self
 
 def handle_missing(self):
