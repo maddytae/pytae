@@ -5,7 +5,7 @@ from pathlib import Path
 import tarfile
 import yaml
 from yaml.loader import SafeLoader
-# import nzpy
+import nzpy
 import warnings
 warnings.filterwarnings('ignore')
 from pyarrow.parquet import ParquetFile
@@ -208,12 +208,19 @@ def push_granularity(from_frame,have,push_to,by):
     #result_frame.to_csv(os.path.join(mock_up_temp,'result_frame.csv'),index=False)
     return result_frame
 
-class ReadDF():
+class HeadDF():
+    
+    ''''
+    Explore any file parquet/csv/tar
+    
+    ''''
+    
+    
     
     def __init__(self,file_path):
         self.file_path=file_path
         
-    def return_sorted_columns(self):  #this can be used before reading df
+    def return_head(self):  #this can be used before reading df
         if self.file_path.endswith('.parquet'):
             pf = ParquetFile(self.file_path) 
             first_ten_rows = next(pf.iter_batches(batch_size = 10)) 
@@ -229,37 +236,4 @@ class ReadDF():
                 print(str(file_list))
                 table = input('choose table without quote!\n')
                 self.df = u.return_sample_df(table)
-        return sorted(self.df.columns.to_list())
-            
-    def return_df(self,element_list):
-        self.element_list=element_list  
-        self.col_len=len(self.element_list)
-        if self.file_path.endswith('.parquet'):
-            if self.col_len==0:
-                self.df=pd.read_parquet(self.file_path)
-            else:
-                self.df=pd.read_parquet(self.file_path,columns=self.element_list)
-        if self.file_path.endswith('.csv'):
-            if self.col_len==0:
-                self.df=pd.read_csv(self.file_path)            
-            else:
-                self.df=pd.read_csv(self.file_path,usecols=self.element_list)
-        if self.file_path.endswith('.tar.gz'):
-            u = ProcessTar(self.file_path)
-            file_list=u.return_file_list()
-            if self.col_len==0:
-                if len(file_list)==1:
-                    self.df = u.return_df(file_list[0])
-                else:
-                    print(str(file_list))
-                    table = input('choose table without quote!\n')
-                    self.df = u.return_df(table)
-            else:
-                if len(file_list)==1:
-                    self.df = u.return_few_cols_df(file_list[0],self.element_list)
-                else:
-                    print(str(file_list))
-                    table = input('choose table without quote!\n')
-                    self.df = u.return_few_cols_df(table,self.element_list)
         return self.df
-
