@@ -74,7 +74,7 @@ def return_join_table(self, col_list):
     self=k.copy()
     return self
 
-def return_sorted_columns(self):#this is for more general situations
+def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
 
@@ -84,4 +84,4 @@ pd.DataFrame.clip = clip
 pd.DataFrame.agg_df = agg_df
 pd.DataFrame.handle_missing = handle_missing
 pd.DataFrame.return_join_table = return_join_table
-pd.DataFrame.return_sorted_columns = return_sorted_columns
+pd.DataFrame.cols = cols

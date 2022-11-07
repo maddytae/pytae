@@ -5,6 +5,7 @@ from pathlib import Path
 import tarfile
 import yaml
 from yaml.loader import SafeLoader
+# import nzpy
 import warnings
 warnings.filterwarnings('ignore')
 from pyarrow.parquet import ParquetFile
@@ -12,11 +13,22 @@ import pyarrow as pa
 
 
 class ProcessTar(object):
+    
+    '''
+    import pytae as pt
+    u=pt.ProcessTar(some_path)
+    u.return_df()
+    
+    If tar file contains single file it will be returned as pandas dataframe; else it will return list of all file in tar and you can choose one of the all available files.
+    u.return_df('sometable')
+    
+    '''
+    
     def __init__(self,tar_path):
         self.tar_path=tar_path
         
    
-    def return_df(self,k):
+    def return_df_orig(self,k):
         with tarfile.open(self.tar_path, "r:*") as tar:
             for item in tar.getnames():
                 file=(os.path.splitext(os.path.basename(item))[0])
@@ -49,6 +61,32 @@ class ProcessTar(object):
                 file_list.append(file)
         return file_list
     
+    
+    def return_df(self,f=None):
+        
+        if f==None:
+            
+            if len(self.return_file_list())==1:
+                with tarfile.open(self.tar_path, "r:*") as tar:
+                    for item in tar.getnames():           
+                        df= pd.read_csv(tar.extractfile(item),low_memory=False)
+                        return df
+            else:
+                print('select one of the following files\n')
+                with tarfile.open(self.tar_path, "r:*") as tar:
+                    for item in tar.getnames():
+                        file=(os.path.splitext(os.path.basename(item))[0])
+                        print(file)
+
+                return None
+
+        else:
+            
+            df=self.return_df_orig(f)
+            return df
+            
+            
+
 
 
 class Connectors(object):
@@ -99,18 +137,33 @@ class Connectors(object):
 def create_qry(lib,tbl,nums,non_nums,whr=False):
 
     '''
-    nums={'x':['sum','x1'],'y':['sum','y1'],'z':['sum','z1']} is a dict
-    non_nums=['a','b','c'] is a list
-    create_qry('abc','def',nums,non_nums) is function call 
-    'select a, b, c, sum(x) as x1, sum(y) as y1, sum(z) as z1,  from abc.def group by a, b, c;' is the result
+            nums={'x':['sum','x1'],'y':['sum','y1'],'z':['sum','z1']}
+            non_nums=['a','b','c']
+            create_qry('data','tbl',nums,non_nums)
+            'select a, b, c, sum(x) as x1, sum(y) as y1, sum(z) as z1 from data.tbl group by a, b, c;'
+            
+            #if num is a list 
+            nums=['x','y','z']
+            create_qry('data','tbl',nums,non_nums)
+            'select a, b, c, sum(x) as x, sum(y) as y, sum(z) as z from data.tbl group by a, b, c;'
+            
     '''
 
-      
-    q=', '
-    for i in nums:
-        t=nums[i][0]+'('+i+') as '+ nums[i][1] +', '
-        q=q+t
-    q=q[:-2]
+    if type(nums) is list:
+        
+        q=', '
+        for i in nums:
+            t='sum('+i+') as '+ i +', '
+            q=q+t
+        q=q[:-2]
+        
+    if type(nums) is dict:
+        
+        q=', '
+        for i in nums:
+            t=nums[i][0]+'('+i+') as '+ nums[i][1] +', '
+            q=q+t
+        q=q[:-2]  
 
     if whr:
         qry='select ' + ', '.join(non_nums) + \
@@ -209,5 +262,4 @@ class ReadDF():
                     table = input('choose table without quote!\n')
                     self.df = u.return_few_cols_df(table,self.element_list)
         return self.df
-
 
