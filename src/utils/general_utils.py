@@ -5,7 +5,6 @@ from pathlib import Path
 import tarfile
 import yaml
 from yaml.loader import SafeLoader
-# import nzpy
 import warnings
 warnings.filterwarnings('ignore')
 from pyarrow.parquet import ParquetFile
@@ -212,73 +211,3 @@ class ReadDF():
         return self.df
 
 
-
-
-    ##Replaced this with extend_pandas.py
-    
-# class ExtDF(pd.DataFrame):
-#     def __init__(self, *args, **kwargs):
-#         super(ExtDF,  self).__init__(*args, **kwargs)
-
-#     @property
-#     def _constructor(self):
-#         return ExtDF
-
-#     def agg_df(self):
-#         # non_num_cols=self.select_dtypes(exclude='number').columns.to_list()
-#         non_num_cols = self.columns[self.dtypes !=np.number].tolist()
-#         if len(non_num_cols)>0:
-#             self=self.groupby(non_num_cols,dropna=False).sum().reset_index()
-#         return self
-    
-#     def handle_missing(self):
-
-#         df_cat_cols = self.columns[self.dtypes =='category'].tolist()
-#         for c in df_cat_cols:
-#             self[c] = self[c].astype("object")    
-
-#         df_str_cols=self.columns[self.dtypes==object]
-#         self[df_str_cols]=self[df_str_cols].fillna('.') #fill string missing values with .
-#         self = self.fillna(0) #fill numeric missing values with 0
-
-#         return self
-#     def return_join_table(self, col_list):
-#         '''
-#                     first item of the col_list is supposed to be joining key; rest are attributes that you want to bring by removing any duplicates
-
-#                 for ex:-
-#                 df={'A':['x','y','x','z','y'],
-#                    'B':[1,2,2,2,2],
-#                    'C':['a','b','a','d','d']}
-#                 df=pd.DataFrame(df)
-#                 df
-#                 A	B	C
-#                 0	x	1	a
-#                 1	y	2	b
-#                 2	x	2	a
-#                 3	z	2	d
-#                 4	y	2	d
-#                 return_join_keys(df,['A','B','C'])
-
-#                    A	B	C
-#                 0	x	multiple_values	a
-#                 1	y	2.00	multiple_values
-#                 2	z	2.00	d
-#         '''
-
-#         key=col_list[0]
-#         k=self[[key]].drop_duplicates().dropna()
-#         for c in col_list[1:]:
-#             tf=self[[key,c]].drop_duplicates()
-#             tf['check_dup']=tf[key].duplicated(keep=False)
-#             tf=tf[tf['check_dup']!=True].drop(columns=['check_dup'])
-#             k=k.merge(tf,on=key,how='left')
-#         k.fillna('multiple_values', inplace = True)
-#         self=k.copy()
-#         return self
-
-#     def return_sorted_columns(self):#this is for more general situations
-#         return sorted(self.columns.to_list())
-    
-#     def clip(self):
-#         return self.to_clipboard(excel=True,index=False)

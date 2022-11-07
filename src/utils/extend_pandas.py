@@ -1,4 +1,5 @@
 import pandas as pd
+pd.set_option('mode.chained_assignment', None)
 import numpy as np
 
 # define a function and monkey patch pandas.DataFrame
@@ -21,7 +22,8 @@ def agg_df(self,count=False):
     #identify string columns
     non_num_cols = self.columns[(self.dtypes =='object')].tolist()
     if len(non_num_cols)>0:
-        self=self.groupby(non_num_cols,dropna=False).sum().reset_index()
+        df=self.groupby(non_num_cols,dropna=False).sum().reset_index()
+        self=df.copy()
         
     return self
 
