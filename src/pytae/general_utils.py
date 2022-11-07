@@ -210,10 +210,10 @@ def push_granularity(from_frame,have,push_to,by):
 
 class HeadDF():
     
-    ''''
+    '''
     Explore any file parquet/csv/tar
     
-    ''''
+    '''
     
     
     
