@@ -85,3 +85,7 @@ pd.DataFrame.agg_df = agg_df
 pd.DataFrame.handle_missing = handle_missing
 pd.DataFrame.return_join_table = return_join_table
 pd.DataFrame.cols = cols
+
+def addition(a,b):
+    print('Maddy')
+    return a+b
