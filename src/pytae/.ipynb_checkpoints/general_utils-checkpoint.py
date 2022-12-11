@@ -5,11 +5,9 @@ from pathlib import Path
 import tarfile
 import yaml
 from yaml.loader import SafeLoader
-import nzpy
 import warnings
-warnings.filterwarnings('ignore')
-from pyarrow.parquet import ParquetFile
-import pyarrow as pa 
+# warnings.filterwarnings('ignore')
+
 
 
 class ProcessTar(object):
@@ -27,25 +25,43 @@ class ProcessTar(object):
     def __init__(self,tar_path):
         self.tar_path=tar_path
         
-   
-    def return_df_orig(self,k):
-        with tarfile.open(self.tar_path, "r:*") as tar:
-            for item in tar.getnames():
-                file=(os.path.splitext(os.path.basename(item))[0])
+    def return_df(self,tbl=None,cols=None):
+        self.tbl=tbl
+        self.cols=cols
+        
+        if self.tbl==None:  #table value is not provided
+            
+            if len(self.return_file_list())==1:  
+                with tarfile.open(self.tar_path, "r:*") as tar:
+                    for item in tar.getnames(): 
+                        if self.cols==None:
+                            
+                            self.df= pd.read_csv(tar.extractfile(item),low_memory=False)
+                        else:
+                            self.df=pd.read_csv(tar.extractfile(item),low_memory=False,usecols=self.cols)
+                        return self.df #check if there is only one table then still give the result
+            
+            else:
+                print('select one of the following files\n')
+                with tarfile.open(self.tar_path, "r:*") as tar:
+                    for item in tar.getnames():
+                        file=(os.path.splitext(os.path.basename(item))[0])
+                        print(file) ### if more than one table is packed inside the tar file just display the filenames so that user can select       
+        
+        else:
+            with tarfile.open(self.tar_path, "r:*") as tar:
+                for item in tar.getnames():
+                    file=(os.path.splitext(os.path.basename(item))[0])
+                    if self.tbl==file:
+                        if self.cols==None:
+                            self.df= pd.read_csv(tar.extractfile(item),low_memory=False)
+                        else:
+                            self.df= pd.read_csv(tar.extractfile(item),low_memory=False,usecols=self.cols)
 
-                if k==file:                  
-                    df= pd.read_csv(tar.extractfile(item),low_memory=False)
-        return df
-    def return_few_cols_df(self,k,col_list):
-        self.col_list=col_list
-        with tarfile.open(self.tar_path, "r:*") as tar:
-            for item in tar.getnames():
-                file=(os.path.splitext(os.path.basename(item))[0])
-
-                if k==file:                  
-                    df= pd.read_csv(tar.extractfile(item),low_memory=False,usecols=self.col_list)
-        return df
+            return self.df               
+            
     def return_sample_df(self,k):
+
         with tarfile.open(self.tar_path, "r:*") as tar:
             for item in tar.getnames():
                 file=(os.path.splitext(os.path.basename(item))[0])
@@ -53,6 +69,7 @@ class ProcessTar(object):
                 if k==file:                  
                     df= pd.read_csv(tar.extractfile(item),nrows=10)
         return df
+    
     def return_file_list(self):
         file_list=[]
         with tarfile.open(self.tar_path, "r:*") as tar:
@@ -62,31 +79,6 @@ class ProcessTar(object):
         return file_list
     
     
-    def return_df(self,f=None):
-        
-        if f==None:
-            
-            if len(self.return_file_list())==1:
-                with tarfile.open(self.tar_path, "r:*") as tar:
-                    for item in tar.getnames():           
-                        df= pd.read_csv(tar.extractfile(item),low_memory=False)
-                        return df
-            else:
-                print('select one of the following files\n')
-                with tarfile.open(self.tar_path, "r:*") as tar:
-                    for item in tar.getnames():
-                        file=(os.path.splitext(os.path.basename(item))[0])
-                        print(file)
-
-                return None
-
-        else:
-            
-            df=self.return_df_orig(f)
-            return df
-            
-            
-
 
 
 class Connectors(object):
