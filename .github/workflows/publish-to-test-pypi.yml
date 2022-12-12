@@ -32,7 +32,3 @@ jobs:
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
 
-    - name: Test with pytest
-      run: |
-        pip install pytest
-        pytest
