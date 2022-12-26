@@ -40,13 +40,13 @@ class Recon(object):
             
             df1=df1[[*self.dict1.keys(),*self.dict1.values()]].agg_df(count=True)
             df2=df2[[*self.dict2.keys(),*self.dict2.values()]].agg_df(count=True)
-            df1.columns=['key','df1_val','df1_n']
-            df2.columns=['key','df2_val','df2_n']
+            df1.columns=['key','val','n']
+            df2.columns=['key','val','n']
         else:
             df1=df1[[*self.dict1.keys(),*self.dict1.values()]].agg_df()
             df2=df2[[*self.dict2.keys(),*self.dict2.values()]].agg_df()
-            df1.columns=['key','df1_val']
-            df2.columns=['key','df2_val']
+            df1.columns=['key','val']
+            df2.columns=['key','val']
 
             
         df1['key']=df1['key'].fillna('df1.null')
@@ -55,29 +55,47 @@ class Recon(object):
 
         return df1,df2
 
-    def summary(self,count=False):
-        df1,df2=self.select_n_aggregate(count)
-        df=df1.merge(df2,on='key', how='outer',indicator=True)
-        df.loc[~df['key'].isin(['df1.null','df2.null']),'key']='non_null'
-        df=df.agg_df()
-        return df
+
     
-    def full(self,agg=False,ignore_NA=True,th=0):
-        df1,df2=self.select_n_aggregate()
-        df1.columns=['key','val']
-        df2.columns=['key','val']
+    def combined(self,count=False):
+        df1,df2=self.select_n_aggregate(count)
         df1['source']='df1'
         df2['source']='df2'
         df=pd.concat([df1,df2])
-        df=df.pivot(index='key', columns='source', values='val').reset_index()
         
-        df['tag']='not_matching'        
-        if ignore_NA==True:
-            df['diff']=df['df1'].fillna(0)-df['df2'].fillna(0)
-        else:
-            df['diff']=df['df1']-df['df2']
+        if count==True:
+            df=df.pivot(index='key', columns='source', values=['val','n']).reset_index()
+            df.columns=['key','df1_val','df2_val','df1_n','df2_n']
             
-
+        else:
+            
+            df=df.pivot(index='key', columns='source', values=['val']).reset_index()
+            df.columns=['key','df1_val','df2_val']
+            
+        return df
+    
+    def summary(self,count=False):
+        df=self.combined(count)            
+        df['source']=''
+        df.loc[(~df['df1_val'].isna()) & (df['df2_val'].isna()),'source']='left_only'
+        df.loc[(df['df1_val'].isna()) & (~df['df2_val'].isna()),'source']='right_only'
+        df.loc[(~df['df1_val'].isna()) & (~df['df2_val'].isna()),'source']='both'
+        df.loc[~df['key'].isin(['df1.null','df2.null']),'key']='non_null'
+        df=df.agg_df() 
+        return df
+    
+    
+    def values_recon(self,agg=False,ignore_NA=True,th=0):
+        
+        df=self.combined(count=False)
+        #by default value recon does not need count; To get sense of count use combined or summary methods
+        df['tag']='not_matching'
+        
+        if ignore_NA==True:
+            df['diff']=df['df1_val'].fillna(0)-df['df2_val'].fillna(0)
+        else:
+            df['diff']=df['df1_val']-df['df2_val']
+            
         df.loc[abs(df['diff'])<=th,'tag']='matching'
 
         
