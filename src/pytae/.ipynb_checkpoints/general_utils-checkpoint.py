@@ -5,8 +5,7 @@ from pathlib import Path
 import tarfile
 import yaml
 from yaml.loader import SafeLoader
-import warnings
-# warnings.filterwarnings('ignore')
+
 
 
 
@@ -86,8 +85,8 @@ class Connectors(object):
         
 
 
-        """Supported remote servers are:- 
-        
+        """
+        this expects credentials.yaml is present in the user's home drectory. Again ths is not very general use case.
    
         
         
@@ -176,6 +175,10 @@ def create_qry(lib,tbl,nums,non_nums,whr=False):
 
 
 def push_granularity(from_frame,have,push_to,by):
+    
+    '''
+    This is not so general case; Consider making it general n future release.
+    '''
     import numpy as np
     result_frame=from_frame[list(set(have) | set(push_to))+[by]].groupby(list(set(have) | set(push_to)),dropna=False).sum().reset_index()
     result_frame['attr_sum'] = result_frame.groupby(have,dropna=False)[by].transform('sum')
@@ -189,7 +192,7 @@ def push_granularity(from_frame,have,push_to,by):
     result_frame.loc[result_frame['attr_sum_wt'].isin([np.inf]),'wt']=1
     result_frame.loc[result_frame['attr_sum_wt'].isin([-np.inf]),'wt']=-1
 
-    #Sometime a granualr key (for ex:-'bmo_instrument_id') might have zero  sum(for ex ead) not beause of +x -x but +0 +0 and so on...; Assign zero weight because we can not assign wt if summing value is not available. We don't artificially want to assign wt as 1 in these cases because sum might be zero across multiple rows.
+    #Sometime a granualr key (for ex:-'some_id') might have zero  sum(for ex ead) not beause of +x -x but +0 +0 and so on...; Assign zero weight because we can not assign wt if summing value is not available. We don't artificially want to assign wt as 1 in these cases because sum might be zero across multiple rows.
     result_frame.loc[result_frame['wt'].isnull(),'wt']=0
 
     result_frame.drop(columns=['attr_sum','attr_sum_wt'],inplace=True)
