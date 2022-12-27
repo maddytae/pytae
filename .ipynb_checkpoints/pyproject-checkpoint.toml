@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "2.0.5"
+version = "2.0.6"
 authors = [
   { name="Madhukar Kumar Jha", email="madhukar.k.jha@gmail.com" },
 ]
