@@ -34,10 +34,17 @@ class ProcessTar(object):
                 with tarfile.open(self.tar_path, "r:*") as tar:
                     for item in tar.getnames(): 
                         if self.cols==None:
-                            
-                            self.df= pd.read_csv(tar.extractfile(item),low_memory=False)
+                            try:
+                                self.df= pd.read_csv(tar.extractfile(item),low_memory=False)
+                            except:
+                                self.df= pd.read_csv(tar.extractfile(item),low_memory=False,encoding='unicode_escape')
+                                
                         else:
-                            self.df=pd.read_csv(tar.extractfile(item),low_memory=False,usecols=self.cols)
+                            try:
+                                self.df=pd.read_csv(tar.extractfile(item),low_memory=False,usecols=self.cols)
+                            except:
+                                self.df=pd.read_csv(tar.extractfile(item),low_memory=False,usecols=self.cols,encoding='unicode_escape')
+                                
                         return self.df #check if there is only one table then still give the result
             
             else:
