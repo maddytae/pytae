@@ -6,95 +6,52 @@ import numpy as np
 def clip(self):
     return self.to_clipboard() #e index=False not working in wsl at the moment
 
-
-
-
-
 def agg_df(self, **kwargs):
     """
-    Aggregate the DataFrame based on the specified aggregation type, optional counting, and optional column naming.
-
-    This method supports various aggregation operations on numeric columns and allows for counting the number
-    of rows in each group, adding a specific 'n' column for this purpose. Categorical columns are considered for 
-    grouping, and aggregation is applied accordingly. Optionally, column names can be updated to reflect the 
-    aggregation operation performed, enhancing the readability of the result.
+    Aggregate the DataFrame based on specified aggregation types, ensuring that aggregated
+    column names, including 'n' for counts, follow the specified order in the 'type' list.
 
     Parameters:
     - self (DataFrame): The pandas DataFrame to be aggregated.
     - **kwargs:
-        - type (str): The type of aggregation to perform on numeric columns. Accepts 'sum', 'mean', 'max', 'min'. 
-                      Defaults to 'sum'.
-        - count (bool): If True, adds a column 'n' to the DataFrame, counting the number of occurrences in each group. 
-                        Defaults to False.
-        - update_col (bool): If True, updates column names to reflect the aggregation operation performed, appending 
-                             the operation type to the original column name (e.g., 'colname_sum' for a sum aggregation). 
-                             Defaults to False.
+        - type (list): Specifies the types of aggregation to perform on numeric columns
+                       and 'n' for counting. The order in the list determines the column order
+                       in the result. Includes 'sum', 'mean', 'max', 'min', and 'n'.
+                       Ensures no duplicate types. Defaults to ['sum'].
 
     Returns:
-    - DataFrame: The aggregated DataFrame with specified aggregations applied. If 'count' is True, the DataFrame 
-                 will include an 'n' column representing counts, which is always of integer type. If 'update_col' 
-                 is True, numeric column names will be updated to reflect the aggregation operation.
-
-    Examples:
-    ```python
-    import pandas as pd
-
-    # Example DataFrame
-    df = pd.DataFrame({
-        'group': ['A', 'A', 'B', 'B', 'C', 'C'],
-        'balance': [100, 150, 200, 250, 300, 350],
-        'id': [1, 2, 1, 3, 2, 4]
-    })
-
-    # Aggregating using mean, counting, and updating column names
-    agg_df_mean_count_update = df.agg_df(type='mean', count=True, update_col=True)
-
-    # The resulting DataFrame will have columns renamed to 'balance_mean', and include a 'n' count column.
-    ```
+    - DataFrame: The aggregated DataFrame with specified aggregations applied. Column names
+                 for aggregated values are updated to include the aggregation type.
     """
-    # Parse the 'type' keyword argument for aggregation ('sum', 'mean', 'max', 'min')
-    agg_type = kwargs.get('type', 'sum')
-    update_col = kwargs.get('update_col', False)
-    
-    # Validate aggregation type
-    if agg_type not in ['sum', 'mean', 'max', 'min']:
-        raise ValueError(f"Unsupported aggregation type '{agg_type}'. Choose from 'sum', 'mean', 'max', 'min'.")
-    
-    # Parse the 'count' keyword argument (True or False, with False as default)
-    count = kwargs.get('count', False)
-    
-    # If counting is enabled, add a column 'n' with 1 for each row to later sum up
-    if count:
-        self = self.assign(n=1)
-        
-    # Convert categorical columns to 'object' type for consistent handling
-    cat_columns = self.select_dtypes(['category']).columns
-    self[cat_columns] = self[cat_columns].astype("object")
-    
-    # Identify non-numeric (string) columns for grouping
-    non_num_cols = self.columns[(self.dtypes == 'object')].tolist()
-    
-    # Define aggregation dictionary for numeric columns and 'n' column
-    agg_dict = {col: agg_type for col in self.select_dtypes(include=['number']).columns if col != 'n'}
-    if count:
-        agg_dict['n'] = 'sum'
-    
-    # Perform the specified aggregation operation
-    if non_num_cols:
-        self = self.groupby(non_num_cols, dropna=False).agg(agg_dict).reset_index()
-    else:
-        self = self.agg(agg_dict)
-    
-    # Ensure 'n' column is integer type if counting is enabled
-    if count:
-        self['n'] = self['n'].astype(int)
+    agg_types = kwargs.get('type', ['sum'])
+    unique_agg_types = list(dict.fromkeys(agg_types))  # Preserve order and remove duplicates
 
-    if update_col:
-        self.columns = [f"{col}_{agg_type}" if col not in non_num_cols and col!='n' else col for col in self.columns]
-    
-    
-    return self
+    # Group by all non-numeric columns
+    group_cols = self.select_dtypes(exclude=['number']).columns.tolist()
 
+    # Define aggregation operations for numeric columns excluding 'n'
+    numeric_cols = self.select_dtypes(include=['number']).columns
+    agg_operations = {col: [agg for agg in unique_agg_types if agg != 'n'] for col in numeric_cols}
+
+    # Perform aggregation
+    grouped_df = self.groupby(group_cols, as_index=False).agg(agg_operations)
+
+    # Flatten MultiIndex in columns if necessary
+    grouped_df.columns = ['_'.join(col).strip('_') for col in grouped_df.columns.values]
+
+    # Handle counting ('n') if specified and integrate it based on its order in 'type'
+    if 'n' in unique_agg_types:
+        grouped_df['n'] = self.groupby(group_cols).size().reset_index(drop=True)
+
+    # Construct the final column order based on 'type', ensuring 'n' is correctly positioned
+    final_columns = group_cols[:]
+    for agg_type in unique_agg_types:
+        if agg_type == 'n':
+            final_columns.append('n')
+        else:
+            final_columns.extend([f"{col}_{agg_type}" for col in numeric_cols])
+
+    return grouped_df.loc[:, final_columns]
 
 
 def handle_missing(self):
