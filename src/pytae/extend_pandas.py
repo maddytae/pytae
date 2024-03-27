@@ -8,45 +8,32 @@ def clip(self):
 
 
 
-def agg_df_old(self,count=False):
-    
-    #add functionality for count
-    if count==True:
-        self=self.assign(count=1.0)
-        
-    #address categorical columns if any   
-    cat_columns = self.select_dtypes(['category']).columns
-    for x in cat_columns:
-        self[x] = self[x].astype("object")
-        
-    #identify string columns
-    non_num_cols = self.columns[(self.dtypes =='object')].tolist()
-    if len(non_num_cols)>0:
-        df=self.groupby(non_num_cols,dropna=False).sum().reset_index()
-        self=df.copy()
-        
-    return self
+
 
 def agg_df(self, **kwargs):
     """
-    Aggregate the DataFrame based on the specified aggregation type and optional counting.
+    Aggregate the DataFrame based on the specified aggregation type, optional counting, and optional column naming.
 
-    Supports various aggregation operations on numeric columns and allows for counting the number
-    of rows in each group, adding a specific 'n' column for this purpose. Categorical columns are
-    considered for grouping, and aggregation is applied accordingly.
+    This method supports various aggregation operations on numeric columns and allows for counting the number
+    of rows in each group, adding a specific 'n' column for this purpose. Categorical columns are considered for 
+    grouping, and aggregation is applied accordingly. Optionally, column names can be updated to reflect the 
+    aggregation operation performed, enhancing the readability of the result.
 
     Parameters:
     - self (DataFrame): The pandas DataFrame to be aggregated.
     - **kwargs:
-        - type (str): The type of aggregation to perform on numeric columns. 
-                      Accepts 'sum', 'mean', 'max', 'min'. Defaults to 'sum'.
-        - count (bool): If True, adds a column 'n' to the DataFrame, counting 
-                        the number of occurrences in each group. Defaults to False.
+        - type (str): The type of aggregation to perform on numeric columns. Accepts 'sum', 'mean', 'max', 'min'. 
+                      Defaults to 'sum'.
+        - count (bool): If True, adds a column 'n' to the DataFrame, counting the number of occurrences in each group. 
+                        Defaults to False.
+        - update_col (bool): If True, updates column names to reflect the aggregation operation performed, appending 
+                             the operation type to the original column name (e.g., 'colname_sum' for a sum aggregation). 
+                             Defaults to False.
 
     Returns:
-    - DataFrame: The aggregated DataFrame with specified aggregations applied. If 'count' is True,
-                 the DataFrame will include an 'n' column representing counts, which is always of 
-                 integer type.
+    - DataFrame: The aggregated DataFrame with specified aggregations applied. If 'count' is True, the DataFrame 
+                 will include an 'n' column representing counts, which is always of integer type. If 'update_col' 
+                 is True, numeric column names will be updated to reflect the aggregation operation.
 
     Examples:
     ```python
@@ -56,18 +43,18 @@ def agg_df(self, **kwargs):
     df = pd.DataFrame({
         'group': ['A', 'A', 'B', 'B', 'C', 'C'],
         'balance': [100, 150, 200, 250, 300, 350],
-        'n': [1, 2, 1, 3, 2, 4]
+        'id': [1, 2, 1, 3, 2, 4]
     })
 
-    # Aggregating using max and counting
-    agg_df_max_count = df.agg_df(type='max', count=True)
+    # Aggregating using mean, counting, and updating column names
+    agg_df_mean_count_update = df.agg_df(type='mean', count=True, update_col=True)
 
-    # Aggregating using min without counting
-    agg_df_min = df.agg_df(type='min')
+    # The resulting DataFrame will have columns renamed to 'balance_mean', and include a 'n' count column.
     ```
     """
     # Parse the 'type' keyword argument for aggregation ('sum', 'mean', 'max', 'min')
     agg_type = kwargs.get('type', 'sum')
+    update_col = kwargs.get('update_col', False)
     
     # Validate aggregation type
     if agg_type not in ['sum', 'mean', 'max', 'min']:
@@ -101,6 +88,10 @@ def agg_df(self, **kwargs):
     # Ensure 'n' column is integer type if counting is enabled
     if count:
         self['n'] = self['n'].astype(int)
+
+    if update_col:
+        self.columns = [f"{col}_{agg_type}" if col not in non_num_cols and col!='n' else col for col in self.columns]
+    
     
     return self
 
