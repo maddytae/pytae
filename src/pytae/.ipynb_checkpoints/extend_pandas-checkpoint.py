@@ -105,10 +105,87 @@ def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
 
+def long(self, var_name='variable', val_name='value'):
+    """
+    This function converts a wide dataframe to a long format by melting all numeric columns.
+    The two new columns are named 'variable' and 'value' by default, but can be changed using
+    keyword arguments.
+
+    Parameters:
+    - var_name (str, optional): The name to be used for the 'variable' column. Default is 'variable'.
+    - value_name (str, optional): The name to be used for the 'value' column. Default is 'value'.
+
+    Returns:
+    - pd.DataFrame: The melted dataframe with all numeric columns converted to long format.
+    """
+
+    
+    # Identify numeric columns in the dataframe
+    numeric_cols = self.select_dtypes(include=['number']).columns.tolist()
+    
+    # Melt the dataframe to long format, keeping only numeric columns
+    melted_df = pd.melt(self, id_vars=[col for col in self.columns if col not in numeric_cols],
+                        value_vars=numeric_cols, var_name=var_name, value_name=val_name)
+    
+    return melted_df
+
+
+
+#note that long and wide are not fungible
+
+def wide(self, col='variable', value='value', aggfunc='sum', dropna=False):
+    """
+    This function converts a long dataframe back to a wide format. It pivots the dataframe
+    so that unique values from the specified column become the new columns headers, with values
+    filled according to the corresponding values in another column. The 'value' column is assumed
+    to be the only numeric column present in the dataframe by default, but this can be changed.
+
+    Please note that wide performs aggregation and thus long followd by wide will not reproduce original long dataframe.
+    Also wide by default introduces NANs for missing values so this is yet another reason why wide followed by long will 
+    not return original long.
+
+    penguins.long(var_name='variable',val_name='value').wide(col='variable') is not same as penguins even though this fuction were 
+    to use pivot instead of pivot_table.
+
+    Parameters:
+    - col (str, optional): The column whose unique values will become the new column headers in the wide dataframe.
+                           Default is 'variable'.
+    - value (str, optional): The name of the column containing the values to fill the wide dataframe. This is assumed
+                             to be the only numeric column present by default. Default is 'value'.
+    - aggfunc (function, str, list or dict, optional): Function to use for aggregating the data. If a function, must either
+                                                       work when passed a DataFrame or when passed to DataFrame.apply.
+                                                       Accepted combinations are:
+                                                       - function
+                                                       - string function name
+                                                       - list of functions and/or function names, e.g. [np.sum, 'mean']
+                                                       - dict of axis labels -> functions, function names or list of such.
+                                                       Default is 'sum'.
+    - dropna (bool, optional): Do not include columns whose entries are all NaN. Default is False.
+
+    Returns:
+    - pd.DataFrame: The pivoted dataframe in a wide format.
+    """
+
+
+    # Pivot the dataframe
+    wide_df = self.pivot_table(index=[c for c in self.columns if c not in [col, value]], 
+                             columns=col, 
+                             values=value, 
+                             aggfunc=aggfunc,
+                             dropna=dropna).reset_index()
+
+    # Flatten the columns (if necessary) and return
+    wide_df.columns.name = None
+    return wide_df.reset_index(drop=True)
+
+
+
 
 
 pd.DataFrame.clip = clip
 pd.DataFrame.agg_df = agg_df
+pd.DataFrame.long = long
+pd.DataFrame.wide = wide
 pd.DataFrame.handle_missing = handle_missing
 pd.DataFrame.return_join_table = return_join_table
 pd.DataFrame.cols = cols
