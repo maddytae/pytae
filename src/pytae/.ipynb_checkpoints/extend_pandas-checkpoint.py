@@ -133,51 +133,49 @@ def long(self, var_name='variable', val_name='value'):
 
 #note that long and wide are not fungible
 
-def wide(self, col='variable', value='value', aggfunc='sum', dropna=False):
+def wide(self, col='variable', value='value', aggfunc=None, dropna=False):
     """
-    This function converts a long dataframe back to a wide format. It pivots the dataframe
-    so that unique values from the specified column become the new columns headers, with values
-    filled according to the corresponding values in another column. The 'value' column is assumed
-    to be the only numeric column present in the dataframe by default, but this can be changed.
-
-    Please note that wide performs aggregation and thus long followd by wide will not reproduce original long dataframe.
-    Also wide by default introduces NANs for missing values so this is yet another reason why wide followed by long will 
-    not return original long.
-
-    penguins.long(var_name='variable',val_name='value').wide(col='variable') is not same as penguins even though this fuction were 
-    to use pivot instead of pivot_table.
+    Converts a long dataframe back to a wide format. It tries to use pivot for straightforward reshaping without aggregation.
+    Falls back to pivot_table if there's a uniqueness constraint violation or if an aggregation function is explicitly provided.
 
     Parameters:
     - col (str, optional): The column whose unique values will become the new column headers in the wide dataframe.
                            Default is 'variable'.
-    - value (str, optional): The name of the column containing the values to fill the wide dataframe. This is assumed
-                             to be the only numeric column present by default. Default is 'value'.
-    - aggfunc (function, str, list or dict, optional): Function to use for aggregating the data. If a function, must either
-                                                       work when passed a DataFrame or when passed to DataFrame.apply.
-                                                       Accepted combinations are:
-                                                       - function
-                                                       - string function name
-                                                       - list of functions and/or function names, e.g. [np.sum, 'mean']
-                                                       - dict of axis labels -> functions, function names or list of such.
-                                                       Default is 'sum'.
-    - dropna (bool, optional): Do not include columns whose entries are all NaN. Default is False.
+    - value (str, optional): The name of the column containing the values to fill the wide dataframe.
+                             This is assumed to be the only numeric column present by default. Default is 'value'.
+    - aggfunc (function, str, list, or dict, optional): Function to use for aggregating the data. If specified,
+                                                       pivot_table is used for aggregation.
+    - dropna (bool, optional): Applies only to pivot_table. Specifies whether to drop columns with all NaN values.
+                               Default is True.
 
     Returns:
     - pd.DataFrame: The pivoted dataframe in a wide format.
     """
-
-
-    # Pivot the dataframe
-    wide_df = self.pivot_table(index=[c for c in self.columns if c not in [col, value]], 
-                             columns=col, 
-                             values=value, 
-                             aggfunc=aggfunc,
-                             dropna=dropna).reset_index()
-
-    # Flatten the columns (if necessary) and return
+    # Initially try to use pivot if aggfunc is not provided
+    if aggfunc is None:
+        try:
+            # Resetting index to ensure 'pivot' can be used without 'index' column issues
+            wide_df = self.pivot(index=[c for c in self.columns if c not in [col, value]], columns=col, values=value)
+        except ValueError as e:
+            # Check if the error is due to uniqueness constraint
+            if 'Index contains duplicate entries' in str(e):
+                print("pivot_table is used with sum as agg because Index contains duplicate entries.")
+                # Use pivot_table with 'sum' as the default aggregation function
+                wide_df = self.pivot_table(index=[c for c in self.columns if c not in [col, value]],
+                                           columns=col, values=value, aggfunc='sum', dropna=dropna).reset_index()
+            else:
+                raise
+    else:
+        # Use pivot_table directly if aggfunc is provided
+        wide_df = self.pivot_table(index=[c for c in self.columns if c not in [col, value]],
+                                   columns=col, values=value, aggfunc=aggfunc, dropna=dropna).reset_index()
+  
+    
+    # Reset index and clean column names
+    wide_df.reset_index(drop=True, inplace=True)
     wide_df.columns.name = None
-    return wide_df.reset_index(drop=True)
-
+    
+    return wide_df
 
 
 
