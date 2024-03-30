@@ -105,15 +105,15 @@ def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
 
-def long(self, var_name='variable', val_name='value'):
+def long(self, **kwargs):
     """
     This function converts a wide dataframe to a long format by melting all numeric columns.
     The two new columns are named 'variable' and 'value' by default, but can be changed using
     keyword arguments.
 
     Parameters:
-    - var_name (str, optional): The name to be used for the 'variable' column. Default is 'variable'.
-    - value_name (str, optional): The name to be used for the 'value' column. Default is 'value'.
+    - col (str, optional): The name to be used for the 'variable' column. Default is 'variable'.
+    - value (str, optional): The name to be used for the 'value' column. Default is 'value'.
 
     Returns:
     - pd.DataFrame: The melted dataframe with all numeric columns converted to long format.
@@ -125,7 +125,8 @@ def long(self, var_name='variable', val_name='value'):
     
     # Melt the dataframe to long format, keeping only numeric columns
     melted_df = pd.melt(self, id_vars=[col for col in self.columns if col not in numeric_cols],
-                        value_vars=numeric_cols, var_name=var_name, value_name=val_name)
+                        value_vars=numeric_cols, var_name=kwargs.get('col', 'variable'), 
+                                                 value_name=kwargs.get('value', 'value'))
     
     return melted_df
 
@@ -133,7 +134,8 @@ def long(self, var_name='variable', val_name='value'):
 
 #note that long and wide are not fungible
 
-def wide(self, col='variable', value='value', aggfunc=None, dropna=False):
+
+def wide(self, **kwargs):
     """
     Converts a long dataframe back to a wide format. It tries to use pivot for straightforward reshaping without aggregation.
     Falls back to pivot_table if there's a uniqueness constraint violation or if an aggregation function is explicitly provided.
@@ -152,23 +154,34 @@ def wide(self, col='variable', value='value', aggfunc=None, dropna=False):
     - pd.DataFrame: The pivoted dataframe in a wide format.
     """
     # Initially try to use pivot if aggfunc is not provided
-    if aggfunc is None:
+    if kwargs.get('aggfunc',None) is None:
         try:
-            # Resetting index to ensure 'pivot' can be used without 'index' column issues
-            wide_df = self.pivot(index=[c for c in self.columns if c not in [col, value]], columns=col, values=value)
+      
+            wide_df = self.pivot(index=[c for c in self.columns if c not in [kwargs.get('col', 'variable'), 
+                                                                             kwargs.get('value', 'value')]], 
+                                                                             columns=kwargs.get('col', 'variable'),
+                                                                             values=kwargs.get('value', 'value')).reset_index()
         except ValueError as e:
             # Check if the error is due to uniqueness constraint
             if 'Index contains duplicate entries' in str(e):
                 print("pivot_table is used with sum as agg because Index contains duplicate entries.")
                 # Use pivot_table with 'sum' as the default aggregation function
-                wide_df = self.pivot_table(index=[c for c in self.columns if c not in [col, value]],
-                                           columns=col, values=value, aggfunc='sum', dropna=dropna).reset_index()
+                wide_df = self.pivot_table(index=[c for c in self.columns if c not in [kwargs.get('col', 'variable'), 
+                                                                             kwargs.get('value', 'value')]], 
+                                                                             columns=kwargs.get('col', 'variable'),
+                                                                             values=kwargs.get('value', 'value'),
+                                                                             aggfunc='sum', 
+                                                                             dropna=kwargs.get('dropna', False)).reset_index()
             else:
                 raise
     else:
         # Use pivot_table directly if aggfunc is provided
-        wide_df = self.pivot_table(index=[c for c in self.columns if c not in [col, value]],
-                                   columns=col, values=value, aggfunc=aggfunc, dropna=dropna).reset_index()
+        wide_df = self.pivot_table(index=[c for c in self.columns if c not in [kwargs.get('col', 'variable'), 
+                                                                             kwargs.get('value', 'value')]], 
+                                                                             columns=kwargs.get('col', 'variable'),
+                                                                             values=kwargs.get('value', 'value'), 
+                                                                             aggfunc=kwargs.get('aggfunc',None), 
+                                                                             dropna=kwargs.get('dropna', False)).reset_index()
   
     
     # Reset index and clean column names
