@@ -11,7 +11,7 @@ def agg_df(self, **kwargs):
     Parameters:
     - self (DataFrame): The pandas DataFrame to be aggregated.
     - **kwargs:
-        - type (list): Specifies the types of aggregation to perform on numeric columns
+        - aggfunc (list): Specifies the types of aggregation to perform on numeric columns
                        and 'n' for counting. The order in the list determines the column order
                        in the result. Includes 'sum', 'mean', 'max', 'min', and 'n'.
                        Ensures no duplicate types. Defaults to ['sum'].
@@ -20,7 +20,7 @@ def agg_df(self, **kwargs):
     - DataFrame: The aggregated DataFrame with specified aggregations applied. Column names
                  for aggregated values are updated to include the aggregation type.
     """
-    agg_types = kwargs.get('type', ['sum'])
+    agg_types = kwargs.get('aggfunc', ['sum'])
     unique_agg_types = list(dict.fromkeys(agg_types))  # Preserve order and remove duplicates
 
     # Group by all non-numeric columns

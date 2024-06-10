@@ -5,12 +5,12 @@ def get_data(self, **kwargs):
     cols = list(kwargs.keys())
     agg_cols=['value']
     default_cols=[]
-    agg_func='sum'
+    aggfunc='sum'
 
-    #manage agg_func
-    if 'agg_func' in cols:
-        cols.remove('agg_func')
-        agg_func=kwargs['agg_func']
+    #manage aggfunc
+    if 'aggfunc' in cols:
+        cols.remove('aggfunc')
+        aggfunc=kwargs['aggfunc']
 
         
     #manage agg cols
@@ -42,8 +42,8 @@ def get_data(self, **kwargs):
             filtered_self = filtered_self[filtered_self[c]==kwargs[c]]
     #aggregate self
 
-    if agg_func!='n':    
-        grouped_self = filtered_self.groupby(combined_cols,dropna=False)[agg_cols].agg(agg_func).reset_index()
+    if aggfunc!='n':    
+        grouped_self = filtered_self.groupby(combined_cols,dropna=False)[agg_cols].agg(aggfunc).reset_index()
     else:
         grouped_self = filtered_self.groupby(combined_cols, dropna=False).size().reset_index(name='n')
 

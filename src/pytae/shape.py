@@ -31,12 +31,13 @@ def long(self, **kwargs):
 #note that long and wide are not fungible
 
 
-def wide(self, **kwargs):
+def wide(df, **kwargs):
     """
     Converts a long dataframe back to a wide format. It tries to use pivot for straightforward reshaping without aggregation.
     Falls back to pivot_table if there's a uniqueness constraint violation or if an aggregation function is explicitly provided.
 
     Parameters:
+    - df (pd.DataFrame): The dataframe to reshape.
     - col (str, optional): The column whose unique values will become the new column headers in the wide dataframe.
                            Default is 'variable'.
     - value (str, optional): The name of the column containing the values to fill the wide dataframe.
@@ -49,44 +50,29 @@ def wide(self, **kwargs):
     Returns:
     - pd.DataFrame: The pivoted dataframe in a wide format.
     """
-    # Initially try to use pivot if aggfunc is not provided
-    if kwargs.get('aggfunc',None) is None:
+    col = kwargs.get('col', 'variable')
+    value = kwargs.get('value', 'value')
+    aggfunc = kwargs.get('aggfunc', None)
+    dropna = kwargs.get('dropna', True)
+    
+    index_cols = [c for c in df.columns if c not in [col, value]]
+    
+    if aggfunc is None:
         try:
-      
-            wide_df = self.pivot(index=[c for c in self.columns if c not in [kwargs.get('col', 'variable'), 
-                                                                             kwargs.get('value', 'value')]], 
-                                                                             columns=kwargs.get('col', 'variable'),
-                                                                             values=kwargs.get('value', 'value')).reset_index()
+            wide_df = df.pivot(index=index_cols, columns=col, values=value).reset_index()
         except ValueError as e:
-            # Check if the error is due to uniqueness constraint
             if 'Index contains duplicate entries' in str(e):
-                print("pivot_table is used with sum as agg because Index contains duplicate entries.")
-                # Use pivot_table with 'sum' as the default aggregation function
-                wide_df = self.pivot_table(index=[c for c in self.columns if c not in [kwargs.get('col', 'variable'), 
-                                                                             kwargs.get('value', 'value')]], 
-                                                                             columns=kwargs.get('col', 'variable'),
-                                                                             values=kwargs.get('value', 'value'),
-                                                                             aggfunc='sum', 
-                                                                             dropna=kwargs.get('dropna', False)).reset_index()
+                print("pivot_table is used with 'sum' as aggfunc because Index contains duplicate entries.")
+                wide_df = df.pivot_table(index=index_cols, columns=col, values=value, aggfunc='sum', dropna=dropna).reset_index()
             else:
                 raise
     else:
-        # Use pivot_table directly if aggfunc is provided
-        wide_df = self.pivot_table(index=[c for c in self.columns if c not in [kwargs.get('col', 'variable'), 
-                                                                             kwargs.get('value', 'value')]], 
-                                                                             columns=kwargs.get('col', 'variable'),
-                                                                             values=kwargs.get('value', 'value'), 
-                                                                             aggfunc=kwargs.get('aggfunc',None), 
-                                                                             dropna=kwargs.get('dropna', False)).reset_index()
-  
+        wide_df = df.pivot_table(index=index_cols, columns=col, values=value, aggfunc=aggfunc, dropna=dropna).reset_index()
     
     # Reset index and clean column names
-    wide_df.reset_index(drop=True, inplace=True)
     wide_df.columns.name = None
     
     return wide_df
-
-
 
 
 
