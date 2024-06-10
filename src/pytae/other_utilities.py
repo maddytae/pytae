@@ -1,10 +1,9 @@
 import pandas as pd
-pd.set_option('mode.chained_assignment', None)
 import numpy as np
 
 # define a function and monkey patch pandas.DataFrame
 def clip(self):
-    return self.to_clipboard() #e index=False not working in wsl at the moment
+    return self.to_clipboard(index=False) #e index=False not working in wsl at the moment
 
 
 def handle_missing(self):
