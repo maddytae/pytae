@@ -52,7 +52,7 @@ def wide(df, **kwargs):
     """
     col = kwargs.get('col', 'variable')
     value = kwargs.get('value', 'value')
-    aggfunc = kwargs.get('aggfunc', None)
+    aggfunc = kwargs.get('aggfunc', 'sum')
     dropna = kwargs.get('dropna', True)
     
     index_cols = [c for c in df.columns if c not in [col, value]]
@@ -60,12 +60,13 @@ def wide(df, **kwargs):
     if aggfunc is None:
         try:
             wide_df = df.pivot(index=index_cols, columns=col, values=value).reset_index()
-        except ValueError as e:
-            if 'Index contains duplicate entries' in str(e):
-                print("pivot_table is used with 'sum' as aggfunc because Index contains duplicate entries.")
-                wide_df = df.pivot_table(index=index_cols, columns=col, values=value, aggfunc='sum', dropna=dropna).reset_index()
-            else:
-                raise
+        except:
+            
+            # if 'Index contains duplicate entries' in str(e):
+            print("pivot_table is used instead of pivot!")
+            wide_df = df.pivot_table(index=index_cols, columns=col, values=value, aggfunc=aggfunc, dropna=dropna).reset_index()
+            # else:
+            #     raise
     else:
         wide_df = df.pivot_table(index=index_cols, columns=col, values=value, aggfunc=aggfunc, dropna=dropna).reset_index()
     
