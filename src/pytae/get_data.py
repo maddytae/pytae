@@ -6,6 +6,7 @@ def get_data(self, **kwargs):
     agg_cols=['value']
     default_cols=[]
     aggfunc='sum'
+    dropna = kwargs.get('dropna', False)
 
     #manage aggfunc
     if 'aggfunc' in cols:
@@ -43,9 +44,9 @@ def get_data(self, **kwargs):
     #aggregate self
 
     if aggfunc!='n':    
-        grouped_self = filtered_self.groupby(combined_cols,dropna=False)[agg_cols].agg(aggfunc).reset_index()
+        grouped_self = filtered_self.groupby(combined_cols,dropna=dropna)[agg_cols].agg(aggfunc).reset_index()
     else:
-        grouped_self = filtered_self.groupby(combined_cols, dropna=False).size().reset_index(name='n')
+        grouped_self = filtered_self.groupby(combined_cols, dropna=dropna).size().reset_index(name='n')
 
     return grouped_self
 

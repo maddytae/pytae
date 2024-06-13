@@ -18,10 +18,14 @@ def agg_df(self, **kwargs):
 
     Returns:
     - DataFrame: The aggregated DataFrame with specified aggregations applied. Column names
-                 for aggregated values are updated to include the aggregation type.
+                 for aggregated values are updated to include the aggregation type. 'n' is always first of part of aggfunc else aggfunc                   order is followed.
     """
     agg_types = kwargs.get('aggfunc', ['sum'])
+    dropna = kwargs.get('dropna', False)
+    
     unique_agg_types = list(dict.fromkeys(agg_types))  # Preserve order and remove duplicates
+    remaining_agg_types = [agg for agg in unique_agg_types if agg != 'n']
+   
 
     # Group by all non-numeric columns
     group_cols = self.select_dtypes(exclude=['number']).columns.tolist()
@@ -31,23 +35,24 @@ def agg_df(self, **kwargs):
     agg_operations = {col: [agg for agg in unique_agg_types if agg != 'n'] for col in numeric_cols}
 
     # Perform aggregation
-    grouped_df = self.groupby(group_cols, as_index=False).agg(agg_operations)
+    grouped_df = self.groupby(group_cols, as_index=False,dropna=dropna).agg(agg_operations)
 
     # Flatten MultiIndex in columns if necessary
-    grouped_df.columns = ['_'.join(col).strip('_') for col in grouped_df.columns.values]
+    if len(remaining_agg_types)>1:
+        grouped_df.columns = ['_'.join(col).strip('_') for col in grouped_df.columns.values]
+    else:
+        grouped_df.columns = [col[0] for col in grouped_df.columns.values]
 
+    g_cols=group_cols
     # Handle counting ('n') if specified and integrate it based on its order in 'type'
     if 'n' in unique_agg_types:
-        grouped_df['n'] = self.groupby(group_cols).size().reset_index(drop=True)
+        grouped_df['n'] = self.groupby(group_cols,dropna=dropna).size().reset_index(drop=True)
+        g_cols=group_cols+['n']
 
-    # Construct the final column order based on 'type', ensuring 'n' is correctly positioned
-    final_columns = group_cols[:]
-    for agg_type in unique_agg_types:
-        if agg_type == 'n':
-            final_columns.append('n')
-        else:
-            final_columns.extend([f"{col}_{agg_type}" for col in numeric_cols])
+    # Reorder columns to match the order of aggfunc
+    grouped_df = grouped_df.reindex(columns=g_cols+ [col for col in grouped_df.columns if col not in g_cols])
 
-    return grouped_df.loc[:, final_columns]
+
+    return grouped_df
 
 pd.DataFrame.agg_df = agg_df

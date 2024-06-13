@@ -23,12 +23,14 @@ def handle_missing(self):
 def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
-def group_n(self,group=None,dropna=True):
+def group_n(self,group=None,dropna=False):
     if group is None:
         group = self.select_dtypes(exclude=['number']).columns.tolist()
 
     k=self.groupby(group,dropna=dropna).size().reset_index(name='n')
     self=self.merge(k,on=group,how='left')
+    if dropna:
+        self.dropna(subset=['n'], inplace=True)
     return self
 
 
