@@ -21,7 +21,7 @@ jobs:
         pip install .
     - name: Run tests
       run: |
-        python -m unittest discover -s tests
+        pytest
         
   build-n-publish:
     name: Build and publish Python 🐍 distributions 📦 to PyPI
