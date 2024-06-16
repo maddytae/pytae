@@ -6,7 +6,7 @@ def get_data(self, **kwargs):
     agg_cols=['value']
     default_cols=[]
     aggfunc='sum'
-    dropna = kwargs.get('dropna', False)
+    dropna = kwargs.get('dropna', True)
 
     #manage aggfunc
     if 'aggfunc' in cols:

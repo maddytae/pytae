@@ -53,7 +53,7 @@ def wide(df, **kwargs):
     col = kwargs.get('col', 'variable')
     value = kwargs.get('value', 'value')
     aggfunc = kwargs.get('aggfunc', None)
-    dropna = kwargs.get('dropna', False)
+    dropna = kwargs.get('dropna', True)
     
     index_cols = [c for c in df.columns if c not in [col, value]]
     

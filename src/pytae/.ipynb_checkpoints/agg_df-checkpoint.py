@@ -16,12 +16,16 @@ def agg_df(self, **kwargs):
                        in the result. Includes 'sum', 'mean', 'max', 'min', and 'n'.
                        Ensures no duplicate types. Defaults to ['sum'].
 
+    - dropna=True by default inline with general convention used in pandas
+
     Returns:
     - DataFrame: The aggregated DataFrame with specified aggregations applied. Column names
                  for aggregated values are updated to include the aggregation type. 'n' is always first of part of aggfunc else aggfunc                   order is followed.
     """
     agg_types = kwargs.get('aggfunc', ['sum'])
-    dropna = kwargs.get('dropna', False)
+    dropna = kwargs.get('dropna', True)
+
+
     
     unique_agg_types = list(dict.fromkeys(agg_types))  # Preserve order and remove duplicates
     remaining_agg_types = [agg for agg in unique_agg_types if agg != 'n']

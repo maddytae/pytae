@@ -4,11 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "2.2.7"
-authors = [
-  { name="Madhukar Kumar Jha", email="madhukar.k.jha@gmail.com" },
-]
+version = "2.2.8"
 description = "A package to enhance common day to day tasks in the life of a data scientist"
+authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.7"
 classifiers = [
@@ -19,7 +17,7 @@ classifiers = [
 dynamic = ["dependencies"]
 
 [tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+dependencies = { file = ["requirements.txt"] }
 
 [project.urls]
 "Homepage" = "https://github.com/maddytae/pytae"
