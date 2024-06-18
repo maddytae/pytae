@@ -23,7 +23,7 @@ def handle_missing(self):
 def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
-def group_n(self,group=None,dropna=False):
+def group_n(self,group=None,dropna=True):
     if group is None:
         group = self.select_dtypes(exclude=['number']).columns.tolist()
 
