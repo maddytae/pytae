@@ -23,34 +23,32 @@ def handle_missing(self):
 def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
-def group_n(self,group=None,dropna=True):
+
+
+
+
+
+def group_x(self, group=None, dropna=True, aggfunc='n', value=None):
+    '''
+    penguins.group_x(group=['island','species','sex'],dropna=True,value='body_mass_g',aggfunc='max')
+    penguins.group_x(group=['island','species','sex'],dropna=False) since no aggfunc provided so count will be provided by default
+    '''
     if group is None:
         group = self.select_dtypes(exclude=['number']).columns.tolist()
 
-    k=self.groupby(group,dropna=dropna).size().reset_index(name='n')
-    self=self.merge(k,on=group,how='left')
-    if dropna:
-        self.dropna(subset=['n'], inplace=True)
+    if aggfunc=='n' or value==None:
+        self['n'] = self.groupby(group, dropna=dropna).transform('size')
+        col='n'
+    else:
+        self['x'] = self.groupby(group, dropna=dropna)[value].transform(aggfunc)
+        col='x'
+        
+
     return self
 
 
 
-
-
-#direct alternate is a little more verbose
-
-# df = (
-#     penguins
-#     .assign(count=lambda x: x.groupby(['species', 'island', 'sex'],dropna=False).transform('size'))
-#     .reset_index(drop=True)
-# )
-
-# df = (
-#     penguins
-#     .pipe(pt.add_group_count,group=['species', 'island', 'sex'],dropna=False)
-# )
-
 pd.DataFrame.clip = clip
 pd.DataFrame.handle_missing = handle_missing
 pd.DataFrame.cols = cols
-pd.DataFrame.group_n = group_n
+pd.DataFrame.group_x = group_x
