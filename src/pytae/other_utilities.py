@@ -6,14 +6,14 @@ def clip(self):
     return self.to_clipboard(index=False) #e index=False not working in wsl at the moment
 
 
-def handle_missing(self):
+def handle_missing(self,fillna='.'):
 
     df_cat_cols = self.columns[self.dtypes =='category'].tolist()
     for c in df_cat_cols:
         self[c] = self[c].astype("object")    
 
     df_str_cols=self.columns[self.dtypes==object]
-    self[df_str_cols]=self[df_str_cols].fillna('.') #fill string missing values with .
+    self[df_str_cols]=self[df_str_cols].fillna(fillna) #fill string missing values with .
     self[df_str_cols]=self[df_str_cols].apply(lambda x: x.str.strip()) #remove any leading and trailing zeros.    
     self = self.fillna(0) #fill numeric missing values with 0
 
