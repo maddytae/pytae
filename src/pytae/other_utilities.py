@@ -23,8 +23,50 @@ def handle_missing(self,fillna='.'):
 def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
+#select is more intuitive than filter. It needs a regex expression which is quite powerful
+#ex 
+def select(self, cols_or_regex):       
+    '''
+    Select columns based on a list of column names or a regex pattern.
+    
+    Parameters:
+    self (pd.DataFrame): The DataFrame from which to select columns.
+    cols_or_regex (list or str): List of column names or a regex pattern.
+    
+    Returns:
+    pd.DataFrame: A DataFrame with the selected columns.
+    '''
+    if isinstance(cols_or_regex, list):
+        # Ensure all columns in the list exist in the DataFrame
+        missing_cols = [col for col in cols_or_regex if col not in self.columns]
+        if missing_cols:
+            raise KeyError(f"Columns not found in the DataFrame: {missing_cols}")
+        return self[cols_or_regex]
+    elif isinstance(cols_or_regex, str):
+        return self.filter(regex=cols_or_regex)
+    else:
+        raise TypeError("cols_or_regex must be a list or a string")
 
+# # Example usage
+# data = {
+#     'apple': [1, 2, 3],
+#     'banana': [4, 5, 6],
+#     'apricot': [7, 8, 9],
+#     'cherry': [10, 11, 12]
+# }
 
+# # Create a DataFrame
+# df = pd.DataFrame(data)
+
+# # Select columns using a list of column names
+# selected_cols_list = select(df, ['apple', 'banana'])
+# print("Selected columns using list:")
+# print(selected_cols_list)
+
+# # Select columns using a regex pattern
+# selected_cols_regex = select(df, '^(apple|banana|cherry)$')
+# print("\nSelected columns using regex:")
+# print(selected_cols_regex)
 
 
 
@@ -51,4 +93,5 @@ def group_x(self, group=None, dropna=True, aggfunc='n', value=None):
 pd.DataFrame.clip = clip
 pd.DataFrame.handle_missing = handle_missing
 pd.DataFrame.cols = cols
+pd.DataFrame.select = select
 pd.DataFrame.group_x = group_x
