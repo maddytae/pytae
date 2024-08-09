@@ -16,5 +16,8 @@ https://github.com/maddytae/pytae/blob/master/src/get_data.ipynb
 ### 4) some addditional utilities
 https://github.com/maddytae/pytae/blob/master/src/other_utilities.ipynb
 
+### 5) plotting utilities
+https://github.com/maddytae/pytae/blob/master/src/plot_x.ipynb
+
 #### To Do: Documentation and automated Testing features
 
