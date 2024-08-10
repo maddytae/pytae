@@ -23,50 +23,48 @@ def handle_missing(self,fillna='.'):
 def cols(self):#this is for more general situations
     return sorted(self.columns.to_list())
 
-#select is more intuitive than filter. It needs a regex expression which is quite powerful
-#ex 
-def select(self, cols_or_regex):       
+#select is more intuitive than filter. It can handle a list or a regex or a tuple containing list and regex
+def select(self, cols_or_regex=None):
     '''
-    Select columns based on a list of column names or a regex pattern.
+    Select columns based on a list of column names, a regex pattern, or a tuple of both.
     
     Parameters:
     self (pd.DataFrame): The DataFrame from which to select columns.
-    cols_or_regex (list or str): List of column names or a regex pattern.
+    cols_or_regex (list, str, or tuple): 
+        - List of column names
+        - Regex pattern
+        - Tuple containing a list of column names and a regex pattern
     
     Returns:
     pd.DataFrame: A DataFrame with the selected columns.
     '''
-    if isinstance(cols_or_regex, list):
-        # Ensure all columns in the list exist in the DataFrame
+    
+    if isinstance(cols_or_regex, tuple):
+        if len(cols_or_regex) != 2:
+            raise ValueError("Tuple must contain exactly two elements: a list of columns and a regex pattern")
+        cols, regex = cols_or_regex
+        if not isinstance(cols, list) or not isinstance(regex, str):
+            raise TypeError("First element of tuple must be a list, and the second element must be a string (regex pattern)")
+        # Select columns based on the list and regex independently
+        selected_cols = list(set(cols + self.filter(regex=regex).columns.tolist()))
+        return self[selected_cols]
+    
+    elif isinstance(cols_or_regex, list):
         missing_cols = [col for col in cols_or_regex if col not in self.columns]
         if missing_cols:
             raise KeyError(f"Columns not found in the DataFrame: {missing_cols}")
         return self[cols_or_regex]
+    
     elif isinstance(cols_or_regex, str):
         return self.filter(regex=cols_or_regex)
+    
     else:
-        raise TypeError("cols_or_regex must be a list or a string")
+        raise TypeError("cols_or_regex must be a list, a regex string, or a tuple of (list, regex)")
 
-# # Example usage
-# data = {
-#     'apple': [1, 2, 3],
-#     'banana': [4, 5, 6],
-#     'apricot': [7, 8, 9],
-#     'cherry': [10, 11, 12]
-# }
+# Add the method to the DataFrame class
+pd.DataFrame.select = select
 
-# # Create a DataFrame
-# df = pd.DataFrame(data)
 
-# # Select columns using a list of column names
-# selected_cols_list = select(df, ['apple', 'banana'])
-# print("Selected columns using list:")
-# print(selected_cols_list)
-
-# # Select columns using a regex pattern
-# selected_cols_regex = select(df, '^(apple|banana|cherry)$')
-# print("\nSelected columns using regex:")
-# print(selected_cols_regex)
 
 
 
