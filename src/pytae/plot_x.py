@@ -38,6 +38,7 @@ def plot_x(self, ax=None, x=None, y=None, by=None, clip_data=False, print_data=F
         - Scatter plots are not supported and will raise a warning.
         - The function assumes that the x-axis is not numeric.
         - For `kind='line'`, `style` and `width` are removed before plotting and then reapplied afterward to bypass crrent pandas           limitations.
+        - xlabel and ylabel by default are x and y unless it is not passed specifically.
     """
     show_legend = plot_kwargs.pop('legend', True)
     kind = plot_kwargs.pop('kind', 'line')  # 'line' is the default in pandas.plot
@@ -53,6 +54,10 @@ def plot_x(self, ax=None, x=None, y=None, by=None, clip_data=False, print_data=F
     style = plot_kwargs.pop('style', None) if kind == 'line' else None
     width = plot_kwargs.pop('width', None) if kind == 'line' else None
 
+    # Remove xlabel and ylabel from plot_kwargs to avoid conflict
+    xlabel = plot_kwargs.pop('xlabel', x)
+    ylabel = plot_kwargs.pop('ylabel', y)
+
     pivot_table = self.pivot_table(index=x, columns=by, values=y,
                                    aggfunc=aggfunc, dropna=dropna, observed=False).reset_index()
     pivot_table[x] = pivot_table[x].astype('object')  # Ensure x-axis is not numeric
@@ -62,8 +67,8 @@ def plot_x(self, ax=None, x=None, y=None, by=None, clip_data=False, print_data=F
     if clip_data:
         pivot_table.to_clipboard(index=False)
     
-    # Plot the data without color and style
-    ax = pivot_table.plot(ax=ax, x=x, kind=kind, **plot_kwargs)
+
+    ax = pivot_table.plot(ax=ax, x=x, kind=kind,xlabel=xlabel,ylabel=ylabel, **plot_kwargs)
 
     # Reapply color and style if kind == 'line'
     if kind == 'line':
