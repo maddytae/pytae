@@ -3,3 +3,4 @@ from .agg_df import *
 from .shape import *
 from .get_data import *
 from .plot_x import *
+from .plotting import *
