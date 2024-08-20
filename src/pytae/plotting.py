@@ -35,6 +35,8 @@ class Plotter:
 
         if self.kind == 'scatter':
             self._plot_scatter(ax)
+        elif self.kind == 'line':
+            self._plot_lines(ax)
         else:
             self._plot_others(ax)
 
@@ -79,15 +81,40 @@ class Plotter:
         if self.clip_data:
             self.df.to_clipboard(index=False)
 
-    def _plot_others(self, ax):
+
+            
+    def _plot_lines(self, ax):
         plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+
+        #handle special case for lines
+        style = plot_dict.pop('style', None) 
+        width = plot_dict.pop('width', None) 
+
+        
+        pivot_data = self.get_pivot_data()
+        self.ax = pivot_data.plot(ax=ax, **plot_dict)
+        
+
+        if style:
+            for line, (name, style_value) in zip(self.ax.get_lines(), style.items()):
+                line.set_linestyle(style_value)
+        if width:
+            for line, (name, width_value) in zip(self.ax.get_lines(), width.items()):
+                line.set_linewidth(width_value)
+        
+        if self.print_data:
+            print(pivot_data)
+        if self.clip_data:
+            pivot_data.to_clipboard(index=False)
+            
+    def _plot_others(self, ax):
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','style','width'])
         self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
         
         if self.print_data:
             print(self.get_pivot_data())
         if self.clip_data:
             self.get_pivot_data().to_clipboard(index=False)
-    
 
     def _filter_plot_kwargs(self, keys_to_remove):
         return {k: v for k, v in self.last_kwargs.items() if k not in keys_to_remove}
@@ -102,17 +129,47 @@ class Plotter:
 
         return pivot_table
 
-    def finalize(self):
-        self.fig.tight_layout()
 
+    def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10):
+        self.consolidate_legends = consolidate_legends
+        self.bbox_to_anchor = bbox_to_anchor
+        self.ncols = ncols
+    
+        handles = []
+        labels = []
+        seen = set()  # To track unique (label, type) combinations
+    
         for ax in self.axd.values():
             ax.customize_spines()
+    
+            # Collect handles and labels for the legends
+            h, l = ax.get_legend_handles_labels()
             
+            for handle, label in zip(h, l):
+                # Create a unique identifier for the (label, type) combination
+                handle_type = type(handle)
+                identifier = (label, handle_type)
+                
+                if identifier not in seen:
+                    handles.append(handle)
+                    labels.append(label)
+                    seen.add(identifier)  # Mark this (label, type) as seen
+    
+            # Manage the legend for the current axis
             legend = ax.get_legend()
             if legend and any(len(text.get_text()) > 0 for text in legend.get_texts()):
-                ax.legend(frameon=False)
-
+                if not self.consolidate_legends:
+                    ax.legend(frameon=False)  # Keep individual legends if not consolidating
+                else:
+                    legend.remove()  # Remove individual legend if consolidating
     
-
-
+        if self.consolidate_legends:
+            # Add a single consolidated legend to the figure
+            self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=False)
+    
+        # Adjust the layout
+        self.fig.tight_layout()
+    
         return self
+
+
