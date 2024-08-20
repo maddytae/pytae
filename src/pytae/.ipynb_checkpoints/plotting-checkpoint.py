@@ -36,9 +36,9 @@ class Plotter:
         if self.kind == 'scatter':
             self._plot_scatter(ax)
         elif self.kind == 'line':
-            self._plot_lines(ax)
+            self._plot_line(ax)
         else:
-            self._plot_others(ax)
+            self._plot_other(ax)
 
         return self
 
@@ -64,26 +64,74 @@ class Plotter:
         ax_key = self.last_kwargs.get('on', 'default')
         return self.axd.get(ax_key, self.axd.get('default'))
 
-    def _plot_scatter(self, ax):
-        plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+    # def _plot_scatter(self, ax):
+    #     plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
 
-        if self.aggfunc is None:
-            self.ax = self.df.plot(ax=ax, **plot_dict)
+    #     if self.aggfunc is None:
+    #         self.ax = self.df.plot(ax=ax, **plot_dict)
+    #     else:
+    #         self.df = self.df[[self.x, self.y, self.by]].groupby(self.by).agg({
+    #             self.x: self.aggfunc,
+    #             self.y: self.aggfunc
+    #         }).reset_index()
+    #         self.ax = self.df.plot(ax=ax, **plot_dict)
+
+    #     if self.print_data:
+    #         print(self.df)
+    #     if self.clip_data:
+    #         self.df.to_clipboard(index=False)
+            
+    def _plot_scatter(self,ax):
+        plot_dict = self._filter_plot_kwargs([ 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+        
+
+
+
+        if self.by:
+            
+            #handle special case
+            color_dict = plot_dict.pop('color', {}) 
+            marker_dict = plot_dict.pop('marker', {}) 
+            size_dict = plot_dict.pop('s', {})
+            
+
+            df=self.df[[self.x,self.y,self.by]]
+            if self.aggfunc:
+                df = self.df.groupby(self.by, observed=True).agg({self.x: self.aggfunc, self.y: self.aggfunc}).reset_index()
+
+            for l, group_df in df.groupby(self.by, observed=True):
+
+                group_color = color_dict.get(l, None)  # Default to None if color not provided
+                group_marker = marker_dict.get(l, 'o')  # Default marker to 'o' if not provided
+                group_size = size_dict.get(l, 20)  # Default size to 20 if not provided
+                
+                self.ax=group_df.plot(ax=ax,marker=group_marker,
+                                                  color=group_color,
+                                                  s=group_size, **plot_dict)
+            
+
+                    
         else:
-            self.df = self.df[[self.x, self.y, self.by]].groupby(self.by).agg({
-                self.x: self.aggfunc,
-                self.y: self.aggfunc
-            }).reset_index()
-            self.ax = self.df.plot(ax=ax, **plot_dict)
+            df=self.df[[self.x,self.y]]
+            self.ax=df.plot(ax=ax, **plot_dict)
 
+        
         if self.print_data:
             print(self.df)
         if self.clip_data:
-            self.df.to_clipboard(index=False)
+            self.df.to_clipboard(index=False)        
+
+
+
+        
+
+            
+
+
 
 
             
-    def _plot_lines(self, ax):
+    def _plot_line(self, ax):
         plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
 
         #handle special case for lines
@@ -101,13 +149,15 @@ class Plotter:
         if width:
             for line, (name, width_value) in zip(self.ax.get_lines(), width.items()):
                 line.set_linewidth(width_value)
+
+
         
         if self.print_data:
             print(pivot_data)
         if self.clip_data:
             pivot_data.to_clipboard(index=False)
             
-    def _plot_others(self, ax):
+    def _plot_other(self, ax):
         plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','style','width'])
         self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
         
@@ -140,8 +190,13 @@ class Plotter:
         seen = set()  # To track unique (label, type) combinations
     
         for ax in self.axd.values():
-            ax.customize_spines()
-    
+            # ax.customize_spines()
+            # ax.spines['left'].set_position(('outward', 5))
+            # ax.spines['bottom'].set_position(('outward', 5))
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)
+                
+        
             # Collect handles and labels for the legends
             h, l = ax.get_legend_handles_labels()
             
