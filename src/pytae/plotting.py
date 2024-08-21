@@ -48,6 +48,7 @@ class Plotter:
         # Extract print_data and clip_data before updating last_kwargs
         self.print_data = kwargs.get('print_data', False)
         self.clip_data = kwargs.get('clip_data', False)
+
         
         # Combine kwargs but exclude print_data and clip_data from last_kwargs
         combined_kwargs = {**self.last_kwargs, **kwargs}
@@ -64,23 +65,76 @@ class Plotter:
         ax_key = self.last_kwargs.get('on', 'default')
         return self.axd.get(ax_key, self.axd.get('default'))
 
-    # def _plot_scatter(self, ax):
-    #     plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+            
+    # def _plot_scatter(self,ax):
+    #     plot_dict = self._filter_plot_kwargs([ 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+        
 
-    #     if self.aggfunc is None:
-    #         self.ax = self.df.plot(ax=ax, **plot_dict)
+
+
+    #     if self.by:
+            
+    #         #handle special case; needs to be popped up from plot_dict because these will be applied in for loop
+    #         color_dict = plot_dict.pop('color', {}) 
+    #         marker_dict = plot_dict.pop('marker', {}) 
+    #         size_dict = plot_dict.pop('s', {})
+
+    #         # Extract label from plot_dict if provided; case when label is propagated from previous call
+    #         overall_label = plot_dict.pop('label', None)
+            
+
+    #         df=self.df[[self.x,self.y,self.by]]
+    #         if self.aggfunc:
+    #             df = self.df.groupby(self.by, observed=True).agg({self.x: self.aggfunc, self.y: self.aggfunc}).reset_index()
+
+    #         for l, group_df in df.groupby(self.by, observed=True):
+
+                
+    #             try:
+    #                 group_color = color_dict.get(l, 'blue')  # Default to None if color not provided
+    #             except:
+    #                 group_color=color_dict #as in if it is non-dict
+    #             try:  
+    #                 group_marker = marker_dict.get(l, 'o')  # Default marker to 'o' if not provided
+    #             except:
+    #                 group_marker = marker_dict #as in if it is non-dict
+    #             try:
+    #                 group_size = size_dict.get(l, 20)  # Default size to 20 if not provided
+    #             except:
+    #                 group_size = size_dict #as in if it is non-dict
+                    
+
+    #             # Use the overall_label if provided, otherwise use group label 'l'
+    #             group_label = overall_label if overall_label else l
+                
+    #             self.ax=group_df.plot(ax=ax,marker=group_marker,
+    #                                               color=group_color,
+    #                                               s=group_size,
+    #                                             label=group_label,
+    #                                               **plot_dict)
+    #             ax.legend()
+            
+
+                    
     #     else:
-    #         self.df = self.df[[self.x, self.y, self.by]].groupby(self.by).agg({
-    #             self.x: self.aggfunc,
-    #             self.y: self.aggfunc
-    #         }).reset_index()
-    #         self.ax = self.df.plot(ax=ax, **plot_dict)
+    #         # Handle case when 'by' is not provided
+    #         color = plot_dict.pop('color', 'blue')  # Default to 'blue' if not provided
+    #         marker = plot_dict.pop('marker', 'o')  # Default marker to 'o' if not provided
+    #         size = plot_dict.pop('s', 20)  # Default size to 20 if not provided
+    #         label = plot_dict.pop('label', f"{self.x} vs {self.y}")
+    
+    #         df = self.df[[self.x, self.y]]
+    #         self.ax = df.plot(ax=ax, marker=marker, color=color, s=size,label=label, **plot_dict)
+            
+    #         ax.legend()  
 
+
+        
     #     if self.print_data:
     #         print(self.df)
     #     if self.clip_data:
-    #         self.df.to_clipboard(index=False)
-            
+    #         self.df.to_clipboard(index=False)        
+
     def _plot_scatter(self,ax):
         plot_dict = self._filter_plot_kwargs([ 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
         
@@ -89,10 +143,13 @@ class Plotter:
 
         if self.by:
             
-            #handle special case
+            #handle special case; needs to be popped up from plot_dict because these will be applied in for loop
             color_dict = plot_dict.pop('color', {}) 
             marker_dict = plot_dict.pop('marker', {}) 
             size_dict = plot_dict.pop('s', {})
+
+            # Extract label from plot_dict if provided; case when label is propagated from previous call
+            overall_label = plot_dict.pop('label', None)
             
 
             df=self.df[[self.x,self.y,self.by]]
@@ -101,14 +158,19 @@ class Plotter:
 
             for l, group_df in df.groupby(self.by, observed=True):
 
-                group_color = color_dict.get(l, None)  # Default to None if color not provided
-                group_marker = marker_dict.get(l, 'o')  # Default marker to 'o' if not provided
-                group_size = size_dict.get(l, 20)  # Default size to 20 if not provided
+                group_color = color_dict.get(l,'blue') if isinstance(color_dict, dict) else color_dict
+                group_marker = marker_dict.get(l, 'o') if isinstance(marker_dict, dict) else marker_dict
+                group_size = size_dict.get(l, 20) if isinstance(size_dict, dict) else size_dict
+
+
+                # Use the overall_label if provided, otherwise use group label 'l'
+                group_label = overall_label if overall_label else l
                 
                 self.ax=group_df.plot(ax=ax,marker=group_marker,
                                                   color=group_color,
                                                   s=group_size,
-                                      label=l,**plot_dict)
+                                                label=group_label,
+                                                  **plot_dict)
                 ax.legend()
             
 
@@ -131,7 +193,6 @@ class Plotter:
             print(self.df)
         if self.clip_data:
             self.df.to_clipboard(index=False)        
-
 
 
         
