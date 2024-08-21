@@ -12,11 +12,11 @@ def customize_spines(self):
 Axes.customize_spines = customize_spines
 
 class Plotter:
-    def __init__(self, mosaic=None):
+    def __init__(self, mosaic=None,figsize=None):
         if mosaic is not None:
-            self.fig, self.axd = plt.subplot_mosaic(mosaic)
+            self.fig, self.axd = plt.subplot_mosaic(mosaic=mosaic,figsize=figsize)
         else:
-            self.fig, ax = plt.subplots()
+            self.fig, ax = plt.subplots(figsize=figsize)
             self.axd = {'default': ax}
         self.last_kwargs = {}
         self.df = None
@@ -118,11 +118,12 @@ class Plotter:
             color = plot_dict.pop('color', 'blue')  # Default to 'blue' if not provided
             marker = plot_dict.pop('marker', 'o')  # Default marker to 'o' if not provided
             size = plot_dict.pop('s', 20)  # Default size to 20 if not provided
+            label = plot_dict.pop('label', f"{self.x} vs {self.y}")
     
             df = self.df[[self.x, self.y]]
-            self.ax = df.plot(ax=ax, marker=marker, color=color, s=size, **plot_dict)
+            self.ax = df.plot(ax=ax, marker=marker, color=color, s=size,label=label, **plot_dict)
             
-            ax.legend([f"{self.x} vs {self.y}"])  # Add a generic legend if no 'by' is provided
+            ax.legend()  
 
 
         
