@@ -35,8 +35,12 @@ class Plotter:
 
         if self.kind == 'scatter':
             self._plot_scatter(ax)
+        elif self.kind == 'hexbin':
+            self._plot_hexbin(ax)
         elif self.kind == 'line':
             self._plot_line(ax)
+        elif self.kind == 'pie':
+            self._plot_pie(ax)
         else:
             self._plot_other(ax)
 
@@ -69,7 +73,7 @@ class Plotter:
      
 
     def _plot_scatter(self,ax):
-        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','subplots'])
 
  
         if 'aggfunc' in self.last_kwargs:
@@ -77,7 +81,7 @@ class Plotter:
         if 'dropna' in self.last_kwargs:
             warnings.warn("The 'dropna' argument is not applicable to scatter plots and will be ignored.")
         if 'by' in self.last_kwargs:
-            warnings.warn("Use 'color' and 'cmap' to split the scatter plot by a particular column. The 'by' argument will be ignored.")
+            warnings.warn("Use 'c' and 'cmap' to split the scatter plot by a particular column. The 'by' argument will be ignored.")
     
 
         self.ax = self.df.plot(ax=ax,  **plot_dict)
@@ -86,12 +90,55 @@ class Plotter:
         if self.print_data:
             print(self.df)
         if self.clip_data:
-            self.df.to_clipboard(index=False)        
+            self.df.to_clipboard(index=False)
+            
+    def _plot_pie(self,ax):
+        plot_dict = self._filter_plot_kwargs([ 'x','by','aggfunc','on','print_data','clip_data','subplots'])
 
+        self.df=self.df[[self.by,self.y]].groupby(self.by, observed=True,dropna=self.dropna).agg({ self.y: self.aggfunc})
+
+        # Handle color dictionary if provided
+        if 'colors' in self.last_kwargs:
+            color_dict = self.last_kwargs['colors']
+            # Convert the color dictionary to a list based on the categories in self.df.index
+            plot_dict['colors'] = [color_dict.get(category, 'grey') for category in self.df.index] #for pie it is colors and not color
+
+        else:
+            # If no color dictionary is provided, let pandas handle colors
+            pass
+        self.ax = self.df.plot(ax=ax,  **plot_dict)
+
+        
+        if self.print_data:
+            print(self.df)
+        if self.clip_data:
+            self.df.to_clipboard(index=False) 
+
+    def _plot_hexbin(self,ax):
+        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','subplots'])
+
+ 
+        if 'aggfunc' in self.last_kwargs:
+            warnings.warn("Aggregation is not supported for hex plots. Use reduce_C_function instead.")
+            
+           # https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.plot.hexbin.html
+        if 'dropna' in self.last_kwargs:
+            warnings.warn("The 'dropna' argument is not applicable to hex plots and will be ignored.")
+        if 'by' in self.last_kwargs:
+            warnings.warn("Use 'c' and 'cmap' to split the hex plot by a particular column. The 'by' argument will be ignored.")
+    
+
+        self.ax = self.df.plot(ax=ax,  **plot_dict)
+
+        
+        if self.print_data:
+            print(self.df)
+        if self.clip_data:
+            self.df.to_clipboard(index=False)  
 
             
     def _plot_line(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','subplots'])
 
         #handle special case for lines
         style = plot_dict.pop('style', None) 
@@ -117,7 +164,7 @@ class Plotter:
             pivot_data.to_clipboard(index=False)
             
     def _plot_other(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','style','width'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','style','width','subplots'])
         self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
         
         if self.print_data:
