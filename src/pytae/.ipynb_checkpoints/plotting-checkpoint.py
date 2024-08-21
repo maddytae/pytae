@@ -107,13 +107,23 @@ class Plotter:
                 
                 self.ax=group_df.plot(ax=ax,marker=group_marker,
                                                   color=group_color,
-                                                  s=group_size, **plot_dict)
+                                                  s=group_size,
+                                      label=l,**plot_dict)
+                ax.legend()
             
 
                     
         else:
-            df=self.df[[self.x,self.y]]
-            self.ax=df.plot(ax=ax, **plot_dict)
+            # Handle case when 'by' is not provided
+            color = plot_dict.pop('color', 'blue')  # Default to 'blue' if not provided
+            marker = plot_dict.pop('marker', 'o')  # Default marker to 'o' if not provided
+            size = plot_dict.pop('s', 20)  # Default size to 20 if not provided
+    
+            df = self.df[[self.x, self.y]]
+            self.ax = df.plot(ax=ax, marker=marker, color=color, s=size, **plot_dict)
+            
+            ax.legend([f"{self.x} vs {self.y}"])  # Add a generic legend if no 'by' is provided
+
 
         
         if self.print_data:
