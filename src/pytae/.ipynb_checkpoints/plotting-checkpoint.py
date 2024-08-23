@@ -37,10 +37,16 @@ class Plotter:
             self._plot_scatter(ax)
         elif self.kind == 'hexbin':
             self._plot_hexbin(ax)
-        elif self.kind == 'line':
+        elif self.kind in ['line']:
             self._plot_line(ax)
+        elif self.kind in ['bin']:
+            self._plot_bin(ax)
+        elif self.kind in ['kde','density']:
+            self._plot_density(ax)
         elif self.kind == 'pie':
             self._plot_pie(ax)
+        elif self.kind == 'hist':
+            self._plot_hist(ax)
         else:
             self._plot_other(ax)
 
@@ -61,8 +67,12 @@ class Plotter:
         self.x = combined_kwargs.get('x', None)
         self.y = combined_kwargs.get('y', None)
         self.by = combined_kwargs.get('by', None)
+        self.column = combined_kwargs.get('column', None)
         self.kind = combined_kwargs.get('kind', 'line')
-        self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind == 'scatter' else combined_kwargs.get('aggfunc', 'sum')
+        self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind in ['scatter',
+                                                                             'density',
+                                                                             'kde',
+                                                                            'hist'] else combined_kwargs.get('aggfunc', 'sum')
         self.dropna = combined_kwargs.get('dropna', False)
         
     def _get_target_axis(self):
@@ -73,7 +83,7 @@ class Plotter:
      
 
     def _plot_scatter(self,ax):
-        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','subplots'])
+        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','subplots','column','bins'])
 
  
         if 'aggfunc' in self.last_kwargs:
@@ -87,13 +97,10 @@ class Plotter:
         self.ax = self.df.plot(ax=ax,  **plot_dict)
 
         
-        if self.print_data:
-            print(self.df)
-        if self.clip_data:
-            self.df.to_clipboard(index=False)
+        self._handle_data_output(self.df)
             
     def _plot_pie(self,ax):
-        plot_dict = self._filter_plot_kwargs([ 'x','by','aggfunc','on','print_data','clip_data','subplots'])
+        plot_dict = self._filter_plot_kwargs([ 'x','by','aggfunc','on','print_data','clip_data','subplots','column','bins'])
 
         self.df=self.df[[self.by,self.y]].groupby(self.by, observed=True,dropna=self.dropna).agg({ self.y: self.aggfunc})
 
@@ -109,13 +116,10 @@ class Plotter:
         self.ax = self.df.plot(ax=ax,  **plot_dict)
 
         
-        if self.print_data:
-            print(self.df)
-        if self.clip_data:
-            self.df.to_clipboard(index=False) 
+        self._handle_data_output(self.df)
 
     def _plot_hexbin(self,ax):
-        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','subplots'])
+        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','subplots','column','bins'])
 
  
         if 'aggfunc' in self.last_kwargs:
@@ -131,14 +135,11 @@ class Plotter:
         self.ax = self.df.plot(ax=ax,  **plot_dict)
 
         
-        if self.print_data:
-            print(self.df)
-        if self.clip_data:
-            self.df.to_clipboard(index=False)  
+        self._handle_data_output(self.df)
 
             
     def _plot_line(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','subplots'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','subplots','column','bins'])
 
         #handle special case for lines
         style = plot_dict.pop('style', None) 
@@ -157,20 +158,53 @@ class Plotter:
                 line.set_linewidth(width_value)
 
 
+        self._handle_data_output(pivot_data)
         
-        if self.print_data:
-            print(pivot_data)
-        if self.clip_data:
-            pivot_data.to_clipboard(index=False)
-            
+
+    #bar, barh, area
     def _plot_other(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','style','width','subplots'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 
+                                              'dropna', 'on','print_data','clip_data',
+                                              'style','width','subplots','column','bins'])
         self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
         
-        if self.print_data:
-            print(self.get_pivot_data())
-        if self.clip_data:
-            self.get_pivot_data().to_clipboard(index=False)
+        self._handle_data_output(self.get_pivot_data())
+
+    #kde,density
+    def _plot_density(self, ax):
+        plot_dict = self._filter_plot_kwargs(['x','y', 'by', 
+                                              'aggfunc', 'dropna', 'on',
+                                              'print_data','clip_data','style','width','subplots','column','bins'])
+        if 'aggfunc' in self.last_kwargs:
+            warnings.warn("Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.")
+        if 'dropna' in self.last_kwargs:
+            warnings.warn("The 'dropna' argument is not applicable to kde/density plots and will be ignored.")
+
+        k = self.df.pivot(columns=self.by, values=self.column) 
+
+            
+        self.ax = k.plot(ax=ax, **plot_dict)
+
+        
+        self._handle_data_output(k)
+        
+    #hist
+    def _plot_hist(self, ax):
+        plot_dict = self._filter_plot_kwargs(['x','y', 'by', 
+                                              'aggfunc', 'dropna', 'on',
+                                              'print_data','clip_data','style','width','subplots','column'])
+        if 'aggfunc' in self.last_kwargs:
+            warnings.warn("Aggregation is not supported for hist plot. The 'aggfunc' argument will be ignored.")
+        if 'dropna' in self.last_kwargs:
+            warnings.warn("The 'dropna' argument is not applicable to hist plots and will be ignored.")
+
+        k = self.df.pivot(columns=self.by, values=self.column) 
+
+            
+        self.ax = k.plot(ax=ax, **plot_dict)
+
+        
+        self._handle_data_output(k)
 
     def _filter_plot_kwargs(self, keys_to_remove):
         return {k: v for k, v in self.last_kwargs.items() if k not in keys_to_remove}
@@ -234,3 +268,8 @@ class Plotter:
         return self
 
 
+    def _handle_data_output(self, data):
+        if self.print_data:
+            print(data)
+        if self.clip_data:
+            data.to_clipboard(index=False)
