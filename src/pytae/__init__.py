@@ -38,8 +38,7 @@ sample_data = {
     # Add more datasets as needed
 }
 
-print("Loading sample_data...")
-print("Sample data loaded:", list(sample_data.keys()))
+
 
 # Make sample_data available when importing the package
 __all__ = ['sample_data']
