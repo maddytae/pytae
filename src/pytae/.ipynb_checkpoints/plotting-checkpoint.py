@@ -17,8 +17,6 @@ class Plotter:
         self.df = None
         plt.close()
 
-        
-
     def data(self, df):
         self.df = df
         self.last_kwargs = {}  # Reset kwargs when new data is provided
@@ -76,8 +74,7 @@ class Plotter:
     def _get_target_axis(self):
         ax_key = self.last_kwargs.get('on', 'default')
         return self.axd.get(ax_key, self.axd.get('default'))
-
-            
+        
      
 
     def _plot_scatter(self,ax):
@@ -231,44 +228,65 @@ class Plotter:
 
         return pivot_table
 
-
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10):
         self.consolidate_legends = consolidate_legends
         self.bbox_to_anchor = bbox_to_anchor
         self.ncols = ncols
     
-        handles = []
-        labels = []
-        seen = set()  # To track unique (label, type) combinations
-    
-        for ax in self.axd.values():
-            # ax.customize_spines()
-            # ax.spines['left'].set_position(('outward', 5))
-            # ax.spines['bottom'].set_position(('outward', 5))
-            ax.spines['right'].set_visible(False)
-            ax.spines['top'].set_visible(False)
-                
-        
-            # Collect handles and labels for the legends
-            h, l = ax.get_legend_handles_labels()
+
+        for ax in self.fig.axes:
+
+            # Initially hide all spines
+            ax.spines['top'].set_position(('outward', 5))
+            ax.spines['bottom'].set_position(('outward', 5))
+            ax.spines['left'].set_position(('outward', 5))
+            ax.spines['right'].set_position(('outward', 5))
             
-            for handle, label in zip(h, l):
-                # Create a unique identifier for the (label, type) combination
-                handle_type = type(handle)
-                identifier = (label, handle_type)
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+
+            # Check and conditionally show spines based on label presence
+            for spine, axis, label_position in [
+                ('top', ax.xaxis, 'top'),
+                ('bottom', ax.xaxis, 'bottom'),
+                ('left', ax.yaxis, 'left'),
+                ('right', ax.yaxis, 'right')
+            ]:
+                # Get labels for this axis
+                labels = ax.get_xticklabels() if axis == ax.xaxis else ax.get_yticklabels()
+                labels = [label.get_text() for label in labels if label.get_text()]
                 
-                if identifier not in seen:
-                    handles.append(handle)
-                    labels.append(label)
-                    seen.add(identifier)  # Mark this (label, type) as seen
-    
+                # Check if labels are present and not just default values
+                if (label_position == axis.get_label_position() and 
+                    labels and 
+                    (labels != ['0.0', '0.2', '0.4', '0.6', '0.8', '1.0'] or spine == 'right')):
+                    ax.spines[spine].set_visible(True)     
+            
+            secondary_ax = getattr(ax, 'right_ax', None)
+
+        
             # Manage the legend for the current axis
-            legend = ax.get_legend()
-            if legend and any(len(text.get_text()) > 0 for text in legend.get_texts()):
-                if not self.consolidate_legends:
-                    ax.legend(frameon=False)  # Keep individual legends if not consolidating
-                else:
-                    legend.remove()  # Remove individual legend if consolidating
+            if not self.consolidate_legends:
+                if ax.get_label(): #that means it is primary ax; label is absent for secondary ax
+                    # ax.legend(frameon=False)
+                    handles, labels = ax.get_legend_handles_labels()
+                    if secondary_ax==None:
+                        ax.legend(handles, labels, frameon=False, loc='best')
+                    else:
+                        ax.legend(handles, labels, frameon=False, loc='upper left') # in case if it is secondary ax then always put on uppler left else put in best location
+                if not ax.get_label():
+                    handles, labels = ax.get_legend_handles_labels()
+                    ax.legend(handles, labels, frameon=False, loc='upper right')
+                    
+
+            else:
+                try:
+                    ax.get_legend().remove()
+                except:
+                    None
+                
+        handles, labels = self._collect_handles_and_legends()
+                    
     
         if self.consolidate_legends:
             # Add a single consolidated legend to the figure
@@ -277,13 +295,34 @@ class Plotter:
         # Adjust the layout
         self.fig.tight_layout()
     
-        return self
+        return self        
         
-
-
+    
 
     def _handle_data_output(self, data):
         if self.print_data:
             print(data)
         if self.clip_data:
             data.to_clipboard(index=False)
+
+
+    def _collect_handles_and_legends(self):
+        handles = []
+        labels = []
+        seen = set()
+        
+        for ax in self.fig.axes:
+
+            h, l = ax.get_legend_handles_labels()
+                
+            for handle, label in zip(h, l):
+                identifier = (label, type(handle))
+                if identifier not in seen:
+                    handles.append(handle)
+                    labels.append(label)
+                    seen.add(identifier)
+        
+        return handles, labels
+
+
+     
