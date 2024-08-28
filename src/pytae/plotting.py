@@ -270,12 +270,14 @@ class Plotter:
                 if ax.get_label(): #that means it is primary ax; label is absent for secondary ax
                     # ax.legend(frameon=False)
                     handles, labels = ax.get_legend_handles_labels()
+                    labels = [label.replace(" (right)", "") for label in labels]
                     if secondary_ax==None:
                         ax.legend(handles, labels, frameon=False, loc='best')
                     else:
                         ax.legend(handles, labels, frameon=False, loc='upper left') # in case if it is secondary ax then always put on uppler left else put in best location
                 if not ax.get_label():
                     handles, labels = ax.get_legend_handles_labels()
+                    labels = [label.replace(" (right)", "") for label in labels]
                     ax.legend(handles, labels, frameon=False, loc='upper right')
                     
 
@@ -316,6 +318,7 @@ class Plotter:
             h, l = ax.get_legend_handles_labels()
                 
             for handle, label in zip(h, l):
+                label = label.replace(" (right)", "")  # Exclude " (right)" from labels
                 identifier = (label, type(handle))
                 if identifier not in seen:
                     handles.append(handle)
