@@ -71,10 +71,6 @@ class Plotter:
         self.dropna = combined_kwargs.get('dropna', False)
 
     
-
-    # def _get_target_axis(self):
-    #     ax_key = self.last_kwargs.get('on', 'default')
-    #     return self.axd.get(ax_key, self.axd.get('default'))
             
     def _get_target_axis(self):
         ax_key = self.last_kwargs.get('on', 'default')
@@ -288,17 +284,34 @@ class Plotter:
         """Stores the plot_dict kwargs in a dictionary with the axis as the key."""
         self.plot_kwargs_store[ax.get_label()] = plot_dict
 
+
+    
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10):
         self.consolidate_legends = consolidate_legends
         self.bbox_to_anchor = bbox_to_anchor
         self.ncols = ncols
-
+    
+        # Call the methods in sequence
+        self._hide_spines()
+        self._adjust_ticks_and_spines()
+        self._manage_legend()
+    
+        handles, labels = self._collect_handles_and_legends()
+    
+        if self.consolidate_legends:
+            # Add a single consolidated legend to the figure
+            self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=False)
+    
+        self.fig.tight_layout()
+        return self
+    
+    def _hide_spines(self):
         for ax in self.fig.axes:
-            ax_label=ax.get_label()
+            ax_label = ax.get_label()
             if '<colorbar>' in ax_label or ax_label == '':
                 continue
-
-            # Initially hide all spines
+            
+            # Initially hide all spines and set their positions
             ax.spines['top'].set_position(('outward', 5))
             ax.spines['bottom'].set_position(('outward', 5))
             ax.spines['left'].set_position(('outward', 5))
@@ -306,39 +319,29 @@ class Plotter:
             
             for spine in ax.spines.values():
                 spine.set_visible(False)
-
-            # ax.tick_params(axis='y', labelleft=False,labelright=False)
-            # ax.tick_params(axis='x', labeltop=False,labelbottom=False)
-
+    
+    def _adjust_ticks_and_spines(self):
+        default_labels = ['0.0', '0.2', '0.4', '0.6', '0.8', '1.0']
         for ax in self.fig.axes:
-            # print(ax.get_label())
+            ax_label = ax.get_label()
             if '<colorbar>' in ax_label or ax_label == '':
-                continue     
+                continue
             
-
-
-
-            
-
             # Check and conditionally show spines based on label presence
-            default_labels = ['0.0', '0.2', '0.4', '0.6', '0.8', '1.0']
             for spine, axis, label_position in [
                 ('top', ax.xaxis, 'top'),
                 ('bottom', ax.xaxis, 'bottom'),
                 ('left', ax.yaxis, 'left'),
                 ('right', ax.yaxis, 'right')
             ]:
-                # Get labels for this axis
                 labels = ax.get_xticklabels() if axis == ax.xaxis else ax.get_yticklabels()
                 labels = [label.get_text() for label in labels if label.get_text()]
                 
-                # Check if labels are present and not just default values
                 if (label_position == axis.get_label_position() and 
                     labels and 
-                    (labels != default_labels) ):
-                    ax.spines[spine].set_visible(True) 
+                    (labels != default_labels)):
+                    ax.spines[spine].set_visible(True)
                     
-                # Hide tick labels and ticks if they match the default labels
                 if labels == default_labels:
                     tick_params_position = 'labeltop' if label_position == 'top' else (
                         'labelbottom' if label_position == 'bottom' else (
@@ -350,32 +353,29 @@ class Plotter:
                         length=0,            # Hide the ticks by setting length to 0
                         **{tick_params_position: False}  # Hide the tick labels
                     )
-            
-
-            is_secondary = '^' in ax.get_label()           
-            count = sum(1 for k in self.plot_kwargs_store if k.replace('^', '') == ax.get_label().replace('^',''))
-
+    
+    def _manage_legend(self):
+        for ax in self.fig.axes:
+            ax_label = ax.get_label()
+            is_secondary = '^' in ax_label
+            count = sum(1 for k in self.plot_kwargs_store if k.replace('^', '') == ax_label.replace('^', ''))
             
             handles, labels = ax.get_legend_handles_labels()
             labels = [label.replace(" (right)", "") for label in labels]
-            if is_secondary and count>1:
+            
+            if is_secondary and count > 1:
                 ax.legend(handles, labels, frameon=False, loc='upper right')
-            elif count>1:
+            elif count > 1:
                 ax.legend(handles, labels, frameon=False, loc='upper left')
             else:
-                ax.legend(handles, labels, frameon=False, loc='best')  
-            if self.consolidate_legends:
+                ax.legend(handles, labels, frameon=False, loc='best')
+            
+            if self.consolidate_legends : 
                 ax.get_legend().remove()
-    
-
                 
-        handles, labels = self._collect_handles_and_legends()
-                    
+    #also removing legnd for pie plot to avoid crowding
+            if not self.consolidate_legends:
+                if ax.get_label() in self.plot_kwargs_store:
+                    if self.plot_kwargs_store[ax.get_label()]['kind']=='pie': 
+                        ax.get_legend().remove()
     
-        if self.consolidate_legends:
-            # Add a single consolidated legend to the figure
-            self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=False)    
-
-        self.fig.tight_layout()
-        return self
-
