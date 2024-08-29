@@ -15,6 +15,7 @@ class Plotter:
             self.axd = {'default': ax}
         self.last_kwargs = {}
         self.df = None
+        self.plot_kwargs_store = {}
         plt.close()
 
     def data(self, df):
@@ -71,14 +72,33 @@ class Plotter:
 
     
 
+    # def _get_target_axis(self):
+    #     ax_key = self.last_kwargs.get('on', 'default')
+    #     return self.axd.get(ax_key, self.axd.get('default'))
+            
     def _get_target_axis(self):
         ax_key = self.last_kwargs.get('on', 'default')
-        return self.axd.get(ax_key, self.axd.get('default'))
-        
-     
+        if '^' in ax_key:
+            base_key = ax_key.rstrip('^')
+            ax = self.axd.get(base_key, self.axd.get('default'))
+            if ax is None:
+                raise ValueError(f"Base axis '{base_key}' not found.")
+            # Create or retrieve the secondary axis
+            if not hasattr(ax, 'right_ax'):
+                right_ax = ax.twinx()
+                right_ax.set_label(ax_key)  # Set label for the secondary axis
+                ax.right_ax = right_ax
+            else:
+                right_ax = ax.right_ax
+            # print(f"Secondary axis created for {base_key}: {right_ax}")
+            return right_ax
+        else:
+            return self.axd.get(ax_key, self.axd.get('default'))
+   
 
     def _plot_scatter(self,ax):
-        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','secondary_y'])
+        self._store_plot_kwargs(ax, plot_dict)
 
  
         if 'aggfunc' in self.last_kwargs:
@@ -102,7 +122,8 @@ class Plotter:
         self._handle_data_output(k)
             
     def _plot_pie(self,ax):
-        plot_dict = self._filter_plot_kwargs([ 'x','by','aggfunc','on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs([ 'x','by','aggfunc','on','print_data','clip_data','secondary_y'])
+        self._store_plot_kwargs(ax, plot_dict)
 
         self.df=self.df[[self.by,self.y]].groupby(self.by, observed=True,dropna=self.dropna).agg({ self.y: self.aggfunc})
 
@@ -121,7 +142,8 @@ class Plotter:
         self._handle_data_output(self.df)
 
     def _plot_hexbin(self,ax):
-        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs([ 'by','aggfunc','dropna','on','print_data','clip_data','secondary_y'])
+        self._store_plot_kwargs(ax, plot_dict)
 
  
         if 'aggfunc' in self.last_kwargs:
@@ -141,7 +163,8 @@ class Plotter:
 
             
     def _plot_line(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','secondary_y'])
+        self._store_plot_kwargs(ax, plot_dict)
 
         #handle special case for lines
         style = plot_dict.pop('style', None) 
@@ -165,7 +188,8 @@ class Plotter:
 
     #bar, barh, area
     def _plot_other(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','secondary_y'])
+        self._store_plot_kwargs(ax, plot_dict)
         self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
 
         
@@ -173,7 +197,8 @@ class Plotter:
 
     #kde,density
     def _plot_density(self, ax):
-        plot_dict = self._filter_plot_kwargs(['x','y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data'])
+        plot_dict = self._filter_plot_kwargs(['x','y', 'by', 'aggfunc', 'dropna', 'on','print_data','clip_data','secondary_y'])
+        self._store_plot_kwargs(ax, plot_dict)
         
         if 'aggfunc' in self.last_kwargs:
             warnings.warn("Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.")
@@ -190,8 +215,9 @@ class Plotter:
         
     #hist
     def _plot_hist(self, ax):
-        plot_dict = self._filter_plot_kwargs(['x','y', 'by','aggfunc', 'dropna', 'on','print_data','clip_data','column'])
+        plot_dict = self._filter_plot_kwargs(['x','y', 'by','aggfunc', 'dropna', 'on','print_data','clip_data','column','secondary_y'])
         #should not be passing 'by' to plot_dict because pandas plot for hist will use by to subplot:)
+        self._store_plot_kwargs(ax, plot_dict)
         
         if 'aggfunc' in self.last_kwargs:
             warnings.warn("Aggregation is not supported for hist plot. The 'aggfunc' argument will be ignored.")
@@ -326,6 +352,11 @@ class Plotter:
                     seen.add(identifier)
         
         return handles, labels
+
+    def _store_plot_kwargs(self, ax, plot_dict):
+
+        """Stores the plot_dict kwargs in a dictionary with the axis as the key."""
+        self.plot_kwargs_store[ax.get_label()] = plot_dict
 
 
      
