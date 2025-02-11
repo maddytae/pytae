@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import operator
+import re
 
 # Dictionary mapping string operators to their corresponding functions
 ops = {
@@ -14,10 +15,10 @@ def qry(self, conditions):
     Filters a DataFrame based on a dictionary of conditions.
 
     This method provides a flexible way to filter rows in a DataFrame using a dictionary
-    of conditions. Conditions can include direct values, lists of values, or string-based
-    comparisons (e.g., '>= 100', '== "value"'). It supports both numeric and non-numeric columns.
-    Index is not reset for returing df since query should not change indexing.
-
+    of conditions. Conditions can include direct values, lists of values, string-based
+    comparisons (e.g., '>= 100', '== "value"'), or interval conditions (e.g., '(a,b)', '[a,b]').
+    It supports both numeric and non-numeric columns.
+    Index is not reset for returning df since query should not change indexing.
 
     Parameters:
     -----------
@@ -31,6 +32,8 @@ def qry(self, conditions):
           matches any value in the list.
         - A string with an operator (e.g., '>= 100', '== "value"'): Filters for rows where
           the column satisfies the operator-based condition.
+        - An interval condition (e.g., '(a,b)', '[a,b]'): Filters for rows where the column
+          falls within the specified interval.
 
     Returns:
     --------
@@ -65,6 +68,12 @@ def qry(self, conditions):
     1   Adelie      89100.0
     3    Gentoo     271425.0
 
+    >>> # Filter for rows where 'body_mass_g' is in the interval (80000, 120000)
+    >>> df.qry({'body_mass_g': '(80000,120000)'})
+       species  body_mass_g
+    1   Adelie      89100.0
+    2  Chinstrap     119925.0
+
     Notes:
     ------
     - For numeric columns, conditions with operators (e.g., '>= 100') will automatically
@@ -79,12 +88,35 @@ def qry(self, conditions):
       is found in the condition string. The `else` block only executes if the loop completes
       without encountering a `break`.
     """
+
+
+        
     for col, cond in conditions.items():
         is_numeric = pd.api.types.is_numeric_dtype(self[col])
 
         if isinstance(cond, list):
             # Handle list conditions (e.g., ['Adelie', 'Gentoo'])
             self = self.loc[self[col].isin(cond)]
+        elif isinstance(cond, str) and re.match(r'^[\[(].*[)\]]$', cond):
+            # Handle interval conditions (e.g., '(a,b)', '[a,b]')
+            interval_pattern = re.compile(r'^([\[(])(.*),(.*)([\])])$')
+            match = interval_pattern.match(cond)
+            if match:
+                left_bracket, lower, upper, right_bracket = match.groups()
+                lower = float(lower) if is_numeric else lower
+                upper = float(upper) if is_numeric else upper
+
+                if left_bracket == '[':
+                    lower_op = operator.ge
+                else:
+                    lower_op = operator.gt
+
+                if right_bracket == ']':
+                    upper_op = operator.le
+                else:
+                    upper_op = operator.lt
+
+                self = self.loc[lower_op(self[col], lower) & upper_op(self[col], upper)]
         else:
             # Handle string conditions (e.g., '==74125')
             for symbol, op_func in ops.items():
