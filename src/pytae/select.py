@@ -18,6 +18,7 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
            - 'category': Selects all categorical columns.
            - 'bool': Selects all boolean columns.
     exclude_dtype: A string, type, or list of strings/types representing the data type of columns to exclude.
+                  If provided, all other selection criteria (*args, dtype, contains, etc.) are ignored.
     contains: A string or list of strings to select columns whose names contain any of these substrings.
     startswith: A string or list of strings to select columns whose names start with any of these substrings.
     endswith: A string or list of strings to select columns whose names end with any of these substrings.
@@ -26,10 +27,25 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     pd.DataFrame: A DataFrame with the selected columns.
     
     Raises:
+    ValueError: If exclude_dtype is combined with other selection criteria.
     KeyError: If specified columns are not found in the DataFrame.
     TypeError: If invalid arguments are provided.
     '''
+    # Check if exclude_dtype is combined with other criteria
+    if exclude_dtype is not None and (args or dtype is not None or contains is not None or startswith is not None or endswith is not None):
+        raise ValueError("exclude_dtype cannot be combined with other selection criteria.")
+    
     selected_cols = set()  # Use a set to avoid duplicate columns
+    
+    # Handle exclude_dtype (works independently)
+    if exclude_dtype is not None:
+        if isinstance(exclude_dtype, (str, type)):
+            # Single exclude_dtype filtering
+            exclude_cols = self.select_dtypes(exclude=[exclude_dtype]).columns.tolist()
+        elif isinstance(exclude_dtype, list):
+            # List of exclude_dtypes filtering
+            exclude_cols = self.select_dtypes(exclude=exclude_dtype).columns.tolist()
+        return self[exclude_cols]  # Return only columns not in the excluded dtypes
     
     # Handle *args
     for arg in args:
@@ -62,20 +78,6 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             dtype_cols = self.select_dtypes(include=dtype).columns.tolist()
         selected_cols.update(dtype_cols)  # Add columns matching the dtype
     
-    # Handle exclude_dtype (single value or list)
-    if exclude_dtype is not None:
-        if isinstance(exclude_dtype, (str, type)):
-            # Single exclude_dtype filtering
-            exclude_cols = self.select_dtypes(exclude=[exclude_dtype]).columns.tolist()
-        elif isinstance(exclude_dtype, list):
-            # List of exclude_dtypes filtering
-            exclude_cols = self.select_dtypes(exclude=exclude_dtype).columns.tolist()
-        
-        if not selected_cols:
-            selected_cols = set(self.columns)  # Start with all columns if nothing was selected yet
-        selected_cols.difference_update(exclude_cols)  # Remove excluded columns
-
-        
     # Handle contains (single value or list)
     if contains is not None:
         if isinstance(contains, str):
