@@ -9,7 +9,8 @@ https://github.com/maddytae/pytae/blob/master/src/agg_df.ipynb
 ### 3) Transformations: long(), wide()
 https://github.com/maddytae/pytae/blob/master/src/shape.ipynb
 
-### 4) Subsetting: qry()chttps://github.com/maddytae/pytae/blob/master/src/qry.ipynb
+### 4) Subsetting: qry()
+https://github.com/maddytae/pytae/blob/master/src/qry.ipynb
 
 ### 5) Utilities: clip(), handle_missing(), cols(), select(), group_x()
 https://github.com/maddytae/pytae/blob/master/src/other_utilities.ipynb
