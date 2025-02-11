@@ -4,6 +4,7 @@ from .shape import *
 from .plot_x import *
 from .plotting import *
 from .qry import *
+from .select import *
 
 import os
 import pandas as pd

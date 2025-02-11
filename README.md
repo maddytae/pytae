@@ -9,10 +9,13 @@ https://github.com/maddytae/pytae/blob/master/src/agg_df.ipynb
 ### 3) Transformations: long(), wide()
 https://github.com/maddytae/pytae/blob/master/src/shape.ipynb
 
-### 4) Subsetting: qry()
+### 4) Filtering: qry()
 https://github.com/maddytae/pytae/blob/master/src/qry.ipynb
 
-### 5) Utilities: clip(), handle_missing(), cols(), select(), group_x()
+### 5) Selection: select()
+https://github.com/maddytae/pytae/blob/master/src/qry.ipynb
+
+### 6) Utilities: clip(), handle_missing(), cols(), group_x()
 https://github.com/maddytae/pytae/blob/master/src/other_utilities.ipynb
 
 
