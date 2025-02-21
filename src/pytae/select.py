@@ -36,6 +36,7 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
         raise ValueError("exclude_dtype cannot be combined with other selection criteria.")
     
     selected_cols = set()  # Use a set to avoid duplicate columns
+    ordered_cols = [] 
     
     # Handle exclude_dtype (works independently)
     if exclude_dtype is not None:
@@ -55,6 +56,7 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             if missing_cols:
                 raise KeyError(f"Columns not found in the DataFrame: {missing_cols}")
             selected_cols.update(arg)  # Add columns from the list
+            ordered_cols.extend([col for col in arg if col not in ordered_cols])  # Preserve order
         elif isinstance(arg, str):
             # Handle regex pattern
             regex_cols = self.filter(regex=arg).columns.tolist()
@@ -107,8 +109,15 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             # List of substrings
             endswith_cols = [col for col in self.columns if any(col.endswith(sub) for sub in endswith)]
         selected_cols.update(endswith_cols)  # Add columns ending with the substring(s)
+
+    # If ordered_cols exists (from *args), use it as the base and append other selected cols
+    if ordered_cols:
+        final_cols = ordered_cols + [col for col in selected_cols if col not in ordered_cols]
+    else:
+        final_cols = list(selected_cols)
     
-    return self[list(selected_cols)]  # Convert set back to list for indexing
+    
+    return self[final_cols]  # Convert set back to list for indexing
 
 # Attach the function to pandas DataFrame
 pd.DataFrame.select = select
