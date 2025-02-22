@@ -20,9 +20,36 @@ def handle_missing(self,fillna='.'):
     return self
 
 
-def cols(self):#this is for more general situations
-    return sorted(self.columns.to_list())
+def cols(self, ascending=True):
+    '''
+    Return the column names of the DataFrame sorted or in original order.
+    
+    Parameters:
+    self (pd.DataFrame): The DataFrame whose columns are to be returned.
+    ascending (bool or None, optional): 
+        - True (default): Sort alphabetically A-Z.
+        - False: Sort alphabetically Z-A.
+        - None: Return columns in their original DataFrame order (unsorted).
+    
+    Returns:
+    list: A list of column names in the specified order.
+    
+    Raises:
+    ValueError: If an invalid ascending parameter is provided.
+    '''
+    columns = self.columns.to_list()
+    
+    if ascending is True:
+        return sorted(columns)
+    elif ascending is False:
+        return sorted(columns, reverse=True)
+    elif ascending is None:
+        return columns
+    else:
+        raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
 
+# Attach to pandas DataFrame
+pd.DataFrame.cols = cols
 
 
 

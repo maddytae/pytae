@@ -8,7 +8,7 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     Parameters:
     self (pd.DataFrame): The DataFrame from which to select columns.
     *args: Variable-length arguments. Can be:
-        - A list of column names
+        - A list of column names (order preserved in output if provided)
         - A regex pattern (string)
     dtype: A string, type, or list of strings/types representing the data type of columns to select. 
            Special values:
@@ -24,7 +24,8 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     endswith: A string or list of strings to select columns whose names end with any of these substrings.
     
     Returns:
-    pd.DataFrame: A DataFrame with the selected columns.
+    pd.DataFrame: A DataFrame with the selected columns, ordered by the list in *args (if provided) 
+                  or the original DataFrame order (if no list in *args).
     
     Raises:
     ValueError: If exclude_dtype is combined with other selection criteria.
@@ -36,7 +37,7 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
         raise ValueError("exclude_dtype cannot be combined with other selection criteria.")
     
     selected_cols = set()  # Use a set to avoid duplicate columns
-    ordered_cols = [] 
+    ordered_cols = []     # Preserve order from any list provided in *args
     
     # Handle exclude_dtype (works independently)
     if exclude_dtype is not None:
@@ -56,7 +57,7 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             if missing_cols:
                 raise KeyError(f"Columns not found in the DataFrame: {missing_cols}")
             selected_cols.update(arg)  # Add columns from the list
-            ordered_cols.extend([col for col in arg if col not in ordered_cols])  # Preserve order
+            ordered_cols.extend([col for col in arg if col not in ordered_cols])  # Preserve order, avoid duplicates
         elif isinstance(arg, str):
             # Handle regex pattern
             regex_cols = self.filter(regex=arg).columns.tolist()
@@ -67,57 +68,49 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     # Handle dtype (single value or list)
     if dtype is not None:
         if isinstance(dtype, str) and dtype == 'numeric':
-            # Custom dtype 'numeric' selects all numeric columns
             dtype_cols = self.select_dtypes(include=['int', 'float']).columns.tolist()
         elif isinstance(dtype, str) and dtype == 'non_numeric':
-            # Custom dtype 'non_numeric' selects all non-numeric columns
             dtype_cols = self.select_dtypes(exclude=['int', 'float']).columns.tolist()
         elif isinstance(dtype, (str, type)):
-            # Single dtype filtering
             dtype_cols = self.select_dtypes(include=[dtype]).columns.tolist()
         elif isinstance(dtype, list):
-            # List of dtypes filtering
             dtype_cols = self.select_dtypes(include=dtype).columns.tolist()
         selected_cols.update(dtype_cols)  # Add columns matching the dtype
     
     # Handle contains (single value or list)
     if contains is not None:
         if isinstance(contains, str):
-            # Single substring
             contains_cols = [col for col in self.columns if contains in col]
         elif isinstance(contains, list):
-            # List of substrings
             contains_cols = [col for col in self.columns if any(sub in col for sub in contains)]
         selected_cols.update(contains_cols)  # Add columns containing the substring(s)
     
     # Handle startswith (single value or list)
     if startswith is not None:
         if isinstance(startswith, str):
-            # Single substring
             startswith_cols = [col for col in self.columns if col.startswith(startswith)]
         elif isinstance(startswith, list):
-            # List of substrings
             startswith_cols = [col for col in self.columns if any(col.startswith(sub) for sub in startswith)]
         selected_cols.update(startswith_cols)  # Add columns starting with the substring(s)
     
     # Handle endswith (single value or list)
     if endswith is not None:
         if isinstance(endswith, str):
-            # Single substring
             endswith_cols = [col for col in self.columns if col.endswith(endswith)]
         elif isinstance(endswith, list):
-            # List of substrings
             endswith_cols = [col for col in self.columns if any(col.endswith(sub) for sub in endswith)]
         selected_cols.update(endswith_cols)  # Add columns ending with the substring(s)
-
-    # If ordered_cols exists (from *args), use it as the base and append other selected cols
+    
+    # Determine final column order
     if ordered_cols:
-        final_cols = ordered_cols + [col for col in selected_cols if col not in ordered_cols]
+        # If a list was provided in *args, use its order, then append remaining columns in original DF order
+        remaining_cols = [col for col in self.columns if col in selected_cols and col not in ordered_cols]
+        final_cols = ordered_cols + remaining_cols
     else:
-        final_cols = list(selected_cols)
+        # If no list was provided, use the original DataFrame order for all selected columns
+        final_cols = [col for col in self.columns if col in selected_cols]
     
-    
-    return self[final_cols]  # Convert set back to list for indexing
+    return self[final_cols]  # Return DataFrame with columns in the determined order
 
 # Attach the function to pandas DataFrame
 pd.DataFrame.select = select
