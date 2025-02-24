@@ -34,6 +34,10 @@ def qry(self, conditions):
           the column satisfies the operator-based condition.
         - An interval condition (e.g., '(a,b)', '[a,b]'): Filters for rows where the column
           falls within the specified interval.
+        - A tuple with 'in' and list (e.g., ('in', ['Adelie', 'Gentoo'])): Filters for rows
+          where the column matches any value in the list. # though direct list is preferred!
+        - A tuple with 'not in' and list (e.g., ('not in', ['Adelie', 'Gentoo'])): Filters
+          for rows where the column does not match any value in the list.
 
     Returns:
     --------
@@ -74,6 +78,21 @@ def qry(self, conditions):
     1   Adelie      89100.0
     2  Chinstrap     119925.0
 
+    More Examples:
+    ---------
+    >>> import pandas as pd
+    >>> data = {'sex': ['Male', 'Female', 'Other', 'Male'], 'age': [25, 30, 35, 40]}
+    >>> df = pd.DataFrame(data)
+    >>> df.qry({'sex': ('in', ['Male', 'Female'])})
+          sex  age
+    0    Male   25
+    1  Female   30
+    3    Male   40
+    >>> df.qry({'sex': ('not in', ['Male', 'Female'])})
+         sex  age
+    2  Other   35
+
+
     Notes:
     ------
     - For numeric columns, conditions with operators (e.g., '>= 100') will automatically
@@ -97,6 +116,19 @@ def qry(self, conditions):
         if isinstance(cond, list):
             # Handle list conditions (e.g., ['Adelie', 'Gentoo'])
             self = self.loc[self[col].isin(cond)]
+
+        elif isinstance(cond, tuple) and len(cond) == 2:
+            # Handle tuple conditions (e.g., ('in', ['a', 'b']) or ('not in', ['a', 'b']))
+            op, values = cond
+            if op not in ['in', 'not in']:
+                raise ValueError(f"Unsupported tuple operator '{op}' for '{col}'. Use 'in' or 'not in'.")
+            if not isinstance(values, list):
+                raise ValueError(f"Second element of tuple for '{col}' must be a list, got {type(values)}")
+            if op == 'in':
+                self = self.loc[self[col].isin(values)]
+            elif op == 'not in':
+                self = self.loc[~self[col].isin(values)]
+                
         elif isinstance(cond, str) and re.match(r'^[\[(].*[)\]]$', cond):
             # Handle interval conditions (e.g., '(a,b)', '[a,b]')
             interval_pattern = re.compile(r'^([\[(])(.*),(.*)([\])])$')
