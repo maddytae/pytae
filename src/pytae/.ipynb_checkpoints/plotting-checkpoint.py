@@ -5,46 +5,19 @@ from matplotlib.axes import Axes
 
 class Plotter:
     """
-    A flexible plotting class built on matplotlib for creating multi-panel plots from pandas DataFrames.
+    Method chainable .data() .. .plot() .. .plot() .. .data() .. .plot() .. .finalize().. 
+    All args from previous plot call is carried   forward unless data is changed or plot kind is changed.
 
-    The `Plotter` class provides a fluent interface to generate various types of plots (e.g., bar, line, 
-    scatter, pie) using pandas DataFrames. It supports multiple axes, customizable layouts via a mosaic,
-    and advanced features like secondary y-axes, legends, and data labels. The class is designed to handle
-    data aggregation, categorical ordering, and post-plot customization.
-
-    Attributes:
-        fig (matplotlib.figure.Figure): The figure object containing all axes.
-        axd (dict): Dictionary mapping axis labels (e.g., 'A', 'A^') to matplotlib Axes objects.
-        last_kwargs (dict): Stores the most recent plot kwargs for context.
-        df (pandas.DataFrame): The input DataFrame for plotting.
-        plot_kwargs_store (dict): Stores plot kwargs for each axis.
-
-    Examples:
-        >>> import pandas as pd
-        >>> from plotter import Plotter
-        >>> df = pd.DataFrame({'x': [1, 2, 3], 'y': [4, 5, 6]})
-        >>> k = Plotter(figsize=(10, 6))
-        >>> (
-        ...     k.data(df)
-        ...     .plot(x='x', y='y', kind='bar')
-        ...     .finalize()
-        ... )
-        >>> k.fig.show()
+    All pandas.plot **kwargs are supported except secondary_y. This is because we are handling secondary axis ourseves as for ex A^
+    All artists like color, style etc are supposed to be explicitly set via dict. 
+    Changing artist attribute post plotting is discouraged respects pandas categorical col for ordering. 
+    This is more consistent with general plotting
     """
 
+
     def __init__(self, mosaic=None, figsize=None):
-        """
-        Initialize the Plotter with a mosaic layout and figure size.
-
-        Args:
-            mosaic (str, optional): A string defining the subplot mosaic layout (default: single 'A').
-            figsize (tuple, optional): Figure size as (width, height) in inches (default: None).
-
-        Note:
-            The mosaic string follows matplotlib's subplot_mosaic syntax (e.g., "AA\nBB" for 2x2 layout).
-            If not provided, a single axis labeled 'A' is created.
-        """
-        if mosaic is None:
+        
+        if mosaic is None: #If not provided, a single axis labeled 'A' is created. 'on' is optional in this case
             mosaic = """
             A
             """
@@ -55,50 +28,12 @@ class Plotter:
         plt.close()
 
     def data(self, df):
-        """
-        Set the DataFrame to be used for plotting.
-
-        Args:
-            df (pandas.DataFrame): The input DataFrame containing the data to plot.
-
-        Returns:
-            Plotter: Self, for method chaining.
-
-        Note:
-            Resets previous plot kwargs and DataFrame context.
-        """
         self.df = df
-        self.last_kwargs = {}
+        self.last_kwargs = {} #Reset kwargs when new data is chained!
         return self
 
     def plot(self, **kwargs):
-        """
-        Create a plot based on the provided kwargs.
 
-        Args:
-            **kwargs: Plotting parameters including:
-                - x (str): Column name for x-axis.
-                - y (str): Column name for y-axis.
-                - by (str, optional): Column name to group by for multi-series plots.
-                - kind (str, optional): Plot type ('bar', 'line', 'scatter', 'hexbin', 'pie', 'hist', 'density', 'kde'; default: 'line').
-                - aggfunc (callable or str, optional): Aggregation function for grouped data (default: 'sum').
-                - dropna (bool, optional): Whether to drop NA values (default: False).
-                - on (str, optional): Axis key to plot on (e.g., 'A' or 'A^' for secondary y-axis; default: 'A').
-                - width (float, optional): Width of bars (for bar plots).
-                - position (float, optional): Position adjustment for bars.
-                - stacked (bool, optional): Whether to stack bars (for bar plots; default: False).
-                - ylim (tuple, optional): y-axis limits (min, max).
-                - color (dict, optional): Mapping of categories to colors.
-                - hatch (str, optional): Hatch pattern for bars.
-                - print_data (bool, optional): Print the plotted data (default: False).
-                - clip_data (bool, optional): Copy data to clipboard (default: False).
-
-        Returns:
-            Plotter: Self, for method chaining.
-
-        Raises:
-            ValueError: If the base axis for a secondary y-axis is not found.
-        """
         self._update_kwargs(kwargs)
         ax = self._get_target_axis()
 
@@ -120,16 +55,19 @@ class Plotter:
         return self
 
     def _update_kwargs(self, kwargs):
-        """Update internal kwargs with new values, handling special cases."""
+        # Extract print_data and clip_data before updating last_kwargs
         self.print_data = kwargs.get('print_data', False)
         self.clip_data = kwargs.get('clip_data', False)
-    
+
+        
+        # Store the current kind and check if it has changed
         new_kind = kwargs.get('kind', self.current_kind if hasattr(self, 'current_kind') else 'line')
         
         if hasattr(self, 'current_kind') and self.current_kind != new_kind:
-            self.last_kwargs = {}
+            self.last_kwargs = {} # Reset kwargs if kind changes
         self.current_kind = new_kind
-        
+
+        #Combine kwargs but exclude print_data and clip_data from last_kwargs
         combined_kwargs = {**self.last_kwargs, **kwargs}
         self.last_kwargs = {k: v for k, v in combined_kwargs.items() if k not in ['print_data', 'clip_data']}
         
@@ -142,7 +80,6 @@ class Plotter:
         self.dropna = combined_kwargs.get('dropna', False)
 
     def _get_target_axis(self):
-        """Retrieve or create the target axis based on the 'on' keyword."""
         ax_key = self.last_kwargs.get('on', 'A')
         if '^' in ax_key:
             base_key = ax_key.rstrip('^')
@@ -168,6 +105,7 @@ class Plotter:
         """Plot a scatter chart."""
         plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
         self._store_plot_kwargs(ax, plot_dict)
+        
         if 'aggfunc' in self.last_kwargs:
             warnings.warn("Aggregation is not supported for scatter plots. The 'aggfunc' argument will be ignored.")
         if 'dropna' in self.last_kwargs:
@@ -175,6 +113,7 @@ class Plotter:
         if 'by' in self.last_kwargs:
             warnings.warn("Use 'c' and 'cmap' to split the scatter plot by a particular column. The 'by' argument will be ignored.")
         k = self.df.copy()
+        
         c = plot_dict.get('c', None)
         if c:
             k[c] = k[c].astype('category')
@@ -221,13 +160,14 @@ class Plotter:
                 line.set_linewidth(width_value)
         self._handle_data_output(pivot_data)
 
+    #bar, barh, area
     def _plot_other(self, ax):
-        """Plot other chart types (default to bar if not specified)."""
         plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
         self._store_plot_kwargs(ax, plot_dict)
         self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
         self._handle_data_output(self.get_pivot_data())
-
+    
+    #kde, density
     def _plot_density(self, ax):
         """Plot a density or KDE chart."""
         plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
@@ -239,7 +179,8 @@ class Plotter:
         k = self.df.pivot(columns=self.by, values=self.column)
         self.ax = k.plot(ax=ax, **plot_dict)
         self._handle_data_output(k)
-        
+
+    #hist
     def _plot_hist(self, ax):
         """Plot a histogram."""
         plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'column', 'secondary_y'])
@@ -258,7 +199,6 @@ class Plotter:
         self._handle_data_output(k)
 
     def _filter_plot_kwargs(self, keys_to_remove):
-        """Filter out specific keys from kwargs."""
         return {k: v for k, v in self.last_kwargs.items() if k not in keys_to_remove}
 
     def get_pivot_data(self):
@@ -307,14 +247,26 @@ class Plotter:
         seen = set()
         
         for ax in self.fig.axes:
+
+            ax_label = ax.get_label()
+            
+            
+            # Skip this axis if legend=False is set in plot_kwargs_store
+            if ax_label in self.plot_kwargs_store and not self.plot_kwargs_store[ax_label].get('legend', True):
+                continue
+   
+
             h, l = ax.get_legend_handles_labels()
+
             for handle, label in zip(h, l):
+                
                 label = label.replace(" (right)", "")
                 identifier = (label, type(handle))
                 if identifier not in seen:
                     handles.append(handle)
                     labels.append(label)
                     seen.add(identifier)
+
         return handles, labels
 
     def _store_plot_kwargs(self, ax, plot_dict):
