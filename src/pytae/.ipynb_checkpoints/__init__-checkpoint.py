@@ -11,6 +11,8 @@ import pandas as pd
 # Define the path to the datasets directory
 DATA_PATH = os.path.join(os.path.dirname(__file__), 'datasets')
 
+
+
 # Load each parquet file into a pandas DataFrame and store them in the dictionary
 sample_data = {
     'anagrams': pd.read_parquet(os.path.join(DATA_PATH, 'anagrams.parquet')),

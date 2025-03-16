@@ -68,7 +68,6 @@ def group_x(self, group=None, dropna=True, aggfunc='n', value=None):
     else:
         self['x'] = self.groupby(group, dropna=dropna)[value].transform(aggfunc)
         col='x'
-        
 
     return self
 

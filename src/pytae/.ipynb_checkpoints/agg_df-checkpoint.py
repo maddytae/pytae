@@ -11,18 +11,20 @@ def agg_df(self, **kwargs):
     Parameters:
     - self (DataFrame): The pandas DataFrame to be aggregated.
     - **kwargs:
-        - aggfunc (list): Specifies the types of aggregation to perform on numeric columns
-                       and 'n' for counting. The order in the list determines the column order
-                       in the result. Includes 'sum', 'mean', 'max', 'min', and 'n'.
-                       Ensures no duplicate types. Defaults to ['sum'].
-
-    - dropna=True by default inline with general convention used in pandas
+        - aggfunc (str or list): Specifies the types of aggregation to perform on numeric columns
+                                 and 'n' for counting. Can be a single string (e.g., 'sum') or a list (e.g., ['sum', 'mean']).
+                                 The order in the list determines the column order in the result. 
+                                 Includes 'sum', 'mean', 'max', 'min', and 'n'. Ensures no duplicate types 
+                                 when provided as a list. Defaults to ['sum'].
+        - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
 
     Returns:
     - DataFrame: The aggregated DataFrame with specified aggregations applied. Column names
                  for aggregated values are updated to include the aggregation type. 'n' is always first of part of aggfunc else aggfunc                   order is followed.
     """
-    agg_types = kwargs.get('aggfunc', ['sum'])
+    # Get aggfunc, converting string to list if necessary
+    agg_types_input = kwargs.get('aggfunc', ['sum'])
+    agg_types = [agg_types_input] if isinstance(agg_types_input, str) else agg_types_input
     dropna = kwargs.get('dropna', True)
 
 
