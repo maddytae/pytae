@@ -21,11 +21,11 @@ Lightweight plotting built on top of `pandas.plot`, fully compatible with matplo
 [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb)
 
 ### 2) Filtering — `qry()`
-Filter rows using a dict of conditions: equality, list, comparison operators, interval notation, and `not in`.
+Dict based filtering making it more versatile.
 [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
 
 ### 3) Selection — `select()`
-Pick columns by name, regex, slice, dtype, substring match, or callable and more.
+R like select but on steroid.
 [select.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/select.ipynb)
 
 ### 4) Reshaping — `long()`, `wide()`
