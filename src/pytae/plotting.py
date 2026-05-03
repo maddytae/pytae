@@ -15,7 +15,7 @@ class Plotter:
     """
 
 
-    def __init__(self, mosaic=None, figsize=None):
+    def __init__(self, mosaic=None, figsize=None, aggregate=True):
         
         if mosaic is None: #If not provided, a single axis labeled 'A' is created. 'on' is optional in this case
             mosaic = """
@@ -25,7 +25,9 @@ class Plotter:
         self.last_kwargs = {}
         self.df = None
         self.plot_kwargs_store = {}
+        self.aggregate = aggregate  # Class-level default for aggregation; can be overridden at plot level for flexibility
         plt.close()
+
 
     def data(self, df):
         self.df = df
@@ -78,6 +80,7 @@ class Plotter:
         self.kind = new_kind
         self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind in ['scatter', 'density', 'kde', 'hist'] else combined_kwargs.get('aggfunc', 'sum')
         self.dropna = combined_kwargs.get('dropna', False)
+        self.aggregate = combined_kwargs.get('aggregate', self.aggregate)  # Plot-level overrides class-level
 
     def _get_target_axis(self):
         ax_key = self.last_kwargs.get('on', 'A')
@@ -103,7 +106,7 @@ class Plotter:
 
     def _plot_scatter(self, ax):
         """Plot a scatter chart."""
-        plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
+        plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
         
         if 'aggfunc' in self.last_kwargs:
@@ -122,7 +125,7 @@ class Plotter:
             
     def _plot_pie(self, ax):
         """Plot a pie chart."""
-        plot_dict = self._filter_plot_kwargs(['x', 'by', 'aggfunc', 'on', 'print_data', 'clip_data', 'secondary_y'])
+        plot_dict = self._filter_plot_kwargs(['x', 'by', 'aggfunc', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
         self.df = self.df[[self.by, self.y]].groupby(self.by, observed=True, dropna=self.dropna).agg({self.y: self.aggfunc})
         if 'colors' in self.last_kwargs:
@@ -133,7 +136,7 @@ class Plotter:
 
     def _plot_hexbin(self, ax):
         """Plot a hexbin chart."""
-        plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
+        plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
         if 'aggfunc' in self.last_kwargs:
             warnings.warn("Aggregation is not supported for hex plots. Use reduce_C_function instead.")
@@ -146,11 +149,18 @@ class Plotter:
 
     def _plot_line(self, ax):
         """Plot a line chart."""
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
         style = plot_dict.pop('style', None)
         width = plot_dict.pop('width', None)
+        color_map = plot_dict.pop('color', None)
         pivot_data = self.get_pivot_data()
+        # Build color list from color_map if provided as dict
+        if color_map and isinstance(color_map, dict):
+            # Get column names (excluding x column which is first)
+            data_cols = [c for c in pivot_data.columns if c != self.x]
+            color_list = [color_map.get(col, None) for col in data_cols]
+            plot_dict['color'] = color_list
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
         if style:
             for line, (name, style_value) in zip(self.ax.get_lines(), style.items()):
@@ -162,7 +172,7 @@ class Plotter:
 
     #bar, barh, area
     def _plot_other(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
+        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
         self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
         self._handle_data_output(self.get_pivot_data())
@@ -170,7 +180,7 @@ class Plotter:
     #kde, density
     def _plot_density(self, ax):
         """Plot a density or KDE chart."""
-        plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y'])
+        plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
         if 'aggfunc' in self.last_kwargs:
             warnings.warn("Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.")
@@ -183,7 +193,7 @@ class Plotter:
     #hist
     def _plot_hist(self, ax):
         """Plot a histogram."""
-        plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'column', 'secondary_y'])
+        plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'column', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
         if 'aggfunc' in self.last_kwargs:
             warnings.warn("Aggregation is not supported for hist plot. The 'aggfunc' argument will be ignored.")
@@ -204,28 +214,24 @@ class Plotter:
     def get_pivot_data(self):
         """
         Generate a pivoted DataFrame for plotting.
-
         Returns:
-            pandas.DataFrame: Pivoted DataFrame with reordered columns based on categorical order if applicable.
-
-        Note:
-            If `by='scenario_variable'` and 'variable' is categorical, the columns are reordered
-            according to the categorical order of 'variable'.
+            pandas.DataFrame: Pivoted DataFrame ready for plotting.
         """
-        pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
-                                        aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
+        if not self.aggregate:  #when aggregation is not required
+            if self.by:  #to convert to wide format without aggregate because pandas plot would expect wide data
+                # Check for potential duplicates and raise error if found
+                unique_combos = self.df[[self.x, self.by]].drop_duplicates().shape[0]
+                if unique_combos < len(self.df): #to ensure data is ready for wide formatting without agg
+                    raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
+                pivot_table = self.df.pivot(index=self.x, columns=self.by, values=self.y).reset_index()
+            else:
+                pivot_table = self.df[[self.x, self.y]].copy()
+                # No renaming: Preserve original self.y column name for legend
+        else:
+            pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
+                                            aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
         pivot_table[self.x] = pivot_table[self.x].astype('object')
-        # Automatically deduce order from categorical 'variable' if by='scenario_variable'
-        if self.by == 'scenario_variable' and 'variable' in self.df.columns:
-            # Check if 'variable' is categorical
-            if pd.api.types.is_categorical_dtype(self.df['variable']):
-                variable_order = list(self.df['variable'].cat.categories)
-                data_columns = [col for col in pivot_table.columns if col != self.x]
-                ordered_columns = []
-                for var in variable_order:
-                    ordered_columns.extend([col for col in data_columns if col.endswith(f'_{var}')])
-                pivot_table = pivot_table[[self.x] + ordered_columns]
-        pivot_table.columns.name = None
+        pivot_table.columns.name = None #ensure col names are not corrup with multi index names post pivot
         return pivot_table
 
     def _handle_data_output(self, data):
