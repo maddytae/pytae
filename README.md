@@ -8,28 +8,16 @@
 pip install pytae
 ```
 
-Requires Python ≥ 3.7, pandas ≥ 1.0.0, seaborn ≥ 0.10.0.
+Requires Python ≥ 3.7, pandas ≥ 1.0.0
 
-## Quick start
 
-```python
-import pytae as pt
-
-df = pt.sample_data['penguins']
-
-(df
- .qry({'species': ['Adelie', 'Gentoo'], 'sex': 'Female'})
- .select(['species', 'island', 'bill_length_mm', 'body_mass_g'])
- .agg_df(aggfunc=['mean', 'n'])
-)
-```
 
 ## Features
 
 Six feature sets, each with a companion reference notebook:
 
 ### 1) Plotting — `Plotter`
-Lightweight plotting built on top of `pandas.plot`, fully compatible with matplotlib.
+Lightweight plotting built on top of `pandas.plot`, fully compatible with matplotlib and ability to method chain plots.
 [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb)
 
 ### 2) Filtering — `qry()`
@@ -37,11 +25,11 @@ Filter rows using a dict of conditions: equality, list, comparison operators, in
 [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
 
 ### 3) Selection — `select()`
-Pick columns by name, regex, slice, dtype, substring match, or callable. Pin columns up front with `everything()`.
+Pick columns by name, regex, slice, dtype, substring match, or callable and more.
 [select.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/select.ipynb)
 
 ### 4) Reshaping — `long()`, `wide()`
-`long()` melts all numeric columns to rows. `wide()` pivots a column's values into headers. Designed to work as a pair.
+`long()` melts all numeric columns to rows. `wide()` pivots a column's values into headers.
 [shape.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/shape.ipynb)
 
 ### 5) Aggregation — `agg_df()`
