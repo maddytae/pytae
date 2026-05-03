@@ -6,18 +6,19 @@ def clip(self):
     return self.to_clipboard(index=False) #e index=False not working in wsl at the moment
 
 
-def handle_missing(self,fillna='.'):
+def handle_missing(self, fillna='.'):
+    df = self.copy()
 
-    df_cat_cols = self.columns[self.dtypes =='category'].tolist()
+    df_cat_cols = df.columns[df.dtypes == 'category'].tolist()
     for c in df_cat_cols:
-        self[c] = self[c].astype("object")    
+        df[c] = df[c].astype("object")
 
-    df_str_cols=self.columns[self.dtypes==object]
-    self[df_str_cols]=self[df_str_cols].fillna(fillna) #fill string missing values with .
-    self[df_str_cols]=self[df_str_cols].apply(lambda x: x.str.strip()) #remove any leading and trailing zeros.    
-    self = self.fillna(0) #fill numeric missing values with 0
+    df_str_cols = df.columns[df.dtypes == object]
+    df[df_str_cols] = df[df_str_cols].fillna(fillna)
+    df[df_str_cols] = df[df_str_cols].apply(lambda x: x.str.strip())
+    df = df.fillna(0)
 
-    return self
+    return df
 
 
 def cols(self, ascending=True):
@@ -54,22 +55,22 @@ pd.DataFrame.cols = cols
 
 
 
-def group_x(self, group=None, dropna=True, aggfunc='n', value=None):
+def group_x(self, group=None, dropna=True, observed=True, aggfunc='n', value=None):
     '''
     penguins.group_x(group=['island','species','sex'],dropna=True,value='body_mass_g',aggfunc='max')
     penguins.group_x(group=['island','species','sex'],dropna=False) since no aggfunc provided so count will be provided by default
     '''
+    df = self.copy()
+
     if group is None:
-        group = self.select_dtypes(exclude=['number']).columns.tolist()
+        group = df.select_dtypes(exclude=['number']).columns.tolist()
 
-    if aggfunc=='n' or value==None:
-        self['n'] = self.groupby(group, dropna=dropna).transform('size')
-        col='n'
+    if aggfunc == 'n' or value is None:
+        df['n'] = df.groupby(group, dropna=dropna, observed=observed).transform('size')
     else:
-        self['x'] = self.groupby(group, dropna=dropna)[value].transform(aggfunc)
-        col='x'
+        df['x'] = df.groupby(group, dropna=dropna, observed=observed)[value].transform(aggfunc)
 
-    return self
+    return df
 
 
 
