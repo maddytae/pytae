@@ -146,6 +146,7 @@ def agg_df(self, *args, **kwargs):
                  after group columns. If only 'n' is specified and no numeric columns exist, returns
                  group counts.
     """
+
     # Get parameters
     if args and isinstance(args[0], dict):
         agg_types = args[0]
