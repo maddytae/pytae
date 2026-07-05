@@ -1,6 +1,6 @@
 # pytae
 
-**pytae** is a lightweight Python package that makes everyday data science tasks faster and more readable — think SAS-style chaining on top of pandas.
+**pytae** is a lightweight Python package that makes everyday data science tasks faster and more readable — think R-style chaining on top of pandas.
 
 ## Installation
 
