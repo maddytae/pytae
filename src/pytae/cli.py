@@ -155,40 +155,49 @@ def cmd_convert(
 class _Pipeline:
     """-select/-query/-qry define the starting view. -head/-tail/-sample narrow
     it further, and every operator that runs afterwards (including another
-    -head/-tail/-sample, -describe, -nulls, -cols, -dtype, -shape, -csv, -agg) sees
+    -head/-tail/-sample, -stats, -nulls, -cols, -dtype, -shape, -convert, -agg) sees
     that narrowed view. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it.
     """
 
-    def __init__(self, reader, *, select, query, qry, nrows, progress) -> None:
+    def __init__(self, reader, *, select, select_kwargs, query, qry, nrows, progress) -> None:
         self._reader = reader
-        self._select = select      # list[str] | None — passed to reader for parquet read-time optimisation
+        self._select = select            # list[str] | None — explicit column list
+        self._select_kwargs = select_kwargs  # pytae select() kwargs: dtype, contains, etc.
         self._query = query
         self._qry = qry
         self._nrows = nrows
         self._progress = progress
         self._df: pd.DataFrame | None = None
 
+    def _needs_full_load(self) -> bool:
+        return bool(self._query or self._qry or self._select_kwargs)
+
     def dataframe(self) -> pd.DataFrame:
         if self._df is None:
-            df = self._reader.to_dataframe(columns=self._select, nrows=self._nrows, progress=self._progress)
+            # skip read-time column optimisation when select_kwargs could add more cols
+            read_cols = self._select if not self._select_kwargs else None
+            df = self._reader.to_dataframe(columns=read_cols, nrows=self._nrows, progress=self._progress)
             df = _apply_query(df, self._query)
             if self._qry:
                 df = df.qry(self._qry)
+            if self._select is not None or self._select_kwargs:
+                args = [self._select] if self._select is not None else []
+                df = df.select(*args, **self._select_kwargs)
             self._df = df
         return self._df
 
     def columns(self) -> list[str]:
         if self._df is not None:
             return list(self._df.columns)
-        if self._query or self._qry:
+        if self._needs_full_load():
             return list(self.dataframe().columns)
         return list(self._select) if self._select else self._reader.columns()
 
     def dtypes(self) -> pd.Series:
         if self._df is not None:
             return self._df.dtypes
-        if self._query or self._qry:
+        if self._needs_full_load():
             return self.dataframe().dtypes
         dtypes = self._reader.dtypes()
         return dtypes[self._select] if self._select else dtypes
@@ -196,14 +205,14 @@ class _Pipeline:
     def shape(self) -> tuple[int, int]:
         if self._df is not None:
             return self._df.shape
-        if self._query or self._qry:
+        if self._needs_full_load():
             return self.dataframe().shape
         rows = self._reader.shape()[0]
         cols = len(self._select) if self._select else self._reader.shape()[1]
         return (rows, cols)
 
     def head(self, n: int) -> pd.DataFrame:
-        if self._df is None and not (self._query or self._qry):
+        if self._df is None and not self._needs_full_load():
             df = self._reader.head(n)
             if self._select:
                 df = df.select(self._select)
@@ -213,7 +222,7 @@ class _Pipeline:
         return df
 
     def tail(self, n: int) -> pd.DataFrame:
-        if self._df is None and not (self._query or self._qry):
+        if self._df is None and not self._needs_full_load():
             df = self._reader.tail(n)
             if self._select:
                 df = df.select(self._select)
@@ -273,18 +282,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-cols", "--cols", action=_OrderedFlag, help="print column names")
     parser.add_argument("-dtype", "--dtype", action=_OrderedFlag, help="print column dtypes")
     parser.add_argument("-nulls", "--nulls", action=_OrderedFlag, help="print null/NaN count per column")
-    parser.add_argument("-describe", "--describe", "-stats", "--stats", dest="describe", action=_OrderedFlag,
+    parser.add_argument("-stats", "--stats", "-describe", "--describe", dest="describe", action=_OrderedFlag,
                          help="print numeric summary stats (min/max/mean/etc.)")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=int, default=None, metavar="N",
                          help="cap the number of rows loaded for -nulls/-describe/-sample/-csv (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", default=None, metavar="COLUMNS",
-                         help="restrict columns using pytae select; pass a comma-separated list "
-                              "e.g. \"'col a','col b'\" (applied to -head/-tail/-nulls/-describe/-sample/-csv)")
+                         help="restrict to explicit columns (comma-separated), e.g. \"'col a','col b'\"")
+    parser.add_argument("--select-dtype", "-select-dtype", dest="select_dtype", default=None, metavar="TYPE",
+                         help="add columns of this dtype to selection: numeric, object, datetime, bool, category")
+    parser.add_argument("--select-contains", "-select-contains", dest="select_contains", default=None, metavar="STR",
+                         help="add columns whose names contain STR")
+    parser.add_argument("--select-startswith", "-select-startswith", dest="select_startswith", default=None, metavar="STR",
+                         help="add columns whose names start with STR")
+    parser.add_argument("--select-endswith", "-select-endswith", dest="select_endswith", default=None, metavar="STR",
+                         help="add columns whose names end with STR")
+    parser.add_argument("--exclude-dtype", "-exclude-dtype", dest="exclude_dtype", default=None, metavar="TYPE",
+                         help="keep all columns except those of this dtype (mutually exclusive with other -select flags)")
     parser.add_argument("-sort", "--sort", choices=["asc", "desc", "none"], default="asc",
                          help="column order for -cols/-dtype/-nulls: asc (default), desc, or none (file's original order)")
-    parser.add_argument("-csv", "--csv", "-convert", "--convert", dest="convert",
+    parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
                               "defaults to .csv); use -select to restrict columns")
@@ -297,7 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.sas7bdat (default: ',' for .csv, tab for .txt); not used for .parquet")
     parser.add_argument("-encoding", "--encoding", dest="encoding", default=None, metavar="ENC",
-                         help="text encoding for reading/writing csv/txt/sas7bdat, e.g. latin-1 (default: utf-8/infer)")
+                         help="text encoding for .csv/.txt/.sas7bdat, e.g. latin-1 (default: utf-8/infer); not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-query", "--query", dest="query", default=None, metavar="EXPR",
@@ -326,10 +344,11 @@ def _process_path(
     *,
     show_all: bool,
     select_cols: list[str] | None,
+    select_kwargs: dict,
     qry_conditions: dict | None,
     rename_map: dict[str, str] | None,
 ) -> bool:
-    """Run every requested display/-csv/-agg action against one file. Returns True if an error occurred."""
+    """Run every requested display/-convert/-agg action against one file. Returns True if an error occurred."""
     if not path.exists():
         return _fail(parser, batch, f"file not found: {path}")
 
@@ -342,7 +361,7 @@ def _process_path(
         return _fail(parser, batch, unknown_columns_message("-select", select_cols, reader.columns()))
 
     pipeline = _Pipeline(
-        reader, select=select_cols, query=args.query, qry=qry_conditions,
+        reader, select=select_cols, select_kwargs=select_kwargs, query=args.query, qry=qry_conditions,
         nrows=args.nrows, progress=args.progress,
     )
 
@@ -442,6 +461,12 @@ def main(argv: list[str] | None = None) -> int:
 
     rename_map = parse_rename(args.rename) if args.rename else None
     select_cols = parse_columns(args.select) if args.select else None
+    select_kwargs: dict = {}
+    if args.select_dtype:      select_kwargs["dtype"]        = args.select_dtype
+    if args.select_contains:   select_kwargs["contains"]     = args.select_contains
+    if args.select_startswith: select_kwargs["startswith"]   = args.select_startswith
+    if args.select_endswith:   select_kwargs["endswith"]     = args.select_endswith
+    if args.exclude_dtype:     select_kwargs["exclude_dtype"] = args.exclude_dtype
     qry_conditions = parse_qry(args.qry) if args.qry else None
     batch = len(paths) > 1
     exit_code = 0
@@ -450,7 +475,7 @@ def main(argv: list[str] | None = None) -> int:
         if batch:
             print(f"== {path} ==")
         if _process_path(path, args, parser, batch, show_all=show_all, select_cols=select_cols,
-                          qry_conditions=qry_conditions, rename_map=rename_map):
+                          select_kwargs=select_kwargs, qry_conditions=qry_conditions, rename_map=rename_map):
             exit_code = 1
 
     return exit_code

@@ -54,16 +54,29 @@ pytae data.parquet -shape
 pytae data.parquet -cols
 pytae data.parquet -dtype
 pytae data.parquet -nulls
-pytae data.parquet -describe
+pytae data.parquet -stats
 ```
 
-**Column selection — `-select`**
+**Column selection — `-select`, `-select-dtype`, `-select-contains`, `-select-startswith`, `-select-endswith`, `-exclude-dtype`**
 
-Restrict output to specific columns (comma-separated, supports quoted names with spaces):
+Uses pytae's `select()` under the hood — all flags are additive (except `-exclude-dtype` which is standalone):
 
 ```bash
+# explicit column list
 pytae data.parquet -select species,island -head 5
 pytae data.parquet -select "'bill length mm','body mass g'" -describe
+
+# by dtype
+pytae data.parquet -select-dtype numeric -describe
+pytae data.parquet -exclude-dtype numeric -head 5
+
+# by name pattern
+pytae data.parquet -select-contains bill -head 5
+pytae data.parquet -select-startswith bill -dtype
+pytae data.parquet -select-endswith _mm -nulls
+
+# combine explicit + pattern
+pytae data.parquet -select species -select-contains bill -head 5
 ```
 
 **Row filtering — `-qry` and `-query`**
@@ -88,7 +101,7 @@ pytae data.parquet -agg "{'body_mass_g': 'mean', 'n': 'n'}"
 pytae data.parquet -qry "{'species': 'Adelie'}" -agg mean
 ```
 
-**Conversion — `-convert`** (alias `-csv`)
+**Conversion — `-convert`**
 
 Any supported format can be converted to any other — except writing `.sas7bdat` (pandas has no SAS writer). The output format is inferred from the `-o` extension; omitting `-o` defaults to `.csv` alongside the source.
 
@@ -143,7 +156,13 @@ pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 | `-nrows N` | Cap rows loaded |
 | `-sort asc\|desc\|none` | Column order for `-cols`/`-dtype`/`-nulls` |
 | `-dlim CHAR` | Field delimiter for `.csv`/`.txt`/`.sas7bdat` (not `.parquet`) |
-| `-encoding ENC` | Text encoding (e.g. `latin-1`) |
+| `-stats` | Numeric summary (alias `-describe`) |
+| `-select-dtype TYPE` | Add columns of dtype to selection |
+| `-select-contains STR` | Add columns whose names contain STR |
+| `-select-startswith STR` | Add columns whose names start with STR |
+| `-select-endswith STR` | Add columns whose names end with STR |
+| `-exclude-dtype TYPE` | Keep all columns except this dtype |
+| `-encoding ENC` | Text encoding for `.csv`/`.txt`/`.sas7bdat` (e.g. `latin-1`); not used for `.parquet` |
 | `-rename old:new,...` | Rename columns on conversion |
 | `-pretty` | Render tables as markdown |
 | `-clip` | Copy output to clipboard |

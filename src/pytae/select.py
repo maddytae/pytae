@@ -39,7 +39,17 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     all_cols = self.columns.tolist()  # List of all columns for slice positioning
     
     if exclude_dtype is not None:
-        if isinstance(exclude_dtype, (str, type)):
+        _numeric_types = ['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+        _shorthands = {
+            'numeric': _numeric_types,
+            'non_numeric': _numeric_types,  # excluding non-numeric keeps only numeric
+            'datetime': ['datetime64[ns]'],
+            'category': ['category'],
+            'bool': ['bool'],
+        }
+        if isinstance(exclude_dtype, str) and exclude_dtype in _shorthands:
+            exclude_cols = self.select_dtypes(exclude=_shorthands[exclude_dtype]).columns.tolist()
+        elif isinstance(exclude_dtype, (str, type)):
             exclude_cols = self.select_dtypes(exclude=[exclude_dtype]).columns.tolist()
         elif isinstance(exclude_dtype, list):
             exclude_cols = self.select_dtypes(exclude=exclude_dtype).columns.tolist()
