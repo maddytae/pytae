@@ -44,5 +44,107 @@ Auto-detects group columns (non-numeric) and aggregates the rest. Supports `str`
 
 [other_utilities.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/other_utilities.ipynb)
 
+### 7) CLI — `pytae`
 
+A command-line tool for inspecting and converting tabular files (`.parquet`, `.csv`, `.txt`, `.sas7bdat`). Powered by pytae's own `qry()`, `select()`, and `agg_df()` under the hood.
+
+```bash
+pytae data.parquet -head
+pytae data.parquet -shape
+pytae data.parquet -cols
+pytae data.parquet -dtype
+pytae data.parquet -nulls
+pytae data.parquet -describe
+```
+
+**Column selection — `-select`**
+
+Restrict output to specific columns (comma-separated, supports quoted names with spaces):
+
+```bash
+pytae data.parquet -select species,island -head 5
+pytae data.parquet -select "'bill length mm','body mass g'" -describe
+```
+
+**Row filtering — `-qry` and `-query`**
+
+`-qry` uses pytae's dict-based `qry()` syntax; `-query` uses a pandas query string:
+
+```bash
+pytae data.parquet -qry "{'species': 'Adelie', 'body_mass_g': ('>', 3500)}"
+pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'"
+```
+
+**Aggregation — `-agg`**
+
+Groups by all non-numeric columns and aggregates the rest, using pytae's `agg_df()`. Accepts a string, list, or dict aggfunc:
+
+```bash
+pytae data.parquet -agg sum
+pytae data.parquet -agg "['mean', 'sum']"
+pytae data.parquet -agg "{'body_mass_g': 'mean', 'n': 'n'}"
+# combine with filters
+pytae data.parquet -qry "{'species': 'Adelie'}" -agg mean
+```
+
+**Conversion — `-convert`** (alias `-csv`)
+
+Any supported format can be converted to any other — except writing `.sas7bdat` (pandas has no SAS writer). The output format is inferred from the `-o` extension; omitting `-o` defaults to `.csv` alongside the source.
+
+| Format | Read | Write |
+|---|---|---|
+| `.parquet` / `.pq` | ✓ | ✓ |
+| `.csv` | ✓ | ✓ |
+| `.txt` | ✓ | ✓ |
+| `.sas7bdat` | ✓ | — |
+
+```bash
+# parquet → csv (default when -o is omitted)
+pytae data.parquet -convert
+
+# parquet → txt (tab-delimited by default for .txt)
+pytae data.parquet -convert -o data.txt
+
+# parquet → parquet (re-encode or column-subset)
+pytae data.parquet -convert "col_a,col_b" -o subset.parquet
+
+# csv → parquet
+pytae data.csv -convert -o data.parquet
+
+# sas7bdat → parquet
+pytae data.sas7bdat -convert -o data.parquet
+
+# txt with a custom delimiter → csv
+pytae data.txt -dlim "|" -convert -o data.csv
+
+# batch convert all parquets in a folder to csv
+pytae 'data/*.parquet' -convert
+
+# rename columns on the way out
+pytae data.parquet -convert -rename "old_name:new_name,another:clean"
+```
+
+> **Delimiter (`-dlim`):** only applies to `.csv`, `.txt`, and `.sas7bdat` — `.parquet` is binary and has no delimiter.
+> Common values: `,` (csv default), `\t` (tab, txt default), `|`, `;`, `:`, `~`
+>
+> ```bash
+> pytae data.txt -dlim "|" -head
+> pytae data.csv -dlim ";" -convert -o data.parquet
+> ```
+
+**Other flags**
+
+| Flag | Description |
+|---|---|
+| `-head N` | First N rows (default 5) |
+| `-tail N` | Last N rows (default 5) |
+| `-sample N` | N random rows (default 5) |
+| `-nrows N` | Cap rows loaded |
+| `-sort asc\|desc\|none` | Column order for `-cols`/`-dtype`/`-nulls` |
+| `-dlim CHAR` | Field delimiter for `.csv`/`.txt`/`.sas7bdat` (not `.parquet`) |
+| `-encoding ENC` | Text encoding (e.g. `latin-1`) |
+| `-rename old:new,...` | Rename columns on conversion |
+| `-pretty` | Render tables as markdown |
+| `-clip` | Copy output to clipboard |
+| `-progress` | Show progress for large files |
 
