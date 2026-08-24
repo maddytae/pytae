@@ -175,8 +175,8 @@ class _Pipeline:
 
     def dataframe(self) -> pd.DataFrame:
         if self._df is None:
-            # skip read-time column optimisation when select_kwargs could add more cols
-            read_cols = self._select if not self._select_kwargs else None
+            # load all columns when filters may reference columns outside the select list
+            read_cols = self._select if not self._needs_full_load() else None
             df = self._reader.to_dataframe(columns=read_cols, nrows=self._nrows, progress=self._progress)
             df = _apply_query(df, self._query)
             if self._qry:
