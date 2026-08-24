@@ -288,11 +288,10 @@ def build_parser() -> argparse.ArgumentParser:
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
                               "defaults to .csv); use -select to restrict columns")
-    parser.add_argument("-agg", "--agg", dest="agg", default=None, metavar="AGGFUNC",
-                         action=_OrderedStore,
-                         help="aggregate using pytae agg_df; pass aggfunc as a string ('sum'), "
-                              "list (\"['sum','mean']\"), or dict (\"{'col':'sum','n':'n'}\"); "
-                              "groups by all non-numeric columns")
+    parser.add_argument("-agg", "--agg", dest="agg", nargs="?", const="sum", default=None,
+                         metavar="AGGFUNC", action=_OrderedValue,
+                         help="aggregate using pytae agg_df; defaults to 'sum' when no value given; "
+                              "accepts string ('mean'), list (\"['sum','mean']\"), or dict (\"{'col':'sum','n':'n'}\")")
     parser.add_argument("-o", "--output", type=Path, default=None,
                          help="output path; its extension picks the format (default: .csv alongside the source file)")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",

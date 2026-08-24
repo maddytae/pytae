@@ -80,7 +80,8 @@ pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'"
 Groups by all non-numeric columns and aggregates the rest, using pytae's `agg_df()`. Accepts a string, list, or dict aggfunc:
 
 ```bash
-pytae data.parquet -agg sum
+pytae data.parquet -agg           # defaults to sum
+pytae data.parquet -agg mean
 pytae data.parquet -agg "['mean', 'sum']"
 pytae data.parquet -agg "{'body_mass_g': 'mean', 'n': 'n'}"
 # combine with filters
