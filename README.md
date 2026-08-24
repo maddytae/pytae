@@ -64,10 +64,15 @@ Uses pytae's `select()` under the hood — all flags are additive (except `-excl
 ```bash
 # explicit column list
 pytae data.parquet -select species,island -head 5
-pytae data.parquet -select "'bill length mm','body mass g'" -describe
+pytae data.parquet -select "'bill length mm','body mass g'" -stats
+
+# regex — any value that isn't an exact column name is treated as a regex
+pytae data.parquet -select "^bill" -head 5       # columns starting with "bill"
+pytae data.parquet -select "_mm$" -nulls          # columns ending with "_mm"
+pytae data.parquet -select "bill|body" -stats     # columns matching either word
 
 # by dtype
-pytae data.parquet -select-dtype numeric -describe
+pytae data.parquet -select-dtype numeric -stats
 pytae data.parquet -exclude-dtype numeric -head 5
 
 # by name pattern
