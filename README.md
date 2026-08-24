@@ -105,8 +105,8 @@ pytae data.parquet -convert
 # parquet → txt (tab-delimited by default for .txt)
 pytae data.parquet -convert -o data.txt
 
-# parquet → parquet (re-encode or column-subset)
-pytae data.parquet -convert "col_a,col_b" -o subset.parquet
+# parquet → parquet (column-subset via -select)
+pytae data.parquet -select col_a,col_b -convert -o subset.parquet
 
 # csv → parquet
 pytae data.csv -convert -o data.parquet

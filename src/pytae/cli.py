@@ -284,10 +284,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "e.g. \"'col a','col b'\" (applied to -head/-tail/-nulls/-describe/-sample/-csv)")
     parser.add_argument("-sort", "--sort", choices=["asc", "desc", "none"], default="asc",
                          help="column order for -cols/-dtype/-nulls: asc (default), desc, or none (file's original order)")
-    parser.add_argument("-csv", "--csv", "-convert", "--convert", dest="convert", nargs="?", const="__ALL__",
-                         default=None, metavar="COLUMNS", action=_OrderedValue,
+    parser.add_argument("-csv", "--csv", "-convert", "--convert", dest="convert",
+                         action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
-                              "defaults to .csv); optionally restrict to columns, e.g. \"'col a','col b'\"")
+                              "defaults to .csv); use -select to restrict columns")
     parser.add_argument("-agg", "--agg", dest="agg", default=None, metavar="AGGFUNC",
                          action=_OrderedStore,
                          help="aggregate using pytae agg_df; pass aggfunc as a string ('sum'), "
@@ -411,23 +411,8 @@ def _process_path(
             if args.clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "convert":
-            base_df = pipeline.dataframe()
-            columns = None if args.convert == "__ALL__" else parse_columns(args.convert)
-            if columns is not None:
-                unknown = [c for c in columns if c not in base_df.columns]
-                if unknown:
-                    if args.output is None and any(("/" in c or "\\" in c) for c in unknown):
-                        msg = (
-                            f"'-csv {args.convert}' was interpreted as a column list, not an output path "
-                            f"(no such column(s): {', '.join(unknown)}); use '-o {args.convert}' to set the "
-                            "output path instead"
-                        )
-                    else:
-                        msg = unknown_columns_message("-csv", columns, list(base_df.columns))
-                    return _fail(parser, batch, msg)
-                base_df = base_df[columns]
             cmd_convert(
-                base_df, path, args.output,
+                pipeline.dataframe(), path, args.output,
                 rename=rename_map, sep=args.dlim, encoding=args.encoding, progress=args.progress,
             )
 
@@ -443,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe,
                          args.head is not None, args.tail is not None, args.sample is not None,
-                         args.convert is not None, args.agg is not None])
+                         args.convert, args.agg is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.head is not None, args.tail is not None, args.sample is not None,
