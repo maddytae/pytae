@@ -14,7 +14,7 @@ Requires Python ≥ 3.7, pandas ≥ 1.0.0
 
 ## Features
 
-Six feature sets, each with a companion reference notebook:
+Seven feature sets, each with a companion reference notebook (1–6) or usage guide (7):
 
 ### 1) Plotting — `Plotter`
 Lightweight plotting built on top of `pandas.plot`, fully compatible with matplotlib and ability to method chain plots.
