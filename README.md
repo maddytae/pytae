@@ -8,7 +8,7 @@
 pip install pytae
 ```
 
-Requires Python ≥ 3.7, pandas ≥ 1.0.0
+Requires Python ≥ 3.10, pandas ≥ 1.0.0, pyarrow ≥ 15, matplotlib
 
 ## Documentation
 
@@ -26,6 +26,6 @@ pytae ships two things: a set of pandas extensions you use in your own code, and
 | 3 | Selection — `select()` | [Library reference](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#3-selection--select) |
 | 4 | Reshaping — `long()`, `wide()` | [Library reference](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#4-reshaping--long-wide) |
 | 5 | Aggregation — `agg_df()` | [Library reference](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#5-aggregation--agg_df) |
-| 6 | Utilities — `clip()`, `handle_missing()`, `cols()`, `group_x()` | [Library reference](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#6-utilities--clip-handle_missing-cols-group_x) |
+| 6 | Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()` | [Library reference](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#6-utilities--to_clip-handle_missing-cols-group_x) |
 | 7 | CLI — `pytae` | [CLI reference](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) |
 

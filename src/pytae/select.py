@@ -5,7 +5,7 @@ import re
 class everything:
     pass
 
-def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None):
+def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None):
     '''
     Select columns from a DataFrame based on names, regex patterns, slices, data types, or string matching.
     
@@ -25,13 +25,15 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
         Prefix(es) to match in column names.
     endswith : str or list of str, optional
         Suffix(es) to match in column names.
+    regex : str or list of str, optional
+        Regular expression(s) to match in column names.
     
     Returns:
     --------
     pd.DataFrame
         Selected columns, with explicit/regex/slice selections first, followed by everything() if specified.
     '''
-    if exclude_dtype is not None and (args or dtype or contains or startswith or endswith):
+    if exclude_dtype is not None and (args or dtype or contains or startswith or endswith or regex):
         raise ValueError("exclude_dtype cannot be combined with other selection criteria.")
     
     selected_cols = set()
@@ -139,6 +141,16 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             endswith_cols = [col for col in self.columns if any(col.endswith(sub) for sub in endswith)]
         selected_cols.update(endswith_cols)
         ordered_cols.extend([col for col in endswith_cols if col not in ordered_cols])
+
+    if regex is not None:
+        patterns = [regex] if isinstance(regex, str) else list(regex)
+        try:
+            compiled = [re.compile(p) for p in patterns]
+        except re.error as exc:
+            raise ValueError(f"invalid regex: {exc}") from exc
+        regex_cols = [col for col in self.columns if any(p.search(str(col)) for p in compiled)]
+        selected_cols.update(regex_cols)
+        ordered_cols.extend([col for col in regex_cols if col not in ordered_cols])
 
     return self[ordered_cols]
 

@@ -1,7 +1,6 @@
 import pytest
 import numpy as np
 import pandas as pd
-import seaborn as sns
 
 import sys
 import os
@@ -9,11 +8,11 @@ import os
 # Assuming the current working directory is where the project root is
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from pytae import long, wide
+from pytae import long, wide, sample
 
 def test_long():
 
-    penguins = sns.load_dataset('penguins')
+    penguins = sample("penguins")
 
     
     result = penguins.long(col='features')

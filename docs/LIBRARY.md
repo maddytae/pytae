@@ -1,31 +1,76 @@
 # pytae — Library Reference
 
-Pandas extensions: `Plotter`, `qry()`, `select()`, `long()`/`wide()`, `agg_df()`, and utility methods, all registered directly on `pd.DataFrame`/`pd.Series`.
+Pandas extensions registered on `pd.DataFrame`. Importing `pytae` attaches the methods; `Plotter` is loaded only when you import it.
+
+```python
+import pytae as pt
+import pandas as pd
+
+penguins = pt.sample("penguins")          # or pt.sample_data["penguins"]
+```
 
 ## 1) Plotting — `Plotter`
-Lightweight plotting built on top of `pandas.plot`, fully compatible with matplotlib and ability to method chain plots.
-[plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb)
+
+Method-chainable plots on top of `pandas.plot`. [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb)
+
+```python
+from pytae.plotting import Plotter
+
+Plotter().data(penguins).plot(
+    x="bill_length_mm", y="bill_depth_mm", kind="scatter", by="species"
+).finalize()
+```
 
 ## 2) Filtering — `qry()`
-Dict based filtering making it more versatile.
-[qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
+
+Dict-based filters (equality, lists, `in` / `not in`, comparisons, intervals). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
+
+```python
+penguins.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
+penguins.qry({"species": ["Adelie", "Gentoo"]})
+penguins.qry({"species": ("not in", ["Adelie"])})
+penguins.qry({"body_mass_g": "[3000,4000]"})
+```
 
 ## 3) Selection — `select()`
-R like select but on steroid.
-[select.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/select.ipynb)
+
+Pick columns by name, regex, dtype, or name pattern. [select.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/select.ipynb)
+
+```python
+penguins.select("species", "island")
+penguins.select(regex="^bill")
+penguins.select(dtype="numeric")
+penguins.select(contains="bill", startswith="flip")
+penguins.select("species", regex="bill|body")
+```
 
 ## 4) Reshaping — `long()`, `wide()`
-`long()` melts all numeric columns to rows. `wide()` pivots a column's values into headers.
-[shape.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/shape.ipynb)
+
+`long()` melts numeric columns to rows. `wide()` pivots a column's values into headers. [shape.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/shape.ipynb)
+
+```python
+tall = penguins.long(col="feature")
+tall.wide(col="feature", value="value")
+```
 
 ## 5) Aggregation — `agg_df()`
-Auto-detects group columns (non-numeric) and aggregates the rest. Supports `str`, `list`, and `dict` aggfunc. `n` is a special token for group count.
-[agg_df.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/agg_df.ipynb)
 
-## 6) Utilities — `clip()`, `handle_missing()`, `cols()`, `group_x()`
-- `cols()` — sorted column list
-- `handle_missing()` — fill NaN with a visible marker before aggregating
-- `group_x()` — broadcast a group aggregate back to every row (like `transform`)
-- `clip()` — copy DataFrame to clipboard for pasting into Excel / Sheets
+Groups by all non-numeric columns and aggregates the rest. `n` is group count. [agg_df.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/agg_df.ipynb)
+
+```python
+penguins.agg_df("mean")
+penguins.agg_df(["sum", "mean", "n"])
+penguins.agg_df({"body_mass_g": "mean", "n": "n"})
+```
+
+## 6) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`
 
 [other_utilities.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/other_utilities.ipynb)
+
+```python
+penguins.cols()                    # sorted names; cols(ascending=None) keeps file order
+penguins.handle_missing()          # object NA -> '.', numeric NA -> 0
+penguins.group_x()                 # group size column `n`
+penguins.group_x(group=["species"], aggfunc="max", value="body_mass_g")
+penguins.to_clip()                 # copy to clipboard (does not shadow pandas clip)
+```

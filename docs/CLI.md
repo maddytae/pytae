@@ -11,7 +11,7 @@ pytae data.parquet -nulls
 pytae data.parquet -stats
 ```
 
-**Column selection — `-select`, `-select-dtype`, `-select-contains`, `-select-startswith`, `-select-endswith`, `-exclude-dtype`**
+**Column selection — `-select`, `-select-dtype`, `-select-contains`, `-select-startswith`, `-select-endswith`, `-select-regex`, `-exclude-dtype`**
 
 Uses pytae's `select()` under the hood — all flags are additive (except `-exclude-dtype` which is standalone):
 
@@ -20,10 +20,10 @@ Uses pytae's `select()` under the hood — all flags are additive (except `-excl
 pytae data.parquet -select species,island -head 5
 pytae data.parquet -select "'bill length mm','body mass g'" -stats
 
-# regex — any value that isn't an exact column name is treated as a regex
-pytae data.parquet -select "^bill" -head 5       # columns starting with "bill"
-pytae data.parquet -select "_mm$" -nulls          # columns ending with "_mm"
-pytae data.parquet -select "bill|body" -stats     # columns matching either word
+# regex (names matching the pattern)
+pytae data.parquet -select-regex "^bill" -head 5
+pytae data.parquet -select-regex "_mm$" -nulls
+pytae data.parquet -select-regex "bill|body" -stats
 
 # by dtype
 pytae data.parquet -select-dtype numeric -stats
@@ -36,6 +36,7 @@ pytae data.parquet -select-endswith _mm -nulls
 
 # combine explicit + pattern
 pytae data.parquet -select species -select-contains bill -head 5
+pytae data.parquet -select species -select-regex "bill|body" -head 5
 ```
 
 **Row filtering — `-qry` and `-query`**
@@ -47,7 +48,7 @@ pytae data.parquet -qry "{'species': 'Adelie', 'body_mass_g': ('>', 3500)}"
 pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'"
 ```
 
-Both apply to `-head`/`-tail`/`-nulls`/`-describe`/`-sample`/`-csv`/`-agg_df`/`-agg`/`-value_counts`.
+Both apply to `-head`/`-tail`/`-nulls`/`-describe`/`-sample`/`-convert`/`-agg_df`/`-agg`/`-value_counts`.
 
 **Aggregation (auto group columns) — `-agg_df`**
 
@@ -79,7 +80,17 @@ pytae data.parquet -group_by species -agg "{'body_mass_g': ('avg_mass', 'mean'),
 pytae data.parquet -group_by "species,island" -agg "{'body_mass_g': 'mean'}"
 ```
 
-> `-group_by` and `-agg` require each other. Each source column can appear once per `-agg` call (one output per input column) — for multiple aggregations on the same source column, use `-agg_df`'s list/dict aggfunc instead. `-dropna` applies here too (drops NA group keys by default). `-agg_df` and `-agg` can't be combined.
+> `-agg` requires `-group_by`. `-group_by` is also used by `-group_x` (and can be omitted there to auto-detect non-numeric columns). Each source column can appear once per `-agg` call (one output per input column) — for multiple aggregations on the same source column, use `-agg_df`'s list/dict aggfunc instead. `-dropna` applies here too (drops NA group keys by default). `-agg_df` and `-agg` can't be combined.
+
+**Broadcast — `-group_x`**
+
+Broadcast a group aggregate back onto every row (like pandas `transform`). Defaults to group size `n`. Optional `-group_by` picks the groups; otherwise non-numeric columns are used.
+
+```bash
+pytae data.parquet -group_x
+pytae data.parquet -group_by species -group_x
+pytae data.parquet -group_by species -group_x max:body_mass_g
+```
 
 **Value counts — `-value_counts`**
 
@@ -101,13 +112,27 @@ pytae data.parquet -unique
 pytae data.parquet -select species,island -unique
 ```
 
-**Sorting — `-sort_by`**
+**Listing — `-cols` / `-dtype` / `-nulls`**
 
-Sorts rows by one or more columns (comma-separated), respecting `-sort asc|desc`:
+Print schema in file (or `-select`) order. Optional `asc` / `desc` sorts by column name:
 
 ```bash
-pytae data.parquet -sort_by body_mass_g -sort desc -head 5
-pytae data.parquet -select species,body_mass_g -sort_by species,body_mass_g -sort asc
+pytae data.parquet -cols
+pytae data.parquet -cols asc
+pytae data.parquet -cols desc
+pytae data.parquet -dtype desc
+pytae data.parquet -nulls asc
+```
+
+**Sorting — `-sort_by`**
+
+Sorts **rows** by one or more columns (comma-separated). Optional `asc` / `desc` sets direction (default: ascending).
+
+```bash
+pytae data.parquet -sort_by body_mass_g
+pytae data.parquet -sort_by body_mass_g desc
+pytae data.parquet -sort_by species,body_mass_g desc
+pytae data.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
 ```
 
 > When chained with another DataFrame-producing op (`-agg_df`, `-agg`, `-value_counts`, `-unique`, `-head`, etc.), only the final operation's result is printed — e.g. `-agg_df -sort_by grp` prints just the sorted aggregated table.
@@ -166,21 +191,25 @@ pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 | `-sample N` | N random rows (default 5) |
 | `-unique` | Drop duplicate rows and print unique rows |
 | `-value_counts` | Count occurrences across current working columns (use `-select` to choose columns) |
-| `-sort_by COLUMNS` | Sort rows by column(s), comma-separated; uses `-sort asc\|desc` |
-| `-group_by COLUMNS` | Explicit group-by columns for `-agg` (comma-separated); requires `-agg` |
+| `-cols [asc\|desc]` | Print column names; optional A–Z / Z–A (default: file order) |
+| `-dtype [asc\|desc]` | Print dtypes; optional sort by name (default: file order) |
+| `-nulls [asc\|desc]` | Print null counts; optional sort by name (default: file order) |
+| `-sort_by COLUMNS [asc\|desc]` | Sort rows by column(s), comma-separated (default: ascending) |
+| `-group_by COLUMNS` | Explicit group-by columns for `-agg` or `-group_x` (comma-separated) |
+| `-group_x [AGGFUNC[:VALUE_COL]]` | Broadcast a group aggregate to every row (default: group size `n`) |
 | `-dropna true\|false` | For `-agg_df`/`-agg`/`-value_counts`: drop NA keys when `true` (default: `true`) |
 | `-nrows N` | Cap rows loaded |
-| `-sort asc\|desc\|none` | Column order for `-cols`/`-dtype`/`-nulls`, or direction for `-sort_by` |
 | `-dlim CHAR` | Field delimiter for `.csv`/`.txt`/`.sas7bdat` (not `.parquet`) |
 | `-stats` | Numeric summary (alias `-describe`) |
 | `-select-dtype TYPE` | Add columns of dtype to selection |
 | `-select-contains STR` | Add columns whose names contain STR |
 | `-select-startswith STR` | Add columns whose names start with STR |
 | `-select-endswith STR` | Add columns whose names end with STR |
+| `-select-regex PATTERN` | Add columns whose names match this regex |
 | `-exclude-dtype TYPE` | Keep all columns except this dtype |
 | `-encoding ENC` | Text encoding for `.csv`/`.txt`/`.sas7bdat` (e.g. `latin-1`); not used for `.parquet` |
 | `-rename old:new,...` | Rename columns on conversion |
 | `-pretty` | Render tables as markdown |
 | `-round N` | Round numeric columns to N decimal places before printing/copying; non-numeric columns unchanged |
-| `-clip` | Copy output to clipboard; suppresses terminal output |
+| `-to_clip` | Copy output to clipboard; suppresses terminal output |
 | `-progress` | Show progress for large files |

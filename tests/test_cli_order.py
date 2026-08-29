@@ -116,14 +116,6 @@ def test_agg_requires_group_by(tmp_path, capsys):
     assert exc_info.value.code == 2
 
 
-def test_group_by_requires_agg(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-group_by", "grp"])
-    assert exc_info.value.code == 2
-
-
 def test_agg_df_and_agg_cannot_combine(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
@@ -304,7 +296,7 @@ def test_sort_by_respects_select_and_descending(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp,val", "-sort", "desc", "-sort_by", "val", "-head", "1"])
+    exit_code = cli.main([path, "-select", "grp,val", "-sort_by", "val", "desc", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -321,7 +313,7 @@ def test_value_counts_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-sort", "asc", "-sort_by", "count"])
+    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-sort_by", "count"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -338,12 +330,125 @@ def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-agg_df", "sum", "-sort", "asc", "-sort_by", "grp"])
+    exit_code = cli.main([path, "-agg_df", "sum", "-sort_by", "grp"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     # Header should appear once: only final sorted aggregated table is printed.
     assert out.count("grp") == 1
+
+
+def test_select_regex_matches_column_names(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "species": ["A", "B"],
+            "bill_length_mm": [1, 2],
+            "bill_depth_mm": [3, 4],
+            "body_mass_g": [5, 6],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-select-regex", "^bill", "-cols"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.strip().splitlines() == ["bill_length_mm", "bill_depth_mm"]
+
+
+def test_select_regex_combines_with_explicit_select(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "species": ["A"],
+            "island": ["Torgersen"],
+            "bill_length_mm": [1],
+            "body_mass_g": [2],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-select", "species", "-select-regex", "bill|body", "-cols"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.strip().splitlines() == ["species", "bill_length_mm", "body_mass_g"]
+
+
+def test_cols_default_is_file_order(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"c": [1], "a": [2], "b": [3]}))
+
+    exit_code = cli.main([path, "-cols"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.strip().splitlines() == ["c", "a", "b"]
+
+
+def test_cols_asc_and_desc(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"c": [1], "a": [2], "b": [3]}))
+
+    assert cli.main([path, "-cols", "asc"]) == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "b", "c"]
+
+    assert cli.main([path, "-cols", "desc"]) == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["c", "b", "a"]
+
+
+def test_dtype_optional_name_order(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"c": [1], "a": ["x"]}))
+
+    assert cli.main([path, "-dtype"]) == 0
+    file_order = capsys.readouterr().out
+    assert file_order.splitlines()[0].startswith("c")
+
+    assert cli.main([path, "-dtype", "asc"]) == 0
+    assert capsys.readouterr().out.splitlines()[0].startswith("a")
+
+
+def test_sort_by_default_is_ascending(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a", "c"], "val": [2, 1, 3]}))
+
+    exit_code = cli.main([path, "-sort_by", "val", "-head", "1"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "a" in out
+    assert "1" in out
+
+
+def test_sort_by_explicit_asc(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a"], "val": [2, 1]}))
+
+    exit_code = cli.main([path, "-sort_by", "val", "asc", "-head", "1"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "a" in out
+    assert "1" in out
+
+
+def test_sort_flag_removed(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-sort", "desc"])
+    assert exc_info.value.code == 2
+
+
+def test_cols_rejects_invalid_order(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-cols", "foo"])
+    assert exc_info.value.code == 2
+
+
+def test_select_caret_pattern_is_not_implicit_regex(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"bill_length_mm": [1], "species": ["A"]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "^bill", "-cols"])
+    assert exc_info.value.code == 2
 
 
 def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
@@ -382,7 +487,7 @@ def test_clip_suppresses_stdout_for_dataframe_ops(tmp_path, capsys, monkeypatch)
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-head", "2", "-clip"])
+    exit_code = cli.main([path, "-head", "2", "-to_clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -400,7 +505,7 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-qry", "{'month': 202607}", "-clip"])
+    exit_code = cli.main([path, "-qry", "{'month': 202607}", "-to_clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -409,3 +514,32 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
         copied["frame"].reset_index(drop=True),
         pd.DataFrame({"month": [202607, 202607], "value": [2, 3]}),
     )
+
+
+def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
+    copied = {}
+    monkeypatch.setattr(cli, "_copy_to_clipboard", lambda s: copied.setdefault("text", s))
+
+    exit_code = cli.main([path, "-shape", "-to_clip"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out == ""
+    assert copied["text"] == "(2, 2)"
+
+
+def test_cli_convert_csv_to_parquet(tmp_path, capsys):
+    src = tmp_path / "data.csv"
+    pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}).to_csv(src, index=False)
+    dest = tmp_path / "data.parquet"
+
+    exit_code = cli.main([str(src), "-convert", "-o", str(dest)])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert dest.exists()
+    assert "Wrote 2 rows" in out
+    result = pd.read_parquet(dest)
+    assert list(result.columns) == ["a", "b"]
+    assert len(result) == 2

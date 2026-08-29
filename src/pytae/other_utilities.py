@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 
-# define a function and monkey patch pandas.DataFrame
-def clip(self):
-    return self.to_clipboard(index=False) #e index=False not working in wsl at the moment
+def to_clip(self):
+    """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
+    return self.to_clipboard(index=False)
 
 
 def handle_missing(self, fillna='.'):
@@ -74,7 +74,7 @@ def group_x(self, group=None, dropna=True, observed=True, aggfunc='n', value=Non
 
 
 
-pd.DataFrame.clip = clip
+pd.DataFrame.to_clip = to_clip
 pd.DataFrame.handle_missing = handle_missing
 pd.DataFrame.cols = cols
 pd.DataFrame.group_x = group_x

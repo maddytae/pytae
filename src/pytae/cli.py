@@ -148,6 +148,34 @@ def parse_bool_text(raw: str) -> bool:
     raise argparse.ArgumentTypeError("expected 'true' or 'false'")
 
 
+def parse_list_order(raw: str) -> str:
+    """Parse optional listing order for -cols/-dtype/-nulls: asc or desc.
+
+    'file' is the internal sentinel used when the flag is present with no value
+    (argparse 3.14 type-converts const).
+    """
+    lowered = str(raw).strip().lower()
+    if lowered in ("asc", "desc", "file"):
+        return lowered
+    raise argparse.ArgumentTypeError("expected 'asc' or 'desc'")
+
+
+def _list_order_names(names, order):
+    if order == "asc":
+        return sorted(names)
+    if order == "desc":
+        return sorted(names, reverse=True)
+    return list(names)
+
+
+def _list_order_index(series: pd.Series, order) -> pd.Series:
+    if order == "asc":
+        return series.sort_index(ascending=True)
+    if order == "desc":
+        return series.sort_index(ascending=False)
+    return series
+
+
 def _apply_query(df: pd.DataFrame, query: str | None) -> pd.DataFrame:
     if not query:
         return df
@@ -301,10 +329,28 @@ class _OrderedStore(argparse.Action):
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
 
 
+class _OrderedSortBy(argparse.Action):
+    """-sort_by COLUMNS [asc|desc]; records dest in op_order. Default direction is asc."""
+
+    def __call__(self, parser, namespace, values, option_string=None) -> None:
+        values = list(values)
+        order = "asc"
+        if len(values) >= 2 and values[-1] in ("asc", "desc"):
+            order = values.pop()
+        if len(values) != 1:
+            raise argparse.ArgumentError(
+                self, "expected a column list, optionally followed by 'asc' or 'desc'"
+            )
+        setattr(namespace, self.dest, values[0])
+        setattr(namespace, "sort_by_order", order)
+        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pytae",
         description="Inspect and convert parquet/csv/txt/sas7bdat files (glob patterns convert multiple files at once).",
+        allow_abbrev=False,
     )
     parser.add_argument("path", help="path to a .parquet, .csv, .txt, or .sas7bdat file, "
                                       "or a glob pattern like 'data/*.parquet' for batch conversion")
@@ -314,9 +360,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-tail", "--tail", nargs="?", const=5, type=int, default=None, metavar="N",
                          action=_OrderedValue, help="print the last N rows (default 5)")
     parser.add_argument("-shape", "--shape", action=_OrderedFlag, help="print (rows, cols)")
-    parser.add_argument("-cols", "--cols", action=_OrderedFlag, help="print column names")
-    parser.add_argument("-dtype", "--dtype", action=_OrderedFlag, help="print column dtypes")
-    parser.add_argument("-nulls", "--nulls", action=_OrderedFlag, help="print null/NaN count per column")
+    parser.add_argument("-cols", "--cols", nargs="?", const="file", default=None, metavar="ORDER",
+                         type=parse_list_order, action=_OrderedValue,
+                         help="print column names; optional asc|desc sorts names (default: file order)")
+    parser.add_argument("-dtype", "--dtype", nargs="?", const="file", default=None, metavar="ORDER",
+                         type=parse_list_order, action=_OrderedValue,
+                         help="print column dtypes; optional asc|desc sorts by name (default: file order)")
+    parser.add_argument("-nulls", "--nulls", nargs="?", const="file", default=None, metavar="ORDER",
+                         type=parse_list_order, action=_OrderedValue,
+                         help="print null/NaN count per column; optional asc|desc sorts by name (default: file order)")
     parser.add_argument("-stats", "--stats", "-describe", "--describe", dest="describe", action=_OrderedFlag,
                          help="print numeric summary stats (min/max/mean/etc.)")
     parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
@@ -325,13 +377,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="drop duplicate rows and print unique rows")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
-    parser.add_argument("-sort_by", "--sort_by", dest="sort_by", metavar="COLUMNS",
-                         action=_OrderedStore,
-                         help="sort rows by one or more columns (comma-separated); uses -sort asc|desc")
+    parser.add_argument("-sort_by", "--sort_by", dest="sort_by", nargs="+", default=None, metavar="COLUMNS",
+                         action=_OrderedSortBy,
+                         help="sort rows by column(s), comma-separated; optional asc|desc (default: asc)")
     parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
-                         help="explicit group-by columns for -agg (comma-separated), e.g. \"'col_a','col_b'\"")
+                         help="explicit group-by columns for -agg or -group_x (comma-separated), e.g. \"'col_a','col_b'\"")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=int, default=None, metavar="N",
-                         help="cap the number of rows loaded for -nulls/-describe/-sample/-csv (default: no cap)")
+                         help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", default=None, metavar="COLUMNS",
                          help="restrict to explicit columns (comma-separated), e.g. \"'col a','col b'\"")
     parser.add_argument("--select-dtype", "-select-dtype", dest="select_dtype", default=None, metavar="TYPE",
@@ -342,10 +394,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="add columns whose names start with STR")
     parser.add_argument("--select-endswith", "-select-endswith", dest="select_endswith", default=None, metavar="STR",
                          help="add columns whose names end with STR")
+    parser.add_argument("--select-regex", "-select-regex", dest="select_regex", default=None, metavar="PATTERN",
+                         help="add columns whose names match this regex")
     parser.add_argument("--exclude-dtype", "-exclude-dtype", dest="exclude_dtype", default=None, metavar="TYPE",
                          help="keep all columns except those of this dtype (mutually exclusive with other -select flags)")
-    parser.add_argument("-sort", "--sort", choices=["asc", "desc", "none"], default="asc",
-                         help="column order for -cols/-dtype/-nulls: asc (default), desc, or none (file's original order)")
     parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
@@ -381,11 +433,11 @@ def build_parser() -> argparse.ArgumentParser:
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-query", "--query", dest="query", default=None, metavar="EXPR",
                          help="filter rows using a pandas query expression, e.g. \"col > 5\" "
-                            "(applies to -head/-tail/-nulls/-describe/-sample/-csv/-agg_df/-agg/-value_counts)")
+                            "(applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts)")
     parser.add_argument("-qry", "--qry", dest="qry", default=None, metavar="CONDITIONS",
                          help="filter rows using pytae qry per-column conditions as a dict literal, e.g. "
                               "\"{'col': ('>', 5), 'other': ['a', 'b']}\" (combinable with -query; "
-                            "applies to -head/-tail/-nulls/-describe/-sample/-csv/-agg_df/-agg/-value_counts)")
+                            "applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts)")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
@@ -393,7 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
-    parser.add_argument("-clip", "--clip", action="store_true",
+    parser.add_argument("-to_clip", "--to_clip", action="store_true",
                          help="also copy the result to the system clipboard: real tab-separated data "
                               "for DataFrame/Series output (-head/-tail/-nulls/-cols/etc.), plain text for -shape "
                               "(cannot combine -shape with a DataFrame-producing flag)")
@@ -430,13 +482,13 @@ def _process_path(
     )
 
     clip_action = None
-    emit_stdout = not args.clip
+    emit_stdout = not args.to_clip
 
     if show_all:
         df = _apply_round(pipeline.dataframe(), args.round_ndigits)
         if emit_stdout:
             print(_format_table(df, pretty=args.pretty))
-        if args.clip:
+        if args.to_clip:
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     op_order = getattr(args, "op_order", [])
@@ -456,38 +508,32 @@ def _process_path(
             shape_str = str(pipeline.shape())
             if emit_stdout:
                 print(shape_str)
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda s=shape_str: _copy_to_clipboard(s)
         elif op == "cols":
-            names = pipeline.columns()
-            if args.sort != "none":
-                names = sorted(names, reverse=(args.sort == "desc"))
+            names = _list_order_names(pipeline.columns(), args.cols)
             if emit_stdout:
                 for name in names:
                     print(name)
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda n=names: pd.Series(n).to_clipboard(index=False, header=False)
         elif op == "dtype":
-            dtypes = pipeline.dtypes()
-            if args.sort != "none":
-                dtypes = dtypes.sort_index(ascending=(args.sort == "asc"))
+            dtypes = _list_order_index(pipeline.dtypes(), args.dtype)
             if emit_stdout:
                 print(dtypes.to_string())
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
-            nulls = pipeline.dataframe().isna().sum()
-            if args.sort != "none":
-                nulls = nulls.sort_index(ascending=(args.sort == "asc"))
+            nulls = _list_order_index(pipeline.dataframe().isna().sum(), args.nulls)
             if emit_stdout:
                 print(nulls.to_string())
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
             described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
             if should_print_df_op(op, later_ops):
                 print(_format_table(described, index=True, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=described: d.to_clipboard(index=True)
         elif op == "value_counts":
             source_df = pipeline.dataframe()
@@ -503,47 +549,45 @@ def _process_path(
             pipeline._df = result
             if should_print_df_op(op, later_ops):
                 print(_format_table(result, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "unique":
             unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
             pipeline._df = unique_df
             if should_print_df_op(op, later_ops):
                 print(_format_table(unique_df, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=unique_df: d.to_clipboard(index=False)
         elif op == "head":
             df = _apply_round(pipeline.head(args.head), args.round_ndigits)
             if should_print_df_op(op, later_ops):
                 print(_format_table(df, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "tail":
             df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
             if should_print_df_op(op, later_ops):
                 print(_format_table(df, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "sample":
             sampled = _apply_round(pipeline.sample(args.sample), args.round_ndigits)
             n = len(sampled)
             if should_print_df_op(op, later_ops):
                 print(_format_table(sampled, pretty=args.pretty) if n else "(no rows)")
-            if args.clip and n:
+            if args.to_clip and n:
                 clip_action = lambda d=sampled: d.to_clipboard(index=False)
         elif op == "sort_by":
             source_df = pipeline.dataframe()
             sort_cols = parse_columns(args.sort_by)
             if any(c not in source_df.columns for c in sort_cols):
                 return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
-            if args.sort == "none":
-                return _fail(parser, batch, "-sort_by requires -sort asc or -sort desc (not 'none')")
-            ascending = args.sort != "desc"
+            ascending = getattr(args, "sort_by_order", "asc") != "desc"
             sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
             pipeline._df = sorted_df
             if should_print_df_op(op, later_ops):
                 print(_format_table(sorted_df, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
         elif op == "agg_df":
             aggfunc = parse_agg(args.agg_df)
@@ -551,7 +595,7 @@ def _process_path(
             pipeline._df = result
             if should_print_df_op(op, later_ops):
                 print(_format_table(result, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "agg":
             if not args.group_by:
@@ -572,7 +616,7 @@ def _process_path(
             pipeline._df = result
             if should_print_df_op(op, later_ops):
                 print(_format_table(result, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "group_x":
             source_df = pipeline.dataframe()
@@ -589,14 +633,14 @@ def _process_path(
             pipeline._df = result
             if should_print_df_op(op, later_ops):
                 print(_format_table(result, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "handle_missing":
             result = _apply_round(pipeline.dataframe().handle_missing(fillna=args.handle_missing), args.round_ndigits)
             pipeline._df = result
             if should_print_df_op(op, later_ops):
                 print(_format_table(result, pretty=args.pretty))
-            if args.clip:
+            if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "convert":
             cmd_convert(
@@ -604,7 +648,7 @@ def _process_path(
                 rename=rename_map, sep=args.dlim, encoding=args.encoding, progress=args.progress,
             )
 
-    if args.clip and clip_action is not None:
+    if args.to_clip and clip_action is not None:
         clip_action()
 
     return False
@@ -621,12 +665,12 @@ def main(argv: list[str] | None = None) -> int:
                          args.group_x is not None, args.handle_missing is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
-                     args.value_counts is not None, args.unique, args.head is not None,
+                     args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
                      args.agg_df is not None, args.agg is not None,
                      args.group_x is not None, args.handle_missing is not None])
-    if args.clip and args.shape and wants_df:
-        parser.error("-clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
+    if args.to_clip and args.shape and wants_df:
+        parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
                      "-agg_df/-agg/-group_x/-handle_missing; run -shape separately")
     if args.agg_df is not None and args.agg is not None:
@@ -645,6 +689,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.select_contains:   select_kwargs["contains"]     = args.select_contains
     if args.select_startswith: select_kwargs["startswith"]   = args.select_startswith
     if args.select_endswith:   select_kwargs["endswith"]     = args.select_endswith
+    if args.select_regex:      select_kwargs["regex"]        = args.select_regex
     if args.exclude_dtype:     select_kwargs["exclude_dtype"] = args.exclude_dtype
     qry_conditions = parse_qry(args.qry) if args.qry else None
     batch = len(paths) > 1
