@@ -93,6 +93,8 @@ pytae data.parquet -qry "{'species': 'Adelie', 'body_mass_g': ('>', 3500)}"
 pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'"
 ```
 
+Both apply to `-head`/`-tail`/`-nulls`/`-describe`/`-sample`/`-csv`/`-agg`/`-value_counts`.
+
 **Aggregation — `-agg`**
 
 Groups by all non-numeric columns and aggregates the rest, using pytae's `agg_df()`. Accepts a string, list, or dict aggfunc:
@@ -104,7 +106,40 @@ pytae data.parquet -agg "['mean', 'sum']"
 pytae data.parquet -agg "{'body_mass_g': 'mean', 'n': 'n'}"
 # combine with filters
 pytae data.parquet -qry "{'species': 'Adelie'}" -agg mean
+# keep the NA grouping key instead of dropping it (default drops NA keys)
+pytae data.parquet -agg sum -dropna false
 ```
+
+**Value counts — `-value_counts`**
+
+Counts occurrences across the current working columns (use `-select` to narrow columns first). With multiple columns, counts unique combinations:
+
+```bash
+pytae data.parquet -select species -value_counts
+pytae data.parquet -select species,island -value_counts
+# keep NA as its own key instead of dropping it (default drops NA)
+pytae data.parquet -select species -value_counts -dropna false
+```
+
+**Unique rows — `-unique`**
+
+Drops duplicate rows and prints the remaining unique rows:
+
+```bash
+pytae data.parquet -unique
+pytae data.parquet -select species,island -unique
+```
+
+**Sorting — `-sort_by`**
+
+Sorts rows by one or more columns (comma-separated), respecting `-sort asc|desc`:
+
+```bash
+pytae data.parquet -sort_by body_mass_g -sort desc -head 5
+pytae data.parquet -select species,body_mass_g -sort_by species,body_mass_g -sort asc
+```
+
+> When chained with another DataFrame-producing op (`-agg`, `-value_counts`, `-unique`, `-head`, etc.), only the final operation's result is printed — e.g. `-agg -sort_by grp` prints just the sorted aggregated table.
 
 **Conversion — `-convert`**
 
@@ -158,8 +193,12 @@ pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 | `-head N` | First N rows (default 5) |
 | `-tail N` | Last N rows (default 5) |
 | `-sample N` | N random rows (default 5) |
+| `-unique` | Drop duplicate rows and print unique rows |
+| `-value_counts` | Count occurrences across current working columns (use `-select` to choose columns) |
+| `-sort_by COLUMNS` | Sort rows by column(s), comma-separated; uses `-sort asc\|desc` |
+| `-dropna true\|false` | For `-agg`/`-value_counts`: drop NA keys when `true` (default: `true`) |
 | `-nrows N` | Cap rows loaded |
-| `-sort asc\|desc\|none` | Column order for `-cols`/`-dtype`/`-nulls` |
+| `-sort asc\|desc\|none` | Column order for `-cols`/`-dtype`/`-nulls`, or direction for `-sort_by` |
 | `-dlim CHAR` | Field delimiter for `.csv`/`.txt`/`.sas7bdat` (not `.parquet`) |
 | `-stats` | Numeric summary (alias `-describe`) |
 | `-select-dtype TYPE` | Add columns of dtype to selection |
@@ -170,6 +209,6 @@ pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 | `-encoding ENC` | Text encoding for `.csv`/`.txt`/`.sas7bdat` (e.g. `latin-1`); not used for `.parquet` |
 | `-rename old:new,...` | Rename columns on conversion |
 | `-pretty` | Render tables as markdown |
-| `-clip` | Copy output to clipboard |
+| `-clip` | Copy output to clipboard; suppresses terminal output |
 | `-progress` | Show progress for large files |
 

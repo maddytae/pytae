@@ -1,3 +1,4 @@
+
 """Format-specific readers exposing a uniform metadata/inspection API.
 
 Each reader avoids loading full row data for shape/columns/dtypes/head where
@@ -87,26 +88,27 @@ class CsvReader:
         return (max(rows, 0), len(self.columns()))
 
     def columns(self) -> list[str]:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0).columns.tolist()
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
 
     def dtypes(self) -> pd.Series:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding).dtypes
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, low_memory=False).dtypes
 
     def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n)
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
 
     def tail(self, n: int) -> pd.DataFrame:
         total = self.shape()[0]
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip)
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
 
     def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None) -> pd.DataFrame:
         if not progress:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows)
+            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
+                               low_memory=False)
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
         reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                              chunksize=CHUNK_SIZE, nrows=nrows)
+                      chunksize=CHUNK_SIZE, nrows=nrows, low_memory=False)
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
@@ -129,26 +131,27 @@ class TxtReader:
         return (max(rows, 0), len(self.columns()))
 
     def columns(self) -> list[str]:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0).columns.tolist()
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
 
     def dtypes(self) -> pd.Series:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding).dtypes
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, low_memory=False).dtypes
 
     def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n)
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
 
     def tail(self, n: int) -> pd.DataFrame:
         total = self.shape()[0]
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip)
+        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
 
     def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None) -> pd.DataFrame:
         if not progress:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows)
+            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
+                               low_memory=False)
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
         reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                              chunksize=CHUNK_SIZE, nrows=nrows)
+                      chunksize=CHUNK_SIZE, nrows=nrows, low_memory=False)
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
