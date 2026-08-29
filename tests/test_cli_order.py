@@ -2,6 +2,7 @@ import os
 import sys
 
 import pandas as pd
+import pytest
 
 
 # Keep test imports consistent with existing test files.
@@ -46,7 +47,7 @@ def test_order_agg_then_shape_uses_aggregated_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-agg", "-shape"])
+    exit_code = cli.main([path, "-agg_df", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -63,12 +64,133 @@ def test_order_agg_dropna_false_keeps_na_group(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-agg", "sum", "-dropna", "false", "-shape"])
+    exit_code = cli.main([path, "-agg_df", "sum", "-dropna", "false", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     # dropna=false keeps the NA grouping key, so both groups remain.
     assert "(2, 2)" in out
+
+
+def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "grp": ["x", "x", "y", "y"],
+            "v1": [1, 2, 3, 4],
+            "v2": [10, 20, 30, 40],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "{'v1':'sum','v2':'mean'}"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "v1" in out and "v2" in out
+    assert "3" in out and "15.0" in out
+    assert "7" in out and "35.0" in out
+
+
+def test_group_by_agg_named_output(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "grp": ["x", "x", "y", "y"],
+            "v1": [1, 2, 3, 4],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "{'v1':('total','sum')}"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "total" in out
+    assert "v1" not in out.split("\n")[0]  # header uses the custom output name, not the source column
+
+
+def test_agg_requires_group_by(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-agg", "{'v1':'sum'}"])
+    assert exc_info.value.code == 2
+
+
+def test_group_by_requires_agg(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-group_by", "grp"])
+    assert exc_info.value.code == 2
+
+
+def test_agg_df_and_agg_cannot_combine(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-agg_df", "-group_by", "grp", "-agg", "{'v1':'sum'}"])
+    assert exc_info.value.code == 2
+
+
+def test_group_x_default_counts_auto_detected_group(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "grp": ["x", "x", "y"],
+            "val": [1, 2, 3],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-group_x"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    lines = out.strip().split("\n")
+    assert "n" in lines[0]
+    # both 'x' rows see group size 2, the 'y' row sees group size 1.
+    assert "2" in lines[1] and "2" in lines[2] and "1" in lines[3]
+
+
+def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "grp": ["x", "x", "y", "y"],
+            "val": [1, 2, 3, 4],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "mean:val"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "1.5" in out and "3.5" in out
+
+
+def test_handle_missing_default_fill(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "grp": ["x", None],
+            "val": [1.0, None],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-handle_missing"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    # object/category NA becomes '.', numeric NA becomes 0.
+    assert "." in out
+    assert "0.0" in out
+
+
+def test_group_by_requires_agg_or_group_x(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-group_by", "grp"])
+    assert exc_info.value.code == 2
 
 
 def test_order_unique_then_shape_uses_deduplicated_frame(tmp_path, capsys):
@@ -216,7 +338,7 @@ def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-agg", "sum", "-sort", "asc", "-sort_by", "grp"])
+    exit_code = cli.main([path, "-agg_df", "sum", "-sort", "asc", "-sort_by", "grp"])
 
     out = capsys.readouterr().out
     assert exit_code == 0

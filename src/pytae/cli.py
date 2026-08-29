@@ -22,6 +22,11 @@ except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
 
+def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
+    """Round numeric columns to ndigits; non-numeric columns pass through unchanged."""
+    return df.round(ndigits) if ndigits is not None else df
+
+
 def _format_table(df: pd.DataFrame, *, index: bool = False, pretty: bool = False) -> str:
     """Render a DataFrame as standard pandas text, or a markdown/bordered table when pretty=True."""
     if not pretty:
@@ -103,14 +108,34 @@ def parse_qry(raw: str) -> dict:
 
 
 def parse_agg(raw: str):
-    """Parse an --agg aggfunc value: bare string ('sum'), list literal, or dict literal."""
+    """Parse an --agg_df aggfunc value: bare string ('sum'), list literal, or dict literal."""
     raw = raw.strip()
     if not (raw.startswith(("{", "[", "'", '"'))):
         return raw
     try:
         return ast.literal_eval(raw)
     except (ValueError, SyntaxError) as exc:
+        raise SystemExit(f"invalid --agg_df value: {exc}") from exc
+
+
+def parse_group_agg(raw: str) -> dict:
+    """Parse an --agg (explicit) dict literal, e.g. "{'col':'sum'}" or "{'col':('out_name','sum')}"."""
+    try:
+        spec = ast.literal_eval(raw)
+    except (ValueError, SyntaxError) as exc:
         raise SystemExit(f"invalid --agg value: {exc}") from exc
+    if not isinstance(spec, dict):
+        raise SystemExit("--agg expects a dict literal, e.g. \"{'col': 'sum'}\" or \"{'col': ('out_name', 'sum')}\"")
+    return spec
+
+
+def parse_group_x_arg(raw: str) -> tuple[str, str | None]:
+    """Parse a --group_x value like "n" or "mean:body_mass_g" into (aggfunc, value_col)."""
+    raw = raw.strip()
+    if ":" in raw:
+        aggfunc, value_col = raw.split(":", 1)
+        return aggfunc.strip(), value_col.strip()
+    return raw, None
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -165,7 +190,7 @@ def cmd_convert(
 class _Pipeline:
     """-select/-query/-qry define the starting view. -head/-tail/-sample narrow
     it further, and every operator that runs afterwards (including another
-    -head/-tail/-sample, -stats, -nulls, -cols, -dtype, -shape, -convert, -agg) sees
+    -head/-tail/-sample, -stats, -nulls, -cols, -dtype, -shape, -convert, -agg_df, -agg) sees
     that narrowed view. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it.
     """
@@ -303,6 +328,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-sort_by", "--sort_by", dest="sort_by", metavar="COLUMNS",
                          action=_OrderedStore,
                          help="sort rows by one or more columns (comma-separated); uses -sort asc|desc")
+    parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
+                         help="explicit group-by columns for -agg (comma-separated), e.g. \"'col_a','col_b'\"")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=int, default=None, metavar="N",
                          help="cap the number of rows loaded for -nulls/-describe/-sample/-csv (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", default=None, metavar="COLUMNS",
@@ -323,13 +350,27 @@ def build_parser() -> argparse.ArgumentParser:
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
                               "defaults to .csv); use -select to restrict columns")
-    parser.add_argument("-agg", "--agg", dest="agg", nargs="?", const="sum", default=None,
+    parser.add_argument("-agg_df", "--agg_df", dest="agg_df", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
-                         help="aggregate using pytae agg_df; defaults to 'sum' when no value given; "
+                         help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
+                              "defaults to 'sum' when no value given; "
                               "accepts string ('mean'), list (\"['sum','mean']\"), or dict (\"{'col':'sum','n':'n'}\")")
+    parser.add_argument("-agg", "--agg", dest="agg", metavar="AGGSPEC", action=_OrderedStore,
+                         help="aggregate using explicit -group_by columns and pandas groupby/agg; dict literal "
+                              "mapping column to aggfunc, or to (output_name, aggfunc), e.g. "
+                              "\"{'amount': 'sum'}\" or \"{'amount': ('total', 'sum')}\"; requires -group_by")
+    parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="n", default=None,
+                         metavar="AGGFUNC[:VALUE_COL]", action=_OrderedValue,
+                         help="broadcast a group aggregate back to every row using pytae group_x(); defaults to "
+                              "'n' (group size); use \"aggfunc:value_col\" (e.g. \"max:body_mass_g\") to "
+                              "broadcast another aggregate; uses -group_by columns, or auto-detects (non-numeric) if omitted")
+    parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
+                         metavar="FILL", action=_OrderedValue,
+                         help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
+                              "columns, 0 for numeric columns")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
-                         help="for -agg and -value_counts: include NA keys when false; accepts true or false (default: true)")
+                         help="for -agg_df, -agg, and -value_counts: include NA keys when false; accepts true or false (default: true)")
     parser.add_argument("-o", "--output", type=Path, default=None,
                          help="output path; its extension picks the format (default: .csv alongside the source file)")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
@@ -340,15 +381,18 @@ def build_parser() -> argparse.ArgumentParser:
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-query", "--query", dest="query", default=None, metavar="EXPR",
                          help="filter rows using a pandas query expression, e.g. \"col > 5\" "
-                            "(applies to -head/-tail/-nulls/-describe/-sample/-csv/-agg/-value_counts)")
+                            "(applies to -head/-tail/-nulls/-describe/-sample/-csv/-agg_df/-agg/-value_counts)")
     parser.add_argument("-qry", "--qry", dest="qry", default=None, metavar="CONDITIONS",
                          help="filter rows using pytae qry per-column conditions as a dict literal, e.g. "
                               "\"{'col': ('>', 5), 'other': ['a', 'b']}\" (combinable with -query; "
-                            "applies to -head/-tail/-nulls/-describe/-sample/-csv/-agg/-value_counts)")
+                            "applies to -head/-tail/-nulls/-describe/-sample/-csv/-agg_df/-agg/-value_counts)")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
                          help="render tables as a bordered markdown table instead of plain pandas text")
+    parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
+                         help="round numeric columns to N decimal places before printing/copying; "
+                              "non-numeric columns are left unchanged")
     parser.add_argument("-clip", "--clip", action="store_true",
                          help="also copy the result to the system clipboard: real tab-separated data "
                               "for DataFrame/Series output (-head/-tail/-nulls/-cols/etc.), plain text for -shape "
@@ -389,14 +433,14 @@ def _process_path(
     emit_stdout = not args.clip
 
     if show_all:
-        df = pipeline.dataframe()
+        df = _apply_round(pipeline.dataframe(), args.round_ndigits)
         if emit_stdout:
             print(_format_table(df, pretty=args.pretty))
         if args.clip:
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     op_order = getattr(args, "op_order", [])
-    dataframe_output_ops = {"describe", "head", "tail", "sample", "agg", "value_counts", "unique", "sort_by"}
+    dataframe_output_ops = {"describe", "head", "tail", "sample", "agg_df", "agg", "value_counts", "unique", "sort_by", "group_x", "handle_missing"}
 
     def should_print_df_op(current_op: str, later_ops: list[str]) -> bool:
         if not emit_stdout:
@@ -440,7 +484,7 @@ def _process_path(
             if args.clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
-            described = pipeline.dataframe().describe()
+            described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
             if should_print_df_op(op, later_ops):
                 print(_format_table(described, index=True, pretty=args.pretty))
             if args.clip:
@@ -455,32 +499,33 @@ def _process_path(
                 result.columns = [col, "count"]
             else:
                 result = source_df.value_counts(subset=value_count_cols, dropna=args.dropna).rename("count").reset_index()
+            result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print_df_op(op, later_ops):
                 print(_format_table(result, pretty=args.pretty))
             if args.clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "unique":
-            unique_df = pipeline.dataframe().drop_duplicates().reset_index(drop=True)
+            unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
             pipeline._df = unique_df
             if should_print_df_op(op, later_ops):
                 print(_format_table(unique_df, pretty=args.pretty))
             if args.clip:
                 clip_action = lambda d=unique_df: d.to_clipboard(index=False)
         elif op == "head":
-            df = pipeline.head(args.head)
+            df = _apply_round(pipeline.head(args.head), args.round_ndigits)
             if should_print_df_op(op, later_ops):
                 print(_format_table(df, pretty=args.pretty))
             if args.clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "tail":
-            df = pipeline.tail(args.tail)
+            df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
             if should_print_df_op(op, later_ops):
                 print(_format_table(df, pretty=args.pretty))
             if args.clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "sample":
-            sampled = pipeline.sample(args.sample)
+            sampled = _apply_round(pipeline.sample(args.sample), args.round_ndigits)
             n = len(sampled)
             if should_print_df_op(op, later_ops):
                 print(_format_table(sampled, pretty=args.pretty) if n else "(no rows)")
@@ -494,15 +539,60 @@ def _process_path(
             if args.sort == "none":
                 return _fail(parser, batch, "-sort_by requires -sort asc or -sort desc (not 'none')")
             ascending = args.sort != "desc"
-            sorted_df = source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True)
+            sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
             pipeline._df = sorted_df
             if should_print_df_op(op, later_ops):
                 print(_format_table(sorted_df, pretty=args.pretty))
             if args.clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
+        elif op == "agg_df":
+            aggfunc = parse_agg(args.agg_df)
+            result = _apply_round(pipeline.dataframe().agg_df(aggfunc=aggfunc, dropna=args.dropna), args.round_ndigits)
+            pipeline._df = result
+            if should_print_df_op(op, later_ops):
+                print(_format_table(result, pretty=args.pretty))
+            if args.clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "agg":
-            aggfunc = parse_agg(args.agg)
-            result = pipeline.dataframe().agg_df(aggfunc=aggfunc, dropna=args.dropna)
+            if not args.group_by:
+                return _fail(parser, batch, "-agg requires -group_by")
+            source_df = pipeline.dataframe()
+            group_cols = parse_columns(args.group_by)
+            if any(c not in source_df.columns for c in group_cols):
+                return _fail(parser, batch, unknown_columns_message("-group_by", group_cols, list(source_df.columns)))
+            agg_spec = parse_group_agg(args.agg)
+            named_agg = {}
+            for col, spec in agg_spec.items():
+                out_name, aggfunc = spec if isinstance(spec, tuple) and len(spec) == 2 else (col, spec)
+                if col not in source_df.columns:
+                    return _fail(parser, batch, unknown_columns_message("-agg", [col], list(source_df.columns)))
+                named_agg[out_name] = pd.NamedAgg(column=col, aggfunc=aggfunc)
+            result = source_df.groupby(group_cols, dropna=args.dropna, observed=True, as_index=False).agg(**named_agg)
+            result = _apply_round(result, args.round_ndigits)
+            pipeline._df = result
+            if should_print_df_op(op, later_ops):
+                print(_format_table(result, pretty=args.pretty))
+            if args.clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
+        elif op == "group_x":
+            source_df = pipeline.dataframe()
+            aggfunc, value_col = parse_group_x_arg(args.group_x)
+            group_cols = parse_columns(args.group_by) if args.group_by else None
+            if group_cols and any(c not in source_df.columns for c in group_cols):
+                return _fail(parser, batch, unknown_columns_message("-group_by", group_cols, list(source_df.columns)))
+            if value_col and value_col not in source_df.columns:
+                return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))
+            result = _apply_round(
+                source_df.group_x(group=group_cols, dropna=args.dropna, observed=True, aggfunc=aggfunc, value=value_col),
+                args.round_ndigits,
+            )
+            pipeline._df = result
+            if should_print_df_op(op, later_ops):
+                print(_format_table(result, pretty=args.pretty))
+            if args.clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
+        elif op == "handle_missing":
+            result = _apply_round(pipeline.dataframe().handle_missing(fillna=args.handle_missing), args.round_ndigits)
             pipeline._df = result
             if should_print_df_op(op, later_ops):
                 print(_format_table(result, pretty=args.pretty))
@@ -527,15 +617,22 @@ def main(argv: list[str] | None = None) -> int:
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.convert, args.agg is not None])
+                         args.convert, args.agg_df is not None, args.agg is not None,
+                         args.group_x is not None, args.handle_missing is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts is not None, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg is not None])
+                     args.agg_df is not None, args.agg is not None,
+                     args.group_x is not None, args.handle_missing is not None])
     if args.clip and args.shape and wants_df:
         parser.error("-clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/-agg; run -shape separately")
+                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
+                     "-agg_df/-agg/-group_x/-handle_missing; run -shape separately")
+    if args.agg_df is not None and args.agg is not None:
+        parser.error("-agg_df and -agg can't be combined; choose one")
+    if args.group_by is not None and args.agg is None and args.group_x is None:
+        parser.error("-group_by requires -agg or -group_x")
 
     paths = expand_paths(args.path)
     if len(paths) > 1 and args.output is not None:
