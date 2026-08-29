@@ -1,5 +1,7 @@
-import pandas as pd
+import difflib
 import re
+
+import pandas as pd
 
 # Define the sentinel class
 class everything:
@@ -14,7 +16,8 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     self : pd.DataFrame
         The DataFrame from which to select columns.
     *args : variable-length arguments
-        Can be: list of column names, string (exact name, regex, or slice like 'start:end'), everything(), or callable.
+        Can be: list of column names, string (exact name or slice like 'start:end'), everything(), or callable.
+        Regex is the regex= keyword, not a positional string.
     dtype : str, type, or list, optional
         Data type(s) to select (e.g., 'numeric', 'datetime').
     exclude_dtype : str, type, or list, optional
@@ -84,10 +87,11 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
                 selected_cols.add(arg)
                 if arg not in ordered_cols:
                     ordered_cols.append(arg)
-            else:  # Treat as regex
-                regex_cols = self.filter(regex=arg).columns.tolist()
-                selected_cols.update(regex_cols)
-                ordered_cols.extend([col for col in regex_cols if col not in ordered_cols])
+            else:
+                close = difflib.get_close_matches(arg, all_cols, n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?[]()") else ""
+                raise KeyError(f"Column not found: '{arg}'{hint}{regex_hint}")
         elif isinstance(arg, everything):
             remaining_cols = [col for col in self.columns if col not in selected_cols]
             selected_cols.update(remaining_cols)

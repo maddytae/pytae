@@ -349,7 +349,7 @@ def test_select_regex_matches_column_names(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select-regex", "^bill", "-cols"])
+    exit_code = cli.main([path, "-select", "regex=^bill", "-cols"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -367,7 +367,7 @@ def test_select_regex_combines_with_explicit_select(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "species", "-select-regex", "bill|body", "-cols"])
+    exit_code = cli.main([path, "-select", "species,regex=bill|body", "-cols"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -440,6 +440,63 @@ def test_cols_rejects_invalid_order(tmp_path):
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-cols", "foo"])
+    assert exc_info.value.code == 2
+
+
+def test_parse_select_spec_names_and_kwargs():
+    names, kwargs = cli.parse_select_spec("species,contains=bill,dtype=numeric")
+    assert names == ["species"]
+    assert kwargs == {"contains": "bill", "dtype": "numeric"}
+
+
+def test_parse_select_spec_quoted_name_and_repeated_key():
+    names, kwargs = cli.parse_select_spec("'bill length mm',contains=bill,contains=body")
+    assert names == ["bill length mm"]
+    assert kwargs == {"contains": ["bill", "body"]}
+
+
+def test_select_dtype_unions_with_explicit_names(tmp_path, capsys):
+    df = pd.DataFrame({"cola": ["a"], "colb": [1], "n": [2.0], "label": ["x"]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-select", "cola,colb,dtype=numeric", "-cols"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.strip().splitlines() == ["cola", "colb", "n"]
+
+
+def test_select_exclude_dtype_standalone(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"name": ["a"], "n": [1]}))
+
+    exit_code = cli.main([path, "-select", "exclude_dtype=numeric", "-cols"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["name"]
+
+
+def test_select_exclude_dtype_cannot_combine(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"name": ["a"], "n": [1]}))
+
+    with pytest.raises(SystemExit, match="exclude_dtype cannot be combined"):
+        cli.main([path, "-select", "name,exclude_dtype=numeric", "-cols"])
+
+
+def test_select_slice(tmp_path, capsys):
+    df = pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-select", "a:c", "-cols"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "b", "c"]
+
+
+def test_removed_select_star_flags_are_unknown(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select-regex", "^a", "-cols"])
     assert exc_info.value.code == 2
 
 

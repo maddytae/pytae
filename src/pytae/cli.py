@@ -12,9 +12,12 @@ from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
 import pandas as pd
-import pytae  # registers .select(), .qry(), .agg_df() on pd.DataFrame
 
+from pytae.agg_df import agg_df  # noqa: F401  — registers pd.DataFrame.agg_df
+from pytae.other_utilities import group_x, handle_missing  # noqa: F401
+from pytae.qry import qry  # noqa: F401
 from pytae.readers import get_reader, write_dataframe
+from pytae.select import select  # noqa: F401
 
 try:
     __version__ = _pkg_version("pytae")
@@ -51,6 +54,9 @@ def _copy_to_clipboard(text: str) -> None:
         print("pytae: unable to copy to clipboard (no clipboard utility found)", file=sys.stderr)
 
 
+SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
+
+
 def parse_columns(raw: str) -> list[str]:
     """Parse a column list like "'col a','col b'" or "col_a,col_b" into a list of names."""
     raw = raw.strip()
@@ -60,6 +66,80 @@ def parse_columns(raw: str) -> list[str]:
         return [str(c).strip() for c in cols]
     except (ValueError, SyntaxError):
         return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
+
+
+def _split_select_tokens(raw: str) -> list[str]:
+    """Split a -select spec on commas, respecting single or double quotes."""
+    tokens: list[str] = []
+    buf: list[str] = []
+    quote = None
+    for ch in raw:
+        if quote:
+            if ch == quote:
+                quote = None
+            else:
+                buf.append(ch)
+        elif ch in "'\"":
+            quote = ch
+        elif ch == ",":
+            token = "".join(buf).strip()
+            if token:
+                tokens.append(token)
+            buf = []
+        else:
+            buf.append(ch)
+    token = "".join(buf).strip()
+    if token:
+        tokens.append(token)
+    return tokens
+
+
+def parse_select_spec(raw: str) -> tuple[list[str], dict]:
+    """Parse -select into positional names/slices and select() kwargs.
+
+    Tokens without '=' are column names or start:end slices. Tokens like
+    dtype=numeric / contains=bill / regex=^flip become kwargs. Repeated keys
+    become a list. Union of all tokens, matching df.select().
+    """
+    tokens = _split_select_tokens(raw)
+    names: list[str] = []
+    kwargs: dict = {}
+    for token in tokens:
+        if "=" in token:
+            key, _, value = token.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if key in SELECT_KEYS:
+                if not value:
+                    raise SystemExit(f"-select: {key}= needs a value")
+                if key in kwargs:
+                    prev = kwargs[key]
+                    kwargs[key] = (prev if isinstance(prev, list) else [prev]) + [value]
+                else:
+                    kwargs[key] = value
+                continue
+        names.append(token)
+    if not names and not kwargs:
+        raise SystemExit("-select: expected column names and/or key=value tokens")
+    if "exclude_dtype" in kwargs and (names or len(kwargs) > 1):
+        raise SystemExit("-select: exclude_dtype cannot be combined with other selection criteria")
+    return names, kwargs
+
+
+def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
+    """Exact-name tokens (and slice endpoints) that are not in the file."""
+    unknown: list[str] = []
+    for token in tokens:
+        if ":" in token:
+            start, end = token.split(":", 1)
+            start, end = start.strip(), end.strip()
+            if start and start not in available:
+                unknown.append(start)
+            if end and end not in available:
+                unknown.append(end)
+        elif token not in available:
+            unknown.append(token)
+    return unknown
 
 
 def unknown_columns_message(flag: str, requested: list[str], available: list[str]) -> str:
@@ -225,7 +305,7 @@ class _Pipeline:
 
     def __init__(self, reader, *, select, select_kwargs, query, qry, nrows, progress) -> None:
         self._reader = reader
-        self._select = select            # list[str] | None — explicit column list
+        self._select = select            # list[str] | None — positional names/slices
         self._select_kwargs = select_kwargs  # pytae select() kwargs: dtype, contains, etc.
         self._query = query
         self._qry = qry
@@ -234,7 +314,11 @@ class _Pipeline:
         self._df: pd.DataFrame | None = None
 
     def _needs_full_load(self) -> bool:
-        return bool(self._query or self._qry or self._select_kwargs)
+        if self._query or self._qry or self._select_kwargs:
+            return True
+        if self._select and any(":" in token for token in self._select):
+            return True
+        return False
 
     def dataframe(self) -> pd.DataFrame:
         if self._df is None:
@@ -245,8 +329,10 @@ class _Pipeline:
             if self._qry:
                 df = df.qry(self._qry)
             if self._select is not None or self._select_kwargs:
-                args = [self._select] if self._select is not None else []
-                df = df.select(*args, **self._select_kwargs)
+                try:
+                    df = df.select(*(self._select or []), **self._select_kwargs)
+                except ValueError as exc:
+                    raise SystemExit(f"-select: {exc}") from exc
             self._df = df
         return self._df
 
@@ -278,7 +364,7 @@ class _Pipeline:
         if self._df is None and not self._needs_full_load():
             df = self._reader.head(n)
             if self._select:
-                df = df.select(self._select)
+                df = df.select(*self._select)
         else:
             df = self.dataframe().head(n)
         self._df = df
@@ -288,7 +374,7 @@ class _Pipeline:
         if self._df is None and not self._needs_full_load():
             df = self._reader.tail(n)
             if self._select:
-                df = df.select(self._select)
+                df = df.select(*self._select)
         else:
             df = self.dataframe().tail(n)
         self._df = df
@@ -384,20 +470,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="explicit group-by columns for -agg or -group_x (comma-separated), e.g. \"'col_a','col_b'\"")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
-    parser.add_argument("--select", "-select", dest="select", default=None, metavar="COLUMNS",
-                         help="restrict to explicit columns (comma-separated), e.g. \"'col a','col b'\"")
-    parser.add_argument("--select-dtype", "-select-dtype", dest="select_dtype", default=None, metavar="TYPE",
-                         help="add columns of this dtype to selection: numeric, object, datetime, bool, category")
-    parser.add_argument("--select-contains", "-select-contains", dest="select_contains", default=None, metavar="STR",
-                         help="add columns whose names contain STR")
-    parser.add_argument("--select-startswith", "-select-startswith", dest="select_startswith", default=None, metavar="STR",
-                         help="add columns whose names start with STR")
-    parser.add_argument("--select-endswith", "-select-endswith", dest="select_endswith", default=None, metavar="STR",
-                         help="add columns whose names end with STR")
-    parser.add_argument("--select-regex", "-select-regex", dest="select_regex", default=None, metavar="PATTERN",
-                         help="add columns whose names match this regex")
-    parser.add_argument("--exclude-dtype", "-exclude-dtype", dest="exclude_dtype", default=None, metavar="TYPE",
-                         help="keep all columns except those of this dtype (mutually exclusive with other -select flags)")
+    parser.add_argument("--select", "-select", dest="select", default=None, metavar="SPEC",
+                         help="restrict columns (union of tokens): names, start:end slices, and key=value "
+                              "(dtype, contains, startswith, endswith, regex, exclude_dtype), "
+                              "e.g. \"species,contains=bill,dtype=numeric\"")
     parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
@@ -473,8 +549,10 @@ def _process_path(
     except ValueError as exc:
         return _fail(parser, batch, str(exc))
 
-    if select_cols and any(c not in reader.columns() for c in select_cols):
-        return _fail(parser, batch, unknown_columns_message("-select", select_cols, reader.columns()))
+    if select_cols:
+        unknown = _select_unknown_names(select_cols, reader.columns())
+        if unknown:
+            return _fail(parser, batch, unknown_columns_message("-select", unknown, reader.columns()))
 
     pipeline = _Pipeline(
         reader, select=select_cols, select_kwargs=select_kwargs, query=args.query, qry=qry_conditions,
@@ -683,14 +761,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("-o/--output cannot be used with multiple matched files; each output path is derived automatically")
 
     rename_map = parse_rename(args.rename) if args.rename else None
-    select_cols = parse_columns(args.select) if args.select else None
-    select_kwargs: dict = {}
-    if args.select_dtype:      select_kwargs["dtype"]        = args.select_dtype
-    if args.select_contains:   select_kwargs["contains"]     = args.select_contains
-    if args.select_startswith: select_kwargs["startswith"]   = args.select_startswith
-    if args.select_endswith:   select_kwargs["endswith"]     = args.select_endswith
-    if args.select_regex:      select_kwargs["regex"]        = args.select_regex
-    if args.exclude_dtype:     select_kwargs["exclude_dtype"] = args.exclude_dtype
+    if args.select:
+        select_cols, select_kwargs = parse_select_spec(args.select)
+    else:
+        select_cols, select_kwargs = None, {}
     qry_conditions = parse_qry(args.qry) if args.qry else None
     batch = len(paths) > 1
     exit_code = 0

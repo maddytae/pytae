@@ -86,6 +86,8 @@ def test_select_slice_and_missing_list():
     ]
     with pytest.raises(KeyError, match="not found"):
         df.select(["nope"])
+    with pytest.raises(KeyError, match=r"Column not found: '\^bill'"):
+        df.select("^bill")
 
 
 def test_select_everything():

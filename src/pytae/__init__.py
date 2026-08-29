@@ -7,7 +7,6 @@ from .agg_df import *
 from .other_utilities import *
 from .qry import *
 from .select import *
-from .shape import *
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -43,11 +42,37 @@ class _SampleData(Mapping):
 sample_data = _SampleData()
 
 
+def _bind_shape():
+    from .shape import long, wide
+    pd.DataFrame.long = long
+    pd.DataFrame.wide = wide
+    globals()["long"] = long
+    globals()["wide"] = wide
+    return long, wide
+
+
+def _lazy_long(self, **kwargs):
+    long, _ = _bind_shape()
+    return long(self, **kwargs)
+
+
+def _lazy_wide(self, **kwargs):
+    _, wide = _bind_shape()
+    return wide(self, **kwargs)
+
+
+pd.DataFrame.long = _lazy_long
+pd.DataFrame.wide = _lazy_wide
+
+
 def __getattr__(name):
     if name == "Plotter":
         from .plotting import Plotter
         return Plotter
+    if name in ("long", "wide"):
+        _bind_shape()
+        return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["sample_data", "sample", "Plotter"]
+__all__ = ["sample_data", "sample", "Plotter", "long", "wide"]

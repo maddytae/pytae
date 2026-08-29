@@ -55,3 +55,8 @@ def test_qry_does_not_mutate_original():
 def test_qry_in_requires_list():
     with pytest.raises(ValueError, match="must be a list"):
         _df().qry({"species": ("in", "Adelie")})
+
+
+def test_qry_unknown_column_suggests_typo():
+    with pytest.raises(KeyError, match=r"unknown column 'speceis' \(did you mean 'species'\?\)"):
+        _df().qry({"speceis": "Adelie"})

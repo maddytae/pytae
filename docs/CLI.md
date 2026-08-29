@@ -11,33 +11,65 @@ pytae data.parquet -nulls
 pytae data.parquet -stats
 ```
 
-**Column selection — `-select`, `-select-dtype`, `-select-contains`, `-select-startswith`, `-select-endswith`, `-select-regex`, `-exclude-dtype`**
+**Column selection — `-select`**
 
-Uses pytae's `select()` under the hood — all flags are additive (except `-exclude-dtype` which is standalone):
+One flag, one `df.select()` call. Tokens are a **union** (each token adds columns; nothing intersects).
+
+Bare tokens are column names or `start:end` slices. `key=value` tokens map to the same kwargs as `df.select(...)`.
+
+| Token | Meaning |
+|---|---|
+| `species` | exact column name |
+| `species,island` | several exact names |
+| `'bill length mm'` | name with spaces (quote it) |
+| `species:bill_length_mm` | slice of columns from `species` through `bill_length_mm` |
+| `dtype=numeric` | add columns of this dtype (`numeric`, `non_numeric`, `object`, `datetime`, `bool`, `category`) |
+| `contains=bill` | add names containing `bill` |
+| `startswith=bill` | add names starting with `bill` |
+| `endswith=_mm` | add names ending with `_mm` |
+| `regex=^bill` | add names matching this regex |
+| `exclude_dtype=numeric` | keep every column except this dtype (**standalone**; cannot mix with other tokens) |
 
 ```bash
-# explicit column list
+# exact names
 pytae data.parquet -select species,island -head 5
 pytae data.parquet -select "'bill length mm','body mass g'" -stats
 
-# regex (names matching the pattern)
-pytae data.parquet -select-regex "^bill" -head 5
-pytae data.parquet -select-regex "_mm$" -nulls
-pytae data.parquet -select-regex "bill|body" -stats
+# regex
+pytae data.parquet -select "regex=^bill" -head 5
+pytae data.parquet -select "regex=_mm$" -nulls
+pytae data.parquet -select "regex=bill|body" -stats
 
-# by dtype
-pytae data.parquet -select-dtype numeric -stats
-pytae data.parquet -exclude-dtype numeric -head 5
+# dtype
+pytae data.parquet -select dtype=numeric -stats
+pytae data.parquet -select exclude_dtype=numeric -head 5
 
-# by name pattern
-pytae data.parquet -select-contains bill -head 5
-pytae data.parquet -select-startswith bill -dtype
-pytae data.parquet -select-endswith _mm -nulls
+# name patterns
+pytae data.parquet -select contains=bill -head 5
+pytae data.parquet -select startswith=bill -dtype
+pytae data.parquet -select endswith=_mm -nulls
 
-# combine explicit + pattern
-pytae data.parquet -select species -select-contains bill -head 5
-pytae data.parquet -select species -select-regex "bill|body" -head 5
+# slice
+pytae data.parquet -select species:bill_length_mm -cols
+
+# union of exact names + kwargs (species, then any name containing bill, then remaining numerics)
+pytae data.parquet -select "species,contains=bill,dtype=numeric" -head 5
+pytae data.parquet -select "species,regex=bill|body" -head 5
+
+# repeated keys become a list (names containing bill OR body)
+pytae data.parquet -select "contains=bill,contains=body" -cols
 ```
+
+Unknown exact names error with a typo suggestion. A positional token that is not a real column is **not** a regex in either the CLI or `df.select()` — use `regex=`.
+
+**`df.select()` but not `-select`**
+
+These library forms have no CLI spelling:
+
+- `everything()` — remaining columns after an explicit list
+- a callable, e.g. `df.select(lambda c: c.endswith("_mm"))`
+- passing a Python `list` as a single positional arg (CLI always sends each name as its own string; the result is the same for exact names)
+- `contains` / `startswith` / `endswith` / `regex` as a Python list object in one kwarg — CLI repeats the key instead: `contains=bill,contains=body`
 
 **Row filtering — `-qry` and `-query`**
 
@@ -201,12 +233,7 @@ pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Field delimiter for `.csv`/`.txt`/`.sas7bdat` (not `.parquet`) |
 | `-stats` | Numeric summary (alias `-describe`) |
-| `-select-dtype TYPE` | Add columns of dtype to selection |
-| `-select-contains STR` | Add columns whose names contain STR |
-| `-select-startswith STR` | Add columns whose names start with STR |
-| `-select-endswith STR` | Add columns whose names end with STR |
-| `-select-regex PATTERN` | Add columns whose names match this regex |
-| `-exclude-dtype TYPE` | Keep all columns except this dtype |
+| `-select SPEC` | Restrict columns (union of names, slices, and `key=value` tokens) |
 | `-encoding ENC` | Text encoding for `.csv`/`.txt`/`.sas7bdat` (e.g. `latin-1`); not used for `.parquet` |
 | `-rename old:new,...` | Rename columns on conversion |
 | `-pretty` | Render tables as markdown |
