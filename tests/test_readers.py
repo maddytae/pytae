@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
+import pytae.readers as readers
 from pytae.readers import get_reader, write_dataframe
 
 
@@ -66,6 +67,22 @@ def test_unsupported_reader_and_writer(tmp_path):
         get_reader(bad)
     with pytest.raises(ValueError, match="unsupported"):
         write_dataframe(_frame(), tmp_path / "x.sas7bdat")
+
+
+def test_csv_and_txt_dtypes_sample_not_full_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(readers, "DTYPE_SAMPLE_ROWS", 3)
+    rows = ["n,label"] + [f"{i},a" for i in range(3)] + ["not_a_number,z"]
+    csv_path = tmp_path / "t.csv"
+    txt_path = tmp_path / "t.txt"
+    csv_path.write_text("\n".join(rows) + "\n")
+    txt_path.write_text("\n".join(row.replace(",", "\t") for row in rows) + "\n")
+
+    csv_dtypes = get_reader(csv_path).dtypes()
+    txt_dtypes = get_reader(txt_path).dtypes()
+    assert pd.api.types.is_integer_dtype(csv_dtypes["n"])
+    assert pd.api.types.is_integer_dtype(txt_dtypes["n"])
+    full = pd.read_csv(csv_path)
+    assert not pd.api.types.is_integer_dtype(full["n"])
 
 
 def test_get_reader_missing_suffix(tmp_path):

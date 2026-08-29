@@ -3,7 +3,8 @@
 
 Each reader avoids loading full row data for shape/columns/dtypes/head where
 the file format allows it (parquet, sas7bdat carry that info in a header).
-CSV has no embedded schema, so dtype inspection reads the file.
+CSV/TXT have no embedded schema, so dtype inspection samples the first
+DTYPE_SAMPLE_ROWS rows.
 """
 
 from __future__ import annotations
@@ -15,6 +16,13 @@ import pyarrow as pa
 import pyarrow.parquet as pa_parquet
 
 CHUNK_SIZE = 200_000
+DTYPE_SAMPLE_ROWS = 10_000
+
+
+def _delimited_dtypes(path: Path, *, sep: str, encoding: str | None) -> pd.Series:
+    return pd.read_csv(
+        path, sep=sep, encoding=encoding, nrows=DTYPE_SAMPLE_ROWS, low_memory=False
+    ).dtypes
 
 
 def _print_progress(done: int, total: int | None, label: str) -> None:
@@ -91,7 +99,7 @@ class CsvReader:
         return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
 
     def dtypes(self) -> pd.Series:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, low_memory=False).dtypes
+        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
 
     def head(self, n: int) -> pd.DataFrame:
         return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
@@ -134,7 +142,7 @@ class TxtReader:
         return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
 
     def dtypes(self) -> pd.Series:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, low_memory=False).dtypes
+        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
 
     def head(self, n: int) -> pd.DataFrame:
         return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
