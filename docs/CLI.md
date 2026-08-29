@@ -114,14 +114,41 @@ pytae data.parquet -group_by "species,island" -agg "{'body_mass_g': 'mean'}"
 
 > `-agg` requires `-group_by`. `-group_by` is also used by `-group_x` (and can be omitted there to auto-detect non-numeric columns). Each source column can appear once per `-agg` call (one output per input column) — for multiple aggregations on the same source column, use `-agg_df`'s list/dict aggfunc instead. `-dropna` applies here too (drops NA group keys by default). `-agg_df` and `-agg` can't be combined.
 
-**Broadcast — `-group_x`**
+**Broadcast — `-group_x` / `.group_x()`**
 
-Broadcast a group aggregate back onto every row (like pandas `transform`). Defaults to group size `n`. Optional `-group_by` picks the groups; otherwise non-numeric columns are used.
+Keeps every row and adds a column: group size `n` by default, or `x` for another aggregate. Optional `-group_by` / `group=` picks the groups; otherwise non-numeric columns are used. Same idea as pandas `transform`.
+
+```python
+df.group_x()
+df.group_x(group=["species"])
+df.group_x(group=["species"], aggfunc="max", value="body_mass_g")
+```
 
 ```bash
 pytae data.parquet -group_x
 pytae data.parquet -group_by species -group_x
-pytae data.parquet -group_by species -group_x max:body_mass_g
+pytae data.parquet -group_by species -group_x body_mass_g:max
+```
+
+`col:aggfunc` is column then function, same order as `-agg "{'body_mass_g': 'max'}"`. `-agg` collapses to one row per group; `-group_x` does not.
+
+Example — max `body_mass_g` per `species` written back as `x`:
+
+```text
+# before
+  species    sex  body_mass_g
+   Adelie   Male       3750.0
+   Adelie Female       3800.0
+   Gentoo Female       4500.0
+   Gentoo   Male       5700.0
+
+# after  -group_by species -group_x body_mass_g:max
+#     or  df.group_x(group=["species"], aggfunc="max", value="body_mass_g")
+  species    sex  body_mass_g      x
+   Adelie   Male       3750.0 3800.0
+   Adelie Female       3800.0 3800.0
+   Gentoo Female       4500.0 5700.0
+   Gentoo   Male       5700.0 5700.0
 ```
 
 **Value counts — `-value_counts`**
@@ -228,7 +255,7 @@ pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 | `-nulls [asc\|desc]` | Print null counts; optional sort by name (default: file order) |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows by column(s), comma-separated (default: ascending) |
 | `-group_by COLUMNS` | Explicit group-by columns for `-agg` or `-group_x` (comma-separated) |
-| `-group_x [AGGFUNC[:VALUE_COL]]` | Broadcast a group aggregate to every row (default: group size `n`) |
+| `-group_x [COL[:AGGFUNC]]` | Broadcast a group aggregate to every row (default: group size `n`; e.g. `body_mass_g:max`) |
 | `-dropna true\|false` | For `-agg_df`/`-agg`/`-value_counts`: drop NA keys when `true` (default: `true`) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Field delimiter for `.csv`/`.txt`/`.sas7bdat` (not `.parquet`) |

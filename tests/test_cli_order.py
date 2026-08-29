@@ -152,7 +152,7 @@ def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "mean:val"])
+    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "val:mean"])
 
     out = capsys.readouterr().out
     assert exit_code == 0

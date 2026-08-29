@@ -210,10 +210,10 @@ def parse_group_agg(raw: str) -> dict:
 
 
 def parse_group_x_arg(raw: str) -> tuple[str, str | None]:
-    """Parse a --group_x value like "n" or "mean:body_mass_g" into (aggfunc, value_col)."""
+    """Parse -group_x: "n" or "body_mass_g:max" into (aggfunc, value_col)."""
     raw = raw.strip()
     if ":" in raw:
-        aggfunc, value_col = raw.split(":", 1)
+        value_col, aggfunc = raw.split(":", 1)
         return aggfunc.strip(), value_col.strip()
     return raw, None
 
@@ -488,9 +488,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "mapping column to aggfunc, or to (output_name, aggfunc), e.g. "
                               "\"{'amount': 'sum'}\" or \"{'amount': ('total', 'sum')}\"; requires -group_by")
     parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="n", default=None,
-                         metavar="AGGFUNC[:VALUE_COL]", action=_OrderedValue,
+                         metavar="COL[:AGGFUNC]", action=_OrderedValue,
                          help="broadcast a group aggregate back to every row using pytae group_x(); defaults to "
-                              "'n' (group size); use \"aggfunc:value_col\" (e.g. \"max:body_mass_g\") to "
+                              "'n' (group size); use \"col:aggfunc\" (e.g. \"body_mass_g:max\") to "
                               "broadcast another aggregate; uses -group_by columns, or auto-detects (non-numeric) if omitted")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
