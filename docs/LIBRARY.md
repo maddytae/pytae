@@ -1,6 +1,6 @@
 # pytae — Library Reference
 
-Pandas extensions registered on `pd.DataFrame`. Importing `pytae` attaches the methods; `Plotter` is loaded only when you import it.
+Pandas extensions registered on `pd.DataFrame`. Importing `pytae` attaches the methods. `Plotter` is loaded only when you access it and needs `pip install pytae[plot]`.
 
 ```python
 import pytae as pt
@@ -11,7 +11,7 @@ penguins = pt.sample("penguins")          # or pt.sample_data["penguins"]
 
 ## 1) Plotting — `Plotter`
 
-Method-chainable plots on top of `pandas.plot`. [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb)
+Method-chainable plots on top of `pandas.plot`. Requires matplotlib (`pip install pytae[plot]`). [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb)
 
 ```python
 from pytae.plotting import Plotter
@@ -38,8 +38,10 @@ Pick columns by name, regex, dtype, or name pattern. [select.ipynb](https://gith
 
 ```python
 penguins.select("species", "island")
-penguins.select(regex="^bill")
+penguins.select(regex="^bill")                 # regex= only; df.select("^bill") is an error
 penguins.select(dtype="numeric")
+penguins.select(exclude_dtype="numeric")       # keep non-numeric
+penguins.select(exclude_dtype="non_numeric")   # keep numeric
 penguins.select(contains="bill", startswith="flip")
 penguins.select("species", regex="bill|body")
 ```

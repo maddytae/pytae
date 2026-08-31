@@ -61,7 +61,7 @@ def wide(df, **kwargs):
         try:
             wide_df = df.pivot(index=index_cols, columns=col, values=value).reset_index()
     
-        except:
+        except ValueError:
             wide_df = df.pivot_table(index=index_cols, columns=col, values=value, aggfunc='sum', dropna=dropna).reset_index()
     else:
         wide_df = df.pivot_table(index=index_cols, columns=col, values=value, aggfunc=aggfunc, dropna=dropna).reset_index()

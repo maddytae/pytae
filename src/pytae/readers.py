@@ -174,7 +174,7 @@ class SasReader:
 
     def __init__(self, path: Path, encoding: str | None = None) -> None:
         self.path = path
-        self.encoding = encoding
+        self.encoding = "utf-8" if encoding is None else encoding
 
     def _open(self):
         return pd.read_sas(self.path, format="sas7bdat", encoding=self.encoding, iterator=True)

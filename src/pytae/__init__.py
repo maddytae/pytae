@@ -67,7 +67,12 @@ pd.DataFrame.wide = _lazy_wide
 
 def __getattr__(name):
     if name == "Plotter":
-        from .plotting import Plotter
+        try:
+            from .plotting import Plotter
+        except ImportError as exc:
+            raise ImportError(
+                "Plotter requires matplotlib. Install with: pip install 'pytae[plot]'"
+            ) from exc
         return Plotter
     if name in ("long", "wide"):
         _bind_shape()

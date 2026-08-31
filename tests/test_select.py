@@ -61,14 +61,20 @@ def test_select_contains_startswith_endswith():
     assert list(df.select(endswith="_mm").columns) == ["bill_length_mm", "bill_depth_mm"]
 
 
-def test_select_dtype_numeric():
+def test_select_dtype_numeric_and_non_numeric():
     df = pd.DataFrame({"name": ["a"], "n": [1], "x": [1.5]})
     assert list(df.select(dtype="numeric").columns) == ["n", "x"]
+    assert list(df.select(dtype="non_numeric").columns) == ["name"]
 
 
-def test_select_exclude_dtype_numeric():
-    df = pd.DataFrame({"name": ["a"], "n": [1]})
+def test_select_exclude_dtype_numeric_vs_non_numeric():
+    """exclude_dtype='numeric' keeps strings; exclude_dtype='non_numeric' keeps numbers."""
+    df = pd.DataFrame({"name": ["a"], "n": [1], "x": [1.5]})
     assert list(df.select(exclude_dtype="numeric").columns) == ["name"]
+    assert list(df.select(exclude_dtype="non_numeric").columns) == ["n", "x"]
+    assert list(df.select(exclude_dtype="numeric").columns) != list(
+        df.select(exclude_dtype="non_numeric").columns
+    )
 
 
 def test_select_exclude_dtype_cannot_combine():

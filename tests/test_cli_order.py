@@ -475,6 +475,15 @@ def test_select_exclude_dtype_standalone(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["name"]
 
 
+def test_select_exclude_dtype_non_numeric_keeps_numbers(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"name": ["a"], "n": [1], "x": [2.0]}))
+
+    exit_code = cli.main([path, "-select", "exclude_dtype=non_numeric", "-cols"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["n", "x"]
+
+
 def test_select_exclude_dtype_cannot_combine(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"name": ["a"], "n": [1]}))
 

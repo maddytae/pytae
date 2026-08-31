@@ -53,6 +53,32 @@ assert hasattr(sys.modules["pandas"].DataFrame, "handle_missing")
     subprocess.check_call([sys.executable, "-c", code])
 
 
+def test_plotter_import_error_mentions_plot_extra():
+    code = r"""
+import builtins
+import sys
+sys.path.insert(0, %r)
+real_import = builtins.__import__
+
+def blocked(name, *args, **kwargs):
+    if name == "matplotlib" or name.startswith("matplotlib."):
+        raise ImportError("No module named matplotlib")
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = blocked
+import pytae
+try:
+    pytae.Plotter
+except ImportError as exc:
+    msg = str(exc)
+    assert "matplotlib" in msg
+    assert "pytae[plot]" in msg
+else:
+    raise AssertionError("expected ImportError")
+""" % _SRC
+    subprocess.check_call([sys.executable, "-c", code])
+
+
 def test_sample_unknown_dataset():
     import pytae
 

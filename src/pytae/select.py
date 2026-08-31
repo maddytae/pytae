@@ -47,12 +47,13 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
         _numeric_types = ['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']
         _shorthands = {
             'numeric': _numeric_types,
-            'non_numeric': _numeric_types,  # excluding non-numeric keeps only numeric
             'datetime': ['datetime64[ns]'],
             'category': ['category'],
             'bool': ['bool'],
         }
-        if isinstance(exclude_dtype, str) and exclude_dtype in _shorthands:
+        if exclude_dtype == 'non_numeric':
+            exclude_cols = self.select_dtypes(include=_numeric_types).columns.tolist()
+        elif isinstance(exclude_dtype, str) and exclude_dtype in _shorthands:
             exclude_cols = self.select_dtypes(exclude=_shorthands[exclude_dtype]).columns.tolist()
         elif isinstance(exclude_dtype, (str, type)):
             exclude_cols = self.select_dtypes(exclude=[exclude_dtype]).columns.tolist()

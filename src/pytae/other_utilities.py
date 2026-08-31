@@ -49,11 +49,6 @@ def cols(self, ascending=True):
     else:
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
 
-# Attach to pandas DataFrame
-pd.DataFrame.cols = cols
-
-
-
 
 def group_x(self, group=None, dropna=True, observed=True, aggfunc='n', value=None):
     '''

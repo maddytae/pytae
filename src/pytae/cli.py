@@ -504,7 +504,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.sas7bdat (default: ',' for .csv, tab for .txt); not used for .parquet")
     parser.add_argument("-encoding", "--encoding", dest="encoding", default=None, metavar="ENC",
-                         help="text encoding for .csv/.txt/.sas7bdat, e.g. latin-1 (default: utf-8/infer); not used for .parquet")
+                         help="text encoding for .csv/.txt/.sas7bdat, e.g. latin-1 "
+                              "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt); not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-query", "--query", dest="query", default=None, metavar="EXPR",

@@ -1,6 +1,6 @@
 # pytae — CLI Reference
 
-A command-line tool for inspecting and converting tabular files (`.parquet`, `.csv`, `.txt`, `.sas7bdat`). Powered by pytae's own `qry()`, `select()`, and `agg_df()` under the hood.
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.sas7bdat`). The CLI is the same verbs as the library: `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`.
 
 ```bash
 pytae data.parquet -head
@@ -11,9 +11,23 @@ pytae data.parquet -nulls
 pytae data.parquet -stats
 ```
 
+Flag **order is the pipeline**. `-select` / `-qry` / `-query` define the starting view. Later ops see that view. When several DataFrame ops are chained, **only the last table is printed**.
+
+```bash
+# shape of the whole file, then first 3 rows
+pytae data.parquet -shape -head 3
+
+# first 3 rows, then shape of that 3-row frame → (3, n)
+pytae data.parquet -head 3 -shape
+```
+
+Use the bundled penguins-style names in the examples below (`species`, `island`, `body_mass_g`, `bill_length_mm`, …).
+
+---
+
 **Column selection — `-select`**
 
-One flag, one `df.select()` call. Tokens are a **union** (each token adds columns; nothing intersects).
+One flag, one `df.select()` call. Tokens are a **union** (each token *adds* columns).
 
 Bare tokens are column names or `start:end` slices. `key=value` tokens map to the same kwargs as `df.select(...)`.
 
@@ -22,20 +36,29 @@ Bare tokens are column names or `start:end` slices. `key=value` tokens map to th
 | `species` | exact column name |
 | `species,island` | several exact names |
 | `'bill length mm'` | name with spaces (quote it) |
-| `species:bill_length_mm` | slice of columns from `species` through `bill_length_mm` |
-| `dtype=numeric` | add columns of this dtype (`numeric`, `non_numeric`, `object`, `datetime`, `bool`, `category`) |
+| `species:bill_length_mm` | slice from `species` through `bill_length_mm` |
+| `dtype=numeric` | add this dtype (`numeric`, `non_numeric`, `object`, `datetime`, `bool`, `category`) |
 | `contains=bill` | add names containing `bill` |
 | `startswith=bill` | add names starting with `bill` |
 | `endswith=_mm` | add names ending with `_mm` |
 | `regex=^bill` | add names matching this regex |
 | `exclude_dtype=numeric` | keep every column except this dtype (**standalone**; cannot mix with other tokens) |
+| `exclude_dtype=non_numeric` | keep numeric columns only |
+
+```python
+df.select("species", "island")
+df.select(regex="^bill")
+df.select("species", contains="bill", dtype="numeric")
+df.select(exclude_dtype="numeric")
+df.select(exclude_dtype="non_numeric")
+```
 
 ```bash
 # exact names
 pytae data.parquet -select species,island -head 5
 pytae data.parquet -select "'bill length mm','body mass g'" -stats
 
-# regex
+# regex (always regex= — a bare ^bill is an unknown column)
 pytae data.parquet -select "regex=^bill" -head 5
 pytae data.parquet -select "regex=_mm$" -nulls
 pytae data.parquet -select "regex=bill|body" -stats
@@ -43,6 +66,7 @@ pytae data.parquet -select "regex=bill|body" -stats
 # dtype
 pytae data.parquet -select dtype=numeric -stats
 pytae data.parquet -select exclude_dtype=numeric -head 5
+pytae data.parquet -select exclude_dtype=non_numeric -cols
 
 # name patterns
 pytae data.parquet -select contains=bill -head 5
@@ -52,7 +76,7 @@ pytae data.parquet -select endswith=_mm -nulls
 # slice
 pytae data.parquet -select species:bill_length_mm -cols
 
-# union of exact names + kwargs (species, then any name containing bill, then remaining numerics)
+# union in one -select (species, then names containing bill, then remaining numerics)
 pytae data.parquet -select "species,contains=bill,dtype=numeric" -head 5
 pytae data.parquet -select "species,regex=bill|body" -head 5
 
@@ -60,63 +84,85 @@ pytae data.parquet -select "species,regex=bill|body" -head 5
 pytae data.parquet -select "contains=bill,contains=body" -cols
 ```
 
-Unknown exact names error with a typo suggestion. A positional token that is not a real column is **not** a regex in either the CLI or `df.select()` — use `regex=`.
+Unknown exact names error with a typo suggestion. A positional token that is not a real column is **not** a regex — use `regex=`. A second `-select` flag **overwrites** the first (argparse last-wins); put everything in one spec.
 
 **`df.select()` but not `-select`**
 
-These library forms have no CLI spelling:
-
 - `everything()` — remaining columns after an explicit list
 - a callable, e.g. `df.select(lambda c: c.endswith("_mm"))`
-- passing a Python `list` as a single positional arg (CLI always sends each name as its own string; the result is the same for exact names)
-- `contains` / `startswith` / `endswith` / `regex` as a Python list object in one kwarg — CLI repeats the key instead: `contains=bill,contains=body`
+- a Python `list` as one positional arg (CLI sends each name as its own string)
+- `contains` / `regex` as a Python list — CLI repeats the key: `contains=bill,contains=body`
+
+---
 
 **Row filtering — `-qry` and `-query`**
 
-`-qry` uses pytae's dict-based `qry()` syntax; `-query` uses a pandas query string:
+`-qry` is pytae's dict `qry()` (safer for odd strings). `-query` is pandas `DataFrame.query()` (numexpr). Both **narrow rows**. Stacking `-qry` with `-query` is AND.
+
+```python
+df.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
+df.query("body_mass_g > 3500 and island == 'Dream'")
+```
 
 ```bash
 pytae data.parquet -qry "{'species': 'Adelie', 'body_mass_g': ('>', 3500)}"
 pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'"
+pytae data.parquet -qry "{'species': 'Adelie'}" -query "body_mass_g > 3500" -head
+
+# filter on a column you are not printing
+pytae data.parquet -qry "{'species': 'Adelie'}" -select species,body_mass_g -head
 ```
 
-Both apply to `-head`/`-tail`/`-nulls`/`-describe`/`-sample`/`-convert`/`-agg_df`/`-agg`/`-value_counts`.
+Applies to `-head`/`-tail`/`-nulls`/`-stats`/`-sample`/`-convert`/`-agg_df`/`-agg`/`-value_counts`/`-group_x`.
+
+---
 
 **Aggregation (auto group columns) — `-agg_df`**
 
-Groups by all non-numeric columns and aggregates the rest, using pytae's `agg_df()`. Accepts a string, list, or dict aggfunc:
+Groups by all **non-numeric** columns and aggregates the rest. `n` is group count.
+
+```python
+df.agg_df("mean")
+df.agg_df(["sum", "mean", "n"])
+df.agg_df({"body_mass_g": "mean", "n": "n"})
+```
 
 ```bash
 pytae data.parquet -agg_df           # defaults to sum
 pytae data.parquet -agg_df mean
 pytae data.parquet -agg_df "['mean', 'sum']"
 pytae data.parquet -agg_df "{'body_mass_g': 'mean', 'n': 'n'}"
-# combine with filters
 pytae data.parquet -qry "{'species': 'Adelie'}" -agg_df mean
-# keep the NA grouping key instead of dropping it (default drops NA keys)
-pytae data.parquet -agg_df sum -dropna false
+pytae data.parquet -agg_df sum -dropna false   # keep NA group keys
+pytae data.parquet -agg_df mean -sort_by body_mass_g desc
 ```
+
+---
 
 **Aggregation (explicit group columns) — `-group_by` + `-agg`**
 
-For full control over which columns to group by (instead of `-agg_df`'s auto-detected non-numeric columns), use `-group_by` together with `-agg`. `-agg` takes a dict literal mapping each source column to either a bare aggfunc, or an `(output_name, aggfunc)` tuple for a custom output column name — built on plain pandas `groupby().agg()` with named aggregation, not `agg_df()`:
+`groupby().agg()` with named aggregation. Collapses to one row per group.
+
+```python
+df.groupby("species", as_index=False).agg(
+    avg_mass=("body_mass_g", "mean"),
+    n=("body_mass_g", "size"),
+)
+```
 
 ```bash
-# bare aggfunc: output column keeps the source column's name
 pytae data.parquet -group_by species -agg "{'body_mass_g': 'mean', 'flipper_length_mm': 'sum'}"
-
-# (output_name, aggfunc): custom output column names
 pytae data.parquet -group_by species -agg "{'body_mass_g': ('avg_mass', 'mean'), 'flipper_length_mm': ('total_flipper', 'sum')}"
-
-# multiple group columns
 pytae data.parquet -group_by "species,island" -agg "{'body_mass_g': 'mean'}"
 ```
 
-> `-agg` requires `-group_by`. `-group_by` is also used by `-group_x` (and can be omitted there to auto-detect non-numeric columns). Each source column can appear once per `-agg` call (one output per input column) — for multiple aggregations on the same source column, use `-agg_df`'s list/dict aggfunc instead. `-dropna` applies here too (drops NA group keys by default). `-agg_df` and `-agg` can't be combined.
+> `-agg` requires `-group_by`. `-group_by` is also used by `-group_x`. One output per source column per `-agg` call — for several aggs on the same column, use `-agg_df`. `-agg_df` and `-agg` cannot be combined.
+
+---
 
 **Broadcast — `-group_x` / `.group_x()`**
 
-Keeps every row and adds a column: group size `n` by default, or `x` for another aggregate. Optional `-group_by` / `group=` picks the groups; otherwise non-numeric columns are used. Same idea as pandas `transform`.
+Keeps **every row** and adds a column (`n` = group size, `x` = another aggregate). Like pandas `transform`. `-agg` collapses; `-group_x` does not.
 
 ```python
 df.group_x()
@@ -130,9 +176,7 @@ pytae data.parquet -group_by species -group_x
 pytae data.parquet -group_by species -group_x body_mass_g:max
 ```
 
-`col:aggfunc` is column then function, same order as `-agg "{'body_mass_g': 'max'}"`. `-agg` collapses to one row per group; `-group_x` does not.
-
-Example — max `body_mass_g` per `species` written back as `x`:
+`col:aggfunc` is column then function, same order as `-agg "{'body_mass_g': 'max'}"`.
 
 ```text
 # before
@@ -143,7 +187,6 @@ Example — max `body_mass_g` per `species` written back as `x`:
    Gentoo   Male       5700.0
 
 # after  -group_by species -group_x body_mass_g:max
-#     or  df.group_x(group=["species"], aggfunc="max", value="body_mass_g")
   species    sex  body_mass_g      x
    Adelie   Male       3750.0 3800.0
    Adelie Female       3800.0 3800.0
@@ -151,29 +194,34 @@ Example — max `body_mass_g` per `species` written back as `x`:
    Gentoo   Male       5700.0 5700.0
 ```
 
+---
+
 **Value counts — `-value_counts`**
 
-Counts occurrences across the current working columns (use `-select` to narrow columns first). With multiple columns, counts unique combinations:
+Counts across the current working columns (`-select` first to choose keys). Several columns → unique combinations.
 
 ```bash
 pytae data.parquet -select species -value_counts
 pytae data.parquet -select species,island -value_counts
-# keep NA as its own key instead of dropping it (default drops NA)
 pytae data.parquet -select species -value_counts -dropna false
+pytae data.parquet -select species -value_counts -sort_by count desc
 ```
 
-**Unique rows — `-unique`**
+---
 
-Drops duplicate rows and prints the remaining unique rows:
+**Unique rows — `-unique`**
 
 ```bash
 pytae data.parquet -unique
 pytae data.parquet -select species,island -unique
+pytae data.parquet -unique -shape
 ```
+
+---
 
 **Listing — `-cols` / `-dtype` / `-nulls`**
 
-Print schema in file (or `-select`) order. Optional `asc` / `desc` sorts by column name:
+File (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
 
 ```bash
 pytae data.parquet -cols
@@ -181,11 +229,14 @@ pytae data.parquet -cols asc
 pytae data.parquet -cols desc
 pytae data.parquet -dtype desc
 pytae data.parquet -nulls asc
+pytae data.parquet -select dtype=numeric -cols
 ```
 
-**Sorting — `-sort_by`**
+CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
 
-Sorts **rows** by one or more columns (comma-separated). Optional `asc` / `desc` sets direction (default: ascending).
+---
+
+**Sorting rows — `-sort_by`**
 
 ```bash
 pytae data.parquet -sort_by body_mass_g
@@ -194,11 +245,27 @@ pytae data.parquet -sort_by species,body_mass_g desc
 pytae data.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
 ```
 
-> When chained with another DataFrame-producing op (`-agg_df`, `-agg`, `-value_counts`, `-unique`, `-head`, etc.), only the final operation's result is printed — e.g. `-agg_df -sort_by grp` prints just the sorted aggregated table.
+---
+
+**Missing values — `-handle_missing` / `.handle_missing()`**
+
+Object/category NA → `.` (or the fill you pass); numeric NA → `0`. Also strips object columns.
+
+```python
+df.handle_missing()
+df.handle_missing(fillna="NA")
+```
+
+```bash
+pytae data.parquet -handle_missing -head
+pytae data.parquet -handle_missing NA -select species,sex -value_counts
+```
+
+---
 
 **Conversion — `-convert`**
 
-Any supported format can be converted to any other — except writing `.sas7bdat` (pandas has no SAS writer). The output format is inferred from the `-o` extension; omitting `-o` defaults to `.csv` alongside the source.
+Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the source. Cannot write `.sas7bdat`.
 
 | Format | Read | Write |
 |---|---|---|
@@ -208,38 +275,70 @@ Any supported format can be converted to any other — except writing `.sas7bdat
 | `.sas7bdat` | ✓ | — |
 
 ```bash
-# parquet → csv (default when -o is omitted)
 pytae data.parquet -convert
-
-# parquet → txt (tab-delimited by default for .txt)
 pytae data.parquet -convert -o data.txt
-
-# parquet → parquet (column-subset via -select)
-pytae data.parquet -select col_a,col_b -convert -o subset.parquet
-
-# csv → parquet
+pytae data.parquet -select species,body_mass_g -convert -o subset.parquet
 pytae data.csv -convert -o data.parquet
-
-# sas7bdat → parquet
-pytae data.sas7bdat -convert -o data.parquet
-
-# txt with a custom delimiter → csv
+pytae data.sas7bdat -convert -o data.parquet          # character columns decoded as utf-8
+pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
 pytae data.txt -dlim "|" -convert -o data.csv
-
-# batch convert all parquets in a folder to csv
 pytae 'data/*.parquet' -convert
-
-# rename columns on the way out
 pytae data.parquet -convert -rename "old_name:new_name,another:clean"
+pytae data.csv -encoding latin-1 -convert -o data.parquet
 ```
 
-> **Delimiter (`-dlim`):** only applies to `.csv`, `.txt`, and `.sas7bdat` — `.parquet` is binary and has no delimiter.
-> Common values: `,` (csv default), `\t` (tab, txt default), `|`, `;`, `:`, `~`
+> **`-dlim`:** `.csv` / `.txt` / `.sas7bdat` only. Defaults: `,` for csv, tab for txt. Common: `|`, `;`, `:`, `~`.
 >
 > ```bash
 > pytae data.txt -dlim "|" -head
 > pytae data.csv -dlim ";" -convert -o data.parquet
 > ```
+
+---
+
+**Display extras**
+
+```bash
+pytae data.parquet -head -pretty
+pytae data.parquet -stats -round 2
+pytae data.parquet -head 20 -nrows 1000
+pytae data.parquet -sample 10
+pytae data.parquet -tail 3
+pytae data.parquet -head -to_clip          # copy; no stdout
+pytae data.parquet -shape -to_clip
+pytae huge.csv -convert -o huge.parquet -progress
+```
+
+`-to_clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -to_clip` copies the tail). Do not combine `-to_clip -shape` with a table-producing flag.
+
+---
+
+**Recipes**
+
+```bash
+# inspect a new file
+pytae data.parquet -shape
+pytae data.parquet -cols
+pytae data.parquet -dtype
+pytae data.parquet -head
+
+# Adelie penguins, numeric columns, mean by the remaining groups
+pytae data.parquet -qry "{'species': 'Adelie'}" -select dtype=numeric -agg_df mean
+
+# heaviest 5 after ranking
+pytae data.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
+
+# species counts, then sort the count table
+pytae data.parquet -select species -value_counts -sort_by count desc
+
+# subset + convert
+pytae data.parquet -qry "{'island': 'Dream'}" -select species,island,body_mass_g -convert -o dream.parquet
+
+# batch csv next to each parquet
+pytae 'folder/*.parquet' -convert
+```
+
+---
 
 **Other flags**
 
@@ -248,22 +347,23 @@ pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 | `-head N` | First N rows (default 5) |
 | `-tail N` | Last N rows (default 5) |
 | `-sample N` | N random rows (default 5) |
-| `-unique` | Drop duplicate rows and print unique rows |
-| `-value_counts` | Count occurrences across current working columns (use `-select` to choose columns) |
-| `-cols [asc\|desc]` | Print column names; optional A–Z / Z–A (default: file order) |
-| `-dtype [asc\|desc]` | Print dtypes; optional sort by name (default: file order) |
-| `-nulls [asc\|desc]` | Print null counts; optional sort by name (default: file order) |
-| `-sort_by COLUMNS [asc\|desc]` | Sort rows by column(s), comma-separated (default: ascending) |
-| `-group_by COLUMNS` | Explicit group-by columns for `-agg` or `-group_x` (comma-separated) |
-| `-group_x [COL[:AGGFUNC]]` | Broadcast a group aggregate to every row (default: group size `n`; e.g. `body_mass_g:max`) |
-| `-dropna true\|false` | For `-agg_df`/`-agg`/`-value_counts`: drop NA keys when `true` (default: `true`) |
+| `-unique` | Drop duplicate rows |
+| `-value_counts` | Counts across current working columns |
+| `-cols [asc\|desc]` | Column names (default: file order) |
+| `-dtype [asc\|desc]` | Dtypes (CSV/TXT: first 10k rows) |
+| `-nulls [asc\|desc]` | Null counts |
+| `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
+| `-group_by COLUMNS` | Groups for `-agg` or `-group_x` |
+| `-group_x [COL[:AGGFUNC]]` | Broadcast group agg (`n`, or `body_mass_g:max`) |
+| `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
+| `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
-| `-dlim CHAR` | Field delimiter for `.csv`/`.txt`/`.sas7bdat` (not `.parquet`) |
-| `-stats` | Numeric summary (alias `-describe`) |
-| `-select SPEC` | Restrict columns (union of names, slices, and `key=value` tokens) |
-| `-encoding ENC` | Text encoding for `.csv`/`.txt`/`.sas7bdat` (e.g. `latin-1`); not used for `.parquet` |
-| `-rename old:new,...` | Rename columns on conversion |
-| `-pretty` | Render tables as markdown |
-| `-round N` | Round numeric columns to N decimal places before printing/copying; non-numeric columns unchanged |
-| `-to_clip` | Copy output to clipboard; suppresses terminal output |
-| `-progress` | Show progress for large files |
+| `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |
+| `-stats` | Numeric summary (`-describe`) |
+| `-select SPEC` | Restrict columns (union of tokens) |
+| `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt: pandas infer) |
+| `-rename old:new,...` | Rename on convert |
+| `-pretty` | Markdown table |
+| `-round N` | Round numeric print/copy |
+| `-to_clip` | Copy last result; suppress stdout |
+| `-progress` | Progress for large converts |
