@@ -228,6 +228,17 @@ def parse_bool_text(raw: str) -> bool:
     raise argparse.ArgumentTypeError("expected 'true' or 'false'")
 
 
+def parse_positive_int(raw) -> int:
+    """Parse a row-count flag; reject 0 and negatives (e.g. -head 0, -head -5)."""
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(f"invalid integer: {raw!r}") from None
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f"must be > 0, got {n}")
+    return n
+
+
 def parse_list_order(raw: str) -> str:
     """Parse optional listing order for -cols/-dtype/-nulls: asc or desc.
 
@@ -282,6 +293,7 @@ def cmd_convert(
     sep: str | None = None,
     encoding: str | None = None,
     progress: bool = False,
+    announce: bool = True,
 ) -> None:
     if rename:
         df = df.rename(columns=rename)
@@ -292,14 +304,14 @@ def cmd_convert(
         write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    print(f"Wrote {len(df)} rows to {dest}")
+    if announce:
+        print(f"Wrote {len(df)} rows to {dest}")
 
 
 class _Pipeline:
     """-select/-query/-qry define the starting view. -head/-tail/-sample narrow
-    it further, and every operator that runs afterwards (including another
-    -head/-tail/-sample, -stats, -nulls, -cols, -dtype, -shape, -convert, -agg_df, -agg) sees
-    that narrowed view. Schema-only ops (-cols/-dtype/-shape) avoid loading
+    it further, and every operator that runs afterwards sees that narrowed view.
+    Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it.
     """
 
@@ -441,9 +453,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("path", help="path to a .parquet, .csv, .txt, or .sas7bdat file, "
                                       "or a glob pattern like 'data/*.parquet' for batch conversion")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("-head", "--head", nargs="?", const=5, type=int, default=None, metavar="N",
+    parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the first N rows (default 5)")
-    parser.add_argument("-tail", "--tail", nargs="?", const=5, type=int, default=None, metavar="N",
+    parser.add_argument("-tail", "--tail", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the last N rows (default 5)")
     parser.add_argument("-shape", "--shape", action=_OrderedFlag, help="print (rows, cols)")
     parser.add_argument("-cols", "--cols", nargs="?", const="file", default=None, metavar="ORDER",
@@ -461,14 +473,14 @@ def build_parser() -> argparse.ArgumentParser:
                          help="show pandas value_counts across current working columns (use -select to choose columns)")
     parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
                          help="drop duplicate rows and print unique rows")
-    parser.add_argument("-sample", "--sample", nargs="?", const=5, type=int, default=None, metavar="N",
+    parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
     parser.add_argument("-sort_by", "--sort_by", dest="sort_by", nargs="+", default=None, metavar="COLUMNS",
                          action=_OrderedSortBy,
                          help="sort rows by column(s), comma-separated; optional asc|desc (default: asc)")
     parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
                          help="explicit group-by columns for -agg or -group_x (comma-separated), e.g. \"'col_a','col_b'\"")
-    parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=int, default=None, metavar="N",
+    parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", default=None, metavar="SPEC",
                          help="restrict columns (union of tokens): names, start:end slices, and key=value "
@@ -571,46 +583,40 @@ def _process_path(
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     op_order = getattr(args, "op_order", [])
-    dataframe_output_ops = {"describe", "head", "tail", "sample", "agg_df", "agg", "value_counts", "unique", "sort_by", "group_x", "handle_missing"}
+    last_idx = len(op_order) - 1
 
-    def should_print_df_op(current_op: str, later_ops: list[str]) -> bool:
-        if not emit_stdout:
-            return False
-        if current_op not in dataframe_output_ops:
-            return True
-        # Only print the final DataFrame-style operation in a chain.
-        return not any(op in dataframe_output_ops for op in later_ops)
+    def should_print(idx: int) -> bool:
+        return emit_stdout and idx == last_idx
 
     for idx, op in enumerate(op_order):
-        later_ops = op_order[idx + 1:]
         if op == "shape":
             shape_str = str(pipeline.shape())
-            if emit_stdout:
+            if should_print(idx):
                 print(shape_str)
             if args.to_clip:
                 clip_action = lambda s=shape_str: _copy_to_clipboard(s)
         elif op == "cols":
             names = _list_order_names(pipeline.columns(), args.cols)
-            if emit_stdout:
+            if should_print(idx):
                 for name in names:
                     print(name)
             if args.to_clip:
                 clip_action = lambda n=names: pd.Series(n).to_clipboard(index=False, header=False)
         elif op == "dtype":
             dtypes = _list_order_index(pipeline.dtypes(), args.dtype)
-            if emit_stdout:
+            if should_print(idx):
                 print(dtypes.to_string())
             if args.to_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
             nulls = _list_order_index(pipeline.dataframe().isna().sum(), args.nulls)
-            if emit_stdout:
+            if should_print(idx):
                 print(nulls.to_string())
             if args.to_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
             described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(described, index=True, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=described: d.to_clipboard(index=True)
@@ -626,33 +632,33 @@ def _process_path(
                 result = source_df.value_counts(subset=value_count_cols, dropna=args.dropna).rename("count").reset_index()
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "unique":
             unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
             pipeline._df = unique_df
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(unique_df, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=unique_df: d.to_clipboard(index=False)
         elif op == "head":
             df = _apply_round(pipeline.head(args.head), args.round_ndigits)
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(df, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "tail":
             df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(df, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "sample":
             sampled = _apply_round(pipeline.sample(args.sample), args.round_ndigits)
             n = len(sampled)
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(sampled, pretty=args.pretty) if n else "(no rows)")
             if args.to_clip and n:
                 clip_action = lambda d=sampled: d.to_clipboard(index=False)
@@ -664,7 +670,7 @@ def _process_path(
             ascending = getattr(args, "sort_by_order", "asc") != "desc"
             sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
             pipeline._df = sorted_df
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(sorted_df, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
@@ -672,7 +678,7 @@ def _process_path(
             aggfunc = parse_agg(args.agg_df)
             result = _apply_round(pipeline.dataframe().agg_df(aggfunc=aggfunc, dropna=args.dropna), args.round_ndigits)
             pipeline._df = result
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
@@ -693,7 +699,7 @@ def _process_path(
             result = source_df.groupby(group_cols, dropna=args.dropna, observed=True, as_index=False).agg(**named_agg)
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
@@ -710,14 +716,14 @@ def _process_path(
                 args.round_ndigits,
             )
             pipeline._df = result
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "handle_missing":
             result = _apply_round(pipeline.dataframe().handle_missing(fillna=args.handle_missing), args.round_ndigits)
             pipeline._df = result
-            if should_print_df_op(op, later_ops):
+            if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
@@ -725,6 +731,7 @@ def _process_path(
             cmd_convert(
                 pipeline.dataframe(), path, args.output,
                 rename=rename_map, sep=args.dlim, encoding=args.encoding, progress=args.progress,
+                announce=should_print(idx),
             )
 
     if args.to_clip and clip_action is not None:

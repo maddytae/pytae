@@ -40,6 +40,16 @@ def test_parquet_reader_roundtrip(tmp_path):
     pd.testing.assert_frame_equal(reader.to_dataframe(), df)
 
 
+def test_parquet_head_and_tail_keep_schema_when_empty(tmp_path):
+    path = tmp_path / "empty.parquet"
+    pd.DataFrame({"a": pd.Series(dtype="int64"), "b": pd.Series(dtype="object")}).to_parquet(path, index=False)
+    reader = get_reader(path)
+
+    for frame in (reader.head(5), reader.tail(5)):
+        assert list(frame.columns) == ["a", "b"]
+        assert len(frame) == 0
+
+
 def test_txt_reader_tab_delimited(tmp_path):
     path = tmp_path / "t.txt"
     df = _frame()

@@ -48,12 +48,21 @@ class ParquetReader:
     def dtypes(self) -> pd.Series:
         return self._pf.schema_arrow.empty_table().to_pandas().dtypes
 
+    def _empty(self) -> pd.DataFrame:
+        return self._pf.schema_arrow.empty_table().to_pandas()
+
     def head(self, n: int) -> pd.DataFrame:
-        batch = next(self._pf.iter_batches(batch_size=n))
+        if n <= 0 or self._pf.metadata.num_rows == 0:
+            return self._empty()
+        batch = next(self._pf.iter_batches(batch_size=n), None)
+        if batch is None:
+            return self._empty()
         return batch.to_pandas().head(n)
 
     def tail(self, n: int) -> pd.DataFrame:
         total = self._pf.metadata.num_rows
+        if n <= 0 or total == 0:
+            return self._empty()
         skip = max(total - n, 0)
         parts, seen = [], 0
         for batch in self._pf.iter_batches(batch_size=max(n, 1)):
@@ -61,7 +70,7 @@ class ParquetReader:
             if start_in_batch < batch.num_rows:
                 parts.append(batch.to_pandas().iloc[start_in_batch:])
             seen += batch.num_rows
-        df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+        df = pd.concat(parts, ignore_index=True) if parts else self._empty()
         return df.tail(n)
 
     def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None) -> pd.DataFrame:

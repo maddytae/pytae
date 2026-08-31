@@ -11,14 +11,14 @@ pytae data.parquet -nulls
 pytae data.parquet -stats
 ```
 
-Flag **order is the pipeline**. `-select` / `-qry` / `-query` define the starting view. Later ops see that view. When several DataFrame ops are chained, **only the last table is printed**.
+Flag **order is the pipeline**. `-select` / `-qry` / `-query` define the starting view. Later ops see that view. **Only the last operation prints.** Earlier flags still run.
 
 ```bash
-# shape of the whole file, then first 3 rows
-pytae data.parquet -shape -head 3
-
-# first 3 rows, then shape of that 3-row frame → (3, n)
+# first 3 rows, then shape of that 3-row frame → prints (3, n)
 pytae data.parquet -head 3 -shape
+
+# names only (head runs but is not printed)
+pytae data.parquet -head 5 -cols
 ```
 
 Use the bundled penguins-style names in the examples below (`species`, `island`, `body_mass_g`, `bill_length_mm`, …).

@@ -24,7 +24,7 @@ def test_order_head_then_shape(tmp_path, capsys):
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "(3, 2)" in out
+    assert out.strip() == "(3, 2)"
 
 
 def test_order_shape_then_head(tmp_path, capsys):
@@ -34,7 +34,39 @@ def test_order_shape_then_head(tmp_path, capsys):
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "(10, 2)" in out
+    assert "(10, 2)" not in out
+    assert "0" in out and "10" in out
+
+
+def test_head_then_cols_prints_only_names(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": range(8), "b": range(8)}))
+
+    exit_code = cli.main([path, "-head", "5", "-cols"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert captured.out.strip().splitlines() == ["a", "b"]
+
+
+def test_empty_parquet_head_keeps_columns(tmp_path, capsys):
+    path = tmp_path / "empty.parquet"
+    pd.DataFrame({"a": pd.Series(dtype="int64"), "b": pd.Series(dtype="object")}).to_parquet(path, index=False)
+
+    exit_code = cli.main([str(path), "-head", "5"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert "a" in captured.out and "b" in captured.out
+    assert "Empty DataFrame" in captured.out
+
+
+def test_nonpositive_head_is_usage_error(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
+
+    for n in ("0", "-5"):
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main([path, "-head", n])
+        assert exc_info.value.code == 2
 
 
 def test_order_agg_then_shape_uses_aggregated_frame(tmp_path, capsys):
