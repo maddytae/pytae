@@ -4,6 +4,8 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.sas7bdat`). The
 
 ```bash
 pytae data.parquet -head
+pytae data.parquet -tail
+pytae data.parquet -sample
 pytae data.parquet -shape
 pytae data.parquet -cols
 pytae data.parquet -dtype
@@ -338,9 +340,12 @@ pytae huge.csv -convert -o huge.parquet -progress
 pytae data.parquet -shape
 pytae data.parquet -cols
 pytae data.parquet -dtype
+pytae data.parquet -nulls
 pytae data.parquet -info
 pytae data.parquet -describe
 pytae data.parquet -head
+pytae data.parquet -tail
+pytae data.parquet -sample
 
 # Adelie penguins, numeric columns, mean by the remaining groups
 pytae data.parquet -qry "{'species': 'Adelie'}" -select dtype=numeric -agg_df mean
