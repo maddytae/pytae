@@ -49,3 +49,7 @@ def test_group_x_count_and_value():
     assert counted["n"].tolist() == [2, 2, 1]
     averaged = df.group_x(group=["grp"], aggfunc="mean", value="val")
     assert averaged["x"].tolist() == [1.5, 1.5, 3.0]
+    via_alias = df.group_x(g="grp", v="val", a="mean")
+    assert via_alias["x"].tolist() == [1.5, 1.5, 3.0]
+    via_grp = df.group_x(grp="grp", val="val", agg="mean")
+    assert via_grp["x"].tolist() == [1.5, 1.5, 3.0]

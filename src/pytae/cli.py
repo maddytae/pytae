@@ -216,13 +216,20 @@ def parse_group_agg(raw: str) -> dict:
     return spec
 
 
-def parse_group_x_arg(raw: str) -> tuple[str, str | None]:
-    """Parse -group_x: "n" or "body_mass_g:max" into (aggfunc, value_col)."""
-    raw = raw.strip()
-    if ":" in raw:
-        value_col, aggfunc = raw.split(":", 1)
-        return aggfunc.strip(), value_col.strip()
-    return raw, None
+_GROUP_X_KEYS = ("g", "grp", "group", "v", "val", "value", "a", "agg", "aggfunc", "dropna", "observed")
+
+
+def parse_group_x_arg(raw: str | None) -> dict:
+    """Parse -group_x as key=value tokens, e.g. g='species',v='body_mass_g',a='max'."""
+    from pytae.other_utilities import normalize_group_x_kwargs
+    kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
+    try:
+        kwargs = normalize_group_x_kwargs(kwargs)
+    except ValueError as exc:
+        raise SystemExit(f"-group_x: {exc}") from None
+    if "group" in kwargs and isinstance(kwargs["group"], str):
+        kwargs["group"] = parse_columns(kwargs["group"])
+    return kwargs
 
 
 def _unquote_name(raw: str) -> str:
@@ -254,7 +261,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             raise SystemExit(f"{flag}: {key}= needs a value")
         if key in kwargs:
             raise SystemExit(f"{flag}: {key}= given more than once")
-        kwargs[key] = parse_bool_text(value) if key == "dropna" else value
+        kwargs[key] = parse_bool_text(value) if key in ("dropna", "observed") else value
     return kwargs
 
 
@@ -539,7 +546,8 @@ def build_parser() -> argparse.ArgumentParser:
                          action=_OrderedSortBy,
                          help="sort rows by column(s), comma-separated; optional asc|desc (default: asc)")
     parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
-                         help="explicit group-by columns for -agg or -group_x (comma-separated), e.g. \"'col_a','col_b'\"")
+                         help="explicit group-by columns for -agg (comma-separated); also used by -group_x "
+                              "if group= is omitted")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", default=None, metavar="SPEC",
@@ -559,11 +567,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="aggregate using explicit -group_by columns and pandas groupby/agg; dict literal "
                               "mapping column to aggfunc, or to (output_name, aggfunc), e.g. "
                               "\"{'amount': 'sum'}\" or \"{'amount': ('total', 'sum')}\"; requires -group_by")
-    parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="n", default=None,
-                         metavar="COL[:AGGFUNC]", action=_OrderedValue,
-                         help="broadcast a group aggregate back to every row using pytae group_x(); defaults to "
-                              "'n' (group size); use \"col:aggfunc\" (e.g. \"body_mass_g:max\") to "
-                              "broadcast another aggregate; uses -group_by columns, or auto-detects (non-numeric) if omitted")
+    parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
+                         metavar="KEY=VALUE,...", action=_OrderedValue,
+                         help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
+                              "size n on non-numeric columns; e.g. g='species',v='body_mass_g',a='max'")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
@@ -781,16 +788,18 @@ def _process_path(
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "group_x":
             source_df = pipeline.dataframe()
-            aggfunc, value_col = parse_group_x_arg(args.group_x)
-            group_cols = parse_columns(args.group_by) if args.group_by else None
+            gx = parse_group_x_arg(args.group_x)
+            if "group" not in gx and args.group_by:
+                gx["group"] = parse_columns(args.group_by)
+            if "dropna" not in gx:
+                gx["dropna"] = args.dropna
+            group_cols = gx.get("group")
             if group_cols and any(c not in source_df.columns for c in group_cols):
-                return _fail(parser, batch, unknown_columns_message("-group_by", group_cols, list(source_df.columns)))
+                return _fail(parser, batch, unknown_columns_message("-group_x", group_cols, list(source_df.columns)))
+            value_col = gx.get("value")
             if value_col and value_col not in source_df.columns:
                 return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))
-            result = _apply_round(
-                source_df.group_x(group=group_cols, dropna=args.dropna, observed=True, aggfunc=aggfunc, value=value_col),
-                args.round_ndigits,
-            )
+            result = _apply_round(source_df.group_x(**gx), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))

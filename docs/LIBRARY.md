@@ -78,5 +78,6 @@ penguins.cols()                    # sorted names; cols(ascending=None) keeps fi
 penguins.handle_missing()          # object NA -> '.', numeric NA -> 0
 penguins.group_x()                 # group size column `n`
 penguins.group_x(group=["species"], aggfunc="max", value="body_mass_g")
+penguins.group_x(g="species", v="body_mass_g", a="max")
 penguins.to_clip()                 # copy to clipboard (does not shadow pandas clip)
 ```

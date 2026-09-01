@@ -225,7 +225,18 @@ def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "val:mean"])
+    exit_code = cli.main([path, "-group_x", "g='grp',v='val',a='mean'"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "1.5" in out and "3.5" in out
+
+
+def test_group_x_still_accepts_group_by_flag(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [1, 2, 3, 4]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "v='val',a='mean'"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
