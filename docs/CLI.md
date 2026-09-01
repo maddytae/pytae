@@ -266,17 +266,15 @@ pytae data.parquet -handle_missing NA -select species,sex -value_counts
 
 **Reshape — `-long` / `-wide`**
 
-Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `variable` / `value`.
+Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `col=variable`, `value=value`. Quote the spec when values have spaces.
 
 ```bash
 pytae data.parquet -long
-pytae data.parquet -long feature
-pytae data.parquet -long feature:amount
-pytae data.parquet -long "feature name:amount col"     # spaces: quote the whole spec
+pytae data.parquet -long "col='metric',value='reading'"
 pytae tall.csv -wide
-pytae tall.csv -wide feature:amount
-pytae tall.csv -wide country:balance:sum
-pytae tall.csv -wide "country name:body mass"
+pytae tall.csv -wide "col='metric',value='reading'"
+pytae tall.csv -wide "col='country',value='balance',aggfunc='mean'"
+pytae tall.csv -wide "col='country name',value='body mass'"
 pytae data.parquet -long -convert -o tall.csv
 ```
 
@@ -377,8 +375,8 @@ pytae 'folder/*.parquet' -convert
 | `-group_by COLUMNS` | Groups for `-agg` or `-group_x` |
 | `-group_x [COL[:AGGFUNC]]` | Broadcast group agg (`n`, or `body_mass_g:max`) |
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
-| `-long [COL[:VALUE]]` | Melt numeric columns (`variable`/`value` by default) |
-| `-wide [COL[:VALUE[:AGGFUNC]]]` | Pivot long to wide (`variable`/`value` by default) |
+| `-long [KEY=VALUE,...]` | Melt numeric columns (`col`/`value`; defaults `variable`/`value`) |
+| `-wide [KEY=VALUE,...]` | Pivot long to wide (`col`/`value`/`aggfunc`/`dropna`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |

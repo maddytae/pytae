@@ -265,7 +265,7 @@ def test_long_renames_melt_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-long", "feature:amount", "-cols"])
+    exit_code = cli.main([path, "-long", "col='feature',value='amount'", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
@@ -281,7 +281,7 @@ def test_wide_pivots_long_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "country:balance", "-cols"])
+    exit_code = cli.main([path, "-wide", "col='country',value='balance'", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -292,7 +292,7 @@ def test_long_quoted_names_with_spaces(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-long", "feature name:amount col", "-cols"])
+    exit_code = cli.main([path, "-long", "col='feature name',value='amount col'", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature name", "amount col"]
@@ -308,18 +308,35 @@ def test_wide_quoted_names_with_spaces(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "country name:body mass", "-cols"])
+    exit_code = cli.main([path, "-wide", "col='country name',value='body mass'", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["id", "cn", "sg"]
 
 
+def test_wide_aggfunc_mean(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "id": ["a", "a"],
+            "country": ["sg", "sg"],
+            "balance": [10, 20],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-wide", "col='country',value='balance',aggfunc='mean'", "-head", "1"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert "15" in captured.out
+
+
 def test_wide_unknown_column_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"id": ["a"], "balance": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-wide", "country:balance"])
+        cli.main([path, "-wide", "col='country',value='balance'"])
     assert exc_info.value.code == 2
 
 

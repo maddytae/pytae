@@ -232,41 +232,38 @@ def _unquote_name(raw: str) -> str:
     return raw
 
 
-def parse_long_arg(raw: str | None) -> dict:
-    """Parse -long: empty (defaults), COL, or COL:VALUE → kwargs for long()."""
+_LONG_KEYS = ("col", "value")
+_WIDE_KEYS = ("col", "value", "aggfunc", "dropna")
+
+
+def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
+    """Parse -long/-wide as key=value tokens, e.g. col='metric',value='reading',aggfunc='mean'."""
     raw = (raw or "").strip()
     if not raw:
         return {}
-    if ":" in raw:
-        col, value = raw.split(":", 1)
-        kwargs = {}
-        col, value = _unquote_name(col), _unquote_name(value)
-        if col:
-            kwargs["col"] = col
-        if value:
-            kwargs["value"] = value
-        if not kwargs:
-            raise SystemExit("-long: expected COL or COL:VALUE")
-        return kwargs
-    return {"col": _unquote_name(raw)}
+    kwargs: dict = {}
+    for token in _split_select_tokens(raw):
+        if "=" not in token:
+            raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
+        key, _, value = token.partition("=")
+        key = key.strip()
+        value = _unquote_name(value)
+        if key not in keys:
+            raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
+        if not value:
+            raise SystemExit(f"{flag}: {key}= needs a value")
+        if key in kwargs:
+            raise SystemExit(f"{flag}: {key}= given more than once")
+        kwargs[key] = parse_bool_text(value) if key == "dropna" else value
+    return kwargs
+
+
+def parse_long_arg(raw: str | None) -> dict:
+    return parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
 
 
 def parse_wide_arg(raw: str | None) -> dict:
-    """Parse -wide: empty (defaults), COL, COL:VALUE, or COL:VALUE:AGGFUNC."""
-    raw = (raw or "").strip()
-    if not raw:
-        return {}
-    parts = [_unquote_name(p) for p in raw.split(":")]
-    if len(parts) > 3 or not parts[0]:
-        raise SystemExit("-wide: expected COL[:VALUE[:AGGFUNC]]")
-    kwargs: dict = {"col": parts[0]}
-    if len(parts) >= 2 and parts[1]:
-        kwargs["value"] = parts[1]
-    if len(parts) == 3:
-        if not parts[2]:
-            raise SystemExit("-wide: expected COL[:VALUE[:AGGFUNC]]")
-        kwargs["aggfunc"] = parts[2]
-    return kwargs
+    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -562,13 +559,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
     parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
-                         metavar="COL[:VALUE]", action=_OrderedValue,
-                         help="melt numeric columns to long form (pytae long()); default names variable/value; "
-                              "COL or COL:VALUE rename those columns")
+                         metavar="KEY=VALUE,...", action=_OrderedValue,
+                         help="melt numeric columns to long form (pytae long()); defaults col=variable, "
+                              "value=value; e.g. col='metric',value='reading'")
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
-                         metavar="COL[:VALUE[:AGGFUNC]]", action=_OrderedValue,
-                         help="pivot long form to wide (pytae wide()); default col=variable, value=value; "
-                              "optional AGGFUNC uses pivot_table")
+                         metavar="KEY=VALUE,...", action=_OrderedValue,
+                         help="pivot long form to wide (pytae wide()); defaults col=variable, value=value; "
+                              "e.g. col='metric',value='reading',aggfunc='mean'")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
                          help="for -agg_df, -agg, and -value_counts: include NA keys when false; accepts true or false (default: true)")
