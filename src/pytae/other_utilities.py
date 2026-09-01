@@ -50,10 +50,10 @@ def cols(self, ascending=True):
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
 
 
-def group_x(self, group=None, dropna=True, observed=True, aggfunc="n", value=None):
+def group_x(self, group=None, dropna=True, observed=True, a="n", v=None):
     """Broadcast a group aggregate to every row (pandas transform).
 
-    Default aggfunc='n' is group size. Pass value= and aggfunc= for another aggregate.
+    Default a='n' is group size. Pass v= and a= for another aggregate.
     If group is omitted, non-numeric columns are used.
     """
     df = self.copy()
@@ -63,10 +63,10 @@ def group_x(self, group=None, dropna=True, observed=True, aggfunc="n", value=Non
     elif isinstance(group, str):
         group = [group]
 
-    if aggfunc == "n" or value is None:
+    if a == "n" or v is None:
         df["n"] = df.groupby(group, dropna=dropna, observed=observed).transform("size")
     else:
-        df["x"] = df.groupby(group, dropna=dropna, observed=observed)[value].transform(aggfunc)
+        df["x"] = df.groupby(group, dropna=dropna, observed=observed)[v].transform(a)
 
     return df
 

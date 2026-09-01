@@ -128,6 +128,7 @@ Groups by all **non-numeric** columns and aggregates the rest. `n` is group coun
 df.agg_df("mean")
 df.agg_df(["sum", "mean", "n"])
 df.agg_df({"body_mass_g": "mean", "n": "n"})
+df.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keywords are used
 ```
 
 ```bash
@@ -173,15 +174,15 @@ Keeps **every row** and adds a column (`n` = group size, `x` = another aggregate
 ```python
 df.group_x()
 df.group_x(group=["species"])
-df.group_x(group=["species"], value="body_mass_g", aggfunc="max")
+df.group_x(group=["species"], v="body_mass_g", a="max")
 ```
 
 ```bash
 pytae data.parquet -group_x
 pytae data.parquet -group_x "group='species'"
-pytae data.parquet -group_x "group='species',value='body_mass_g',aggfunc='max'"
-pytae data.parquet -group_x "group='species,island',value='body_mass_g',aggfunc='max'"
-pytae data.parquet -group_x "group='bill length mm',value='body mass g',aggfunc='max'"
+pytae data.parquet -group_x "group='species',v='body_mass_g',a='max'"
+pytae data.parquet -group_x "group='species,island',v='body_mass_g',a='max'"
+pytae data.parquet -group_x "group='bill length mm',v='body mass g',a='max'"
 pytae data.parquet -group_x "group='bill length mm,island'"
 ```
 
@@ -195,7 +196,7 @@ You do **not** need `-group_by` for `-group_x` (`-group_by` is for `-agg`).
    Gentoo Female       4500.0
    Gentoo   Male       5700.0
 
-# after  -group_x "group='species',value='body_mass_g',aggfunc='max'"
+# after  -group_x "group='species',v='body_mass_g',a='max'"
   species    sex  body_mass_g      x
    Adelie   Male       3750.0 3800.0
    Adelie Female       3800.0 3800.0
@@ -274,15 +275,15 @@ pytae data.parquet -handle_missing NA -select species,sex -value_counts
 
 **Reshape — `-long` / `-wide`**
 
-Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `column=variable`, `value=value`. Quote the spec when values have spaces.
+Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `c=variable`, `v=value`. Quote the spec when values have spaces.
 
 ```bash
 pytae data.parquet -long
-pytae data.parquet -long "column='metric',value='reading'"
+pytae data.parquet -long "c='metric',v='reading'"
 pytae tall.csv -wide
-pytae tall.csv -wide "column='metric',value='reading'"
-pytae tall.csv -wide "column='country',value='balance',aggfunc='mean'"
-pytae tall.csv -wide "column='country name',value='body mass'"
+pytae tall.csv -wide "c='metric',v='reading'"
+pytae tall.csv -wide "c='country',v='balance',a='mean'"
+pytae tall.csv -wide "c='country name',v='body mass'"
 pytae data.parquet -long -convert -o tall.csv
 ```
 
@@ -384,10 +385,10 @@ pytae 'folder/*.parquet' -convert
 | `-nulls [asc\|desc]` | Null counts |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
 | `-group_by COLUMNS` | Groups for `-agg` (optional fallback for `-group_x`) |
-| `-group_x [KEY=VALUE,...]` | Broadcast group agg (`group`, `value`, `aggfunc`) |
+| `-group_x [KEY=VALUE,...]` | Broadcast group agg (`group`, `v`, `a`) |
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
-| `-long [KEY=VALUE,...]` | Melt numeric columns (`column`, `value`) |
-| `-wide [KEY=VALUE,...]` | Pivot long to wide (`column`, `value`, `aggfunc`, `dropna`) |
+| `-long [KEY=VALUE,...]` | Melt numeric columns (`c`, `v`) |
+| `-wide [KEY=VALUE,...]` | Pivot long to wide (`c`, `v`, `a`, `dropna`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |

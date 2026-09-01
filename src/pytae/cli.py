@@ -274,11 +274,11 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_GROUP_X_KEYS = ("group", "value", "aggfunc", "dropna", "observed")
+_GROUP_X_KEYS = ("group", "v", "a", "dropna", "observed")
 
 
 def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. group='species',value='body_mass_g',aggfunc='max'."""
+    """Parse -group_x as key=value tokens, e.g. group='species',v='body_mass_g',a='max'."""
     kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
     if "group" in kwargs and isinstance(kwargs["group"], str):
         kwargs["group"] = parse_columns(kwargs["group"])
@@ -292,12 +292,12 @@ def _unquote_name(raw: str) -> str:
     return raw
 
 
-_LONG_KEYS = ("column", "value")
-_WIDE_KEYS = ("column", "value", "aggfunc", "dropna")
+_LONG_KEYS = ("c", "v")
+_WIDE_KEYS = ("c", "v", "a", "dropna")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide as key=value tokens, e.g. column='metric',value='reading',aggfunc='mean'."""
+    """Parse -long/-wide/-group_x as key=value tokens, e.g. c='metric',v='reading',a='mean'."""
     raw = (raw or "").strip()
     if not raw:
         return {}
@@ -613,19 +613,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
-                              "size n on non-numeric columns; e.g. group='species',value='body_mass_g',aggfunc='max'")
+                              "size n on non-numeric columns; e.g. group='species',v='body_mass_g',a='max'")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
     parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="melt numeric columns to long form (pytae long()); defaults column=variable, "
-                              "value=value; e.g. column='metric',value='reading'")
+                         help="melt numeric columns to long form (pytae long()); defaults c=variable, "
+                              "v=value; e.g. c='metric',v='reading'")
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="pivot long form to wide (pytae wide()); defaults column=variable, value=value; "
-                              "e.g. column='country',value='balance',aggfunc='mean'")
+                         help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
+                              "e.g. c='country',v='balance',a='mean'")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
                          help="for -agg_df, -agg, and -value_counts: include NA keys when false; accepts true or false (default: true)")
@@ -802,7 +802,7 @@ def _process_path(
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
         elif op == "agg_df":
             aggfunc = parse_agg(args.agg_df)
-            result = _apply_round(pipeline.dataframe().agg_df(aggfunc=aggfunc, dropna=args.dropna), args.round_ndigits)
+            result = _apply_round(pipeline.dataframe().agg_df(a=aggfunc, dropna=args.dropna), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
@@ -838,7 +838,7 @@ def _process_path(
             group_cols = gx.get("group")
             if group_cols and any(c not in source_df.columns for c in group_cols):
                 return _fail(parser, batch, unknown_columns_message("-group_x", group_cols, list(source_df.columns)))
-            value_col = gx.get("value")
+            value_col = gx.get("v")
             if value_col and value_col not in source_df.columns:
                 return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))
             result = _apply_round(source_df.group_x(**gx), args.round_ndigits)
@@ -866,7 +866,7 @@ def _process_path(
             from pytae.shape import wide as wide_fn
             source_df = pipeline.dataframe()
             wide_kwargs = parse_wide_arg(args.wide)
-            missing = [c for c in (wide_kwargs.get("column", "variable"), wide_kwargs.get("value", "value"))
+            missing = [c for c in (wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value"))
                        if c not in source_df.columns]
             if missing:
                 return _fail(parser, batch, unknown_columns_message("-wide", missing, list(source_df.columns)))

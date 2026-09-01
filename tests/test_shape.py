@@ -15,7 +15,7 @@ def test_long():
     penguins = sample("penguins")
 
     
-    result = penguins.long(column='features')
+    result = penguins.long(c='features')
     
 
     numeric_cols = penguins.select_dtypes(include=['number']).columns.tolist()
@@ -36,7 +36,7 @@ def test_wide_falls_back_to_sum_when_pivot_has_duplicate_keys():
         }
     )
 
-    result = df.wide(column="country", value="balance")
+    result = df.wide(c="country", v="balance")
 
     expected_df = df.pivot_table(
         index="id", columns="country", values="balance", aggfunc="sum"
@@ -54,7 +54,7 @@ def test_wide_uses_pivot_when_keys_are_unique():
         }
     )
 
-    result = df.wide(column="country", value="balance")
+    result = df.wide(c="country", v="balance")
 
     expected_df = df.pivot(index="id", columns="country", values="balance").reset_index()
     expected_df.columns.name = None

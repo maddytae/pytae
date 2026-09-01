@@ -51,9 +51,9 @@ penguins.select("species", regex="bill|body")
 `long()` melts numeric columns to rows. `wide()` pivots a column's values into headers. [shape.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/shape.ipynb)
 
 ```python
-tall = penguins.long(column="feature")
-tall.wide(column="feature", value="value")
-tall.wide(column="feature", value="value", aggfunc="mean")
+tall = penguins.long(c="feature")
+tall.wide(c="feature", v="value")
+tall.wide(c="feature", v="value", a="mean")
 ```
 
 ## 5) Aggregation — `agg_df()`
@@ -64,6 +64,7 @@ Groups by all non-numeric columns and aggregates the rest. `n` is group count. [
 penguins.agg_df("mean")
 penguins.agg_df(["sum", "mean", "n"])
 penguins.agg_df({"body_mass_g": "mean", "n": "n"})
+penguins.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keywords are used
 ```
 
 ## 6) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`
@@ -74,6 +75,6 @@ penguins.agg_df({"body_mass_g": "mean", "n": "n"})
 penguins.cols()                    # sorted names; cols(ascending=None) keeps file order
 penguins.handle_missing()          # object NA -> '.', numeric NA -> 0
 penguins.group_x()                 # group size column `n`
-penguins.group_x(group=["species"], aggfunc="max", value="body_mass_g")
+penguins.group_x(group=["species"], v="body_mass_g", a="max")
 penguins.to_clip()                 # copy to clipboard (does not shadow pandas clip)
 ```
