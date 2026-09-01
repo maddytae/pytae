@@ -1,5 +1,38 @@
 import pandas as pd
 
+# Canonical names plus short aliases used by long()/wide() and the CLI.
+_RESHAPE_ALIASES = {
+    "c": "column",
+    "col": "column",
+    "column": "column",
+    "v": "value",
+    "val": "value",
+    "value": "value",
+    "a": "aggfunc",
+    "agg": "aggfunc",
+    "aggfunc": "aggfunc",
+    "dropna": "dropna",
+}
+_LONG_CANON = ("column", "value")
+_WIDE_CANON = ("column", "value", "aggfunc", "dropna")
+
+
+def normalize_reshape_kwargs(kwargs, *, allow_agg: bool = False) -> dict:
+    """Map c/column, v, a/agg onto col, value, aggfunc. Reject unknown or duplicate names."""
+    allowed = _WIDE_CANON if allow_agg else _LONG_CANON
+    aliases = {src: dst for src, dst in _RESHAPE_ALIASES.items() if dst in allowed}
+    out: dict = {}
+    seen_from: dict = {}
+    for key, val in kwargs.items():
+        if key not in aliases:
+            raise ValueError(f"unknown argument {key!r}; expected {', '.join(sorted(aliases))}")
+        canon = aliases[key]
+        if canon in out:
+            raise ValueError(f"{canon} given more than once ({seen_from[canon]!r} and {key!r})")
+        out[canon] = val
+        seen_from[canon] = key
+    return out
+
 
 def long(self, **kwargs):
     """
@@ -8,8 +41,8 @@ def long(self, **kwargs):
     keyword arguments.
 
     Parameters:
-    - col (str, optional): The name to be used for the 'variable' column. Default is 'variable'.
-    - value (str, optional): The name to be used for the 'value' column. Default is 'value'.
+    - column / c / col (str, optional): name for the melted-name column. Default 'variable'.
+    - value / v / val (str, optional): name for the melted-value column. Default 'value'.
 
     Returns:
     - pd.DataFrame: The melted dataframe with all numeric columns converted to long format.
@@ -17,11 +50,12 @@ def long(self, **kwargs):
 
     
     # Identify numeric columns in the dataframe
+    kwargs = normalize_reshape_kwargs(kwargs, allow_agg=False)
     numeric_cols = self.select_dtypes(include=['number']).columns.tolist()
     
     # Melt the dataframe to long format, keeping only numeric columns
     melted_df = pd.melt(self, id_vars=[col for col in self.columns if col not in numeric_cols],
-                        value_vars=numeric_cols, var_name=kwargs.get('col', 'variable'), 
+                        value_vars=numeric_cols, var_name=kwargs.get('column', 'variable'), 
                                                  value_name=kwargs.get('value', 'value'))
     
     return melted_df
@@ -38,19 +72,17 @@ def wide(df, **kwargs):
 
     Parameters:
     - df (pd.DataFrame): The dataframe to reshape.
-    - col (str, optional): The column whose unique values will become the new column headers in the wide dataframe.
-                           Default is 'variable'.
-    - value (str, optional): The name of the column containing the values to fill the wide dataframe.
-                             This is assumed to be the only numeric column present by default. Default is 'value'.
-    - aggfunc (function, str, list, or dict, optional): Function to use for aggregating the data. If specified,
-                                                       pivot_table is used for aggregation.
+    - column / c / col (str, optional): column whose values become headers. Default 'variable'.
+    - value / v / val (str, optional): values column. Default 'value'.
+    - aggfunc / a / agg (optional): if set, use pivot_table with this aggregation.
     - dropna (bool, optional): Applies only to pivot_table. Specifies whether to drop columns with all NaN values.
                                Default is True.
 
     Returns:
     - pd.DataFrame: The pivoted dataframe in a wide format.
     """
-    col = kwargs.get('col', 'variable')
+    kwargs = normalize_reshape_kwargs(kwargs, allow_agg=True)
+    col = kwargs.get('column', 'variable')
     value = kwargs.get('value', 'value')
     aggfunc = kwargs.get('aggfunc', None)
     dropna = kwargs.get('dropna', True)

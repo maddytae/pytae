@@ -232,12 +232,12 @@ def _unquote_name(raw: str) -> str:
     return raw
 
 
-_LONG_KEYS = ("col", "value")
-_WIDE_KEYS = ("col", "value", "aggfunc", "dropna")
+_LONG_KEYS = ("c", "col", "column", "v", "val", "value")
+_WIDE_KEYS = ("c", "col", "column", "v", "val", "value", "a", "agg", "aggfunc", "dropna")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide as key=value tokens, e.g. col='metric',value='reading',aggfunc='mean'."""
+    """Parse -long/-wide as key=value tokens, e.g. column='metric',value='reading',aggfunc='mean'."""
     raw = (raw or "").strip()
     if not raw:
         return {}
@@ -259,11 +259,21 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
 
 
 def parse_long_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
+    from pytae.shape import normalize_reshape_kwargs
+    kwargs = parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
+    try:
+        return normalize_reshape_kwargs(kwargs, allow_agg=False)
+    except ValueError as exc:
+        raise SystemExit(f"-long: {exc}") from None
 
 
 def parse_wide_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+    from pytae.shape import normalize_reshape_kwargs
+    kwargs = parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+    try:
+        return normalize_reshape_kwargs(kwargs, allow_agg=True)
+    except ValueError as exc:
+        raise SystemExit(f"-wide: {exc}") from None
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -560,12 +570,12 @@ def build_parser() -> argparse.ArgumentParser:
                               "columns, 0 for numeric columns")
     parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="melt numeric columns to long form (pytae long()); defaults col=variable, "
-                              "value=value; e.g. col='metric',value='reading'")
+                         help="melt numeric columns to long form (pytae long()); defaults column=variable, "
+                              "value=value; aliases c/col, v/val; e.g. c='metric',v='reading'")
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="pivot long form to wide (pytae wide()); defaults col=variable, value=value; "
-                              "e.g. col='metric',value='reading',aggfunc='mean'")
+                         help="pivot long form to wide (pytae wide()); defaults column=variable, value=value; "
+                              "aliases c/col, v/val, a/agg; e.g. c='country',v='balance',a='mean'")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
                          help="for -agg_df, -agg, and -value_counts: include NA keys when false; accepts true or false (default: true)")
@@ -805,7 +815,7 @@ def _process_path(
             from pytae.shape import wide as wide_fn
             source_df = pipeline.dataframe()
             wide_kwargs = parse_wide_arg(args.wide)
-            missing = [c for c in (wide_kwargs.get("col", "variable"), wide_kwargs.get("value", "value"))
+            missing = [c for c in (wide_kwargs.get("column", "variable"), wide_kwargs.get("value", "value"))
                        if c not in source_df.columns]
             if missing:
                 return _fail(parser, batch, unknown_columns_message("-wide", missing, list(source_df.columns)))

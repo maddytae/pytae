@@ -266,15 +266,16 @@ pytae data.parquet -handle_missing NA -select species,sex -value_counts
 
 **Reshape — `-long` / `-wide`**
 
-Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `col=variable`, `value=value`. Quote the spec when values have spaces.
+Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `column=variable`, `value=value`. Aliases: `c`/`col`, `v`/`val`, `a`/`agg`. Quote the spec when values have spaces.
 
 ```bash
 pytae data.parquet -long
-pytae data.parquet -long "col='metric',value='reading'"
+pytae data.parquet -long "column='metric',value='reading'"
+pytae data.parquet -long "c='metric',v='reading'"
 pytae tall.csv -wide
-pytae tall.csv -wide "col='metric',value='reading'"
-pytae tall.csv -wide "col='country',value='balance',aggfunc='mean'"
-pytae tall.csv -wide "col='country name',value='body mass'"
+pytae tall.csv -wide "column='metric',value='reading'"
+pytae tall.csv -wide "c='country',v='balance',a='mean'"
+pytae tall.csv -wide "column='country name',value='body mass'"
 pytae data.parquet -long -convert -o tall.csv
 ```
 
@@ -375,8 +376,8 @@ pytae 'folder/*.parquet' -convert
 | `-group_by COLUMNS` | Groups for `-agg` or `-group_x` |
 | `-group_x [COL[:AGGFUNC]]` | Broadcast group agg (`n`, or `body_mass_g:max`) |
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
-| `-long [KEY=VALUE,...]` | Melt numeric columns (`col`/`value`; defaults `variable`/`value`) |
-| `-wide [KEY=VALUE,...]` | Pivot long to wide (`col`/`value`/`aggfunc`/`dropna`) |
+| `-long [KEY=VALUE,...]` | Melt numeric columns (`column`/`value`; aliases `c`/`col`, `v`/`val`) |
+| `-wide [KEY=VALUE,...]` | Pivot long to wide (`column`/`value`/`aggfunc`/`dropna`; aliases `c`/`col`, `v`/`val`, `a`/`agg`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |

@@ -265,7 +265,7 @@ def test_long_renames_melt_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-long", "col='feature',value='amount'", "-cols"])
+    exit_code = cli.main([path, "-long", "c='feature',v='amount'", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
@@ -330,6 +330,26 @@ def test_wide_aggfunc_mean(tmp_path, capsys):
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
     assert "15" in captured.out
+
+
+def test_cli_long_short_aliases(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]}))
+
+    exit_code = cli.main([path, "-long", "c='feature',v='amount'", "-cols"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
+
+
+def test_cli_wide_short_aliases(tmp_path, capsys):
+    df = pd.DataFrame({"id": ["a", "b"], "country": ["sg", "cn"], "balance": [10, 20]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-wide", "c='country',v='balance',a='mean'", "-cols"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert captured.out.strip().splitlines() == ["id", "cn", "sg"]
 
 
 def test_wide_unknown_column_errors(tmp_path):
