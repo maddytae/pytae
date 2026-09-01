@@ -6,6 +6,7 @@ import argparse
 import ast
 import difflib
 import glob
+import io
 import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -28,6 +29,12 @@ except PackageNotFoundError:
 def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
     """Round numeric columns to ndigits; non-numeric columns pass through unchanged."""
     return df.round(ndigits) if ndigits is not None else df
+
+
+def _dataframe_info(df: pd.DataFrame) -> str:
+    buf = io.StringIO()
+    df.info(buf=buf)
+    return buf.getvalue().rstrip()
 
 
 def _format_table(df: pd.DataFrame, *, index: bool = False, pretty: bool = False) -> str:
@@ -216,6 +223,50 @@ def parse_group_x_arg(raw: str) -> tuple[str, str | None]:
         value_col, aggfunc = raw.split(":", 1)
         return aggfunc.strip(), value_col.strip()
     return raw, None
+
+
+def _unquote_name(raw: str) -> str:
+    raw = raw.strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
+        return raw[1:-1]
+    return raw
+
+
+def parse_long_arg(raw: str | None) -> dict:
+    """Parse -long: empty (defaults), COL, or COL:VALUE → kwargs for long()."""
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    if ":" in raw:
+        col, value = raw.split(":", 1)
+        kwargs = {}
+        col, value = _unquote_name(col), _unquote_name(value)
+        if col:
+            kwargs["col"] = col
+        if value:
+            kwargs["value"] = value
+        if not kwargs:
+            raise SystemExit("-long: expected COL or COL:VALUE")
+        return kwargs
+    return {"col": _unquote_name(raw)}
+
+
+def parse_wide_arg(raw: str | None) -> dict:
+    """Parse -wide: empty (defaults), COL, COL:VALUE, or COL:VALUE:AGGFUNC."""
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    parts = [_unquote_name(p) for p in raw.split(":")]
+    if len(parts) > 3 or not parts[0]:
+        raise SystemExit("-wide: expected COL[:VALUE[:AGGFUNC]]")
+    kwargs: dict = {"col": parts[0]}
+    if len(parts) >= 2 and parts[1]:
+        kwargs["value"] = parts[1]
+    if len(parts) == 3:
+        if not parts[2]:
+            raise SystemExit("-wide: expected COL[:VALUE[:AGGFUNC]]")
+        kwargs["aggfunc"] = parts[2]
+    return kwargs
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -467,8 +518,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-nulls", "--nulls", nargs="?", const="file", default=None, metavar="ORDER",
                          type=parse_list_order, action=_OrderedValue,
                          help="print null/NaN count per column; optional asc|desc sorts by name (default: file order)")
-    parser.add_argument("-stats", "--stats", "-describe", "--describe", dest="describe", action=_OrderedFlag,
-                         help="print numeric summary stats (min/max/mean/etc.)")
+    parser.add_argument("-describe", "--describe", dest="describe", action=_OrderedFlag,
+                         help="print pandas describe() summary (count/mean/std/min/quartiles/max)")
+    parser.add_argument("-info", "--info", dest="info", action=_OrderedFlag,
+                         help="print pandas info() (columns, non-null counts, dtypes, memory)")
     parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
                          help="show pandas value_counts across current working columns (use -select to choose columns)")
     parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
@@ -508,6 +561,14 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
+    parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
+                         metavar="COL[:VALUE]", action=_OrderedValue,
+                         help="melt numeric columns to long form (pytae long()); default names variable/value; "
+                              "COL or COL:VALUE rename those columns")
+    parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
+                         metavar="COL[:VALUE[:AGGFUNC]]", action=_OrderedValue,
+                         help="pivot long form to wide (pytae wide()); default col=variable, value=value; "
+                              "optional AGGFUNC uses pivot_table")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
                          help="for -agg_df, -agg, and -value_counts: include NA keys when false; accepts true or false (default: true)")
@@ -522,11 +583,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-query", "--query", dest="query", default=None, metavar="EXPR",
                          help="filter rows using a pandas query expression, e.g. \"col > 5\" "
-                            "(applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts)")
+                            "(applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts/"
+                            "-long/-wide)")
     parser.add_argument("-qry", "--qry", dest="qry", default=None, metavar="CONDITIONS",
                          help="filter rows using pytae qry per-column conditions as a dict literal, e.g. "
                               "\"{'col': ('>', 5), 'other': ['a', 'b']}\" (combinable with -query; "
-                            "applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts)")
+                            "applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts/"
+                            "-long/-wide)")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
@@ -620,6 +683,12 @@ def _process_path(
                 print(_format_table(described, index=True, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=described: d.to_clipboard(index=True)
+        elif op == "info":
+            info_str = _dataframe_info(pipeline.dataframe())
+            if should_print(idx):
+                print(info_str)
+            if args.to_clip:
+                clip_action = lambda s=info_str: _copy_to_clipboard(s)
         elif op == "value_counts":
             source_df = pipeline.dataframe()
             value_count_cols = list(source_df.columns)
@@ -727,6 +796,28 @@ def _process_path(
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
+        elif op == "long":
+            from pytae.shape import long as long_fn
+            result = _apply_round(long_fn(pipeline.dataframe(), **parse_long_arg(args.long)), args.round_ndigits)
+            pipeline._df = result
+            if should_print(idx):
+                print(_format_table(result, pretty=args.pretty))
+            if args.to_clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
+        elif op == "wide":
+            from pytae.shape import wide as wide_fn
+            source_df = pipeline.dataframe()
+            wide_kwargs = parse_wide_arg(args.wide)
+            missing = [c for c in (wide_kwargs.get("col", "variable"), wide_kwargs.get("value", "value"))
+                       if c not in source_df.columns]
+            if missing:
+                return _fail(parser, batch, unknown_columns_message("-wide", missing, list(source_df.columns)))
+            result = _apply_round(wide_fn(source_df, **wide_kwargs), args.round_ndigits)
+            pipeline._df = result
+            if should_print(idx):
+                print(_format_table(result, pretty=args.pretty))
+            if args.to_clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "convert":
             cmd_convert(
                 pipeline.dataframe(), path, args.output,
@@ -744,21 +835,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe,
+    show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
                          args.convert, args.agg_df is not None, args.agg is not None,
-                         args.group_x is not None, args.handle_missing is not None])
+                         args.group_x is not None, args.handle_missing is not None,
+                         args.long is not None, args.wide is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
                      args.agg_df is not None, args.agg is not None,
-                     args.group_x is not None, args.handle_missing is not None])
+                     args.group_x is not None, args.handle_missing is not None,
+                     args.long is not None, args.wide is not None])
     if args.to_clip and args.shape and wants_df:
         parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing; run -shape separately")
+                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide; run -shape separately")
     if args.agg_df is not None and args.agg is not None:
         parser.error("-agg_df and -agg can't be combined; choose one")
     if args.group_by is not None and args.agg is None and args.group_x is None:

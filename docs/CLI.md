@@ -1,6 +1,6 @@
 # pytae — CLI Reference
 
-Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.sas7bdat`). The CLI is the same verbs as the library: `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`.
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.sas7bdat`). The CLI is the same verbs as the library: `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()`.
 
 ```bash
 pytae data.parquet -head
@@ -8,7 +8,8 @@ pytae data.parquet -shape
 pytae data.parquet -cols
 pytae data.parquet -dtype
 pytae data.parquet -nulls
-pytae data.parquet -stats
+pytae data.parquet -describe
+pytae data.parquet -info
 ```
 
 Flag **order is the pipeline**. `-select` / `-qry` / `-query` define the starting view. Later ops see that view. **Only the last operation prints.** Earlier flags still run.
@@ -56,15 +57,15 @@ df.select(exclude_dtype="non_numeric")
 ```bash
 # exact names
 pytae data.parquet -select species,island -head 5
-pytae data.parquet -select "'bill length mm','body mass g'" -stats
+pytae data.parquet -select "'bill length mm','body mass g'" -describe
 
 # regex (always regex= — a bare ^bill is an unknown column)
 pytae data.parquet -select "regex=^bill" -head 5
 pytae data.parquet -select "regex=_mm$" -nulls
-pytae data.parquet -select "regex=bill|body" -stats
+pytae data.parquet -select "regex=bill|body" -describe
 
 # dtype
-pytae data.parquet -select dtype=numeric -stats
+pytae data.parquet -select dtype=numeric -describe
 pytae data.parquet -select exclude_dtype=numeric -head 5
 pytae data.parquet -select exclude_dtype=non_numeric -cols
 
@@ -113,7 +114,7 @@ pytae data.parquet -qry "{'species': 'Adelie'}" -query "body_mass_g > 3500" -hea
 pytae data.parquet -qry "{'species': 'Adelie'}" -select species,body_mass_g -head
 ```
 
-Applies to `-head`/`-tail`/`-nulls`/`-stats`/`-sample`/`-convert`/`-agg_df`/`-agg`/`-value_counts`/`-group_x`.
+Applies to `-head`/`-tail`/`-nulls`/`-describe`/`-sample`/`-convert`/`-agg_df`/`-agg`/`-value_counts`/`-group_x`/`-long`/`-wide`.
 
 ---
 
@@ -263,6 +264,24 @@ pytae data.parquet -handle_missing NA -select species,sex -value_counts
 
 ---
 
+**Reshape — `-long` / `-wide`**
+
+Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `variable` / `value`.
+
+```bash
+pytae data.parquet -long
+pytae data.parquet -long feature
+pytae data.parquet -long feature:amount
+pytae data.parquet -long "feature name:amount col"     # spaces: quote the whole spec
+pytae tall.csv -wide
+pytae tall.csv -wide feature:amount
+pytae tall.csv -wide country:balance:sum
+pytae tall.csv -wide "country name:body mass"
+pytae data.parquet -long -convert -o tall.csv
+```
+
+---
+
 **Conversion — `-convert`**
 
 Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the source. Cannot write `.sas7bdat`.
@@ -300,7 +319,7 @@ pytae data.csv -encoding latin-1 -convert -o data.parquet
 
 ```bash
 pytae data.parquet -head -pretty
-pytae data.parquet -stats -round 2
+pytae data.parquet -describe -round 2
 pytae data.parquet -head 20 -nrows 1000
 pytae data.parquet -sample 10
 pytae data.parquet -tail 3
@@ -320,6 +339,8 @@ pytae huge.csv -convert -o huge.parquet -progress
 pytae data.parquet -shape
 pytae data.parquet -cols
 pytae data.parquet -dtype
+pytae data.parquet -info
+pytae data.parquet -describe
 pytae data.parquet -head
 
 # Adelie penguins, numeric columns, mean by the remaining groups
@@ -356,10 +377,13 @@ pytae 'folder/*.parquet' -convert
 | `-group_by COLUMNS` | Groups for `-agg` or `-group_x` |
 | `-group_x [COL[:AGGFUNC]]` | Broadcast group agg (`n`, or `body_mass_g:max`) |
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
+| `-long [COL[:VALUE]]` | Melt numeric columns (`variable`/`value` by default) |
+| `-wide [COL[:VALUE[:AGGFUNC]]]` | Pivot long to wide (`variable`/`value` by default) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |
-| `-stats` | Numeric summary (`-describe`) |
+| `-describe` | pandas `describe()` summary |
+| `-info` | pandas `info()` (columns, non-nulls, dtypes, memory) |
 | `-select SPEC` | Restrict columns (union of tokens) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt: pandas infer) |
 | `-rename old:new,...` | Rename on convert |

@@ -60,6 +60,47 @@ def test_empty_parquet_head_keeps_columns(tmp_path, capsys):
     assert "Empty DataFrame" in captured.out
 
 
+def test_info_prints_pandas_info(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}))
+
+    exit_code = cli.main([path, "-info"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "DataFrame" in out
+    assert "a" in out and "b" in out
+    assert "2 entries" in out or "2 rows" in out or "RangeIndex: 2" in out
+
+
+def test_head_then_info_prints_only_info(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10)}))
+
+    exit_code = cli.main([path, "-head", "3", "-info"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "RangeIndex: 3" in out
+    assert "DataFrame" in out
+
+
+def test_describe_prints_pandas_summary(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
+
+    exit_code = cli.main([path, "-describe"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count" in out and "mean" in out
+
+
+def test_stats_flag_removed(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-stats"])
+    assert exc_info.value.code == 2
+
+
 def test_nonpositive_head_is_usage_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
 
@@ -207,6 +248,79 @@ def test_handle_missing_default_fill(tmp_path, capsys):
     # object/category NA becomes '.', numeric NA becomes 0.
     assert "." in out
     assert "0.0" in out
+
+
+def test_long_melts_numeric_columns(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["a", "b"], "n": [1, 2], "x": [10, 20]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-long", "-cols"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert captured.out.strip().splitlines() == ["grp", "variable", "value"]
+
+
+def test_long_renames_melt_columns(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-long", "feature:amount", "-cols"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
+
+
+def test_wide_pivots_long_frame(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "id": ["a", "b", "c"],
+            "country": ["sg", "cn", "ca"],
+            "balance": [10, 20, 0],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-wide", "country:balance", "-cols"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert captured.out.strip().splitlines() == ["id", "ca", "cn", "sg"]
+
+
+def test_long_quoted_names_with_spaces(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-long", "feature name:amount col", "-cols"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature name", "amount col"]
+
+
+def test_wide_quoted_names_with_spaces(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "id": ["a", "b"],
+            "country name": ["sg", "cn"],
+            "body mass": [10, 20],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-wide", "country name:body mass", "-cols"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert captured.out.strip().splitlines() == ["id", "cn", "sg"]
+
+
+def test_wide_unknown_column_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"id": ["a"], "balance": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-wide", "country:balance"])
+    assert exc_info.value.code == 2
 
 
 def test_group_by_requires_agg_or_group_x(tmp_path, capsys):
