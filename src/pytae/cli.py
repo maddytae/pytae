@@ -75,8 +75,8 @@ def parse_columns(raw: str) -> list[str]:
         return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
 
 
-def _split_select_tokens(raw: str) -> list[str]:
-    """Split a -select spec on commas, respecting single or double quotes."""
+def _split_tokens(raw: str, sep: str = ",") -> list[str]:
+    """Split on sep, respecting single or double quotes."""
     tokens: list[str] = []
     buf: list[str] = []
     quote = None
@@ -88,7 +88,38 @@ def _split_select_tokens(raw: str) -> list[str]:
                 buf.append(ch)
         elif ch in "'\"":
             quote = ch
-        elif ch == ",":
+        elif ch == sep:
+            token = "".join(buf).strip()
+            if token:
+                tokens.append(token)
+            buf = []
+        else:
+            buf.append(ch)
+    token = "".join(buf).strip()
+    if token:
+        tokens.append(token)
+    return tokens
+
+
+def _split_select_tokens(raw: str) -> list[str]:
+    """Split a -select spec on commas, respecting single or double quotes."""
+    return _split_tokens(raw, ",")
+
+
+def _split_groups(raw: str, sep: str = ";") -> list[str]:
+    """Split on sep but keep quote characters so inner comma-split still sees them."""
+    tokens: list[str] = []
+    buf: list[str] = []
+    quote = None
+    for ch in raw:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+            buf.append(ch)
+        elif ch == sep:
             token = "".join(buf).strip()
             if token:
                 tokens.append(token)
@@ -205,28 +236,50 @@ def parse_agg(raw: str):
         raise SystemExit(f"invalid --agg_df value: {exc}") from exc
 
 
-def parse_group_agg(raw: str) -> dict:
-    """Parse an --agg (explicit) dict literal, e.g. "{'col':'sum'}" or "{'col':('out_name','sum')}"."""
-    try:
-        spec = ast.literal_eval(raw)
-    except (ValueError, SyntaxError) as exc:
-        raise SystemExit(f"invalid --agg value: {exc}") from exc
-    if not isinstance(spec, dict):
-        raise SystemExit("--agg expects a dict literal, e.g. \"{'col': 'sum'}\" or \"{'col': ('out_name', 'sum')}\"")
-    return spec
+_AGG_KEYS = ("column", "aggfunc", "as")
 
 
-_GROUP_X_KEYS = ("g", "grp", "group", "v", "val", "value", "a", "agg", "aggfunc", "dropna", "observed")
+def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
+    """Parse -agg as key=value specs: column=, aggfunc=, optional as=.
+
+    Several specs are separated by ';'. Several source columns in one spec share
+    the same aggfunc: column='value,val_growth',aggfunc='sum'. as= needs a single column.
+    Returns (source_col, output_name, aggfunc) rows.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit("-agg: expected key=value specs, e.g. column='value',aggfunc='sum',as='v'")
+    if raw.startswith("{"):
+        raise SystemExit(
+            "-agg: use key=value specs, e.g. column='value',aggfunc='sum',as='v' "
+            "(not a dict literal)"
+        )
+    rows: list[tuple[str, str, str]] = []
+    for group in _split_groups(raw, ";"):
+        canon = parse_reshape_kwargs(group, keys=_AGG_KEYS, flag="-agg")
+        if "column" not in canon or "aggfunc" not in canon:
+            raise SystemExit("-agg: each spec needs column= and aggfunc=")
+        cols = parse_columns(canon["column"])
+        if not cols:
+            raise SystemExit("-agg: column= needs at least one column")
+        out = canon.get("as")
+        if out and len(cols) != 1:
+            raise SystemExit("-agg: as= requires a single column")
+        aggfunc = canon["aggfunc"]
+        for col in cols:
+            rows.append((col, out or col, aggfunc))
+    names = [name for _, name, _ in rows]
+    if len(names) != len(set(names)):
+        raise SystemExit("-agg: duplicate output names")
+    return rows
+
+
+_GROUP_X_KEYS = ("group", "value", "aggfunc", "dropna", "observed")
 
 
 def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. g='species',v='body_mass_g',a='max'."""
-    from pytae.other_utilities import normalize_group_x_kwargs
+    """Parse -group_x as key=value tokens, e.g. group='species',value='body_mass_g',aggfunc='max'."""
     kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
-    try:
-        kwargs = normalize_group_x_kwargs(kwargs)
-    except ValueError as exc:
-        raise SystemExit(f"-group_x: {exc}") from None
     if "group" in kwargs and isinstance(kwargs["group"], str):
         kwargs["group"] = parse_columns(kwargs["group"])
     return kwargs
@@ -239,8 +292,8 @@ def _unquote_name(raw: str) -> str:
     return raw
 
 
-_LONG_KEYS = ("c", "col", "column", "v", "val", "value")
-_WIDE_KEYS = ("c", "col", "column", "v", "val", "value", "a", "agg", "aggfunc", "dropna")
+_LONG_KEYS = ("column", "value")
+_WIDE_KEYS = ("column", "value", "aggfunc", "dropna")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
@@ -266,21 +319,11 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
 
 
 def parse_long_arg(raw: str | None) -> dict:
-    from pytae.shape import normalize_reshape_kwargs
-    kwargs = parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
-    try:
-        return normalize_reshape_kwargs(kwargs, allow_agg=False)
-    except ValueError as exc:
-        raise SystemExit(f"-long: {exc}") from None
+    return parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
 
 
 def parse_wide_arg(raw: str | None) -> dict:
-    from pytae.shape import normalize_reshape_kwargs
-    kwargs = parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
-    try:
-        return normalize_reshape_kwargs(kwargs, allow_agg=True)
-    except ValueError as exc:
-        raise SystemExit(f"-wide: {exc}") from None
+    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -563,14 +606,14 @@ def build_parser() -> argparse.ArgumentParser:
                          help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
                               "defaults to 'sum' when no value given; "
                               "accepts string ('mean'), list (\"['sum','mean']\"), or dict (\"{'col':'sum','n':'n'}\")")
-    parser.add_argument("-agg", "--agg", dest="agg", metavar="AGGSPEC", action=_OrderedStore,
-                         help="aggregate using explicit -group_by columns and pandas groupby/agg; dict literal "
-                              "mapping column to aggfunc, or to (output_name, aggfunc), e.g. "
-                              "\"{'amount': 'sum'}\" or \"{'amount': ('total', 'sum')}\"; requires -group_by")
+    parser.add_argument("-agg", "--agg", dest="agg", metavar="KEY=VALUE,...", action=_OrderedStore,
+                         help="aggregate using explicit -group_by columns; key=value specs "
+                              "(column=, aggfunc=, optional as=), e.g. "
+                              "column='value',aggfunc='sum',as='v'; several specs separated by ';'; requires -group_by")
     parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
-                              "size n on non-numeric columns; e.g. g='species',v='body_mass_g',a='max'")
+                              "size n on non-numeric columns; e.g. group='species',value='body_mass_g',aggfunc='max'")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
@@ -578,11 +621,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="melt numeric columns to long form (pytae long()); defaults column=variable, "
-                              "value=value; aliases c/col, v/val; e.g. c='metric',v='reading'")
+                              "value=value; e.g. column='metric',value='reading'")
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="pivot long form to wide (pytae wide()); defaults column=variable, value=value; "
-                              "aliases c/col, v/val, a/agg; e.g. c='country',v='balance',a='mean'")
+                              "e.g. column='country',value='balance',aggfunc='mean'")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
                          help="for -agg_df, -agg, and -value_counts: include NA keys when false; accepts true or false (default: true)")
@@ -774,8 +817,7 @@ def _process_path(
                 return _fail(parser, batch, unknown_columns_message("-group_by", group_cols, list(source_df.columns)))
             agg_spec = parse_group_agg(args.agg)
             named_agg = {}
-            for col, spec in agg_spec.items():
-                out_name, aggfunc = spec if isinstance(spec, tuple) and len(spec) == 2 else (col, spec)
+            for col, out_name, aggfunc in agg_spec:
                 if col not in source_df.columns:
                     return _fail(parser, batch, unknown_columns_message("-agg", [col], list(source_df.columns)))
                 named_agg[out_name] = pd.NamedAgg(column=col, aggfunc=aggfunc)

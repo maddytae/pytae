@@ -50,13 +50,10 @@ penguins.select("species", regex="bill|body")
 
 `long()` melts numeric columns to rows. `wide()` pivots a column's values into headers. [shape.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/shape.ipynb)
 
-Aliases: `c` / `col` → `column`, `v` / `val` → `value`, `a` / `agg` → `aggfunc`.
-
 ```python
 tall = penguins.long(column="feature")
 tall.wide(column="feature", value="value")
-penguins.long(c="metric", v="reading")
-tall.wide(c="feature", v="reading", a="mean")
+tall.wide(column="feature", value="value", aggfunc="mean")
 ```
 
 ## 5) Aggregation — `agg_df()`
@@ -78,6 +75,5 @@ penguins.cols()                    # sorted names; cols(ascending=None) keeps fi
 penguins.handle_missing()          # object NA -> '.', numeric NA -> 0
 penguins.group_x()                 # group size column `n`
 penguins.group_x(group=["species"], aggfunc="max", value="body_mass_g")
-penguins.group_x(g="species", v="body_mass_g", a="max")
 penguins.to_clip()                 # copy to clipboard (does not shadow pandas clip)
 ```

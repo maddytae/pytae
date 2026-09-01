@@ -50,60 +50,23 @@ def cols(self, ascending=True):
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
 
 
-_GROUP_X_ALIASES = {
-    "g": "group",
-    "grp": "group",
-    "group": "group",
-    "v": "value",
-    "val": "value",
-    "value": "value",
-    "a": "aggfunc",
-    "agg": "aggfunc",
-    "aggfunc": "aggfunc",
-    "dropna": "dropna",
-    "observed": "observed",
-}
+def group_x(self, group=None, dropna=True, observed=True, aggfunc="n", value=None):
+    """Broadcast a group aggregate to every row (pandas transform).
 
-
-def normalize_group_x_kwargs(kwargs: dict) -> dict:
-    """Map g, v/val, a/agg onto group, value, aggfunc."""
-    out: dict = {}
-    seen_from: dict = {}
-    for key, val in kwargs.items():
-        if key not in _GROUP_X_ALIASES:
-            raise ValueError(f"unknown argument {key!r}; expected {', '.join(sorted(_GROUP_X_ALIASES))}")
-        canon = _GROUP_X_ALIASES[key]
-        if canon in out:
-            raise ValueError(f"{canon} given more than once ({seen_from[canon]!r} and {key!r})")
-        out[canon] = val
-        seen_from[canon] = key
-    return out
-
-
-def group_x(self, **kwargs):
-    '''
-    penguins.group_x(group=['island','species','sex'], dropna=True, value='body_mass_g', aggfunc='max')
-    penguins.group_x(g='species', v='body_mass_g', a='max')
-    penguins.group_x()  # group size n, auto-detect non-numeric group columns
-    '''
-    kwargs = normalize_group_x_kwargs(kwargs)
-    group = kwargs.get("group")
-    dropna = kwargs.get("dropna", True)
-    observed = kwargs.get("observed", True)
-    aggfunc = kwargs.get("aggfunc", "n")
-    value = kwargs.get("value")
-
+    Default aggfunc='n' is group size. Pass value= and aggfunc= for another aggregate.
+    If group is omitted, non-numeric columns are used.
+    """
     df = self.copy()
 
     if group is None:
-        group = df.select_dtypes(exclude=['number']).columns.tolist()
+        group = df.select_dtypes(exclude=["number"]).columns.tolist()
     elif isinstance(group, str):
         group = [group]
 
-    if aggfunc == 'n' or value is None:
-        df['n'] = df.groupby(group, dropna=dropna, observed=observed).transform('size')
+    if aggfunc == "n" or value is None:
+        df["n"] = df.groupby(group, dropna=dropna, observed=observed).transform("size")
     else:
-        df['x'] = df.groupby(group, dropna=dropna, observed=observed)[value].transform(aggfunc)
+        df["x"] = df.groupby(group, dropna=dropna, observed=observed)[value].transform(aggfunc)
 
     return df
 

@@ -155,7 +155,7 @@ def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "{'v1':'sum','v2':'mean'}"])
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1',aggfunc='sum'; column='v2',aggfunc='mean'"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -173,7 +173,7 @@ def test_group_by_agg_named_output(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "{'v1':('total','sum')}"])
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1',aggfunc='sum',as='total'"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -181,11 +181,45 @@ def test_group_by_agg_named_output(tmp_path, capsys):
     assert "v1" not in out.split("\n")[0]  # header uses the custom output name, not the source column
 
 
+def test_agg_same_func_on_multiple_columns(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x"], "v1": [1, 2], "v2": [10, 20]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1,v2',aggfunc='sum'"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "v1" in out and "v2" in out
+    assert "3" in out and "30" in out
+
+
+def test_agg_named_output_with_spaced_group(tmp_path, capsys):
+    df = pd.DataFrame({"Scenario Name": ["A", "A", "B"], "value": [1, 2, 3]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main(
+        [path, "-group_by", "Scenario Name", "-agg", "column='value',aggfunc='sum',as='v'"]
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    header = out.split("\n")[0]
+    assert "v" in header and "value" not in header
+    assert "3" in out
+
+
+def test_agg_rejects_dict_literal(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
+
+    with pytest.raises(SystemExit, match="key=value"):
+        cli.main([path, "-group_by", "grp", "-agg", "{'v1':'sum'}"])
+
+
 def test_agg_requires_group_by(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-agg", "{'v1':'sum'}"])
+        cli.main([path, "-agg", "column='v1',aggfunc='sum'"])
     assert exc_info.value.code == 2
 
 
@@ -193,7 +227,7 @@ def test_agg_df_and_agg_cannot_combine(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-agg_df", "-group_by", "grp", "-agg", "{'v1':'sum'}"])
+        cli.main([path, "-agg_df", "-group_by", "grp", "-agg", "column='v1',aggfunc='sum'"])
     assert exc_info.value.code == 2
 
 
@@ -225,7 +259,7 @@ def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_x", "g='grp',v='val',a='mean'"])
+    exit_code = cli.main([path, "-group_x", "group='grp',value='val',aggfunc='mean'"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -236,7 +270,7 @@ def test_group_x_still_accepts_group_by_flag(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [1, 2, 3, 4]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "v='val',a='mean'"])
+    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "value='val',aggfunc='mean'"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -276,7 +310,7 @@ def test_long_renames_melt_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-long", "c='feature',v='amount'", "-cols"])
+    exit_code = cli.main([path, "-long", "column='feature',value='amount'", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
@@ -292,7 +326,7 @@ def test_wide_pivots_long_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "col='country',value='balance'", "-cols"])
+    exit_code = cli.main([path, "-wide", "column='country',value='balance'", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -303,7 +337,7 @@ def test_long_quoted_names_with_spaces(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-long", "col='feature name',value='amount col'", "-cols"])
+    exit_code = cli.main([path, "-long", "column='feature name',value='amount col'", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature name", "amount col"]
@@ -319,7 +353,7 @@ def test_wide_quoted_names_with_spaces(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "col='country name',value='body mass'", "-cols"])
+    exit_code = cli.main([path, "-wide", "column='country name',value='body mass'", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -336,7 +370,7 @@ def test_wide_aggfunc_mean(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "col='country',value='balance',aggfunc='mean'", "-head", "1"])
+    exit_code = cli.main([path, "-wide", "column='country',value='balance',aggfunc='mean'", "-head", "1"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -346,7 +380,7 @@ def test_wide_aggfunc_mean(tmp_path, capsys):
 def test_cli_long_short_aliases(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]}))
 
-    exit_code = cli.main([path, "-long", "c='feature',v='amount'", "-cols"])
+    exit_code = cli.main([path, "-long", "column='feature',value='amount'", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
@@ -356,7 +390,7 @@ def test_cli_wide_short_aliases(tmp_path, capsys):
     df = pd.DataFrame({"id": ["a", "b"], "country": ["sg", "cn"], "balance": [10, 20]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c='country',v='balance',a='mean'", "-cols"])
+    exit_code = cli.main([path, "-wide", "column='country',value='balance',aggfunc='mean'", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -367,7 +401,7 @@ def test_wide_unknown_column_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"id": ["a"], "balance": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-wide", "col='country',value='balance'"])
+        cli.main([path, "-wide", "column='country',value='balance'"])
     assert exc_info.value.code == 2
 
 

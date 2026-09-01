@@ -154,9 +154,12 @@ df.groupby("species", as_index=False).agg(
 ```
 
 ```bash
-pytae data.parquet -group_by species -agg "{'body_mass_g': 'mean', 'flipper_length_mm': 'sum'}"
-pytae data.parquet -group_by species -agg "{'body_mass_g': ('avg_mass', 'mean'), 'flipper_length_mm': ('total_flipper', 'sum')}"
-pytae data.parquet -group_by "species,island" -agg "{'body_mass_g': 'mean'}"
+pytae data.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'"
+pytae data.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'; column='flipper_length_mm',aggfunc='sum'"
+pytae data.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean',as='avg_mass'; column='flipper_length_mm',aggfunc='sum',as='total_flipper'"
+pytae data.parquet -group_by "species,island" -agg "column='body_mass_g',aggfunc='mean'"
+pytae data.parquet -group_by "Scenario Name" -agg "column='value',aggfunc='sum',as='v'"
+pytae data.parquet -group_by "Scenario Name" -agg "column='value,val_growth',aggfunc='sum'"
 ```
 
 > `-agg` requires `-group_by`. `-group_x` takes `group=` itself (or still accepts `-group_by` if `group=` is omitted). One output per source column per `-agg` call — for several aggs on the same column, use `-agg_df`. `-agg_df` and `-agg` cannot be combined.
@@ -171,19 +174,18 @@ Keeps **every row** and adds a column (`n` = group size, `x` = another aggregate
 df.group_x()
 df.group_x(group=["species"])
 df.group_x(group=["species"], value="body_mass_g", aggfunc="max")
-df.group_x(g="species", v="body_mass_g", a="max")
 ```
 
 ```bash
 pytae data.parquet -group_x
-pytae data.parquet -group_x "g='species'"
-pytae data.parquet -group_x "g='species',v='body_mass_g',a='max'"
-pytae data.parquet -group_x "group='species,island',val='body_mass_g',agg='max'"
-pytae data.parquet -group_x "g='bill length mm',v='body mass g',a='max'"
-pytae data.parquet -group_x "g='bill length mm,island'"
+pytae data.parquet -group_x "group='species'"
+pytae data.parquet -group_x "group='species',value='body_mass_g',aggfunc='max'"
+pytae data.parquet -group_x "group='species,island',value='body_mass_g',aggfunc='max'"
+pytae data.parquet -group_x "group='bill length mm',value='body mass g',aggfunc='max'"
+pytae data.parquet -group_x "group='bill length mm,island'"
 ```
 
-Aliases: `g`/`grp` → `group`, `v`/`val` → `value`, `a`/`agg` → `aggfunc`. You do **not** need `-group_by` for `-group_x` (`-group_by` is for `-agg`).
+You do **not** need `-group_by` for `-group_x` (`-group_by` is for `-agg`).
 
 ```text
 # before
@@ -193,7 +195,7 @@ Aliases: `g`/`grp` → `group`, `v`/`val` → `value`, `a`/`agg` → `aggfunc`. 
    Gentoo Female       4500.0
    Gentoo   Male       5700.0
 
-# after  -group_x "g='species',v='body_mass_g',a='max'"
+# after  -group_x "group='species',value='body_mass_g',aggfunc='max'"
   species    sex  body_mass_g      x
    Adelie   Male       3750.0 3800.0
    Adelie Female       3800.0 3800.0
@@ -272,15 +274,14 @@ pytae data.parquet -handle_missing NA -select species,sex -value_counts
 
 **Reshape — `-long` / `-wide`**
 
-Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `column=variable`, `value=value`. Aliases: `c`/`col`, `v`/`val`, `a`/`agg`. Quote the spec when values have spaces.
+Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `column=variable`, `value=value`. Quote the spec when values have spaces.
 
 ```bash
 pytae data.parquet -long
 pytae data.parquet -long "column='metric',value='reading'"
-pytae data.parquet -long "c='metric',v='reading'"
 pytae tall.csv -wide
 pytae tall.csv -wide "column='metric',value='reading'"
-pytae tall.csv -wide "c='country',v='balance',a='mean'"
+pytae tall.csv -wide "column='country',value='balance',aggfunc='mean'"
 pytae tall.csv -wide "column='country name',value='body mass'"
 pytae data.parquet -long -convert -o tall.csv
 ```
@@ -383,10 +384,10 @@ pytae 'folder/*.parquet' -convert
 | `-nulls [asc\|desc]` | Null counts |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
 | `-group_by COLUMNS` | Groups for `-agg` (optional fallback for `-group_x`) |
-| `-group_x [KEY=VALUE,...]` | Broadcast group agg (`group`/`g`/`grp`, `value`/`v`/`val`, `aggfunc`/`a`/`agg`) |
+| `-group_x [KEY=VALUE,...]` | Broadcast group agg (`group`, `value`, `aggfunc`) |
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
-| `-long [KEY=VALUE,...]` | Melt numeric columns (`column`/`value`; aliases `c`/`col`, `v`/`val`) |
-| `-wide [KEY=VALUE,...]` | Pivot long to wide (`column`/`value`/`aggfunc`/`dropna`; aliases `c`/`col`, `v`/`val`, `a`/`agg`) |
+| `-long [KEY=VALUE,...]` | Melt numeric columns (`column`, `value`) |
+| `-wide [KEY=VALUE,...]` | Pivot long to wide (`column`, `value`, `aggfunc`, `dropna`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |
