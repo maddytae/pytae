@@ -106,11 +106,6 @@ def _split_tokens(raw: str, sep: str = ",") -> list[str]:
     return tokens
 
 
-def _split_select_tokens(raw: str) -> list[str]:
-    """Split a -select spec on commas, respecting single or double quotes."""
-    return _split_tokens(raw, ",")
-
-
 def _split_groups(raw: str, sep: str = ";") -> list[str]:
     """Split on sep but keep quote characters so inner comma-split still sees them."""
     tokens: list[str] = []
@@ -144,7 +139,7 @@ def parse_select_spec(raw: str) -> tuple[list[str], dict]:
     dtype=numeric / contains=bill / regex=^flip become kwargs. Repeated keys
     become a list. Union of all tokens, matching df.select().
     """
-    tokens = _split_select_tokens(raw)
+    tokens = _split_tokens(raw)
     names: list[str] = []
     kwargs: dict = {}
     for token in tokens:
@@ -307,7 +302,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
     if not raw:
         return {}
     kwargs: dict = {}
-    for token in _split_select_tokens(raw):
+    for token in _split_tokens(raw):
         if "=" not in token:
             raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
         key, _, value = token.partition("=")
