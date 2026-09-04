@@ -96,6 +96,12 @@ def test_select_slice_and_missing_list():
         df.select("^bill")
 
 
+def test_select_unknown_exact_name_does_not_skip():
+    df = pd.DataFrame({"a": [1], "b": [2], "c": [3]})
+    with pytest.raises(KeyError, match=r"Column not found: 'd'"):
+        df.select("d", "a", "b")
+
+
 def test_select_everything():
     from pytae.select import everything
 

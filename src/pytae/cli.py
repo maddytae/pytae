@@ -63,6 +63,11 @@ def _copy_to_clipboard(text: str) -> None:
 
 SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
 
+# Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
+# dtype -> Series, nulls -> Series, info() -> None). Like real method chaining, nothing can
+# follow them except -to_clip. -describe is excluded: df.describe() returns a DataFrame.
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info"})
+
 
 def parse_columns(raw: str) -> list[str]:
     """Parse a column list like "'col a','col b'" or "col_a,col_b" into a list of names."""
@@ -375,15 +380,6 @@ def _list_order_index(series: pd.Series, order) -> pd.Series:
     return series
 
 
-def _apply_query(df: pd.DataFrame, query: str | None) -> pd.DataFrame:
-    if not query:
-        return df
-    try:
-        return df.query(query)
-    except Exception as exc:
-        raise SystemExit(f"invalid --query expression: {exc}") from exc
-
-
 def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
     """Abort immediately outside batch mode; in batch mode, warn on stderr and signal failure instead."""
     if not batch:
@@ -417,84 +413,110 @@ def cmd_convert(
 
 
 class _Pipeline:
-    """-select/-query/-qry define the starting view. -head/-tail/-sample narrow
-    it further, and every operator that runs afterwards sees that narrowed view.
+    """Flag order is the method chain. Each -select/-qry/-query/-head/… call
+    runs on the current view, same as df.select().qry().head().
     Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
-    row data until something actually requires it.
+    row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
+    don't return a DataFrame/Series in pandas either, so (like main()'s validation)
+    nothing may follow them except -to_clip.
     """
 
-    def __init__(self, reader, *, select, select_kwargs, query, qry, nrows, progress) -> None:
+    def __init__(self, reader, *, nrows, progress) -> None:
         self._reader = reader
-        self._select = select            # list[str] | None — positional names/slices
-        self._select_kwargs = select_kwargs  # pytae select() kwargs: dtype, contains, etc.
-        self._query = query
-        self._qry = qry
         self._nrows = nrows
         self._progress = progress
         self._df: pd.DataFrame | None = None
+        self._pending_exact: list[str] | None = None
 
-    def _needs_full_load(self) -> bool:
-        if self._query or self._qry or self._select_kwargs:
-            return True
-        if self._select and any(":" in token for token in self._select):
-            return True
-        return False
+    def _available_columns(self) -> list[str]:
+        if self._df is not None:
+            return list(self._df.columns)
+        if self._pending_exact is not None:
+            return list(self._pending_exact)
+        return list(self._reader.columns())
+
+    def apply_select(self, names: list[str], kwargs: dict) -> str | None:
+        """Apply one -select spec to the current view. Returns an error message or None."""
+        available = self._available_columns()
+        unknown = _select_unknown_names(names, available)
+        if unknown:
+            return unknown_columns_message("-select", unknown, available)
+
+        needs_frame = (
+            self._df is not None
+            or bool(kwargs)
+            or any(":" in token for token in names)
+        )
+        if not needs_frame:
+            self._pending_exact = list(names)
+            return None
+
+        df = self._df if self._df is not None else self.dataframe()
+        try:
+            self._df = df.select(*names, **kwargs)
+        except (ValueError, KeyError) as exc:
+            return f"-select: {exc}"
+        return None
+
+    def apply_qry(self, conditions: dict) -> str | None:
+        """Apply one -qry spec to the current view. Returns an error message or None."""
+        df = self.dataframe()
+        try:
+            self._df = df.qry(conditions)
+        except Exception as exc:
+            return f"-qry: {exc}"
+        return None
+
+    def apply_query(self, expr: str) -> str | None:
+        """Apply one -query expression to the current view. Returns an error message or None."""
+        df = self.dataframe()
+        try:
+            self._df = df.query(expr)
+        except Exception as exc:
+            return f"-query: {exc}"
+        return None
 
     def dataframe(self) -> pd.DataFrame:
         if self._df is None:
-            # load all columns when filters may reference columns outside the select list
-            read_cols = self._select if not self._needs_full_load() else None
-            df = self._reader.to_dataframe(columns=read_cols, nrows=self._nrows, progress=self._progress)
-            df = _apply_query(df, self._query)
-            if self._qry:
-                df = df.qry(self._qry)
-            if self._select is not None or self._select_kwargs:
-                try:
-                    df = df.select(*(self._select or []), **self._select_kwargs)
-                except ValueError as exc:
-                    raise SystemExit(f"-select: {exc}") from exc
+            df = self._reader.to_dataframe(
+                columns=self._pending_exact, nrows=self._nrows, progress=self._progress,
+            )
             self._df = df
         return self._df
 
     def columns(self) -> list[str]:
         if self._df is not None:
             return list(self._df.columns)
-        if self._needs_full_load():
-            return list(self.dataframe().columns)
-        return list(self._select) if self._select else self._reader.columns()
+        return self._available_columns()
 
     def dtypes(self) -> pd.Series:
         if self._df is not None:
             return self._df.dtypes
-        if self._needs_full_load():
-            return self.dataframe().dtypes
         dtypes = self._reader.dtypes()
-        return dtypes[self._select] if self._select else dtypes
+        return dtypes[self._pending_exact] if self._pending_exact is not None else dtypes
 
     def shape(self) -> tuple[int, int]:
         if self._df is not None:
             return self._df.shape
-        if self._needs_full_load():
-            return self.dataframe().shape
         rows = self._reader.shape()[0]
-        cols = len(self._select) if self._select else self._reader.shape()[1]
+        cols = len(self._pending_exact) if self._pending_exact is not None else self._reader.shape()[1]
         return (rows, cols)
 
     def head(self, n: int) -> pd.DataFrame:
-        if self._df is None and not self._needs_full_load():
+        if self._df is None:
             df = self._reader.head(n)
-            if self._select:
-                df = df.select(*self._select)
+            if self._pending_exact is not None:
+                df = df.select(*self._pending_exact)
         else:
             df = self.dataframe().head(n)
         self._df = df
         return df
 
     def tail(self, n: int) -> pd.DataFrame:
-        if self._df is None and not self._needs_full_load():
+        if self._df is None:
             df = self._reader.tail(n)
-            if self._select:
-                df = df.select(*self._select)
+            if self._pending_exact is not None:
+                df = df.select(*self._pending_exact)
         else:
             df = self.dataframe().tail(n)
         self._df = df
@@ -532,6 +554,17 @@ class _OrderedStore(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None) -> None:
         setattr(namespace, self.dest, values)
+        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+
+
+class _OrderedAppend(argparse.Action):
+    """Collect repeated flags into a list and record each occurrence in op_order."""
+
+    def __call__(self, parser, namespace, values, option_string=None) -> None:
+        items = getattr(namespace, self.dest, None)
+        items = [] if items is None else list(items)
+        items.append(values)
+        setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
 
 
@@ -593,10 +626,11 @@ def build_parser() -> argparse.ArgumentParser:
                               "if group= is omitted")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
-    parser.add_argument("--select", "-select", dest="select", default=None, metavar="SPEC",
-                         help="restrict columns (union of tokens): names, start:end slices, and key=value "
-                              "(dtype, contains, startswith, endswith, regex, exclude_dtype), "
-                              "e.g. \"species,contains=bill,dtype=numeric\"")
+    parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
+                         help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
+                              "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
+                              "regex, exclude_dtype); repeat to filter remaining columns, including after "
+                              "-agg_df/-long/-wide, e.g. -select dtype=numeric -select contains=bill")
     parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
@@ -638,15 +672,11 @@ def build_parser() -> argparse.ArgumentParser:
                               "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt); not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
-    parser.add_argument("-query", "--query", dest="query", default=None, metavar="EXPR",
-                         help="filter rows using a pandas query expression, e.g. \"col > 5\" "
-                            "(applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts/"
-                            "-long/-wide)")
-    parser.add_argument("-qry", "--qry", dest="qry", default=None, metavar="CONDITIONS",
-                         help="filter rows using pytae qry per-column conditions as a dict literal, e.g. "
-                              "\"{'col': ('>', 5), 'other': ['a', 'b']}\" (combinable with -query; "
-                            "applies to -head/-tail/-nulls/-describe/-sample/-convert/-agg_df/-agg/-value_counts/"
-                            "-long/-wide)")
+    parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
+                         help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
+    parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
+                         help="filter rows at this point in the pipeline using pytae qry(); dict literal, e.g. "
+                              "\"{'col': ('>', 5), 'other': ['a', 'b']}\"")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
@@ -668,9 +698,9 @@ def _process_path(
     batch: bool,
     *,
     show_all: bool,
-    select_cols: list[str] | None,
-    select_kwargs: dict,
-    qry_conditions: dict | None,
+    select_specs: list[tuple[list[str], dict]],
+    qry_specs: list[dict],
+    query_specs: list[str],
     rename_map: dict[str, str] | None,
 ) -> bool:
     """Run every requested display/-convert/-agg action against one file. Returns True if an error occurred."""
@@ -682,14 +712,8 @@ def _process_path(
     except ValueError as exc:
         return _fail(parser, batch, str(exc))
 
-    if select_cols:
-        unknown = _select_unknown_names(select_cols, reader.columns())
-        if unknown:
-            return _fail(parser, batch, unknown_columns_message("-select", unknown, reader.columns()))
-
     pipeline = _Pipeline(
-        reader, select=select_cols, select_kwargs=select_kwargs, query=args.query, qry=qry_conditions,
-        nrows=args.nrows, progress=args.progress,
+        reader, nrows=args.nrows, progress=args.progress,
     )
 
     clip_action = None
@@ -704,12 +728,41 @@ def _process_path(
 
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
+    select_iter = iter(select_specs)
+    qry_iter = iter(qry_specs)
+    query_iter = iter(query_specs)
 
     def should_print(idx: int) -> bool:
         return emit_stdout and idx == last_idx
 
+    def emit_frame(idx: int) -> None:
+        nonlocal clip_action
+        if not (should_print(idx) or args.to_clip):
+            return
+        df = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        if should_print(idx):
+            print(_format_table(df, pretty=args.pretty))
+        if args.to_clip:
+            clip_action = lambda d=df: d.to_clipboard(index=False)
+
     for idx, op in enumerate(op_order):
-        if op == "shape":
+        if op == "select":
+            names, kwargs = next(select_iter)
+            err = pipeline.apply_select(names, kwargs)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "qry":
+            err = pipeline.apply_qry(next(qry_iter))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "query":
+            err = pipeline.apply_query(next(query_iter))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
                 print(shape_str)
@@ -736,6 +789,7 @@ def _process_path(
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
             described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
+            pipeline._df = described
             if should_print(idx):
                 print(_format_table(described, index=True, pretty=args.pretty))
             if args.to_clip:
@@ -893,12 +947,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    op_order = getattr(args, "op_order", [])
+    last_idx = len(op_order) - 1
+    for idx, op in enumerate(op_order):
+        if op in NON_DF_TERMINAL_OPS and idx != last_idx:
+            parser.error(
+                f"-{op} does not return a DataFrame/Series, so no flag may follow it "
+                f"except -to_clip (matches pandas: you can't chain another call off "
+                f"df.shape/df.columns/df.dtypes/df.info())"
+            )
+
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
                          args.convert, args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
-                         args.long is not None, args.wide is not None])
+                         args.long is not None, args.wide is not None, args.select,
+                         args.qry, args.query])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -920,19 +985,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("-o/--output cannot be used with multiple matched files; each output path is derived automatically")
 
     rename_map = parse_rename(args.rename) if args.rename else None
-    if args.select:
-        select_cols, select_kwargs = parse_select_spec(args.select)
-    else:
-        select_cols, select_kwargs = None, {}
-    qry_conditions = parse_qry(args.qry) if args.qry else None
+    select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
+    qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
+    query_specs = list(args.query or [])
     batch = len(paths) > 1
     exit_code = 0
 
     for path in paths:
         if batch:
             print(f"== {path} ==")
-        if _process_path(path, args, parser, batch, show_all=show_all, select_cols=select_cols,
-                          select_kwargs=select_kwargs, qry_conditions=qry_conditions, rename_map=rename_map):
+        if _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
+                          qry_specs=qry_specs, query_specs=query_specs, rename_map=rename_map):
             exit_code = 1
 
     return exit_code

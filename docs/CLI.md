@@ -14,7 +14,7 @@ pytae data.parquet -describe
 pytae data.parquet -info
 ```
 
-Flag **order is the pipeline**. `-select` / `-qry` / `-query` define the starting view. Later ops see that view. **Only the last operation prints.** Earlier flags still run.
+Flag **order is the pipeline**, the same as a pandas/pytae method chain. `-select … -agg_df … -select … -shape` is `df.select(…).agg_df(…).select(…).shape`. Put `-qry` / `-query` first yourself if you need a column you later drop. **Only the last operation prints.** Earlier flags still run.
 
 ```bash
 # first 3 rows, then shape of that 3-row frame → prints (3, n)
@@ -24,13 +24,25 @@ pytae data.parquet -head 3 -shape
 pytae data.parquet -head 5 -cols
 ```
 
+`-shape` / `-cols` / `-dtype` / `-nulls` / `-info` mirror pandas attributes/methods that
+don't return a DataFrame (`df.shape`, `df.columns`, `df.dtypes`, `df.info()` — `-nulls` is
+`df.isna().sum()`). Like real method chaining, nothing may follow them except `-to_clip`;
+put them last. `-describe` is the exception — `df.describe()` returns a DataFrame, so it
+can still be chained into further flags (e.g. `-describe -shape`, `-describe -round 2`).
+
+```bash
+pytae data.parquet -shape -to_clip     # ok: -to_clip is the only thing allowed after -shape
+pytae data.parquet -shape -head 3      # error: -shape isn't a DataFrame, can't chain -head off it
+pytae data.parquet -describe -shape    # ok: describe() returns a DataFrame
+```
+
 Use the bundled penguins-style names in the examples below (`species`, `island`, `body_mass_g`, `bill_length_mm`, …).
 
 ---
 
 **Column selection — `-select`**
 
-One flag, one `df.select()` call. Tokens are a **union** (each token *adds* columns).
+Tokens in one `-select` are a **union** (each token *adds* columns). Repeat `-select` to filter that result: each call is `df.select()` on the current working columns (including after `-agg_df` / `-long` / `-wide`).
 
 Bare tokens are column names or `start:end` slices. `key=value` tokens map to the same kwargs as `df.select(...)`.
 
@@ -85,9 +97,16 @@ pytae data.parquet -select "species,regex=bill|body" -head 5
 
 # repeated keys become a list (names containing bill OR body)
 pytae data.parquet -select "contains=bill,contains=body" -cols
+
+# a later -select filters remaining columns (numeric AND name contains bill)
+pytae data.parquet -select dtype=numeric -select contains=bill -cols
+pytae data.parquet -select species,island,body_mass_g -select species,body_mass_g -cols
+
+# after another op, -select sees that op's columns (here: pick from the agg table)
+pytae data.parquet -select species,body_mass_g -agg_df mean -select species,body_mass_g -shape
 ```
 
-Unknown exact names error with a typo suggestion. A positional token that is not a real column is **not** a regex — use `regex=`. A second `-select` flag **overwrites** the first (argparse last-wins); put everything in one spec.
+Exact names must exist on the **current** columns; missing names error with a typo suggestion — `-select d,a,b` does **not** silently return `a,b`. A positional token that is not a real column is **not** a regex — use `regex=`. Tokens in **one** spec are a union; each extra `-select` filters whatever is left (it is not last-wins).
 
 **`df.select()` but not `-select`**
 
@@ -100,11 +119,12 @@ Unknown exact names error with a typo suggestion. A positional token that is not
 
 **Row filtering — `-qry` and `-query`**
 
-`-qry` is pytae's dict `qry()` (safer for odd strings). `-query` is pandas `DataFrame.query()` (numexpr). Both **narrow rows**. Stacking `-qry` with `-query` is AND.
+`-qry` is pytae's dict `qry()` (safer for odd strings). `-query` is pandas `DataFrame.query()` (numexpr). Both **narrow rows** at this point in the pipeline, same as `.qry()` / `.query()`. Stacking them is sequential (AND on the remaining rows). Put the filter **before** `-select` if you need a column you then drop.
 
 ```python
 df.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
 df.query("body_mass_g > 3500 and island == 'Dream'")
+df.qry({"species": "Adelie"}).select("species", "body_mass_g")
 ```
 
 ```bash
@@ -112,11 +132,11 @@ pytae data.parquet -qry "{'species': 'Adelie', 'body_mass_g': ('>', 3500)}"
 pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'"
 pytae data.parquet -qry "{'species': 'Adelie'}" -query "body_mass_g > 3500" -head
 
-# filter on a column you are not printing
+# filter first, then drop the filter column — same as df.qry(...).select(...)
 pytae data.parquet -qry "{'species': 'Adelie'}" -select species,body_mass_g -head
 ```
 
-Applies to `-head`/`-tail`/`-nulls`/`-describe`/`-sample`/`-convert`/`-agg_df`/`-agg`/`-value_counts`/`-group_x`/`-long`/`-wide`.
+`-select body_mass_g -qry "{'species': 'Adelie'}"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
 
 ---
 
@@ -139,6 +159,7 @@ pytae data.parquet -agg_df "{'body_mass_g': 'mean', 'n': 'n'}"
 pytae data.parquet -qry "{'species': 'Adelie'}" -agg_df mean
 pytae data.parquet -agg_df sum -dropna false   # keep NA group keys
 pytae data.parquet -agg_df mean -sort_by body_mass_g desc
+pytae data.parquet -select species,body_mass_g -agg_df mean -select species,body_mass_g -shape
 ```
 
 ---
@@ -392,9 +413,11 @@ pytae 'folder/*.parquet' -convert
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |
-| `-describe` | pandas `describe()` summary |
+| `-describe` | pandas `describe()` summary (becomes the working frame) |
 | `-info` | pandas `info()` (columns, non-nulls, dtypes, memory) |
-| `-select SPEC` | Restrict columns (union of tokens) |
+| `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
+| `-qry DICT` | Filter rows at this point (`df.qry()`) |
+| `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt: pandas infer) |
 | `-rename old:new,...` | Rename on convert |
 | `-pretty` | Markdown table |

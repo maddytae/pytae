@@ -44,6 +44,7 @@ penguins.select(exclude_dtype="numeric")       # keep non-numeric
 penguins.select(exclude_dtype="non_numeric")   # keep numeric
 penguins.select(contains="bill", startswith="flip")
 penguins.select("species", regex="bill|body")
+penguins.select("d", "a", "b")                 # KeyError if d is not a column
 ```
 
 ## 4) Reshaping — `long()`, `wide()`

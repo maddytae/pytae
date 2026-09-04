@@ -27,15 +27,23 @@ def test_order_head_then_shape(tmp_path, capsys):
     assert out.strip() == "(3, 2)"
 
 
-def test_order_shape_then_head(tmp_path, capsys):
+def test_shape_cannot_be_followed_by_another_flag(tmp_path):
+    # -shape returns a tuple in pandas terms (not a DataFrame), so nothing may
+    # chain after it except -to_clip.
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10, 20)}))
 
-    exit_code = cli.main([path, "-shape", "-head", "3"])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-shape", "-head", "3"])
+    assert exc_info.value.code == 2
 
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "(10, 2)" not in out
-    assert "0" in out and "10" in out
+
+@pytest.mark.parametrize("op", ["cols", "dtype", "nulls", "info"])
+def test_non_df_ops_cannot_be_followed_by_another_flag(tmp_path, op):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": range(3), "b": range(3, 6)}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, f"-{op}", "-head", "1"])
+    assert exc_info.value.code == 2
 
 
 def test_head_then_cols_prints_only_names(tmp_path, capsys):
@@ -729,6 +737,99 @@ def test_select_slice(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["a", "b", "c"]
 
 
+def test_second_select_filters_remaining_names(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
+
+    exit_code = cli.main([path, "-select", "a,b,c", "-select", "a,c", "-cols"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]
+
+
+def test_second_select_rejects_name_not_kept_by_first(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
+
+    # last-wins would yield b,c; chaining rejects c because the first spec dropped it
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "a,b", "-select", "b,c", "-cols"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "unknown column" in err
+    assert "'c'" in err
+
+
+def test_select_only_prints_selected_table(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
+
+    exit_code = cli.main([path, "-select", "a,b"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "a" in out and "b" in out
+    assert "c" not in out.split()
+
+
+def test_select_unknown_exact_name_errors(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "d,a,b", "-cols"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "unknown column" in err
+    assert "'d'" in err
+
+
+def test_select_after_agg_df_sees_agg_columns(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
+    )
+
+    # n is created by agg_df; a starting-view -select would reject it
+    exit_code = cli.main(
+        [path, "-agg_df", "{'val': 'sum', 'n': 'n'}", "-select", "grp,n", "-cols"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
+
+
+def test_select_agg_df_select_shape_chains(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
+    )
+
+    # starting-view chaining would collapse to val-only before agg → (1, 1)
+    exit_code = cli.main(
+        [path, "-select", "grp,val", "-agg_df", "sum", "-select", "val", "-shape"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+
+def test_second_select_intersects_dtype_and_contains(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "species": ["A"],
+            "bill_length_mm": [1],
+            "bill_depth_mm": [2],
+            "body_mass_g": [3],
+            "island": ["Torgersen"],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    # last-wins of dtype=numeric would keep body_mass_g too
+    exit_code = cli.main([path, "-select", "contains=bill", "-select", "dtype=numeric", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["bill_length_mm", "bill_depth_mm"]
+
+    exit_code = cli.main([path, "-select", "dtype=numeric", "-select", "contains=bill", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["bill_length_mm", "bill_depth_mm"]
+
+
 def test_removed_select_star_flags_are_unknown(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
 
@@ -743,6 +844,43 @@ def test_select_caret_pattern_is_not_implicit_regex(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-select", "^bill", "-cols"])
     assert exc_info.value.code == 2
+
+
+def test_select_then_qry_on_dropped_column_errors(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "keep,val", "-qry", "{'flt':'A'}", "-shape"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-qry" in err
+    assert "flt" in err
+
+
+def test_query_then_select_filters_like_pandas(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
+    )
+
+    exit_code = cli.main(
+        [path, "-query", "flt == 'A'", "-select", "keep,val", "-shape"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 2)"
+
+
+def test_describe_then_shape_is_describe_table(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+    exit_code = cli.main([path, "-describe", "-shape"])
+
+    assert exit_code == 0
+    # pandas describe() of two numeric columns is 8 stats × 2
+    assert capsys.readouterr().out.strip() == "(8, 2)"
 
 
 def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
