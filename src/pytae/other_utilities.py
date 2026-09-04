@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 
-# define a function and monkey patch pandas.DataFrame
-def clip(self):
-    return self.to_clipboard(index=False) #e index=False not working in wsl at the moment
+def to_clip(self):
+    """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
+    return self.to_clipboard(index=False)
 
 
 def handle_missing(self, fillna='.'):
@@ -49,32 +49,30 @@ def cols(self, ascending=True):
     else:
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
 
-# Attach to pandas DataFrame
-pd.DataFrame.cols = cols
 
+def group_x(self, group=None, dropna=True, observed=True, a="n", v=None):
+    """Broadcast a group aggregate to every row (pandas transform).
 
-
-
-def group_x(self, group=None, dropna=True, observed=True, aggfunc='n', value=None):
-    '''
-    penguins.group_x(group=['island','species','sex'],dropna=True,value='body_mass_g',aggfunc='max')
-    penguins.group_x(group=['island','species','sex'],dropna=False) since no aggfunc provided so count will be provided by default
-    '''
+    Default a='n' is group size. Pass v= and a= for another aggregate.
+    If group is omitted, non-numeric columns are used.
+    """
     df = self.copy()
 
     if group is None:
-        group = df.select_dtypes(exclude=['number']).columns.tolist()
+        group = df.select_dtypes(exclude=["number"]).columns.tolist()
+    elif isinstance(group, str):
+        group = [group]
 
-    if aggfunc == 'n' or value is None:
-        df['n'] = df.groupby(group, dropna=dropna, observed=observed).transform('size')
+    if a == "n" or v is None:
+        df["n"] = df.groupby(group, dropna=dropna, observed=observed).transform("size")
     else:
-        df['x'] = df.groupby(group, dropna=dropna, observed=observed)[value].transform(aggfunc)
+        df["x"] = df.groupby(group, dropna=dropna, observed=observed)[v].transform(a)
 
     return df
 
 
 
-pd.DataFrame.clip = clip
+pd.DataFrame.to_clip = to_clip
 pd.DataFrame.handle_missing = handle_missing
 pd.DataFrame.cols = cols
 pd.DataFrame.group_x = group_x

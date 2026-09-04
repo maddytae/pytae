@@ -1,7 +1,8 @@
-import pandas as pd
-import numpy as np
+import difflib
 import operator
 import re
+
+import pandas as pd
 
 # Dictionary mapping string operators to their corresponding functions
 ops = {
@@ -96,28 +97,34 @@ def qry(self, conditions):
       provided as literals, whitespace is handled by Python's parser prior to conversion.
     - For non-numeric columns, tuple-based operator conditions (e.g., ('==', 'A 1')) will
       treat the comparison value as-is, preserving any whitespace in string literals.
-    - The method modifies the DataFrame in-place during filtering but returns the final
-      filtered DataFrame.
+    - Filtering does not modify the original DataFrame. Each condition is applied with
+      `.loc[...]` and a new filtered frame is returned; the caller's object is unchanged.
     """
+    out = self
+    available = list(self.columns)
     for col, cond in conditions.items():
-        is_numeric = pd.api.types.is_numeric_dtype(self[col])
+        if col not in available:
+            close = difflib.get_close_matches(col, available, n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"unknown column '{col}'{hint}")
+        is_numeric = pd.api.types.is_numeric_dtype(out[col])
 
         if isinstance(cond, list):
             # Handle direct list conditions (e.g., ['Adelie', 'Gentoo'])
-            self = self.loc[self[col].isin(cond)]
+            out = out.loc[out[col].isin(cond)]
         elif isinstance(cond, tuple) and len(cond) == 2:
             op, value = cond
             if op in ['in', 'not in']:
                 if not isinstance(value, list):
                     raise ValueError(f"Second element of tuple for '{col}' with '{op}' must be a list, got {type(value)}")
                 if op == 'in':
-                    self = self.loc[self[col].isin(value)]
+                    out = out.loc[out[col].isin(value)]
                 elif op == 'not in':
-                    self = self.loc[~self[col].isin(value)]
+                    out = out.loc[~out[col].isin(value)]
             elif op in ops:
                 if is_numeric:
                     value = float(value)  # Convert to float for numeric columns
-                self = self.loc[ops[op](self[col], value)]
+                out = out.loc[ops[op](out[col], value)]
             else:
                 raise ValueError(f"Unsupported tuple operator '{op}' for '{col}'. Use 'in', 'not in', or one of {list(ops.keys())}.")
         elif isinstance(cond, str) and re.match(r'^[\[(].*[)\]]$', cond):
@@ -139,12 +146,12 @@ def qry(self, conditions):
                 else:
                     upper_op = operator.lt
 
-                self = self.loc[lower_op(self[col], lower) & upper_op(self[col], upper)]
+                out = out.loc[lower_op(out[col], lower) & upper_op(out[col], upper)]
         else:
             # Handle single value equality (e.g., 'Adelie')
-            self = self.loc[self[col] == cond]
+            out = out.loc[out[col] == cond]
 
-    return self
+    return out
 
 # Attach the method to the DataFrame class
 pd.DataFrame.qry = qry

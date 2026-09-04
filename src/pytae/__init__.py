@@ -1,46 +1,83 @@
-from .other_utilities import *
+from collections.abc import Mapping
+from pathlib import Path
+
+import pandas as pd
+
 from .agg_df import *
-from .shape import *
-from .plotting import *
+from .other_utilities import *
 from .qry import *
 from .select import *
 
-import os
-import pandas as pd
-
-# Define the path to the datasets directory
-DATA_PATH = os.path.join(os.path.dirname(__file__), 'datasets')
+DATA_PATH = Path(__file__).resolve().parent / "datasets"
+_DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
+_cache = {}
 
 
-
-# Load each parquet file into a pandas DataFrame and store them in the dictionary
-sample_data = {
-    'anagrams': pd.read_parquet(os.path.join(DATA_PATH, 'anagrams.parquet')),
-    'anscombe': pd.read_parquet(os.path.join(DATA_PATH, 'anscombe.parquet')),
-    'attention': pd.read_parquet(os.path.join(DATA_PATH, 'attention.parquet')),
-    'brain_networks': pd.read_parquet(os.path.join(DATA_PATH, 'brain_networks.parquet')),
-    'car_crashes': pd.read_parquet(os.path.join(DATA_PATH, 'car_crashes.parquet')),
-    'diamonds': pd.read_parquet(os.path.join(DATA_PATH, 'diamonds.parquet')),
-    'dots': pd.read_parquet(os.path.join(DATA_PATH, 'dots.parquet')),
-    'dowjones': pd.read_parquet(os.path.join(DATA_PATH, 'dowjones.parquet')),
-    'exercise': pd.read_parquet(os.path.join(DATA_PATH, 'exercise.parquet')),
-    'flights': pd.read_parquet(os.path.join(DATA_PATH, 'flights.parquet')),
-    'fmri': pd.read_parquet(os.path.join(DATA_PATH, 'fmri.parquet')),
-    'geyser': pd.read_parquet(os.path.join(DATA_PATH, 'geyser.parquet')),
-    'glue': pd.read_parquet(os.path.join(DATA_PATH, 'glue.parquet')),
-    'healthexp': pd.read_parquet(os.path.join(DATA_PATH, 'healthexp.parquet')),
-    'iris': pd.read_parquet(os.path.join(DATA_PATH, 'iris.parquet')),
-    'mpg': pd.read_parquet(os.path.join(DATA_PATH, 'mpg.parquet')),
-    'penguins': pd.read_parquet(os.path.join(DATA_PATH, 'penguins.parquet')),
-    'planets': pd.read_parquet(os.path.join(DATA_PATH, 'planets.parquet')),
-    'seaice': pd.read_parquet(os.path.join(DATA_PATH, 'seaice.parquet')),
-    'taxis': pd.read_parquet(os.path.join(DATA_PATH, 'taxis.parquet')),
-    'tips': pd.read_parquet(os.path.join(DATA_PATH, 'tips.parquet')),
-    'titanic': pd.read_parquet(os.path.join(DATA_PATH, 'titanic.parquet'))
-    # Add more datasets as needed
-}
+def sample(name):
+    """Load a bundled sample dataset by name (cached after the first call)."""
+    if name not in _DATASET_NAMES:
+        available = ", ".join(_DATASET_NAMES) or "(none)"
+        raise KeyError(f"unknown dataset {name!r}; available: {available}")
+    if name not in _cache:
+        _cache[name] = pd.read_parquet(DATA_PATH / f"{name}.parquet")
+    return _cache[name]
 
 
+class _SampleData(Mapping):
+    """Bundled datasets, loaded from parquet on first access."""
 
-# Make sample_data available when importing the package
-__all__ = ['sample_data']
+    def __getitem__(self, name):
+        return sample(name)
+
+    def __contains__(self, name):
+        return name in _DATASET_NAMES
+
+    def __iter__(self):
+        return iter(_DATASET_NAMES)
+
+    def __len__(self):
+        return len(_DATASET_NAMES)
+
+
+sample_data = _SampleData()
+
+
+def _bind_shape():
+    from .shape import long, wide
+    pd.DataFrame.long = long
+    pd.DataFrame.wide = wide
+    globals()["long"] = long
+    globals()["wide"] = wide
+    return long, wide
+
+
+def _lazy_long(self, **kwargs):
+    long, _ = _bind_shape()
+    return long(self, **kwargs)
+
+
+def _lazy_wide(self, **kwargs):
+    _, wide = _bind_shape()
+    return wide(self, **kwargs)
+
+
+pd.DataFrame.long = _lazy_long
+pd.DataFrame.wide = _lazy_wide
+
+
+def __getattr__(name):
+    if name == "Plotter":
+        try:
+            from .plotting import Plotter
+        except ImportError as exc:
+            raise ImportError(
+                "Plotter requires matplotlib. Install with: pip install 'pytae[plot]'"
+            ) from exc
+        return Plotter
+    if name in ("long", "wide"):
+        _bind_shape()
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = ["sample_data", "sample", "Plotter", "long", "wide"]

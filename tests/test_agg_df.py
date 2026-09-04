@@ -23,7 +23,7 @@ def test_agg_df_sum():
     df = pd.DataFrame(data)
     
     # Act: Call the agg_df method with sum aggregation
-    result = df.agg_df(aggfunc=['sum'])
+    result = df.agg_df(a=['sum'])
     
     # Assert: Check if the result is as expected
     expected_df =  pd.DataFrame(data).groupby('category').sum().reset_index()
@@ -36,7 +36,7 @@ def test_all_agg():
                   'country':['sg','cn','ca','np','in','in','in','in']})
     
     df['id'] = df['id'].replace('', np.nan)
-    result=df.agg_df(aggfunc=['sum','min','mean','min','max','n'])
+    result=df.agg_df(a=['sum','min','mean','min','max','n'])
 
     # Group by 'id' and 'country', then aggregate
     expected_df = df.groupby(['id', 'country']).agg(
@@ -63,7 +63,7 @@ def test_all_agg_drop_na():
     
     df['id'] = df['id'].replace('', np.nan)
     
-    result=df.agg_df(aggfunc=['sum','min','mean','min','max','n'],dropna=False)
+    result=df.agg_df(a=['sum','min','mean','min','max','n'],dropna=False)
 
     # Group by 'id' and 'country', then aggregate
     expected_df = df.groupby(['id', 'country'],dropna=False).agg(

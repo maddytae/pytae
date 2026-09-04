@@ -122,13 +122,14 @@ def _agg_df_dict(self, agg_types, dropna, observed):
 def agg_df(self, *args, **kwargs):
     """
     Aggregate the DataFrame based on specified aggregation types, ensuring that aggregated
-    column names, including 'n' for counts, follow the specified order in the 'aggfunc' parameter.
+    column names, including 'n' for counts, follow the specified order in the 'a' parameter.
 
     Parameters:
     - self (DataFrame): The pandas DataFrame to be aggregated.
-    - *args: If a dictionary is provided as the first positional argument, it is treated as aggfunc.
+    - *args: If provided, first positional argument is treated as a (str, list, or dict).
     - **kwargs:
-        - aggfunc (str, list, or dict, optional): Specifies the types of aggregation to perform.
+        - a (str, list, or dict, optional): Required when other keywords (dropna, observed)
+          are used without a positional aggregation argument. Specifies the types of aggregation.
             - If str (e.g., 'sum'): Apply the aggregation to all numeric columns.
             - If list (e.g., ['sum', 'mean']): Apply the listed aggregations to all numeric columns.
             - If dict (e.g., {'balance': 'mean', 'amount': ['sum', 'mean'], 'count': 'n'}):
@@ -143,16 +144,15 @@ def agg_df(self, *args, **kwargs):
     Returns:
     - DataFrame: The aggregated DataFrame with specified aggregations applied. Column names
                  for aggregated values include the aggregation type only if multiple aggregations
-                 are specified for a column. For dict aggfunc, columns follow dictionary key order
+                 are specified for a column. For dict a, columns follow dictionary key order
                  after group columns. If only 'n' is specified and no numeric columns exist, returns
                  group counts.
     """
 
-    # Get parameters
-    if args and isinstance(args[0], dict):
+    if args:
         agg_types = args[0]
     else:
-        agg_types = kwargs.get('aggfunc', ['sum'])
+        agg_types = kwargs.get("a", ["sum"])
     dropna = kwargs.get('dropna', True)
     observed = kwargs.get('observed', True)
 

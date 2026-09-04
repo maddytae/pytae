@@ -1,11 +1,13 @@
-import pandas as pd
+import difflib
 import re
+
+import pandas as pd
 
 # Define the sentinel class
 class everything:
     pass
 
-def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None):
+def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None):
     '''
     Select columns from a DataFrame based on names, regex patterns, slices, data types, or string matching.
     
@@ -14,7 +16,8 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     self : pd.DataFrame
         The DataFrame from which to select columns.
     *args : variable-length arguments
-        Can be: list of column names, string (exact name, regex, or slice like 'start:end'), everything(), or callable.
+        Can be: list of column names, string (exact name or slice like 'start:end'), everything(), or callable.
+        Regex is the regex= keyword, not a positional string.
     dtype : str, type, or list, optional
         Data type(s) to select (e.g., 'numeric', 'datetime').
     exclude_dtype : str, type, or list, optional
@@ -25,13 +28,15 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
         Prefix(es) to match in column names.
     endswith : str or list of str, optional
         Suffix(es) to match in column names.
+    regex : str or list of str, optional
+        Regular expression(s) to match in column names.
     
     Returns:
     --------
     pd.DataFrame
         Selected columns, with explicit/regex/slice selections first, followed by everything() if specified.
     '''
-    if exclude_dtype is not None and (args or dtype or contains or startswith or endswith):
+    if exclude_dtype is not None and (args or dtype or contains or startswith or endswith or regex):
         raise ValueError("exclude_dtype cannot be combined with other selection criteria.")
     
     selected_cols = set()
@@ -39,7 +44,18 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     all_cols = self.columns.tolist()  # List of all columns for slice positioning
     
     if exclude_dtype is not None:
-        if isinstance(exclude_dtype, (str, type)):
+        _numeric_types = ['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+        _shorthands = {
+            'numeric': _numeric_types,
+            'datetime': ['datetime64[ns]'],
+            'category': ['category'],
+            'bool': ['bool'],
+        }
+        if exclude_dtype == 'non_numeric':
+            exclude_cols = self.select_dtypes(include=_numeric_types).columns.tolist()
+        elif isinstance(exclude_dtype, str) and exclude_dtype in _shorthands:
+            exclude_cols = self.select_dtypes(exclude=_shorthands[exclude_dtype]).columns.tolist()
+        elif isinstance(exclude_dtype, (str, type)):
             exclude_cols = self.select_dtypes(exclude=[exclude_dtype]).columns.tolist()
         elif isinstance(exclude_dtype, list):
             exclude_cols = self.select_dtypes(exclude=exclude_dtype).columns.tolist()
@@ -72,10 +88,11 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
                 selected_cols.add(arg)
                 if arg not in ordered_cols:
                     ordered_cols.append(arg)
-            else:  # Treat as regex
-                regex_cols = self.filter(regex=arg).columns.tolist()
-                selected_cols.update(regex_cols)
-                ordered_cols.extend([col for col in regex_cols if col not in ordered_cols])
+            else:
+                close = difflib.get_close_matches(arg, all_cols, n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?[]()") else ""
+                raise KeyError(f"Column not found: '{arg}'{hint}{regex_hint}")
         elif isinstance(arg, everything):
             remaining_cols = [col for col in self.columns if col not in selected_cols]
             selected_cols.update(remaining_cols)
@@ -129,6 +146,16 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             endswith_cols = [col for col in self.columns if any(col.endswith(sub) for sub in endswith)]
         selected_cols.update(endswith_cols)
         ordered_cols.extend([col for col in endswith_cols if col not in ordered_cols])
+
+    if regex is not None:
+        patterns = [regex] if isinstance(regex, str) else list(regex)
+        try:
+            compiled = [re.compile(p) for p in patterns]
+        except re.error as exc:
+            raise ValueError(f"invalid regex: {exc}") from exc
+        regex_cols = [col for col in self.columns if any(p.search(str(col)) for p in compiled)]
+        selected_cols.update(regex_cols)
+        ordered_cols.extend([col for col in regex_cols if col not in ordered_cols])
 
     return self[ordered_cols]
 

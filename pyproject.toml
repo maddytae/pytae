@@ -4,22 +4,32 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "2.6.6"
+version = "3.0.0"
 description = "A package to enhance common day to day tasks in the life of a data scientist"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "pyarrow>=15.0.0",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dynamic = ["dependencies"]
 
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements.txt"] }
+[project.optional-dependencies]
+plot = ["matplotlib"]
+dev = ["pytest>=8.0.0", "matplotlib"]
+
+[project.scripts]
+pytae = "pytae.cli:main"
 
 [project.urls]
 "Homepage" = "https://github.com/maddytae/pytae"
 "Bug Tracker" = "https://github.com/maddytae/pytae/issues"
-
