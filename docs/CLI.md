@@ -128,15 +128,16 @@ df.qry({"species": "Adelie"}).select("species", "body_mass_g")
 ```
 
 ```bash
-pytae data.parquet -qry "{'species': 'Adelie', 'body_mass_g': ('>', 3500)}"
+# surrounding {} are optional for -qry — the CLI adds them for you
+pytae data.parquet -qry "'species': 'Adelie', 'body_mass_g': ('>', 3500)"
 pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'"
-pytae data.parquet -qry "{'species': 'Adelie'}" -query "body_mass_g > 3500" -head
+pytae data.parquet -qry "'species': 'Adelie'" -query "body_mass_g > 3500" -head
 
 # filter first, then drop the filter column — same as df.qry(...).select(...)
-pytae data.parquet -qry "{'species': 'Adelie'}" -select species,body_mass_g -head
+pytae data.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -head
 ```
 
-`-select body_mass_g -qry "{'species': 'Adelie'}"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
+`-select body_mass_g -qry "'species': 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
 
 ---
 
@@ -416,7 +417,7 @@ pytae 'folder/*.parquet' -convert
 | `-describe` | pandas `describe()` summary (becomes the working frame) |
 | `-info` | pandas `info()` (columns, non-nulls, dtypes, memory) |
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
-| `-qry DICT` | Filter rows at this point (`df.qry()`) |
+| `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt: pandas infer) |
 | `-rename old:new,...` | Rename on convert |

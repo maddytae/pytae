@@ -215,13 +215,15 @@ def expand_paths(pattern: str) -> list[Path]:
 
 
 def parse_qry(raw: str) -> dict:
-    """Parse a --qry dict literal like "{'col': ('>', 5), 'other': ['a','b']}"."""
+    """Parse --qry conditions like "'col': ('>', 5), 'other': ['a','b']"; wrapping {} is optional."""
+    stripped = raw.strip()
+    candidate = stripped if stripped.startswith("{") else f"{{{stripped}}}"
     try:
-        conditions = ast.literal_eval(raw)
+        conditions = ast.literal_eval(candidate)
     except (ValueError, SyntaxError) as exc:
         raise SystemExit(f"invalid --qry conditions: {exc}") from exc
     if not isinstance(conditions, dict):
-        raise SystemExit("--qry expects a dict literal, e.g. \"{'col': ('>', 5)}\"")
+        raise SystemExit("--qry expects dict entries, e.g. \"'col': ('>', 5)\" (braces optional)")
     return conditions
 
 
@@ -670,8 +672,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
                          help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
-                         help="filter rows at this point in the pipeline using pytae qry(); dict literal, e.g. "
-                              "\"{'col': ('>', 5), 'other': ['a', 'b']}\"")
+                         help="filter rows at this point in the pipeline using pytae qry(); dict entries, "
+                              "surrounding {} optional, e.g. \"'col': ('>', 5), 'other': ['a', 'b']\"")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",

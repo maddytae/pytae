@@ -873,6 +873,17 @@ def test_query_then_select_filters_like_pandas(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(2, 2)"
 
 
+def test_qry_without_braces_is_equivalent(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
+    )
+
+    exit_code = cli.main([path, "-qry", "'flt': 'A'", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 3)"
+
+
 def test_describe_then_shape_is_describe_table(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
 
