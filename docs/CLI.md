@@ -156,8 +156,9 @@ df.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keywords are 
 pytae data.parquet -agg_df           # defaults to sum
 pytae data.parquet -agg_df mean
 pytae data.parquet -agg_df "['mean', 'sum']"
-pytae data.parquet -agg_df "{'body_mass_g': 'mean', 'n': 'n'}"
-pytae data.parquet -qry "{'species': 'Adelie'}" -agg_df mean
+# surrounding {} are optional for the dict form too
+pytae data.parquet -agg_df "'body_mass_g': 'mean', 'n': 'n'"
+pytae data.parquet -qry "'species': 'Adelie'" -agg_df mean
 pytae data.parquet -agg_df sum -dropna false   # keep NA group keys
 pytae data.parquet -agg_df mean -sort_by body_mass_g desc
 pytae data.parquet -select species,body_mass_g -agg_df mean -select species,body_mass_g -shape

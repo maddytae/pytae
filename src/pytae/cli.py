@@ -228,14 +228,20 @@ def parse_qry(raw: str) -> dict:
 
 
 def parse_agg(raw: str):
-    """Parse an --agg_df aggfunc value: bare string ('sum'), list literal, or dict literal."""
+    """Parse an --agg_df aggfunc value: bare string ('sum'), list literal, or dict of
+    quoted key:value pairs, surrounding {} optional, e.g. "'col':'sum','n':'n'"."""
     raw = raw.strip()
     if not (raw.startswith(("{", "[", "'", '"'))):
         return raw
     try:
         return ast.literal_eval(raw)
     except (ValueError, SyntaxError) as exc:
-        raise SystemExit(f"invalid --agg_df value: {exc}") from exc
+        if raw.startswith("{"):
+            raise SystemExit(f"invalid --agg_df value: {exc}") from exc
+        try:
+            return ast.literal_eval(f"{{{raw}}}")
+        except (ValueError, SyntaxError):
+            raise SystemExit(f"invalid --agg_df value: {exc}") from exc
 
 
 _AGG_KEYS = ("column", "aggfunc", "as")
@@ -636,7 +642,8 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="AGGFUNC", action=_OrderedValue,
                          help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
                               "defaults to 'sum' when no value given; "
-                              "accepts string ('mean'), list (\"['sum','mean']\"), or dict (\"{'col':'sum','n':'n'}\")")
+                              "accepts string ('mean'), list (\"['sum','mean']\"), or dict, surrounding {} "
+                              "optional (\"'col':'sum','n':'n'\")")
     parser.add_argument("-agg", "--agg", dest="agg", metavar="KEY=VALUE,...", action=_OrderedStore,
                          help="aggregate using explicit -group_by columns; key=value specs "
                               "(column=, aggfunc=, optional as=), e.g. "

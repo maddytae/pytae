@@ -794,6 +794,19 @@ def test_select_after_agg_df_sees_agg_columns(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
 
 
+def test_agg_df_dict_without_braces_is_equivalent(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
+    )
+
+    exit_code = cli.main(
+        [path, "-agg_df", "'val': 'sum', 'n': 'n'", "-select", "grp,n", "-cols"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
+
+
 def test_select_agg_df_select_shape_chains(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
