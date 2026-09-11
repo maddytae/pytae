@@ -704,12 +704,8 @@ _COMMON_ENCODINGS = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
 
 def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError) -> str:
     used = encoding or "utf-8"
-    current = encoding or "default (utf-8)"
     suggestions = ", ".join(enc for enc in _COMMON_ENCODINGS if enc != used)
-    return (
-        f"failed to read '{path}' using encoding '{current}': {exc}; "
-        f"try -encoding with a different value, e.g. {suggestions}"
-    )
+    return f"can't decode '{path}' with encoding '{used}'; try -encoding {suggestions}"
 
 
 def _process_path(
