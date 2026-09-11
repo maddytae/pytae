@@ -135,7 +135,7 @@ class CsvReader:
 
 
 class TxtReader:
-    """Reads delimited .txt files (tab-delimited by default)."""
+    """Reads delimited .txt/.dat files (tab-delimited for .txt, pipe-delimited for .dat by default)."""
 
     def __init__(self, path: Path, sep: str = "\t", encoding: str | None = None) -> None:
         self.path = path
@@ -239,27 +239,32 @@ _READERS = {
     ".pq": ParquetReader,
     ".csv": CsvReader,
     ".txt": TxtReader,
+    ".dat": TxtReader,
     ".sas7bdat": SasReader,
 }
 
+# default field separator for TxtReader-backed suffixes (.txt/.dat)
+_TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
+
 
 def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None):
+    suffix = path.suffix.lower()
     try:
-        cls = _READERS[path.suffix.lower()]
+        cls = _READERS[suffix]
     except KeyError:
         supported = ", ".join(sorted(_READERS))
         raise ValueError(f"unsupported file type '{path.suffix or path.name}'; supported: {supported}") from None
     if cls is CsvReader:
         return CsvReader(path, sep=sep or ",", encoding=encoding)
     if cls is TxtReader:
-        return TxtReader(path, sep=sep or "\t", encoding=encoding)
+        return TxtReader(path, sep=sep or _TXT_DEFAULT_SEP[suffix], encoding=encoding)
     if cls is SasReader:
         return SasReader(path, encoding=encoding)
     return cls(path)
 
 
 # .sas7bdat is intentionally excluded: pandas has no writer for that format.
-_WRITABLE_SUFFIXES = (".parquet", ".pq", ".csv", ".txt")
+_WRITABLE_SUFFIXES = (".parquet", ".pq", ".csv", ".txt", ".dat")
 
 
 def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, encoding: str | None = None,
@@ -269,8 +274,8 @@ def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, enc
         _write_parquet(df, dest, progress=progress)
     elif suffix == ".csv":
         _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress)
-    elif suffix == ".txt":
-        _write_delimited(df, dest, sep=sep or "\t", encoding=encoding, progress=progress)
+    elif suffix in _TXT_DEFAULT_SEP:
+        _write_delimited(df, dest, sep=sep or _TXT_DEFAULT_SEP[suffix], encoding=encoding, progress=progress)
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")

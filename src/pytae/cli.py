@@ -383,12 +383,7 @@ def _list_order_index(series: pd.Series, order) -> pd.Series:
     return series
 
 
-def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
-    """Abort immediately outside batch mode; in batch mode, warn on stderr and signal failure instead."""
-    if not batch:
-        parser.error(msg)
-    print(f"pytae: {msg}", file=sys.stderr)
-    return True
+
 
 
 def cmd_convert(
@@ -591,10 +586,10 @@ class _OrderedSortBy(argparse.Action):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pytae",
-        description="Inspect and convert parquet/csv/txt/sas7bdat files (glob patterns convert multiple files at once).",
+        description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once).",
         allow_abbrev=False,
     )
-    parser.add_argument("path", help="path to a .parquet, .csv, .txt, or .sas7bdat file, "
+    parser.add_argument("path", help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
                                       "or a glob pattern like 'data/*.parquet' for batch conversion")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
@@ -636,7 +631,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "-agg_df/-long/-wide, e.g. -select dtype=numeric -select contains=bill")
     parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
-                         help="convert to another format (.parquet/.csv/.txt, inferred from -o's extension, "
+                         help="convert to another format (.parquet/.csv/.txt/.dat, inferred from -o's extension, "
                               "defaults to .csv); use -select to restrict columns")
     parser.add_argument("-agg_df", "--agg_df", dest="agg_df", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
@@ -670,10 +665,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", type=Path, default=None,
                          help="output path; its extension picks the format (default: .csv alongside the source file)")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
-                         help="field delimiter for reading/writing .csv/.txt/.sas7bdat (default: ',' for .csv, tab for .txt); not used for .parquet")
+                         help="field delimiter for reading/writing .csv/.txt/.dat/.sas7bdat (default: ',' for .csv, "
+                              "tab for .txt, '|' for .dat); not used for .parquet")
     parser.add_argument("-encoding", "--encoding", dest="encoding", default=None, metavar="ENC",
-                         help="text encoding for .csv/.txt/.sas7bdat, e.g. latin-1 "
-                              "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt); not used for .parquet")
+                         help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
+                              "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt/.dat); not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
@@ -693,6 +689,27 @@ def build_parser() -> argparse.ArgumentParser:
                               "for DataFrame/Series output (-head/-tail/-nulls/-cols/etc.), plain text for -shape "
                               "(cannot combine -shape with a DataFrame-producing flag)")
     return parser
+
+
+def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
+    """Abort immediately outside batch mode; in batch mode, warn on stderr and signal failure instead."""
+    if not batch:
+        parser.error(msg)
+    print(f"pytae: {msg}", file=sys.stderr)
+    return True
+
+
+_COMMON_ENCODINGS = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
+
+
+def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError) -> str:
+    used = encoding or "utf-8"
+    current = encoding or "default (utf-8)"
+    suggestions = ", ".join(enc for enc in _COMMON_ENCODINGS if enc != used)
+    return (
+        f"failed to read '{path}' using encoding '{current}': {exc}; "
+        f"try -encoding with a different value, e.g. {suggestions}"
+    )
 
 
 def _process_path(
@@ -998,8 +1015,12 @@ def main(argv: list[str] | None = None) -> int:
     for path in paths:
         if batch:
             print(f"== {path} ==")
-        if _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                          qry_specs=qry_specs, query_specs=query_specs, rename_map=rename_map):
+        try:
+            failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
+                                    qry_specs=qry_specs, query_specs=query_specs, rename_map=rename_map)
+        except UnicodeError as exc:
+            failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
+        if failed:
             exit_code = 1
 
     return exit_code

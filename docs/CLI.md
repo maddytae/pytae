@@ -1,6 +1,6 @@
 # pytae — CLI Reference
 
-Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.sas7bdat`). The CLI is the same verbs as the library: `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()`.
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI is the same verbs as the library: `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()`.
 
 ```bash
 pytae data.parquet -head
@@ -321,6 +321,7 @@ Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the sou
 | `.parquet` / `.pq` | ✓ | ✓ |
 | `.csv` | ✓ | ✓ |
 | `.txt` | ✓ | ✓ |
+| `.dat` | ✓ | ✓ |
 | `.sas7bdat` | ✓ | — |
 
 ```bash
@@ -331,17 +332,21 @@ pytae data.csv -convert -o data.parquet
 pytae data.sas7bdat -convert -o data.parquet          # character columns decoded as utf-8
 pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
 pytae data.txt -dlim "|" -convert -o data.csv
+pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter
 pytae 'data/*.parquet' -convert
 pytae data.parquet -convert -rename "old_name:new_name,another:clean"
 pytae data.csv -encoding latin-1 -convert -o data.parquet
 ```
 
-> **`-dlim`:** `.csv` / `.txt` / `.sas7bdat` only. Defaults: `,` for csv, tab for txt. Common: `|`, `;`, `:`, `~`.
+> **`-dlim`:** `.csv` / `.txt` / `.dat` / `.sas7bdat` only. Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
 >
 > ```bash
 > pytae data.txt -dlim "|" -head
 > pytae data.csv -dlim ";" -convert -o data.parquet
 > ```
+
+> **`-encoding`:** if the file can't be decoded with the current encoding, pytae reports the
+> failing encoding and suggests common alternatives to try (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`).
 
 ---
 
@@ -414,13 +419,13 @@ pytae 'folder/*.parquet' -convert
 | `-wide [KEY=VALUE,...]` | Pivot long to wide (`c`, `v`, `a`, `dropna`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts` (default true) |
 | `-nrows N` | Cap rows loaded |
-| `-dlim CHAR` | Delimiter for csv/txt/sas7bdat |
+| `-dlim CHAR` | Delimiter for csv/txt/dat/sas7bdat |
 | `-describe` | pandas `describe()` summary (becomes the working frame) |
 | `-info` | pandas `info()` (columns, non-nulls, dtypes, memory) |
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
-| `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt: pandas infer) |
+| `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt/dat: pandas infer) |
 | `-rename old:new,...` | Rename on convert |
 | `-pretty` | Markdown table |
 | `-round N` | Round numeric print/copy |
