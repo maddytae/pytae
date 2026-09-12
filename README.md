@@ -30,7 +30,7 @@ See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY
 
 ```bash
 pytae data.parquet -head
-pytae data.parquet -qry "{'species': 'Adelie'}" -select species,body_mass_g -convert -o subset.csv
+pytae data.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -convert -o subset.csv
 ```
 
 See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full flag reference.

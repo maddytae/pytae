@@ -27,6 +27,95 @@ def test_order_head_then_shape(tmp_path, capsys):
     assert out.strip() == "(3, 2)"
 
 
+def test_sample_with_seed_is_reproducible(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": range(100), "b": range(100, 200)}))
+
+    cli.main([path, "-sample", "10", "-seed", "42"])
+    first = capsys.readouterr().out
+
+    cli.main([path, "-sample", "10", "-seed", "42"])
+    second = capsys.readouterr().out
+
+    assert first == second
+
+
+def test_sample_frac_selects_expected_row_count(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": range(100), "b": range(100, 200)}))
+
+    exit_code = cli.main([path, "-sample", "-frac", "0.1", "-seed", "1", "-shape"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.strip() == "(10, 2)"
+
+
+def _penguins_frame():
+    return pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Adelie", "Chinstrap", "Chinstrap", "Gentoo", "Gentoo", "Gentoo"],
+        "island": ["Biscoe", "Dream", "Dream", "Dream", "Dream", "Biscoe", "Biscoe", "Biscoe"],
+        "sex": ["Male", "Female", "Male", "Male", "Female", "Male", "Female", "Male"],
+        "body_mass_g": [3750, 3800, 4000, 3700, 3400, 5700, 4500, 5600],
+    })
+
+
+def test_crosstab_counts(tmp_path, capsys):
+    path = _write_csv(tmp_path, _penguins_frame())
+
+    exit_code = cli.main([path, "-crosstab", "index='species',columns='island'"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    lines = out.strip().splitlines()
+    assert lines[0].split() == ["island", "Biscoe", "Dream"]
+    assert lines[2].split() == ["Adelie", "1", "2"]
+
+
+def test_crosstab_margins_adds_totals(tmp_path, capsys):
+    path = _write_csv(tmp_path, _penguins_frame())
+
+    cli.main([path, "-crosstab", "index='species',columns='island',margins=true"])
+
+    out = capsys.readouterr().out
+    assert "All" in out.strip().splitlines()[0]
+
+
+def test_crosstab_values_and_aggfunc(tmp_path, capsys):
+    path = _write_csv(tmp_path, _penguins_frame())
+
+    exit_code = cli.main([
+        path, "-crosstab",
+        "index='species',columns='sex',values='body_mass_g',aggfunc='mean'",
+        "-round", "1",
+    ])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "3875.0" in out
+
+
+def test_crosstab_values_requires_aggfunc(tmp_path):
+    path = _write_csv(tmp_path, _penguins_frame())
+
+    with pytest.raises(SystemExit, match="values= and aggfunc= must be given together"):
+        cli.main([path, "-crosstab", "index='species',columns='sex',values='body_mass_g'"])
+
+
+def test_crosstab_unknown_column_errors(tmp_path):
+    path = _write_csv(tmp_path, _penguins_frame())
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-crosstab", "index='species',columns='nope'"])
+    assert exc_info.value.code == 2
+
+
+def test_frac_requires_sample(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10, 20)}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-frac", "0.5", "-head"])
+    assert exc_info.value.code == 2
+
+
 def test_shape_cannot_be_followed_by_another_flag(tmp_path):
     # -shape returns a tuple in pandas terms (not a DataFrame), so nothing may
     # chain after it except -to_clip.

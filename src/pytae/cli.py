@@ -322,7 +322,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             raise SystemExit(f"{flag}: {key}= needs a value")
         if key in kwargs:
             raise SystemExit(f"{flag}: {key}= given more than once")
-        kwargs[key] = parse_bool_text(value) if key in ("dropna", "observed") else value
+        kwargs[key] = parse_bool_text(value) if key in ("dropna", "observed", "margins") else value
     return kwargs
 
 
@@ -332,6 +332,24 @@ def parse_long_arg(raw: str | None) -> dict:
 
 def parse_wide_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+
+
+_CROSSTAB_KEYS = ("index", "columns", "values", "aggfunc", "normalize", "margins")
+_CROSSTAB_NORMALIZE_VALUES = ("index", "columns", "all")
+
+
+def parse_crosstab_arg(raw: str | None) -> dict:
+    """Parse -crosstab as key=value tokens: index=, columns=, optional values=+aggfunc=
+    (must be given together), normalize=index|columns|all, margins=true|false.
+    """
+    kwargs = parse_reshape_kwargs(raw, keys=_CROSSTAB_KEYS, flag="-crosstab")
+    if "index" not in kwargs or "columns" not in kwargs:
+        raise SystemExit("-crosstab: expected index= and columns=")
+    if ("values" in kwargs) != ("aggfunc" in kwargs):
+        raise SystemExit("-crosstab: values= and aggfunc= must be given together")
+    if "normalize" in kwargs and kwargs["normalize"] not in _CROSSTAB_NORMALIZE_VALUES:
+        raise SystemExit(f"-crosstab: normalize= must be one of {', '.join(_CROSSTAB_NORMALIZE_VALUES)}")
+    return kwargs
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -353,6 +371,17 @@ def parse_positive_int(raw) -> int:
     if n <= 0:
         raise argparse.ArgumentTypeError(f"must be > 0, got {n}")
     return n
+
+
+def parse_fraction(raw) -> float:
+    """Parse -frac: a fraction of rows in (0, 1] (e.g. -frac 0.1 for 10%)."""
+    try:
+        frac = float(raw)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(f"invalid number: {raw!r}") from None
+    if not (0 < frac <= 1):
+        raise argparse.ArgumentTypeError(f"must be > 0 and <= 1, got {frac}")
+    return frac
 
 
 def parse_list_order(raw: str) -> str:
@@ -520,10 +549,13 @@ class _Pipeline:
         self._df = df
         return df
 
-    def sample(self, n: int) -> pd.DataFrame:
+    def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
         df = self.dataframe()
-        n = min(n, len(df))
-        sampled = df.sample(n=n) if n else df.iloc[0:0]
+        if frac is not None:
+            sampled = df.sample(frac=frac, random_state=seed)
+        else:
+            n = min(n, len(df))
+            sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
         self._df = sampled
         return sampled
 
@@ -616,6 +648,11 @@ def build_parser() -> argparse.ArgumentParser:
                          help="drop duplicate rows and print unique rows")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
+    parser.add_argument("-seed", "--seed", dest="seed", type=int, default=None, metavar="N",
+                         help="random seed for -sample, for reproducible rows (default: random each run)")
+    parser.add_argument("-frac", "--frac", dest="frac", type=parse_fraction, default=None, metavar="P",
+                         help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
+                              "requires -sample and overrides its N")
     parser.add_argument("-sort_by", "--sort_by", dest="sort_by", nargs="+", default=None, metavar="COLUMNS",
                          action=_OrderedSortBy,
                          help="sort rows by column(s), comma-separated; optional asc|desc (default: asc)")
@@ -659,9 +696,13 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
                               "e.g. c='country',v='balance',a='mean'")
+    parser.add_argument("-crosstab", "--crosstab", dest="crosstab", metavar="KEY=VALUE,...", action=_OrderedStore,
+                         help="cross-tabulate two columns into a matrix (pandas crosstab()); key=value specs: "
+                              "index=, columns= (required), optional values=+aggfunc= together to aggregate "
+                              "instead of count, normalize=index|columns|all, margins=true|false; honors -dropna")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
-                         help="for -agg_df, -agg, and -value_counts: include NA keys when false; accepts true or false (default: true)")
+                         help="for -agg_df, -agg, -value_counts, and -crosstab: include NA keys when false; accepts true or false (default: true)")
     parser.add_argument("-o", "--output", type=Path, default=None,
                          help="output path; its extension picks the format (default: .csv alongside the source file)")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
@@ -853,7 +894,7 @@ def _process_path(
             if args.to_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "sample":
-            sampled = _apply_round(pipeline.sample(args.sample), args.round_ndigits)
+            sampled = _apply_round(pipeline.sample(args.sample, seed=args.seed, frac=args.frac), args.round_ndigits)
             n = len(sampled)
             if should_print(idx):
                 print(_format_table(sampled, pretty=args.pretty) if n else "(no rows)")
@@ -947,6 +988,29 @@ def _process_path(
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
+        elif op == "crosstab":
+            source_df = pipeline.dataframe()
+            ct = parse_crosstab_arg(args.crosstab)
+            needed = [ct["index"], ct["columns"]] + ([ct["values"]] if "values" in ct else [])
+            missing = [c for c in needed if c not in source_df.columns]
+            if missing:
+                return _fail(parser, batch, unknown_columns_message("-crosstab", missing, list(source_df.columns)))
+            ct_kwargs = {"dropna": args.dropna}
+            if "margins" in ct:
+                ct_kwargs["margins"] = ct["margins"]
+            if "normalize" in ct:
+                ct_kwargs["normalize"] = ct["normalize"]
+            if "values" in ct:
+                ct_kwargs["values"] = source_df[ct["values"]]
+                ct_kwargs["aggfunc"] = ct["aggfunc"]
+            result = _apply_round(
+                pd.crosstab(source_df[ct["index"]], source_df[ct["columns"]], **ct_kwargs), args.round_ndigits
+            )
+            pipeline._df = result
+            if should_print(idx):
+                print(_format_table(result, index=True, pretty=args.pretty))
+            if args.to_clip:
+                clip_action = lambda d=result: d.to_clipboard(index=True)
         elif op == "convert":
             cmd_convert(
                 pipeline.dataframe(), path, args.output,
@@ -979,23 +1043,25 @@ def main(argv: list[str] | None = None) -> int:
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
                          args.convert, args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
-                         args.long is not None, args.wide is not None, args.select,
-                         args.qry, args.query])
+                         args.long is not None, args.wide is not None, args.crosstab is not None,
+                         args.select, args.qry, args.query])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
                      args.agg_df is not None, args.agg is not None,
                      args.group_x is not None, args.handle_missing is not None,
-                     args.long is not None, args.wide is not None])
+                     args.long is not None, args.wide is not None, args.crosstab is not None])
     if args.to_clip and args.shape and wants_df:
         parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide; run -shape separately")
+                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab; run -shape separately")
     if args.agg_df is not None and args.agg is not None:
         parser.error("-agg_df and -agg can't be combined; choose one")
     if args.group_by is not None and args.agg is None and args.group_x is None:
         parser.error("-group_by requires -agg or -group_x")
+    if args.frac is not None and args.sample is None:
+        parser.error("-frac requires -sample")
 
     paths = expand_paths(args.path)
     if len(paths) > 1 and args.output is not None:
