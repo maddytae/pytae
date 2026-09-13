@@ -381,13 +381,14 @@ pytae tall.csv -wide "c='country name',v='body mass'"
 <a id="crosstab"></a>
 ## Cross-tabulation — `-crosstab`
 
-A matrix version of `-value_counts` for two columns (pandas `pd.crosstab()`): one column's values become rows, the other's become headers. Only single columns for `index=`/`columns=` — no multi-column headers. Honors the shared `-dropna` flag.
+A matrix version of `-value_counts` for two columns (pandas `pd.crosstab()`): one or more columns become rows, a single column becomes headers. `index=` accepts a comma-separated list for a multi-level row index (like `-group_by`); `columns=` stays a single column — no multi-column headers. Honors the shared `-dropna` flag.
 
 ```python
 pd.crosstab(df["species"], df["island"])
 pd.crosstab(df["species"], df["island"], margins=True)
 pd.crosstab(df["species"], df["sex"], normalize="index")
 pd.crosstab(df["species"], df["sex"], values=df["body_mass_g"], aggfunc="mean")
+pd.crosstab([df["species"], df["island"]], df["sex"])
 ```
 
 ```bash
@@ -407,6 +408,9 @@ pytae penguins.parquet -crosstab "index='species',columns='sex',values='body_mas
 
 # filter first, then cross-tab what's left
 pytae penguins.parquet -qry "'island': 'Biscoe'" -crosstab "index='species',columns='sex'"
+
+# multi-level row index (comma-separated), single-column headers
+pytae penguins.parquet -crosstab "index='species,island',columns='sex'"
 
 # keep NA index/column values as their own row/column
 pytae penguins.parquet -crosstab "index='species',columns='sex',dropna=false"
@@ -550,7 +554,7 @@ pytae 'folder/*.parquet' -convert
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
 | `-long [KEY=VALUE,...]` | Melt numeric columns (`c`, `v`) |
 | `-wide [KEY=VALUE,...]` | Pivot long to wide (`c`, `v`, `a`, `dropna`) |
-| `-crosstab KEY=VALUE,...` | Cross-tabulate two columns (`index`, `columns`, optional `values`+`aggfunc`, `normalize`, `margins`) |
+| `-crosstab KEY=VALUE,...` | Cross-tabulate into a matrix (`index` comma-separated list, `columns` single column, optional `values`+`aggfunc`, `normalize`, `margins`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts`/`-crosstab` (default true) |
 
 **Convert & I/O**

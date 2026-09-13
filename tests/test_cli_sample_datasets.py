@@ -61,6 +61,26 @@ def test_crosstab_counts_match_known_penguins_distribution(sample_parquet, capsy
     assert lines["Gentoo"] == ["124", "0", "0"]
 
 
+def test_crosstab_multi_column_index_on_real_penguins(sample_parquet, capsys):
+    path = sample_parquet("penguins")
+
+    exit_code = cli.main([path, "-crosstab", "index='species,island',columns='sex'"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    # multi-level row index: species and island both appear as separate leading columns
+    assert "species" in out and "island" in out
+    assert "Torgersen" in out
+
+
+def test_crosstab_multi_column_index_unknown_column_errors(sample_parquet):
+    path = sample_parquet("penguins")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-crosstab", "index='species,nope',columns='sex'"])
+    assert exc_info.value.code == 2
+
+
 def test_crosstab_margins_match_known_titanic_totals(sample_parquet, capsys):
     path = sample_parquet("titanic")
 

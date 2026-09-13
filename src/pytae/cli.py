@@ -339,8 +339,9 @@ _CROSSTAB_NORMALIZE_VALUES = ("index", "columns", "all")
 
 
 def parse_crosstab_arg(raw: str | None) -> dict:
-    """Parse -crosstab as key=value tokens: index=, columns=, optional values=+aggfunc=
-    (must be given together), normalize=index|columns|all, margins=true|false.
+    """Parse -crosstab as key=value tokens: index= (one or more comma-separated columns),
+    columns= (single column, required), optional values=+aggfunc= (must be given together),
+    normalize=index|columns|all, margins=true|false.
     """
     kwargs = parse_reshape_kwargs(raw, keys=_CROSSTAB_KEYS, flag="-crosstab")
     if "index" not in kwargs or "columns" not in kwargs:
@@ -697,9 +698,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
                               "e.g. c='country',v='balance',a='mean'")
     parser.add_argument("-crosstab", "--crosstab", dest="crosstab", metavar="KEY=VALUE,...", action=_OrderedStore,
-                         help="cross-tabulate two columns into a matrix (pandas crosstab()); key=value specs: "
-                              "index=, columns= (required), optional values=+aggfunc= together to aggregate "
-                              "instead of count, normalize=index|columns|all, margins=true|false; honors -dropna")
+                         help="cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
+                              "index= (one or more comma-separated columns), columns= (single column, required), "
+                              "optional values=+aggfunc= together to aggregate instead of count, "
+                              "normalize=index|columns|all, margins=true|false; honors -dropna")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
                          help="for -agg_df, -agg, -value_counts, and -crosstab: include NA keys when false; accepts true or false (default: true)")
@@ -991,7 +993,8 @@ def _process_path(
         elif op == "crosstab":
             source_df = pipeline.dataframe()
             ct = parse_crosstab_arg(args.crosstab)
-            needed = [ct["index"], ct["columns"]] + ([ct["values"]] if "values" in ct else [])
+            index_cols = parse_columns(ct["index"])
+            needed = index_cols + [ct["columns"]] + ([ct["values"]] if "values" in ct else [])
             missing = [c for c in needed if c not in source_df.columns]
             if missing:
                 return _fail(parser, batch, unknown_columns_message("-crosstab", missing, list(source_df.columns)))
@@ -1004,7 +1007,8 @@ def _process_path(
                 ct_kwargs["values"] = source_df[ct["values"]]
                 ct_kwargs["aggfunc"] = ct["aggfunc"]
             result = _apply_round(
-                pd.crosstab(source_df[ct["index"]], source_df[ct["columns"]], **ct_kwargs), args.round_ndigits
+                pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs),
+                args.round_ndigits,
             )
             pipeline._df = result
             if should_print(idx):
