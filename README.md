@@ -13,11 +13,21 @@ Pandas extensions for everyday data-science tasks (filtering, selection, reshapi
 pip install pytae
 ```
 
+## CLI
+
+```bash
+pytae data.parquet -head
+pytae data.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -convert -o subset.csv
+pytae data.parquet -sql "select species, avg(body_mass_g) from df group by species"
+pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on='id'"
+```
+
+See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full flag reference, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
+
 ## Library
 
 Pandas extensions registered on `pd.DataFrame` — import `pytae` and the methods attach automatically.
 
-- **Plotting** — `Plotter`: method-chainable plots on `pandas.plot` (`pip install pytae[plot]`)
 - **Filtering** — `qry()`: dict-based filters (equality, lists, `in`/`not in`, comparisons, intervals)
 - **Selection** — `select()`: columns by name, regex, dtype, or name pattern
 - **Reshaping** — `long()` / `wide()`: melt numeric columns to rows, pivot back to columns
@@ -26,15 +36,19 @@ Pandas extensions registered on `pd.DataFrame` — import `pytae` and the method
 
 See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
 
-## CLI
+## Plotting
 
-```bash
-pytae data.parquet -head
-pytae data.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -convert -o subset.csv
-pytae data.parquet -sql "select species, avg(body_mass_g) from df group by species"
+`Plotter`: method-chainable plots on top of `pandas.plot()` (`pip install pytae[plot]`).
+
+```python
+from pytae.plotting import Plotter
+
+Plotter().data(penguins).plot(
+    x="bill_length_mm", y="bill_depth_mm", kind="scatter", by="species"
+).finalize()
 ```
 
-See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full flag reference.
+See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#1-plotting-plotter) and [notebooks/plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb).
 
 ## License
 
