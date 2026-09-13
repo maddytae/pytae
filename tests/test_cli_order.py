@@ -79,6 +79,23 @@ def test_crosstab_margins_adds_totals(tmp_path, capsys):
     assert "All" in out.strip().splitlines()[0]
 
 
+def test_crosstab_margins_name_renames_totals(tmp_path, capsys):
+    path = _write_csv(tmp_path, _penguins_frame())
+
+    cli.main([path, "-crosstab", "index='species',columns='island',margins=true,margins_name='Total'"])
+
+    out = capsys.readouterr().out
+    assert "Total" in out.strip().splitlines()[0]
+    assert "All" not in out
+
+
+def test_crosstab_margins_name_requires_margins(tmp_path):
+    path = _write_csv(tmp_path, _penguins_frame())
+
+    with pytest.raises(SystemExit, match="margins_name= requires margins=true"):
+        cli.main([path, "-crosstab", "index='species',columns='island',margins_name='Total'"])
+
+
 def test_crosstab_values_and_aggfunc(tmp_path, capsys):
     path = _write_csv(tmp_path, _penguins_frame())
 

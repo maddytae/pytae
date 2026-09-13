@@ -18,9 +18,11 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Missing values — `-handle_missing`](#handle-missing)
 - [Reshape — `-long` / `-wide`](#reshape)
 - [Cross-tabulation — `-crosstab`](#crosstab)
-- [`-wide` vs `-crosstab`](#wide-vs-crosstab)
 - [Conversion — `-convert`](#convert)
 - [Display extras](#display-extras)
+- [Pandas defaults vs pytae-specific](#pandas-vs-pytae)
+  - [`-wide` vs `-crosstab`](#wide-vs-crosstab)
+  - [`-agg_df` vs `-group_by` + `-agg`](#agg-df-vs-group-by-agg)
 - [Recipes](#recipes)
 - [Flag reference](#flag-reference)
 
@@ -387,6 +389,7 @@ A matrix version of `-value_counts` for two columns (pandas `pd.crosstab()`): on
 ```python
 pd.crosstab(df["species"], df["island"])
 pd.crosstab(df["species"], df["island"], margins=True)
+pd.crosstab(df["species"], df["island"], margins=True, margins_name="Total")
 pd.crosstab(df["species"], df["sex"], normalize="index")
 pd.crosstab(df["species"], df["sex"], values=df["body_mass_g"], aggfunc="mean")
 pd.crosstab([df["species"], df["island"]], df["sex"])
@@ -404,6 +407,9 @@ pytae penguins.parquet -crosstab "index='species',columns='sex',normalize='all'"
 # grand-total row/column
 pytae penguins.parquet -crosstab "index='species',columns='island',margins=true"
 
+# rename the totals row/column (requires margins=true)
+pytae penguins.parquet -crosstab "index='species',columns='island',margins=true,margins_name='Total'"
+
 # aggregate a numeric column instead of counting (values= and aggfunc= go together)
 pytae penguins.parquet -crosstab "index='species',columns='sex',values='body_mass_g',aggfunc='mean'" -round 1
 
@@ -413,42 +419,11 @@ pytae penguins.parquet -qry "'island': 'Biscoe'" -crosstab "index='species',colu
 # multi-level row index (comma-separated), single-column headers
 pytae penguins.parquet -crosstab "index='species,island',columns='sex'"
 
-# keep NA index/column values as their own row/column
-pytae penguins.parquet -crosstab "index='species',columns='sex',dropna=false"
+# keep NA index/column values as their own row/column — dropna is the shared top-level flag, not a spec key
+pytae penguins.parquet -crosstab "index='species',columns='sex'" -dropna false
 ```
 
 > `values=` and `aggfunc=` must be given together — pandas needs both to aggregate, or neither to just count.
-
----
-
-<a id="wide-vs-crosstab"></a>
-## `-wide` vs `-crosstab`
-
-**Use `-wide` almost always.** It handles both "pivot an existing value column" and, with a real pandas aggfunc like `a='size'`/`a='count'`, "pivot a count" directly — no `-value_counts` step needed. Reach for `-crosstab` only when you need `normalize=` (row/column/overall percentages) or `margins=` (grand-total row/column) — `-wide` has no equivalent for either.
-
-```bash
-# counting combinations as a matrix — the same result, two ways
-pytae penguins.parquet -select species,island,sex -wide "c='island',v='sex',a='n'"         # -wide (one step)
-pytae penguins.parquet -crosstab "index='species',columns='island'"                        # -crosstab (one step)
-
-# aggregating a numeric column as a matrix — the same result, two ways
-# (-wide's index is implicit — every column except c=/v= — so -select first to trim to just the id column)
-pytae penguins.parquet -select species,sex,body_mass_g -wide "c='sex',v='body_mass_g',a='mean'"        # -wide
-pytae penguins.parquet -crosstab "index='species',columns='sex',values='body_mass_g',aggfunc='mean'"   # -crosstab
-
-# percentages and totals — only -crosstab does this
-pytae penguins.parquet -crosstab "index='species',columns='island',normalize='index'"   # row percentages
-pytae penguins.parquet -crosstab "index='species',columns='island',margins=true"        # grand totals
-```
-
-> `-wide`'s `a=` accepts real pandas aggfunc names (`'mean'`, `'sum'`, …) plus `a='n'` — an alias for pandas' `'size'` (group row count), matching `agg_df`'s convention. Unlike `-crosstab`, missing combinations show as `NaN` rather than `0`.
-
-| Need | Use |
-|---|---|
-| Pivot an existing value column | `-wide` |
-| Pivot a count | `-wide` (`a='n'`) |
-| Row/column/overall percentages | `-crosstab` (`normalize=`) |
-| Grand-total row/column | `-crosstab` (`margins=`) |
 
 ---
 
@@ -509,6 +484,122 @@ pytae huge.csv -convert -o huge.parquet -progress
 ```
 
 `-to_clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -to_clip` copies the tail). Do not combine `-to_clip -shape` with a table-producing flag.
+
+---
+
+<a id="pandas-vs-pytae"></a>
+## Pandas defaults vs pytae-specific
+
+Some flags/keys are thin passthroughs to standard pandas methods and parameter names — pandas knowledge transfers directly. Others are pytae's own vocabulary layered on top. Knowing which is which tells you what to expect.
+
+**Pandas defaults** — same names, same behavior as plain pandas:
+
+| Flag / key | Pandas equivalent |
+|---|---|
+| `-query` | `df.query()` |
+| `-describe` / `-info` / `-shape` / `-cols` / `-dtype` / `-nulls` | `df.describe()` / `df.info()` / `df.shape` / `df.columns` / `df.dtypes` / `df.isna().sum()` |
+| `-sort_by` | `df.sort_values()` |
+| `-unique` | `df.drop_duplicates()` |
+| `-crosstab`'s `values=` / `aggfunc=` / `normalize=` / `margins=` | same keyword names as `pd.crosstab()` |
+| `-group_by` + `-agg`'s `aggfunc=` values (`'mean'`, `'sum'`, `'size'`, …) | real pandas aggfunc names, passed straight to `groupby().agg()` |
+| `-wide`'s `a=` (aside from `'n'`) | passed straight to `pivot_table(aggfunc=...)` |
+| `-dropna` | pandas' own `dropna=` parameter, already shared by `groupby()`/`value_counts()`/`crosstab()` — pytae just exposes it once instead of repeating it per flag |
+
+**pytae-specific** — pytae's own conventions, not pandas itself:
+
+| Flag / key | pytae convention |
+|---|---|
+| `-qry` | dict-based filter syntax (`'col': ('>', 5)`) — pytae's own `qry()`, not a pandas method |
+| `-select`'s `contains=` / `startswith=` / `endswith=` / `regex=` / `dtype=` / `exclude_dtype=` | pytae's own column-picking vocabulary; no equivalent shorthand in plain pandas |
+| `-agg_df` | auto-detects group columns (every non-numeric column becomes a group key) — pandas' `groupby()` always requires you to name them |
+| `-group_x` | broadcasts a group aggregate to every row via `group=`/`v=`/`a=` keys — wraps pandas `transform()` as a ready-made verb |
+| `-long` / `-wide`'s `c=`/`v=`/`a=` | pytae's short names for what pandas calls `var_name`/`value_name` (`melt()`) and `columns`/`values`/`aggfunc` (`pivot_table()`) — see below |
+| `'n'` | pytae-only token meaning "row count" (aliases pandas' `'size'` internally) |
+| `-handle_missing` | pytae's own opinionated fill convention (`.` for object/category, `0` for numeric) |
+
+**`c=` / `v=` / `a=`** are pytae's short, consistent names for the same underlying pandas reshape/pivot parameters, reused across `-long`, `-wide`, and `-group_x`:
+
+```python
+# pandas
+df.melt(id_vars=[...], value_vars=[...], var_name="metric", value_name="reading")
+df.pivot_table(index=[...], columns="metric", values="reading", aggfunc="mean")
+
+# pytae — same operations, shorter/consistent keys
+df.long(c="metric", v="reading")
+df.wide(c="metric", v="reading", a="mean")
+```
+
+```bash
+pytae penguins.parquet -long "c='metric',v='reading'" -convert -o metrics.csv
+pytae metrics.csv -wide "c='metric',v='reading',a='mean'"
+```
+
+`'n'` is recognized by `-agg_df`, `-group_x` (its default), and `-wide`'s `a=` — but **not** by `-agg`'s `aggfunc=`, which passes straight to pandas and only understands real aggfunc names (use `aggfunc='size'` there instead):
+
+```bash
+pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='n'"     # errors — 'n' isn't a pandas aggfunc
+pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='size'"  # works — real pandas name
+```
+
+<a id="wide-vs-crosstab"></a>
+### `-wide` vs `-crosstab`
+
+**Use `-wide` almost always.** It handles both "pivot an existing value column" and, with `a='n'`, "pivot a count" directly — no `-value_counts` step needed. Reach for `-crosstab` only when you need `normalize=` (row/column/overall percentages) or `margins=` (grand-total row/column) — `-wide` has no equivalent for either.
+
+```bash
+# counting combinations as a matrix — the same result, two ways
+pytae penguins.parquet -select species,island,sex -wide "c='island',v='sex',a='n'"         # -wide (one step)
+pytae penguins.parquet -crosstab "index='species',columns='island'"                        # -crosstab (one step)
+
+# aggregating a numeric column as a matrix — the same result, two ways
+# (-wide's index is implicit — every column except c=/v= — so -select first to trim to just the id column)
+pytae penguins.parquet -select species,sex,body_mass_g -wide "c='sex',v='body_mass_g',a='mean'"        # -wide
+pytae penguins.parquet -crosstab "index='species',columns='sex',values='body_mass_g',aggfunc='mean'"   # -crosstab
+
+# percentages and totals — only -crosstab does this
+pytae penguins.parquet -crosstab "index='species',columns='island',normalize='index'"   # row percentages
+pytae penguins.parquet -crosstab "index='species',columns='island',margins=true"        # grand totals
+```
+
+> Unlike `-crosstab`, `-wide` shows missing combinations as `NaN` rather than `0`.
+
+| Need | Use |
+|---|---|
+| Pivot an existing value column | `-wide` |
+| Pivot a count | `-wide` (`a='n'`) |
+| Row/column/overall percentages | `-crosstab` (`normalize=`) |
+| Grand-total row/column | `-crosstab` (`margins=`) |
+
+<a id="agg-df-vs-group-by-agg"></a>
+### `-agg_df` vs `-group_by` + `-agg`
+
+**Use `-agg_df` for a quick summary** — it auto-detects group columns (every non-numeric column) and aggregates the rest with minimal typing. Reach for `-group_by` + `-agg` when you need to group by a **numeric** column, want **custom output names**, or don't want every non-numeric column swept into the group key.
+
+```bash
+# same result, two ways
+pytae penguins.parquet -select species,body_mass_g -agg_df mean                       # -agg_df (auto group: species)
+pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'"   # -group_by + -agg (explicit)
+
+# custom output column name — only -group_by + -agg can do this
+pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean',as='avg_mass'"
+
+# group by a numeric column — -agg_df can't, it always groups by every non-numeric column
+pytae flights.parquet -group_by year -agg "column='passengers',aggfunc='sum'"
+```
+
+`flights.parquet` only has one non-numeric column (`month`), so `-agg_df` groups by that and — since `year` is numeric — treats it as a value to *sum* instead of a group key, producing meaningless totals:
+
+```bash
+pytae flights.parquet -agg_df sum   # groups by month, sums year (23454, ...) — not what you want
+```
+
+| Need | Use |
+|---|---|
+| Quick summary, auto group by all non-numeric columns | `-agg_df` |
+| Same aggfunc across several numeric columns at once | `-agg_df`, or `-agg`'s comma-separated `column=` |
+| Group by a numeric column | `-group_by` + `-agg` (`-agg_df` always groups by non-numeric columns only) |
+| Custom output column names | `-group_by` + `-agg` (`as=`) — `-agg_df` can only rename the `'n'` count column |
+| Row count | Either — `-agg_df`'s `a='n'`, or `-agg`'s `aggfunc='size'` (`'n'` isn't recognized by `-agg`) |
 
 ---
 
@@ -586,7 +677,7 @@ pytae 'folder/*.parquet' -convert
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
 | `-long [KEY=VALUE,...]` | Melt numeric columns (`c`, `v`) |
 | `-wide [KEY=VALUE,...]` | Pivot long to wide (`c`, `v`, `a` — `'n'` aliases `'size'`, `dropna`) |
-| `-crosstab KEY=VALUE,...` | Cross-tabulate into a matrix (`index` comma-separated list, `columns` single column, optional `values`+`aggfunc`, `normalize`, `margins`) |
+| `-crosstab KEY=VALUE,...` | Cross-tabulate into a matrix (`index` comma-separated list, `columns` single column, optional `values`+`aggfunc`, `normalize`, `margins`, `margins_name`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts`/`-crosstab` (default true) |
 
 **Convert & I/O**

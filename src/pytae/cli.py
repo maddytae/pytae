@@ -334,14 +334,14 @@ def parse_wide_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
-_CROSSTAB_KEYS = ("index", "columns", "values", "aggfunc", "normalize", "margins")
+_CROSSTAB_KEYS = ("index", "columns", "values", "aggfunc", "normalize", "margins", "margins_name")
 _CROSSTAB_NORMALIZE_VALUES = ("index", "columns", "all")
 
 
 def parse_crosstab_arg(raw: str | None) -> dict:
     """Parse -crosstab as key=value tokens: index= (one or more comma-separated columns),
     columns= (single column, required), optional values=+aggfunc= (must be given together),
-    normalize=index|columns|all, margins=true|false.
+    normalize=index|columns|all, margins=true|false, margins_name= (requires margins=true).
     """
     kwargs = parse_reshape_kwargs(raw, keys=_CROSSTAB_KEYS, flag="-crosstab")
     if "index" not in kwargs or "columns" not in kwargs:
@@ -350,6 +350,8 @@ def parse_crosstab_arg(raw: str | None) -> dict:
         raise SystemExit("-crosstab: values= and aggfunc= must be given together")
     if "normalize" in kwargs and kwargs["normalize"] not in _CROSSTAB_NORMALIZE_VALUES:
         raise SystemExit(f"-crosstab: normalize= must be one of {', '.join(_CROSSTAB_NORMALIZE_VALUES)}")
+    if "margins_name" in kwargs and not kwargs.get("margins"):
+        raise SystemExit("-crosstab: margins_name= requires margins=true")
     return kwargs
 
 
@@ -702,7 +704,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
                               "index= (one or more comma-separated columns), columns= (single column, required), "
                               "optional values=+aggfunc= together to aggregate instead of count, "
-                              "normalize=index|columns|all, margins=true|false; honors -dropna")
+                              "normalize=index|columns|all, margins=true|false, margins_name= (default 'All'; "
+                              "requires margins=true); honors -dropna")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
                          help="for -agg_df, -agg, -value_counts, and -crosstab: include NA keys when false; accepts true or false (default: true)")
@@ -1002,6 +1005,8 @@ def _process_path(
             ct_kwargs = {"dropna": args.dropna}
             if "margins" in ct:
                 ct_kwargs["margins"] = ct["margins"]
+            if "margins_name" in ct:
+                ct_kwargs["margins_name"] = ct["margins_name"]
             if "normalize" in ct:
                 ct_kwargs["normalize"] = ct["normalize"]
             if "values" in ct:
