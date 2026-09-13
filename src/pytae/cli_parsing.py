@@ -415,47 +415,6 @@ def parse_clean_columns_arg(raw: str) -> dict:
     return kwargs
 
 
-def clean_column_names(
-    names: list[str],
-    *,
-    strip: bool = False,
-    strip_special: bool = False,
-    squeeze: bool = False,
-    fill: str | None = None,
-    case: str | None = None,
-    dedupe: bool = False,
-) -> list[str]:
-    """Clean header names for -clean_columns, in a fixed order: strip -> strip_special
-    -> squeeze -> fill -> case -> dedupe."""
-    cleaned = list(names)
-    if strip:
-        cleaned = [name.strip() for name in cleaned]
-    if strip_special:
-        cleaned = [re.sub(r"[^\w\s]", "", name) for name in cleaned]
-    if squeeze:
-        cleaned = [re.sub(r"\s+", " ", name) for name in cleaned]
-    if fill is not None:
-        cleaned = [re.sub(r"\s", fill, name) for name in cleaned]
-    if case == "lower":
-        cleaned = [name.lower() for name in cleaned]
-    elif case == "upper":
-        cleaned = [name.upper() for name in cleaned]
-    elif case == "proper":
-        cleaned = [name.title() for name in cleaned]
-    if dedupe:
-        seen: dict[str, int] = {}
-        deduped = []
-        for name in cleaned:
-            if name not in seen:
-                seen[name] = 0
-                deduped.append(name)
-            else:
-                seen[name] += 1
-                deduped.append(f"{name}_{seen[name]}")
-        cleaned = deduped
-    return cleaned
-
-
 _FILE_ENTRY_KEYS = ("dlim", "encoding")
 
 

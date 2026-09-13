@@ -69,7 +69,7 @@ penguins.agg_df({"body_mass_g": "mean", "n": "n"})
 penguins.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keywords are used
 ```
 
-## 6) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`
+## 6) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
 
 [other_utilities.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/other_utilities.ipynb)
 
@@ -79,4 +79,7 @@ penguins.handle_missing()          # object NA -> '.', numeric NA -> 0
 penguins.group_x()                 # group size column `n`
 penguins.group_x(group=["species"], v="body_mass_g", a="max")
 penguins.to_clip()                 # copy to clipboard (does not shadow pandas clip)
+penguins.clean_columns(strip=True, fill="_", case="lower")  # clean header names
+penguins.replace_values({"Adelie": "Adelie (renamed)"})     # exact=True by default
+penguins.replace_values({"a": "z"}, cols="species", exact=False)  # substring, scoped
 ```

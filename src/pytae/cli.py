@@ -13,7 +13,6 @@ import pandas as pd
 
 from pytae.agg_df import agg_df  # noqa: F401  — registers pd.DataFrame.agg_df
 from pytae.cli_parsing import (
-    clean_column_names,
     expand_paths,
     parse_agg,
     parse_bool_text,
@@ -635,9 +634,7 @@ def _process_path(
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "clean_columns":
             opts = parse_clean_columns_arg(args.clean_columns)
-            result = pipeline.dataframe().copy()
-            result.columns = clean_column_names(list(result.columns), **opts)
-            result = _apply_round(result, args.round_ndigits)
+            result = _apply_round(pipeline.dataframe().clean_columns(**opts), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))

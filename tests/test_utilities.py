@@ -49,3 +49,43 @@ def test_group_x_count_and_value():
     assert counted["n"].tolist() == [2, 2, 1]
     averaged = df.group_x(group=["grp"], a="mean", v="val")
     assert averaged["x"].tolist() == [1.5, 1.5, 3.0]
+
+
+def test_clean_columns_strip_fill_case():
+    df = pd.DataFrame({"  Col A  ": [1], "col   b": [2]})
+    result = df.clean_columns(strip=True, fill="_", case="lower")
+    assert list(result.columns) == ["col_a", "col___b"]
+    assert list(df.columns) == ["  Col A  ", "col   b"]  # original untouched
+
+
+def test_clean_columns_squeeze_strip_special_dedupe():
+    df = pd.DataFrame({"Col A": [1], "col  a": [2], "100% Match!": [3]})
+    result = df.clean_columns(strip=True, squeeze=True, strip_special=True, fill="_", case="lower", dedupe=True)
+    assert list(result.columns) == ["col_a", "col_a_1", "100_match"]
+
+
+def test_clean_columns_no_fill_leaves_whitespace():
+    df = pd.DataFrame({"col a": [1]})
+    result = df.clean_columns(case="upper")
+    assert list(result.columns) == ["COL A"]
+
+
+def test_replace_values_exact_whole_df():
+    df = pd.DataFrame({"a": ["x", "not x exactly"], "b": ["x", "y"]})
+    result = df.replace_values({"x": "z"})
+    assert result["a"].tolist() == ["z", "not x exactly"]
+    assert result["b"].tolist() == ["z", "y"]
+    assert df["a"].tolist() == ["x", "not x exactly"]  # original untouched
+
+
+def test_replace_values_scoped_to_columns():
+    df = pd.DataFrame({"a": ["x"], "b": ["x"]})
+    result = df.replace_values({"x": "z"}, cols="a")
+    assert result["a"].tolist() == ["z"]
+    assert result["b"].tolist() == ["x"]
+
+
+def test_replace_values_substring_match():
+    df = pd.DataFrame({"a": ["not a magician exactly"]})
+    result = df.replace_values({"a magician": "the magic"}, exact=False)
+    assert result["a"].tolist() == ["not the magic exactly"]

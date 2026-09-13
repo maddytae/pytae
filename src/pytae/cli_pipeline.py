@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 
 import pandas as pd
 
@@ -83,20 +82,10 @@ class _Pipeline:
             unknown = [c for c in cols if c not in available]
             if unknown:
                 return unknown_columns_message("-replace", unknown, available)
-            target = df[cols]
-        else:
-            target = df
-        to_replace = mapping if exact else {re.escape(k): v for k, v in mapping.items()}
         try:
-            replaced = target.replace(to_replace, regex=not exact)
+            self._df = df.replace_values(mapping, cols=cols, exact=exact)
         except Exception as exc:
             return f"-replace: {exc}"
-        if cols is not None:
-            df = df.copy()
-            df[cols] = replaced
-            self._df = df
-        else:
-            self._df = replaced
         return None
 
     def apply_sql(self, query: str) -> str | None:

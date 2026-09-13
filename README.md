@@ -46,7 +46,7 @@ Pandas extensions registered on `pd.DataFrame` — import `pytae` and the method
 - **Selection** — `select()`: columns by name, regex, dtype, or name pattern
 - **Reshaping** — `long()` / `wide()`: melt numeric columns to rows, pivot back to columns
 - **Aggregation** — `agg_df()`: auto-detects group columns and aggregates the rest
-- **Utilities** — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`
+- **Utilities** — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
 
 See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
 
