@@ -36,7 +36,7 @@ Plotter().data(penguins).plot(
 ).finalize()
 ```
 
-See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#1-plotting-plotter) and [docs/PLOTTING.md](https://github.com/maddytae/pytae/blob/master/docs/PLOTTING.md) for more examples with sample data.
+See [docs/PLOTTING.md](https://github.com/maddytae/pytae/blob/master/docs/PLOTTING.md) for more examples with sample data.
 
 ## Library
 
