@@ -74,18 +74,18 @@ class _Pipeline:
             return f"-query: {exc}"
         return None
 
-    def apply_replace(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
-        """Apply one -replace spec to the current view. Returns an error message or None."""
+    def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
+        """Apply one -replace_values spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         if cols is not None:
             available = list(df.columns)
             unknown = [c for c in cols if c not in available]
             if unknown:
-                return unknown_columns_message("-replace", unknown, available)
+                return unknown_columns_message("-replace_values", unknown, available)
         try:
             self._df = df.replace_values(mapping, cols=cols, exact=exact)
         except Exception as exc:
-            return f"-replace: {exc}"
+            return f"-replace_values: {exc}"
         return None
 
     def apply_sql(self, query: str) -> str | None:

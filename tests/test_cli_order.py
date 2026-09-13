@@ -1183,7 +1183,7 @@ def _replace_frame():
 def test_replace_whole_df_exact_match(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
-    cli.main([path, "-replace", "v='a magician:the magic,alpha:bravo'"])
+    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo'"])
 
     out = capsys.readouterr().out
     assert "the magic" in out
@@ -1196,7 +1196,7 @@ def test_replace_scoped_columns_only(tmp_path, capsys):
     df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
     path = _write_csv(tmp_path, df)
 
-    cli.main([path, "-replace", "c='col a',v='alpha:bravo'"])
+    cli.main([path, "-replace_values", "c='col a',v='alpha:bravo'"])
 
     out = capsys.readouterr().out.strip().splitlines()
     assert out[1].split() == ["bravo", "alpha"]
@@ -1205,7 +1205,7 @@ def test_replace_scoped_columns_only(tmp_path, capsys):
 def test_replace_exact_false_matches_substring(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
-    cli.main([path, "-replace", "v='a magician:the magic,alpha:bravo',exact=false"])
+    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo',exact=false"])
 
     out = capsys.readouterr().out
     assert "not the magic exactly" in out
@@ -1216,16 +1216,16 @@ def test_replace_unknown_column_errors(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-replace", "c='missing',v='alpha:bravo'"])
+        cli.main([path, "-replace_values", "c='missing',v='alpha:bravo'"])
     assert exc_info.value.code == 2
-    assert "-replace" in capsys.readouterr().err
+    assert "-replace_values" in capsys.readouterr().err
 
 
 def test_replace_requires_v(tmp_path):
     path = _write_csv(tmp_path, _replace_frame())
 
     with pytest.raises(SystemExit):
-        cli.main([path, "-replace", "c='col a'"])
+        cli.main([path, "-replace_values", "c='col a'"])
 
 
 def _messy_headers_frame():

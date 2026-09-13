@@ -1,6 +1,6 @@
 # pytae — CLI Reference
 
-Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's own library verbs — `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()` — plus CLI-native operations like value replacement (`-replace`), header cleanup (`-clean_columns`), and multi-file merges/concats (`-file`/`-merge`/`-concat`).
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's own library verbs — `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()` — plus CLI-native operations like value replacement (`-replace_values`), header cleanup (`-clean_columns`), and multi-file merges/concats (`-file`/`-merge`/`-concat`).
 
 ## Contents
 
@@ -9,7 +9,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Column selection — `-select`](#select)
 - [Row filtering — `-qry` / `-query`](#filtering)
 - [SQL — `-sql`](#sql)
-- [Value replacement — `-replace`](#replace)
+- [Value replacement — `-replace_values`](#replace-values)
 - [Aggregation (auto group columns) — `-agg_df`](#agg-df)
 - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
 - [Broadcast — `-group_x`](#group-x)
@@ -233,10 +233,10 @@ Mixing a spaced identifier and a string literal in one `-sql` value means the sh
 
 ---
 
-<a id="replace"></a>
-## Value replacement — `-replace`
+<a id="replace-values"></a>
+## Value replacement — `-replace_values`
 
-`-replace` swaps cell values at this point in the pipeline, same as `df.replace()`. Its value is `key=value` tokens (comma-separated, quote a value if it needs an internal comma — same convention as `-crosstab`'s `index=`):
+`-replace_values` swaps cell values at this point in the pipeline, same as `df.replace()` (or the library's `.replace_values()`). Its value is `key=value` tokens (comma-separated, quote a value if it needs an internal comma — same convention as `-crosstab`'s `index=`):
 
 - `v=` (**required**) — the `old:new` mapping, comma-separated pairs, e.g. `v='old:new,alpha:bravo'`.
 - `c=` (optional) — restrict the replace to specific columns, e.g. `c='col a,col b'`. Omit it to replace across every column, like plain `df.replace()`.
@@ -244,18 +244,18 @@ Mixing a spaced identifier and a string literal in one `-sql` value means the sh
 
 ```bash
 # whole df, exact match only
-pytae data.parquet -replace "v='a magician:the magic,alpha:bravo'"
+pytae data.parquet -replace_values "v='a magician:the magic,alpha:bravo'"
 
 # only touch col a and colb
-pytae data.parquet -replace "c='col a,colb',v='a magician:the magic,alpha:bravo'"
+pytae data.parquet -replace_values "c='col a,colb',v='a magician:the magic,alpha:bravo'"
 
 # substring match: replaces the key wherever it appears inside a cell
-pytae data.parquet -replace "v='a magician:the magic,alpha:bravo',exact=false"
+pytae data.parquet -replace_values "v='a magician:the magic,alpha:bravo',exact=false"
 ```
 
 With `exact=true` (default), a cell like `"not a magician exactly"` is left unchanged because it isn't *exactly* `"a magician"`. With `exact=false`, that same cell becomes `"not the magic exactly"` — but watch out for partial-word matches: a short key like `alpha` will also match inside `"analphabet"`, turning it into `"anbravobet"`.
 
-Chains like any other op — runs on the current view and replaces it, so put `-replace` before/after `-select`/`-qry` depending on whether you want it scoped to a narrower view.
+Chains like any other op — runs on the current view and replaces it, so put `-replace_values` before/after `-select`/`-qry` depending on whether you want it scoped to a narrower view.
 
 ---
 
@@ -428,7 +428,7 @@ pytae penguins.parquet -handle_missing NA -select species,sex -value_counts
 <a id="clean-columns"></a>
 ## Header cleanup — `-clean_columns`
 
-`-clean_columns` cleans up messy column **header names** (not cell values — see [`-replace`](#replace) for that). Its value is `key[=value]` tokens, comma-separated, applied in a fixed order regardless of how you write them: **strip → strip_special → squeeze → fill → case → dedupe**.
+`-clean_columns` cleans up messy column **header names** (not cell values — see [`-replace_values`](#replace-values) for that). Its value is `key[=value]` tokens, comma-separated, applied in a fixed order regardless of how you write them: **strip → strip_special → squeeze → fill → case → dedupe**.
 
 | Key | Type | Bare (no `=value`) | Default when omitted |
 |---|---|---|---|
@@ -781,7 +781,7 @@ pytae 'folder/*.parquet' -convert
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
-| `-replace KEY=VALUE,...` | Replace values at this point (`df.replace()`); `v=` required, `c=`/`exact=` optional |
+| `-replace_values KEY=VALUE,...` | Replace values at this point (`df.replace_values()`); `v=` required, `c=`/`exact=` optional |
 | `-clean_columns KEY=VALUE,...` | Clean header names, in order strip -> strip_special -> squeeze -> fill -> case -> dedupe |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
 

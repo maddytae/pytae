@@ -302,28 +302,28 @@ _REPLACE_KEYS = ("c", "v", "exact")
 
 
 def parse_value_map(raw: str) -> dict[str, str]:
-    """Parse a -replace v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
+    """Parse a -replace_values v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
         if not pair:
             continue
         if ":" not in pair:
-            raise SystemExit(f"-replace: invalid v= mapping '{pair}'; expected old:new")
+            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
         old, new = pair.split(":", 1)
         mapping[old.strip()] = new.strip()
     if not mapping:
-        raise SystemExit("-replace: v= needs at least one old:new pair")
+        raise SystemExit("-replace_values: v= needs at least one old:new pair")
     return mapping
 
 
-def parse_replace_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
-    """Parse -replace as key=value tokens: c= (optional column scope), v= (required
+def parse_replace_values_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
+    """Parse -replace_values as key=value tokens: c= (optional column scope), v= (required
     old:new mapping), exact= (optional bool, default true — whole-cell match vs
     substring match anywhere in the cell). Returns (cols_or_None, mapping, exact)."""
-    kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace")
+    kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace_values")
     if "v" not in kwargs:
-        raise SystemExit("-replace: expected v='old:new,...'")
+        raise SystemExit("-replace_values: expected v='old:new,...'")
     cols = parse_columns(kwargs["c"]) if "c" in kwargs else None
     mapping = parse_value_map(kwargs["v"])
     exact = kwargs.get("exact", True)

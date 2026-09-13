@@ -30,7 +30,7 @@ from pytae.cli_parsing import (
     parse_positive_int,
     parse_qry,
     parse_rename,
-    parse_replace_arg,
+    parse_replace_values_arg,
     parse_select_spec,
     parse_wide_arg,
     unknown_columns_message,
@@ -271,7 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "every -file alias queryable by its own name (e.g. \"select * from df1 "
                               "inner join df2 on df1.\\\"col a\\\" = df2.cola\") — `df` becomes queryable "
                               "too once something later in the pipeline has produced a current view")
-    parser.add_argument("-replace", "--replace", dest="replace", action=_OrderedAppend, default=None, metavar="SPEC",
+    parser.add_argument("-replace_values", "--replace_values", dest="replace_values", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="replace values at this point in the pipeline; key=value tokens: v= (required) "
                               "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
                               "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
@@ -427,9 +427,9 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op == "replace":
+        elif op == "replace_values":
             cols, mapping, exact = next(replace_iter)
-            err = pipeline.apply_replace(cols, mapping, exact)
+            err = pipeline.apply_replace_values(cols, mapping, exact)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -736,7 +736,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.convert, args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.qry, args.query, args.sql, args.replace,
+                         args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.clean_columns is not None, args.merge, args.concat])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
@@ -763,7 +763,7 @@ def main(argv: list[str] | None = None) -> int:
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     query_specs = list(args.query or [])
     sql_specs = list(args.sql or [])
-    replace_specs = [parse_replace_arg(raw) for raw in (args.replace or [])]
+    replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
     merge_specs = [parse_merge_arg(raw) for raw in (args.merge or [])]
     concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
 
