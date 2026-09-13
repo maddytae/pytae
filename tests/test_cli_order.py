@@ -1171,3 +1171,58 @@ def test_cli_convert_csv_to_parquet(tmp_path, capsys):
     result = pd.read_parquet(dest)
     assert list(result.columns) == ["a", "b"]
     assert len(result) == 2
+
+
+def _replace_frame():
+    return pd.DataFrame({
+        "col a": ["a magician", "not a magician exactly", "analphabet"],
+        "colb": ["alpha", "alpha team", "x"],
+    })
+
+
+def test_replace_whole_df_exact_match(tmp_path, capsys):
+    path = _write_csv(tmp_path, _replace_frame())
+
+    cli.main([path, "-replace", "v='a magician:the magic,alpha:bravo'"])
+
+    out = capsys.readouterr().out
+    assert "the magic" in out
+    assert "bravo" in out
+    assert "not a magician exactly" in out  # untouched: not an exact whole-cell match
+    assert "analphabet" in out              # untouched: not an exact whole-cell match
+
+
+def test_replace_scoped_columns_only(tmp_path, capsys):
+    df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
+    path = _write_csv(tmp_path, df)
+
+    cli.main([path, "-replace", "c='col a',v='alpha:bravo'"])
+
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out[1].split() == ["bravo", "alpha"]
+
+
+def test_replace_exact_false_matches_substring(tmp_path, capsys):
+    path = _write_csv(tmp_path, _replace_frame())
+
+    cli.main([path, "-replace", "v='a magician:the magic,alpha:bravo',exact=false"])
+
+    out = capsys.readouterr().out
+    assert "not the magic exactly" in out
+    assert "anbravobet" in out
+
+
+def test_replace_unknown_column_errors(tmp_path, capsys):
+    path = _write_csv(tmp_path, _replace_frame())
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-replace", "c='missing',v='alpha:bravo'"])
+    assert exc_info.value.code == 2
+    assert "-replace" in capsys.readouterr().err
+
+
+def test_replace_requires_v(tmp_path):
+    path = _write_csv(tmp_path, _replace_frame())
+
+    with pytest.raises(SystemExit):
+        cli.main([path, "-replace", "c='col a'"])

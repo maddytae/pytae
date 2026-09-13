@@ -9,6 +9,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Column selection — `-select`](#select)
 - [Row filtering — `-qry` / `-query`](#filtering)
 - [SQL — `-sql`](#sql)
+- [Value replacement — `-replace`](#replace)
 - [Aggregation (auto group columns) — `-agg_df`](#agg-df)
 - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
 - [Broadcast — `-group_x`](#group-x)
@@ -227,6 +228,32 @@ Mixing a spaced identifier and a string literal in one `-sql` value means the sh
   pytae penguins.parquet -convert -rename "col a:col_a" -o clean.parquet
   pytae clean.parquet -sql "select col_a from df where island = 'Dream'"
   ```
+
+---
+
+<a id="replace"></a>
+## Value replacement — `-replace`
+
+`-replace` swaps cell values at this point in the pipeline, same as `df.replace()`. Its value is `key=value` tokens (comma-separated, quote a value if it needs an internal comma — same convention as `-crosstab`'s `index=`):
+
+- `v=` (**required**) — the `old:new` mapping, comma-separated pairs, e.g. `v='old:new,alpha:bravo'`.
+- `c=` (optional) — restrict the replace to specific columns, e.g. `c='col a,col b'`. Omit it to replace across every column, like plain `df.replace()`.
+- `exact=` (optional, `true`/`false`, default `true`) — `true` only replaces a cell whose **entire value** matches a key exactly; `false` replaces a key **anywhere it occurs as a substring**, leaving the rest of the cell untouched (keys are escaped so they're matched literally, not as regex patterns).
+
+```bash
+# whole df, exact match only
+pytae data.parquet -replace "v='a magician:the magic,alpha:bravo'"
+
+# only touch col a and colb
+pytae data.parquet -replace "c='col a,colb',v='a magician:the magic,alpha:bravo'"
+
+# substring match: replaces the key wherever it appears inside a cell
+pytae data.parquet -replace "v='a magician:the magic,alpha:bravo',exact=false"
+```
+
+With `exact=true` (default), a cell like `"not a magician exactly"` is left unchanged because it isn't *exactly* `"a magician"`. With `exact=false`, that same cell becomes `"not the magic exactly"` — but watch out for partial-word matches: a short key like `alpha` will also match inside `"analphabet"`, turning it into `"anbravobet"`.
+
+Chains like any other op — runs on the current view and replaces it, so put `-replace` before/after `-select`/`-qry` depending on whether you want it scoped to a narrower view.
 
 ---
 
@@ -703,6 +730,7 @@ pytae 'folder/*.parquet' -convert
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` |
+| `-replace KEY=VALUE,...` | Replace values at this point (`df.replace()`); `v=` required, `c=`/`exact=` optional |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
 
 **Aggregate & reshape**

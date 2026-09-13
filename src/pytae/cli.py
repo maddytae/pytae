@@ -7,6 +7,7 @@ import ast
 import difflib
 import glob
 import io
+import re
 import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -322,7 +323,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             raise SystemExit(f"{flag}: {key}= needs a value")
         if key in kwargs:
             raise SystemExit(f"{flag}: {key}= given more than once")
-        kwargs[key] = parse_bool_text(value) if key in ("dropna", "observed", "margins") else value
+        kwargs[key] = parse_bool_text(value) if key in ("dropna", "observed", "margins", "exact") else value
     return kwargs
 
 
@@ -353,6 +354,38 @@ def parse_crosstab_arg(raw: str | None) -> dict:
     if "margins_name" in kwargs and not kwargs.get("margins"):
         raise SystemExit("-crosstab: margins_name= requires margins=true")
     return kwargs
+
+
+_REPLACE_KEYS = ("c", "v", "exact")
+
+
+def parse_value_map(raw: str) -> dict[str, str]:
+    """Parse a -replace v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
+    mapping: dict[str, str] = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if ":" not in pair:
+            raise SystemExit(f"-replace: invalid v= mapping '{pair}'; expected old:new")
+        old, new = pair.split(":", 1)
+        mapping[old.strip()] = new.strip()
+    if not mapping:
+        raise SystemExit("-replace: v= needs at least one old:new pair")
+    return mapping
+
+
+def parse_replace_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
+    """Parse -replace as key=value tokens: c= (optional column scope), v= (required
+    old:new mapping), exact= (optional bool, default true — whole-cell match vs
+    substring match anywhere in the cell). Returns (cols_or_None, mapping, exact)."""
+    kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace")
+    if "v" not in kwargs:
+        raise SystemExit("-replace: expected v='old:new,...'")
+    cols = parse_columns(kwargs["c"]) if "c" in kwargs else None
+    mapping = parse_value_map(kwargs["v"])
+    exact = kwargs.get("exact", True)
+    return cols, mapping, exact
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -504,6 +537,30 @@ class _Pipeline:
             self._df = df.query(expr)
         except Exception as exc:
             return f"-query: {exc}"
+        return None
+
+    def apply_replace(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
+        """Apply one -replace spec to the current view. Returns an error message or None."""
+        df = self.dataframe()
+        if cols is not None:
+            available = list(df.columns)
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-replace", unknown, available)
+            target = df[cols]
+        else:
+            target = df
+        to_replace = mapping if exact else {re.escape(k): v for k, v in mapping.items()}
+        try:
+            replaced = target.replace(to_replace, regex=not exact)
+        except Exception as exc:
+            return f"-replace: {exc}"
+        if cols is not None:
+            df = df.copy()
+            df[cols] = replaced
+            self._df = df
+        else:
+            self._df = replaced
         return None
 
     def apply_sql(self, query: str) -> str | None:
@@ -749,6 +806,12 @@ def build_parser() -> argparse.ArgumentParser:
                               "quoting applies (double quotes for names with spaces, e.g. \"col a\"; single "
                               "quotes are string literals, not identifiers), e.g. "
                               "\"select \\\"col a\\\" from df where \\\"col a\\\" > 10\"")
+    parser.add_argument("-replace", "--replace", dest="replace", action=_OrderedAppend, default=None, metavar="SPEC",
+                         help="replace values at this point in the pipeline; key=value tokens: v= (required) "
+                              "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
+                              "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
+                              "default true) — true matches whole cell values, false matches a substring "
+                              "anywhere in the cell, e.g. \"v='old:new',exact=false\"")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
@@ -791,6 +854,7 @@ def _process_path(
     qry_specs: list[dict],
     query_specs: list[str],
     sql_specs: list[str],
+    replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
     rename_map: dict[str, str] | None,
 ) -> bool:
     """Run every requested display/-convert/-agg action against one file. Returns True if an error occurred."""
@@ -822,6 +886,7 @@ def _process_path(
     qry_iter = iter(qry_specs)
     query_iter = iter(query_specs)
     sql_iter = iter(sql_specs)
+    replace_iter = iter(replace_specs)
 
     def should_print(idx: int) -> bool:
         return emit_stdout and idx == last_idx
@@ -855,6 +920,12 @@ def _process_path(
             emit_frame(idx)
         elif op == "sql":
             err = pipeline.apply_sql(next(sql_iter))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "replace":
+            cols, mapping, exact = next(replace_iter)
+            err = pipeline.apply_replace(cols, mapping, exact)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -1086,7 +1157,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.convert, args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.qry, args.query, args.sql])
+                         args.select, args.qry, args.query, args.sql, args.replace])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -1114,6 +1185,7 @@ def main(argv: list[str] | None = None) -> int:
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     query_specs = list(args.query or [])
     sql_specs = list(args.sql or [])
+    replace_specs = [parse_replace_arg(raw) for raw in (args.replace or [])]
     batch = len(paths) > 1
     exit_code = 0
 
@@ -1123,7 +1195,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
                                     qry_specs=qry_specs, query_specs=query_specs, sql_specs=sql_specs,
-                                    rename_map=rename_map)
+                                    replace_specs=replace_specs, rename_map=rename_map)
         except UnicodeError as exc:
             failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
         if failed:
