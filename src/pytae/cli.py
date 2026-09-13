@@ -696,7 +696,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
-                              "e.g. c='country',v='balance',a='mean'")
+                              "e.g. c='country',v='balance',a='mean'; a='n' is an alias for pandas' 'size' "
+                              "(group row count), matching agg_df's convention")
     parser.add_argument("-crosstab", "--crosstab", dest="crosstab", metavar="KEY=VALUE,...", action=_OrderedStore,
                          help="cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
                               "index= (one or more comma-separated columns), columns= (single column, required), "

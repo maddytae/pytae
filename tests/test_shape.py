@@ -61,5 +61,24 @@ def test_wide_uses_pivot_when_keys_are_unique():
     pd.testing.assert_frame_equal(result, expected_df)
 
 
+def test_wide_a_n_is_alias_for_size():
+    """a='n' matches agg_df's group-count convention; passes 'size' to pivot_table under the hood."""
+    df = pd.DataFrame(
+        {
+            "id": ["a", "a", "b", "b", "b"],
+            "balance": [10, 20, 0, 21, 15],
+            "country": ["sg", "sg", "cn", "cn", "cn"],
+        }
+    )
+
+    result = df.wide(c="country", v="balance", a="n")
+
+    expected_df = df.pivot_table(
+        index="id", columns="country", values="balance", aggfunc="size"
+    ).reset_index()
+    expected_df.columns.name = None
+    pd.testing.assert_frame_equal(result, expected_df)
+
+
 if __name__ == '__main__':
     pytest.main()

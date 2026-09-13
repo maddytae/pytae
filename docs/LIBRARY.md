@@ -55,6 +55,7 @@ penguins.select("d", "a", "b")                 # KeyError if d is not a column
 tall = penguins.long(c="feature")
 tall.wide(c="feature", v="value")
 tall.wide(c="feature", v="value", a="mean")
+tall.wide(c="feature", v="value", a="n")  # 'n' aliases pandas' 'size' (group row count), matching agg_df
 ```
 
 ## 5) Aggregation — `agg_df()`

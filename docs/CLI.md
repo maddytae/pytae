@@ -18,6 +18,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Missing values — `-handle_missing`](#handle-missing)
 - [Reshape — `-long` / `-wide`](#reshape)
 - [Cross-tabulation — `-crosstab`](#crosstab)
+- [`-wide` vs `-crosstab`](#wide-vs-crosstab)
 - [Conversion — `-convert`](#convert)
 - [Display extras](#display-extras)
 - [Recipes](#recipes)
@@ -420,6 +421,37 @@ pytae penguins.parquet -crosstab "index='species',columns='sex',dropna=false"
 
 ---
 
+<a id="wide-vs-crosstab"></a>
+## `-wide` vs `-crosstab`
+
+**Use `-wide` almost always.** It handles both "pivot an existing value column" and, with a real pandas aggfunc like `a='size'`/`a='count'`, "pivot a count" directly — no `-value_counts` step needed. Reach for `-crosstab` only when you need `normalize=` (row/column/overall percentages) or `margins=` (grand-total row/column) — `-wide` has no equivalent for either.
+
+```bash
+# counting combinations as a matrix — the same result, two ways
+pytae penguins.parquet -select species,island,sex -wide "c='island',v='sex',a='n'"         # -wide (one step)
+pytae penguins.parquet -crosstab "index='species',columns='island'"                        # -crosstab (one step)
+
+# aggregating a numeric column as a matrix — the same result, two ways
+# (-wide's index is implicit — every column except c=/v= — so -select first to trim to just the id column)
+pytae penguins.parquet -select species,sex,body_mass_g -wide "c='sex',v='body_mass_g',a='mean'"        # -wide
+pytae penguins.parquet -crosstab "index='species',columns='sex',values='body_mass_g',aggfunc='mean'"   # -crosstab
+
+# percentages and totals — only -crosstab does this
+pytae penguins.parquet -crosstab "index='species',columns='island',normalize='index'"   # row percentages
+pytae penguins.parquet -crosstab "index='species',columns='island',margins=true"        # grand totals
+```
+
+> `-wide`'s `a=` accepts real pandas aggfunc names (`'mean'`, `'sum'`, …) plus `a='n'` — an alias for pandas' `'size'` (group row count), matching `agg_df`'s convention. Unlike `-crosstab`, missing combinations show as `NaN` rather than `0`.
+
+| Need | Use |
+|---|---|
+| Pivot an existing value column | `-wide` |
+| Pivot a count | `-wide` (`a='n'`) |
+| Row/column/overall percentages | `-crosstab` (`normalize=`) |
+| Grand-total row/column | `-crosstab` (`margins=`) |
+
+---
+
 <a id="convert"></a>
 ## Conversion — `-convert`
 
@@ -553,7 +585,7 @@ pytae 'folder/*.parquet' -convert
 | `-group_x [KEY=VALUE,...]` | Broadcast group agg (`group`, `v`, `a`) |
 | `-handle_missing [FILL]` | Fill NA (default `.` / `0`) |
 | `-long [KEY=VALUE,...]` | Melt numeric columns (`c`, `v`) |
-| `-wide [KEY=VALUE,...]` | Pivot long to wide (`c`, `v`, `a`, `dropna`) |
+| `-wide [KEY=VALUE,...]` | Pivot long to wide (`c`, `v`, `a` — `'n'` aliases `'size'`, `dropna`) |
 | `-crosstab KEY=VALUE,...` | Cross-tabulate into a matrix (`index` comma-separated list, `columns` single column, optional `values`+`aggfunc`, `normalize`, `margins`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts`/`-crosstab` (default true) |
 

@@ -81,6 +81,24 @@ def test_crosstab_multi_column_index_unknown_column_errors(sample_parquet):
     assert exc_info.value.code == 2
 
 
+def test_wide_a_n_matches_crosstab_counts_on_real_penguins(sample_parquet, capsys):
+    path = sample_parquet("penguins")
+
+    cli.main([path, "-select", "species,island,sex", "-wide", "c='island',v='sex',a='n'"])
+    wide_out = capsys.readouterr().out
+
+    cli.main([path, "-crosstab", "index='species',columns='island'"])
+    crosstab_out = capsys.readouterr().out
+
+    def _row(line):
+        # -wide leaves NaN for missing combos where -crosstab shows 0.
+        return [0.0 if tok == "NaN" else float(tok) for tok in line.split()[1:]]
+
+    wide_rows = {line.split()[0]: _row(line) for line in wide_out.strip().splitlines()[1:]}
+    crosstab_rows = {line.split()[0]: _row(line) for line in crosstab_out.strip().splitlines()[2:]}
+    assert wide_rows == crosstab_rows
+
+
 def test_crosstab_margins_match_known_titanic_totals(sample_parquet, capsys):
     path = sample_parquet("titanic")
 

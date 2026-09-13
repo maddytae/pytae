@@ -24,12 +24,14 @@ def wide(df, c="variable", v="value", a=None, dropna=True):
     Parameters:
     - c: column whose values become headers (default 'variable')
     - v: values column (default 'value')
-    - a: if set, use pivot_table with this aggfunc; else pivot, falling back to sum
+    - a: if set, use pivot_table with this aggfunc; else pivot, falling back to sum.
+      'n' is accepted as an alias for pandas' 'size' (group row count), matching agg_df's convention.
     - dropna: pivot_table only; drop all-NA columns (default True)
     """
     index_cols = [col for col in df.columns if col not in [c, v]]
+    aggfunc = "size" if a == "n" else a
 
-    if a is None:
+    if aggfunc is None:
         try:
             wide_df = df.pivot(index=index_cols, columns=c, values=v).reset_index()
         except ValueError:
@@ -38,7 +40,7 @@ def wide(df, c="variable", v="value", a=None, dropna=True):
             ).reset_index()
     else:
         wide_df = df.pivot_table(
-            index=index_cols, columns=c, values=v, aggfunc=a, dropna=dropna
+            index=index_cols, columns=c, values=v, aggfunc=aggfunc, dropna=dropna
         ).reset_index()
 
     wide_df.columns.name = None
