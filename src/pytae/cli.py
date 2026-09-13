@@ -506,6 +506,25 @@ class _Pipeline:
             return f"-query: {exc}"
         return None
 
+    def apply_sql(self, query: str) -> str | None:
+        """Apply one -sql query to the current view via duckdb. The view is registered as
+        table `df` (the file itself is already named on the command line, so there's no
+        separate file-derived alias). Returns an error message or None."""
+        try:
+            import duckdb
+        except ImportError as exc:
+            return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
+        con = duckdb.connect()
+        try:
+            con.register("df", self.dataframe())
+            try:
+                self._df = con.sql(query).df()
+            except Exception as exc:
+                return f"-sql: {exc}"
+        finally:
+            con.close()
+        return None
+
     def dataframe(self) -> pd.DataFrame:
         if self._df is None:
             df = self._reader.to_dataframe(
@@ -724,6 +743,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
                          help="filter rows at this point in the pipeline using pytae qry(); dict entries, "
                               "surrounding {} optional, e.g. \"'col': ('>', 5), 'other': ['a', 'b']\"")
+    parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
+                         help="run a SQL query (via duckdb) against the current view at this point in "
+                              "the pipeline; the view is queryable as table `df`; standard SQL identifier "
+                              "quoting applies (double quotes for names with spaces, e.g. \"col a\"; single "
+                              "quotes are string literals, not identifiers), e.g. "
+                              "\"select \\\"col a\\\" from df where \\\"col a\\\" > 10\"")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
@@ -765,6 +790,7 @@ def _process_path(
     select_specs: list[tuple[list[str], dict]],
     qry_specs: list[dict],
     query_specs: list[str],
+    sql_specs: list[str],
     rename_map: dict[str, str] | None,
 ) -> bool:
     """Run every requested display/-convert/-agg action against one file. Returns True if an error occurred."""
@@ -795,6 +821,7 @@ def _process_path(
     select_iter = iter(select_specs)
     qry_iter = iter(qry_specs)
     query_iter = iter(query_specs)
+    sql_iter = iter(sql_specs)
 
     def should_print(idx: int) -> bool:
         return emit_stdout and idx == last_idx
@@ -823,6 +850,11 @@ def _process_path(
             emit_frame(idx)
         elif op == "query":
             err = pipeline.apply_query(next(query_iter))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "sql":
+            err = pipeline.apply_sql(next(sql_iter))
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -1054,7 +1086,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.convert, args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.qry, args.query])
+                         args.select, args.qry, args.query, args.sql])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -1081,6 +1113,7 @@ def main(argv: list[str] | None = None) -> int:
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     query_specs = list(args.query or [])
+    sql_specs = list(args.sql or [])
     batch = len(paths) > 1
     exit_code = 0
 
@@ -1089,7 +1122,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    qry_specs=qry_specs, query_specs=query_specs, rename_map=rename_map)
+                                    qry_specs=qry_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                    rename_map=rename_map)
         except UnicodeError as exc:
             failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
         if failed:

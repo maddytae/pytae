@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.1.2"
-description = "A package to enhance common day to day tasks in the life of a data scientist"
+version = "3.2.0"
+description = "A package to enhance common tasks in data and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,8 @@ classifiers = [
 
 [project.optional-dependencies]
 plot = ["matplotlib"]
-dev = ["pytest>=8.0.0", "matplotlib"]
+sql = ["duckdb>=0.9"]
+dev = ["pytest>=8.0.0", "matplotlib", "duckdb>=0.9", "nbclient", "nbformat", "ipykernel"]
 
 [project.scripts]
 pytae = "pytae.cli:main"

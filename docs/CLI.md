@@ -8,6 +8,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Sample datasets](#sample-datasets)
 - [Column selection — `-select`](#select)
 - [Row filtering — `-qry` / `-query`](#filtering)
+- [SQL — `-sql`](#sql)
 - [Aggregation (auto group columns) — `-agg_df`](#agg-df)
 - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
 - [Broadcast — `-group_x`](#group-x)
@@ -18,7 +19,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Missing values — `-handle_missing`](#handle-missing)
 - [Reshape — `-long` / `-wide`](#reshape)
 - [Cross-tabulation — `-crosstab`](#crosstab)
-- [Conversion — `-convert`](#convert)
+- [Conversion — `-convert` / `-rename`](#convert)
 - [Display extras](#display-extras)
 - [Pandas defaults vs pytae-specific](#pandas-vs-pytae)
   - [`-wide` vs `-crosstab`](#wide-vs-crosstab)
@@ -195,8 +196,43 @@ pytae penguins.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -h
 
 ---
 
+<a id="sql"></a>
+## SQL — `-sql`
+
+`-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). The view is queryable as table **`df`, and only `df`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember (and no ambiguity if you later pipe a differently-named file through the same command). `table` is also deliberately not registered: it's a reserved SQL keyword, so `select * from table` fails to parse unless quoted, which defeats the point of a short default name.
+
+Unlike `-qry`, this is **standard SQL**, not pytae's dict syntax — column names with spaces need **double** quotes (`"bill length mm"`), not single quotes. Single quotes are string literals in SQL, e.g. `'Adelie'`; using them around a column name either errors or silently compares against a constant string instead of the column.
+
+```bash
+pytae penguins.parquet -sql "select species, body_mass_g from df where body_mass_g > 3500"
+pytae penguins.parquet -sql "select species, avg(body_mass_g) as avg_mass from df group by species"
+
+# a column name with a space: double quotes, not single quotes
+pytae data.parquet -sql 'select species from df where "bill length mm" > 40'
+
+# chains like any other op — runs on the current view, replaces it
+pytae penguins.parquet -select species,island,body_mass_g -sql "select * from df where island = 'Dream'" -shape
+
+# a query that needs BOTH a double-quoted identifier (space in the column name)
+# and a single-quoted string literal — escape the identifier's inner double quotes
+pytae penguins.parquet -select species,island,body_mass_g -sql "select \"col a\" from df where island = 'Dream'" -shape
+```
+
+Mixing a spaced identifier and a string literal in one `-sql` value means the shell has to see both `"` and `'` — one of them needs escaping. Two ways to handle it:
+
+- **Escape in place** (above): wrap the whole `-sql` value in double quotes and escape the identifier's quotes (`\"col a\"`); the string literal's single quotes pass through untouched.
+- **Rename the column first, then no quoting needed.** `-rename` only applies at `-convert`/write time (see [Convert / rename](#convert)), not mid-pipeline, so this is a two-step workflow — convert once to a space-free schema, then run `-sql` against that file with plain identifiers:
+
+  ```bash
+  pytae penguins.parquet -convert -rename "col a:col_a" -o clean.parquet
+  pytae clean.parquet -sql "select col_a from df where island = 'Dream'"
+  ```
+
+---
+
 <a id="agg-df"></a>
 ## Aggregation (auto group columns) — `-agg_df`
+
 
 Groups by all **non-numeric** columns and aggregates the rest. `n` is group count.
 
@@ -428,7 +464,7 @@ pytae penguins.parquet -crosstab "index='species',columns='sex'" -dropna false
 ---
 
 <a id="convert"></a>
-## Conversion — `-convert`
+## Conversion — `-convert` / `-rename`
 
 Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the source. Cannot write `.sas7bdat`.
 
@@ -451,6 +487,7 @@ pytae data.txt -dlim "|" -convert -o data.csv
 pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter
 pytae 'data/*.parquet' -convert
 pytae penguins.parquet -convert -rename "old_name:new_name,another:clean"
+pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      # spaces in a name are fine — only "," and ":" are delimiters
 pytae data.csv -encoding latin-1 -convert -o data.parquet
 ```
 
@@ -510,6 +547,7 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 | Flag / key | pytae convention |
 |---|---|
 | `-qry` | dict-based filter syntax (`'col': ('>', 5)`) — pytae's own `qry()`, not a pandas method |
+| `-sql` | real SQL via duckdb (not pandas) — the current view is registered as table `df` only (no file-derived alias) |
 | `-select`'s `contains=` / `startswith=` / `endswith=` / `regex=` / `dtype=` / `exclude_dtype=` | pytae's own column-picking vocabulary; no equivalent shorthand in plain pandas |
 | `-agg_df` | auto-detects group columns (every non-numeric column becomes a group key) — pandas' `groupby()` always requires you to name them |
 | `-group_x` | broadcasts a group aggregate to every row via `group=`/`v=`/`a=` keys — wraps pandas `transform()` as a ready-made verb |
@@ -664,6 +702,7 @@ pytae 'folder/*.parquet' -convert
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
+| `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
 
 **Aggregate & reshape**

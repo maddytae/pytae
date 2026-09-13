@@ -1078,6 +1078,72 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
     )
 
 
+def test_sql_query_via_df_alias(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"col a": [1, 20, 3], "col b": ["x", "y", "z"]}))
+
+    exit_code = cli.main([path, "-sql", 'select "col b" from df where "col a" > 10'])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "y" in out
+    assert "x" not in out
+
+
+def test_sql_spaced_column_name_needs_double_quotes(tmp_path, capsys):
+    # Standard SQL identifier quoting: double quotes for names with spaces, not single quotes.
+    path = _write_csv(tmp_path, pd.DataFrame({"bill length mm": [1, 20, 3], "species": ["a", "b", "c"]}))
+
+    exit_code = cli.main([path, "-sql", 'select species from df where "bill length mm" > 10'])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.strip().splitlines()[-1].strip() == "b"
+
+
+def test_sql_only_df_is_registered_no_file_derived_alias(tmp_path, capsys):
+    # The file is already named on the command line; -sql does not also register a
+    # file-stem alias (e.g. "data" for data.csv) -- only `df` is queryable.
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-sql", "select * from data"])
+    assert exc_info.value.code == 2
+    assert "-sql" in capsys.readouterr().err
+
+
+def test_sql_reserved_word_table_is_not_registered(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-sql", "select * from table"])
+    assert exc_info.value.code == 2
+    assert "-sql" in capsys.readouterr().err
+
+
+def test_sql_chains_after_select(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
+    )
+
+    exit_code = cli.main(
+        [path, "-select", "keep,flt", "-sql", 'select "keep" from df where "flt" = \'A\'', "-shape"]
+    )
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+
+def test_sql_invalid_query_errors(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-sql", "not valid sql"])
+    assert exc_info.value.code == 2
+    assert "-sql" in capsys.readouterr().err
+
+
+
 def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
     copied = {}

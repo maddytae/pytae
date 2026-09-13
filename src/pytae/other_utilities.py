@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 def to_clip(self):
     """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
