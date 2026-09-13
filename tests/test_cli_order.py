@@ -1502,3 +1502,119 @@ def test_concat_unknown_alias_errors(tmp_path, capsys):
         cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,bogus'"])
     assert exc_info.value.code == 2
     assert "unknown -file alias" in capsys.readouterr().err
+
+
+def test_file_dlim_and_encoding_overrides_applied(tmp_path, capsys):
+    pipe_path = tmp_path / "pipe.csv"
+    pipe_path.write_bytes("id|name\n1|caf\xe9\n".encode("latin-1"))
+    plain_path = tmp_path / "plain.csv"
+    pd.DataFrame({"id": [2], "name": ["bravo"]}).to_csv(plain_path, index=False)
+
+    cli.main([
+        "-file", f"{pipe_path}=p,dlim='|',encoding='latin-1'; {plain_path}=q",
+        "-concat", "frames='p,q'",
+    ])
+
+    out = capsys.readouterr().out
+    assert "café" in out
+    assert "bravo" in out
+
+
+def test_file_requires_at_least_two_entries(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
+
+    with pytest.raises(SystemExit, match="at least two"):
+        cli.main(["-file", f"{path}=a", "-concat", "frames='a,a'"])
+
+
+def test_concat_requires_at_least_two_frame_names(tmp_path):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit, match="frames= needs at least two names"):
+        cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a'"])
+
+
+def test_file_duplicate_alias_errors(tmp_path):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit, match="duplicate alias"):
+        cli.main(["-file", f"{a}=x;{b}=x", "-concat", "frames='x,x'"])
+
+
+def test_merge_on_mixed_style_errors(tmp_path):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit, match="mixes plain columns and left:right pairs"):
+        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a,right=b,on='id:id,x'"])
+
+
+def test_merge_missing_required_keys_errors(tmp_path):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit, match="missing required key"):
+        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a"])
+
+
+def test_merge_validate_failure_errors(tmp_path, capsys):
+    left = tmp_path / "left.csv"
+    right = tmp_path / "right.csv"
+    pd.DataFrame({"id": [1, 1, 2], "x": ["a", "b", "c"]}).to_csv(left, index=False)
+    pd.DataFrame({"id": [1, 2], "y": ["p", "q"]}).to_csv(right, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([
+            "-file", f"{left}=l;{right}=r",
+            "-merge", "left=l,right=r,on='id',validate=one_to_one",
+        ])
+    assert exc_info.value.code == 2
+    assert "-merge:" in capsys.readouterr().err
+
+
+def test_convert_succeeds_after_merge(tmp_path):
+    left, right = _write_two_csvs(tmp_path)
+    dest = tmp_path / "merged.parquet"
+
+    exit_code = cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-merge", "left=df1,right=df2,on='col a:cola'",
+        "-convert", "-o", str(dest),
+    ])
+
+    assert exit_code == 0
+    assert dest.exists()
+    result = pd.read_parquet(dest)
+    assert list(result.columns) == ["col a", "val_l", "cola", "val_r"]
+    assert len(result) == 2
+
+
+def test_select_runs_after_merge(tmp_path, capsys):
+    left, right = _write_two_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-merge", "left=df1,right=df2,on='col a:cola'",
+        "-select", "val_l,val_r", "-shape",
+    ])
+
+    assert capsys.readouterr().out.strip() == "(2, 2)"
+
+
+def test_file_nonexistent_path_errors(tmp_path, capsys):
+    a, _, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{a}=a;{tmp_path / 'missing.csv'}=b", "-concat", "frames='a,b'"])
+    assert exc_info.value.code == 2
+    assert "file not found" in capsys.readouterr().err
+
+
+def test_file_bad_encoding_errors(tmp_path, capsys):
+    bad_path = tmp_path / "bad.csv"
+    bad_path.write_bytes("id,name\n1,caf\xe9\n".encode("latin-1"))
+    ok_path = tmp_path / "ok.csv"
+    pd.DataFrame({"id": [2], "name": ["bravo"]}).to_csv(ok_path, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{bad_path}=a;{ok_path}=b", "-concat", "frames='a,b'"])
+    assert exc_info.value.code == 2
+    assert "try -encoding" in capsys.readouterr().err
