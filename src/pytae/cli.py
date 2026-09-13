@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import ast
-import difflib
-import glob
 import io
-import re
 import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -16,6 +12,33 @@ from pathlib import Path
 import pandas as pd
 
 from pytae.agg_df import agg_df  # noqa: F401  — registers pd.DataFrame.agg_df
+from pytae.cli_parsing import (
+    expand_paths,
+    parse_agg,
+    parse_bool_text,
+    parse_columns,
+    parse_crosstab_arg,
+    parse_fraction,
+    parse_group_agg,
+    parse_group_x_arg,
+    parse_list_order,
+    parse_long_arg,
+    parse_positive_int,
+    parse_qry,
+    parse_rename,
+    parse_replace_arg,
+    parse_select_spec,
+    parse_wide_arg,
+    unknown_columns_message,
+)
+from pytae.cli_pipeline import (
+    _OrderedAppend,
+    _OrderedFlag,
+    _OrderedSortBy,
+    _OrderedStore,
+    _OrderedValue,
+    _Pipeline,
+)
 from pytae.other_utilities import group_x, handle_missing  # noqa: F401
 from pytae.qry import qry  # noqa: F401
 from pytae.readers import get_reader, write_dataframe
@@ -62,374 +85,10 @@ def _copy_to_clipboard(text: str) -> None:
         print("pytae: unable to copy to clipboard (no clipboard utility found)", file=sys.stderr)
 
 
-SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
-
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None). Like real method chaining, nothing can
 # follow them except -to_clip. -describe is excluded: df.describe() returns a DataFrame.
 NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info"})
-
-
-def parse_columns(raw: str) -> list[str]:
-    """Parse a column list like "'col a','col b'" or "col_a,col_b" into a list of names."""
-    raw = raw.strip()
-    try:
-        parsed = ast.literal_eval(f"[{raw}]")
-        cols = list(parsed) if isinstance(parsed, (list, tuple)) else [parsed]
-        return [str(c).strip() for c in cols]
-    except (ValueError, SyntaxError):
-        return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
-
-
-def _split_tokens(raw: str, sep: str = ",") -> list[str]:
-    """Split on sep, respecting single or double quotes."""
-    tokens: list[str] = []
-    buf: list[str] = []
-    quote = None
-    for ch in raw:
-        if quote:
-            if ch == quote:
-                quote = None
-            else:
-                buf.append(ch)
-        elif ch in "'\"":
-            quote = ch
-        elif ch == sep:
-            token = "".join(buf).strip()
-            if token:
-                tokens.append(token)
-            buf = []
-        else:
-            buf.append(ch)
-    token = "".join(buf).strip()
-    if token:
-        tokens.append(token)
-    return tokens
-
-
-def _split_groups(raw: str, sep: str = ";") -> list[str]:
-    """Split on sep but keep quote characters so inner comma-split still sees them."""
-    tokens: list[str] = []
-    buf: list[str] = []
-    quote = None
-    for ch in raw:
-        if quote:
-            buf.append(ch)
-            if ch == quote:
-                quote = None
-        elif ch in "'\"":
-            quote = ch
-            buf.append(ch)
-        elif ch == sep:
-            token = "".join(buf).strip()
-            if token:
-                tokens.append(token)
-            buf = []
-        else:
-            buf.append(ch)
-    token = "".join(buf).strip()
-    if token:
-        tokens.append(token)
-    return tokens
-
-
-def parse_select_spec(raw: str) -> tuple[list[str], dict]:
-    """Parse -select into positional names/slices and select() kwargs.
-
-    Tokens without '=' are column names or start:end slices. Tokens like
-    dtype=numeric / contains=bill / regex=^flip become kwargs. Repeated keys
-    become a list. Union of all tokens, matching df.select().
-    """
-    tokens = _split_tokens(raw)
-    names: list[str] = []
-    kwargs: dict = {}
-    for token in tokens:
-        if "=" in token:
-            key, _, value = token.partition("=")
-            key = key.strip()
-            value = value.strip()
-            if key in SELECT_KEYS:
-                if not value:
-                    raise SystemExit(f"-select: {key}= needs a value")
-                if key in kwargs:
-                    prev = kwargs[key]
-                    kwargs[key] = (prev if isinstance(prev, list) else [prev]) + [value]
-                else:
-                    kwargs[key] = value
-                continue
-        names.append(token)
-    if not names and not kwargs:
-        raise SystemExit("-select: expected column names and/or key=value tokens")
-    if "exclude_dtype" in kwargs and (names or len(kwargs) > 1):
-        raise SystemExit("-select: exclude_dtype cannot be combined with other selection criteria")
-    return names, kwargs
-
-
-def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
-    """Exact-name tokens (and slice endpoints) that are not in the file."""
-    unknown: list[str] = []
-    for token in tokens:
-        if ":" in token:
-            start, end = token.split(":", 1)
-            start, end = start.strip(), end.strip()
-            if start and start not in available:
-                unknown.append(start)
-            if end and end not in available:
-                unknown.append(end)
-        elif token not in available:
-            unknown.append(token)
-    return unknown
-
-
-def unknown_columns_message(flag: str, requested: list[str], available: list[str]) -> str:
-    """Build an 'unknown column(s)' error message, suggesting a close match for likely typos."""
-    unknown = [c for c in requested if c not in available]
-    parts = []
-    for c in unknown:
-        close = difflib.get_close_matches(c, available, n=1)
-        parts.append(f"'{c}'" + (f" (did you mean '{close[0]}'?)" if close else ""))
-    return f"{flag}: unknown column(s): {', '.join(parts)}"
-
-
-def parse_rename(raw: str) -> dict[str, str]:
-    """Parse a rename mapping like "old_a:new_a,old_b:new_b" into a dict."""
-    mapping: dict[str, str] = {}
-    for pair in raw.split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        if ":" not in pair:
-            raise SystemExit(f"invalid --rename mapping '{pair}'; expected old:new")
-        old, new = pair.split(":", 1)
-        mapping[old.strip()] = new.strip()
-    return mapping
-
-
-def expand_paths(pattern: str) -> list[Path]:
-    """Expand a glob pattern (e.g. "data/*.parquet") into matching paths, or wrap a plain path as-is."""
-    if any(ch in pattern for ch in "*?["):
-        matches = sorted(Path(p) for p in glob.glob(pattern))
-        if not matches:
-            raise SystemExit(f"no files matched pattern: {pattern}")
-        return matches
-    return [Path(pattern)]
-
-
-def parse_qry(raw: str) -> dict:
-    """Parse --qry conditions like "'col': ('>', 5), 'other': ['a','b']"; wrapping {} is optional."""
-    stripped = raw.strip()
-    candidate = stripped if stripped.startswith("{") else f"{{{stripped}}}"
-    try:
-        conditions = ast.literal_eval(candidate)
-    except (ValueError, SyntaxError) as exc:
-        raise SystemExit(f"invalid --qry conditions: {exc}") from exc
-    if not isinstance(conditions, dict):
-        raise SystemExit("--qry expects dict entries, e.g. \"'col': ('>', 5)\" (braces optional)")
-    return conditions
-
-
-def parse_agg(raw: str):
-    """Parse an --agg_df aggfunc value: bare string ('sum'), list literal, or dict of
-    quoted key:value pairs, surrounding {} optional, e.g. "'col':'sum','n':'n'"."""
-    raw = raw.strip()
-    if not (raw.startswith(("{", "[", "'", '"'))):
-        return raw
-    try:
-        return ast.literal_eval(raw)
-    except (ValueError, SyntaxError) as exc:
-        if raw.startswith("{"):
-            raise SystemExit(f"invalid --agg_df value: {exc}") from exc
-        try:
-            return ast.literal_eval(f"{{{raw}}}")
-        except (ValueError, SyntaxError):
-            raise SystemExit(f"invalid --agg_df value: {exc}") from exc
-
-
-_AGG_KEYS = ("column", "aggfunc", "as")
-
-
-def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
-    """Parse -agg as key=value specs: column=, aggfunc=, optional as=.
-
-    Several specs are separated by ';'. Several source columns in one spec share
-    the same aggfunc: column='value,val_growth',aggfunc='sum'. as= needs a single column.
-    Returns (source_col, output_name, aggfunc) rows.
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-agg: expected key=value specs, e.g. column='value',aggfunc='sum',as='v'")
-    if raw.startswith("{"):
-        raise SystemExit(
-            "-agg: use key=value specs, e.g. column='value',aggfunc='sum',as='v' "
-            "(not a dict literal)"
-        )
-    rows: list[tuple[str, str, str]] = []
-    for group in _split_groups(raw, ";"):
-        canon = parse_reshape_kwargs(group, keys=_AGG_KEYS, flag="-agg")
-        if "column" not in canon or "aggfunc" not in canon:
-            raise SystemExit("-agg: each spec needs column= and aggfunc=")
-        cols = parse_columns(canon["column"])
-        if not cols:
-            raise SystemExit("-agg: column= needs at least one column")
-        out = canon.get("as")
-        if out and len(cols) != 1:
-            raise SystemExit("-agg: as= requires a single column")
-        aggfunc = canon["aggfunc"]
-        for col in cols:
-            rows.append((col, out or col, aggfunc))
-    names = [name for _, name, _ in rows]
-    if len(names) != len(set(names)):
-        raise SystemExit("-agg: duplicate output names")
-    return rows
-
-
-_GROUP_X_KEYS = ("group", "v", "a", "dropna", "observed")
-
-
-def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. group='species',v='body_mass_g',a='max'."""
-    kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
-    if "group" in kwargs and isinstance(kwargs["group"], str):
-        kwargs["group"] = parse_columns(kwargs["group"])
-    return kwargs
-
-
-def _unquote_name(raw: str) -> str:
-    raw = raw.strip()
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
-        return raw[1:-1]
-    return raw
-
-
-_LONG_KEYS = ("c", "v")
-_WIDE_KEYS = ("c", "v", "a", "dropna")
-
-
-def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide/-group_x as key=value tokens, e.g. c='metric',v='reading',a='mean'."""
-    raw = (raw or "").strip()
-    if not raw:
-        return {}
-    kwargs: dict = {}
-    for token in _split_tokens(raw):
-        if "=" not in token:
-            raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
-        key, _, value = token.partition("=")
-        key = key.strip()
-        value = _unquote_name(value)
-        if key not in keys:
-            raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
-        if not value:
-            raise SystemExit(f"{flag}: {key}= needs a value")
-        if key in kwargs:
-            raise SystemExit(f"{flag}: {key}= given more than once")
-        kwargs[key] = parse_bool_text(value) if key in ("dropna", "observed", "margins", "exact") else value
-    return kwargs
-
-
-def parse_long_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
-
-
-def parse_wide_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
-
-
-_CROSSTAB_KEYS = ("index", "columns", "values", "aggfunc", "normalize", "margins", "margins_name")
-_CROSSTAB_NORMALIZE_VALUES = ("index", "columns", "all")
-
-
-def parse_crosstab_arg(raw: str | None) -> dict:
-    """Parse -crosstab as key=value tokens: index= (one or more comma-separated columns),
-    columns= (single column, required), optional values=+aggfunc= (must be given together),
-    normalize=index|columns|all, margins=true|false, margins_name= (requires margins=true).
-    """
-    kwargs = parse_reshape_kwargs(raw, keys=_CROSSTAB_KEYS, flag="-crosstab")
-    if "index" not in kwargs or "columns" not in kwargs:
-        raise SystemExit("-crosstab: expected index= and columns=")
-    if ("values" in kwargs) != ("aggfunc" in kwargs):
-        raise SystemExit("-crosstab: values= and aggfunc= must be given together")
-    if "normalize" in kwargs and kwargs["normalize"] not in _CROSSTAB_NORMALIZE_VALUES:
-        raise SystemExit(f"-crosstab: normalize= must be one of {', '.join(_CROSSTAB_NORMALIZE_VALUES)}")
-    if "margins_name" in kwargs and not kwargs.get("margins"):
-        raise SystemExit("-crosstab: margins_name= requires margins=true")
-    return kwargs
-
-
-_REPLACE_KEYS = ("c", "v", "exact")
-
-
-def parse_value_map(raw: str) -> dict[str, str]:
-    """Parse a -replace v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
-    mapping: dict[str, str] = {}
-    for pair in raw.split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        if ":" not in pair:
-            raise SystemExit(f"-replace: invalid v= mapping '{pair}'; expected old:new")
-        old, new = pair.split(":", 1)
-        mapping[old.strip()] = new.strip()
-    if not mapping:
-        raise SystemExit("-replace: v= needs at least one old:new pair")
-    return mapping
-
-
-def parse_replace_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
-    """Parse -replace as key=value tokens: c= (optional column scope), v= (required
-    old:new mapping), exact= (optional bool, default true — whole-cell match vs
-    substring match anywhere in the cell). Returns (cols_or_None, mapping, exact)."""
-    kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace")
-    if "v" not in kwargs:
-        raise SystemExit("-replace: expected v='old:new,...'")
-    cols = parse_columns(kwargs["c"]) if "c" in kwargs else None
-    mapping = parse_value_map(kwargs["v"])
-    exact = kwargs.get("exact", True)
-    return cols, mapping, exact
-
-
-def parse_bool_text(raw: str) -> bool:
-    """Parse a required true/false text flag value into bool."""
-    lowered = raw.strip().lower()
-    if lowered == "true":
-        return True
-    if lowered == "false":
-        return False
-    raise argparse.ArgumentTypeError("expected 'true' or 'false'")
-
-
-def parse_positive_int(raw) -> int:
-    """Parse a row-count flag; reject 0 and negatives (e.g. -head 0, -head -5)."""
-    try:
-        n = int(raw)
-    except (TypeError, ValueError):
-        raise argparse.ArgumentTypeError(f"invalid integer: {raw!r}") from None
-    if n <= 0:
-        raise argparse.ArgumentTypeError(f"must be > 0, got {n}")
-    return n
-
-
-def parse_fraction(raw) -> float:
-    """Parse -frac: a fraction of rows in (0, 1] (e.g. -frac 0.1 for 10%)."""
-    try:
-        frac = float(raw)
-    except (TypeError, ValueError):
-        raise argparse.ArgumentTypeError(f"invalid number: {raw!r}") from None
-    if not (0 < frac <= 1):
-        raise argparse.ArgumentTypeError(f"must be > 0 and <= 1, got {frac}")
-    return frac
-
-
-def parse_list_order(raw: str) -> str:
-    """Parse optional listing order for -cols/-dtype/-nulls: asc or desc.
-
-    'file' is the internal sentinel used when the flag is present with no value
-    (argparse 3.14 type-converts const).
-    """
-    lowered = str(raw).strip().lower()
-    if lowered in ("asc", "desc", "file"):
-        return lowered
-    raise argparse.ArgumentTypeError("expected 'asc' or 'desc'")
 
 
 def _list_order_names(names, order):
@@ -438,6 +97,7 @@ def _list_order_names(names, order):
     if order == "desc":
         return sorted(names, reverse=True)
     return list(names)
+
 
 
 def _list_order_index(series: pd.Series, order) -> pd.Series:
@@ -473,225 +133,6 @@ def cmd_convert(
         raise SystemExit(str(exc)) from exc
     if announce:
         print(f"Wrote {len(df)} rows to {dest}")
-
-
-class _Pipeline:
-    """Flag order is the method chain. Each -select/-qry/-query/-head/… call
-    runs on the current view, same as df.select().qry().head().
-    Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
-    row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
-    don't return a DataFrame/Series in pandas either, so (like main()'s validation)
-    nothing may follow them except -to_clip.
-    """
-
-    def __init__(self, reader, *, nrows, progress) -> None:
-        self._reader = reader
-        self._nrows = nrows
-        self._progress = progress
-        self._df: pd.DataFrame | None = None
-        self._pending_exact: list[str] | None = None
-
-    def _available_columns(self) -> list[str]:
-        if self._df is not None:
-            return list(self._df.columns)
-        if self._pending_exact is not None:
-            return list(self._pending_exact)
-        return list(self._reader.columns())
-
-    def apply_select(self, names: list[str], kwargs: dict) -> str | None:
-        """Apply one -select spec to the current view. Returns an error message or None."""
-        available = self._available_columns()
-        unknown = _select_unknown_names(names, available)
-        if unknown:
-            return unknown_columns_message("-select", unknown, available)
-
-        needs_frame = (
-            self._df is not None
-            or bool(kwargs)
-            or any(":" in token for token in names)
-        )
-        if not needs_frame:
-            self._pending_exact = list(names)
-            return None
-
-        df = self._df if self._df is not None else self.dataframe()
-        try:
-            self._df = df.select(*names, **kwargs)
-        except (ValueError, KeyError) as exc:
-            return f"-select: {exc}"
-        return None
-
-    def apply_qry(self, conditions: dict) -> str | None:
-        """Apply one -qry spec to the current view. Returns an error message or None."""
-        df = self.dataframe()
-        try:
-            self._df = df.qry(conditions)
-        except Exception as exc:
-            return f"-qry: {exc}"
-        return None
-
-    def apply_query(self, expr: str) -> str | None:
-        """Apply one -query expression to the current view. Returns an error message or None."""
-        df = self.dataframe()
-        try:
-            self._df = df.query(expr)
-        except Exception as exc:
-            return f"-query: {exc}"
-        return None
-
-    def apply_replace(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
-        """Apply one -replace spec to the current view. Returns an error message or None."""
-        df = self.dataframe()
-        if cols is not None:
-            available = list(df.columns)
-            unknown = [c for c in cols if c not in available]
-            if unknown:
-                return unknown_columns_message("-replace", unknown, available)
-            target = df[cols]
-        else:
-            target = df
-        to_replace = mapping if exact else {re.escape(k): v for k, v in mapping.items()}
-        try:
-            replaced = target.replace(to_replace, regex=not exact)
-        except Exception as exc:
-            return f"-replace: {exc}"
-        if cols is not None:
-            df = df.copy()
-            df[cols] = replaced
-            self._df = df
-        else:
-            self._df = replaced
-        return None
-
-    def apply_sql(self, query: str) -> str | None:
-        """Apply one -sql query to the current view via duckdb. The view is registered as
-        table `df` (the file itself is already named on the command line, so there's no
-        separate file-derived alias). Returns an error message or None."""
-        try:
-            import duckdb
-        except ImportError as exc:
-            return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
-        con = duckdb.connect()
-        try:
-            con.register("df", self.dataframe())
-            try:
-                self._df = con.sql(query).df()
-            except Exception as exc:
-                return f"-sql: {exc}"
-        finally:
-            con.close()
-        return None
-
-    def dataframe(self) -> pd.DataFrame:
-        if self._df is None:
-            df = self._reader.to_dataframe(
-                columns=self._pending_exact, nrows=self._nrows, progress=self._progress,
-            )
-            self._df = df
-        return self._df
-
-    def columns(self) -> list[str]:
-        if self._df is not None:
-            return list(self._df.columns)
-        return self._available_columns()
-
-    def dtypes(self) -> pd.Series:
-        if self._df is not None:
-            return self._df.dtypes
-        dtypes = self._reader.dtypes()
-        return dtypes[self._pending_exact] if self._pending_exact is not None else dtypes
-
-    def shape(self) -> tuple[int, int]:
-        if self._df is not None:
-            return self._df.shape
-        rows = self._reader.shape()[0]
-        cols = len(self._pending_exact) if self._pending_exact is not None else self._reader.shape()[1]
-        return (rows, cols)
-
-    def head(self, n: int) -> pd.DataFrame:
-        if self._df is None:
-            df = self._reader.head(n)
-            if self._pending_exact is not None:
-                df = df.select(*self._pending_exact)
-        else:
-            df = self.dataframe().head(n)
-        self._df = df
-        return df
-
-    def tail(self, n: int) -> pd.DataFrame:
-        if self._df is None:
-            df = self._reader.tail(n)
-            if self._pending_exact is not None:
-                df = df.select(*self._pending_exact)
-        else:
-            df = self.dataframe().tail(n)
-        self._df = df
-        return df
-
-    def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
-        df = self.dataframe()
-        if frac is not None:
-            sampled = df.sample(frac=frac, random_state=seed)
-        else:
-            n = min(n, len(df))
-            sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
-        self._df = sampled
-        return sampled
-
-
-class _OrderedFlag(argparse.Action):
-    """Boolean flag (like store_true) that also records its dest in namespace.op_order, in CLI order."""
-
-    def __init__(self, option_strings, dest, **kwargs) -> None:
-        super().__init__(option_strings, dest, nargs=0, default=False, **kwargs)
-
-    def __call__(self, parser, namespace, values, option_string=None) -> None:
-        setattr(namespace, self.dest, True)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
-
-
-class _OrderedValue(argparse.Action):
-    """Optional-value flag (nargs='?') that also records its dest in namespace.op_order, in CLI order."""
-
-    def __call__(self, parser, namespace, values, option_string=None) -> None:
-        setattr(namespace, self.dest, self.const if values is None else values)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
-
-
-class _OrderedStore(argparse.Action):
-    """Required-value flag (nargs=default) that also records its dest in namespace.op_order, in CLI order."""
-
-    def __call__(self, parser, namespace, values, option_string=None) -> None:
-        setattr(namespace, self.dest, values)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
-
-
-class _OrderedAppend(argparse.Action):
-    """Collect repeated flags into a list and record each occurrence in op_order."""
-
-    def __call__(self, parser, namespace, values, option_string=None) -> None:
-        items = getattr(namespace, self.dest, None)
-        items = [] if items is None else list(items)
-        items.append(values)
-        setattr(namespace, self.dest, items)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
-
-
-class _OrderedSortBy(argparse.Action):
-    """-sort_by COLUMNS [asc|desc]; records dest in op_order. Default direction is asc."""
-
-    def __call__(self, parser, namespace, values, option_string=None) -> None:
-        values = list(values)
-        order = "asc"
-        if len(values) >= 2 and values[-1] in ("asc", "desc"):
-            order = values.pop()
-        if len(values) != 1:
-            raise argparse.ArgumentError(
-                self, "expected a column list, optionally followed by 'asc' or 'desc'"
-            )
-        setattr(namespace, self.dest, values[0])
-        setattr(namespace, "sort_by_order", order)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
 
 
 def build_parser() -> argparse.ArgumentParser:
