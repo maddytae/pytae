@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.3.0] - 2026-09-13
+
+### Added
+- `-replace` flag: replace values at a point in the pipeline (pandas `replace()`). Value is `key=value` tokens: `v=` (required) an `old:new` mapping, `c=` (optional) restrict to specific columns, `exact=` (optional bool, default `true`) — `true` matches whole cell values, `false` matches a substring anywhere in the cell.
+- `-clean_columns` flag: clean column header names, in a fixed order (`strip` -> `strip_special` -> `squeeze` -> `fill` -> `case` -> `dedupe`). Booleans accept a bare key as shorthand for `=true`; `fill` defaults to `'_'` when bare; `case` (`lower`/`upper`/`proper`) always needs a value.
+- `-file`/`-merge`/`-concat` flags: a new multi-file pipeline mode. `-file "path1=alias1; path2=alias2"` loads two or more named files (with optional per-file `,dlim=`/`,encoding=` overrides) instead of the positional `path`; `-merge` (pandas `merge()`, repeatable) or `-concat` (pandas `concat()`, always resets the index, repeatable) then combine them — both accept the literal alias `df` to fold in one more file onto the running result. See `docs/CLI_MULTI_FILE.md`.
+- `-sql` extended: usable as the founding op in `-file` mode instead of `-merge`/`-concat`, with every `-file` alias registered as its own queryable duckdb table (in addition to `df`, once something has produced a current view).
+- `docs/CLI_MULTI_FILE.md`: dedicated reference for `-file`/`-merge`/`-concat`.
+- `docs/PLOTTING.md`: dedicated `Plotter` reference with rendered example images (scatter, grouped bar, pie, secondary axis, multi-panel mosaic dashboard, post-`finalize()` axis looping) using pytae's bundled sample datasets.
+
+### Changed
+- The positional `path` argument is now optional — required only when not using `-file`; `-file` and the positional `path` are mutually exclusive.
+- `src/pytae/cli.py` split into `cli.py` (argparse + main loop), `cli_parsing.py` (flag-value parsers), and `cli_pipeline.py` (`_Pipeline` + ordered argparse actions) — internal refactor, no behavior change.
+- `README.md` restructured into three top-level sections, in order: CLI, Plotting, Library.
+- `docs/CLI.md`: intro updated to mention `-replace`/`-clean_columns`/`-merge`/`-concat`; its Plotting and Multi-file sections now summarize and link out to the new dedicated `docs/PLOTTING.md`/`docs/CLI_MULTI_FILE.md` pages instead of holding the full reference inline.
+
 ## [3.2.0] - 2026-09-13
 
 ### Added
