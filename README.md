@@ -24,18 +24,6 @@ pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on
 
 See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full flag reference, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
 
-## Library
-
-Pandas extensions registered on `pd.DataFrame` — import `pytae` and the methods attach automatically.
-
-- **Filtering** — `qry()`: dict-based filters (equality, lists, `in`/`not in`, comparisons, intervals)
-- **Selection** — `select()`: columns by name, regex, dtype, or name pattern
-- **Reshaping** — `long()` / `wide()`: melt numeric columns to rows, pivot back to columns
-- **Aggregation** — `agg_df()`: auto-detects group columns and aggregates the rest
-- **Utilities** — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`
-
-See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
-
 ## Plotting
 
 `Plotter`: method-chainable plots on top of `pandas.plot()` (`pip install pytae[plot]`).
@@ -49,6 +37,18 @@ Plotter().data(penguins).plot(
 ```
 
 See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md#1-plotting-plotter) and [docs/PLOTTING.md](https://github.com/maddytae/pytae/blob/master/docs/PLOTTING.md) for more examples with sample data.
+
+## Library
+
+Pandas extensions registered on `pd.DataFrame` — import `pytae` and the methods attach automatically.
+
+- **Filtering** — `qry()`: dict-based filters (equality, lists, `in`/`not in`, comparisons, intervals)
+- **Selection** — `select()`: columns by name, regex, dtype, or name pattern
+- **Reshaping** — `long()` / `wide()`: melt numeric columns to rows, pivot back to columns
+- **Aggregation** — `agg_df()`: auto-detects group columns and aggregates the rest
+- **Utilities** — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`
+
+See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
 
 ## License
 
