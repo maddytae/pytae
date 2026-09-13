@@ -19,6 +19,7 @@ from pytae.cli_parsing import (
     parse_bool_text,
     parse_clean_columns_arg,
     parse_columns,
+    parse_concat_arg,
     parse_crosstab_arg,
     parse_file_arg,
     parse_fraction,
@@ -277,13 +278,22 @@ def build_parser() -> argparse.ArgumentParser:
                               "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
                               "default true) — true matches whole cell values, false matches a substring "
                               "anywhere in the cell, e.g. \"v='old:new',exact=false\"")
-    parser.add_argument("-merge", "--merge", dest="merge", action=_OrderedStore, metavar="KEY=VALUE,...",
-                         help="merge two -file-loaded frames into the pipeline (pandas merge()); must be the "
-                              "first op when using -file; key=value tokens: left=/right= (required, -file "
-                              "aliases), on= (required; shared column name(s), or 'left:right' pairs if they "
+    parser.add_argument("-merge", "--merge", dest="merge", action=_OrderedAppend, default=None, metavar="KEY=VALUE,...",
+                         help="merge two frames into the pipeline (pandas merge()); repeatable, to fold in "
+                              "one more file at a time; must be the first op when using -file (unless -sql/"
+                              "-concat starts it instead); key=value tokens: left=/right= (required — -file "
+                              "aliases, or 'df' for the pipeline's current result so far), "
+                              "on= (required; shared column name(s), or 'left:right' pairs if they "
                               "differ between sides — quote on= if it has more than one column/pair, e.g. "
                               "\"on='col a:cola,colb:colb'\"), how= (optional, default 'inner': "
                               "inner/left/right/outer/cross), validate= (optional, e.g. one_to_one)")
+    parser.add_argument("-concat", "--concat", dest="concat", action=_OrderedAppend, default=None, metavar="KEY=VALUE,...",
+                         help="stack frames row-wise into the pipeline (pandas concat(), always with "
+                              "ignore_index=True); repeatable; must be the first op when using -file "
+                              "(unless -sql/-merge starts it instead); key=value tokens: frames= (required) "
+                              "an ordered comma-separated list of -file aliases (or 'df' for the pipeline's "
+                              "current result so far), quoted since it has internal commas, e.g. "
+                              "\"frames='df1,df2,df3'\"")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
@@ -315,6 +325,19 @@ def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError)
     return f"can't decode '{path}' with encoding '{used}'; try -encoding {suggestions}"
 
 
+def _resolve_alias(alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipeline, flag: str) -> tuple[pd.DataFrame | None, str | None]:
+    """Look up a -merge/-concat alias: a -file alias, or 'df' for the pipeline's current
+    result so far (lets repeated -merge/-concat calls fold in one more file at a time).
+    Returns (frame, error_message)."""
+    if alias == "df":
+        if pipeline._df is None:
+            return None, f"{flag}: 'df' isn't available yet — nothing has produced a pipeline result yet"
+        return pipeline._df, None
+    if alias not in frames:
+        return None, f"{flag}: unknown -file alias '{alias}'"
+    return frames[alias], None
+
+
 def _process_path(
     path: Path | None,
     args: argparse.Namespace,
@@ -329,6 +352,8 @@ def _process_path(
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
     rename_map: dict[str, str] | None,
     frames: dict[str, pd.DataFrame] | None = None,
+    merge_specs: list[dict] = (),
+    concat_specs: list[dict] = (),
 ) -> bool:
     """Run every requested display/-convert/-agg action against one file, or (when frames
     is given, i.e. -file/-merge mode) against named in-memory frames instead. Returns True
@@ -365,6 +390,8 @@ def _process_path(
     query_iter = iter(query_specs)
     sql_iter = iter(sql_specs)
     replace_iter = iter(replace_specs)
+    merge_iter = iter(merge_specs)
+    concat_iter = iter(concat_specs)
 
     def should_print(idx: int) -> bool:
         return emit_stdout and idx == last_idx
@@ -408,13 +435,13 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "merge":
-            spec = parse_merge_arg(args.merge)
-            left_alias, right_alias = spec["left"], spec["right"]
-            if left_alias not in frames:
-                return _fail(parser, batch, f"-merge: unknown -file alias '{left_alias}'")
-            if right_alias not in frames:
-                return _fail(parser, batch, f"-merge: unknown -file alias '{right_alias}'")
-            left_df, right_df = frames[left_alias], frames[right_alias]
+            spec = next(merge_iter)
+            left_df, err = _resolve_alias(spec["left"], frames, pipeline, "-merge")
+            if err:
+                return _fail(parser, batch, err)
+            right_df, err = _resolve_alias(spec["right"], frames, pipeline, "-merge")
+            if err:
+                return _fail(parser, batch, err)
             merge_kwargs = {"how": spec["how"]}
             if spec["validate"]:
                 merge_kwargs["validate"] = spec["validate"]
@@ -436,6 +463,24 @@ def _process_path(
                 result = pd.merge(left_df, right_df, **merge_kwargs)
             except Exception as exc:
                 return _fail(parser, batch, f"-merge: {exc}")
+            result = _apply_round(result, args.round_ndigits)
+            pipeline._df = result
+            if should_print(idx):
+                print(_format_table(result, pretty=args.pretty))
+            if args.to_clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
+        elif op == "concat":
+            spec = next(concat_iter)
+            dfs = []
+            for alias in spec["frames"]:
+                df, err = _resolve_alias(alias, frames, pipeline, "-concat")
+                if err:
+                    return _fail(parser, batch, err)
+                dfs.append(df)
+            try:
+                result = pd.concat(dfs, ignore_index=True)
+            except Exception as exc:
+                return _fail(parser, batch, f"-concat: {exc}")
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
@@ -676,13 +721,15 @@ def main(argv: list[str] | None = None) -> int:
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
 
-    if args.merge is not None and args.file is None:
+    if args.merge and args.file is None:
         parser.error("-merge requires -file")
+    if args.concat and args.file is None:
+        parser.error("-concat requires -file")
     if args.file is not None:
         if args.path is not None:
             parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
-        if not op_order or op_order[0] not in ("merge", "sql"):
-            parser.error("-file requires -merge or -sql as its first operation")
+        if not op_order or op_order[0] not in ("merge", "sql", "concat"):
+            parser.error("-file requires -merge, -concat, or -sql as its first operation")
     elif args.path is None:
         parser.error("the following arguments are required: path")
 
@@ -693,7 +740,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.qry, args.query, args.sql, args.replace,
-                         args.clean_columns is not None, args.merge is not None])
+                         args.clean_columns is not None, args.merge, args.concat])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -701,11 +748,11 @@ def main(argv: list[str] | None = None) -> int:
                      args.agg_df is not None, args.agg is not None,
                      args.group_x is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
-                     args.clean_columns is not None, args.merge is not None])
+                     args.clean_columns is not None, args.merge, args.concat])
     if args.to_clip and args.shape and wants_df:
         parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge; "
+                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
                      "run -shape separately")
     if args.agg_df is not None and args.agg is not None:
         parser.error("-agg_df and -agg can't be combined; choose one")
@@ -720,6 +767,8 @@ def main(argv: list[str] | None = None) -> int:
     query_specs = list(args.query or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_arg(raw) for raw in (args.replace or [])]
+    merge_specs = [parse_merge_arg(raw) for raw in (args.merge or [])]
+    concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
 
     if args.file is not None:
         frames: dict[str, pd.DataFrame] = {}
@@ -737,7 +786,8 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
                                 qry_specs=qry_specs, query_specs=query_specs, sql_specs=sql_specs,
-                                replace_specs=replace_specs, rename_map=rename_map, frames=frames)
+                                replace_specs=replace_specs, rename_map=rename_map, frames=frames,
+                                merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
 
     paths = expand_paths(args.path)

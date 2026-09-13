@@ -1,6 +1,6 @@
 # pytae — CLI Reference
 
-Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's own library verbs — `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()` — plus CLI-native operations like value replacement (`-replace`), header cleanup (`-clean_columns`), and multi-file merges (`-file`/`-merge`).
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's own library verbs — `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()` — plus CLI-native operations like value replacement (`-replace`), header cleanup (`-clean_columns`), and multi-file merges/concats (`-file`/`-merge`/`-concat`).
 
 ## Contents
 
@@ -21,7 +21,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Header cleanup — `-clean_columns`](#clean-columns)
 - [Reshape — `-long` / `-wide`](#reshape)
 - [Cross-tabulation — `-crosstab`](#crosstab)
-- [Multi-file operations — `-file` / `-merge`](CLI_MULTI_FILE.md)
+- [Multi-file operations — `-file` / `-merge` / `-concat`](CLI_MULTI_FILE.md)
 - [Conversion — `-convert` / `-rename`](#convert)
 - [Display extras](#display-extras)
 - [Pandas defaults vs pytae-specific](#pandas-vs-pytae)
@@ -530,9 +530,9 @@ pytae penguins.parquet -crosstab "index='species',columns='sex'" -dropna false
 ---
 
 <a id="merge"></a>
-## Multi-file merge — `-file` / `-merge`
+## Multi-file operations — `-file` / `-merge` / `-concat`
 
-Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-sql` are a separate mode for joining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MULTI_FILE.md](CLI_MULTI_FILE.md)** for the full reference and examples.
+Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-concat`/`-sql` are a separate mode for combining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MULTI_FILE.md](CLI_MULTI_FILE.md)** for the full reference and examples.
 
 ```bash
 pytae -file "data1.parquet=df1; data2.parquet=df2" \
@@ -780,7 +780,7 @@ pytae 'folder/*.parquet' -convert
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
-| `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`) |
+| `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
 | `-replace KEY=VALUE,...` | Replace values at this point (`df.replace()`); `v=` required, `c=`/`exact=` optional |
 | `-clean_columns KEY=VALUE,...` | Clean header names, in order strip -> strip_special -> squeeze -> fill -> case -> dedupe |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
@@ -799,12 +799,13 @@ pytae 'folder/*.parquet' -convert
 | `-crosstab KEY=VALUE,...` | Cross-tabulate into a matrix (`index` comma-separated list, `columns` single column, optional `values`+`aggfunc`, `normalize`, `margins`, `margins_name`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts`/`-crosstab` (default true) |
 
-**Multi-file merge**
+**Multi-file operations**
 
 | Flag | Description |
 |---|---|
-| `-file PATH=ALIAS;...` | Load named files instead of the positional `path`; `;`-separated, each optionally followed by `,dlim=`/`,encoding=`; requires `-merge` or `-sql` as the first op |
-| `-merge KEY=VALUE,...` | Join two `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); or use `-sql` instead |
+| `-file PATH=ALIAS;...` | Load named files instead of the positional `path`; `;`-separated, each optionally followed by `,dlim=`/`,encoding=`; requires `-merge`, `-concat`, or `-sql` as the first op |
+| `-merge KEY=VALUE,...` | Join `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); repeatable, `left=`/`right=` accept `df` for the running result; or use `-sql` instead |
+| `-concat KEY=VALUE,...` | Stack `-file` aliases row-wise (`frames=`, an ordered list, accepts `df` for the running result); repeatable; always resets the index |
 
 **Convert & I/O**
 

@@ -1416,3 +1416,89 @@ def test_sql_as_first_op_satisfies_file_requirement(tmp_path):
         "-sql", "select * from df1",
     ])
     assert exit_code == 0
+
+
+def _write_three_id_csvs(tmp_path):
+    a = tmp_path / "a.csv"
+    b = tmp_path / "b.csv"
+    c = tmp_path / "c.csv"
+    pd.DataFrame({"id": [1, 2, 3], "x": ["a", "b", "c"]}).to_csv(a, index=False)
+    pd.DataFrame({"id": [1, 2, 4], "y": ["p", "q", "r"]}).to_csv(b, index=False)
+    pd.DataFrame({"id": [1, 2], "z": ["m", "n"]}).to_csv(c, index=False)
+    return str(a), str(b), str(c)
+
+
+def test_merge_chained_via_df_alias(tmp_path, capsys):
+    a, b, c = _write_three_id_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{a}=a;{b}=b;{c}=c",
+        "-merge", "left=a,right=b,on='id'",
+        "-merge", "left=df,right=c,on='id'",
+    ])
+
+    out = capsys.readouterr().out
+    assert all(col in out for col in ("x", "y", "z"))
+
+
+def test_merge_df_not_available_before_anything_produced(tmp_path, capsys):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=df,right=b,on='id'"])
+    assert exc_info.value.code == 2
+    assert "'df' isn't available yet" in capsys.readouterr().err
+
+
+def test_concat_stacks_three_frames_with_reset_index(tmp_path, capsys):
+    a, b, c = _write_three_id_csvs(tmp_path)
+
+    cli.main(["-file", f"{a}=a;{b}=b;{c}=c", "-concat", "frames='a,b,c'"])
+
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) == 1 + 3 + 3 + 2  # header + 3 rows from each of a, b, c
+
+
+def test_concat_resets_index(tmp_path, capsys, monkeypatch):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+    copied = {}
+
+    def _fake_to_clipboard(self, *args, **kwargs):
+        copied["frame"] = self.copy()
+
+    monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
+
+    cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,b'", "-to_clip"])
+
+    result = copied["frame"]
+    assert list(result.index) == list(range(len(result)))
+
+
+def test_concat_chained_via_df_alias(tmp_path, capsys):
+    a, b, c = _write_three_id_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{a}=a;{b}=b;{c}=c",
+        "-concat", "frames='a,b'",
+        "-concat", "frames='df,c'",
+        "-shape",
+    ])
+
+    assert capsys.readouterr().out.strip() == "(8, 4)"
+
+
+def test_concat_requires_file(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-concat", "frames='a,b'"])
+    assert exc_info.value.code == 2
+
+
+def test_concat_unknown_alias_errors(tmp_path, capsys):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,bogus'"])
+    assert exc_info.value.code == 2
+    assert "unknown -file alias" in capsys.readouterr().err

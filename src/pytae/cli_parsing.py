@@ -522,10 +522,12 @@ def parse_merge_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[s
 
 
 def parse_merge_arg(raw: str) -> dict:
-    """Parse -merge as key=value tokens: left=/right= (required -file aliases), on=
-    (required; shared column name(s), or left:right pairs if they differ between
-    sides), how= (optional, default 'inner', passed straight to pandas merge()),
-    validate= (optional, passed straight to pandas merge()).
+    """Parse -merge as key=value tokens: left=/right= (required -file aliases, or the
+    literal 'df' to reference the pipeline's current result so far — lets repeated
+    -merge calls fold in one more file at a time), on= (required; shared column
+    name(s), or left:right pairs if they differ between sides), how= (optional,
+    default 'inner', passed straight to pandas merge()), validate= (optional, passed
+    straight to pandas merge()).
     """
     kwargs = parse_reshape_kwargs(raw, keys=_MERGE_KEYS, flag="-merge")
     missing = [k for k in ("left", "right", "on") if k not in kwargs]
@@ -541,3 +543,21 @@ def parse_merge_arg(raw: str) -> dict:
         "how": kwargs.get("how", "inner"),
         "validate": kwargs.get("validate"),
     }
+
+
+_CONCAT_KEYS = ("frames",)
+
+
+def parse_concat_arg(raw: str) -> dict:
+    """Parse -concat as key=value tokens: frames= (required) — an ordered,
+    comma-separated list of -file aliases (or 'df' for the pipeline's current
+    result, to stack more files onto something already produced), e.g.
+    frames='df1,df2,df3'. Quote the whole value — it has internal commas.
+    """
+    kwargs = parse_reshape_kwargs(raw, keys=_CONCAT_KEYS, flag="-concat")
+    if "frames" not in kwargs:
+        raise SystemExit("-concat: expected frames='alias1,alias2,...'")
+    names = [n.strip() for n in kwargs["frames"].split(",") if n.strip()]
+    if len(names) < 2:
+        raise SystemExit("-concat: frames= needs at least two names")
+    return {"frames": names}
