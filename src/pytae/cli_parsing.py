@@ -454,3 +454,90 @@ def clean_column_names(
                 deduped.append(f"{name}_{seen[name]}")
         cleaned = deduped
     return cleaned
+
+
+_FILE_ENTRY_KEYS = ("dlim", "encoding")
+
+
+def parse_file_arg(raw: str) -> list[dict]:
+    """Parse -file as ';'-separated entries (at least two), each PATH=ALIAS optionally
+    followed by ,dlim=/,encoding= overrides for reading that file, e.g.
+    "data1.parquet=df1,dlim='|'; data2.parquet=df2,encoding='latin-1'".
+    Returns a list of {'path', 'alias', 'dlim', 'encoding'} dicts (dlim/encoding are
+    None when not given).
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit("-file: expected at least one PATH=ALIAS entry")
+    entries: list[dict] = []
+    aliases_seen: set[str] = set()
+    for group in _split_groups(raw, ";"):
+        tokens = _split_tokens(group, ",")
+        if not tokens:
+            raise SystemExit("-file: expected PATH=ALIAS")
+        head, has_value, alias = tokens[0].partition("=")
+        if not has_value or not alias.strip():
+            raise SystemExit(f"-file: expected PATH=ALIAS, got {tokens[0]!r}")
+        alias = alias.strip()
+        if alias in aliases_seen:
+            raise SystemExit(f"-file: duplicate alias '{alias}'")
+        aliases_seen.add(alias)
+        entry = {"path": head.strip(), "alias": alias, "dlim": None, "encoding": None}
+        for token in tokens[1:]:
+            key, has_kv, value = token.partition("=")
+            key = key.strip()
+            if not has_kv or key not in _FILE_ENTRY_KEYS:
+                raise SystemExit(f"-file: unknown option {token!r}; expected dlim= or encoding=")
+            entry[key] = _unquote_name(value)
+        entries.append(entry)
+    if len(entries) < 2:
+        raise SystemExit("-file: need at least two PATH=ALIAS entries to use with -merge")
+    return entries
+
+
+_MERGE_KEYS = ("left", "right", "on", "how", "validate")
+
+
+def parse_merge_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[str] | None]:
+    """Parse -merge's on= value: shared column names (comma list) when names match on
+    both sides, or 'left:right' pairs when they differ between sides. Quote the whole
+    on= value if it has more than one column/pair (protects the inner commas), e.g.
+    on='col a:cola,colb:colb'. Returns (on_cols, left_cols, right_cols) — on_cols is
+    set XOR (left_cols, right_cols) are set.
+    """
+    pairs = [p.strip() for p in raw.split(",") if p.strip()]
+    if not pairs:
+        raise SystemExit("-merge: on= needs at least one column (or left:right pair)")
+    has_colon = [":" in p for p in pairs]
+    if any(has_colon) and not all(has_colon):
+        raise SystemExit("-merge: on= mixes plain columns and left:right pairs; use one style")
+    if all(has_colon):
+        left_cols, right_cols = [], []
+        for pair in pairs:
+            left, _, right = pair.partition(":")
+            left_cols.append(left.strip())
+            right_cols.append(right.strip())
+        return None, left_cols, right_cols
+    return pairs, None, None
+
+
+def parse_merge_arg(raw: str) -> dict:
+    """Parse -merge as key=value tokens: left=/right= (required -file aliases), on=
+    (required; shared column name(s), or left:right pairs if they differ between
+    sides), how= (optional, default 'inner', passed straight to pandas merge()),
+    validate= (optional, passed straight to pandas merge()).
+    """
+    kwargs = parse_reshape_kwargs(raw, keys=_MERGE_KEYS, flag="-merge")
+    missing = [k for k in ("left", "right", "on") if k not in kwargs]
+    if missing:
+        raise SystemExit(f"-merge: missing required key(s): {', '.join(missing)}")
+    on_cols, left_cols, right_cols = parse_merge_on(kwargs["on"])
+    return {
+        "left": kwargs["left"],
+        "right": kwargs["right"],
+        "on": on_cols,
+        "left_on": left_cols,
+        "right_on": right_cols,
+        "how": kwargs.get("how", "inner"),
+        "validate": kwargs.get("validate"),
+    }

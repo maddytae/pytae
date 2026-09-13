@@ -19,7 +19,7 @@ class _Pipeline:
     nothing may follow them except -to_clip.
     """
 
-    def __init__(self, reader, *, nrows, progress) -> None:
+    def __init__(self, reader=None, *, nrows=None, progress=False) -> None:
         self._reader = reader
         self._nrows = nrows
         self._progress = progress

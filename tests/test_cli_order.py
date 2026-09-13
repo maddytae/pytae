@@ -1294,3 +1294,90 @@ def test_clean_columns_case_without_value_errors(tmp_path):
 
     with pytest.raises(SystemExit):
         cli.main([path, "-clean_columns", "case"])
+
+
+def _write_two_csvs(tmp_path):
+    left = tmp_path / "left.csv"
+    right = tmp_path / "right.csv"
+    pd.DataFrame({"col a": [1, 2, 3], "val_l": ["a", "b", "c"]}).to_csv(left, index=False)
+    pd.DataFrame({"cola": [1, 2, 4], "val_r": ["x", "y", "z"]}).to_csv(right, index=False)
+    return str(left), str(right)
+
+
+def test_merge_on_differing_column_names(tmp_path, capsys):
+    left, right = _write_two_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-merge", "left=df1,right=df2,on='col a:cola'",
+    ])
+
+    out = capsys.readouterr().out.strip()
+    assert "val_l" in out and "val_r" in out
+    assert len(out.splitlines()) == 3  # header + 2 matching rows (inner join)
+
+
+def test_merge_shared_column_name_outer_join(tmp_path, capsys):
+    left = tmp_path / "a.csv"
+    right = tmp_path / "b.csv"
+    pd.DataFrame({"id": [1, 2, 3], "x": ["a", "b", "c"]}).to_csv(left, index=False)
+    pd.DataFrame({"id": [1, 2, 4], "y": ["p", "q", "r"]}).to_csv(right, index=False)
+
+    cli.main([
+        "-file", f"{left}=a;{right}=b",
+        "-merge", "left=a,right=b,on='id',how=outer", "-shape",
+    ])
+
+    assert capsys.readouterr().out.strip() == "(4, 3)"
+
+
+def test_merge_requires_file(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-merge", "left=df1,right=df2,on='id'"])
+    assert exc_info.value.code == 2
+
+
+def test_file_requires_merge(tmp_path):
+    left, right = _write_two_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{left}=df1;{right}=df2", "-shape"])
+    assert exc_info.value.code == 2
+
+
+def test_file_cannot_combine_with_positional_path(tmp_path):
+    left, right = _write_two_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([left, "-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on='col a:cola'"])
+    assert exc_info.value.code == 2
+
+
+def test_merge_unknown_alias_errors(tmp_path):
+    left, right = _write_two_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=bogus,on='col a:cola'"])
+    assert exc_info.value.code == 2
+
+
+def test_merge_convert_requires_output(tmp_path):
+    left, right = _write_two_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on='col a:cola'", "-convert"])
+    assert exc_info.value.code == 2
+
+
+def test_merge_must_be_first_op_with_file(tmp_path):
+    left, right = _write_two_csvs(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([
+            "-file", f"{left}=df1;{right}=df2",
+            "-shape",
+            "-merge", "left=df1,right=df2,on='col a:cola'",
+        ])
+    assert exc_info.value.code == 2

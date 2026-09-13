@@ -21,6 +21,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Header cleanup — `-clean_columns`](#clean-columns)
 - [Reshape — `-long` / `-wide`](#reshape)
 - [Cross-tabulation — `-crosstab`](#crosstab)
+- [Multi-file merge — `-file` / `-merge`](#merge)
 - [Conversion — `-convert` / `-rename`](#convert)
 - [Display extras](#display-extras)
 - [Pandas defaults vs pytae-specific](#pandas-vs-pytae)
@@ -528,6 +529,52 @@ pytae penguins.parquet -crosstab "index='species',columns='sex'" -dropna false
 
 ---
 
+<a id="merge"></a>
+## Multi-file merge — `-file` / `-merge`
+
+Everything above operates on **one** file (the positional `path`). `-file` + `-merge` are a separate mode for joining **two named files** into a single pipeline (pandas `merge()`). They must be used **together**, and **replace** the positional `path` entirely — you can't mix a positional path with `-file`.
+
+```bash
+pytae -file "data1.parquet=df1; data2.parquet=df2" \
+      -merge "left=df1,right=df2,on='col a:cola,colb:colb',how=inner"
+```
+
+### `-file` — load named inputs
+
+Value is `;`-separated entries (at least two), each `PATH=ALIAS` optionally followed by `,dlim=`/`,encoding=` overrides for reading *that* file (handy when joining mismatched formats, e.g. a pipe-delimited `.txt` with a `.csv`):
+
+```bash
+pytae -file "data1.parquet=df1; data2.parquet=df2" ...
+pytae -file "sales.txt=sales,dlim='|'; customers.csv=customers,encoding='latin-1'" ...
+```
+
+### `-merge` — join two `-file` aliases
+
+Must be the **first** operation when `-file` is used (it's what creates the pipeline's starting DataFrame — everything after it, `-select`/`-shape`/`-o`/etc., runs on the merged result exactly like the single-file mode). Value is `key=value` tokens:
+
+| Key | Required? | Meaning |
+|---|---|---|
+| `left=` / `right=` | required | the two `-file` aliases to join |
+| `on=` | required | shared join column(s) (comma list) when names match on both sides, or `left:right` pairs when they differ — **quote the whole value** if it has more than one column/pair, e.g. `on='col a:cola,colb:colb'` |
+| `how=` | optional (default `inner`) | `inner`/`left`/`right`/`outer`/`cross`, passed straight to pandas `merge()` |
+| `validate=` | optional | e.g. `one_to_one`/`one_to_many`/`many_to_one`/`many_to_many`, passed straight to pandas `merge()` |
+
+```bash
+# join column names differ between the two files
+pytae -file "data1.parquet=df1; data2.parquet=df2" \
+      -merge "left=df1,right=df2,on='col a:cola',how=inner"
+
+# join column name is shared, outer join, then keep going like any other pipeline
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',how=outer" -select id,x,y -shape
+
+# validate the join is truly one-to-one, erroring otherwise
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',validate=one_to_one"
+```
+
+`-convert` after a merge requires `-o`/`--output` explicitly (there's no single source file to derive a default `.csv` name from). Glob-pattern batch mode (`pytae 'data/*.parquet' -convert`) is a different, unrelated feature — it can't be combined with `-file`/`-merge`.
+
+---
+
 <a id="convert"></a>
 ## Conversion — `-convert` / `-rename`
 
@@ -785,6 +832,13 @@ pytae 'folder/*.parquet' -convert
 | `-wide [KEY=VALUE,...]` | Pivot long to wide (`c`, `v`, `a` — `'n'` aliases `'size'`, `dropna`) |
 | `-crosstab KEY=VALUE,...` | Cross-tabulate into a matrix (`index` comma-separated list, `columns` single column, optional `values`+`aggfunc`, `normalize`, `margins`, `margins_name`) |
 | `-dropna true\|false` | Drop NA keys for `-agg_df`/`-agg`/`-value_counts`/`-crosstab` (default true) |
+
+**Multi-file merge**
+
+| Flag | Description |
+|---|---|
+| `-file PATH=ALIAS;...` | Load named files instead of the positional `path`; `;`-separated, each optionally followed by `,dlim=`/`,encoding=`; requires `-merge` |
+| `-merge KEY=VALUE,...` | Join two `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); must be the first op when using `-file` |
 
 **Convert & I/O**
 

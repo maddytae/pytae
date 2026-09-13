@@ -20,11 +20,13 @@ from pytae.cli_parsing import (
     parse_clean_columns_arg,
     parse_columns,
     parse_crosstab_arg,
+    parse_file_arg,
     parse_fraction,
     parse_group_agg,
     parse_group_x_arg,
     parse_list_order,
     parse_long_arg,
+    parse_merge_arg,
     parse_positive_int,
     parse_qry,
     parse_rename,
@@ -143,8 +145,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once).",
         allow_abbrev=False,
     )
-    parser.add_argument("path", help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
-                                      "or a glob pattern like 'data/*.parquet' for batch conversion")
+    parser.add_argument("path", nargs="?", default=None,
+                         help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
+                                      "or a glob pattern like 'data/*.parquet' for batch conversion; "
+                                      "omit when using -file/-merge instead")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the first N rows (default 5)")
@@ -246,6 +250,12 @@ def build_parser() -> argparse.ArgumentParser:
                               "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt/.dat); not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
+    parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS,...",
+                         help="load multiple named files for -merge, instead of the positional path; "
+                              "';'-separated entries, each PATH=ALIAS optionally followed by "
+                              ",dlim=/,encoding= overrides for that file, e.g. "
+                              "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
+                              "requires -merge, and can't be combined with the positional path")
     parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
                          help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
@@ -263,6 +273,13 @@ def build_parser() -> argparse.ArgumentParser:
                               "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
                               "default true) — true matches whole cell values, false matches a substring "
                               "anywhere in the cell, e.g. \"v='old:new',exact=false\"")
+    parser.add_argument("-merge", "--merge", dest="merge", action=_OrderedStore, metavar="KEY=VALUE,...",
+                         help="merge two -file-loaded frames into the pipeline (pandas merge()); must be the "
+                              "first op when using -file; key=value tokens: left=/right= (required, -file "
+                              "aliases), on= (required; shared column name(s), or 'left:right' pairs if they "
+                              "differ between sides — quote on= if it has more than one column/pair, e.g. "
+                              "\"on='col a:cola,colb:colb'\"), how= (optional, default 'inner': "
+                              "inner/left/right/outer/cross), validate= (optional, e.g. one_to_one)")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
     parser.add_argument("-pretty", "--pretty", action="store_true",
@@ -295,7 +312,7 @@ def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError)
 
 
 def _process_path(
-    path: Path,
+    path: Path | None,
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
     batch: bool,
@@ -307,19 +324,25 @@ def _process_path(
     sql_specs: list[str],
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
     rename_map: dict[str, str] | None,
+    frames: dict[str, pd.DataFrame] | None = None,
 ) -> bool:
-    """Run every requested display/-convert/-agg action against one file. Returns True if an error occurred."""
-    if not path.exists():
-        return _fail(parser, batch, f"file not found: {path}")
+    """Run every requested display/-convert/-agg action against one file, or (when frames
+    is given, i.e. -file/-merge mode) against named in-memory frames instead. Returns True
+    if an error occurred."""
+    if frames is None:
+        if not path.exists():
+            return _fail(parser, batch, f"file not found: {path}")
 
-    try:
-        reader = get_reader(path, sep=args.dlim, encoding=args.encoding)
-    except ValueError as exc:
-        return _fail(parser, batch, str(exc))
+        try:
+            reader = get_reader(path, sep=args.dlim, encoding=args.encoding)
+        except ValueError as exc:
+            return _fail(parser, batch, str(exc))
 
-    pipeline = _Pipeline(
-        reader, nrows=args.nrows, progress=args.progress,
-    )
+        pipeline = _Pipeline(
+            reader, nrows=args.nrows, progress=args.progress,
+        )
+    else:
+        pipeline = _Pipeline()
 
     clip_action = None
     emit_stdout = not args.to_clip
@@ -380,6 +403,41 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "merge":
+            spec = parse_merge_arg(args.merge)
+            left_alias, right_alias = spec["left"], spec["right"]
+            if left_alias not in frames:
+                return _fail(parser, batch, f"-merge: unknown -file alias '{left_alias}'")
+            if right_alias not in frames:
+                return _fail(parser, batch, f"-merge: unknown -file alias '{right_alias}'")
+            left_df, right_df = frames[left_alias], frames[right_alias]
+            merge_kwargs = {"how": spec["how"]}
+            if spec["validate"]:
+                merge_kwargs["validate"] = spec["validate"]
+            if spec["on"] is not None:
+                missing = [c for c in spec["on"] if c not in left_df.columns or c not in right_df.columns]
+                if missing:
+                    return _fail(parser, batch, f"-merge: on= column(s) not in both frames: {', '.join(missing)}")
+                merge_kwargs["on"] = spec["on"]
+            else:
+                missing_left = [c for c in spec["left_on"] if c not in left_df.columns]
+                missing_right = [c for c in spec["right_on"] if c not in right_df.columns]
+                if missing_left:
+                    return _fail(parser, batch, unknown_columns_message("-merge (left)", missing_left, list(left_df.columns)))
+                if missing_right:
+                    return _fail(parser, batch, unknown_columns_message("-merge (right)", missing_right, list(right_df.columns)))
+                merge_kwargs["left_on"] = spec["left_on"]
+                merge_kwargs["right_on"] = spec["right_on"]
+            try:
+                result = pd.merge(left_df, right_df, **merge_kwargs)
+            except Exception as exc:
+                return _fail(parser, batch, f"-merge: {exc}")
+            result = _apply_round(result, args.round_ndigits)
+            pipeline._df = result
+            if should_print(idx):
+                print(_format_table(result, pretty=args.pretty))
+            if args.to_clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
@@ -586,8 +644,10 @@ def _process_path(
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=True)
         elif op == "convert":
+            if path is None and args.output is None:
+                return _fail(parser, batch, "-convert requires -o/--output in -file/-merge mode (no source file to derive a default from)")
             cmd_convert(
-                pipeline.dataframe(), path, args.output,
+                pipeline.dataframe(), path if path is not None else Path("<merged>"), args.output,
                 rename=rename_map, sep=args.dlim, encoding=args.encoding, progress=args.progress,
                 announce=should_print(idx),
             )
@@ -612,6 +672,16 @@ def main(argv: list[str] | None = None) -> int:
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
 
+    if (args.file is None) != (args.merge is None):
+        parser.error("-file and -merge must be used together")
+    if args.file is not None:
+        if args.path is not None:
+            parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
+        if not op_order or op_order[0] != "merge":
+            parser.error("-merge must be the first operation when using -file")
+    elif args.path is None:
+        parser.error("the following arguments are required: path")
+
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
@@ -619,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.qry, args.query, args.sql, args.replace,
-                         args.clean_columns is not None])
+                         args.clean_columns is not None, args.merge is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -627,11 +697,12 @@ def main(argv: list[str] | None = None) -> int:
                      args.agg_df is not None, args.agg is not None,
                      args.group_x is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
-                     args.clean_columns is not None])
+                     args.clean_columns is not None, args.merge is not None])
     if args.to_clip and args.shape and wants_df:
         parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns; run -shape separately")
+                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge; "
+                     "run -shape separately")
     if args.agg_df is not None and args.agg is not None:
         parser.error("-agg_df and -agg can't be combined; choose one")
     if args.group_by is not None and args.agg is None and args.group_x is None:
@@ -639,16 +710,36 @@ def main(argv: list[str] | None = None) -> int:
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
-    paths = expand_paths(args.path)
-    if len(paths) > 1 and args.output is not None:
-        parser.error("-o/--output cannot be used with multiple matched files; each output path is derived automatically")
-
     rename_map = parse_rename(args.rename) if args.rename else None
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     query_specs = list(args.query or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_arg(raw) for raw in (args.replace or [])]
+
+    if args.file is not None:
+        frames: dict[str, pd.DataFrame] = {}
+        for entry in parse_file_arg(args.file):
+            entry_path = Path(entry["path"])
+            if not entry_path.exists():
+                parser.error(f"-file: file not found: {entry_path}")
+            try:
+                reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"])
+            except ValueError as exc:
+                parser.error(f"-file: {exc}")
+            try:
+                frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress)
+            except UnicodeError as exc:
+                parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
+        failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
+                                qry_specs=qry_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                replace_specs=replace_specs, rename_map=rename_map, frames=frames)
+        return 1 if failed else 0
+
+    paths = expand_paths(args.path)
+    if len(paths) > 1 and args.output is not None:
+        parser.error("-o/--output cannot be used with multiple matched files; each output path is derived automatically")
+
     batch = len(paths) > 1
     exit_code = 0
 
