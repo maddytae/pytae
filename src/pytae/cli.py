@@ -266,7 +266,11 @@ def build_parser() -> argparse.ArgumentParser:
                               "the pipeline; the view is queryable as table `df`; standard SQL identifier "
                               "quoting applies (double quotes for names with spaces, e.g. \"col a\"; single "
                               "quotes are string literals, not identifiers), e.g. "
-                              "\"select \\\"col a\\\" from df where \\\"col a\\\" > 10\"")
+                              "\"select \\\"col a\\\" from df where \\\"col a\\\" > 10\"; "
+                              "in -file/-merge mode, may be used instead of -merge as the first op, with "
+                              "every -file alias queryable by its own name (e.g. \"select * from df1 "
+                              "inner join df2 on df1.\\\"col a\\\" = df2.cola\") — `df` becomes queryable "
+                              "too once something later in the pipeline has produced a current view")
     parser.add_argument("-replace", "--replace", dest="replace", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="replace values at this point in the pipeline; key=value tokens: v= (required) "
                               "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
@@ -342,7 +346,7 @@ def _process_path(
             reader, nrows=args.nrows, progress=args.progress,
         )
     else:
-        pipeline = _Pipeline()
+        pipeline = _Pipeline(frames=frames)
 
     clip_action = None
     emit_stdout = not args.to_clip
@@ -672,13 +676,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
 
-    if (args.file is None) != (args.merge is None):
-        parser.error("-file and -merge must be used together")
+    if args.merge is not None and args.file is None:
+        parser.error("-merge requires -file")
     if args.file is not None:
         if args.path is not None:
             parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
-        if not op_order or op_order[0] != "merge":
-            parser.error("-merge must be the first operation when using -file")
+        if not op_order or op_order[0] not in ("merge", "sql"):
+            parser.error("-file requires -merge or -sql as its first operation")
     elif args.path is None:
         parser.error("the following arguments are required: path")
 

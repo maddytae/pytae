@@ -19,12 +19,13 @@ class _Pipeline:
     nothing may follow them except -to_clip.
     """
 
-    def __init__(self, reader=None, *, nrows=None, progress=False) -> None:
+    def __init__(self, reader=None, *, nrows=None, progress=False, frames=None) -> None:
         self._reader = reader
         self._nrows = nrows
         self._progress = progress
         self._df: pd.DataFrame | None = None
         self._pending_exact: list[str] | None = None
+        self._frames: dict[str, pd.DataFrame] = frames or {}
 
     def _available_columns(self) -> list[str]:
         if self._df is not None:
@@ -99,16 +100,22 @@ class _Pipeline:
         return None
 
     def apply_sql(self, query: str) -> str | None:
-        """Apply one -sql query to the current view via duckdb. The view is registered as
-        table `df` (the file itself is already named on the command line, so there's no
-        separate file-derived alias). Returns an error message or None."""
+        """Apply one -sql query via duckdb. Single-file mode: the current view is registered
+        as table `df` (the file itself is already named on the command line, so there's no
+        separate file-derived alias). -file/-merge mode: every -file alias is registered
+        under its own name instead, so -sql can do the join itself; `df` is also registered
+        once something (e.g. -merge) has produced a current view. Returns an error message
+        or None."""
         try:
             import duckdb
         except ImportError as exc:
             return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
         con = duckdb.connect()
         try:
-            con.register("df", self.dataframe())
+            for alias, frame in self._frames.items():
+                con.register(alias, frame)
+            if self._df is not None or self._reader is not None:
+                con.register("df", self.dataframe())
             try:
                 self._df = con.sql(query).df()
             except Exception as exc:

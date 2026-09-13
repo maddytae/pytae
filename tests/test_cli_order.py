@@ -1381,3 +1381,38 @@ def test_merge_must_be_first_op_with_file(tmp_path):
             "-merge", "left=df1,right=df2,on='col a:cola'",
         ])
     assert exc_info.value.code == 2
+
+
+def test_sql_can_join_file_aliases_directly(tmp_path, capsys):
+    left, right = _write_two_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-sql", 'select * from df1 inner join df2 on df1."col a" = df2.cola',
+    ])
+
+    out = capsys.readouterr().out
+    assert "val_l" in out and "val_r" in out
+
+
+def test_sql_after_merge_can_query_df(tmp_path, capsys):
+    left, right = _write_two_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-merge", "left=df1,right=df2,on='col a:cola'",
+        "-sql", "select count(*) as n from df",
+    ])
+
+    assert capsys.readouterr().out.strip().splitlines()[-1].strip() == "2"
+
+
+def test_sql_as_first_op_satisfies_file_requirement(tmp_path):
+    left, right = _write_two_csvs(tmp_path)
+
+    # no -merge at all — -sql alone should be accepted as the founding op
+    exit_code = cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-sql", "select * from df1",
+    ])
+    assert exit_code == 0

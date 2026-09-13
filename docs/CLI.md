@@ -532,7 +532,7 @@ pytae penguins.parquet -crosstab "index='species',columns='sex'" -dropna false
 <a id="merge"></a>
 ## Multi-file merge — `-file` / `-merge`
 
-Everything above operates on **one** file (the positional `path`). `-file` + `-merge` are a separate mode for joining **two named files** into a single pipeline (pandas `merge()`). They must be used **together**, and **replace** the positional `path` entirely — you can't mix a positional path with `-file`.
+Everything above operates on **one** file (the positional `path`). `-file` is a separate mode for loading **two or more named files** into a single pipeline instead — paired with either `-merge` (pandas `merge()`) or `-sql` (raw SQL join, see below) as the founding op. `-file` **replaces** the positional `path` entirely — you can't mix a positional path with `-file`.
 
 ```bash
 pytae -file "data1.parquet=df1; data2.parquet=df2" \
@@ -550,7 +550,7 @@ pytae -file "sales.txt=sales,dlim='|'; customers.csv=customers,encoding='latin-1
 
 ### `-merge` — join two `-file` aliases
 
-Must be the **first** operation when `-file` is used (it's what creates the pipeline's starting DataFrame — everything after it, `-select`/`-shape`/`-o`/etc., runs on the merged result exactly like the single-file mode). Value is `key=value` tokens:
+Must be the **first** operation when `-file` is used (it's what creates the pipeline's starting DataFrame — everything after it, `-select`/`-shape`/`-o`/etc., runs on the merged result exactly like the single-file mode), unless you use [`-sql` instead](#merge-sql-alternative). Value is `key=value` tokens:
 
 | Key | Required? | Meaning |
 |---|---|---|
@@ -571,7 +571,23 @@ pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',how=outer" -select
 pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',validate=one_to_one"
 ```
 
-`-convert` after a merge requires `-o`/`--output` explicitly (there's no single source file to derive a default `.csv` name from). Glob-pattern batch mode (`pytae 'data/*.parquet' -convert`) is a different, unrelated feature — it can't be combined with `-file`/`-merge`.
+<a id="merge-sql-alternative"></a>
+### `-sql` as an alternative to `-merge`
+
+`-sql` may be used **instead of `-merge`** as the founding op in `-file` mode. Every `-file` alias is registered as its own duckdb table (by its alias name), so you can write the join yourself — more flexible than `-merge`'s `key=value` syntax (arbitrary conditions, multiple joins, inline aggregation, …):
+
+```bash
+pytae -file "data1.parquet=df1; data2.parquet=df2" \
+      -sql 'select * from df1 inner join df2 on df1."col a" = df2.cola'
+```
+
+Once something in the pipeline has produced a current view (e.g. after `-merge`, or a later `-sql` call), `df` also becomes queryable — same as single-file mode:
+
+```bash
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id'" -sql "select count(*) as n from df"
+```
+
+`-convert` after a merge requires `-o`/`--output` explicitly (there's no single source file to derive a default `.csv` name from). Glob-pattern batch mode (`pytae 'data/*.parquet' -convert`) is a different, unrelated feature — it can't be combined with `-file`.
 
 ---
 
@@ -814,7 +830,7 @@ pytae 'folder/*.parquet' -convert
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
-| `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` |
+| `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`) |
 | `-replace KEY=VALUE,...` | Replace values at this point (`df.replace()`); `v=` required, `c=`/`exact=` optional |
 | `-clean_columns KEY=VALUE,...` | Clean header names, in order strip -> strip_special -> squeeze -> fill -> case -> dedupe |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
@@ -837,8 +853,8 @@ pytae 'folder/*.parquet' -convert
 
 | Flag | Description |
 |---|---|
-| `-file PATH=ALIAS;...` | Load named files instead of the positional `path`; `;`-separated, each optionally followed by `,dlim=`/`,encoding=`; requires `-merge` |
-| `-merge KEY=VALUE,...` | Join two `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); must be the first op when using `-file` |
+| `-file PATH=ALIAS;...` | Load named files instead of the positional `path`; `;`-separated, each optionally followed by `,dlim=`/`,encoding=`; requires `-merge` or `-sql` as the first op |
+| `-merge KEY=VALUE,...` | Join two `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); or use `-sql` instead |
 
 **Convert & I/O**
 
