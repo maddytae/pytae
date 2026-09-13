@@ -11,7 +11,7 @@ penguins = pt.sample("penguins")          # or pt.sample_data["penguins"]
 
 ## 1) Plotting — `Plotter`
 
-Method-chainable plots on top of `pandas.plot`. Requires matplotlib (`pip install pytae[plot]`). [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb)
+Method-chainable plots on top of `pandas.plot`. Requires matplotlib (`pip install pytae[plot]`). See **[docs/PLOTTING.md](PLOTTING.md)** for more examples (bar, pie, multi-panel dashboards, …) with sample data, or [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb) for the full notebook.
 
 ```python
 from pytae.plotting import Plotter
