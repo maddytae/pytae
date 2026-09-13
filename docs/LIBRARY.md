@@ -81,5 +81,5 @@ penguins.group_x(group=["species"], v="body_mass_g", a="max")
 penguins.to_clip()                 # copy to clipboard (does not shadow pandas clip)
 penguins.clean_columns(strip=True, fill="_", case="lower")  # clean header names
 penguins.replace_values({"Adelie": "Adelie (renamed)"})     # exact=True by default
-penguins.replace_values({"a": "z"}, cols="species", exact=False)  # substring, scoped
+penguins.replace_values({"a": "z"}, c="species", exact=False)  # substring, scoped
 ```

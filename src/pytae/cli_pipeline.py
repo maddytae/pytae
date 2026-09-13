@@ -83,7 +83,7 @@ class _Pipeline:
             if unknown:
                 return unknown_columns_message("-replace_values", unknown, available)
         try:
-            self._df = df.replace_values(mapping, cols=cols, exact=exact)
+            self._df = df.replace_values(v=mapping, c=cols, exact=exact)
         except Exception as exc:
             return f"-replace_values: {exc}"
         return None

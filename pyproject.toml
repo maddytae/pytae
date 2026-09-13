@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.3.0"
+version = "3.3.1"
 description = "A package to enhance common tasks in data and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "README.md"

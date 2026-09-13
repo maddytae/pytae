@@ -80,7 +80,7 @@ def test_replace_values_exact_whole_df():
 
 def test_replace_values_scoped_to_columns():
     df = pd.DataFrame({"a": ["x"], "b": ["x"]})
-    result = df.replace_values({"x": "z"}, cols="a")
+    result = df.replace_values({"x": "z"}, c="a")
     assert result["a"].tolist() == ["z"]
     assert result["b"].tolist() == ["x"]
 

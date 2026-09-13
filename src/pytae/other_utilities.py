@@ -134,19 +134,20 @@ def clean_columns(self, strip=False, strip_special=False, squeeze=False, fill=No
     return df
 
 
-def replace_values(self, mapping, cols=None, exact=True):
+def replace_values(self, v, c=None, exact=True):
     """Replace values (pandas replace()), optionally scoped to specific columns.
+    Parameter names match the -replace_values CLI flag's v=/c=/exact= keys.
 
-    mapping: dict of {old: new}.
-    cols: a column name, list of column names, or None for the whole DataFrame.
+    v: dict of {old: new}.
+    c: a column name, list of column names, or None for the whole DataFrame.
     exact: True (default) matches whole cell values; False matches a substring
-        anywhere in the cell (mapping keys are regex-escaped, so they're treated
+        anywhere in the cell (v's keys are regex-escaped, so they're treated
         as literal text, not patterns).
     """
     df = self.copy()
-    to_replace = mapping if exact else {re.escape(k): v for k, v in mapping.items()}
-    if cols is not None:
-        target_cols = [cols] if isinstance(cols, str) else list(cols)
+    to_replace = v if exact else {re.escape(old): new for old, new in v.items()}
+    if c is not None:
+        target_cols = [c] if isinstance(c, str) else list(c)
         df[target_cols] = df[target_cols].replace(to_replace, regex=not exact)
     else:
         df = df.replace(to_replace, regex=not exact)

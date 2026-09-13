@@ -2,13 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [3.3.1] - 2026-09-13
 
 ### Changed
 - **Breaking:** `-replace` renamed to `-replace_values`, matching the new `replace_values()` library method (see below). Same syntax/behavior, just the flag name.
 
 ### Added
-- `clean_columns()` and `replace_values()` added to the library (`other_utilities.py`, registered on `pd.DataFrame`) — the same logic the `-clean_columns`/`-replace_values` CLI flags use, now callable directly in Python. `replace_values()` is named to avoid shadowing pandas' own `DataFrame.replace()`.
+- `clean_columns()` and `replace_values()` added to the library (`other_utilities.py`, registered on `pd.DataFrame`) — the same logic the `-clean_columns`/`-replace_values` CLI flags use, now callable directly in Python. `replace_values()` is named to avoid shadowing pandas' own `DataFrame.replace()`; its parameters (`v=`, `c=`, `exact=`) match the CLI flag's key names.
 
 ## [3.3.0] - 2026-09-13
 
