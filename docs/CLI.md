@@ -21,7 +21,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Header cleanup — `-clean_columns`](#clean-columns)
 - [Reshape — `-long` / `-wide`](#reshape)
 - [Cross-tabulation — `-crosstab`](#crosstab)
-- [Multi-file merge — `-file` / `-merge`](CLI_MERGE.md)
+- [Multi-file operations — `-file` / `-merge`](CLI_MULTI_FILE.md)
 - [Conversion — `-convert` / `-rename`](#convert)
 - [Display extras](#display-extras)
 - [Pandas defaults vs pytae-specific](#pandas-vs-pytae)
@@ -532,7 +532,7 @@ pytae penguins.parquet -crosstab "index='species',columns='sex'" -dropna false
 <a id="merge"></a>
 ## Multi-file merge — `-file` / `-merge`
 
-Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-sql` are a separate mode for joining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MERGE.md](CLI_MERGE.md)** for the full reference and examples.
+Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-sql` are a separate mode for joining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MULTI_FILE.md](CLI_MULTI_FILE.md)** for the full reference and examples.
 
 ```bash
 pytae -file "data1.parquet=df1; data2.parquet=df2" \

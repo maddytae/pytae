@@ -1,6 +1,6 @@
-# pytae — Multi-file merge (`-file` / `-merge`)
+# pytae — Multi-file operations (`-file` / `-merge`)
 
-See [CLI Reference](CLI.md) for everything else. This page covers `-file`/`-merge`, the mode for joining **two or more named files** into a single pipeline — everything else in the CLI operates on **one** file (the positional `path`).
+See [CLI Reference](CLI.md) for everything else. This page covers `-file`-based multi-file mode — loading **two or more named files** into a single pipeline instead of the usual one (the positional `path`). Currently supports `-merge` (join); more combining ops (e.g. `-concat`) will be added here as they land.
 
 `-file` is a separate mode, paired with either `-merge` (pandas `merge()`) or `-sql` (raw SQL join, see below) as the founding op. `-file` **replaces** the positional `path` entirely — you can't mix a positional path with `-file`.
 
