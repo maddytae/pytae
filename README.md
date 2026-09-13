@@ -36,6 +36,17 @@ pytae data.parquet -sql "select species, avg(body_mass_g) from df group by speci
 
 See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full flag reference.
 
+## Development
+
+```bash
+pip install -e ".[dev,notebooks]"
+pytest                                        # unit tests
+git config core.hooksPath .githooks           # run notebooks/*.ipynb before each commit
+python scripts/run_notebooks.py               # or run the notebook check manually
+```
+
+Notebooks are intentionally not part of the `pytest` suite (they're slower and exercise plotting/IO end-to-end); the pre-commit hook is the enforcement point instead.
+
 ## License
 
 MIT — see [LICENSE](https://github.com/maddytae/pytae/blob/master/LICENSE).

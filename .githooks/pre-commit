@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run notebooks/*.ipynb before allowing a commit. Enable with:
+#   git config core.hooksPath .githooks
+python scripts/run_notebooks.py

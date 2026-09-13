@@ -27,7 +27,8 @@ classifiers = [
 [project.optional-dependencies]
 plot = ["matplotlib"]
 sql = ["duckdb>=0.9"]
-dev = ["pytest>=8.0.0", "matplotlib", "duckdb>=0.9", "nbclient", "nbformat", "ipykernel"]
+dev = ["pytest>=8.0.0", "matplotlib", "duckdb>=0.9"]
+notebooks = ["nbclient", "nbformat", "ipykernel", "scipy"]
 
 [project.scripts]
 pytae = "pytae.cli:main"

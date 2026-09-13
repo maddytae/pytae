@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
 - `-sql` flag: run a real SQL query against the current view at that point in the pipeline, via `duckdb` (optional dependency, install with `pip install pytae[sql]`). The view is queryable as table `df` only — no file-derived alias, since the file is already named on the command line. `table` is a reserved SQL keyword and is deliberately **not** registered as an alias.
 - `pytae[sql]` optional extra (`duckdb>=0.9`), needed for `-sql`.
 - `pytae[plot]` optional extra (`matplotlib`), needed for `Plotter`.
-- Test suite now executes every notebook under `notebooks/` end-to-end (`tests/test_notebooks.py`, via `nbclient`) to catch breakage from library changes; CI registers a `python3` Jupyter kernel for this.
+- `scripts/run_notebooks.py` executes every notebook under `notebooks/` end-to-end and is wired up as a local pre-commit hook (`.githooks/pre-commit`, enable with `git config core.hooksPath .githooks`); deliberately **not** part of the `pytest` suite. `pytae[notebooks]` optional extra (`nbclient`, `nbformat`, `ipykernel`, `scipy`) provides what it needs to run.
 
 ### Changed
 - Docs: `-rename` is now cross-linked from the `-sql` section as an alternative to escaping spaced column names, and surfaced in the Contents TOC (`Conversion — -convert / -rename`).
