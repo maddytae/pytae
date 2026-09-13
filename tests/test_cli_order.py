@@ -1226,3 +1226,71 @@ def test_replace_requires_v(tmp_path):
 
     with pytest.raises(SystemExit):
         cli.main([path, "-replace", "c='col a'"])
+
+
+def _messy_headers_frame():
+    return pd.DataFrame({
+        "  Col A  ": [1],
+        "col   b": [2],
+        "Col A": [3],
+        "100% Match!": [4],
+    })
+
+
+def test_clean_columns_strip_fill_case(tmp_path, capsys):
+    path = _write_csv(tmp_path, _messy_headers_frame())
+
+    cli.main([path, "-clean_columns", "strip,fill,case=lower"])
+
+    header = capsys.readouterr().out.strip().splitlines()[0].split()
+    assert header == ["col_a", "col___b", "col_a", "100%_match!"]
+
+
+def test_clean_columns_custom_fill_char(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
+
+    cli.main([path, "-clean_columns", "fill='$'"])
+
+    header = capsys.readouterr().out.strip().splitlines()[0].split()
+    assert header == ["col$a"]
+
+
+def test_clean_columns_proper_case(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
+
+    cli.main([path, "-clean_columns", "case=proper"])
+
+    header = capsys.readouterr().out.strip().splitlines()[0]
+    assert header == "Col A"
+
+
+def test_clean_columns_squeeze_and_strip_special_and_dedupe(tmp_path, capsys):
+    path = _write_csv(tmp_path, _messy_headers_frame())
+
+    cli.main([path, "-clean_columns", "strip,squeeze,strip_special,fill,case=lower,dedupe=true"])
+
+    header = capsys.readouterr().out.strip().splitlines()[0].split()
+    assert header == ["col_a", "col_b", "col_a_1", "100_match"]
+
+
+def test_clean_columns_no_fill_leaves_whitespace(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
+
+    cli.main([path, "-clean_columns", "case=upper"])
+
+    header = capsys.readouterr().out.strip().splitlines()[0]
+    assert header == "COL A"
+
+
+def test_clean_columns_unknown_key_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
+
+    with pytest.raises(SystemExit, match="unknown key"):
+        cli.main([path, "-clean_columns", "bogus=true"])
+
+
+def test_clean_columns_case_without_value_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
+
+    with pytest.raises(SystemExit):
+        cli.main([path, "-clean_columns", "case"])

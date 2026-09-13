@@ -13,9 +13,11 @@ import pandas as pd
 
 from pytae.agg_df import agg_df  # noqa: F401  — registers pd.DataFrame.agg_df
 from pytae.cli_parsing import (
+    clean_column_names,
     expand_paths,
     parse_agg,
     parse_bool_text,
+    parse_clean_columns_arg,
     parse_columns,
     parse_crosstab_arg,
     parse_fraction,
@@ -208,6 +210,14 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
+    parser.add_argument("-clean_columns", "--clean_columns", dest="clean_columns", action=_OrderedStore,
+                         metavar="KEY=VALUE,...",
+                         help="clean column header names, in order strip -> strip_special -> squeeze -> "
+                              "fill -> case -> dedupe: strip/squeeze/strip_special/dedupe are bools (bare "
+                              "key means true, e.g. \"strip\"), fill[=STR] replaces whitespace in a header "
+                              "(bare \"fill\" defaults to '_', omit entirely for no fill), "
+                              "case=lower|upper|proper (always needs a value); e.g. "
+                              "\"strip,fill,case=lower\" or \"fill='$',case=proper,dedupe=true\"")
     parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="melt numeric columns to long form (pytae long()); defaults c=variable, "
@@ -516,6 +526,16 @@ def _process_path(
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
+        elif op == "clean_columns":
+            opts = parse_clean_columns_arg(args.clean_columns)
+            result = pipeline.dataframe().copy()
+            result.columns = clean_column_names(list(result.columns), **opts)
+            result = _apply_round(result, args.round_ndigits)
+            pipeline._df = result
+            if should_print(idx):
+                print(_format_table(result, pretty=args.pretty))
+            if args.to_clip:
+                clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "long":
             from pytae.shape import long as long_fn
             result = _apply_round(long_fn(pipeline.dataframe(), **parse_long_arg(args.long)), args.round_ndigits)
@@ -598,18 +618,20 @@ def main(argv: list[str] | None = None) -> int:
                          args.convert, args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.qry, args.query, args.sql, args.replace])
+                         args.select, args.qry, args.query, args.sql, args.replace,
+                         args.clean_columns is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
                      args.agg_df is not None, args.agg is not None,
                      args.group_x is not None, args.handle_missing is not None,
-                     args.long is not None, args.wide is not None, args.crosstab is not None])
+                     args.long is not None, args.wide is not None, args.crosstab is not None,
+                     args.clean_columns is not None])
     if args.to_clip and args.shape and wants_df:
         parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab; run -shape separately")
+                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns; run -shape separately")
     if args.agg_df is not None and args.agg is not None:
         parser.error("-agg_df and -agg can't be combined; choose one")
     if args.group_by is not None and args.agg is None and args.group_x is None:

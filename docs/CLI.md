@@ -18,6 +18,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Listing — `-cols` / `-dtype` / `-nulls`](#listing)
 - [Sorting rows — `-sort_by`](#sort-by)
 - [Missing values — `-handle_missing`](#handle-missing)
+- [Header cleanup — `-clean_columns`](#clean-columns)
 - [Reshape — `-long` / `-wide`](#reshape)
 - [Cross-tabulation — `-crosstab`](#crosstab)
 - [Conversion — `-convert` / `-rename`](#convert)
@@ -423,6 +424,43 @@ pytae penguins.parquet -handle_missing NA -select species,sex -value_counts
 
 ---
 
+<a id="clean-columns"></a>
+## Header cleanup — `-clean_columns`
+
+`-clean_columns` cleans up messy column **header names** (not cell values — see [`-replace`](#replace) for that). Its value is `key[=value]` tokens, comma-separated, applied in a fixed order regardless of how you write them: **strip → strip_special → squeeze → fill → case → dedupe**.
+
+| Key | Type | Bare (no `=value`) | Default when omitted |
+|---|---|---|---|
+| `strip` | bool | means `true` | `false` — trims leading/trailing whitespace |
+| `strip_special` | bool | means `true` | `false` — removes anything that isn't a letter, digit, underscore, or whitespace (e.g. `%`, `$`, `#`, `!`, parentheses) |
+| `squeeze` | bool | means `true` | `false` — collapses runs of internal whitespace to a single space |
+| `fill` | string | defaults to `'_'` | omit the key entirely for **no fill** (whitespace left as-is) |
+| `case` | `lower`\|`upper`\|`proper` | **not allowed** — always needs a value | omitted — case left unchanged |
+| `dedupe` | bool | means `true` | `false` — numbers collisions after cleaning: `revenue`, `revenue_1`, `revenue_2`, … |
+
+`fill` replaces **each individual whitespace character** with the fill string — not each *run* of whitespace. That means `"col   b"` (3 spaces) with `fill` alone becomes `"col___b"` (3 underscores); add `squeeze` first to collapse it to one separator instead.
+
+```bash
+# strip ends, fill remaining whitespace with '_' (default), lowercase
+pytae data.parquet -clean_columns "strip,fill,case=lower"
+
+# custom fill character instead of the default '_'
+pytae data.parquet -clean_columns "fill='$'"   # "col a" -> "col$a"
+
+# Proper/Title Case, no fill (spaces are left alone)
+pytae data.parquet -clean_columns "case=proper"   # "col a" -> "Col A"
+
+# collapse repeated internal whitespace and strip punctuation before filling,
+# then number any resulting duplicate names
+pytae data.parquet -clean_columns "strip,squeeze,strip_special,fill,case=lower,dedupe=true"
+```
+
+With the last example, headers `"  Col A  "`, `"col   b"`, `"Col A"`, `"100% Match!"` become `col_a`, `col_b`, `col_a_1` (deduped against the first `col_a`), and `100_match` (the `%`/`!` punctuation is stripped by `strip_special` before the remaining space is filled).
+
+Chains like any other op — runs on the current view and replaces its column names, so put it before/after `-select` depending on whether you want to select by the original or cleaned names.
+
+---
+
 <a id="reshape"></a>
 ## Reshape — `-long` / `-wide`
 
@@ -731,6 +769,7 @@ pytae 'folder/*.parquet' -convert
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` |
 | `-replace KEY=VALUE,...` | Replace values at this point (`df.replace()`); `v=` required, `c=`/`exact=` optional |
+| `-clean_columns KEY=VALUE,...` | Clean header names, in order strip -> strip_special -> squeeze -> fill -> case -> dedupe |
 | `-sort_by COLUMNS [asc\|desc]` | Sort rows (default: ascending) |
 
 **Aggregate & reshape**

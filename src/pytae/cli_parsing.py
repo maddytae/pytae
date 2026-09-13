@@ -6,6 +6,7 @@ import argparse
 import ast
 import difflib
 import glob
+import re
 from pathlib import Path
 
 SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
@@ -371,3 +372,85 @@ def parse_list_order(raw: str) -> str:
     if lowered in ("asc", "desc", "file"):
         return lowered
     raise argparse.ArgumentTypeError("expected 'asc' or 'desc'")
+
+
+_CLEAN_COLUMNS_BOOL_KEYS = ("strip", "squeeze", "strip_special", "dedupe")
+_CLEAN_COLUMNS_KEYS = _CLEAN_COLUMNS_BOOL_KEYS + ("fill", "case")
+_CLEAN_COLUMNS_CASE_VALUES = ("lower", "upper", "proper")
+
+
+def parse_clean_columns_arg(raw: str) -> dict:
+    """Parse -clean_columns as key[=value] tokens, comma-separated:
+
+    - strip=, squeeze=, strip_special=, dedupe= — bools (default false); a bare
+      key with no '=' means true, e.g. "strip" is short for "strip=true".
+    - fill[=STR] — replace whitespace in a header with STR; bare "fill" defaults
+      to '_'; omit the key entirely for no fill.
+    - case=lower|upper|proper — no bare/default form, always needs a value.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit(
+            "-clean_columns: expected at least one key, e.g. \"strip\" or \"case=lower\""
+        )
+    kwargs: dict = {}
+    for token in _split_tokens(raw):
+        key, has_value, value = token.partition("=")
+        key = key.strip()
+        if key not in _CLEAN_COLUMNS_KEYS:
+            raise SystemExit(f"-clean_columns: unknown key {key!r}; expected {', '.join(_CLEAN_COLUMNS_KEYS)}")
+        if key in kwargs:
+            raise SystemExit(f"-clean_columns: {key}= given more than once")
+        if key in _CLEAN_COLUMNS_BOOL_KEYS:
+            kwargs[key] = parse_bool_text(_unquote_name(value)) if has_value else True
+        elif key == "fill":
+            kwargs[key] = _unquote_name(value) if has_value else "_"
+        else:  # case
+            case_value = _unquote_name(value).strip().lower()
+            if not has_value or not case_value:
+                raise SystemExit("-clean_columns: case= needs a value (lower, upper, or proper)")
+            if case_value not in _CLEAN_COLUMNS_CASE_VALUES:
+                raise SystemExit(f"-clean_columns: case= must be one of {', '.join(_CLEAN_COLUMNS_CASE_VALUES)}")
+            kwargs[key] = case_value
+    return kwargs
+
+
+def clean_column_names(
+    names: list[str],
+    *,
+    strip: bool = False,
+    strip_special: bool = False,
+    squeeze: bool = False,
+    fill: str | None = None,
+    case: str | None = None,
+    dedupe: bool = False,
+) -> list[str]:
+    """Clean header names for -clean_columns, in a fixed order: strip -> strip_special
+    -> squeeze -> fill -> case -> dedupe."""
+    cleaned = list(names)
+    if strip:
+        cleaned = [name.strip() for name in cleaned]
+    if strip_special:
+        cleaned = [re.sub(r"[^\w\s]", "", name) for name in cleaned]
+    if squeeze:
+        cleaned = [re.sub(r"\s+", " ", name) for name in cleaned]
+    if fill is not None:
+        cleaned = [re.sub(r"\s", fill, name) for name in cleaned]
+    if case == "lower":
+        cleaned = [name.lower() for name in cleaned]
+    elif case == "upper":
+        cleaned = [name.upper() for name in cleaned]
+    elif case == "proper":
+        cleaned = [name.title() for name in cleaned]
+    if dedupe:
+        seen: dict[str, int] = {}
+        deduped = []
+        for name in cleaned:
+            if name not in seen:
+                seen[name] = 0
+                deduped.append(name)
+            else:
+                seen[name] += 1
+                deduped.append(f"{name}_{seen[name]}")
+        cleaned = deduped
+    return cleaned
