@@ -1,6 +1,6 @@
 # pytae — CLI Reference
 
-Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI is the same verbs as the library: `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()`.
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's own library verbs — `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()` — plus CLI-native operations like value replacement (`-replace`), header cleanup (`-clean_columns`), and multi-file merges (`-file`/`-merge`).
 
 ## Contents
 
