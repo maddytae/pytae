@@ -13,9 +13,10 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [SQL — `-sql`](#sql)
   - [Value replacement — `-replace_values`](#replace-values)
   - [Aggregation (auto group columns) — `-agg_df`](#agg-df)
-  - [Broadcast — `-group_x` / `.group_x()`](#group-x)
-  - [Missing values — `-handle_missing` / `.handle_missing()`](#handle-missing)
+  - [Broadcast — `-group_x`](#group-x)
+  - [Missing values — `-handle_missing`](#handle-missing)
   - [Header cleanup — `-clean_columns`](#clean-columns)
+  - [Reshape — `-long` / `-wide`](#reshape)
   - [Multi-file operations — `-file` / `-merge` / `-concat`](#merge)
   - [Conversion — `-convert` / `-rename`](#convert)
 - [Pandas-mirrored operations](#pandas-mirrored-operations)
@@ -25,7 +26,6 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Unique rows — `-unique`](#unique)
   - [Listing — `-cols` / `-dtype` / `-nulls`](#listing)
   - [Sorting rows — `-sort_by`](#sort-by)
-  - [Reshape — `-long` / `-wide`](#reshape)
   - [Cross-tabulation — `-crosstab`](#crosstab)
 - [Conventions & reference](#conventions-reference)
   - [Quoting conventions](#quoting)
@@ -311,7 +311,7 @@ pytae penguins.parquet -select species,body_mass_g -agg_df mean -select species,
 ---
 
 <a id="group-x"></a>
-### Broadcast — `-group_x` / `.group_x()`
+### Broadcast — `-group_x`
 
 Keeps **every row** and adds a column (`n` = group size, `x` = another aggregate). Like pandas `transform`. `-agg` collapses; `-group_x` does not.
 
@@ -352,7 +352,7 @@ You do **not** need `-group_by` for `-group_x` (`-group_by` is for `-agg`).
 ---
 
 <a id="handle-missing"></a>
-### Missing values — `-handle_missing` / `.handle_missing()`
+### Missing values — `-handle_missing`
 
 Object/category NA → `.` (or the fill you pass); numeric NA → `0`. Also strips object columns.
 
@@ -404,6 +404,27 @@ With the last example, headers `"  Col A  "`, `"col   b"`, `"Col A"`, `"100% Mat
 `strip_special` keeps the `fill` character in place rather than stripping it — e.g. `-clean_columns "strip_special,fill='-'"` on `"co-op's data"` keeps the `-` but removes the quote, then `fill` replaces the space too, giving `"co-ops-data"`. Without `fill` set, `strip_special` removes all punctuation including quotes, same as before.
 
 Chains like any other op — runs on the current view and replaces its column names, so put it before/after `-select` depending on whether you want to select by the original or cleaned names.
+
+---
+
+<a id="reshape"></a>
+### Reshape — `-long` / `-wide`
+
+Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `c=variable`, `v=value`. Quote the spec when values have spaces.
+
+```bash
+pytae penguins.parquet -long
+pytae penguins.parquet -long "c='metric',v='reading'"
+
+# create a long-form file first, then pivot it back with -wide
+pytae penguins.parquet -long -convert -o tall.csv
+pytae tall.csv -wide
+
+# -wide's c=/v= just need to match your own long-form file's column names (illustrative):
+pytae tall.csv -wide "c='metric',v='reading'"
+pytae tall.csv -wide "c='country',v='balance',a='mean'"
+pytae tall.csv -wide "c='country name',v='body mass'"
+```
 
 ---
 
@@ -559,27 +580,6 @@ pytae penguins.parquet -sort_by body_mass_g
 pytae penguins.parquet -sort_by body_mass_g desc
 pytae penguins.parquet -sort_by species,body_mass_g desc
 pytae penguins.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
-```
-
----
-
-<a id="reshape"></a>
-### Reshape — `-long` / `-wide`
-
-Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `c=variable`, `v=value`. Quote the spec when values have spaces.
-
-```bash
-pytae penguins.parquet -long
-pytae penguins.parquet -long "c='metric',v='reading'"
-
-# create a long-form file first, then pivot it back with -wide
-pytae penguins.parquet -long -convert -o tall.csv
-pytae tall.csv -wide
-
-# -wide's c=/v= just need to match your own long-form file's column names (illustrative):
-pytae tall.csv -wide "c='metric',v='reading'"
-pytae tall.csv -wide "c='country',v='balance',a='mean'"
-pytae tall.csv -wide "c='country name',v='body mass'"
 ```
 
 ---
