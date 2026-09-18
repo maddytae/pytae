@@ -54,6 +54,21 @@ pytae penguins.parquet -head 3 -shape
 
 # names only (head runs but is not printed)
 pytae penguins.parquet -head 5 -cols
+
+# filter rows, then pick columns (quoting the key is optional, see Quoting conventions)
+pytae penguins.parquet -qry "species: 'Adelie'" -select species,island,body_mass_g -head 5
+
+# average body mass per species
+pytae penguins.parquet -select species,body_mass_g -agg_df mean
+
+# heaviest 5 penguins, name + weight only
+pytae penguins.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
+
+# species counts by island
+pytae penguins.parquet -crosstab "index='species',columns='island'"
+
+# ad-hoc SQL over the same file
+pytae penguins.parquet -sql "select species, avg(body_mass_g) from df group by species"
 ```
 
 See [Inspect & display](#listing) for the full list of inspection flags (`-head`/`-tail`/`-sample`/`-shape`/`-cols`/`-dtype`/`-nulls`/`-describe`/`-info`) and their chaining rules.
