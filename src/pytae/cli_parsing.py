@@ -23,56 +23,55 @@ def parse_columns(raw: str) -> list[str]:
         return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
 
 
-def _split_tokens(raw: str, sep: str = ",") -> list[str]:
-    """Split on sep, respecting single or double quotes."""
-    tokens: list[str] = []
+def _tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: bool = False) -> list[str]:
+    """Split raw into segments at top-level occurrences of any character in `seps`,
+    respecting quotes (a matched quote pair is never split inside) and, if
+    track_brackets, (), [], {} nesting depth. keep_quotes controls whether the quote
+    characters themselves are kept in each segment's text (needed by callers that
+    re-scan a segment for a second, nested split) or dropped as they're consumed.
+    Every segment is returned (including empty ones) with surrounding whitespace
+    stripped -- callers filter/validate as needed.
+    """
+    segments: list[str] = []
     buf: list[str] = []
-    quote = None
+    quote: str | None = None
+    depth = 0
     for ch in raw:
         if quote:
             if ch == quote:
                 quote = None
+                if keep_quotes:
+                    buf.append(ch)
             else:
                 buf.append(ch)
-        elif ch in "'\"":
+            continue
+        if ch in "'\"":
             quote = ch
-        elif ch == sep:
-            token = "".join(buf).strip()
-            if token:
-                tokens.append(token)
+            if keep_quotes:
+                buf.append(ch)
+        elif track_brackets and ch in "([{":
+            depth += 1
+            buf.append(ch)
+        elif track_brackets and ch in ")]}":
+            depth -= 1
+            buf.append(ch)
+        elif depth == 0 and ch in seps:
+            segments.append("".join(buf).strip())
             buf = []
         else:
             buf.append(ch)
-    token = "".join(buf).strip()
-    if token:
-        tokens.append(token)
-    return tokens
+    segments.append("".join(buf).strip())
+    return segments
+
+
+def _split_tokens(raw: str, sep: str = ",") -> list[str]:
+    """Split on sep, respecting single or double quotes."""
+    return [t for t in _tokenize(raw, sep) if t]
 
 
 def _split_groups(raw: str, sep: str = ";") -> list[str]:
     """Split on sep but keep quote characters so inner comma-split still sees them."""
-    tokens: list[str] = []
-    buf: list[str] = []
-    quote = None
-    for ch in raw:
-        if quote:
-            buf.append(ch)
-            if ch == quote:
-                quote = None
-        elif ch in "'\"":
-            quote = ch
-            buf.append(ch)
-        elif ch == sep:
-            token = "".join(buf).strip()
-            if token:
-                tokens.append(token)
-            buf = []
-        else:
-            buf.append(ch)
-    token = "".join(buf).strip()
-    if token:
-        tokens.append(token)
-    return tokens
+    return [t for t in _tokenize(raw, sep, keep_quotes=True) if t]
 
 
 def parse_select_spec(raw: str) -> tuple[list[str], dict]:
@@ -164,44 +163,15 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
     respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
     aren't mistaken for entry or key/value separators."""
     entries: list[tuple[str, str]] = []
-    depth = 0
-    quote = None
-    key: str | None = None
-    buf: list[str] = []
-    for ch in raw:
-        if quote:
-            buf.append(ch)
-            if ch == quote:
-                quote = None
+    for raw_entry in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
+        if not raw_entry:
             continue
-        if ch in "'\"":
-            quote = ch
-            buf.append(ch)
-        elif ch in "([{":
-            depth += 1
-            buf.append(ch)
-        elif ch in ")]}":
-            depth -= 1
-            buf.append(ch)
-        elif depth == 0 and ch == ":" and key is None:
-            key = "".join(buf).strip()
-            buf = []
-        elif depth == 0 and ch == ",":
-            value = "".join(buf).strip()
-            if key is None:
-                if value:
-                    raise SystemExit(f"invalid --qry conditions: missing ':' in entry '{value}'")
-            else:
-                entries.append((key, value))
-            key = None
-            buf = []
-        else:
-            buf.append(ch)
-    tail = "".join(buf).strip()
-    if key is not None:
-        entries.append((key, tail))
-    elif tail:
-        raise SystemExit(f"invalid --qry conditions: missing ':' in entry '{tail}'")
+        # only the FIRST top-level ':' separates key from value; rejoin the rest
+        # literally in case the value itself contains an unbracketed ':'
+        pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
+        if len(pieces) < 2:
+            raise SystemExit(f"invalid --qry conditions: missing ':' in entry '{raw_entry}'")
+        entries.append((pieces[0], ":".join(pieces[1:])))
     return entries
 
 
