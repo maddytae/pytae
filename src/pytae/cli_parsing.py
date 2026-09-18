@@ -134,7 +134,9 @@ def unknown_columns_message(flag: str, requested: list[str], available: list[str
 
 
 def parse_rename(raw: str) -> dict[str, str]:
-    """Parse a rename mapping like "old_a:new_a,old_b:new_b" into a dict."""
+    """Parse a rename mapping like "old_a:new_a,old_b:new_b" into a dict.
+    Quoting either side (e.g. "'old a':'new a'") is optional and stripped if present—
+    plain old_a:new_a already handles spaces, quoting just needs to not break things."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
@@ -143,7 +145,7 @@ def parse_rename(raw: str) -> dict[str, str]:
         if ":" not in pair:
             raise SystemExit(f"invalid --rename mapping '{pair}'; expected old:new")
         old, new = pair.split(":", 1)
-        mapping[old.strip()] = new.strip()
+        mapping[_unquote_name(old)] = _unquote_name(new)
     return mapping
 
 
@@ -157,16 +159,77 @@ def expand_paths(pattern: str) -> list[Path]:
     return [Path(pattern)]
 
 
+def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
+    """Split a --qry body into raw (key, value) text pairs on top-level commas/colons,
+    respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
+    aren't mistaken for entry or key/value separators."""
+    entries: list[tuple[str, str]] = []
+    depth = 0
+    quote = None
+    key: str | None = None
+    buf: list[str] = []
+    for ch in raw:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "'\"":
+            quote = ch
+            buf.append(ch)
+        elif ch in "([{":
+            depth += 1
+            buf.append(ch)
+        elif ch in ")]}":
+            depth -= 1
+            buf.append(ch)
+        elif depth == 0 and ch == ":" and key is None:
+            key = "".join(buf).strip()
+            buf = []
+        elif depth == 0 and ch == ",":
+            value = "".join(buf).strip()
+            if key is None:
+                if value:
+                    raise SystemExit(f"invalid --qry conditions: missing ':' in entry '{value}'")
+            else:
+                entries.append((key, value))
+            key = None
+            buf = []
+        else:
+            buf.append(ch)
+    tail = "".join(buf).strip()
+    if key is not None:
+        entries.append((key, tail))
+    elif tail:
+        raise SystemExit(f"invalid --qry conditions: missing ':' in entry '{tail}'")
+    return entries
+
+
 def parse_qry(raw: str) -> dict:
-    """Parse --qry conditions like "'col': ('>', 5), 'other': ['a','b']"; wrapping {} is optional."""
+    """Parse --qry conditions like "col: ('>', 5), other: ['a','b']"; wrapping {} and
+    quotes around column names are both optional (matching -select), e.g.
+    "sex:'Male'" == "'sex':'Male'". Values still need Python-literal quoting for
+    strings, e.g. 'Male', since they can also be numbers/tuples/lists."""
     stripped = raw.strip()
-    candidate = stripped if stripped.startswith("{") else f"{{{stripped}}}"
-    try:
-        conditions = ast.literal_eval(candidate)
-    except (ValueError, SyntaxError) as exc:
-        raise SystemExit(f"invalid --qry conditions: {exc}") from exc
-    if not isinstance(conditions, dict):
-        raise SystemExit("--qry expects dict entries, e.g. \"'col': ('>', 5)\" (braces optional)")
+    if stripped.startswith("{") and stripped.endswith("}"):
+        stripped = stripped[1:-1]
+    conditions: dict = {}
+    for key_raw, value_raw in _split_qry_entries(stripped):
+        key = _unquote_name(key_raw)
+        if not key:
+            raise SystemExit("invalid --qry conditions: empty column name")
+        if not value_raw:
+            raise SystemExit(f"invalid --qry conditions: '{key}' has no value")
+        try:
+            value = ast.literal_eval(value_raw)
+        except (ValueError, SyntaxError) as exc:
+            raise SystemExit(
+                f"invalid --qry conditions: value for '{key}' ('{value_raw}') must be quoted "
+                "(e.g. 'Male') or a valid literal (number/tuple/list)"
+            ) from exc
+        conditions[key] = value
+    if not conditions:
+        raise SystemExit("--qry expects dict entries, e.g. \"col: ('>', 5)\" (braces/quotes optional)")
     return conditions
 
 

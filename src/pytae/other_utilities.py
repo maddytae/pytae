@@ -87,8 +87,10 @@ def clean_column_names(
     -> squeeze -> fill -> case -> dedupe.
 
     strip: trim leading/trailing whitespace.
-    strip_special: remove anything that isn't a letter, digit, underscore, or
-        whitespace (e.g. %, $, #, !, parentheses).
+    strip_special: remove anything that isn't a letter, digit, underscore,
+        whitespace, or the fill character (e.g. %, $, #, !, parentheses,
+        quotes) — if fill is set, that character is kept in place rather
+        than stripped, since it's the intended separator.
     squeeze: collapse runs of internal whitespace to a single space.
     fill: replace each individual whitespace character with this string (pair
         with squeeze=True to collapse multi-space runs to one separator first).
@@ -99,7 +101,9 @@ def clean_column_names(
     if strip:
         cleaned = [name.strip() for name in cleaned]
     if strip_special:
-        cleaned = [re.sub(r"[^\w\s]", "", name) for name in cleaned]
+        keep = "".join(re.escape(ch) for ch in fill) if fill else ""
+        pattern = re.compile(rf"[^\w\s{keep}]")
+        cleaned = [pattern.sub("", name) for name in cleaned]
     if squeeze:
         cleaned = [re.sub(r"\s+", " ", name) for name in cleaned]
     if fill is not None:

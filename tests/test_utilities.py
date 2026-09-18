@@ -70,6 +70,18 @@ def test_clean_columns_no_fill_leaves_whitespace():
     assert list(result.columns) == ["COL A"]
 
 
+def test_clean_columns_strip_special_removes_quotes():
+    df = pd.DataFrame({"'col a'": [1], '"col b"': [2]})
+    result = df.clean_columns(strip_special=True)
+    assert list(result.columns) == ["col a", "col b"]
+
+
+def test_clean_columns_strip_special_keeps_fill_character():
+    df = pd.DataFrame({"co-op's data": [1]})
+    result = df.clean_columns(strip_special=True, fill="-")
+    assert list(result.columns) == ["co-ops-data"]
+
+
 def test_replace_values_exact_whole_df():
     df = pd.DataFrame({"a": ["x", "not x exactly"], "b": ["x", "y"]})
     result = df.replace_values({"x": "z"})

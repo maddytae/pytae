@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- `-qry`: column-name keys can now be quoted or unquoted (`species: 'Adelie'` == `'species': 'Adelie'`), matching `-select`'s convention. Values still need Python-literal quoting when they're strings (e.g. `'Adelie'`); numbers/tuples/lists already worked unquoted.
+- `-rename`: quoting an old/new name (e.g. `-rename "'old col':'new col'"`) previously left the literal quote characters in the parsed mapping, silently renaming nothing since no real column matched. Quoting is now optional and stripped if present, matching the rest of the CLI.
+
+### Changed
+- `-clean_columns`'s `strip_special` now keeps the `fill` character in place instead of stripping it (it already removed all other punctuation, including quotes) — e.g. `-clean_columns "strip_special,fill='-'"` keeps `-` while still removing quotes/`%`/`$`/etc.
+- New [Quoting conventions](docs/CLI.md#quoting) section in `docs/CLI.md` summarizing where quoting matters (protecting an embedded comma/colon) vs where it's just optional/harmless.
+
 ## [3.3.1] - 2026-09-13
 
 ### Changed

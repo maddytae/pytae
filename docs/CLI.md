@@ -5,6 +5,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 ## Contents
 
 - [Basics](#basics)
+- [Quoting conventions](#quoting)
 - [Sample datasets](#sample-datasets)
 - [Column selection — `-select`](#select)
 - [Row filtering — `-qry` / `-query`](#filtering)
@@ -68,6 +69,54 @@ pytae penguins.parquet -describe -shape    # ok: describe() returns a DataFrame
 ```
 
 The examples below run directly against the bundled `penguins` dataset (see [Sample datasets](#sample-datasets)) — `species`, `island`, `body_mass_g`, `bill_length_mm`, …
+
+---
+
+<a id="quoting"></a>
+## Quoting conventions
+
+Quoting rules differ by flag, because quotes serve different jobs in different places. The rule of thumb: **quote a value only when it needs to protect an embedded comma or colon; otherwise quoting is optional** (harmless if you do it out of habit, never required for spaces).
+
+| Flag | Does quoting matter? | Notes |
+|---|---|---|
+| `-select` (column names) | Optional, and also protects an embedded comma | Spaces never need quotes. Quoting the *whole* name protects a genuinely embedded comma in a column name (rare but real). |
+| `-qry` (column-name keys) | Optional | Matches `-select`. **Values** still need real quoting when they're strings, since they're parsed as Python literals (numbers/tuples/lists don't need quotes). |
+| `-rename`, `-replace_values` (`v=`), `-merge` (`on=`), `-concat` (`frames=`) | Quote the **whole value** to protect an internal comma; quoting an individual name within is optional/harmless | These use plain `key:value,key:value` splitting — spaces never need quotes either way. |
+| `-clean_columns` `strip_special` | N/A (removes quotes as punctuation) | Pair with `fill=` to keep one specific character instead of stripping it. |
+
+```bash
+# -qry: column-name keys optionally quoted; values need quotes only when they're strings
+pytae tips.parquet -qry "sex:'Male'" -select sex,day
+pytae tips.parquet -qry "'sex':'Male'" -select sex,day
+pytae penguins.parquet -qry "species:'Adelie', body_mass_g:('>', 3500)"
+
+# -select: spaces never need quotes; quoting is optional; quoting the whole name
+# protects a genuinely embedded comma
+pytae data.parquet -select "bill length mm,body mass g"
+pytae data.parquet -select "'bill length mm','body mass g'"
+pytae data.parquet -select "'city, state',other_col"   # one column literally named "city, state"
+
+# -rename: quoting is optional (both give the same result)
+pytae data.parquet -convert -rename "old col:new col" -o clean.parquet
+pytae data.parquet -convert -rename "'old col':'new col'" -o clean.parquet
+
+# -replace_values v=: quoting is optional
+pytae data.parquet -replace_values "v=Male:M"
+pytae data.parquet -replace_values "v='Male':'M'"
+
+# -merge on=: quote the whole on= value to protect the internal comma across pairs;
+# quoting a single pair's names is optional
+pytae -file "a.csv=df1;b.csv=df2" -merge "left=df1,right=df2,on=col a:cola"
+pytae -file "a.csv=df1;b.csv=df2" -merge "left=df1,right=df2,on='col a':'cola'"
+
+# -concat frames=: quote the whole value to protect the commas between aliases
+pytae -file "a.csv=df1;b.csv=df2" -concat "frames=df1,df2"
+
+# -clean_columns strip_special: removes quotes like any other punctuation;
+# fill= keeps that one character instead of stripping it
+pytae data.parquet -clean_columns "strip_special"              # "'col a'" -> "col a"
+pytae data.parquet -clean_columns "strip_special,fill='-'"     # "co-op's data" -> "co-ops-data"
+```
 
 ---
 
@@ -193,6 +242,10 @@ pytae penguins.parquet -qry "'species': 'Adelie'" -query "body_mass_g > 3500" -h
 
 # filter first, then drop the filter column — same as df.qry(...).select(...)
 pytae penguins.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -head
+
+# quoting the column name is optional (see Quoting conventions) — values still
+# need quotes when they're strings
+pytae penguins.parquet -qry "species: 'Adelie'"
 ```
 
 `-select body_mass_g -qry "'species': 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
@@ -433,7 +486,7 @@ pytae penguins.parquet -handle_missing NA -select species,sex -value_counts
 | Key | Type | Bare (no `=value`) | Default when omitted |
 |---|---|---|---|
 | `strip` | bool | means `true` | `false` — trims leading/trailing whitespace |
-| `strip_special` | bool | means `true` | `false` — removes anything that isn't a letter, digit, underscore, or whitespace (e.g. `%`, `$`, `#`, `!`, parentheses) |
+| `strip_special` | bool | means `true` | `false` — removes anything that isn't a letter, digit, underscore, whitespace, or the `fill` character (e.g. `%`, `$`, `#`, `!`, parentheses, quotes); if `fill` is set, that character is kept in place instead of stripped |
 | `squeeze` | bool | means `true` | `false` — collapses runs of internal whitespace to a single space |
 | `fill` | string | defaults to `'_'` | omit the key entirely for **no fill** (whitespace left as-is) |
 | `case` | `lower`\|`upper`\|`proper` | **not allowed** — always needs a value | omitted — case left unchanged |
@@ -457,6 +510,8 @@ pytae data.parquet -clean_columns "strip,squeeze,strip_special,fill,case=lower,d
 ```
 
 With the last example, headers `"  Col A  "`, `"col   b"`, `"Col A"`, `"100% Match!"` become `col_a`, `col_b`, `col_a_1` (deduped against the first `col_a`), and `100_match` (the `%`/`!` punctuation is stripped by `strip_special` before the remaining space is filled).
+
+`strip_special` keeps the `fill` character in place rather than stripping it — e.g. `-clean_columns "strip_special,fill='-'"` on `"co-op's data"` keeps the `-` but removes the quote, then `fill` replaces the space too, giving `"co-ops-data"`. Without `fill` set, `strip_special` removes all punctuation including quotes, same as before.
 
 Chains like any other op — runs on the current view and replaces its column names, so put it before/after `-select` depending on whether you want to select by the original or cleaned names.
 
@@ -624,7 +679,7 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 
 | Flag / key | pytae convention |
 |---|---|
-| `-qry` | dict-based filter syntax (`'col': ('>', 5)`) — pytae's own `qry()`, not a pandas method |
+| `-qry` | dict-based filter syntax (`col: ('>', 5)`, column-name quotes optional) — pytae's own `qry()`, not a pandas method |
 | `-sql` | real SQL via duckdb (not pandas) — the current view is registered as table `df` only (no file-derived alias) |
 | `-select`'s `contains=` / `startswith=` / `endswith=` / `regex=` / `dtype=` / `exclude_dtype=` | pytae's own column-picking vocabulary; no equivalent shorthand in plain pandas |
 | `-agg_df` | auto-detects group columns (every non-numeric column becomes a group key) — pandas' `groupby()` always requires you to name them |
@@ -778,7 +833,7 @@ pytae 'folder/*.parquet' -convert
 | Flag | Description |
 |---|---|
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
-| `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` optional |
+| `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` and column-name quotes optional |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
 | `-replace_values KEY=VALUE,...` | Replace values at this point (`df.replace_values()`); `v=` required, `c=`/`exact=` optional |

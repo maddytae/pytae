@@ -1003,6 +1003,28 @@ def test_qry_without_braces_is_equivalent(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(2, 3)"
 
 
+def test_qry_column_key_quoting_is_optional(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
+    )
+
+    cli.main([path, "-qry", "flt:'A'", "-shape"])
+    unquoted = capsys.readouterr().out.strip()
+
+    cli.main([path, "-qry", "'flt':'A'", "-shape"])
+    quoted = capsys.readouterr().out.strip()
+
+    assert unquoted == quoted == "(2, 3)"
+
+
+def test_qry_unquoted_string_value_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"flt": ["A", "B"]}))
+
+    with pytest.raises(SystemExit, match="must be quoted"):
+        cli.main([path, "-qry", "flt:A", "-shape"])
+
+
 def test_describe_then_shape_is_describe_table(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
 
@@ -1228,6 +1250,21 @@ def test_replace_requires_v(tmp_path):
         cli.main([path, "-replace_values", "c='col a'"])
 
 
+def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
+    df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
+
+    path = _write_csv(tmp_path, df)
+    cli.main([path, "-replace_values", "v=alpha:bravo"])
+    unquoted = capsys.readouterr().out.strip()
+
+    path = _write_csv(tmp_path, df)
+    cli.main([path, "-replace_values", "v='alpha':'bravo'"])
+    quoted = capsys.readouterr().out.strip()
+
+    assert unquoted == quoted
+    assert "bravo" in unquoted
+
+
 def _messy_headers_frame():
     return pd.DataFrame({
         "  Col A  ": [1],
@@ -1235,6 +1272,18 @@ def _messy_headers_frame():
         "Col A": [3],
         "100% Match!": [4],
     })
+
+
+def test_rename_quoting_is_optional(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
+    out1 = tmp_path / "out1.csv"
+    out2 = tmp_path / "out2.csv"
+
+    cli.main([path, "-convert", "-rename", "old col:new col", "-o", str(out1)])
+    cli.main([path, "-convert", "-rename", "'old col':'new col'", "-o", str(out2)])
+
+    assert list(pd.read_csv(out1).columns) == ["new col", "b"]
+    assert list(pd.read_csv(out2).columns) == ["new col", "b"]
 
 
 def test_clean_columns_strip_fill_case(tmp_path, capsys):
@@ -1296,6 +1345,24 @@ def test_clean_columns_case_without_value_errors(tmp_path):
         cli.main([path, "-clean_columns", "case"])
 
 
+def test_clean_columns_strip_special_removes_quotes(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"'col a'": [1], '"col b"': [2]}))
+
+    cli.main([path, "-clean_columns", "strip_special", "-cols"])
+
+    header = capsys.readouterr().out.strip().splitlines()
+    assert header == ["col a", "col b"]
+
+
+def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"co-op's data": [1]}))
+
+    cli.main([path, "-clean_columns", "strip_special,fill='-'", "-cols"])
+
+    header = capsys.readouterr().out.strip()
+    assert header == "co-ops-data"
+
+
 def _write_two_csvs(tmp_path):
     left = tmp_path / "left.csv"
     right = tmp_path / "right.csv"
@@ -1315,6 +1382,19 @@ def test_merge_on_differing_column_names(tmp_path, capsys):
     out = capsys.readouterr().out.strip()
     assert "val_l" in out and "val_r" in out
     assert len(out.splitlines()) == 3  # header + 2 matching rows (inner join)
+
+
+def test_merge_on_pair_quoting_is_optional(tmp_path, capsys):
+    left, right = _write_two_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-merge", "left=df1,right=df2,on='col a':'cola'",
+    ])
+
+    out = capsys.readouterr().out.strip()
+    assert "val_l" in out and "val_r" in out
+    assert len(out.splitlines()) == 3
 
 
 def test_merge_shared_column_name_outer_join(tmp_path, capsys):
