@@ -34,9 +34,28 @@ jobs:
       - name: Run tests
         run: pytest
 
+  notebooks:
+    name: Run notebooks (pre-release check)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the package
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev,notebooks]"
+      - name: Run notebooks
+        run: python scripts/run_notebooks.py
+
   publish:
     name: Publish to PyPI
-    needs: test
+    needs: [test, notebooks]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
