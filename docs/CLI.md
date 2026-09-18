@@ -16,6 +16,8 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Broadcast — `-group_x`](#group-x)
   - [Missing values — `-handle_missing`](#handle-missing)
   - [Header cleanup — `-clean_columns`](#clean-columns)
+  - [Unique rows — `-unique`](#unique)
+  - [Listing — `-cols` / `-dtype` / `-nulls`](#listing)
   - [Reshape — `-long` / `-wide`](#reshape)
   - [Multi-file operations — `-file` / `-merge` / `-concat`](#merge)
   - [Conversion — `-convert` / `-rename`](#convert)
@@ -23,8 +25,6 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Row filtering — `-query`](#query)
   - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
   - [Value counts — `-value_counts`](#value-counts)
-  - [Unique rows — `-unique`](#unique)
-  - [Listing — `-cols` / `-dtype` / `-nulls`](#listing)
   - [Sorting rows — `-sort_by`](#sort-by)
   - [Cross-tabulation — `-crosstab`](#crosstab)
 - [Conventions & reference](#conventions-reference)
@@ -407,6 +407,35 @@ Chains like any other op — runs on the current view and replaces its column na
 
 ---
 
+<a id="unique"></a>
+### Unique rows — `-unique`
+
+```bash
+pytae penguins.parquet -unique
+pytae penguins.parquet -select species,island -unique
+pytae penguins.parquet -unique -shape
+```
+
+---
+
+<a id="listing"></a>
+### Listing — `-cols` / `-dtype` / `-nulls`
+
+File (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
+
+```bash
+pytae penguins.parquet -cols
+pytae penguins.parquet -cols asc
+pytae penguins.parquet -cols desc
+pytae penguins.parquet -dtype desc
+pytae penguins.parquet -nulls asc
+pytae penguins.parquet -select dtype=numeric -cols
+```
+
+CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
+
+---
+
 <a id="reshape"></a>
 ### Reshape — `-long` / `-wide`
 
@@ -543,35 +572,6 @@ pytae penguins.parquet -select species -value_counts -sort_by count desc
 
 ---
 
-<a id="unique"></a>
-### Unique rows — `-unique`
-
-```bash
-pytae penguins.parquet -unique
-pytae penguins.parquet -select species,island -unique
-pytae penguins.parquet -unique -shape
-```
-
----
-
-<a id="listing"></a>
-### Listing — `-cols` / `-dtype` / `-nulls`
-
-File (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
-
-```bash
-pytae penguins.parquet -cols
-pytae penguins.parquet -cols asc
-pytae penguins.parquet -cols desc
-pytae penguins.parquet -dtype desc
-pytae penguins.parquet -nulls asc
-pytae penguins.parquet -select dtype=numeric -cols
-```
-
-CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
-
----
-
 <a id="sort-by"></a>
 ### Sorting rows — `-sort_by`
 
@@ -695,9 +695,8 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 | Flag / key | Pandas equivalent |
 |---|---|
 | `-query` | `df.query()` |
-| `-describe` / `-info` / `-shape` / `-cols` / `-dtype` / `-nulls` | `df.describe()` / `df.info()` / `df.shape` / `df.columns` / `df.dtypes` / `df.isna().sum()` |
+| `-describe` / `-info` / `-shape` | `df.describe()` / `df.info()` / `df.shape` |
 | `-sort_by` | `df.sort_values()` |
-| `-unique` | `df.drop_duplicates()` |
 | `-crosstab`'s `values=` / `aggfunc=` / `normalize=` / `margins=` | same keyword names as `pd.crosstab()` |
 | `-group_by` + `-agg`'s `aggfunc=` values (`'mean'`, `'sum'`, `'size'`, …) | real pandas aggfunc names, passed straight to `groupby().agg()` |
 | `-wide`'s `a=` (aside from `'n'`) | passed straight to `pivot_table(aggfunc=...)` |
@@ -715,6 +714,8 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 | `-long` / `-wide`'s `c=`/`v=`/`a=` | pytae's short names for what pandas calls `var_name`/`value_name` (`melt()`) and `columns`/`values`/`aggfunc` (`pivot_table()`) — see below |
 | `'n'` | pytae-only token meaning "row count" (aliases pandas' `'size'` internally) |
 | `-handle_missing` | pytae's own opinionated fill convention (`.` for object/category, `0` for numeric) |
+| `-cols` / `-dtype` / `-nulls` | adds optional `asc`/`desc` name sorting on top of `df.columns`/`df.dtypes`/`df.isna().sum()`, which have no such parameter |
+| `-unique` | pytae's own flag name for `df.drop_duplicates()` — not a mirrored pandas name |
 
 **`c=` / `v=` / `a=`** are pytae's short, consistent names for the same underlying pandas reshape/pivot parameters, reused across `-long`, `-wide`, and `-group_x`:
 
