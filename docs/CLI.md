@@ -17,7 +17,6 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Missing values — `-handle_missing`](#handle-missing)
   - [Header cleanup — `-clean_columns`](#clean-columns)
   - [Unique rows — `-unique`](#unique)
-  - [Listing — `-cols` / `-dtype` / `-nulls`](#listing)
   - [Reshape — `-long` / `-wide`](#reshape)
   - [Multi-file operations — `-file` / `-merge` / `-concat`](#merge)
   - [Conversion — `-convert` / `-rename`](#convert)
@@ -25,6 +24,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Row filtering — `-query`](#query)
   - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
   - [Value counts — `-value_counts`](#value-counts)
+  - [Inspect & display — `-head`/`-tail`/`-sample`/`-shape`/`-cols`/`-dtype`/`-nulls`/`-describe`/`-info`](#listing)
   - [Sorting rows — `-sort_by`](#sort-by)
   - [Cross-tabulation — `-crosstab`](#crosstab)
 - [Conventions & reference](#conventions-reference)
@@ -46,18 +46,6 @@ How the CLI pipeline works, and how to grab a real dataset to try it on.
 <a id="basics"></a>
 ### Basics
 
-```bash
-pytae penguins.parquet -head
-pytae penguins.parquet -tail
-pytae penguins.parquet -sample
-pytae penguins.parquet -shape
-pytae penguins.parquet -cols
-pytae penguins.parquet -dtype
-pytae penguins.parquet -nulls
-pytae penguins.parquet -describe
-pytae penguins.parquet -info
-```
-
 Flag **order is the pipeline**, the same as a pandas/pytae method chain. `-select … -agg_df … -select … -shape` is `df.select(…).agg_df(…).select(…).shape`. Put `-qry` / `-query` first yourself if you need a column you later drop. **Only the last operation prints.** Earlier flags still run.
 
 ```bash
@@ -68,17 +56,7 @@ pytae penguins.parquet -head 3 -shape
 pytae penguins.parquet -head 5 -cols
 ```
 
-`-shape` / `-cols` / `-dtype` / `-nulls` / `-info` mirror pandas attributes/methods that
-don't return a DataFrame (`df.shape`, `df.columns`, `df.dtypes`, `df.info()` — `-nulls` is
-`df.isna().sum()`). Like real method chaining, nothing may follow them except `-to_clip`;
-put them last. `-describe` is the exception — `df.describe()` returns a DataFrame, so it
-can still be chained into further flags (e.g. `-describe -shape`, `-describe -round 2`).
-
-```bash
-pytae penguins.parquet -shape -to_clip     # ok: -to_clip is the only thing allowed after -shape
-pytae penguins.parquet -shape -head 3      # error: -shape isn't a DataFrame, can't chain -head off it
-pytae penguins.parquet -describe -shape    # ok: describe() returns a DataFrame
-```
+See [Inspect & display](#listing) for the full list of inspection flags (`-head`/`-tail`/`-sample`/`-shape`/`-cols`/`-dtype`/`-nulls`/`-describe`/`-info`) and their chaining rules.
 
 The examples below run directly against the bundled `penguins` dataset (see [Sample datasets](#sample-datasets)) — `species`, `island`, `body_mass_g`, `bill_length_mm`, …
 
@@ -418,24 +396,6 @@ pytae penguins.parquet -unique -shape
 
 ---
 
-<a id="listing"></a>
-### Listing — `-cols` / `-dtype` / `-nulls`
-
-File (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
-
-```bash
-pytae penguins.parquet -cols
-pytae penguins.parquet -cols asc
-pytae penguins.parquet -cols desc
-pytae penguins.parquet -dtype desc
-pytae penguins.parquet -nulls asc
-pytae penguins.parquet -select dtype=numeric -cols
-```
-
-CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
-
----
-
 <a id="reshape"></a>
 ### Reshape — `-long` / `-wide`
 
@@ -572,6 +532,47 @@ pytae penguins.parquet -select species -value_counts -sort_by count desc
 
 ---
 
+<a id="listing"></a>
+### Inspect & display — `-head` / `-tail` / `-sample` / `-shape` / `-cols` / `-dtype` / `-nulls` / `-describe` / `-info`
+
+```bash
+pytae penguins.parquet -head
+pytae penguins.parquet -tail
+pytae penguins.parquet -sample
+pytae penguins.parquet -shape
+pytae penguins.parquet -cols
+pytae penguins.parquet -dtype
+pytae penguins.parquet -nulls
+pytae penguins.parquet -describe
+pytae penguins.parquet -info
+```
+
+`-shape` / `-cols` / `-dtype` / `-nulls` / `-info` mirror pandas attributes/methods that
+don't return a DataFrame (`df.shape`, `df.columns`, `df.dtypes`, `df.info()` — `-nulls` is
+`df.isna().sum()`). Like real method chaining, nothing may follow them except `-to_clip`;
+put them last. `-describe` is the exception — `df.describe()` returns a DataFrame, so it
+can still be chained into further flags (e.g. `-describe -shape`, `-describe -round 2`).
+
+```bash
+pytae penguins.parquet -shape -to_clip     # ok: -to_clip is the only thing allowed after -shape
+pytae penguins.parquet -shape -head 3      # error: -shape isn't a DataFrame, can't chain -head off it
+pytae penguins.parquet -describe -shape    # ok: describe() returns a DataFrame
+```
+
+`-cols` / `-dtype` / `-nulls` list in file (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
+
+```bash
+pytae penguins.parquet -cols asc
+pytae penguins.parquet -cols desc
+pytae penguins.parquet -dtype desc
+pytae penguins.parquet -nulls asc
+pytae penguins.parquet -select dtype=numeric -cols
+```
+
+CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
+
+---
+
 <a id="sort-by"></a>
 ### Sorting rows — `-sort_by`
 
@@ -695,7 +696,7 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 | Flag / key | Pandas equivalent |
 |---|---|
 | `-query` | `df.query()` |
-| `-describe` / `-info` / `-shape` | `df.describe()` / `df.info()` / `df.shape` |
+| `-describe` / `-info` / `-shape` / `-cols` / `-dtype` / `-nulls` | `df.describe()` / `df.info()` / `df.shape` / `df.columns` / `df.dtypes` / `df.isna().sum()` |
 | `-sort_by` | `df.sort_values()` |
 | `-crosstab`'s `values=` / `aggfunc=` / `normalize=` / `margins=` | same keyword names as `pd.crosstab()` |
 | `-group_by` + `-agg`'s `aggfunc=` values (`'mean'`, `'sum'`, `'size'`, …) | real pandas aggfunc names, passed straight to `groupby().agg()` |
@@ -714,7 +715,6 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 | `-long` / `-wide`'s `c=`/`v=`/`a=` | pytae's short names for what pandas calls `var_name`/`value_name` (`melt()`) and `columns`/`values`/`aggfunc` (`pivot_table()`) — see below |
 | `'n'` | pytae-only token meaning "row count" (aliases pandas' `'size'` internally) |
 | `-handle_missing` | pytae's own opinionated fill convention (`.` for object/category, `0` for numeric) |
-| `-cols` / `-dtype` / `-nulls` | adds optional `asc`/`desc` name sorting on top of `df.columns`/`df.dtypes`/`df.isna().sum()`, which have no such parameter |
 | `-unique` | pytae's own flag name for `df.drop_duplicates()` — not a mirrored pandas name |
 
 **`c=` / `v=` / `a=`** are pytae's short, consistent names for the same underlying pandas reshape/pivot parameters, reused across `-long`, `-wide`, and `-group_x`:
