@@ -4,35 +4,47 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 
 ## Contents
 
-- [Basics](#basics)
-- [Sample datasets](#sample-datasets)
-- [Column selection — `-select`](#select)
-- [Row filtering — `-qry` / `-query`](#filtering)
-- [SQL — `-sql`](#sql)
-- [Value replacement — `-replace_values`](#replace-values)
-- [Aggregation (auto group columns) — `-agg_df`](#agg-df)
-- [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
-- [Broadcast — `-group_x`](#group-x)
-- [Value counts — `-value_counts`](#value-counts)
-- [Unique rows — `-unique`](#unique)
-- [Listing — `-cols` / `-dtype` / `-nulls`](#listing)
-- [Sorting rows — `-sort_by`](#sort-by)
-- [Missing values — `-handle_missing`](#handle-missing)
-- [Header cleanup — `-clean_columns`](#clean-columns)
-- [Reshape — `-long` / `-wide`](#reshape)
-- [Cross-tabulation — `-crosstab`](#crosstab)
-- [Multi-file operations — `-file` / `-merge` / `-concat`](CLI_MULTI_FILE.md)
-- [Conversion — `-convert` / `-rename`](#convert)
-- [Display extras](#display-extras)
-- [Pandas defaults vs pytae-specific](#pandas-vs-pytae)
-  - [`-wide` vs `-crosstab`](#wide-vs-crosstab)
-  - [`-agg_df` vs `-group_by` + `-agg`](#agg-df-vs-group-by-agg)
-- [Recipes](#recipes)
-- [Quoting conventions](#quoting)
-- [Flag reference](#flag-reference)
+- [Getting started](#getting-started)
+  - [Basics](#basics)
+  - [Sample datasets](#sample-datasets)
+- [Pytae-specific operations](#pytae-specific-operations)
+  - [Column selection — `-select`](#select)
+  - [Row filtering — `-qry`](#qry)
+  - [SQL — `-sql`](#sql)
+  - [Value replacement — `-replace_values`](#replace-values)
+  - [Aggregation (auto group columns) — `-agg_df`](#agg-df)
+  - [Broadcast — `-group_x` / `.group_x()`](#group-x)
+  - [Missing values — `-handle_missing` / `.handle_missing()`](#handle-missing)
+  - [Header cleanup — `-clean_columns`](#clean-columns)
+  - [Multi-file operations — `-file` / `-merge` / `-concat`](#merge)
+  - [Conversion — `-convert` / `-rename`](#convert)
+- [Pandas-mirrored operations](#pandas-mirrored-operations)
+  - [Row filtering — `-query`](#query)
+  - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
+  - [Value counts — `-value_counts`](#value-counts)
+  - [Unique rows — `-unique`](#unique)
+  - [Listing — `-cols` / `-dtype` / `-nulls`](#listing)
+  - [Sorting rows — `-sort_by`](#sort-by)
+  - [Reshape — `-long` / `-wide`](#reshape)
+  - [Cross-tabulation — `-crosstab`](#crosstab)
+- [Conventions & reference](#conventions-reference)
+  - [Quoting conventions](#quoting)
+  - [Pandas defaults vs pytae-specific](#pandas-vs-pytae)
+    - [`-wide` vs `-crosstab`](#wide-vs-crosstab)
+    - [`-agg_df` vs `-group_by` + `-agg`](#agg-df-vs-group-by-agg)
+  - [Display extras](#display-extras)
+  - [Recipes](#recipes)
+  - [Flag reference](#flag-reference)
+
+<a id="getting-started"></a>
+## Getting started
+
+How the CLI pipeline works, and how to grab a real dataset to try it on.
+
+---
 
 <a id="basics"></a>
-## Basics
+### Basics
 
 ```bash
 pytae penguins.parquet -head
@@ -73,7 +85,7 @@ The examples below run directly against the bundled `penguins` dataset (see [Sam
 ---
 
 <a id="sample-datasets"></a>
-## Sample datasets
+### Sample datasets
 
 pytae bundles real datasets (`penguins`, `tips`, `titanic`, `diamonds`, `mpg`, `flights`, …) — the library's `pytae.sample_data` dict, keyed by name. Save any of them as a parquet file in the current folder once, then run `pytae` on it like any other file:
 
@@ -96,8 +108,15 @@ pytae flights.parquet -group_by year -agg "column='passengers',aggfunc='sum'"
 
 ---
 
+<a id="pytae-specific-operations"></a>
+## Pytae-specific operations
+
+These flags/verbs are pytae's own vocabulary — either a dedicated method the library adds (`qry()`, `clean_columns()`, `replace_values()`, `group_x()`) or a CLI-native capability with no direct pandas equivalent (`-sql`, `-file`/`-merge`/`-concat`). See [Pandas defaults vs pytae-specific](#pandas-vs-pytae) for the full flag/key-level breakdown.
+
+---
+
 <a id="select"></a>
-## Column selection — `-select`
+### Column selection — `-select`
 
 Tokens in one `-select` are a **union** (each token *adds* columns). Repeat `-select` to filter that result: each call is `df.select()` on the current working columns (including after `-agg_df` / `-long` / `-wide`).
 
@@ -166,7 +185,7 @@ pytae penguins.parquet -select species,body_mass_g -agg_df mean -select species,
 
 Exact names must exist on the **current** columns; missing names error with a typo suggestion — `-select d,a,b` does **not** silently return `a,b`. A positional token that is not a real column is **not** a regex — use `regex=`. Tokens in **one** spec are a union; each extra `-select` filters whatever is left (it is not last-wins).
 
-### `df.select()` but not `-select`
+#### `df.select()` but not `-select`
 
 - `everything()` — remaining columns after an explicit list
 - a callable, e.g. `df.select(lambda c: c.endswith("_mm"))`
@@ -175,22 +194,19 @@ Exact names must exist on the **current** columns; missing names error with a ty
 
 ---
 
-<a id="filtering"></a>
-## Row filtering — `-qry` and `-query`
+<a id="qry"></a>
+### Row filtering — `-qry`
 
-`-qry` is pytae's dict `qry()` (safer for odd strings). `-query` is pandas `DataFrame.query()` (numexpr). Both **narrow rows** at this point in the pipeline, same as `.qry()` / `.query()`. Stacking them is sequential (AND on the remaining rows). Put the filter **before** `-select` if you need a column you then drop.
+pytae's dict-based filter, `df.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
 
 ```python
 df.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
-df.query("body_mass_g > 3500 and island == 'Dream'")
 df.qry({"species": "Adelie"}).select("species", "body_mass_g")
 ```
 
 ```bash
 # surrounding {} are optional for -qry — the CLI adds them for you
 pytae penguins.parquet -qry "'species': 'Adelie', 'body_mass_g': ('>', 3500)"
-pytae penguins.parquet -query "body_mass_g > 3500 and island == 'Dream'"
-pytae penguins.parquet -qry "'species': 'Adelie'" -query "body_mass_g > 3500" -head
 
 # filter first, then drop the filter column — same as df.qry(...).select(...)
 pytae penguins.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -head
@@ -198,6 +214,9 @@ pytae penguins.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -h
 # quoting the column name is optional (see Quoting conventions) — values still
 # need quotes when they're strings
 pytae penguins.parquet -qry "species: 'Adelie'"
+
+# stack with -query (sequential AND on the remaining rows)
+pytae penguins.parquet -qry "'species': 'Adelie'" -query "body_mass_g > 3500" -head
 ```
 
 `-select body_mass_g -qry "'species': 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
@@ -205,7 +224,7 @@ pytae penguins.parquet -qry "species: 'Adelie'"
 ---
 
 <a id="sql"></a>
-## SQL — `-sql`
+### SQL — `-sql`
 
 `-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). The view is queryable as table **`df`, and only `df`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember (and no ambiguity if you later pipe a differently-named file through the same command). `table` is also deliberately not registered: it's a reserved SQL keyword, so `select * from table` fails to parse unless quoted, which defeats the point of a short default name.
 
@@ -239,7 +258,7 @@ Mixing a spaced identifier and a string literal in one `-sql` value means the sh
 ---
 
 <a id="replace-values"></a>
-## Value replacement — `-replace_values`
+### Value replacement — `-replace_values`
 
 `-replace_values` swaps cell values at this point in the pipeline, same as `df.replace()` (or the library's `.replace_values()`). Its value is `key=value` tokens (comma-separated, quote a value if it needs an internal comma — same convention as `-crosstab`'s `index=`):
 
@@ -265,7 +284,7 @@ Chains like any other op — runs on the current view and replaces it, so put `-
 ---
 
 <a id="agg-df"></a>
-## Aggregation (auto group columns) — `-agg_df`
+### Aggregation (auto group columns) — `-agg_df`
 
 
 Groups by all **non-numeric** columns and aggregates the rest. `n` is group count.
@@ -291,34 +310,8 @@ pytae penguins.parquet -select species,body_mass_g -agg_df mean -select species,
 
 ---
 
-<a id="group-by-agg"></a>
-## Aggregation (explicit group columns) — `-group_by` + `-agg`
-
-`groupby().agg()` with named aggregation. Collapses to one row per group.
-
-```python
-df.groupby("species", as_index=False).agg(
-    avg_mass=("body_mass_g", "mean"),
-    n=("body_mass_g", "size"),
-)
-```
-
-```bash
-pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'"
-pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'; column='flipper_length_mm',aggfunc='sum'"
-pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean',as='avg_mass'; column='flipper_length_mm',aggfunc='sum',as='total_flipper'"
-pytae penguins.parquet -group_by "species,island" -agg "column='body_mass_g',aggfunc='mean'"
-# names with spaces (quote them) — illustrative column names, not from a bundled dataset
-pytae data.parquet -group_by "Scenario Name" -agg "column='value',aggfunc='sum',as='v'"
-pytae data.parquet -group_by "Scenario Name" -agg "column='value,val_growth',aggfunc='sum'"
-```
-
-> `-agg` requires `-group_by`. `-group_x` takes `group=` itself (or still accepts `-group_by` if `group=` is omitted). One output per source column per `-agg` call — for several aggs on the same column, use `-agg_df`. `-agg_df` and `-agg` cannot be combined.
-
----
-
 <a id="group-x"></a>
-## Broadcast — `-group_x` / `.group_x()`
+### Broadcast — `-group_x` / `.group_x()`
 
 Keeps **every row** and adds a column (`n` = group size, `x` = another aggregate). Like pandas `transform`. `-agg` collapses; `-group_x` does not.
 
@@ -358,63 +351,8 @@ You do **not** need `-group_by` for `-group_x` (`-group_by` is for `-agg`).
 
 ---
 
-<a id="value-counts"></a>
-## Value counts — `-value_counts`
-
-Counts across the current working columns (`-select` first to choose keys). Several columns → unique combinations.
-
-```bash
-pytae penguins.parquet -select species -value_counts
-pytae penguins.parquet -select species,island -value_counts
-pytae penguins.parquet -select species -value_counts -dropna false
-pytae penguins.parquet -select species -value_counts -sort_by count desc
-```
-
----
-
-<a id="unique"></a>
-## Unique rows — `-unique`
-
-```bash
-pytae penguins.parquet -unique
-pytae penguins.parquet -select species,island -unique
-pytae penguins.parquet -unique -shape
-```
-
----
-
-<a id="listing"></a>
-## Listing — `-cols` / `-dtype` / `-nulls`
-
-File (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
-
-```bash
-pytae penguins.parquet -cols
-pytae penguins.parquet -cols asc
-pytae penguins.parquet -cols desc
-pytae penguins.parquet -dtype desc
-pytae penguins.parquet -nulls asc
-pytae penguins.parquet -select dtype=numeric -cols
-```
-
-CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
-
----
-
-<a id="sort-by"></a>
-## Sorting rows — `-sort_by`
-
-```bash
-pytae penguins.parquet -sort_by body_mass_g
-pytae penguins.parquet -sort_by body_mass_g desc
-pytae penguins.parquet -sort_by species,body_mass_g desc
-pytae penguins.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
-```
-
----
-
 <a id="handle-missing"></a>
-## Missing values — `-handle_missing` / `.handle_missing()`
+### Missing values — `-handle_missing` / `.handle_missing()`
 
 Object/category NA → `.` (or the fill you pass); numeric NA → `0`. Also strips object columns.
 
@@ -431,7 +369,7 @@ pytae penguins.parquet -handle_missing NA -select species,sex -value_counts
 ---
 
 <a id="clean-columns"></a>
-## Header cleanup — `-clean_columns`
+### Header cleanup — `-clean_columns`
 
 `-clean_columns` cleans up messy column **header names** (not cell values — see [`-replace_values`](#replace-values) for that). Its value is `key[=value]` tokens, comma-separated, applied in a fixed order regardless of how you write them: **strip → strip_special → squeeze → fill → case → dedupe**.
 
@@ -469,8 +407,164 @@ Chains like any other op — runs on the current view and replaces its column na
 
 ---
 
+<a id="merge"></a>
+### Multi-file operations — `-file` / `-merge` / `-concat`
+
+Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-concat`/`-sql` are a separate mode for combining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MULTI_FILE.md](CLI_MULTI_FILE.md)** for the full reference and examples.
+
+```bash
+pytae -file "data1.parquet=df1; data2.parquet=df2" \
+      -merge "left=df1,right=df2,on='col a:cola,colb:colb',how=inner"
+```
+
+---
+
+<a id="convert"></a>
+### Conversion — `-convert` / `-rename`
+
+Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the source. Cannot write `.sas7bdat`.
+
+| Format | Read | Write |
+|---|---|---|
+| `.parquet` / `.pq` | ✓ | ✓ |
+| `.csv` | ✓ | ✓ |
+| `.txt` | ✓ | ✓ |
+| `.dat` | ✓ | ✓ |
+| `.sas7bdat` | ✓ | — |
+
+```bash
+pytae penguins.parquet -convert
+pytae penguins.parquet -convert -o penguins.txt
+pytae penguins.parquet -select species,body_mass_g -convert -o subset.parquet
+pytae penguins.csv -convert -o penguins.parquet
+pytae data.sas7bdat -convert -o data.parquet          # character columns decoded as utf-8
+pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
+pytae data.txt -dlim "|" -convert -o data.csv
+pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter
+pytae 'data/*.parquet' -convert
+pytae penguins.parquet -convert -rename "old_name:new_name,another:clean"
+pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      # spaces in a name are fine — only "," and ":" are delimiters
+pytae data.csv -encoding latin-1 -convert -o data.parquet
+```
+
+> **`-dlim`:** `.csv` / `.txt` / `.dat` / `.sas7bdat` only. Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
+>
+> ```bash
+> pytae data.txt -dlim "|" -head
+> pytae data.csv -dlim ";" -convert -o data.parquet
+> ```
+
+> **`-encoding`:** if the file can't be decoded with the current encoding, pytae reports the
+> failing encoding and suggests common alternatives to try (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`).
+
+---
+
+<a id="pandas-mirrored-operations"></a>
+## Pandas-mirrored operations
+
+These flags map directly onto existing pandas methods/parameters — if you already know pandas, the behavior transfers directly (some still use pytae's own `key=value` CLI syntax to express the same pandas call). See [Pandas defaults vs pytae-specific](#pandas-vs-pytae) for the exact key-name mappings.
+
+---
+
+<a id="query"></a>
+### Row filtering — `-query`
+
+pytae's direct passthrough to pandas `df.query()` (numexpr). **Narrows rows** at this point in the pipeline, same as `.query()`. Can be combined with [`-qry`](#qry) (stacks sequentially — AND on the remaining rows).
+
+```python
+df.query("body_mass_g > 3500 and island == 'Dream'")
+```
+
+```bash
+pytae penguins.parquet -query "body_mass_g > 3500 and island == 'Dream'"
+pytae penguins.parquet -qry "'species': 'Adelie'" -query "body_mass_g > 3500" -head
+```
+
+---
+
+<a id="group-by-agg"></a>
+### Aggregation (explicit group columns) — `-group_by` + `-agg`
+
+`groupby().agg()` with named aggregation. Collapses to one row per group.
+
+```python
+df.groupby("species", as_index=False).agg(
+    avg_mass=("body_mass_g", "mean"),
+    n=("body_mass_g", "size"),
+)
+```
+
+```bash
+pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'"
+pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'; column='flipper_length_mm',aggfunc='sum'"
+pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean',as='avg_mass'; column='flipper_length_mm',aggfunc='sum',as='total_flipper'"
+pytae penguins.parquet -group_by "species,island" -agg "column='body_mass_g',aggfunc='mean'"
+# names with spaces (quote them) — illustrative column names, not from a bundled dataset
+pytae data.parquet -group_by "Scenario Name" -agg "column='value',aggfunc='sum',as='v'"
+pytae data.parquet -group_by "Scenario Name" -agg "column='value,val_growth',aggfunc='sum'"
+```
+
+> `-agg` requires `-group_by`. `-group_x` takes `group=` itself (or still accepts `-group_by` if `group=` is omitted). One output per source column per `-agg` call — for several aggs on the same column, use `-agg_df`. `-agg_df` and `-agg` cannot be combined.
+
+---
+
+<a id="value-counts"></a>
+### Value counts — `-value_counts`
+
+Counts across the current working columns (`-select` first to choose keys). Several columns → unique combinations.
+
+```bash
+pytae penguins.parquet -select species -value_counts
+pytae penguins.parquet -select species,island -value_counts
+pytae penguins.parquet -select species -value_counts -dropna false
+pytae penguins.parquet -select species -value_counts -sort_by count desc
+```
+
+---
+
+<a id="unique"></a>
+### Unique rows — `-unique`
+
+```bash
+pytae penguins.parquet -unique
+pytae penguins.parquet -select species,island -unique
+pytae penguins.parquet -unique -shape
+```
+
+---
+
+<a id="listing"></a>
+### Listing — `-cols` / `-dtype` / `-nulls`
+
+File (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
+
+```bash
+pytae penguins.parquet -cols
+pytae penguins.parquet -cols asc
+pytae penguins.parquet -cols desc
+pytae penguins.parquet -dtype desc
+pytae penguins.parquet -nulls asc
+pytae penguins.parquet -select dtype=numeric -cols
+```
+
+CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
+
+---
+
+<a id="sort-by"></a>
+### Sorting rows — `-sort_by`
+
+```bash
+pytae penguins.parquet -sort_by body_mass_g
+pytae penguins.parquet -sort_by body_mass_g desc
+pytae penguins.parquet -sort_by species,body_mass_g desc
+pytae penguins.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
+```
+
+---
+
 <a id="reshape"></a>
-## Reshape — `-long` / `-wide`
+### Reshape — `-long` / `-wide`
 
 Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `c=variable`, `v=value`. Quote the spec when values have spaces.
 
@@ -491,7 +585,7 @@ pytae tall.csv -wide "c='country name',v='body mass'"
 ---
 
 <a id="crosstab"></a>
-## Cross-tabulation — `-crosstab`
+### Cross-tabulation — `-crosstab`
 
 A matrix version of `-value_counts` for two columns (pandas `pd.crosstab()`): one or more columns become rows, a single column becomes headers. `index=` accepts a comma-separated list for a multi-level row index (like `-group_by`); `columns=` stays a single column — no multi-column headers. Honors the shared `-dropna` flag.
 
@@ -536,81 +630,63 @@ pytae penguins.parquet -crosstab "index='species',columns='sex'" -dropna false
 
 ---
 
-<a id="merge"></a>
-## Multi-file operations — `-file` / `-merge` / `-concat`
+<a id="conventions-reference"></a>
+## Conventions & reference
 
-Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-concat`/`-sql` are a separate mode for combining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MULTI_FILE.md](CLI_MULTI_FILE.md)** for the full reference and examples.
-
-```bash
-pytae -file "data1.parquet=df1; data2.parquet=df2" \
-      -merge "left=df1,right=df2,on='col a:cola,colb:colb',how=inner"
-```
+Cross-cutting rules and lookup tables that apply across the flags above, rather than belonging to any single one.
 
 ---
 
-<a id="convert"></a>
-## Conversion — `-convert` / `-rename`
+<a id="quoting"></a>
+### Quoting conventions
 
-Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the source. Cannot write `.sas7bdat`.
+Quoting rules differ by flag, because quotes serve different jobs in different places. The rule of thumb: **quote a value only when it needs to protect an embedded comma or colon; otherwise quoting is optional** (harmless if you do it out of habit, never required for spaces).
 
-| Format | Read | Write |
+| Flag | Does quoting matter? | Notes |
 |---|---|---|
-| `.parquet` / `.pq` | ✓ | ✓ |
-| `.csv` | ✓ | ✓ |
-| `.txt` | ✓ | ✓ |
-| `.dat` | ✓ | ✓ |
-| `.sas7bdat` | ✓ | — |
+| `-select` (column names) | Optional, and also protects an embedded comma | Spaces never need quotes. Quoting the *whole* name protects a genuinely embedded comma in a column name (rare but real). |
+| `-qry` (column-name keys) | Optional | Matches `-select`. **Values** still need real quoting when they're strings, since they're parsed as Python literals (numbers/tuples/lists don't need quotes). |
+| `-rename`, `-replace_values` (`v=`), `-merge` (`on=`), `-concat` (`frames=`) | Quote the **whole value** to protect an internal comma; quoting an individual name within is optional/harmless | These use plain `key:value,key:value` splitting — spaces never need quotes either way. |
+| `-clean_columns` `strip_special` | N/A (removes quotes as punctuation) | Pair with `fill=` to keep one specific character instead of stripping it. |
 
 ```bash
-pytae penguins.parquet -convert
-pytae penguins.parquet -convert -o penguins.txt
-pytae penguins.parquet -select species,body_mass_g -convert -o subset.parquet
-pytae penguins.csv -convert -o penguins.parquet
-pytae data.sas7bdat -convert -o data.parquet          # character columns decoded as utf-8
-pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
-pytae data.txt -dlim "|" -convert -o data.csv
-pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter
-pytae 'data/*.parquet' -convert
-pytae penguins.parquet -convert -rename "old_name:new_name,another:clean"
-pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      # spaces in a name are fine — only "," and ":" are delimiters
-pytae data.csv -encoding latin-1 -convert -o data.parquet
+# -qry: column-name keys optionally quoted; values need quotes only when they're strings
+pytae tips.parquet -qry "sex:'Male'" -select sex,day
+pytae tips.parquet -qry "'sex':'Male'" -select sex,day
+pytae penguins.parquet -qry "species:'Adelie', body_mass_g:('>', 3500)"
+
+# -select: spaces never need quotes; quoting is optional; quoting the whole name
+# protects a genuinely embedded comma
+pytae data.parquet -select "bill length mm,body mass g"
+pytae data.parquet -select "'bill length mm','body mass g'"
+pytae data.parquet -select "'city, state',other_col"   # one column literally named "city, state"
+
+# -rename: quoting is optional (both give the same result)
+pytae data.parquet -convert -rename "old col:new col" -o clean.parquet
+pytae data.parquet -convert -rename "'old col':'new col'" -o clean.parquet
+
+# -replace_values v=: quoting is optional
+pytae data.parquet -replace_values "v=Male:M"
+pytae data.parquet -replace_values "v='Male':'M'"
+
+# -merge on=: quote the whole on= value to protect the internal comma across pairs;
+# quoting a single pair's names is optional
+pytae -file "a.csv=df1;b.csv=df2" -merge "left=df1,right=df2,on=col a:cola"
+pytae -file "a.csv=df1;b.csv=df2" -merge "left=df1,right=df2,on='col a':'cola'"
+
+# -concat frames=: quote the whole value to protect the commas between aliases
+pytae -file "a.csv=df1;b.csv=df2" -concat "frames=df1,df2"
+
+# -clean_columns strip_special: removes quotes like any other punctuation;
+# fill= keeps that one character instead of stripping it
+pytae data.parquet -clean_columns "strip_special"              # "'col a'" -> "col a"
+pytae data.parquet -clean_columns "strip_special,fill='-'"     # "co-op's data" -> "co-ops-data"
 ```
-
-> **`-dlim`:** `.csv` / `.txt` / `.dat` / `.sas7bdat` only. Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
->
-> ```bash
-> pytae data.txt -dlim "|" -head
-> pytae data.csv -dlim ";" -convert -o data.parquet
-> ```
-
-> **`-encoding`:** if the file can't be decoded with the current encoding, pytae reports the
-> failing encoding and suggests common alternatives to try (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`).
-
----
-
-<a id="display-extras"></a>
-## Display extras
-
-```bash
-pytae penguins.parquet -head -pretty
-pytae penguins.parquet -describe -round 2
-pytae penguins.parquet -head 20 -nrows 1000
-pytae penguins.parquet -sample 10
-pytae penguins.parquet -sample 10 -seed 42       # reproducible: same rows every run
-pytae penguins.parquet -sample -frac 0.1         # 10% of rows instead of a fixed count
-pytae penguins.parquet -sample -frac 0.1 -seed 42
-pytae penguins.parquet -tail 3
-pytae penguins.parquet -head -to_clip          # copy; no stdout
-pytae penguins.parquet -shape -to_clip
-pytae huge.csv -convert -o huge.parquet -progress
-```
-
-`-to_clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -to_clip` copies the tail). Do not combine `-to_clip -shape` with a table-producing flag.
 
 ---
 
 <a id="pandas-vs-pytae"></a>
-## Pandas defaults vs pytae-specific
+### Pandas defaults vs pytae-specific
 
 Some flags/keys are thin passthroughs to standard pandas methods and parameter names — pandas knowledge transfers directly. Others are pytae's own vocabulary layered on top. Knowing which is which tells you what to expect.
 
@@ -665,7 +741,7 @@ pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='siz
 ```
 
 <a id="wide-vs-crosstab"></a>
-### `-wide` vs `-crosstab`
+#### `-wide` vs `-crosstab`
 
 **Use `-wide` almost always.** It handles both "pivot an existing value column" and, with `a='n'`, "pivot a count" directly — no `-value_counts` step needed. Reach for `-crosstab` only when you need `normalize=` (row/column/overall percentages) or `margins=` (grand-total row/column) — `-wide` has no equivalent for either.
 
@@ -694,7 +770,7 @@ pytae penguins.parquet -crosstab "index='species',columns='island',margins=true"
 | Grand-total row/column | `-crosstab` (`margins=`) |
 
 <a id="agg-df-vs-group-by-agg"></a>
-### `-agg_df` vs `-group_by` + `-agg`
+#### `-agg_df` vs `-group_by` + `-agg`
 
 **Use `-agg_df` for a quick summary** — it auto-detects group columns (every non-numeric column) and aggregates the rest with minimal typing. Reach for `-group_by` + `-agg` when you need to group by a **numeric** column, want **custom output names**, or don't want every non-numeric column swept into the group key.
 
@@ -726,8 +802,29 @@ pytae flights.parquet -agg_df sum   # groups by month, sums year (23454, ...) �
 
 ---
 
+<a id="display-extras"></a>
+### Display extras
+
+```bash
+pytae penguins.parquet -head -pretty
+pytae penguins.parquet -describe -round 2
+pytae penguins.parquet -head 20 -nrows 1000
+pytae penguins.parquet -sample 10
+pytae penguins.parquet -sample 10 -seed 42       # reproducible: same rows every run
+pytae penguins.parquet -sample -frac 0.1         # 10% of rows instead of a fixed count
+pytae penguins.parquet -sample -frac 0.1 -seed 42
+pytae penguins.parquet -tail 3
+pytae penguins.parquet -head -to_clip          # copy; no stdout
+pytae penguins.parquet -shape -to_clip
+pytae huge.csv -convert -o huge.parquet -progress
+```
+
+`-to_clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -to_clip` copies the tail). Do not combine `-to_clip -shape` with a table-producing flag.
+
+---
+
 <a id="recipes"></a>
-## Recipes
+### Recipes
 
 ```bash
 # inspect a new file
@@ -759,56 +856,8 @@ pytae 'folder/*.parquet' -convert
 
 ---
 
-<a id="quoting"></a>
-## Quoting conventions
-
-Quoting rules differ by flag, because quotes serve different jobs in different places. The rule of thumb: **quote a value only when it needs to protect an embedded comma or colon; otherwise quoting is optional** (harmless if you do it out of habit, never required for spaces).
-
-| Flag | Does quoting matter? | Notes |
-|---|---|---|
-| `-select` (column names) | Optional, and also protects an embedded comma | Spaces never need quotes. Quoting the *whole* name protects a genuinely embedded comma in a column name (rare but real). |
-| `-qry` (column-name keys) | Optional | Matches `-select`. **Values** still need real quoting when they're strings, since they're parsed as Python literals (numbers/tuples/lists don't need quotes). |
-| `-rename`, `-replace_values` (`v=`), `-merge` (`on=`), `-concat` (`frames=`) | Quote the **whole value** to protect an internal comma; quoting an individual name within is optional/harmless | These use plain `key:value,key:value` splitting — spaces never need quotes either way. |
-| `-clean_columns` `strip_special` | N/A (removes quotes as punctuation) | Pair with `fill=` to keep one specific character instead of stripping it. |
-
-```bash
-# -qry: column-name keys optionally quoted; values need quotes only when they're strings
-pytae tips.parquet -qry "sex:'Male'" -select sex,day
-pytae tips.parquet -qry "'sex':'Male'" -select sex,day
-pytae penguins.parquet -qry "species:'Adelie', body_mass_g:('>', 3500)"
-
-# -select: spaces never need quotes; quoting is optional; quoting the whole name
-# protects a genuinely embedded comma
-pytae data.parquet -select "bill length mm,body mass g"
-pytae data.parquet -select "'bill length mm','body mass g'"
-pytae data.parquet -select "'city, state',other_col"   # one column literally named "city, state"
-
-# -rename: quoting is optional (both give the same result)
-pytae data.parquet -convert -rename "old col:new col" -o clean.parquet
-pytae data.parquet -convert -rename "'old col':'new col'" -o clean.parquet
-
-# -replace_values v=: quoting is optional
-pytae data.parquet -replace_values "v=Male:M"
-pytae data.parquet -replace_values "v='Male':'M'"
-
-# -merge on=: quote the whole on= value to protect the internal comma across pairs;
-# quoting a single pair's names is optional
-pytae -file "a.csv=df1;b.csv=df2" -merge "left=df1,right=df2,on=col a:cola"
-pytae -file "a.csv=df1;b.csv=df2" -merge "left=df1,right=df2,on='col a':'cola'"
-
-# -concat frames=: quote the whole value to protect the commas between aliases
-pytae -file "a.csv=df1;b.csv=df2" -concat "frames=df1,df2"
-
-# -clean_columns strip_special: removes quotes like any other punctuation;
-# fill= keeps that one character instead of stripping it
-pytae data.parquet -clean_columns "strip_special"              # "'col a'" -> "col a"
-pytae data.parquet -clean_columns "strip_special,fill='-'"     # "co-op's data" -> "co-ops-data"
-```
-
----
-
 <a id="flag-reference"></a>
-## Flag reference
+### Flag reference
 
 **Inspect & display**
 
@@ -881,4 +930,3 @@ pytae data.parquet -clean_columns "strip_special,fill='-'"     # "co-op's data" 
 | `-round N` | Round numeric print/copy |
 | `-to_clip` | Copy last result; suppress stdout |
 | `-progress` | Progress for large converts |
-
