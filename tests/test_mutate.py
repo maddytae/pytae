@@ -75,3 +75,53 @@ def test_mutate_missing_colon_errors():
 def test_mutate_empty_spec_errors():
     with pytest.raises(ValueError, match="mutate expects entries"):
         _df().mutate("")
+
+
+def test_mutate_if_else_basic():
+    result = _df().mutate("size: if_else(body_mass_g >= 3500, 'heavy', 'light')")
+    assert list(result["size"]) == ["light", "heavy"]
+
+
+def test_mutate_if_else_numeric_values():
+    result = _df().mutate("bonus: if_else(body_mass_g >= 3500, 100, 10)")
+    assert list(result["bonus"]) == [10, 100]
+
+
+def test_mutate_if_else_value_can_be_column_expression():
+    result = _df().mutate("adjusted: if_else(body_mass_g >= 3500, body_mass_g / 1000, body_mass_g)")
+    assert list(result["adjusted"]) == [3000.0, 4.0]
+
+
+def test_mutate_if_else_wrong_arg_count_errors():
+    with pytest.raises(ValueError, match="if_else expects 3 arguments"):
+        _df().mutate("size: if_else(body_mass_g >= 3500, 'heavy')")
+
+
+def test_mutate_case_when_first_match_wins():
+    result = _df().mutate(
+        "grade: case_when(body_mass_g >= 3800: 'A', body_mass_g >= 3200: 'B', True: 'C')"
+    )
+    assert list(result["grade"]) == ["C", "A"]
+
+
+def test_mutate_case_when_no_default_gives_nan_for_unmatched():
+    result = _df().mutate("grade: case_when(body_mass_g >= 3800: 'A')")
+    assert result["grade"].iloc[1] == "A"
+    assert pd.isna(result["grade"].iloc[0])
+
+
+def test_mutate_case_when_default_must_be_last():
+    with pytest.raises(ValueError, match="'True' default entry must be listed last"):
+        _df().mutate("grade: case_when(True: 'C', body_mass_g >= 3800: 'A')")
+
+
+def test_mutate_case_when_requires_at_least_one_entry():
+    with pytest.raises(ValueError, match="case_when expects at least one"):
+        _df().mutate("grade: case_when()")
+
+
+def test_mutate_if_else_and_case_when_chain_with_other_entries():
+    result = _df().mutate(
+        "mass_kg: body_mass_g / 1000, size: if_else(mass_kg >= 3.5, 'heavy', 'light')"
+    )
+    assert list(result["size"]) == ["light", "heavy"]

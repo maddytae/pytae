@@ -242,9 +242,16 @@ pytae penguins.parquet -mutate "'is_adelie': species == 'Adelie'" -select specie
 
 # chains into -qry, filtering on a column just mutated
 pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -qry "bmi: ('>', 2)" -select species,bmi -head
+
+# dplyr-style if_else(condition, true_value, false_value)
+pytae penguins.parquet -mutate "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')" -select species,weight_class -head
+
+# dplyr-style case_when(cond1: val1, cond2: val2, ..., True: default) — first match wins,
+# `True` is an optional catch-all default and must be listed last
+pytae penguins.parquet -mutate "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', True: 'small')" -select species,size_class -head
 ```
 
-`-mutate` has no if/else — `eval()` doesn't support conditional expressions at all, regardless of engine. A two-branch *numeric* condition can be built with boolean arithmetic (`"bonus: (body_mass_g > 4000) * 100 + (body_mass_g <= 4000) * 10"`), but string outcomes or 3+ branches aren't expressible via `-mutate`/CLI at all — that needs a lambda in the library (`df.assign(weight_class=lambda d: np.where(...))`), with no CLI equivalent.
+`if_else()`/`case_when()` are the two exceptions to "the value is a plain `eval()` expression" — they're detected by name and evaluated via `np.where()`/`np.select()` instead, since `eval()` itself has no if/else support at all, regardless of engine. Their own arguments (conditions, and non-string values) are still `eval()` expressions — string outcomes still need quotes (`'heavy'`).
 
 ---
 

@@ -80,11 +80,18 @@ penguins.mutate("mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")  # la
 penguins.mutate("is_adelie: species == 'Adelie'")  # string literals still need quotes
 ```
 
-**Limitation:** `eval()` has no if/else — conditional expressions and numexpr's `where()` both raise regardless of engine. A two-branch *numeric* condition can be built with boolean arithmetic (`"bonus: (body_mass_g > 4000) * 100 + (body_mass_g <= 4000) * 10"`), but for string outcomes or 3+ branches, use plain pandas instead — that's exactly where a lambda earns its keep:
+For conditional/string outcomes — where plain `eval()` can't help — two dplyr-style forms are built in:
 
 ```python
-import numpy as np
-penguins.assign(weight_class=lambda d: np.where(d.body_mass_g > 4000, "heavy", "light"))
+# if_else(condition, true_value, false_value) — like dplyr's if_else()
+penguins.mutate("weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')")
+
+# case_when(cond1: val1, cond2: val2, ..., True: default) — like dplyr's case_when()
+# checked in order, first match wins; `True` (matches dplyr's `TRUE ~ default`) is an
+# optional catch-all and must be listed last; unmatched rows are NaN without it
+penguins.mutate(
+    "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', True: 'small')"
+)
 ```
 
 ## 7) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`

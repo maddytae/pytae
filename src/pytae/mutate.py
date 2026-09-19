@@ -1,5 +1,6 @@
 import difflib
 
+import numpy as np
 import pandas as pd
 from pandas.errors import UndefinedVariableError
 
@@ -84,6 +85,68 @@ def parse_mutate_spec(raw: str) -> dict:
     return expressions
 
 
+def _parse_call(expr: str, name: str) -> list[str] | None:
+    """If expr is exactly `name(...)`, return its top-level comma-separated
+    argument strings (quote/bracket-aware); otherwise None."""
+    stripped = expr.strip()
+    prefix = f"{name}("
+    if not stripped.startswith(prefix) or not stripped.endswith(")"):
+        return None
+    inner = stripped[len(prefix) : -1].strip()
+    if not inner:
+        return []
+    return _tokenize(inner, ",", keep_quotes=True, track_brackets=True)
+
+
+def _eval_value_arg(out: pd.DataFrame, arg: str):
+    """Evaluate one if_else()/case_when() value argument: a quoted string is
+    taken literally (broadcast as-is), anything else is a pandas eval()
+    expression (a number, or a column/arithmetic expression)."""
+    arg = arg.strip()
+    if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in "'\"":
+        return arg[1:-1]
+    return out.eval(arg)
+
+
+def _apply_if_else(out: pd.DataFrame, args: list[str]):
+    """if_else(condition, true_value, false_value) -> np.where(...)."""
+    if len(args) != 3:
+        raise ValueError(f"if_else expects 3 arguments (condition, true_value, false_value), got {len(args)}")
+    condition = out.eval(args[0])
+    true_value = _eval_value_arg(out, args[1])
+    false_value = _eval_value_arg(out, args[2])
+    return np.where(condition, true_value, false_value)
+
+
+def _apply_case_when(out: pd.DataFrame, args: list[str]):
+    """case_when(cond1: val1, cond2: val2, ..., True: default) -> np.select(...),
+    dplyr-style: entries are checked in order, first match wins, an entry
+    whose condition is the literal `True` is the catch-all default (matching
+    dplyr's `TRUE ~ default`) and must be listed last; unmatched rows are NaN
+    if no default entry is given."""
+    if not args:
+        raise ValueError("case_when expects at least one 'condition: value' entry")
+    conditions = []
+    choices = []
+    default = None
+    for i, raw_entry in enumerate(args):
+        pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
+        if len(pieces) < 2:
+            raise ValueError(f"invalid case_when entry '{raw_entry}': expected 'condition: value'")
+        condition_raw = pieces[0].strip()
+        value_raw = ":".join(pieces[1:]).strip()
+        if condition_raw == "True":
+            if i != len(args) - 1:
+                raise ValueError("case_when: the 'True' default entry must be listed last")
+            default = _eval_value_arg(out, value_raw)
+            continue
+        conditions.append(out.eval(condition_raw))
+        choices.append(_eval_value_arg(out, value_raw))
+    if not conditions:
+        raise ValueError("case_when needs at least one non-default condition")
+    return np.select(conditions, choices, default=default)
+
+
 def mutate(self, spec: str) -> pd.DataFrame:
     """
     Create or overwrite columns from a qry()-style spec string, each evaluated in
@@ -96,23 +159,24 @@ def mutate(self, spec: str) -> pd.DataFrame:
         The DataFrame to mutate columns on.
     spec : str
         Entries like "new_col: expression", comma-separated; quoting the key is
-        optional (matches qry()). The expression is pandas eval() syntax (e.g.
-        "body_mass_g / bill_length_mm ** 2") — column names in it must stay
+        optional (matches qry()). The expression is normally pandas eval() syntax
+        (e.g. "body_mass_g / bill_length_mm ** 2") — column names in it must stay
         unquoted, since quoting one turns it into a string literal instead of a
         column reference. Later entries may reference columns derived by
         earlier entries in the same call.
 
-    Limitation:
-    -----------
-    pandas eval() has no if/else — conditional expressions (`'a' if cond else
-    'b'`) and numexpr's where() both raise (confirmed: 'IfExp' nodes are not
-    implemented / "where" is not a supported function), regardless of engine.
-    A two-branch NUMERIC condition can be built with boolean arithmetic, e.g.
-    "bonus: (body_mass_g > 4000) * 100 + (body_mass_g <= 4000) * 10" — but for
-    string outcomes or 3+ branches, use plain pandas instead:
-    `df.assign(weight_class=lambda d: np.where(d.body_mass_g > 4000, 'heavy', 'light'))`
-    or `pd.cut(...)`. mutate() trades that flexibility for zero-lambda simplicity
-    on the common case (a single formula per column).
+        Two special expression forms (dplyr-style) bypass eval() to support
+        conditional/string outcomes, which eval() itself cannot express:
+          - "result: if_else(condition, true_value, false_value)" — like R's
+            `if_else()`. Backed by `np.where()`.
+          - "result: case_when(cond1: val1, cond2: val2, ..., True: default)" —
+            like R's `case_when()`. Conditions are checked in order, first match
+            wins; the literal `True` (matching dplyr's `TRUE ~ default`) is an
+            optional catch-all default and must be listed last. Unmatched rows
+            are NaN if no default is given. Backed by `np.select()`.
+        In both forms, `condition`/`true_value`/`false_value`/`cond*` are eval()
+        expressions (unquoted column names), while string outcomes need quotes
+        (e.g. `"Pass"`).
 
     Returns:
     --------
@@ -134,12 +198,30 @@ def mutate(self, spec: str) -> pd.DataFrame:
        body_mass_g  bill_length_mm  mass_kg    mass_lb
     0       3000.0            30.0      3.0   6.613860
     1       4000.0            40.0      4.0   8.818480
+
+    >>> # dplyr-style if_else()/case_when() for conditional/string outcomes
+    >>> df.mutate("result: if_else(body_mass_g >= 3500, 'heavy', 'light')")
+       body_mass_g  bill_length_mm  result
+    0       3000.0            30.0   light
+    1       4000.0            40.0   heavy
+
+    >>> df.mutate("grade: case_when(body_mass_g >= 3800: 'A', body_mass_g >= 3200: 'B', True: 'C')")
+       body_mass_g  bill_length_mm grade
+    0       3000.0            30.0     C
+    1       4000.0            40.0     A
     """
     expressions = parse_mutate_spec(spec)
     out = self.copy()
     for col, expr in expressions.items():
         try:
-            out[col] = out.eval(expr)
+            if_else_args = _parse_call(expr, "if_else")
+            case_when_args = _parse_call(expr, "case_when")
+            if if_else_args is not None:
+                out[col] = _apply_if_else(out, if_else_args)
+            elif case_when_args is not None:
+                out[col] = _apply_case_when(out, case_when_args)
+            else:
+                out[col] = out.eval(expr)
         except UndefinedVariableError as exc:
             close = difflib.get_close_matches(str(exc).split("'")[1], list(out.columns), n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""
