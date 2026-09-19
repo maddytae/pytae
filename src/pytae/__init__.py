@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from .agg_df import *
+from .mutate import *
 from .other_utilities import *
 from .qry import *
 from .select import *

@@ -10,6 +10,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 - [Pytae-specific operations](#pytae-specific-operations)
   - [Column selection — `-select`](#select)
   - [Row filtering — `-qry`](#qry)
+  - [Mutated columns — `-mutate`](#mutate)
   - [SQL — `-sql`](#sql)
   - [Value replacement — `-replace_values`](#replace-values)
   - [Aggregation (auto group columns) — `-agg_df`](#agg-df)
@@ -213,6 +214,37 @@ pytae penguins.parquet -qry "'species': 'Adelie'" -query "body_mass_g > 3500" -h
 ```
 
 `-select body_mass_g -qry "'species': 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
+
+---
+
+<a id="mutate"></a>
+### Mutated columns — `-mutate`
+
+pytae's expression-based column creator, `df.mutate()`. Creates or overwrites columns at this point in the pipeline. Uses the same tokenizer as `-qry` — `"new_col: expression"` entries, comma-separated, quoting the key optional. Unlike `-qry`, the value is a pandas `eval()` **expression**, not a literal: column names in it must stay unquoted (quoting one turns it into a string literal instead of a column reference — same rule as SQL identifiers, see [Quoting conventions](#quoting)).
+
+```python
+df.mutate("bmi: body_mass_g / bill_length_mm ** 2")
+df.mutate("heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")
+```
+
+```bash
+# single mutated column
+pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -head
+
+# multiple entries in one -mutate
+pytae penguins.parquet -mutate "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000" -select species,mass_kg,heavy -head
+
+# later entries can reference columns derived earlier in the same call
+pytae penguins.parquet -mutate "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462" -select mass_kg,mass_lb -head
+
+# key quoting optional (matches -qry); string literals in the expression still need quotes
+pytae penguins.parquet -mutate "'is_adelie': species == 'Adelie'" -select species,is_adelie -head
+
+# chains into -qry, filtering on a column just mutated
+pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -qry "bmi: ('>', 2)" -select species,bmi -head
+```
+
+`-mutate` has no if/else — `eval()` doesn't support conditional expressions at all, regardless of engine. A two-branch *numeric* condition can be built with boolean arithmetic (`"bonus: (body_mass_g > 4000) * 100 + (body_mass_g <= 4000) * 10"`), but string outcomes or 3+ branches aren't expressible via `-mutate`/CLI at all — that needs a lambda in the library (`df.assign(weight_class=lambda d: np.where(...))`), with no CLI equivalent.
 
 ---
 
@@ -662,6 +694,7 @@ Quoting rules differ by flag, because quotes serve different jobs in different p
 |---|---|---|
 | `-select` (column names) | Optional, and also protects an embedded comma | Spaces never need quotes. Quoting the *whole* name protects a genuinely embedded comma in a column name (rare but real). |
 | `-qry` (column-name keys) | Optional | Matches `-select`. **Values** still need real quoting when they're strings, since they're parsed as Python literals (numbers/tuples/lists don't need quotes). |
+| `-mutate` (column-name keys) | Optional | Matches `-qry`. The **value** is an expression, not a literal — column names inside it must stay *unquoted* (quoting one turns it into a string literal, not a column reference); string literals within the expression still need quotes (`species == 'Adelie'`). |
 | `-rename`, `-replace_values` (`v=`), `-merge` (`on=`), `-concat` (`frames=`) | Quote the **whole value** to protect an internal comma; quoting an individual name within is optional/harmless | These use plain `key:value,key:value` splitting — spaces never need quotes either way. |
 | `-clean_columns` `strip_special` | N/A (removes quotes as punctuation) | Pair with `fill=` to keep one specific character instead of stripping it. |
 
@@ -899,6 +932,7 @@ pytae 'folder/*.parquet' -convert
 |---|---|
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` and column-name quotes optional |
+| `-mutate SPEC` | Create/overwrite columns at this point (`df.mutate()`); `"new_col: expression"` entries, same tokenizer/key-quoting rules as `-qry` (no surrounding `{}`), but the value is a pandas `eval()` expression, not a literal |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
 | `-replace_values KEY=VALUE,...` | Replace values at this point (`df.replace_values()`); `v=` required, `c=`/`exact=` optional |

@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `mutate()` / `-mutate`: create or overwrite columns from a `qry()`-style spec string, each entry evaluated in order via pandas `eval()` — a plain formula per column, no lambda required (e.g. `df.mutate("bmi: body_mass_g / bill_length_mm ** 2")`, or `-mutate "bmi: body_mass_g / bill_length_mm ** 2"` on the CLI). Entries are `"new_col: expression"`, comma-separated for multiple in one call; quoting the key is optional (matches `-qry`), but column names *inside* the expression must stay unquoted, since `eval()` treats a quoted name as a string literal, not a column reference. Later entries can reference columns derived by earlier entries in the same call. `eval()` has no if/else — a two-branch numeric condition can be built with boolean arithmetic, but string outcomes or 3+ branches need plain pandas (`df.assign(col=lambda d: np.where(...))`) instead. New `notebooks/mutate.ipynb` walkthrough.
+
 ### Fixed
 - `-qry`: column-name keys can now be quoted or unquoted (`species: 'Adelie'` == `'species': 'Adelie'`), matching `-select`'s convention. Values still need Python-literal quoting when they're strings (e.g. `'Adelie'`); numbers/tuples/lists already worked unquoted.
 - `-rename`: quoting an old/new name (e.g. `-rename "'old col':'new col'"`) previously left the literal quote characters in the parsed mapping, silently renaming nothing since no real column matched. Quoting is now optional and stripped if present, matching the rest of the CLI.

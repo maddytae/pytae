@@ -28,6 +28,8 @@ long = pytae.long
 assert "pytae.shape" in sys.modules
 assert long is not None
 
+assert hasattr(pytae.pd.DataFrame, "mutate")
+
 Plotter = pytae.Plotter
 assert "pytae.plotting" in sys.modules
 assert Plotter is not None
@@ -49,6 +51,7 @@ assert hasattr(sys.modules["pandas"].DataFrame, "select")
 assert hasattr(sys.modules["pandas"].DataFrame, "agg_df")
 assert hasattr(sys.modules["pandas"].DataFrame, "group_x")
 assert hasattr(sys.modules["pandas"].DataFrame, "handle_missing")
+assert hasattr(sys.modules["pandas"].DataFrame, "mutate")
 """ % _SRC
     subprocess.check_call([sys.executable, "-c", code])
 

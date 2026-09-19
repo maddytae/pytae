@@ -65,6 +65,15 @@ class _Pipeline:
             return f"-qry: {exc}"
         return None
 
+    def apply_mutate(self, spec: str) -> str | None:
+        """Apply one -mutate spec to the current view. Returns an error message or None."""
+        df = self.dataframe()
+        try:
+            self._df = df.mutate(spec)
+        except Exception as exc:
+            return f"-mutate: {exc}"
+        return None
+
     def apply_query(self, expr: str) -> str | None:
         """Apply one -query expression to the current view. Returns an error message or None."""
         df = self.dataframe()

@@ -69,7 +69,25 @@ penguins.agg_df({"body_mass_g": "mean", "n": "n"})
 penguins.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keywords are used
 ```
 
-## 6) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
+## 6) Mutated columns — `mutate()`
+
+Create/overwrite columns from `qry()`-style `"new_col: expression"` entries, evaluated in order via pandas `eval()` — a plain formula per column, no lambda required. Column names in the expression must stay unquoted — quoting one turns it into a string literal instead of a column reference.
+
+```python
+penguins.mutate("bmi: body_mass_g / bill_length_mm ** 2")
+penguins.mutate("heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")  # multiple entries in one call
+penguins.mutate("mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")  # later entries can reference earlier ones
+penguins.mutate("is_adelie: species == 'Adelie'")  # string literals still need quotes
+```
+
+**Limitation:** `eval()` has no if/else — conditional expressions and numexpr's `where()` both raise regardless of engine. A two-branch *numeric* condition can be built with boolean arithmetic (`"bonus: (body_mass_g > 4000) * 100 + (body_mass_g <= 4000) * 10"`), but for string outcomes or 3+ branches, use plain pandas instead — that's exactly where a lambda earns its keep:
+
+```python
+import numpy as np
+penguins.assign(weight_class=lambda d: np.where(d.body_mass_g > 4000, "heavy", "light"))
+```
+
+## 7) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
 
 [other_utilities.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/other_utilities.ipynb)
 
