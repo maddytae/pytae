@@ -713,7 +713,10 @@ Cross-cutting rules and lookup tables that apply across the flags above, rather 
 <a id="quoting"></a>
 ### Quoting conventions
 
-Quoting rules differ by flag, because quotes serve different jobs in different places. The rule of thumb: **quote a value only when it needs to protect an embedded comma or colon; otherwise quoting is optional** (harmless if you do it out of habit, never required for spaces).
+There are two separate layers of quoting, easy to conflate:
+
+1. **Your shell's quoting** (bash/zsh/etc.), which decides how a command line is split into argv tokens *before pytae ever sees them*. Any flag value that contains a space anywhere — a comma-separated list with `, ` between items, a tuple literal like `('>', 3500)`, or a column name with a space — must be wrapped in one pair of shell quotes (`"..."` or `'...'`) around the *entire* value, or the shell will split it into multiple separate arguments. This is universal across every flag (`-select`, `-qry`, `-mutate`, `-rename`, `-group_x`, `-sql`, …) — there's no flag-specific way around it, since it happens before pytae's own code runs at all. Forget it and you'll get an `unrecognized arguments: ...` error; if the leftover pieces look like plain words rather than another `-flag`, pytae's error message includes a hint to wrap the whole spec in quotes.
+2. **pytae's own internal syntax quoting** (the table below) — quotes *inside* that one shell-quoted value, needed only to protect a comma/colon that's part of a name/value itself. This layer is optional almost everywhere; the rule of thumb: **quote a value only when it needs to protect an embedded comma or colon; otherwise quoting is optional** (harmless if you do it out of habit, never required for spaces).
 
 | Flag | Does quoting matter? | Notes |
 |---|---|---|
@@ -724,6 +727,13 @@ Quoting rules differ by flag, because quotes serve different jobs in different p
 | `-clean_columns` `strip_special` | N/A (removes quotes as punctuation) | Pair with `fill=` to keep one specific character instead of stripping it. |
 
 ```bash
+# forgetting the OUTER shell quotes -- the shell splits this into extra argv tokens
+# before pytae ever runs, so pytae reports them as unrecognized (with a hint):
+pytae penguins.parquet -select species,bill length mm -head
+# pytae: error: unrecognized arguments: length mm
+# If this is part of a value with a space (e.g. a column name), wrap the whole
+# spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.
+
 # -qry: column-name keys optionally quoted; values need quotes only when they're strings
 pytae tips.parquet -qry "sex:'Male'" -select sex,day
 pytae tips.parquet -qry "'sex':'Male'" -select sex,day
