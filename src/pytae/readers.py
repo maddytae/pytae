@@ -90,7 +90,10 @@ class ParquetReader:
                 _print_progress(done, limit, "reading")
         if progress:
             print()
-        return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=columns or [])
+        if parts:
+            return pd.concat(parts, ignore_index=True)
+        empty = self._empty()
+        return empty[columns] if columns else empty
 
 
 class CsvReader:
@@ -100,12 +103,19 @@ class CsvReader:
         self.encoding = encoding
 
     def shape(self) -> tuple[int, int]:
-        with open(self.path, "rb") as fh:
-            rows = sum(1 for _ in fh) - 1  # exclude header line
-        return (max(rows, 0), len(self.columns()))
+        n_cols = len(self.columns())
+        total = 0
+        for chunk in pd.read_csv(
+            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=CHUNK_SIZE, low_memory=False
+        ):
+            total += len(chunk)
+        return (total, n_cols)
 
     def columns(self) -> list[str]:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        try:
+            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        except pd.errors.EmptyDataError as exc:
+            raise ValueError(f"'{self.path.name}' is empty or not a valid CSV file") from exc
 
     def dtypes(self) -> pd.Series:
         return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
@@ -143,12 +153,19 @@ class TxtReader:
         self.encoding = encoding
 
     def shape(self) -> tuple[int, int]:
-        with open(self.path, "rb") as fh:
-            rows = sum(1 for _ in fh) - 1  # exclude header line
-        return (max(rows, 0), len(self.columns()))
+        n_cols = len(self.columns())
+        total = 0
+        for chunk in pd.read_csv(
+            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=CHUNK_SIZE, low_memory=False
+        ):
+            total += len(chunk)
+        return (total, n_cols)
 
     def columns(self) -> list[str]:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        try:
+            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        except pd.errors.EmptyDataError as exc:
+            raise ValueError(f"'{self.path.name}' is empty or not a valid delimited file") from exc
 
     def dtypes(self) -> pd.Series:
         return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
@@ -246,6 +263,10 @@ _READERS = {
 # default field separator for TxtReader-backed suffixes (.txt/.dat)
 _TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
 
+# default text encoding for TxtReader-backed suffixes; only .dat has one (.txt still
+# falls through to pandas' own encoding inference, i.e. None)
+_TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
+
 
 def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None):
     suffix = path.suffix.lower()
@@ -257,7 +278,11 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
     if cls is CsvReader:
         return CsvReader(path, sep=sep or ",", encoding=encoding)
     if cls is TxtReader:
-        return TxtReader(path, sep=sep or _TXT_DEFAULT_SEP[suffix], encoding=encoding)
+        return TxtReader(
+            path,
+            sep=sep or _TXT_DEFAULT_SEP[suffix],
+            encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
+        )
     if cls is SasReader:
         return SasReader(path, encoding=encoding)
     return cls(path)
@@ -275,7 +300,12 @@ def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, enc
     elif suffix == ".csv":
         _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress)
     elif suffix in _TXT_DEFAULT_SEP:
-        _write_delimited(df, dest, sep=sep or _TXT_DEFAULT_SEP[suffix], encoding=encoding, progress=progress)
+        _write_delimited(
+            df, dest,
+            sep=sep or _TXT_DEFAULT_SEP[suffix],
+            encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
+            progress=progress,
+        )
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")

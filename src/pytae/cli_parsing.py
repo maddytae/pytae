@@ -23,56 +23,55 @@ def parse_columns(raw: str) -> list[str]:
         return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
 
 
-def _split_tokens(raw: str, sep: str = ",") -> list[str]:
-    """Split on sep, respecting single or double quotes."""
-    tokens: list[str] = []
+def _tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: bool = False) -> list[str]:
+    """Split raw into segments at top-level occurrences of any character in `seps`,
+    respecting quotes (a matched quote pair is never split inside) and, if
+    track_brackets, (), [], {} nesting depth. keep_quotes controls whether the quote
+    characters themselves are kept in each segment's text (needed by callers that
+    re-scan a segment for a second, nested split) or dropped as they're consumed.
+    Every segment is returned (including empty ones) with surrounding whitespace
+    stripped -- callers filter/validate as needed.
+    """
+    segments: list[str] = []
     buf: list[str] = []
-    quote = None
+    quote: str | None = None
+    depth = 0
     for ch in raw:
         if quote:
             if ch == quote:
                 quote = None
+                if keep_quotes:
+                    buf.append(ch)
             else:
                 buf.append(ch)
-        elif ch in "'\"":
+            continue
+        if ch in "'\"":
             quote = ch
-        elif ch == sep:
-            token = "".join(buf).strip()
-            if token:
-                tokens.append(token)
+            if keep_quotes:
+                buf.append(ch)
+        elif track_brackets and ch in "([{":
+            depth += 1
+            buf.append(ch)
+        elif track_brackets and ch in ")]}":
+            depth -= 1
+            buf.append(ch)
+        elif depth == 0 and ch in seps:
+            segments.append("".join(buf).strip())
             buf = []
         else:
             buf.append(ch)
-    token = "".join(buf).strip()
-    if token:
-        tokens.append(token)
-    return tokens
+    segments.append("".join(buf).strip())
+    return segments
+
+
+def _split_tokens(raw: str, sep: str = ",") -> list[str]:
+    """Split on sep, respecting single or double quotes."""
+    return [t for t in _tokenize(raw, sep) if t]
 
 
 def _split_groups(raw: str, sep: str = ";") -> list[str]:
     """Split on sep but keep quote characters so inner comma-split still sees them."""
-    tokens: list[str] = []
-    buf: list[str] = []
-    quote = None
-    for ch in raw:
-        if quote:
-            buf.append(ch)
-            if ch == quote:
-                quote = None
-        elif ch in "'\"":
-            quote = ch
-            buf.append(ch)
-        elif ch == sep:
-            token = "".join(buf).strip()
-            if token:
-                tokens.append(token)
-            buf = []
-        else:
-            buf.append(ch)
-    token = "".join(buf).strip()
-    if token:
-        tokens.append(token)
-    return tokens
+    return [t for t in _tokenize(raw, sep, keep_quotes=True) if t]
 
 
 def parse_select_spec(raw: str) -> tuple[list[str], dict]:
@@ -134,7 +133,9 @@ def unknown_columns_message(flag: str, requested: list[str], available: list[str
 
 
 def parse_rename(raw: str) -> dict[str, str]:
-    """Parse a rename mapping like "old_a:new_a,old_b:new_b" into a dict."""
+    """Parse a rename mapping like "old_a:new_a,old_b:new_b" into a dict.
+    Quoting either side (e.g. "'old a':'new a'") is optional and stripped if present—
+    plain old_a:new_a already handles spaces, quoting just needs to not break things."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
@@ -143,7 +144,7 @@ def parse_rename(raw: str) -> dict[str, str]:
         if ":" not in pair:
             raise SystemExit(f"invalid --rename mapping '{pair}'; expected old:new")
         old, new = pair.split(":", 1)
-        mapping[old.strip()] = new.strip()
+        mapping[_unquote_name(old)] = _unquote_name(new)
     return mapping
 
 
@@ -157,16 +158,48 @@ def expand_paths(pattern: str) -> list[Path]:
     return [Path(pattern)]
 
 
+def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
+    """Split a --qry body into raw (key, value) text pairs on top-level commas/colons,
+    respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
+    aren't mistaken for entry or key/value separators."""
+    entries: list[tuple[str, str]] = []
+    for raw_entry in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
+        if not raw_entry:
+            continue
+        # only the FIRST top-level ':' separates key from value; rejoin the rest
+        # literally in case the value itself contains an unbracketed ':'
+        pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
+        if len(pieces) < 2:
+            raise SystemExit(f"invalid --qry conditions: missing ':' in entry '{raw_entry}'")
+        entries.append((pieces[0], ":".join(pieces[1:])))
+    return entries
+
+
 def parse_qry(raw: str) -> dict:
-    """Parse --qry conditions like "'col': ('>', 5), 'other': ['a','b']"; wrapping {} is optional."""
+    """Parse --qry conditions like "col: ('>', 5), other: ['a','b']"; wrapping {} and
+    quotes around column names are both optional (matching -select), e.g.
+    "sex:'Male'" == "'sex':'Male'". Values still need Python-literal quoting for
+    strings, e.g. 'Male', since they can also be numbers/tuples/lists."""
     stripped = raw.strip()
-    candidate = stripped if stripped.startswith("{") else f"{{{stripped}}}"
-    try:
-        conditions = ast.literal_eval(candidate)
-    except (ValueError, SyntaxError) as exc:
-        raise SystemExit(f"invalid --qry conditions: {exc}") from exc
-    if not isinstance(conditions, dict):
-        raise SystemExit("--qry expects dict entries, e.g. \"'col': ('>', 5)\" (braces optional)")
+    if stripped.startswith("{") and stripped.endswith("}"):
+        stripped = stripped[1:-1]
+    conditions: dict = {}
+    for key_raw, value_raw in _split_qry_entries(stripped):
+        key = _unquote_name(key_raw)
+        if not key:
+            raise SystemExit("invalid --qry conditions: empty column name")
+        if not value_raw:
+            raise SystemExit(f"invalid --qry conditions: '{key}' has no value")
+        try:
+            value = ast.literal_eval(value_raw)
+        except (ValueError, SyntaxError) as exc:
+            raise SystemExit(
+                f"invalid --qry conditions: value for '{key}' ('{value_raw}') must be quoted "
+                "(e.g. 'Male') or a valid literal (number/tuple/list)"
+            ) from exc
+        conditions[key] = value
+    if not conditions:
+        raise SystemExit("--qry expects dict entries, e.g. \"col: ('>', 5)\" (braces/quotes optional)")
     return conditions
 
 
@@ -311,7 +344,7 @@ def parse_value_map(raw: str) -> dict[str, str]:
         if ":" not in pair:
             raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
         old, new = pair.split(":", 1)
-        mapping[old.strip()] = new.strip()
+        mapping[_unquote_name(old)] = _unquote_name(new)
     if not mapping:
         raise SystemExit("-replace_values: v= needs at least one old:new pair")
     return mapping
@@ -450,7 +483,7 @@ def parse_file_arg(raw: str) -> list[dict]:
             entry[key] = _unquote_name(value)
         entries.append(entry)
     if len(entries) < 2:
-        raise SystemExit("-file: need at least two PATH=ALIAS entries to use with -merge")
+        raise SystemExit("-file: need at least two PATH=ALIAS entries")
     return entries
 
 
@@ -489,17 +522,24 @@ def parse_merge_arg(raw: str) -> dict:
     straight to pandas merge()).
     """
     kwargs = parse_reshape_kwargs(raw, keys=_MERGE_KEYS, flag="-merge")
-    missing = [k for k in ("left", "right", "on") if k not in kwargs]
+    how = kwargs.get("how", "inner")
+    required = ["left", "right"] if how == "cross" else ["left", "right", "on"]
+    missing = [k for k in required if k not in kwargs]
     if missing:
         raise SystemExit(f"-merge: missing required key(s): {', '.join(missing)}")
-    on_cols, left_cols, right_cols = parse_merge_on(kwargs["on"])
+    if how == "cross":
+        if "on" in kwargs:
+            raise SystemExit("-merge: on= cannot be used with how=cross (pandas cross joins don't take on=)")
+        on_cols, left_cols, right_cols = None, None, None
+    else:
+        on_cols, left_cols, right_cols = parse_merge_on(kwargs["on"])
     return {
         "left": kwargs["left"],
         "right": kwargs["right"],
         "on": on_cols,
         "left_on": left_cols,
         "right_on": right_cols,
-        "how": kwargs.get("how", "inner"),
+        "how": how,
         "validate": kwargs.get("validate"),
     }
 

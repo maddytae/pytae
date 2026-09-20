@@ -9,6 +9,8 @@ def long(self, c="variable", v="value"):
     - v: name for the melted-value column (default 'value')
     """
     numeric_cols = self.select_dtypes(include=["number"]).columns.tolist()
+    if not numeric_cols:
+        raise ValueError("long(): no numeric columns to melt")
     return pd.melt(
         self,
         id_vars=[col for col in self.columns if col not in numeric_cols],

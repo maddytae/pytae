@@ -3,10 +3,36 @@
 from __future__ import annotations
 
 import argparse
+import re
 
 import pandas as pd
 
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
+
+
+def _sql_string_literal(value: str) -> str:
+    """Quote a plain Python string as a SQL string literal (escaping embedded quotes) —
+    duckdb table functions like read_parquet()/read_csv() can't be parameterized via
+    prepared-statement placeholders, so the path/delimiter must be inlined as a literal."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _mask_quoted(spec: str) -> str:
+    """Blank out the contents of quoted substrings in spec (keeping overall length/
+    positions), so a regex check on the result only ever sees text outside string
+    literals -- e.g. an '@' inside a quoted value like 'a@b' is masked out."""
+    out = []
+    quote: str | None = None
+    for ch in spec:
+        if quote:
+            out.append(ch if ch == quote else " ")
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "'\"":
+            quote = ch
+        out.append(ch)
+    return "".join(out)
 
 
 class _Pipeline:
@@ -65,6 +91,17 @@ class _Pipeline:
             return f"-qry: {exc}"
         return None
 
+    def apply_mutate(self, spec: str) -> str | None:
+        """Apply one -mutate spec to the current view. Returns an error message or None."""
+        if re.search(r"@\w", _mask_quoted(spec)):
+            return "-mutate: '@name' local-variable references are library-only (df.mutate() from Python), not available on the CLI"
+        df = self.dataframe()
+        try:
+            self._df = df.mutate(spec)
+        except Exception as exc:
+            return f"-mutate: {exc}"
+        return None
+
     def apply_query(self, expr: str) -> str | None:
         """Apply one -query expression to the current view. Returns an error message or None."""
         df = self.dataframe()
@@ -91,10 +128,12 @@ class _Pipeline:
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via duckdb. Single-file mode: the current view is registered
         as table `df` (the file itself is already named on the command line, so there's no
-        separate file-derived alias). -file/-merge mode: every -file alias is registered
-        under its own name instead, so -sql can do the join itself; `df` is also registered
-        once something (e.g. -merge) has produced a current view. Returns an error message
-        or None."""
+        separate file-derived alias) — if nothing has touched the view yet, duckdb scans the
+        source parquet/csv/txt/dat file directly instead of first materializing it through
+        pandas (much faster; pandas is only used as a fallback, see _register_source_view).
+        -file/-merge mode: every -file alias is registered under its own name instead, so
+        -sql can do the join itself; `df` is also registered once something (e.g. -merge)
+        has produced a current view. Returns an error message or None."""
         try:
             import duckdb
         except ImportError as exc:
@@ -103,8 +142,11 @@ class _Pipeline:
         try:
             for alias, frame in self._frames.items():
                 con.register(alias, frame)
-            if self._df is not None or self._reader is not None:
-                con.register("df", self.dataframe())
+            if self._df is not None:
+                con.register("df", self._df)
+            elif self._reader is not None:
+                if not self._register_source_view(con):
+                    con.register("df", self.dataframe())
             try:
                 self._df = con.sql(query).df()
             except Exception as exc:
@@ -112,6 +154,31 @@ class _Pipeline:
         finally:
             con.close()
         return None
+
+    def _register_source_view(self, con) -> bool:
+        """Best-effort: have duckdb scan the source file directly and register the
+        result as view `df`, instead of first materializing it through pandas
+        (self.dataframe()). Returns False when the fast path doesn't apply (a prior
+        op already narrowed columns, -progress was requested, or the source format
+        has no fast native duckdb reader e.g. .sas7bdat) — the caller then falls
+        back to the pandas-backed view."""
+        from pytae.readers import CsvReader, ParquetReader, TxtReader
+
+        if self._pending_exact is not None or self._progress:
+            return False
+        reader = self._reader
+        path_sql = _sql_string_literal(str(reader.path))
+        if isinstance(reader, ParquetReader):
+            scan = f"read_parquet({path_sql})"
+        elif isinstance(reader, (CsvReader, TxtReader)):
+            if reader.encoding not in (None, "utf-8", "utf8"):
+                return False  # duckdb's CSV reader doesn't support arbitrary encodings
+            scan = f"read_csv({path_sql}, delim={_sql_string_literal(reader.sep)}, header=true)"
+        else:
+            return False  # e.g. .sas7bdat -- duckdb has no native reader for it
+        limit_sql = f" LIMIT {int(self._nrows)}" if self._nrows is not None else ""
+        con.execute(f"CREATE VIEW df AS SELECT * FROM {scan}{limit_sql}")
+        return True
 
     def dataframe(self) -> pd.DataFrame:
         if self._df is None:
@@ -141,9 +208,12 @@ class _Pipeline:
 
     def head(self, n: int) -> pd.DataFrame:
         if self._df is None:
-            df = self._reader.head(n)
-            if self._pending_exact is not None:
-                df = df.select(*self._pending_exact)
+            if self._nrows is not None:
+                df = self.dataframe().head(n)
+            else:
+                df = self._reader.head(n)
+                if self._pending_exact is not None:
+                    df = df.select(*self._pending_exact)
         else:
             df = self.dataframe().head(n)
         self._df = df
@@ -151,9 +221,12 @@ class _Pipeline:
 
     def tail(self, n: int) -> pd.DataFrame:
         if self._df is None:
-            df = self._reader.tail(n)
-            if self._pending_exact is not None:
-                df = df.select(*self._pending_exact)
+            if self._nrows is not None:
+                df = self.dataframe().tail(n)
+            else:
+                df = self._reader.tail(n)
+                if self._pending_exact is not None:
+                    df = df.select(*self._pending_exact)
         else:
             df = self.dataframe().tail(n)
         self._df = df

@@ -19,14 +19,24 @@ assert "penguins" in pytae.sample_data
 assert list(pytae.sample_data.keys())
 assert pytae._cache == {}
 
+# keys() returns a plain readable tuple, not a bare KeysView object
+keys = pytae.sample_data.keys()
+assert isinstance(keys, tuple)
+assert "penguins" in keys
+
 df = pytae.sample("penguins")
 assert len(df) > 0
-assert pytae.sample_data["penguins"] is df
+# sample() returns a copy each time, so mutating it never poisons the cache
+assert pytae.sample_data["penguins"] is not df
+df.iloc[0, 0] = "MUTATED"
+assert pytae.sample_data["penguins"].iloc[0, 0] != "MUTATED"
 
 assert "pytae.shape" not in sys.modules
 long = pytae.long
 assert "pytae.shape" in sys.modules
 assert long is not None
+
+assert hasattr(pytae.pd.DataFrame, "mutate")
 
 Plotter = pytae.Plotter
 assert "pytae.plotting" in sys.modules
@@ -49,6 +59,7 @@ assert hasattr(sys.modules["pandas"].DataFrame, "select")
 assert hasattr(sys.modules["pandas"].DataFrame, "agg_df")
 assert hasattr(sys.modules["pandas"].DataFrame, "group_x")
 assert hasattr(sys.modules["pandas"].DataFrame, "handle_missing")
+assert hasattr(sys.modules["pandas"].DataFrame, "mutate")
 """ % _SRC
     subprocess.check_call([sys.executable, "-c", code])
 

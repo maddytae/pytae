@@ -1,4 +1,4 @@
 #!/bin/sh
-# Run notebooks/*.ipynb before allowing a commit. Enable with:
-#   git config core.hooksPath .githooks
-python scripts/run_notebooks.py
+# Notebook checks moved to CI (.github/workflows/ci.yml's `notebooks` job),
+# gated to run only on tag push before `publish` -- not on every local commit.
+# Run manually any time with: python scripts/run_notebooks.py

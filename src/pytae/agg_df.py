@@ -18,6 +18,15 @@ def _agg_df_list(self, agg_types, dropna, observed):
     # Get numeric columns
     numeric_cols = self.select_dtypes(include=['number']).columns.tolist()
 
+    # A real numeric column named 'n' would collide with the count alias once
+    # aggregation results are flattened back onto their bare column names below.
+    if 'n' in unique_agg_types and 'n' in numeric_cols:
+        raise ValueError(
+            "agg_df: cannot compute 'n' (row count) because the input already has a "
+            "numeric column named 'n'; rename that column first, or use the dict form "
+            "(e.g. {'n': 'sum', 'count': 'n'}) to pick a different count-column name."
+        )
+
     # Check for no numeric columns and only 'n' requested
     if unique_agg_types == ['n'] and not numeric_cols:
         grouped_df = self.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')

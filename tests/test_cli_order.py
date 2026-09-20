@@ -1003,6 +1003,97 @@ def test_qry_without_braces_is_equivalent(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(2, 3)"
 
 
+def test_qry_column_key_quoting_is_optional(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
+    )
+
+    cli.main([path, "-qry", "flt:'A'", "-shape"])
+    unquoted = capsys.readouterr().out.strip()
+
+    cli.main([path, "-qry", "'flt':'A'", "-shape"])
+    quoted = capsys.readouterr().out.strip()
+
+    assert unquoted == quoted == "(2, 3)"
+
+
+def test_qry_unquoted_string_value_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"flt": ["A", "B"]}))
+
+    with pytest.raises(SystemExit, match="must be quoted"):
+        cli.main([path, "-qry", "flt:A", "-shape"])
+
+
+def test_mutate_then_select_new_column(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"body_mass_g": [3000.0, 4000.0], "bill_length_mm": [30.0, 40.0]}),
+    )
+
+    exit_code = cli.main(
+        [path, "-mutate", "bmi: body_mass_g / bill_length_mm ** 2", "-select", "bmi", "-shape"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+
+def test_mutate_multiple_entries_and_chained_reference(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000.0, 4000.0]}))
+
+    cli.main(
+        [path, "-mutate", "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462",
+         "-select", "mass_kg,mass_lb", "-head"]
+    )
+    out = capsys.readouterr().out
+    assert "mass_kg" in out and "mass_lb" in out
+
+
+def test_mutate_key_quoting_is_optional(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000.0, 4000.0]}))
+
+    cli.main([path, "-mutate", "mass_kg: body_mass_g / 1000", "-select", "mass_kg", "-shape"])
+    unquoted = capsys.readouterr().out.strip()
+
+    cli.main([path, "-mutate", "'mass_kg': body_mass_g / 1000", "-select", "mass_kg", "-shape"])
+    quoted = capsys.readouterr().out.strip()
+
+    assert unquoted == quoted == "(2, 1)"
+
+
+def test_mutate_unknown_column_reference_errors(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000.0, 4000.0]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-mutate", "bmi: bod_mass_g / 1000", "-shape"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-mutate" in err
+    assert "body_mass_g" in err
+
+
+def test_mutate_at_local_var_gives_cli_specific_error(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"n": [5, 15]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-mutate", "heavy: n >= @threshold"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-mutate" in err
+    assert "library-only" in err
+
+
+def test_mutate_at_inside_quoted_string_is_not_flagged_as_local_var(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"s": ["a@b", "c"]}))
+
+    exit_code = cli.main([path, "-mutate", "flag: s == 'a@b'"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "True" in out
+    assert "False" in out
+
+
 def test_describe_then_shape_is_describe_table(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
 
@@ -1143,6 +1234,56 @@ def test_sql_invalid_query_errors(tmp_path, capsys):
     assert "-sql" in capsys.readouterr().err
 
 
+def test_sql_first_op_scans_parquet_directly(tmp_path, capsys):
+    # -sql as the very first op should give the same result whether duckdb scans the
+    # source file directly (fast path) or pandas materializes it first (fallback).
+    path = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]}).to_parquet(path, index=False)
+
+    exit_code = cli.main([str(path), "-sql", "select b from df where a > 1"])
+
+    out = capsys.readouterr().out.strip().splitlines()
+    assert exit_code == 0
+    assert out[1:] == ["y", "z"]
+
+
+def test_sql_first_op_respects_nrows(tmp_path, capsys):
+    path = tmp_path / "data.parquet"
+    pd.DataFrame({"a": range(10)}).to_parquet(path, index=False)
+
+    exit_code = cli.main([str(path), "-nrows", "3", "-sql", "select * from df"])
+
+    out = capsys.readouterr().out.strip().splitlines()
+    assert exit_code == 0
+    assert len(out) - 1 == 3  # header + 3 rows
+
+
+def test_sql_first_op_with_progress_still_works(tmp_path, capsys):
+    # -progress forces the pandas-materialize fallback instead of the direct duckdb scan.
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
+
+    exit_code = cli.main([path, "-progress", "-sql", "select * from df where a > 1"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "reading" in out  # progress line proves the pandas fallback path ran
+    table_lines = [line for line in out.strip().splitlines() if "reading" not in line]
+    assert len(table_lines) - 1 == 2
+
+
+def test_sql_first_op_with_custom_encoding_still_works(tmp_path, capsys):
+    # A non-utf8 encoding forces the pandas-materialize fallback (duckdb's CSV reader
+    # doesn't support arbitrary encodings the way pandas does).
+    path = tmp_path / "data.csv"
+    pd.DataFrame({"a": [1, 2], "name": ["café", "naïve"]}).to_csv(path, index=False, encoding="latin-1")
+
+    exit_code = cli.main([str(path), "-encoding", "latin-1", "-sql", "select * from df"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "café" in out
+
+
 
 def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
@@ -1228,6 +1369,21 @@ def test_replace_requires_v(tmp_path):
         cli.main([path, "-replace_values", "c='col a'"])
 
 
+def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
+    df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
+
+    path = _write_csv(tmp_path, df)
+    cli.main([path, "-replace_values", "v=alpha:bravo"])
+    unquoted = capsys.readouterr().out.strip()
+
+    path = _write_csv(tmp_path, df)
+    cli.main([path, "-replace_values", "v='alpha':'bravo'"])
+    quoted = capsys.readouterr().out.strip()
+
+    assert unquoted == quoted
+    assert "bravo" in unquoted
+
+
 def _messy_headers_frame():
     return pd.DataFrame({
         "  Col A  ": [1],
@@ -1235,6 +1391,18 @@ def _messy_headers_frame():
         "Col A": [3],
         "100% Match!": [4],
     })
+
+
+def test_rename_quoting_is_optional(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
+    out1 = tmp_path / "out1.csv"
+    out2 = tmp_path / "out2.csv"
+
+    cli.main([path, "-convert", "-rename", "old col:new col", "-o", str(out1)])
+    cli.main([path, "-convert", "-rename", "'old col':'new col'", "-o", str(out2)])
+
+    assert list(pd.read_csv(out1).columns) == ["new col", "b"]
+    assert list(pd.read_csv(out2).columns) == ["new col", "b"]
 
 
 def test_clean_columns_strip_fill_case(tmp_path, capsys):
@@ -1296,6 +1464,24 @@ def test_clean_columns_case_without_value_errors(tmp_path):
         cli.main([path, "-clean_columns", "case"])
 
 
+def test_clean_columns_strip_special_removes_quotes(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"'col a'": [1], '"col b"': [2]}))
+
+    cli.main([path, "-clean_columns", "strip_special", "-cols"])
+
+    header = capsys.readouterr().out.strip().splitlines()
+    assert header == ["col a", "col b"]
+
+
+def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"co-op's data": [1]}))
+
+    cli.main([path, "-clean_columns", "strip_special,fill='-'", "-cols"])
+
+    header = capsys.readouterr().out.strip()
+    assert header == "co-ops-data"
+
+
 def _write_two_csvs(tmp_path):
     left = tmp_path / "left.csv"
     right = tmp_path / "right.csv"
@@ -1315,6 +1501,19 @@ def test_merge_on_differing_column_names(tmp_path, capsys):
     out = capsys.readouterr().out.strip()
     assert "val_l" in out and "val_r" in out
     assert len(out.splitlines()) == 3  # header + 2 matching rows (inner join)
+
+
+def test_merge_on_pair_quoting_is_optional(tmp_path, capsys):
+    left, right = _write_two_csvs(tmp_path)
+
+    cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-merge", "left=df1,right=df2,on='col a':'cola'",
+    ])
+
+    out = capsys.readouterr().out.strip()
+    assert "val_l" in out and "val_r" in out
+    assert len(out.splitlines()) == 3
 
 
 def test_merge_shared_column_name_outer_join(tmp_path, capsys):
@@ -1553,6 +1752,21 @@ def test_merge_missing_required_keys_errors(tmp_path):
 
     with pytest.raises(SystemExit, match="missing required key"):
         cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a"])
+
+
+def test_merge_how_cross_does_not_require_on(tmp_path, capsys):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a,right=b,how=cross"])
+    out = capsys.readouterr().out.strip()
+    assert len(out.splitlines()) == 1 + 3 * 3  # header + 3x3 cross join rows
+
+
+def test_merge_how_cross_rejects_on(tmp_path):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit, match="on= cannot be used with how=cross"):
+        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a,right=b,how=cross,on=id"])
 
 
 def test_merge_validate_failure_errors(tmp_path, capsys):

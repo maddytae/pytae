@@ -60,3 +60,65 @@ def test_qry_in_requires_list():
 def test_qry_unknown_column_suggests_typo():
     with pytest.raises(KeyError, match=r"unknown column 'speceis' \(did you mean 'species'\?\)"):
         _df().qry({"speceis": "Adelie"})
+
+
+def test_qry_startswith():
+    result = _df().qry({"species": ("startswith", "Ad")})
+    assert list(result["species"]) == ["Adelie", "Adelie"]
+
+
+def test_qry_endswith():
+    result = _df().qry({"code": ("endswith", "3")})
+    assert list(result["species"]) == ["Chinstrap"]
+
+
+def test_qry_contains():
+    result = _df().qry({"species": ("contains", "in")})
+    assert list(result["species"]) == ["Chinstrap"]
+
+
+def test_qry_regex():
+    result = _df().qry({"code": ("regex", r"^[AB]")})
+    assert list(result["species"]) == ["Adelie", "Gentoo"]
+
+
+def test_qry_startswith_accepts_list_of_prefixes():
+    result = _df().qry({"species": ("startswith", ["Ad", "Ge"])})
+    assert list(result["species"]) == ["Adelie", "Gentoo", "Adelie"]
+
+
+def test_qry_string_op_on_non_string_column_raises_clear_error():
+    with pytest.raises(ValueError, match="needs a string column"):
+        _df().qry({"body_mass_g": ("startswith", "1")})
+
+
+def test_qry_isna():
+    df = _df()
+    df.loc[0, "species"] = None
+    result = df.qry({"species": ("isna",)})
+    assert len(result) == 1
+    assert result.index[0] == 0
+
+
+def test_qry_notna():
+    df = _df()
+    df.loc[0, "species"] = None
+    result = df.qry({"species": ("notna",)})
+    assert list(result["species"]) == ["Gentoo", "Chinstrap", "Adelie"]
+
+
+def test_qry_string_op_treats_missing_as_no_match():
+    df = _df()
+    df.loc[0, "species"] = None
+    result = df.qry({"species": ("startswith", "Ad")})
+    assert list(result["species"]) == ["Adelie"]
+
+
+def test_qry_unsupported_tuple_operator_lists_string_ops():
+    with pytest.raises(ValueError, match="startswith"):
+        _df().qry({"species": ("badop", "x")})
+
+
+def test_qry_unsupported_unary_operator():
+    with pytest.raises(ValueError, match="Unsupported 1-element tuple operator"):
+        _df().qry({"species": ("badop",)})

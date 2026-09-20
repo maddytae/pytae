@@ -32,7 +32,7 @@ See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for
 from pytae.plotting import Plotter
 
 Plotter().data(penguins).plot(
-    x="bill_length_mm", y="bill_depth_mm", kind="scatter", by="species"
+    x="bill_length_mm", y="bill_depth_mm", kind="scatter", c="species", cmap="viridis"
 ).finalize()
 ```
 

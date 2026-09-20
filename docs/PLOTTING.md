@@ -116,6 +116,26 @@ k.fig
 
 ![Four-panel dashboard combining line, scatter, area, and kde plots](images/plotting_dashboard.png)
 
+## Faceting — one panel per group with `Plotter.facet()`
+
+For "one small chart per category" (small multiples), `Plotter.facet()` builds the mosaic grid for you — one axis per distinct value of `by=`, sized to `ncols=` (default: a roughly square grid) — and plots the same chart on each group's own subset of rows. When the group count doesn't tile the grid exactly (e.g. 5 groups in a 2-column grid needs 3 rows, leaving one cell over), the leftover cell is left blank rather than becoming an empty axis:
+
+```python
+penguins = pt.sample_data["penguins"]
+
+k = pt.Plotter.facet(
+    penguins, by="species", ncols=2,
+    kind="scatter", x="bill_length_mm", y="bill_depth_mm", c="island", cmap="viridis",
+    figsize=(8, 6),
+)
+k.finalize()
+k.fig
+```
+
+![Faceted scatter plot, one panel per penguin species, with the unfillable 4th grid cell left blank](images/plotting_facet.png)
+
+Each facet's axis is keyed by its group's value (e.g. `k.axd["Adelie"]`), and titled with that value by default (`titles=False` to turn that off). A `category`-dtype `by=` column keeps its own defined category order instead of being sorted; pass `sort=False` on a plain column to keep first-appearance order instead of alphabetical.
+
 ## Enhancing a plot after `finalize()` — looping over axes
 
 `k.axd` is the mosaic-key → `Axes` dict (`k.fig.axes` gives every matplotlib `Axes`, including secondary ones added via `on='X^'`). Once `.finalize()` has run, loop over either to apply the same tweak everywhere — gridlines, tick rotation, reference lines, annotations, anything matplotlib supports directly on an `Axes`:
@@ -137,6 +157,44 @@ k.fig
 
 This is the general escape hatch for anything `Plotter` doesn't expose as a kwarg — since `k.fig`/`k.axd` are plain matplotlib objects, nothing about `Plotter` stops you from dropping into regular matplotlib calls afterward (`ax.axhline()`, `ax.annotate()`, `ax.set_ylim()`, …) before the final `k.fig.savefig(...)`.
 
+### Per-axis-type fine control — branching inside the loop
+
+Branch on the axis key (or its position in `k.fig.axes`) to apply different tweaks to different panels — e.g. a percent formatter only on secondary axes, with a different fixed y-limit for primary vs. secondary panels:
+
+```python
+from matplotlib.ticker import FuncFormatter
+
+for ax_key, ax in k.axd.items():
+    if ax_key.endswith("^"):          # secondary axes (added via on="X^")
+        ax.set_ylim(0, 50)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:.0f}%"))
+    else:                              # primary axes
+        ax.set_ylim(0, 30)
+```
+
+### Data labels, highlighting, and annotations
+
+Once a chart is plotted, its matplotlib artists are sitting right there on the `Axes` to read back and tweak — e.g. `ax.patches` gives every bar as a `Rectangle`:
+
+```python
+# data label above every bar
+for patch in ax.patches:
+    height = patch.get_height()
+    ax.annotate(f"{height:.1f}", (patch.get_x() + patch.get_width() / 2, height),
+                ha="center", va="bottom", fontsize=9)
+
+# restyle a single bar after the fact (match it by its x-tick position)
+day_order = [t.get_text() for t in ax.get_xticklabels()]
+ax.patches[day_order.index("Sat")].set_facecolor("crimson")
+
+# shade a region and annotate a specific point with an arrow
+ax.axvspan(3, 6, color="orange", alpha=0.2)
+ax.annotate("peak", xy=(peak_x, peak_y), xytext=(peak_x - 2, peak_y - 40),
+            arrowprops=dict(arrowstyle="->", color="black"))
+```
+
+The same idea extends further: `ax.axhline(..., label=...)` drawn on `k.axd["A"]` *before* `.plot()`/`.finalize()` still shows up in a `consolidate_legends=True` legend; `ax.set_yticklabels([...])` rewrites tick *text* only (e.g. showing a diverging/mirrored bar chart's negative side as a positive magnitude, without touching the underlying data); `ax.inset_axes([...])` + `ax.indicate_inset_zoom(...)` embeds a fully separate zoomed-in `Axes` inside an existing panel. See [notebooks/plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb) for all of these worked out end to end.
+
 ## Other plot kinds
 
 Everything `pandas.plot()` supports works through `.plot(kind=...)`: `line`, `bar`/`barh`, `area`, `hist`, `kde`/`density`, `scatter`, `hexbin`, `pie`. A few notes:
@@ -146,6 +204,8 @@ Everything `pandas.plot()` supports works through `.plot(kind=...)`: `line`, `ba
 - `scatter`/`hexbin` don't aggregate; use `c=`/`cmap=` (scatter) or `C=`/`reduce_C_function=` (hexbin) to encode a third variable instead of `by=`.
 - `on='A'` targets a specific mosaic panel; `on='A^'` plots on a secondary y-axis sharing panel `'A'`'s x-axis.
 - `style=`/`width=` (dicts keyed by series name) set per-line dash style/line width on `line` plots — set once via `.plot()`, not as a matplotlib property afterward.
+- Each kind validates its own required kwargs up front (e.g. `kind="pie"` needs `by=`/`y=`, `kind="hist"` needs `column=`) and raises a clear `ValueError` naming what's missing, instead of a cryptic pandas error surfacing later.
+- `Plotter.supported_kwargs(kind)` lists which kwargs are ignored (with a warning) for a given kind, plus pytae's own control kwargs (`on=`, `print_data=`, `clip_data=`, `aggregate=`, …) that never get forwarded to pandas — e.g. `Plotter.supported_kwargs("scatter")`.
 
 ## `finalize()` options
 
@@ -156,3 +216,6 @@ Everything `pandas.plot()` supports works through `.plot(kind=...)`: `line`, `ba
 | `legend`, `legend_primary`, `legend_secondary` | Master switch, and per-axis-type switches for primary vs. secondary (`^`) axes |
 | `legend_loc`, `legend_frameon` | Location and frame for per-panel legends |
 | `hide_secondary_y` | Hide tick labels/spine on secondary (`^`) axes |
+| `style` | Set `False` to skip pytae's opinionated spine-hiding/blank-axis tick cleanup and leave matplotlib's own defaults untouched |
+
+`k.save(path, **kwargs)` is a thin chainable wrapper around `k.fig.savefig(path, **kwargs)`, e.g. `k.finalize().save("chart.png", dpi=150)`.

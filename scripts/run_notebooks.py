@@ -2,7 +2,8 @@
 """Execute every notebook under notebooks/ and fail if any cell raises.
 
 Run manually with: python scripts/run_notebooks.py
-Wired up as a pre-commit check via .githooks/pre-commit.
+Run automatically in CI's `notebooks` job (.github/workflows/ci.yml), gated to
+tag pushes only (i.e. before a release publishes), not on every commit/push.
 """
 import os
 import sys
@@ -26,6 +27,14 @@ def main() -> int:
     for path in notebook_paths:
         print(f"running {path.name} ... ", end="", flush=True)
         nb = nbformat.read(path, as_version=4)
+        if os.environ.get("CI"):
+            # headless CI runners have no system clipboard; no-op to_clipboard()
+            # inside the notebook's own kernel process (this script's process
+            # doesn't share memory with it, so patch via an injected cell)
+            nb.cells.insert(0, nbformat.v4.new_code_cell(
+                "import pandas as pd\n"
+                "pd.DataFrame.to_clipboard = lambda self, *a, **k: None"
+            ))
         client = NotebookClient(
             nb, timeout=120, kernel_name="python3",
             resources={"metadata": {"path": str(NOTEBOOKS_DIR)}},

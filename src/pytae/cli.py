@@ -43,6 +43,7 @@ from pytae.cli_pipeline import (
     _OrderedValue,
     _Pipeline,
 )
+from pytae.mutate import mutate  # noqa: F401  — registers pd.DataFrame.mutate
 from pytae.other_utilities import group_x, handle_missing  # noqa: F401
 from pytae.qry import qry  # noqa: F401
 from pytae.readers import get_reader, write_dataframe
@@ -243,24 +244,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", type=Path, default=None,
                          help="output path; its extension picks the format (default: .csv alongside the source file)")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
-                         help="field delimiter for reading/writing .csv/.txt/.dat/.sas7bdat (default: ',' for .csv, "
-                              "tab for .txt, '|' for .dat); not used for .parquet")
+                         help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
+                              "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
     parser.add_argument("-encoding", "--encoding", dest="encoding", default=None, metavar="ENC",
                          help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
-                              "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt/.dat); not used for .parquet")
+                              "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
+                              "not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS,...",
-                         help="load multiple named files for -merge, instead of the positional path; "
+                         help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
                               "';'-separated entries, each PATH=ALIAS optionally followed by "
                               ",dlim=/,encoding= overrides for that file, e.g. "
                               "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
-                              "requires -merge, and can't be combined with the positional path")
+                              "requires -merge, -concat, or -sql as the first operation, and can't be "
+                              "combined with the positional path")
     parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
                          help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
                          help="filter rows at this point in the pipeline using pytae qry(); dict entries, "
                               "surrounding {} optional, e.g. \"'col': ('>', 5), 'other': ['a', 'b']\"")
+    parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
+                         help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
+                              "\"new_col: expression\" entries, comma-separated, quoting the key optional "
+                              "(matches -qry); the expression is pandas eval() syntax and column names in "
+                              "it must stay unquoted, e.g. "
+                              "\"bmi: body_mass_g / bill_length_mm ** 2\"")
     parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
                          help="run a SQL query (via duckdb) against the current view at this point in "
                               "the pipeline; the view is queryable as table `df`; standard SQL identifier "
@@ -346,6 +355,7 @@ def _process_path(
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
     qry_specs: list[dict],
+    mutate_specs: list[str],
     query_specs: list[str],
     sql_specs: list[str],
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
@@ -386,6 +396,7 @@ def _process_path(
     last_idx = len(op_order) - 1
     select_iter = iter(select_specs)
     qry_iter = iter(qry_specs)
+    mutate_iter = iter(mutate_specs)
     query_iter = iter(query_specs)
     sql_iter = iter(sql_specs)
     replace_iter = iter(replace_specs)
@@ -417,6 +428,11 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "mutate":
+            err = pipeline.apply_mutate(next(mutate_iter))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "query":
             err = pipeline.apply_query(next(query_iter))
             if err:
@@ -444,7 +460,9 @@ def _process_path(
             merge_kwargs = {"how": spec["how"]}
             if spec["validate"]:
                 merge_kwargs["validate"] = spec["validate"]
-            if spec["on"] is not None:
+            if spec["how"] == "cross":
+                pass  # cross joins don't take on=/left_on=/right_on=
+            elif spec["on"] is not None:
                 missing = [c for c in spec["on"] if c not in left_df.columns or c not in right_df.columns]
                 if missing:
                     return _fail(parser, batch, f"-merge: on= column(s) not in both frames: {', '.join(missing)}")
@@ -761,6 +779,7 @@ def main(argv: list[str] | None = None) -> int:
     rename_map = parse_rename(args.rename) if args.rename else None
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
+    mutate_specs = list(args.mutate or [])
     query_specs = list(args.query or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
@@ -782,7 +801,7 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                qry_specs=qry_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_map=rename_map, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
@@ -799,7 +818,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    qry_specs=qry_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                    qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_map=rename_map)
         except UnicodeError as exc:
             failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
