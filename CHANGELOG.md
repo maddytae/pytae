@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- `.dat` files now default to `latin-1` encoding (both reading and writing) instead of falling through to pandas' own inference. `.txt`/`.csv` are unaffected (still pandas' default inference); `-encoding`/`encoding=` still override it explicitly either way.
+
 ### Added
 - `mutate()` / `-mutate`: create or overwrite columns from a `qry()`-style spec string, each entry evaluated in order via pandas `eval()` — a plain formula per column, no lambda required (e.g. `df.mutate("bmi: body_mass_g / bill_length_mm ** 2")`, or `-mutate "bmi: body_mass_g / bill_length_mm ** 2"` on the CLI). Entries are `"new_col: expression"`, comma-separated for multiple in one call; quoting the key is optional (matches `-qry`), but column names *inside* the expression must stay unquoted, since `eval()` treats a quoted name as a string literal, not a column reference. Later entries can reference columns derived by earlier entries in the same call. `eval()` has no if/else — a two-branch numeric condition can be built with boolean arithmetic, but string outcomes or 3+ branches need plain pandas (`df.assign(col=lambda d: np.where(...))`) instead. New `notebooks/mutate.ipynb` walkthrough.
 - `mutate()` / `-mutate`: dplyr-style `if_else(condition, true_value, false_value)` and `case_when(cond1: val1, cond2: val2, ..., True: default)` expression forms, e.g. `df.mutate("weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')")` or `df.mutate("size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', True: 'small')")`. These are detected by name and evaluated via `np.where()`/`np.select()` instead of `eval()` (which cannot express conditionals), closing the string-outcome/3+ branch gap noted above without needing a lambda. `case_when()` conditions are checked in order, first match wins; the literal `True` is an optional catch-all default (matches dplyr's `TRUE ~ default`) and must be listed last — unmatched rows are `NaN` without it. `notebooks/mutate.ipynb` updated with `if_else()`/`case_when()` examples in place of the old "no if/else" limitation note.
@@ -35,6 +38,9 @@ A full-repo review (`.grok/full-review-2026-09-20.md`) surfaced ~20 issues; all 
 - README.md/docs/LIBRARY.md's scatter example now uses `c=`/`cmap=` (which `kind="scatter"` actually reads) instead of `by=` (which it ignores).
 - `-file`'s help text no longer claims it "requires -merge" (it also accepts `-concat`/`-sql` as the first op); `-dlim`'s help/docs no longer claim it applies to `.sas7bdat` (which has no delimiter concept); `-file`'s "need at least two entries" error message no longer name-drops `-merge` specifically.
 - Added `.venv/` to `.gitignore`; added Python 3.11 to the CI test matrix so it matches the `classifiers` already listed in `pyproject.toml`.
+
+### Performance
+- `-sql`: when it's the first thing to touch the view, duckdb now scans the source `.parquet`/`.csv`/`.txt`/`.dat` file **directly** instead of first materializing it through pandas — measured ~2-4x faster on a 5M-row benchmark (parquet: ~1.5s → ~0.5s; CSV: ~2.5s → ~0.6s), and correctness-verified identical results. Falls back to the previous pandas-backed-view behavior (unchanged) when something earlier in the pipeline already ran, `-progress` was passed, the source is `.sas7bdat` (no native duckdb reader), or a non-UTF-8 `-encoding` was given.
 
 
 ### Fixed

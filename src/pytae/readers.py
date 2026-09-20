@@ -263,6 +263,10 @@ _READERS = {
 # default field separator for TxtReader-backed suffixes (.txt/.dat)
 _TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
 
+# default text encoding for TxtReader-backed suffixes; only .dat has one (.txt still
+# falls through to pandas' own encoding inference, i.e. None)
+_TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
+
 
 def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None):
     suffix = path.suffix.lower()
@@ -274,7 +278,11 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
     if cls is CsvReader:
         return CsvReader(path, sep=sep or ",", encoding=encoding)
     if cls is TxtReader:
-        return TxtReader(path, sep=sep or _TXT_DEFAULT_SEP[suffix], encoding=encoding)
+        return TxtReader(
+            path,
+            sep=sep or _TXT_DEFAULT_SEP[suffix],
+            encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
+        )
     if cls is SasReader:
         return SasReader(path, encoding=encoding)
     return cls(path)
@@ -292,7 +300,12 @@ def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, enc
     elif suffix == ".csv":
         _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress)
     elif suffix in _TXT_DEFAULT_SEP:
-        _write_delimited(df, dest, sep=sep or _TXT_DEFAULT_SEP[suffix], encoding=encoding, progress=progress)
+        _write_delimited(
+            df, dest,
+            sep=sep or _TXT_DEFAULT_SEP[suffix],
+            encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
+            progress=progress,
+        )
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")

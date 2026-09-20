@@ -70,6 +70,30 @@ def test_dat_reader_pipe_delimited(tmp_path):
     pd.testing.assert_frame_equal(reader.to_dataframe(), df)
 
 
+def test_dat_reader_defaults_to_latin1_encoding(tmp_path):
+    path = tmp_path / "t.dat"
+    df = pd.DataFrame({"name": ["café", "naïve"]})
+    df.to_csv(path, sep="|", index=False, encoding="latin-1")
+
+    reader = get_reader(path)
+    assert reader.encoding == "latin-1"
+    pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+
+
+def test_dat_reader_encoding_override():
+    path = Path("dummy.dat")
+    assert get_reader(path).encoding == "latin-1"
+    assert get_reader(path, encoding="utf-8").encoding == "utf-8"
+
+
+def test_txt_reader_encoding_defaults_to_none(tmp_path):
+    path = tmp_path / "t.txt"
+    df = _frame()
+    df.to_csv(path, sep="\t", index=False)
+    reader = get_reader(path)
+    assert reader.encoding is None
+
+
 def test_write_dataframe_csv_and_parquet(tmp_path):
     df = _frame()
     csv_path = tmp_path / "out.csv"
@@ -135,6 +159,14 @@ def test_write_dataframe_dat_uses_pipe_delimiter(tmp_path):
     dat_path = tmp_path / "out.dat"
     write_dataframe(df, dat_path)
     pd.testing.assert_frame_equal(pd.read_csv(dat_path, sep="|"), df)
+
+
+def test_write_dataframe_dat_defaults_to_latin1(tmp_path):
+    df = pd.DataFrame({"name": ["café", "naïve"]})
+    dat_path = tmp_path / "out.dat"
+    write_dataframe(df, dat_path)
+    pd.testing.assert_frame_equal(pd.read_csv(dat_path, sep="|", encoding="latin-1"), df)
+    pd.testing.assert_frame_equal(get_reader(dat_path).to_dataframe(), df)
 
 
 def test_unsupported_reader_and_writer(tmp_path):

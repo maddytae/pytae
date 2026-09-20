@@ -1212,6 +1212,56 @@ def test_sql_invalid_query_errors(tmp_path, capsys):
     assert "-sql" in capsys.readouterr().err
 
 
+def test_sql_first_op_scans_parquet_directly(tmp_path, capsys):
+    # -sql as the very first op should give the same result whether duckdb scans the
+    # source file directly (fast path) or pandas materializes it first (fallback).
+    path = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]}).to_parquet(path, index=False)
+
+    exit_code = cli.main([str(path), "-sql", "select b from df where a > 1"])
+
+    out = capsys.readouterr().out.strip().splitlines()
+    assert exit_code == 0
+    assert out[1:] == ["y", "z"]
+
+
+def test_sql_first_op_respects_nrows(tmp_path, capsys):
+    path = tmp_path / "data.parquet"
+    pd.DataFrame({"a": range(10)}).to_parquet(path, index=False)
+
+    exit_code = cli.main([str(path), "-nrows", "3", "-sql", "select * from df"])
+
+    out = capsys.readouterr().out.strip().splitlines()
+    assert exit_code == 0
+    assert len(out) - 1 == 3  # header + 3 rows
+
+
+def test_sql_first_op_with_progress_still_works(tmp_path, capsys):
+    # -progress forces the pandas-materialize fallback instead of the direct duckdb scan.
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
+
+    exit_code = cli.main([path, "-progress", "-sql", "select * from df where a > 1"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "reading" in out  # progress line proves the pandas fallback path ran
+    table_lines = [line for line in out.strip().splitlines() if "reading" not in line]
+    assert len(table_lines) - 1 == 2
+
+
+def test_sql_first_op_with_custom_encoding_still_works(tmp_path, capsys):
+    # A non-utf8 encoding forces the pandas-materialize fallback (duckdb's CSV reader
+    # doesn't support arbitrary encodings the way pandas does).
+    path = tmp_path / "data.csv"
+    pd.DataFrame({"a": [1, 2], "name": ["café", "naïve"]}).to_csv(path, index=False, encoding="latin-1")
+
+    exit_code = cli.main([str(path), "-encoding", "latin-1", "-sql", "select * from df"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "café" in out
+
+
 
 def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))

@@ -248,7 +248,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
     parser.add_argument("-encoding", "--encoding", dest="encoding", default=None, metavar="ENC",
                          help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
-                              "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt/.dat); not used for .parquet")
+                              "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
+                              "not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS,...",

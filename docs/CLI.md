@@ -275,6 +275,8 @@ pytae penguins.parquet -mutate "size_class: case_when(body_mass_g >= 4500: 'larg
 
 Unlike `-qry`, this is **standard SQL**, not pytae's dict syntax — column names with spaces need **double** quotes (`"bill length mm"`), not single quotes. Single quotes are string literals in SQL, e.g. `'Adelie'`; using them around a column name either errors or silently compares against a constant string instead of the column.
 
+**Performance:** when `-sql` is the first thing to touch the view (nothing has filtered/selected/aggregated yet), duckdb scans the source `.parquet`/`.csv`/`.txt`/`.dat` file **directly** instead of first loading it into pandas — often several times faster, especially on CSV. This fast path is skipped (falling back to the normal pandas-backed view, same as before) when: something earlier in the pipeline already ran, `-progress` was passed, the source is `.sas7bdat` (no native duckdb reader), or a non-UTF-8 `-encoding` was given (duckdb's CSV reader doesn't support arbitrary encodings). `-nrows` still applies either way.
+
 ```bash
 pytae penguins.parquet -sql "select species, body_mass_g from df where body_mass_g > 3500"
 pytae penguins.parquet -sql "select species, avg(body_mass_g) as avg_mass from df group by species"
@@ -517,7 +519,7 @@ pytae penguins.csv -convert -o penguins.parquet
 pytae data.sas7bdat -convert -o data.parquet          # character columns decoded as utf-8
 pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
 pytae data.txt -dlim "|" -convert -o data.csv
-pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter
+pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter, latin-1 encoding
 pytae 'data/*.parquet' -convert
 pytae penguins.parquet -convert -rename "old_name:new_name,another:clean"
 pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      # spaces in a name are fine — only "," and ":" are delimiters
@@ -531,7 +533,7 @@ pytae data.csv -encoding latin-1 -convert -o data.parquet
 > pytae data.csv -dlim ";" -convert -o data.parquet
 > ```
 
-> **`-encoding`:** if the file can't be decoded with the current encoding, pytae reports the
+> **`-encoding`:** default is `utf-8` for `.sas7bdat`, `latin-1` for `.dat`, and pandas' own inference for `.csv`/`.txt` (usually `utf-8`). If the file can't be decoded with the current encoding, pytae reports the
 > failing encoding and suggests common alternatives to try (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`).
 
 ---
@@ -989,7 +991,7 @@ pytae 'folder/*.parquet' -convert
 | `-o, --output PATH` | Output path for `-convert` |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/dat (not sas7bdat) |
-| `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt/dat: pandas infer) |
+| `-encoding ENC` | Text encoding (SAS default: utf-8; dat default: latin-1; csv/txt: pandas infer) |
 | `-rename old:new,...` | Rename columns on convert |
 
 **Output formatting**
