@@ -120,7 +120,7 @@ Bare tokens are column names or `start:end` slices. `key=value` tokens map to th
 |---|---|
 | `species` | exact column name |
 | `species,island` | several exact names |
-| `'bill length mm'` | name with spaces (quote it) |
+| `bill length mm` or `'bill length mm'` | name with spaces — quoting is optional (a space is never a token separator, only `,` is); quoting only becomes *necessary* if the name itself contains a literal comma |
 | `species:bill_length_mm` | slice from `species` through `bill_length_mm` |
 | `dtype=numeric` | add this dtype (`numeric`, `non_numeric`, `object`, `datetime`, `bool`, `category`) |
 | `contains=bill` | add names containing `bill` |
@@ -141,7 +141,10 @@ df.select(exclude_dtype="non_numeric")
 ```bash
 # exact names
 pytae penguins.parquet -select species,island -head 5
-# illustrative: quoting a name with spaces (the bundled penguins columns use underscores, not spaces)
+# illustrative: a name with spaces works whether or not it's quoted (the bundled penguins
+# columns use underscores, not spaces) -- quoting here is just for readability/consistency
+# with -qry's dict syntax, not required by -select's own parsing
+pytae data.parquet -select "bill length mm,body mass g" -describe
 pytae data.parquet -select "'bill length mm','body mass g'" -describe
 
 # regex (always regex= — a bare ^bill is an unknown column)
