@@ -11,7 +11,7 @@ penguins = pt.sample("penguins")          # or pt.sample_data["penguins"]
 
 ## 1) Plotting — `Plotter`
 
-Method-chainable plots on top of `pandas.plot`. Requires matplotlib (`pip install pytae[plot]`). See **[docs/PLOTTING.md](PLOTTING.md)** for more examples (bar, pie, multi-panel dashboards, …) with sample data, or [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb) for the full notebook.
+Method-chainable plots on top of `pandas.plot`. Requires matplotlib (`pip install pytae[plot]`). See **[docs/PLOTTING.md](PLOTTING.md)** for more examples (bar, pie, multi-panel dashboards, faceting, …) with sample data, or [plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb) for the full notebook.
 
 ```python
 from pytae.plotting import Plotter
@@ -19,6 +19,9 @@ from pytae.plotting import Plotter
 Plotter().data(penguins).plot(
     x="bill_length_mm", y="bill_depth_mm", kind="scatter", c="species", cmap="viridis"
 ).finalize()
+
+# small multiples: one panel per group, grid auto-sized (leftover cells left blank)
+Plotter.facet(penguins, by="species", ncols=2, x="bill_length_mm", y="bill_depth_mm", kind="scatter")
 ```
 
 ## 2) Filtering — `qry()`

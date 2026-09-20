@@ -4,7 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `Plotter.facet(df, by, ncols=None, **plot_kwargs)`: build a small-multiples grid, one axis per distinct value of `by`, plotting the same chart (`x=`/`y=`/`kind=`/etc.) on each group's own subset of rows. Grid defaults to a roughly square layout (`ceil(sqrt(n))` columns) when `ncols=` is omitted; when the group count doesn't tile the grid exactly (e.g. 5 groups in a 2-column grid needs 3 rows, one cell left over), the leftover cell(s) are left blank rather than becoming empty/unused axes (`plt.subplot_mosaic`'s `"."` blank-cell marker). Each facet's axis is keyed by its group's stringified value (e.g. `plotter.axd["Adelie"]`) and titled with it by default (`titles=False` to disable); a `category`-dtype `by=` column keeps its own defined category order instead of being sorted (`sort=False` for first-appearance order on a plain column). Returns a regular `Plotter` — chain `.finalize()` etc. as usual. New docs/PLOTTING.md "Faceting" section.
+- `Plotter`: each plot kind now validates its own required kwargs up front (e.g. `kind="scatter"` needs `x=`/`y=`, `kind="pie"` needs `by=`/`y=`, `kind="hist"` needs `column=`) and raises a clear `ValueError` naming what's missing, instead of a cryptic pandas `KeyError` surfacing later from deep inside pivoting.
+- `Plotter.save(path, **kwargs)`: thin chainable wrapper around `fig.savefig(path, **kwargs)`.
+- `Plotter.supported_kwargs(kind)`: lists which kwargs are ignored (with a warning) for a given plot kind, plus pytae's own control kwargs (`on=`, `print_data=`, `clip_data=`, `aggregate=`, …) that are never forwarded to pandas.
+- `Plotter.finalize(style=True)`: set `style=False` to skip pytae's opinionated spine-hiding/blank-axis tick cleanup and leave matplotlib's own defaults untouched.
+
 ### Changed
+- `Plotter` internals: the duplicated per-kind "filter kwargs + warn about unsupported ones" boilerplate across `_plot_scatter`/`_plot_hexbin`/`_plot_pie`/`_plot_line`/`_plot_other`/`_plot_density`/`_plot_hist` is now driven by one `_KIND_SPECS` table + a shared `_prepare_plot_kwargs()` helper — no behavior change, just less duplicated code (also fixes `_plot_other` computing the same pivot twice). `_adjust_ticks_and_spines()` now detects a blank/unplotted axis via matplotlib's own `Axes.has_data()` instead of pattern-matching its default tick label text (`['0.0', '0.2', ..., '1.0']`), which could previously misfire if real data happened to span exactly that range.
 - `.dat` files now default to `latin-1` encoding (both reading and writing) instead of falling through to pandas' own inference. `.txt`/`.csv` are unaffected (still pandas' default inference); `-encoding`/`encoding=` still override it explicitly either way.
 
 ### Added

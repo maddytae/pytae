@@ -1,7 +1,76 @@
+import math
 import warnings
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+
+# pytae's own control kwargs -- these drive Plotter's behavior directly and are
+# never forwarded to pandas.plot() (see _prepare_plot_kwargs/_filter_plot_kwargs).
+_CONTROL_KWARGS = ['on', 'print_data', 'clip_data', 'secondary_y', 'aggregate']
+
+# Per-kind config: `strip` = last_kwargs keys to remove before calling pandas'
+# own .plot(kind=...) (pytae-only knobs that aren't real pandas.plot() kwargs for
+# that kind); `unsupported` = {kwarg: warning message} for kwargs that don't
+# apply to this kind at all (warned about, then dropped via `strip`).
+_KIND_SPECS = {
+    'scatter': {
+        'strip': ['by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'unsupported': {
+            'aggfunc': "Aggregation is not supported for scatter plots. The 'aggfunc' argument will be ignored.",
+            'dropna': "The 'dropna' argument is not applicable to scatter plots and will be ignored.",
+            'by': "Use 'c' and 'cmap' to split the scatter plot by a particular column. The 'by' argument will be ignored.",
+        },
+    },
+    'hexbin': {
+        'strip': ['by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'unsupported': {
+            'aggfunc': "Aggregation is not supported for hex plots. Use reduce_C_function instead.",
+            'dropna': "The 'dropna' argument is not applicable to hex plots and will be ignored.",
+            'by': "Use 'c' and 'cmap' to split the hex plot by a particular column. The 'by' argument will be ignored.",
+        },
+    },
+    'pie': {
+        'strip': ['x', 'by', 'aggfunc', *_CONTROL_KWARGS],
+        'unsupported': {},
+    },
+    'line': {
+        'strip': ['y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'unsupported': {},
+    },
+    'other': {
+        'strip': ['y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'unsupported': {},
+    },
+    'kde': {
+        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'unsupported': {
+            'aggfunc': "Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.",
+            'dropna': "The 'dropna' argument is not applicable to kde/density plots and will be ignored.",
+        },
+    },
+    'hist': {
+        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
+        'unsupported': {
+            'aggfunc': "Aggregation is not supported for hist plot. The 'aggfunc' argument will be ignored.",
+            'dropna': "The 'dropna' argument is not applicable to hist plots and will be ignored.",
+        },
+    },
+}
+_KIND_SPECS['density'] = _KIND_SPECS['kde']  # 'kde' and 'density' are aliases
+
+# Kwargs each kind needs set (via .data()/.plot(x=, y=, by=, column=, ...)) before
+# it can render at all -- checked up front so a missing one raises a clear pytae
+# error instead of a cryptic pandas KeyError deep inside get_pivot_data()/etc.
+_REQUIRED_KWARGS = {
+    'scatter': ['x', 'y'],
+    'hexbin': ['x', 'y'],
+    'line': ['x', 'y'],
+    'other': ['x', 'y'],
+    'pie': ['by', 'y'],
+    'kde': ['by', 'column'],
+    'density': ['by', 'column'],
+    'hist': ['column'],
+}
 
 class Plotter:
     """
@@ -34,9 +103,68 @@ class Plotter:
         self.last_kwargs = {} #Reset kwargs when new data is chained!
         return self
 
+    @classmethod
+    def facet(cls, df, by, *, ncols=None, sort=True, titles=True, figsize=None, aggregate=True, **plot_kwargs):
+        """Build a small-multiples grid, one axis per distinct value of `by`, and plot
+        the same chart (**plot_kwargs, e.g. x=/y=/kind=) on each facet's own subset of
+        rows. A grid isn't always exactly fillable (e.g. 5 groups doesn't tile a 2x3
+        rectangle) -- the leftover cell(s) are left blank rather than turned into
+        empty/unused axes.
+
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            The data to facet.
+        by : str
+            Column whose distinct values become one facet (axis) each.
+        ncols : int, optional
+            Columns in the grid. Defaults to a roughly square layout (ceil(sqrt(n))).
+        sort : bool, optional
+            Sort group values (default True). Ignored for a `category` dtype column,
+            which always uses its own defined category order.
+        titles : bool, optional
+            Set each facet's axis title to its group value (default True).
+        figsize, aggregate :
+            Passed straight through to the underlying Plotter().
+        **plot_kwargs :
+            Passed straight through to .plot() for every facet, e.g. x=, y=, kind=.
+
+        Returns:
+        --------
+        Plotter
+            A regular Plotter instance (chain `.finalize()` etc. as usual); `.axd` is
+            keyed by the stringified group values, e.g. `plotter.axd['Adelie']`.
+        """
+        if isinstance(df[by].dtype, pd.CategoricalDtype):
+            present = set(df[by].dropna().unique())
+            groups = [g for g in df[by].cat.categories if g in present]
+        else:
+            groups = list(pd.unique(df[by].dropna()))
+            if sort:
+                groups = sorted(groups)
+        if not groups:
+            raise ValueError(f"facet: no groups found in column '{by}'")
+
+        keys = [str(g) for g in groups]
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"facet: group values in '{by}' produce duplicate axis keys once stringified: {keys}")
+
+        ncols = ncols or math.ceil(math.sqrt(len(groups)))
+        nrows = math.ceil(len(groups) / ncols)
+        cells = keys + ["."] * (nrows * ncols - len(keys))  # pad leftover cells blank -- grid may not tile exactly
+        grid = [cells[i:i + ncols] for i in range(0, len(cells), ncols)]
+
+        plotter = cls(mosaic=grid, figsize=figsize, aggregate=aggregate)
+        for group, key in zip(groups, keys):
+            plotter.data(df[df[by] == group]).plot(on=key, **plot_kwargs)
+            if titles:
+                plotter.axd[key].set_title(str(group))
+        return plotter
+
     def plot(self, **kwargs):
 
         self._update_kwargs(kwargs)
+        self._validate_required_kwargs()
         ax = self._get_target_axis()
 
         if self.kind == 'scatter':
@@ -106,28 +234,41 @@ class Plotter:
                 raise ValueError(f"Unknown mosaic key '{ax_key}'; available: {list(self.axd)}")
             return self.axd[ax_key]
 
+    def _validate_required_kwargs(self):
+        """Raise a clear error if a kwarg this kind needs (x=/y=/by=/column=) was
+        never set, instead of letting a cryptic pandas KeyError surface later
+        from deep inside get_pivot_data()/etc."""
+        spec_key = self.kind if self.kind in _REQUIRED_KWARGS else 'other'
+        missing = [name for name in _REQUIRED_KWARGS[spec_key] if getattr(self, name, None) is None]
+        if missing:
+            needed = ', '.join(f"{name}=" for name in missing)
+            raise ValueError(f"Plotter: kind='{self.kind}' needs {needed}")
+
+    def _prepare_plot_kwargs(self, spec_key):
+        """Warn about any kwarg unsupported by this kind (see _KIND_SPECS), then
+        return last_kwargs with pytae's own control/unsupported keys stripped
+        so only real pandas.plot() kwargs remain."""
+        spec = _KIND_SPECS[spec_key]
+        for key, message in spec['unsupported'].items():
+            if key in self.last_kwargs:
+                warnings.warn(message)
+        return self._filter_plot_kwargs(spec['strip'])
+
     def _plot_scatter(self, ax):
         """Plot a scatter chart."""
-        plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
+        plot_dict = self._prepare_plot_kwargs('scatter')
         self._store_plot_kwargs(ax, plot_dict)
-        
-        if 'aggfunc' in self.last_kwargs:
-            warnings.warn("Aggregation is not supported for scatter plots. The 'aggfunc' argument will be ignored.")
-        if 'dropna' in self.last_kwargs:
-            warnings.warn("The 'dropna' argument is not applicable to scatter plots and will be ignored.")
-        if 'by' in self.last_kwargs:
-            warnings.warn("Use 'c' and 'cmap' to split the scatter plot by a particular column. The 'by' argument will be ignored.")
         k = self.df.copy()
-        
+
         c = plot_dict.get('c', None)
         if c:
             k[c] = k[c].astype('category')
         self.ax = k.plot(ax=ax, **plot_dict)
         self._handle_data_output(k)
-            
+
     def _plot_pie(self, ax):
         """Plot a pie chart."""
-        plot_dict = self._filter_plot_kwargs(['x', 'by', 'aggfunc', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
+        plot_dict = self._prepare_plot_kwargs('pie')
         self._store_plot_kwargs(ax, plot_dict)
         pie_df = self.df[[self.by, self.y]].groupby(self.by, observed=True, dropna=self.dropna).agg({self.y: self.aggfunc})
         if 'colors' in self.last_kwargs:
@@ -138,20 +279,14 @@ class Plotter:
 
     def _plot_hexbin(self, ax):
         """Plot a hexbin chart."""
-        plot_dict = self._filter_plot_kwargs(['by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
+        plot_dict = self._prepare_plot_kwargs('hexbin')
         self._store_plot_kwargs(ax, plot_dict)
-        if 'aggfunc' in self.last_kwargs:
-            warnings.warn("Aggregation is not supported for hex plots. Use reduce_C_function instead.")
-        if 'dropna' in self.last_kwargs:
-            warnings.warn("The 'dropna' argument is not applicable to hex plots and will be ignored.")
-        if 'by' in self.last_kwargs:
-            warnings.warn("Use 'c' and 'cmap' to split the hex plot by a particular column. The 'by' argument will be ignored.")
         self.ax = self.df.plot(ax=ax, **plot_dict)
         self._handle_data_output(self.df)
 
     def _plot_line(self, ax):
         """Plot a line chart."""
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
+        plot_dict = self._prepare_plot_kwargs('line')
         self._store_plot_kwargs(ax, plot_dict)
         style = plot_dict.pop('style', None)
         width = plot_dict.pop('width', None)
@@ -174,20 +309,17 @@ class Plotter:
 
     #bar, barh, area
     def _plot_other(self, ax):
-        plot_dict = self._filter_plot_kwargs(['y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
+        plot_dict = self._prepare_plot_kwargs('other')
         self._store_plot_kwargs(ax, plot_dict)
-        self.ax = self.get_pivot_data().plot(ax=ax, **plot_dict)
-        self._handle_data_output(self.get_pivot_data())
-    
+        pivot_data = self.get_pivot_data()
+        self.ax = pivot_data.plot(ax=ax, **plot_dict)
+        self._handle_data_output(pivot_data)
+
     #kde, density
     def _plot_density(self, ax):
         """Plot a density or KDE chart."""
-        plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
+        plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
-        if 'aggfunc' in self.last_kwargs:
-            warnings.warn("Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.")
-        if 'dropna' in self.last_kwargs:
-            warnings.warn("The 'dropna' argument is not applicable to kde/density plots and will be ignored.")
         k = self.df.pivot(columns=self.by, values=self.column)
         self.ax = k.plot(ax=ax, **plot_dict)
         self._handle_data_output(k)
@@ -195,12 +327,8 @@ class Plotter:
     #hist
     def _plot_hist(self, ax):
         """Plot a histogram."""
-        plot_dict = self._filter_plot_kwargs(['x', 'y', 'by', 'aggfunc', 'dropna', 'on', 'print_data', 'clip_data', 'column', 'secondary_y','aggregate'])
+        plot_dict = self._prepare_plot_kwargs('hist')
         self._store_plot_kwargs(ax, plot_dict)
-        if 'aggfunc' in self.last_kwargs:
-            warnings.warn("Aggregation is not supported for hist plot. The 'aggfunc' argument will be ignored.")
-        if 'dropna' in self.last_kwargs:
-            warnings.warn("The 'dropna' argument is not applicable to hist plots and will be ignored.")
         k = self.df.copy()
         if self.by:
             k = k[[self.by, self.column]]
@@ -282,7 +410,8 @@ class Plotter:
         self.plot_kwargs_store[ax.get_label()] = plot_dict
 
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10, hide_secondary_y=False, 
-                 legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False):
+                 legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False,
+                 style=True):
         """
         Finalize the plot with layout adjustments and legend settings.
     
@@ -308,6 +437,9 @@ class Plotter:
                 Default is 'best'.
             legend_frameon (bool, optional): If True, display a frame around legends (both consolidated and 
                 per-axis). Default is False.
+            style (bool, optional): If True (default), apply pytae's opinionated spine-hiding and blank-axis
+                tick cleanup (see _hide_spines()/_adjust_ticks_and_spines()). Set False to leave matplotlib's
+                own default spines/ticks untouched.
     
         Returns:
             Plotter: Self, for method chaining.
@@ -336,8 +468,9 @@ class Plotter:
         self.bbox_to_anchor = bbox_to_anchor
         self.ncols = ncols
         
-        self._hide_spines()
-        self._adjust_ticks_and_spines()
+        if style:
+            self._hide_spines()
+            self._adjust_ticks_and_spines()
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
                             legend_loc=legend_loc, legend_frameon=legend_frameon)
         
@@ -354,7 +487,33 @@ class Plotter:
         
         self.fig.tight_layout()
         return self
-    
+
+    def save(self, path, **kwargs):
+        """Save the figure (thin wrapper around fig.savefig()). Chainable, e.g.
+        `Plotter().data(df).plot(...).finalize().save('out.png')`."""
+        self.fig.savefig(path, **kwargs)
+        return self
+
+    @classmethod
+    def supported_kwargs(cls, kind):
+        """Describe which kwargs are ignored (with a warning) for a given plot
+        `kind`, and which pytae-only control kwargs are never forwarded to
+        pandas.plot() at all. Everything else in a .plot() call is passed
+        straight through to the matching pandas.plot(kind=...) call, so see
+        pandas' own docs for the full list of what that kind itself accepts.
+
+        Returns:
+        --------
+        dict
+            {'unsupported': [...], 'pytae_controls': [...]}
+        """
+        spec_key = 'density' if kind == 'kde' else kind
+        spec = _KIND_SPECS.get(spec_key, _KIND_SPECS['other'])
+        return {
+            'unsupported': sorted(spec['unsupported']),
+            'pytae_controls': sorted(set(spec['strip']) - set(spec['unsupported'])),
+        }
+
     def _hide_spines(self):
         """Hide all spines by default, with adjustments for visibility."""
         for ax in self.fig.axes:
@@ -371,13 +530,17 @@ class Plotter:
                 spine.set_visible(False)
     
     def _adjust_ticks_and_spines(self):
-        """Adjust tick visibility and spine settings based on labels."""
-        default_labels = ['0.0', '0.2', '0.4', '0.6', '0.8', '1.0']
+        """Adjust tick visibility and spine settings based on whether anything was
+        actually plotted on each axis -- using matplotlib's own Axes.has_data()
+        rather than pattern-matching its default blank-axis tick label text
+        (fragile: real data spanning exactly 0-1 in 0.2 steps would coincidentally
+        match the old hardcoded default_labels list and be wrongly treated as blank)."""
         for ax in self.fig.axes:
             ax_label = ax.get_label()
             if '<colorbar>' in ax_label or ax_label == '':
                 continue
-            
+
+            blank = not ax.has_data()
             for spine, axis, label_position in [
                 ('top', ax.xaxis, 'top'),
                 ('bottom', ax.xaxis, 'bottom'),
@@ -389,10 +552,10 @@ class Plotter:
                 
                 if (label_position == axis.get_label_position() and 
                     labels and 
-                    (labels != default_labels)):
+                    not blank):
                     ax.spines[spine].set_visible(True)
                     
-                if labels == default_labels:
+                if blank:
                     tick_params_position = 'labeltop' if label_position == 'top' else (
                         'labelbottom' if label_position == 'bottom' else (
                         'labelleft' if label_position == 'left' else 'labelright'

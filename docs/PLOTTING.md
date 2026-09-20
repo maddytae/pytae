@@ -116,6 +116,26 @@ k.fig
 
 ![Four-panel dashboard combining line, scatter, area, and kde plots](images/plotting_dashboard.png)
 
+## Faceting — one panel per group with `Plotter.facet()`
+
+For "one small chart per category" (small multiples), `Plotter.facet()` builds the mosaic grid for you — one axis per distinct value of `by=`, sized to `ncols=` (default: a roughly square grid) — and plots the same chart on each group's own subset of rows. When the group count doesn't tile the grid exactly (e.g. 5 groups in a 2-column grid needs 3 rows, leaving one cell over), the leftover cell is left blank rather than becoming an empty axis:
+
+```python
+penguins = pt.sample_data["penguins"]
+
+k = pt.Plotter.facet(
+    penguins, by="species", ncols=2,
+    kind="scatter", x="bill_length_mm", y="bill_depth_mm", c="island", cmap="viridis",
+    figsize=(8, 6),
+)
+k.finalize()
+k.fig
+```
+
+![Faceted scatter plot, one panel per penguin species, with the unfillable 4th grid cell left blank](images/plotting_facet.png)
+
+Each facet's axis is keyed by its group's value (e.g. `k.axd["Adelie"]`), and titled with that value by default (`titles=False` to turn that off). A `category`-dtype `by=` column keeps its own defined category order instead of being sorted; pass `sort=False` on a plain column to keep first-appearance order instead of alphabetical.
+
 ## Enhancing a plot after `finalize()` — looping over axes
 
 `k.axd` is the mosaic-key → `Axes` dict (`k.fig.axes` gives every matplotlib `Axes`, including secondary ones added via `on='X^'`). Once `.finalize()` has run, loop over either to apply the same tweak everywhere — gridlines, tick rotation, reference lines, annotations, anything matplotlib supports directly on an `Axes`:
@@ -146,6 +166,8 @@ Everything `pandas.plot()` supports works through `.plot(kind=...)`: `line`, `ba
 - `scatter`/`hexbin` don't aggregate; use `c=`/`cmap=` (scatter) or `C=`/`reduce_C_function=` (hexbin) to encode a third variable instead of `by=`.
 - `on='A'` targets a specific mosaic panel; `on='A^'` plots on a secondary y-axis sharing panel `'A'`'s x-axis.
 - `style=`/`width=` (dicts keyed by series name) set per-line dash style/line width on `line` plots — set once via `.plot()`, not as a matplotlib property afterward.
+- Each kind validates its own required kwargs up front (e.g. `kind="pie"` needs `by=`/`y=`, `kind="hist"` needs `column=`) and raises a clear `ValueError` naming what's missing, instead of a cryptic pandas error surfacing later.
+- `Plotter.supported_kwargs(kind)` lists which kwargs are ignored (with a warning) for a given kind, plus pytae's own control kwargs (`on=`, `print_data=`, `clip_data=`, `aggregate=`, …) that never get forwarded to pandas — e.g. `Plotter.supported_kwargs("scatter")`.
 
 ## `finalize()` options
 
@@ -156,3 +178,6 @@ Everything `pandas.plot()` supports works through `.plot(kind=...)`: `line`, `ba
 | `legend`, `legend_primary`, `legend_secondary` | Master switch, and per-axis-type switches for primary vs. secondary (`^`) axes |
 | `legend_loc`, `legend_frameon` | Location and frame for per-panel legends |
 | `hide_secondary_y` | Hide tick labels/spine on secondary (`^`) axes |
+| `style` | Set `False` to skip pytae's opinionated spine-hiding/blank-axis tick cleanup and leave matplotlib's own defaults untouched |
+
+`k.save(path, **kwargs)` is a thin chainable wrapper around `k.fig.savefig(path, **kwargs)`, e.g. `k.finalize().save("chart.png", dpi=150)`.
