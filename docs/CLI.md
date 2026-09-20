@@ -264,6 +264,9 @@ pytae penguins.parquet -mutate "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 
 # key quoting optional (matches -qry); string literals in the expression still need quotes
 pytae penguins.parquet -mutate "is_adelie: species == 'Adelie'" -select "species,is_adelie" -head
 
+# string concat: pandas eval does not support + for strings; use .str.cat
+pytae penguins.parquet -mutate "dummy: species.str.cat(island, sep='_')" -select "species,island,dummy" -head
+
 # chains into -qry, filtering on a column just mutated
 pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -qry "bmi: ('>', 2)" -select "species,bmi" -head
 
