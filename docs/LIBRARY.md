@@ -23,13 +23,15 @@ Plotter().data(penguins).plot(
 
 ## 2) Filtering — `qry()`
 
-Dict-based filters (equality, lists, `in` / `not in`, comparisons, intervals). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
+Dict-based filters (equality, lists, `in` / `not in`, comparisons, intervals, string matching, null checks). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
 
 ```python
 penguins.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
 penguins.qry({"species": ["Adelie", "Gentoo"]})
 penguins.qry({"species": ("not in", ["Adelie"])})
 penguins.qry({"body_mass_g": "[3000,4000]"})
+penguins.qry({"species": ("startswith", "Ad")})   # also endswith, contains, regex (search-anywhere)
+penguins.qry({"sex": ("notna",)})                  # also isna \u2014 one-element tuple, no value
 ```
 
 ## 3) Selection — `select()`
@@ -78,6 +80,13 @@ penguins.mutate("bmi: body_mass_g / bill_length_mm ** 2")
 penguins.mutate("heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")  # multiple entries in one call
 penguins.mutate("mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")  # later entries can reference earlier ones
 penguins.mutate("is_adelie: species == 'Adelie'")  # string literals still need quotes
+```
+
+A local variable from the calling scope can be referenced with an `@` prefix, same as pandas' own `eval()`/`query()`:
+
+```python
+threshold = 4000
+penguins.mutate("heavy: body_mass_g >= @threshold")
 ```
 
 For conditional/string outcomes — where plain `eval()` can't help — two dplyr-style forms are built in:

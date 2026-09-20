@@ -1,4 +1,5 @@
 import difflib
+import inspect
 
 import numpy as np
 import pandas as pd
@@ -98,27 +99,35 @@ def _parse_call(expr: str, name: str) -> list[str] | None:
     return _tokenize(inner, ",", keep_quotes=True, track_brackets=True)
 
 
-def _eval_value_arg(out: pd.DataFrame, arg: str):
+def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
+    """out.eval(expr), resolving @local_var references against the scope that
+    called mutate() rather than mutate()'s own frame — mutate() sits between
+    the user's call and this eval(), so pandas' default frame-walking would
+    otherwise look in the wrong place."""
+    return out.eval(expr, local_dict=local_dict, global_dict=global_dict)
+
+
+def _eval_value_arg(out: pd.DataFrame, arg: str, local_dict: dict, global_dict: dict):
     """Evaluate one if_else()/case_when() value argument: a quoted string is
     taken literally (broadcast as-is), anything else is a pandas eval()
     expression (a number, or a column/arithmetic expression)."""
     arg = arg.strip()
     if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in "'\"":
         return arg[1:-1]
-    return out.eval(arg)
+    return _eval(out, arg, local_dict, global_dict)
 
 
-def _apply_if_else(out: pd.DataFrame, args: list[str]):
+def _apply_if_else(out: pd.DataFrame, args: list[str], local_dict: dict, global_dict: dict):
     """if_else(condition, true_value, false_value) -> np.where(...)."""
     if len(args) != 3:
         raise ValueError(f"if_else expects 3 arguments (condition, true_value, false_value), got {len(args)}")
-    condition = out.eval(args[0])
-    true_value = _eval_value_arg(out, args[1])
-    false_value = _eval_value_arg(out, args[2])
+    condition = _eval(out, args[0], local_dict, global_dict)
+    true_value = _eval_value_arg(out, args[1], local_dict, global_dict)
+    false_value = _eval_value_arg(out, args[2], local_dict, global_dict)
     return np.where(condition, true_value, false_value)
 
 
-def _apply_case_when(out: pd.DataFrame, args: list[str]):
+def _apply_case_when(out: pd.DataFrame, args: list[str], local_dict: dict, global_dict: dict):
     """case_when(cond1: val1, cond2: val2, ..., True: default) -> np.select(...),
     dplyr-style: entries are checked in order, first match wins, an entry
     whose condition is the literal `True` is the catch-all default (matching
@@ -138,10 +147,10 @@ def _apply_case_when(out: pd.DataFrame, args: list[str]):
         if condition_raw == "True":
             if i != len(args) - 1:
                 raise ValueError("case_when: the 'True' default entry must be listed last")
-            default = _eval_value_arg(out, value_raw)
+            default = _eval_value_arg(out, value_raw, local_dict, global_dict)
             continue
-        conditions.append(out.eval(condition_raw))
-        choices.append(_eval_value_arg(out, value_raw))
+        conditions.append(_eval(out, condition_raw, local_dict, global_dict))
+        choices.append(_eval_value_arg(out, value_raw, local_dict, global_dict))
     if not conditions:
         raise ValueError("case_when needs at least one non-default condition")
     return np.select(conditions, choices, default=default)
@@ -163,7 +172,9 @@ def mutate(self, spec: str) -> pd.DataFrame:
         (e.g. "body_mass_g / bill_length_mm ** 2") — column names in it must stay
         unquoted, since quoting one turns it into a string literal instead of a
         column reference. Later entries may reference columns derived by
-        earlier entries in the same call.
+        earlier entries in the same call. A local variable from the caller's
+        scope can be referenced with an `@` prefix, e.g. "flag: body_mass_g >=
+        @threshold" (matches pandas eval()/query()'s own `@` convention).
 
         Two special expression forms (dplyr-style) bypass eval() to support
         conditional/string outcomes, which eval() itself cannot express:
@@ -210,6 +221,11 @@ def mutate(self, spec: str) -> pd.DataFrame:
     0       3000.0            30.0     C
     1       4000.0            40.0     A
     """
+    caller_frame = inspect.currentframe().f_back
+    local_dict = caller_frame.f_locals
+    global_dict = caller_frame.f_globals
+    del caller_frame  # avoid holding a reference cycle via the frame object
+
     expressions = parse_mutate_spec(spec)
     out = self.copy()
     for col, expr in expressions.items():
@@ -217,11 +233,11 @@ def mutate(self, spec: str) -> pd.DataFrame:
             if_else_args = _parse_call(expr, "if_else")
             case_when_args = _parse_call(expr, "case_when")
             if if_else_args is not None:
-                out[col] = _apply_if_else(out, if_else_args)
+                out[col] = _apply_if_else(out, if_else_args, local_dict, global_dict)
             elif case_when_args is not None:
-                out[col] = _apply_case_when(out, case_when_args)
+                out[col] = _apply_case_when(out, case_when_args, local_dict, global_dict)
             else:
-                out[col] = out.eval(expr)
+                out[col] = _eval(out, expr, local_dict, global_dict)
         except UndefinedVariableError as exc:
             close = difflib.get_close_matches(str(exc).split("'")[1], list(out.columns), n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""

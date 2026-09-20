@@ -211,6 +211,14 @@ pytae penguins.parquet -qry "species: 'Adelie'"
 
 # stack with -query (sequential AND on the remaining rows)
 pytae penguins.parquet -qry "'species': 'Adelie'" -query "body_mass_g > 3500" -head
+
+# string-matching operators: startswith / endswith / contains / regex (search-anywhere,
+# like re.search — 'regex' is 'contains' with regex=True); missing values never match (na=False)
+pytae penguins.parquet -qry "species: ('startswith', 'Ad')" -head
+pytae penguins.parquet -qry "species: ('regex', '^Ad')" -head
+
+# null checks: isna / notna are one-element tuples (no value)
+pytae penguins.parquet -qry "sex: ('isna',)" -head
 ```
 
 `-select body_mass_g -qry "'species': 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
@@ -225,6 +233,11 @@ pytae's expression-based column creator, `df.mutate()`. Creates or overwrites co
 ```python
 df.mutate("bmi: body_mass_g / bill_length_mm ** 2")
 df.mutate("heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")
+
+# a local variable from the calling scope can be referenced with an `@` prefix,
+# same as pandas' own eval()/query() — library-only, there's no local scope on the CLI
+threshold = 4000
+df.mutate("heavy: body_mass_g >= @threshold")
 ```
 
 ```bash

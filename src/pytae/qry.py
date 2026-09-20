@@ -11,6 +11,20 @@ ops = {
     "==": operator.eq, "!=": operator.ne
 }
 
+# String-accessor operators for tuple conditions, e.g. ('startswith', 'Ad')
+str_ops = {
+    "startswith": lambda s, v: s.str.startswith(v, na=False),
+    "endswith": lambda s, v: s.str.endswith(v, na=False),
+    "contains": lambda s, v: s.str.contains(v, regex=False, na=False),
+    "regex": lambda s, v: s.str.contains(v, regex=True, na=False),
+}
+
+# No-value tuple operators, e.g. ('isna',)
+unary_ops = {
+    "isna": lambda s: s.isna(),
+    "notna": lambda s: s.notna(),
+}
+
 def qry(self, conditions):
     """
     Filters a DataFrame based on a dictionary of conditions.
@@ -90,6 +104,26 @@ def qry(self, conditions):
       species  body_mass_g code
     0  Adelie      74125.0  A 1
 
+    >>> # Filter for rows where 'species' starts with 'Ad'
+    >>> df.qry({'species': ('startswith', 'Ad')})
+      species  body_mass_g code
+    0  Adelie      74125.0  A 1
+    3  Adelie      89100.0  D 4
+
+    >>> # Filter for rows where 'code' matches a regex pattern anywhere in the string
+    >>> df.qry({'code': ('regex', r'^[AB]')})
+      species  body_mass_g code
+    0  Adelie      74125.0  A 1
+    1  Gentoo     271425.0  B 2
+
+    >>> # Filter for rows where 'species' is not null
+    >>> df.qry({'species': ('notna',)})
+       species  body_mass_g code
+    0   Adelie      74125.0  A 1
+    1   Gentoo     271425.0  B 2
+    2  Chinstrap    119925.0  C 3
+    3   Adelie      89100.0  D 4
+
     Notes:
     ------
     - For numeric columns, tuple-based operator conditions (e.g., ('>', 81500)) will
@@ -97,6 +131,11 @@ def qry(self, conditions):
       provided as literals, whitespace is handled by Python's parser prior to conversion.
     - For non-numeric columns, tuple-based operator conditions (e.g., ('==', 'A 1')) will
       treat the comparison value as-is, preserving any whitespace in string literals.
+    - String-accessor operators ('startswith', 'endswith', 'contains', 'regex') use pandas'
+      `.str` accessor and treat missing values as non-matching (`na=False`) rather than
+      raising or propagating NaN. 'contains'/'regex' both do a search-anywhere match
+      (like `re.search`); 'regex' is the same as 'contains' with `regex=True`.
+    - 'isna'/'notna' are one-element tuples (e.g. ('isna',)) since they take no value.
     - Filtering does not modify the original DataFrame. Each condition is applied with
       `.loc[...]` and a new filtered frame is returned; the caller's object is unchanged.
     """
@@ -112,6 +151,11 @@ def qry(self, conditions):
         if isinstance(cond, list):
             # Handle direct list conditions (e.g., ['Adelie', 'Gentoo'])
             out = out.loc[out[col].isin(cond)]
+        elif isinstance(cond, tuple) and len(cond) == 1:
+            op = cond[0]
+            if op not in unary_ops:
+                raise ValueError(f"Unsupported 1-element tuple operator '{op}' for '{col}'. Use one of {list(unary_ops.keys())}.")
+            out = out.loc[unary_ops[op](out[col])]
         elif isinstance(cond, tuple) and len(cond) == 2:
             op, value = cond
             if op in ['in', 'not in']:
@@ -121,12 +165,17 @@ def qry(self, conditions):
                     out = out.loc[out[col].isin(value)]
                 elif op == 'not in':
                     out = out.loc[~out[col].isin(value)]
+            elif op in str_ops:
+                out = out.loc[str_ops[op](out[col], value)]
             elif op in ops:
                 if is_numeric:
                     value = float(value)  # Convert to float for numeric columns
                 out = out.loc[ops[op](out[col], value)]
             else:
-                raise ValueError(f"Unsupported tuple operator '{op}' for '{col}'. Use 'in', 'not in', or one of {list(ops.keys())}.")
+                raise ValueError(
+                    f"Unsupported tuple operator '{op}' for '{col}'. "
+                    f"Use 'in', 'not in', or one of {list(ops.keys()) + list(str_ops.keys())}."
+                )
         elif isinstance(cond, str) and re.match(r'^[\[(].*[)\]]$', cond):
             # Handle interval conditions (e.g., '(a,b)', '[a,b]')
             interval_pattern = re.compile(r'^([\[(])(.*),(.*)([\])])$')

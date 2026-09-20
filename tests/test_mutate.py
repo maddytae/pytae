@@ -125,3 +125,28 @@ def test_mutate_if_else_and_case_when_chain_with_other_entries():
         "mass_kg: body_mass_g / 1000, size: if_else(mass_kg >= 3.5, 'heavy', 'light')"
     )
     assert list(result["size"]) == ["light", "heavy"]
+
+
+def test_mutate_local_var_reference():
+    threshold = 3500.0
+    result = _df().mutate("heavy: body_mass_g >= @threshold")
+    assert list(result["heavy"]) == [False, True]
+
+
+def test_mutate_local_var_reference_in_if_else():
+    threshold = 3500.0
+    result = _df().mutate("size: if_else(body_mass_g >= @threshold, 'heavy', 'light')")
+    assert list(result["size"]) == ["light", "heavy"]
+
+
+def test_mutate_local_var_reference_in_case_when():
+    low, high = 3200.0, 3800.0
+    result = _df().mutate(
+        "grade: case_when(body_mass_g >= @high: 'A', body_mass_g >= @low: 'B', True: 'C')"
+    )
+    assert list(result["grade"]) == ["C", "A"]
+
+
+def test_mutate_unknown_local_var_suggests_typo_free_error():
+    with pytest.raises(KeyError, match="threshol"):
+        _df().mutate("heavy: body_mass_g >= @threshol")
