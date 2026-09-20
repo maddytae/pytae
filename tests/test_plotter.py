@@ -89,6 +89,23 @@ def test_facet_chains_into_finalize():
     assert plotter.finalize() is plotter
 
 
+def test_facet_restores_full_df_not_just_last_group():
+    df = _facet_frame()
+    plotter = Plotter.facet(df, by="species", ncols=2, x="x", y="y", kind="line")
+    pd.testing.assert_frame_equal(plotter.df, df)
+
+
+def test_facet_rejects_ncols_less_than_one():
+    with pytest.raises(ValueError, match="ncols must be at least 1"):
+        Plotter.facet(_facet_frame(), by="species", ncols=0, x="x", y="y", kind="line")
+
+
+def test_kde_column_without_by_works():
+    df = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0]})
+    plotter = Plotter().data(df).plot(kind="kde", column="a")
+    assert plotter.ax is not None
+
+
 def test_scatter_missing_required_kwargs_raises():
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
     with pytest.raises(ValueError, match="kind='scatter' needs y="):

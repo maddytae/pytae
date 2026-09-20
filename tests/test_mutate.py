@@ -97,6 +97,18 @@ def test_mutate_if_else_wrong_arg_count_errors():
         _df().mutate("size: if_else(body_mass_g >= 3500, 'heavy')")
 
 
+def test_mutate_if_else_mixed_dtype_branches():
+    # a string branch and a numeric branch have no common numpy dtype -- falls
+    # back to an object array instead of crashing with DTypePromotionError
+    result = _df().mutate("g: if_else(body_mass_g >= 3500, 'heavy', 0)")
+    assert list(result["g"]) == [0, "heavy"]
+
+
+def test_mutate_case_when_mixed_dtype_choices():
+    result = _df().mutate("g: case_when(body_mass_g >= 3500: 'heavy', True: 0)")
+    assert list(result["g"]) == [0, "heavy"]
+
+
 def test_mutate_case_when_first_match_wins():
     result = _df().mutate(
         "grade: case_when(body_mass_g >= 3800: 'A', body_mass_g >= 3200: 'B', True: 'C')"

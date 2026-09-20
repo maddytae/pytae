@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 
 import pandas as pd
 
@@ -14,6 +15,24 @@ def _sql_string_literal(value: str) -> str:
     duckdb table functions like read_parquet()/read_csv() can't be parameterized via
     prepared-statement placeholders, so the path/delimiter must be inlined as a literal."""
     return "'" + value.replace("'", "''") + "'"
+
+
+def _mask_quoted(spec: str) -> str:
+    """Blank out the contents of quoted substrings in spec (keeping overall length/
+    positions), so a regex check on the result only ever sees text outside string
+    literals -- e.g. an '@' inside a quoted value like 'a@b' is masked out."""
+    out = []
+    quote: str | None = None
+    for ch in spec:
+        if quote:
+            out.append(ch if ch == quote else " ")
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "'\"":
+            quote = ch
+        out.append(ch)
+    return "".join(out)
 
 
 class _Pipeline:
@@ -74,6 +93,8 @@ class _Pipeline:
 
     def apply_mutate(self, spec: str) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
+        if re.search(r"@\w", _mask_quoted(spec)):
+            return "-mutate: '@name' local-variable references are library-only (df.mutate() from Python), not available on the CLI"
         df = self.dataframe()
         try:
             self._df = df.mutate(spec)

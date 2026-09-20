@@ -124,7 +124,12 @@ def _apply_if_else(out: pd.DataFrame, args: list[str], local_dict: dict, global_
     condition = _eval(out, args[0], local_dict, global_dict)
     true_value = _eval_value_arg(out, args[1], local_dict, global_dict)
     false_value = _eval_value_arg(out, args[2], local_dict, global_dict)
-    return np.where(condition, true_value, false_value)
+    try:
+        return np.where(condition, true_value, false_value)
+    except TypeError:
+        # branches with incompatible dtypes (e.g. a string branch and a numeric
+        # branch) have no common numpy dtype -- object arrays accept anything
+        return np.where(condition, np.asarray(true_value, dtype=object), np.asarray(false_value, dtype=object))
 
 
 def _apply_case_when(out: pd.DataFrame, args: list[str], local_dict: dict, global_dict: dict):
@@ -153,7 +158,14 @@ def _apply_case_when(out: pd.DataFrame, args: list[str], local_dict: dict, globa
         choices.append(_eval_value_arg(out, value_raw, local_dict, global_dict))
     if not conditions:
         raise ValueError("case_when needs at least one non-default condition")
-    return np.select(conditions, choices, default=default)
+    try:
+        return np.select(conditions, choices, default=default)
+    except TypeError:
+        # choices/default with incompatible dtypes have no common numpy dtype --
+        # object arrays accept anything (same fallback as _apply_if_else above)
+        choices = [np.asarray(choice, dtype=object) for choice in choices]
+        default = default if default is None else np.asarray(default, dtype=object)
+        return np.select(conditions, choices, default=default)
 
 
 def mutate(self, spec: str) -> pd.DataFrame:

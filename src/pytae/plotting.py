@@ -67,8 +67,8 @@ _REQUIRED_KWARGS = {
     'line': ['x', 'y'],
     'other': ['x', 'y'],
     'pie': ['by', 'y'],
-    'kde': ['by', 'column'],
-    'density': ['by', 'column'],
+    'kde': ['column'],
+    'density': ['column'],
     'hist': ['column'],
 }
 
@@ -149,6 +149,8 @@ class Plotter:
         if len(set(keys)) != len(keys):
             raise ValueError(f"facet: group values in '{by}' produce duplicate axis keys once stringified: {keys}")
 
+        if ncols is not None and ncols < 1:
+            raise ValueError(f"facet: ncols must be at least 1, got {ncols}")
         ncols = ncols or math.ceil(math.sqrt(len(groups)))
         nrows = math.ceil(len(groups) / ncols)
         cells = keys + ["."] * (nrows * ncols - len(keys))  # pad leftover cells blank -- grid may not tile exactly
@@ -159,6 +161,7 @@ class Plotter:
             plotter.data(df[df[by] == group]).plot(on=key, **plot_kwargs)
             if titles:
                 plotter.axd[key].set_title(str(group))
+        plotter.df = df  # restore the full input frame -- each facet call above narrowed it to one group
         return plotter
 
     def plot(self, **kwargs):
@@ -320,7 +323,10 @@ class Plotter:
         """Plot a density or KDE chart."""
         plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
-        k = self.df.pivot(columns=self.by, values=self.column)
+        if self.by:
+            k = self.df.pivot(columns=self.by, values=self.column)
+        else:
+            k = self.df[[self.column]]
         self.ax = k.plot(ax=ax, **plot_dict)
         self._handle_data_output(k)
 

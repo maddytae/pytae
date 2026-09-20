@@ -52,6 +52,13 @@ def qry(self, conditions):
         - A tuple with an operator and value (e.g., ('>', 81500)): Filters for rows where
           the column satisfies the operator-based condition. Supported operators are
           >=, <=, >, <, ==, !=.
+        - A tuple with a string operator and value (e.g., ('startswith', 'Ad')): Filters
+          using pandas' `.str` accessor. Supported: 'startswith', 'endswith' (value may
+          also be a list of prefixes/suffixes), 'contains', 'regex' (both search anywhere
+          in the string, like re.search; 'regex' is 'contains' with regex=True). Missing
+          values never match (na=False); requires a string-dtype column.
+        - A one-element tuple ('isna',) or ('notna',): Filters for rows where the column
+          is/isn't null. Takes no value since these are unary checks.
         - An interval condition (e.g., '(a,b)', '[a,b]'): Filters for rows where the column
           falls within the specified interval (parentheses for exclusive, brackets for inclusive).
 
@@ -166,7 +173,17 @@ def qry(self, conditions):
                 elif op == 'not in':
                     out = out.loc[~out[col].isin(value)]
             elif op in str_ops:
-                out = out.loc[str_ops[op](out[col], value)]
+                if op in ('startswith', 'endswith') and isinstance(value, list):
+                    value = tuple(value)  # pandas' str.startswith()/endswith() take a tuple of prefixes, not a list
+                try:
+                    out = out.loc[str_ops[op](out[col], value)]
+                except AttributeError as exc:
+                    raise ValueError(
+                        f"qry: '{op}' needs a string column; '{col}' is {out[col].dtype}. "
+                        f"Cast it first, e.g. df.astype({{'{col}': str}}).qry(...)."
+                    ) from exc
+                except TypeError as exc:
+                    raise ValueError(f"qry: '{op}' on '{col}': invalid value {value!r} ({exc})") from exc
             elif op in ops:
                 if is_numeric:
                     value = float(value)  # Convert to float for numeric columns

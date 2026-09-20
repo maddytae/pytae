@@ -82,6 +82,16 @@ def test_qry_regex():
     assert list(result["species"]) == ["Adelie", "Gentoo"]
 
 
+def test_qry_startswith_accepts_list_of_prefixes():
+    result = _df().qry({"species": ("startswith", ["Ad", "Ge"])})
+    assert list(result["species"]) == ["Adelie", "Gentoo", "Adelie"]
+
+
+def test_qry_string_op_on_non_string_column_raises_clear_error():
+    with pytest.raises(ValueError, match="needs a string column"):
+        _df().qry({"body_mass_g": ("startswith", "1")})
+
+
 def test_qry_isna():
     df = _df()
     df.loc[0, "species"] = None

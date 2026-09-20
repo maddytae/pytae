@@ -1072,6 +1072,28 @@ def test_mutate_unknown_column_reference_errors(tmp_path, capsys):
     assert "body_mass_g" in err
 
 
+def test_mutate_at_local_var_gives_cli_specific_error(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"n": [5, 15]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-mutate", "heavy: n >= @threshold"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-mutate" in err
+    assert "library-only" in err
+
+
+def test_mutate_at_inside_quoted_string_is_not_flagged_as_local_var(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"s": ["a@b", "c"]}))
+
+    exit_code = cli.main([path, "-mutate", "flag: s == 'a@b'"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "True" in out
+    assert "False" in out
+
+
 def test_describe_then_shape_is_describe_table(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
 
