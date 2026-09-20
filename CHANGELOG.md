@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-09-20
+
+### Changed
+- CLI: an `unrecognized arguments: ...` error (typically caused by forgetting to wrap a
+  multi-word `-select`/`-qry`/`-mutate`/etc. spec in shell quotes, so the shell splits it
+  into extra argv tokens) now includes a hint to wrap the whole spec in quotes, when the
+  leftover tokens look like plain words rather than another `-flag`. `docs/CLI.md`'s
+  Quoting conventions section now explains the two separate layers of quoting (shell vs.
+  pytae's own internal syntax) and fixes an inaccurate `-select` table row that implied
+  quoting was required for column names with spaces (it never was — only an embedded
+  comma requires it). CLI examples now wrap every `-select` spec in `""` the same
+  way as `-qry`/`-mutate` (still optional when the spec has no spaces; one
+  counterexample in Quoting conventions is left unquoted on purpose).
+
 ## [3.4.0] - 2026-09-20
 
 ### Added

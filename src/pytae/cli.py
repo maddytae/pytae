@@ -192,7 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
                               "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
                               "regex, exclude_dtype); repeat to filter remaining columns, including after "
-                              "-agg_df/-long/-wide, e.g. -select dtype=numeric -select contains=bill")
+                              '-agg_df/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
     parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt/.dat, inferred from -o's extension, "
@@ -724,7 +724,17 @@ def _process_path(
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args, extras = parser.parse_known_args(argv)
+    if extras:
+        msg = f"unrecognized arguments: {' '.join(extras)}"
+        if extras and all(not e.startswith("-") for e in extras):
+            # likely an unquoted value with a space (e.g. a column name) split by the
+            # shell into separate argv tokens -- the whole spec needs one pair of quotes
+            msg += (
+                "\nIf this is part of a value with a space (e.g. a column name), wrap the "
+                'whole spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.'
+            )
+        parser.error(msg)
 
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1

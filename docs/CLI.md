@@ -57,13 +57,13 @@ pytae penguins.parquet -head 3 -shape
 pytae penguins.parquet -head 5 -cols
 
 # filter rows, then pick columns (quoting the key is optional, see Quoting conventions)
-pytae penguins.parquet -qry "species: 'Adelie'" -select species,island,body_mass_g -head 5
+pytae penguins.parquet -qry "species: 'Adelie'" -select "species,island,body_mass_g" -head 5
 
 # average body mass per species
-pytae penguins.parquet -select species,body_mass_g -agg_df mean
+pytae penguins.parquet -select "species,body_mass_g" -agg_df mean
 
 # heaviest 5 penguins, name + weight only
-pytae penguins.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
+pytae penguins.parquet -select "species,body_mass_g" -sort_by body_mass_g desc -head 5
 
 # species counts by island
 pytae penguins.parquet -crosstab "index='species',columns='island'"
@@ -93,10 +93,10 @@ Do the same for any others you want to try (`penguins`, `titanic`, `diamonds`, `
 ```bash
 pytae penguins.parquet -qry "'species': 'Adelie'" -agg_df mean
 pytae penguins.parquet -crosstab "index='species',columns='island'"
-pytae tips.parquet -select day,total_bill,tip -group_x "group='day',v='tip',a='mean'"
+pytae tips.parquet -select "day,total_bill,tip" -group_x "group='day',v='tip',a='mean'"
 pytae titanic.parquet -crosstab "index='pclass',columns='survived',margins=true"
-pytae diamonds.parquet -select cut,price -agg_df mean
-pytae mpg.parquet -select origin,mpg -sort_by mpg desc -head 5
+pytae diamonds.parquet -select "cut,price" -agg_df mean
+pytae mpg.parquet -select "origin,mpg" -sort_by mpg desc -head 5
 pytae flights.parquet -group_by year -agg "column='passengers',aggfunc='sum'"
 ```
 
@@ -140,7 +140,7 @@ df.select(exclude_dtype="non_numeric")
 
 ```bash
 # exact names
-pytae penguins.parquet -select species,island -head 5
+pytae penguins.parquet -select "species,island" -head 5
 # illustrative: a name with spaces works whether or not it's quoted (the bundled penguins
 # columns use underscores, not spaces) -- quoting here is just for readability/consistency
 # with -qry's dict syntax, not required by -select's own parsing
@@ -153,17 +153,17 @@ pytae penguins.parquet -select "regex=_mm$" -nulls
 pytae penguins.parquet -select "regex=bill|body" -describe
 
 # dtype
-pytae penguins.parquet -select dtype=numeric -describe
-pytae penguins.parquet -select exclude_dtype=numeric -head 5
-pytae penguins.parquet -select exclude_dtype=non_numeric -cols
+pytae penguins.parquet -select "dtype=numeric" -describe
+pytae penguins.parquet -select "exclude_dtype=numeric" -head 5
+pytae penguins.parquet -select "exclude_dtype=non_numeric" -cols
 
 # name patterns
-pytae penguins.parquet -select contains=bill -head 5
-pytae penguins.parquet -select startswith=bill -dtype
-pytae penguins.parquet -select endswith=_mm -nulls
+pytae penguins.parquet -select "contains=bill" -head 5
+pytae penguins.parquet -select "startswith=bill" -dtype
+pytae penguins.parquet -select "endswith=_mm" -nulls
 
 # slice
-pytae penguins.parquet -select species:bill_length_mm -cols
+pytae penguins.parquet -select "species:bill_length_mm" -cols
 
 # union in one -select (species, then names containing bill, then remaining numerics)
 pytae penguins.parquet -select "species,contains=bill,dtype=numeric" -head 5
@@ -173,14 +173,14 @@ pytae penguins.parquet -select "species,regex=bill|body" -head 5
 pytae penguins.parquet -select "contains=bill,contains=body" -cols
 
 # a later -select filters remaining columns (numeric AND name contains bill)
-pytae penguins.parquet -select dtype=numeric -select contains=bill -cols
-pytae penguins.parquet -select species,island,body_mass_g -select species,body_mass_g -cols
+pytae penguins.parquet -select "dtype=numeric" -select "contains=bill" -cols
+pytae penguins.parquet -select "species,island,body_mass_g" -select "species,body_mass_g" -cols
 
 # after another op, -select sees that op's columns (here: pick from the agg table)
-pytae penguins.parquet -select species,body_mass_g -agg_df mean -select species,body_mass_g -shape
+pytae penguins.parquet -select "species,body_mass_g" -agg_df mean -select "species,body_mass_g" -shape
 ```
 
-Exact names must exist on the **current** columns; missing names error with a typo suggestion — `-select d,a,b` does **not** silently return `a,b`. A positional token that is not a real column is **not** a regex — use `regex=`. Tokens in **one** spec are a union; each extra `-select` filters whatever is left (it is not last-wins).
+Exact names must exist on the **current** columns; missing names error with a typo suggestion — `-select "d,a,b"` does **not** silently return `a,b`. A positional token that is not a real column is **not** a regex — use `regex=`. Tokens in **one** spec are a union; each extra `-select` filters whatever is left (it is not last-wins).
 
 #### `df.select()` but not `-select`
 
@@ -206,7 +206,7 @@ df.qry({"species": "Adelie"}).select("species", "body_mass_g")
 pytae penguins.parquet -qry "'species': 'Adelie', 'body_mass_g': ('>', 3500)"
 
 # filter first, then drop the filter column — same as df.qry(...).select(...)
-pytae penguins.parquet -qry "'species': 'Adelie'" -select species,body_mass_g -head
+pytae penguins.parquet -qry "'species': 'Adelie'" -select "species,body_mass_g" -head
 
 # quoting the column name is optional (see Quoting conventions) — values still
 # need quotes when they're strings
@@ -224,7 +224,7 @@ pytae penguins.parquet -qry "species: ('regex', '^Ad')" -head
 pytae penguins.parquet -qry "sex: ('isna',)" -head
 ```
 
-`-select body_mass_g -qry "'species': 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
+`-select "body_mass_g" -qry "'species': 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
 
 ---
 
@@ -248,23 +248,23 @@ df.mutate("heavy: body_mass_g >= @threshold")
 pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -head
 
 # multiple entries in one -mutate
-pytae penguins.parquet -mutate "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000" -select species,mass_kg,heavy -head
+pytae penguins.parquet -mutate "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000" -select "species,mass_kg,heavy" -head
 
 # later entries can reference columns derived earlier in the same call
-pytae penguins.parquet -mutate "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462" -select mass_kg,mass_lb -head
+pytae penguins.parquet -mutate "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462" -select "mass_kg,mass_lb" -head
 
 # key quoting optional (matches -qry); string literals in the expression still need quotes
-pytae penguins.parquet -mutate "'is_adelie': species == 'Adelie'" -select species,is_adelie -head
+pytae penguins.parquet -mutate "'is_adelie': species == 'Adelie'" -select "species,is_adelie" -head
 
 # chains into -qry, filtering on a column just mutated
-pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -qry "bmi: ('>', 2)" -select species,bmi -head
+pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -qry "bmi: ('>', 2)" -select "species,bmi" -head
 
 # dplyr-style if_else(condition, true_value, false_value)
-pytae penguins.parquet -mutate "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')" -select species,weight_class -head
+pytae penguins.parquet -mutate "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')" -select "species,weight_class" -head
 
 # dplyr-style case_when(cond1: val1, cond2: val2, ..., True: default) — first match wins,
 # `True` is an optional catch-all default and must be listed last
-pytae penguins.parquet -mutate "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', True: 'small')" -select species,size_class -head
+pytae penguins.parquet -mutate "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', True: 'small')" -select "species,size_class" -head
 ```
 
 `if_else()`/`case_when()` are the two exceptions to "the value is a plain `eval()` expression" — they're detected by name and evaluated via `np.where()`/`np.select()` instead, since `eval()` itself has no if/else support at all, regardless of engine. Their own arguments (conditions, and non-string values) are still `eval()` expressions — string outcomes still need quotes (`'heavy'`).
@@ -288,11 +288,11 @@ pytae penguins.parquet -sql "select species, avg(body_mass_g) as avg_mass from d
 pytae data.parquet -sql 'select species from df where "bill length mm" > 40'
 
 # chains like any other op — runs on the current view, replaces it
-pytae penguins.parquet -select species,island,body_mass_g -sql "select * from df where island = 'Dream'" -shape
+pytae penguins.parquet -select "species,island,body_mass_g" -sql "select * from df where island = 'Dream'" -shape
 
 # a query that needs BOTH a double-quoted identifier (space in the column name)
 # and a single-quoted string literal — escape the identifier's inner double quotes
-pytae penguins.parquet -select species,island,body_mass_g -sql "select \"col a\" from df where island = 'Dream'" -shape
+pytae penguins.parquet -select "species,island,body_mass_g" -sql "select \"col a\" from df where island = 'Dream'" -shape
 ```
 
 Mixing a spaced identifier and a string literal in one `-sql` value means the shell has to see both `"` and `'` — one of them needs escaping. Two ways to handle it:
@@ -355,7 +355,7 @@ pytae penguins.parquet -agg_df "'body_mass_g': 'mean', 'n': 'n'"
 pytae penguins.parquet -qry "'species': 'Adelie'" -agg_df mean
 pytae penguins.parquet -agg_df sum -dropna false   # keep NA group keys
 pytae penguins.parquet -agg_df mean -sort_by body_mass_g desc
-pytae penguins.parquet -select species,body_mass_g -agg_df mean -select species,body_mass_g -shape
+pytae penguins.parquet -select "species,body_mass_g" -agg_df mean -select "species,body_mass_g" -shape
 ```
 
 ---
@@ -413,7 +413,7 @@ df.handle_missing(fillna="NA")
 
 ```bash
 pytae penguins.parquet -handle_missing -head
-pytae penguins.parquet -handle_missing NA -select species,sex -value_counts
+pytae penguins.parquet -handle_missing NA -select "species,sex" -value_counts
 ```
 
 ---
@@ -462,7 +462,7 @@ Chains like any other op — runs on the current view and replaces its column na
 
 ```bash
 pytae penguins.parquet -unique
-pytae penguins.parquet -select species,island -unique
+pytae penguins.parquet -select "species,island" -unique
 pytae penguins.parquet -unique -shape
 ```
 
@@ -517,7 +517,7 @@ Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the sou
 ```bash
 pytae penguins.parquet -convert
 pytae penguins.parquet -convert -o penguins.txt
-pytae penguins.parquet -select species,body_mass_g -convert -o subset.parquet
+pytae penguins.parquet -select "species,body_mass_g" -convert -o subset.parquet
 pytae penguins.csv -convert -o penguins.parquet
 pytae data.sas7bdat -convert -o data.parquet          # character columns decoded as utf-8
 pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
@@ -596,10 +596,10 @@ pytae data.parquet -group_by "Scenario Name" -agg "column='value,val_growth',agg
 Counts across the current working columns (`-select` first to choose keys). Several columns → unique combinations.
 
 ```bash
-pytae penguins.parquet -select species -value_counts
-pytae penguins.parquet -select species,island -value_counts
-pytae penguins.parquet -select species -value_counts -dropna false
-pytae penguins.parquet -select species -value_counts -sort_by count desc
+pytae penguins.parquet -select "species" -value_counts
+pytae penguins.parquet -select "species,island" -value_counts
+pytae penguins.parquet -select "species" -value_counts -dropna false
+pytae penguins.parquet -select "species" -value_counts -sort_by count desc
 ```
 
 ---
@@ -638,7 +638,7 @@ pytae penguins.parquet -cols asc
 pytae penguins.parquet -cols desc
 pytae penguins.parquet -dtype desc
 pytae penguins.parquet -nulls asc
-pytae penguins.parquet -select dtype=numeric -cols
+pytae penguins.parquet -select "dtype=numeric" -cols
 ```
 
 CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
@@ -652,7 +652,7 @@ CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
 pytae penguins.parquet -sort_by body_mass_g
 pytae penguins.parquet -sort_by body_mass_g desc
 pytae penguins.parquet -sort_by species,body_mass_g desc
-pytae penguins.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
+pytae penguins.parquet -select "species,body_mass_g" -sort_by body_mass_g desc -head 5
 ```
 
 ---
@@ -713,7 +713,10 @@ Cross-cutting rules and lookup tables that apply across the flags above, rather 
 <a id="quoting"></a>
 ### Quoting conventions
 
-Quoting rules differ by flag, because quotes serve different jobs in different places. The rule of thumb: **quote a value only when it needs to protect an embedded comma or colon; otherwise quoting is optional** (harmless if you do it out of habit, never required for spaces).
+There are two separate layers of quoting, easy to conflate:
+
+1. **Your shell's quoting** (bash/zsh/etc.), which decides how a command line is split into argv tokens *before pytae ever sees them*. Any flag value that contains a space anywhere — a comma-separated list with `, ` between items, a tuple literal like `('>', 3500)`, or a column name with a space — must be wrapped in one pair of shell quotes (`"..."` or `'...'`) around the *entire* value, or the shell will split it into multiple separate arguments. This is universal across every flag (`-select`, `-qry`, `-mutate`, `-rename`, `-group_x`, `-sql`, …) — there's no flag-specific way around it, since it happens before pytae's own code runs at all. Forget it and you'll get an `unrecognized arguments: ...` error; if the leftover pieces look like plain words rather than another `-flag`, pytae's error message includes a hint to wrap the whole spec in quotes.
+2. **pytae's own internal syntax quoting** (the table below) — quotes *inside* that one shell-quoted value, needed only to protect a comma/colon that's part of a name/value itself. This layer is optional almost everywhere; the rule of thumb: **quote a value only when it needs to protect an embedded comma or colon; otherwise quoting is optional** (harmless if you do it out of habit, never required for spaces).
 
 | Flag | Does quoting matter? | Notes |
 |---|---|---|
@@ -724,13 +727,21 @@ Quoting rules differ by flag, because quotes serve different jobs in different p
 | `-clean_columns` `strip_special` | N/A (removes quotes as punctuation) | Pair with `fill=` to keep one specific character instead of stripping it. |
 
 ```bash
+# forgetting the OUTER shell quotes -- the shell splits this into extra argv tokens
+# before pytae ever runs, so pytae reports them as unrecognized (with a hint):
+pytae penguins.parquet -select species,bill length mm -head
+# pytae: error: unrecognized arguments: length mm
+# If this is part of a value with a space (e.g. a column name), wrap the whole
+# spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.
+
 # -qry: column-name keys optionally quoted; values need quotes only when they're strings
-pytae tips.parquet -qry "sex:'Male'" -select sex,day
-pytae tips.parquet -qry "'sex':'Male'" -select sex,day
+pytae tips.parquet -qry "sex:'Male'" -select "sex,day"
+pytae tips.parquet -qry "'sex':'Male'" -select "sex,day"
 pytae penguins.parquet -qry "species:'Adelie', body_mass_g:('>', 3500)"
 
-# -select: spaces never need quotes; quoting is optional; quoting the whole name
-# protects a genuinely embedded comma
+# -select: examples always wrap the spec in "" for consistency with -qry/-mutate
+# (optional when there are no spaces; quoting the whole name also protects an
+# embedded comma)
 pytae data.parquet -select "bill length mm,body mass g"
 pytae data.parquet -select "'bill length mm','body mass g'"
 pytae data.parquet -select "'city, state',other_col"   # one column literally named "city, state"
@@ -821,12 +832,12 @@ pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='siz
 
 ```bash
 # counting combinations as a matrix — the same result, two ways
-pytae penguins.parquet -select species,island,sex -wide "c='island',v='sex',a='n'"         # -wide (one step)
+pytae penguins.parquet -select "species,island,sex" -wide "c='island',v='sex',a='n'"         # -wide (one step)
 pytae penguins.parquet -crosstab "index='species',columns='island'"                        # -crosstab (one step)
 
 # aggregating a numeric column as a matrix — the same result, two ways
 # (-wide's index is implicit — every column except c=/v= — so -select first to trim to just the id column)
-pytae penguins.parquet -select species,sex,body_mass_g -wide "c='sex',v='body_mass_g',a='mean'"        # -wide
+pytae penguins.parquet -select "species,sex,body_mass_g" -wide "c='sex',v='body_mass_g',a='mean'"        # -wide
 pytae penguins.parquet -crosstab "index='species',columns='sex',values='body_mass_g',aggfunc='mean'"   # -crosstab
 
 # percentages and totals — only -crosstab does this
@@ -850,7 +861,7 @@ pytae penguins.parquet -crosstab "index='species',columns='island',margins=true"
 
 ```bash
 # same result, two ways
-pytae penguins.parquet -select species,body_mass_g -agg_df mean                       # -agg_df (auto group: species)
+pytae penguins.parquet -select "species,body_mass_g" -agg_df mean                       # -agg_df (auto group: species)
 pytae penguins.parquet -group_by species -agg "column='body_mass_g',aggfunc='mean'"   # -group_by + -agg (explicit)
 
 # custom output column name — only -group_by + -agg can do this
@@ -916,13 +927,13 @@ pytae penguins.parquet -sample
 pytae penguins.parquet -qry "'species': 'Adelie'" -agg_df mean
 
 # heaviest 5 after ranking
-pytae penguins.parquet -select species,body_mass_g -sort_by body_mass_g desc -head 5
+pytae penguins.parquet -select "species,body_mass_g" -sort_by body_mass_g desc -head 5
 
 # species counts, then sort the count table
-pytae penguins.parquet -select species -value_counts -sort_by count desc
+pytae penguins.parquet -select "species" -value_counts -sort_by count desc
 
 # subset + convert
-pytae penguins.parquet -qry "'island': 'Dream'" -select species,island,body_mass_g -convert -o dream.parquet
+pytae penguins.parquet -qry "'island': 'Dream'" -select "species,island,body_mass_g" -convert -o dream.parquet
 
 # batch csv next to each parquet
 pytae 'folder/*.parquet' -convert

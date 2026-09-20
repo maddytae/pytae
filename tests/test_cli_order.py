@@ -1094,6 +1094,30 @@ def test_mutate_at_inside_quoted_string_is_not_flagged_as_local_var(tmp_path, ca
     assert "False" in out
 
 
+def test_unquoted_spec_with_a_space_gets_a_quoting_hint(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"n": [1, 2]}))
+
+    # simulates the shell splitting an unquoted "-select species,col name" into
+    # separate argv tokens ("col" and "name" land as unrecognized leftovers)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "n,col", "name"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "unrecognized arguments: col name" in err or "unrecognized arguments: name" in err
+    assert "wrap the whole spec in quotes" in err
+
+
+def test_typo_flag_does_not_get_the_quoting_hint(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"n": [1, 2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-selecttypo", "n"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "unrecognized arguments" in err
+    assert "wrap the whole spec in quotes" not in err
+
+
 def test_describe_then_shape_is_describe_table(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
 
