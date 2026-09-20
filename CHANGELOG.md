@@ -11,6 +11,33 @@ All notable changes to this project are documented in this file.
 - `qry()` / `-qry`: new tuple-condition operators — `('startswith', v)`, `('endswith', v)`, `('contains', v)`, `('regex', pattern)` for string matching (backed by pandas' `.str` accessor; missing values never match, `na=False`; `'contains'`/`'regex'` both search anywhere in the string like `re.search`, `'regex'` is `'contains'` with `regex=True`), plus one-element-tuple null checks `('isna',)`/`('notna',)`. E.g. `df.qry({"species": ("startswith", "Ad")})` or `-qry "species: ('startswith', 'Ad')"` on the CLI.
 
 ### Fixed
+A full-repo review (`.grok/full-review-2026-09-20.md`) surfaced ~20 issues; all were reproduced, verified, and fixed in this pass:
+- `handle_missing()` no longer corrupts non-string `object` columns (e.g. bool/mixed-Python-object columns): only columns actually holding strings (including pandas' own dedicated string dtype) get `fillna`/`.str.strip()`; `fillna(0)` is now scoped to numeric columns only, so datetime/bool columns are left alone.
+- `select(dtype="numeric"/"non_numeric")` and `exclude_dtype="numeric"` now include unsigned integers (`uint8/16/32/64`), matching pandas' own `select_dtypes(include="number")`.
+- `select(dtype="datetime")` now includes timezone-aware datetime columns, not just naive ones.
+- `select(dtype=(...))` (a tuple) is now accepted like a list, instead of raising `UnboundLocalError`.
+- A column name containing `:` (e.g. `"a:b"`) is now matched exactly before `:` is treated as slice syntax.
+- Integer column names no longer crash `select(contains=/startswith=/endswith=)` or `clean_columns()` — names are coerced to `str` first, same as the existing `regex=` path.
+- `agg_df([...])` (single remaining aggregation, list form) now raises a clear error instead of silently overwriting a real column named `n` with row counts, when both are requested together.
+- `clean_columns(dedupe=True)` no longer emits new duplicate names — a generated `_N` suffix is skipped if it collides with an existing column.
+- `group_x()` now raises a clear error instead of silently overwriting an existing `n`/`x` column, and raises a friendly message (instead of pandas' raw `"No group keys passed!"`) when there are no non-numeric columns to group by and none were given explicitly.
+- `replace_values(..., exact=False)` on a non-string column now raises a clear error instead of crashing with a raw `TypeError` (or silently no-op-ing).
+- `-nrows` is no longer ignored by `-head`/`-tail`: both now route through the same `nrows`-aware load path when `-nrows` is set.
+- Reading an empty parquet file with `-progress` or `-nrows` set no longer drops the column schema.
+- CSV/TXT `shape()` (and therefore `-tail`) no longer miscounts rows when a field contains an embedded newline inside quotes; row counting now goes through the real CSV parser instead of counting raw physical lines. An empty CSV/TXT file now raises a friendly `ValueError` instead of pandas' raw `EmptyDataError`.
+- `-merge how=cross` no longer requires `on=` (pandas cross joins don't take one); passing `on=` together with `how=cross` is now a clear error instead of a confusing pandas failure.
+- `Plotter`'s pie chart no longer overwrites `self.df` with its aggregated 2-column frame — later `.plot()` calls in the same chain see the original data again, like every other plot kind.
+- An unknown mosaic `on=` key now raises a clear error instead of silently drawing on axis `'A'`.
+- `get_pivot_data()` no longer casts a datetime `x` column to `object` (which broke matplotlib's date locators) — only non-datetime x columns are cast.
+- `pytae.sample()`/`sample_data[...]` now return a copy each time, so mutating a returned DataFrame no longer poisons later calls in the same process.
+- `sample_data.keys()` now returns a plain tuple of dataset names instead of a bare `KeysView` repr.
+- `long()` now raises a clear error when there are no numeric columns to melt, instead of silently returning an empty result.
+- README.md/docs/LIBRARY.md's scatter example now uses `c=`/`cmap=` (which `kind="scatter"` actually reads) instead of `by=` (which it ignores).
+- `-file`'s help text no longer claims it "requires -merge" (it also accepts `-concat`/`-sql` as the first op); `-dlim`'s help/docs no longer claim it applies to `.sas7bdat` (which has no delimiter concept); `-file`'s "need at least two entries" error message no longer name-drops `-merge` specifically.
+- Added `.venv/` to `.gitignore`; added Python 3.11 to the CI test matrix so it matches the `classifiers` already listed in `pyproject.toml`.
+
+
+### Fixed
 - `-qry`: column-name keys can now be quoted or unquoted (`species: 'Adelie'` == `'species': 'Adelie'`), matching `-select`'s convention. Values still need Python-literal quoting when they're strings (e.g. `'Adelie'`); numbers/tuples/lists already worked unquoted.
 - `-rename`: quoting an old/new name (e.g. `-rename "'old col':'new col'"`) previously left the literal quote characters in the parsed mapping, silently renaming nothing since no real column matched. Quoting is now optional and stripped if present, matching the rest of the CLI.
 

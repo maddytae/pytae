@@ -90,7 +90,10 @@ class ParquetReader:
                 _print_progress(done, limit, "reading")
         if progress:
             print()
-        return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=columns or [])
+        if parts:
+            return pd.concat(parts, ignore_index=True)
+        empty = self._empty()
+        return empty[columns] if columns else empty
 
 
 class CsvReader:
@@ -100,12 +103,19 @@ class CsvReader:
         self.encoding = encoding
 
     def shape(self) -> tuple[int, int]:
-        with open(self.path, "rb") as fh:
-            rows = sum(1 for _ in fh) - 1  # exclude header line
-        return (max(rows, 0), len(self.columns()))
+        n_cols = len(self.columns())
+        total = 0
+        for chunk in pd.read_csv(
+            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=CHUNK_SIZE, low_memory=False
+        ):
+            total += len(chunk)
+        return (total, n_cols)
 
     def columns(self) -> list[str]:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        try:
+            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        except pd.errors.EmptyDataError as exc:
+            raise ValueError(f"'{self.path.name}' is empty or not a valid CSV file") from exc
 
     def dtypes(self) -> pd.Series:
         return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
@@ -143,12 +153,19 @@ class TxtReader:
         self.encoding = encoding
 
     def shape(self) -> tuple[int, int]:
-        with open(self.path, "rb") as fh:
-            rows = sum(1 for _ in fh) - 1  # exclude header line
-        return (max(rows, 0), len(self.columns()))
+        n_cols = len(self.columns())
+        total = 0
+        for chunk in pd.read_csv(
+            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=CHUNK_SIZE, low_memory=False
+        ):
+            total += len(chunk)
+        return (total, n_cols)
 
     def columns(self) -> list[str]:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        try:
+            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+        except pd.errors.EmptyDataError as exc:
+            raise ValueError(f"'{self.path.name}' is empty or not a valid delimited file") from exc
 
     def dtypes(self) -> pd.Series:
         return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)

@@ -15,13 +15,14 @@ _cache = {}
 
 
 def sample(name):
-    """Load a bundled sample dataset by name (cached after the first call)."""
+    """Load a bundled sample dataset by name (cached after the first call).
+    Returns a copy each time — mutating the result does not affect later calls."""
     if name not in _DATASET_NAMES:
         available = ", ".join(_DATASET_NAMES) or "(none)"
         raise KeyError(f"unknown dataset {name!r}; available: {available}")
     if name not in _cache:
         _cache[name] = pd.read_parquet(DATA_PATH / f"{name}.parquet")
-    return _cache[name]
+    return _cache[name].copy()
 
 
 class _SampleData(Mapping):
@@ -38,6 +39,11 @@ class _SampleData(Mapping):
 
     def __len__(self):
         return len(_DATASET_NAMES)
+
+    def keys(self):
+        """Dataset names as a plain tuple (not a KeysView) so it's printable/readable
+        directly, e.g. print(pytae.sample_data.keys())."""
+        return _DATASET_NAMES
 
 
 sample_data = _SampleData()

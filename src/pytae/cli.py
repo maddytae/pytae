@@ -244,19 +244,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", type=Path, default=None,
                          help="output path; its extension picks the format (default: .csv alongside the source file)")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
-                         help="field delimiter for reading/writing .csv/.txt/.dat/.sas7bdat (default: ',' for .csv, "
-                              "tab for .txt, '|' for .dat); not used for .parquet")
+                         help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
+                              "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
     parser.add_argument("-encoding", "--encoding", dest="encoding", default=None, metavar="ENC",
                          help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
                               "(default: utf-8 for .sas7bdat, pandas infer for .csv/.txt/.dat); not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS,...",
-                         help="load multiple named files for -merge, instead of the positional path; "
+                         help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
                               "';'-separated entries, each PATH=ALIAS optionally followed by "
                               ",dlim=/,encoding= overrides for that file, e.g. "
                               "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
-                              "requires -merge, and can't be combined with the positional path")
+                              "requires -merge, -concat, or -sql as the first operation, and can't be "
+                              "combined with the positional path")
     parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
                          help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
@@ -458,7 +459,9 @@ def _process_path(
             merge_kwargs = {"how": spec["how"]}
             if spec["validate"]:
                 merge_kwargs["validate"] = spec["validate"]
-            if spec["on"] is not None:
+            if spec["how"] == "cross":
+                pass  # cross joins don't take on=/left_on=/right_on=
+            elif spec["on"] is not None:
                 missing = [c for c in spec["on"] if c not in left_df.columns or c not in right_df.columns]
                 if missing:
                     return _fail(parser, batch, f"-merge: on= column(s) not in both frames: {', '.join(missing)}")

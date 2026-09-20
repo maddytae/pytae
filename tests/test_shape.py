@@ -80,5 +80,11 @@ def test_wide_a_n_is_alias_for_size():
     pd.testing.assert_frame_equal(result, expected_df)
 
 
+def test_long_raises_when_no_numeric_columns():
+    df = pd.DataFrame({"a": ["x", "y"], "b": ["p", "q"]})
+    with pytest.raises(ValueError, match="no numeric columns to melt"):
+        df.long()
+
+
 if __name__ == '__main__':
     pytest.main()

@@ -42,6 +42,37 @@ def test_select_regex_invalid_pattern():
         df.select(regex="[")
 
 
+def test_select_dtype_numeric_includes_uint():
+    df = pd.DataFrame({"i": pd.array([1, 2], dtype="int64"), "u": pd.array([1, 2], dtype="uint8")})
+    assert df.select(dtype="numeric").columns.tolist() == ["i", "u"]
+
+
+def test_select_dtype_datetime_includes_tz_aware():
+    df = pd.DataFrame(
+        {
+            "d": pd.to_datetime(["2020-01-01"]),
+            "dtz": pd.to_datetime(["2020-01-01"]).tz_localize("UTC"),
+        }
+    )
+    assert df.select(dtype="datetime").columns.tolist() == ["d", "dtz"]
+
+
+def test_select_dtype_accepts_tuple():
+    df = pd.DataFrame({"i": [1], "u": pd.array([1], dtype="uint8"), "s": ["x"]})
+    assert df.select(dtype=("int64", "uint8")).columns.tolist() == ["i", "u"]
+
+
+def test_select_colon_column_name_exact_match_wins():
+    df = pd.DataFrame({"a:b": [1, 2], "c": [3, 4]})
+    assert df.select("a:b").columns.tolist() == ["a:b"]
+
+
+def test_select_integer_column_names_with_contains_startswith():
+    df = pd.DataFrame({0: [1, 2], "b": [3, 4]})
+    assert df.select(contains="0").columns.tolist() == [0]
+    assert df.select(startswith="0").columns.tolist() == [0]
+
+
 def _wide():
     return pd.DataFrame(
         {

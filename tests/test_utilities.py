@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import pytae  # noqa: F401
+from pytae.other_utilities import clean_column_names
 
 
 def test_to_clip_copies_and_does_not_shadow_pandas_clip(monkeypatch):
@@ -101,3 +102,46 @@ def test_replace_values_substring_match():
     df = pd.DataFrame({"a": ["not a magician exactly"]})
     result = df.replace_values({"a magician": "the magic"}, exact=False)
     assert result["a"].tolist() == ["not the magic exactly"]
+
+
+def test_replace_values_substring_match_on_numeric_column_raises():
+    df = pd.DataFrame({"a": [1, 2, 3]})
+    with pytest.raises(ValueError, match="only works on string/object columns"):
+        df.replace_values({1: 9}, exact=False)
+
+
+def test_handle_missing_leaves_bool_column_untouched():
+    df = pd.DataFrame({"b": [True, None]})
+    result = df.handle_missing()
+    assert result["b"].iloc[0] is True
+    assert pd.isna(result["b"].iloc[1])
+
+
+def test_clean_columns_int_names_are_stringified():
+    df = pd.DataFrame({0: [1, 2], "b": [3, 4]})
+    result = df.clean_columns(strip=True)
+    assert list(result.columns) == ["0", "b"]
+
+
+def test_clean_columns_dedupe_avoids_new_collisions():
+    result = clean_column_names(["revenue", "revenue", "revenue_1"], dedupe=True)
+    assert result == ["revenue", "revenue_2", "revenue_1"]
+    assert len(set(result)) == len(result)
+
+
+def test_group_x_raises_if_n_column_already_exists():
+    df = pd.DataFrame({"grp": ["x", "x", "y"], "n": [10, 20, 30]})
+    with pytest.raises(ValueError, match="column 'n' already exists"):
+        df.group_x()
+
+
+def test_group_x_raises_if_x_column_already_exists():
+    df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "x": [1, 1, 1]})
+    with pytest.raises(ValueError, match="column 'x' already exists"):
+        df.group_x(group=["grp"], a="mean", v="val")
+
+
+def test_group_x_raises_on_all_numeric_frame():
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    with pytest.raises(ValueError, match="no non-numeric columns to group by"):
+        df.group_x()

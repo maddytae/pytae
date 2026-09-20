@@ -86,9 +86,9 @@ class Plotter:
         ax_key = self.last_kwargs.get('on', 'A')
         if '^' in ax_key:
             base_key = ax_key.rstrip('^')
-            ax = self.axd.get(base_key, self.axd.get('A'))
-            if ax is None:
-                raise ValueError(f"Base axis '{base_key}' not found.")
+            if base_key not in self.axd:
+                raise ValueError(f"Unknown mosaic key '{base_key}'; available: {list(self.axd)}")
+            ax = self.axd[base_key]
             if not hasattr(ax, 'right_ax'):
                 right_ax = ax.twinx()
                 right_ax.set_label(ax_key)
@@ -102,7 +102,9 @@ class Plotter:
                 right_ax = ax.right_ax
             return right_ax
         else:
-            return self.axd.get(ax_key, self.axd.get('A'))
+            if ax_key not in self.axd:
+                raise ValueError(f"Unknown mosaic key '{ax_key}'; available: {list(self.axd)}")
+            return self.axd[ax_key]
 
     def _plot_scatter(self, ax):
         """Plot a scatter chart."""
@@ -127,12 +129,12 @@ class Plotter:
         """Plot a pie chart."""
         plot_dict = self._filter_plot_kwargs(['x', 'by', 'aggfunc', 'on', 'print_data', 'clip_data', 'secondary_y','aggregate'])
         self._store_plot_kwargs(ax, plot_dict)
-        self.df = self.df[[self.by, self.y]].groupby(self.by, observed=True, dropna=self.dropna).agg({self.y: self.aggfunc})
+        pie_df = self.df[[self.by, self.y]].groupby(self.by, observed=True, dropna=self.dropna).agg({self.y: self.aggfunc})
         if 'colors' in self.last_kwargs:
             color_dict = self.last_kwargs['colors']
-            plot_dict['colors'] = [color_dict.get(category, 'grey') for category in self.df.index]
-        self.ax = self.df.plot(ax=ax, **plot_dict)
-        self._handle_data_output(self.df)
+            plot_dict['colors'] = [color_dict.get(category, 'grey') for category in pie_df.index]
+        self.ax = pie_df.plot(ax=ax, **plot_dict)
+        self._handle_data_output(pie_df)
 
     def _plot_hexbin(self, ax):
         """Plot a hexbin chart."""
@@ -230,7 +232,7 @@ class Plotter:
         else:
             pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
                                             aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
-        pivot_table[self.x] = pivot_table[self.x].astype('object')
+        pivot_table[self.x] = pivot_table[self.x].astype('object') if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]) else pivot_table[self.x]
         pivot_table.columns.name = None #ensure col names are not corrup with multi index names post pivot
         return pivot_table
 

@@ -44,21 +44,20 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     all_cols = self.columns.tolist()  # List of all columns for slice positioning
     
     if exclude_dtype is not None:
-        _numeric_types = ['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']
         _shorthands = {
-            'numeric': _numeric_types,
-            'datetime': ['datetime64[ns]'],
+            'numeric': ['number'],
+            'datetime': ['datetime', 'datetimetz'],
             'category': ['category'],
             'bool': ['bool'],
         }
         if exclude_dtype == 'non_numeric':
-            exclude_cols = self.select_dtypes(include=_numeric_types).columns.tolist()
+            exclude_cols = self.select_dtypes(include='number').columns.tolist()
         elif isinstance(exclude_dtype, str) and exclude_dtype in _shorthands:
             exclude_cols = self.select_dtypes(exclude=_shorthands[exclude_dtype]).columns.tolist()
         elif isinstance(exclude_dtype, (str, type)):
             exclude_cols = self.select_dtypes(exclude=[exclude_dtype]).columns.tolist()
-        elif isinstance(exclude_dtype, list):
-            exclude_cols = self.select_dtypes(exclude=exclude_dtype).columns.tolist()
+        elif isinstance(exclude_dtype, (list, tuple)):
+            exclude_cols = self.select_dtypes(exclude=list(exclude_dtype)).columns.tolist()
         else:
             raise TypeError("exclude_dtype must be a string, type, or list of strings/types")
         return self[exclude_cols]
@@ -71,7 +70,11 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             selected_cols.update(arg)
             ordered_cols.extend([col for col in arg if col not in ordered_cols])
         elif isinstance(arg, str):
-            if ':' in arg:  # Handle slice notation
+            if arg in self.columns:  # Exact match first — a literal ':' in a real column name wins
+                selected_cols.add(arg)
+                if arg not in ordered_cols:
+                    ordered_cols.append(arg)
+            elif ':' in arg:  # Handle slice notation
                 start, end = arg.split(':', 1)
                 start = start.strip() or None  # Empty start means from beginning
                 end = end.strip() or None     # Empty end means to end
@@ -84,10 +87,6 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
                 slice_cols = all_cols[start_idx:end_idx + 1]
                 selected_cols.update(slice_cols)
                 ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
-            elif arg in self.columns:  # Exact match
-                selected_cols.add(arg)
-                if arg not in ordered_cols:
-                    ordered_cols.append(arg)
             else:
                 close = difflib.get_close_matches(arg, all_cols, n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
@@ -107,43 +106,45 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     if dtype is not None:
         if isinstance(dtype, str):
             if dtype == 'numeric':
-                dtype_cols = self.select_dtypes(include=['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']).columns.tolist()
+                dtype_cols = self.select_dtypes(include='number').columns.tolist()
             elif dtype == 'non_numeric':
-                dtype_cols = self.select_dtypes(exclude=['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']).columns.tolist()
+                dtype_cols = self.select_dtypes(exclude='number').columns.tolist()
             elif dtype == 'datetime':
-                dtype_cols = self.select_dtypes(include=['datetime64[ns]']).columns.tolist()
+                dtype_cols = self.select_dtypes(include=['datetime', 'datetimetz']).columns.tolist()
             elif dtype == 'category':
                 dtype_cols = self.select_dtypes(include=['category']).columns.tolist()
             elif dtype == 'bool':
                 dtype_cols = self.select_dtypes(include=['bool']).columns.tolist()
             else:
                 dtype_cols = self.select_dtypes(include=[dtype]).columns.tolist()
-        elif isinstance(dtype, (type, list)):
-            dtype_cols = self.select_dtypes(include=dtype).columns.tolist()
+        elif isinstance(dtype, (type, list, tuple)):
+            dtype_cols = self.select_dtypes(include=list(dtype) if isinstance(dtype, tuple) else dtype).columns.tolist()
+        else:
+            raise TypeError(f"dtype must be a string, type, list, or tuple, got {type(dtype)}")
         selected_cols.update(dtype_cols)
         ordered_cols.extend([col for col in dtype_cols if col not in ordered_cols])
 
     if contains is not None:
         if isinstance(contains, str):
-            contains_cols = [col for col in self.columns if contains in col]
+            contains_cols = [col for col in self.columns if contains in str(col)]
         elif isinstance(contains, list):
-            contains_cols = [col for col in self.columns if any(sub in col for sub in contains)]
+            contains_cols = [col for col in self.columns if any(sub in str(col) for sub in contains)]
         selected_cols.update(contains_cols)
         ordered_cols.extend([col for col in contains_cols if col not in ordered_cols])
 
     if startswith is not None:
         if isinstance(startswith, str):
-            startswith_cols = [col for col in self.columns if col.startswith(startswith)]
+            startswith_cols = [col for col in self.columns if str(col).startswith(startswith)]
         elif isinstance(startswith, list):
-            startswith_cols = [col for col in self.columns if any(col.startswith(sub) for sub in startswith)]
+            startswith_cols = [col for col in self.columns if any(str(col).startswith(sub) for sub in startswith)]
         selected_cols.update(startswith_cols)
         ordered_cols.extend([col for col in startswith_cols if col not in ordered_cols])
 
     if endswith is not None:
         if isinstance(endswith, str):
-            endswith_cols = [col for col in self.columns if col.endswith(endswith)]
+            endswith_cols = [col for col in self.columns if str(col).endswith(endswith)]
         elif isinstance(endswith, list):
-            endswith_cols = [col for col in self.columns if any(col.endswith(sub) for sub in endswith)]
+            endswith_cols = [col for col in self.columns if any(str(col).endswith(sub) for sub in endswith)]
         selected_cols.update(endswith_cols)
         ordered_cols.extend([col for col in endswith_cols if col not in ordered_cols])
 

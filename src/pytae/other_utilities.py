@@ -14,10 +14,23 @@ def handle_missing(self, fillna='.'):
     for c in df_cat_cols:
         df[c] = df[c].astype("object")
 
-    df_str_cols = df.columns[df.dtypes == object]
+    # Only treat columns actually holding strings as text. pandas' own dedicated
+    # string dtype (e.g. pandas >= 3.0's default "str" columns) is homogeneous by
+    # construction; legacy object-dtype columns need a value-level check since
+    # object can also hold bools/mixed Python objects, which .str.strip() would corrupt.
+    def _is_string_col(s):
+        if s.dtype == object:
+            return s.dropna().map(type).eq(str).all()
+        return pd.api.types.is_string_dtype(s)
+
+    df_str_cols = [c for c in df.columns if _is_string_col(df[c])]
     df[df_str_cols] = df[df_str_cols].fillna(fillna)
     df[df_str_cols] = df[df_str_cols].apply(lambda x: x.str.strip())
-    df = df.fillna(0)
+
+    # fillna(0) should only touch numeric columns — filling datetime/bool/other
+    # non-numeric columns with the literal int 0 silently corrupts them.
+    numeric_cols = df.select_dtypes(include="number").columns
+    df[numeric_cols] = df[numeric_cols].fillna(0)
 
     return df
 
@@ -61,12 +74,18 @@ def group_x(self, group=None, dropna=True, observed=True, a="n", v=None):
 
     if group is None:
         group = df.select_dtypes(exclude=["number"]).columns.tolist()
+        if not group:
+            raise ValueError("group_x: no non-numeric columns to group by; pass group= explicitly")
     elif isinstance(group, str):
         group = [group]
 
     if a == "n" or v is None:
+        if "n" in df.columns:
+            raise ValueError("group_x: column 'n' already exists; rename it first or pass a=/v= for a different aggregate.")
         df["n"] = df.groupby(group, dropna=dropna, observed=observed).transform("size")
     else:
+        if "x" in df.columns:
+            raise ValueError("group_x: column 'x' already exists; rename it first.")
         df["x"] = df.groupby(group, dropna=dropna, observed=observed)[v].transform(a)
 
     return df
@@ -99,23 +118,24 @@ def clean_column_names(
     """
     cleaned = list(names)
     if strip:
-        cleaned = [name.strip() for name in cleaned]
+        cleaned = [str(name).strip() for name in cleaned]
     if strip_special:
         keep = "".join(re.escape(ch) for ch in fill) if fill else ""
         pattern = re.compile(rf"[^\w\s{keep}]")
-        cleaned = [pattern.sub("", name) for name in cleaned]
+        cleaned = [pattern.sub("", str(name)) for name in cleaned]
     if squeeze:
-        cleaned = [re.sub(r"\s+", " ", name) for name in cleaned]
+        cleaned = [re.sub(r"\s+", " ", str(name)) for name in cleaned]
     if fill is not None:
-        cleaned = [re.sub(r"\s", fill, name) for name in cleaned]
+        cleaned = [re.sub(r"\s", fill, str(name)) for name in cleaned]
     if case == "lower":
-        cleaned = [name.lower() for name in cleaned]
+        cleaned = [str(name).lower() for name in cleaned]
     elif case == "upper":
-        cleaned = [name.upper() for name in cleaned]
+        cleaned = [str(name).upper() for name in cleaned]
     elif case == "proper":
-        cleaned = [name.title() for name in cleaned]
+        cleaned = [str(name).title() for name in cleaned]
     if dedupe:
         seen = {}
+        used = set(cleaned)  # original names, so a generated suffix never collides with a real one
         deduped = []
         for name in cleaned:
             if name not in seen:
@@ -123,7 +143,12 @@ def clean_column_names(
                 deduped.append(name)
             else:
                 seen[name] += 1
-                deduped.append(f"{name}_{seen[name]}")
+                candidate = f"{name}_{seen[name]}"
+                while candidate in used:
+                    seen[name] += 1
+                    candidate = f"{name}_{seen[name]}"
+                used.add(candidate)
+                deduped.append(candidate)
         cleaned = deduped
     return cleaned
 
@@ -149,9 +174,16 @@ def replace_values(self, v, c=None, exact=True):
         as literal text, not patterns).
     """
     df = self.copy()
-    to_replace = v if exact else {re.escape(old): new for old, new in v.items()}
+    to_replace = v if exact else {re.escape(str(old)): new for old, new in v.items()}
+    target_cols = ([c] if isinstance(c, str) else list(c)) if c is not None else list(df.columns)
+    if not exact:
+        non_string_cols = [col for col in target_cols if not pd.api.types.is_string_dtype(df[col])]
+        if non_string_cols:
+            raise ValueError(
+                f"replace_values: exact=False (substring match) only works on string/object "
+                f"columns; non-string column(s): {non_string_cols}"
+            )
     if c is not None:
-        target_cols = [c] if isinstance(c, str) else list(c)
         df[target_cols] = df[target_cols].replace(to_replace, regex=not exact)
     else:
         df = df.replace(to_replace, regex=not exact)

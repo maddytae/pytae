@@ -1682,6 +1682,21 @@ def test_merge_missing_required_keys_errors(tmp_path):
         cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a"])
 
 
+def test_merge_how_cross_does_not_require_on(tmp_path, capsys):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a,right=b,how=cross"])
+    out = capsys.readouterr().out.strip()
+    assert len(out.splitlines()) == 1 + 3 * 3  # header + 3x3 cross join rows
+
+
+def test_merge_how_cross_rejects_on(tmp_path):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+
+    with pytest.raises(SystemExit, match="on= cannot be used with how=cross"):
+        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=a,right=b,how=cross,on=id"])
+
+
 def test_merge_validate_failure_errors(tmp_path, capsys):
     left = tmp_path / "left.csv"
     right = tmp_path / "right.csv"

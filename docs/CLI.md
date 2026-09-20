@@ -524,7 +524,7 @@ pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      #
 pytae data.csv -encoding latin-1 -convert -o data.parquet
 ```
 
-> **`-dlim`:** `.csv` / `.txt` / `.dat` / `.sas7bdat` only. Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
+> **`-dlim`:** `.csv` / `.txt` / `.dat` only (not `.sas7bdat`, which has no delimiter concept). Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
 >
 > ```bash
 > pytae data.txt -dlim "|" -head
@@ -988,7 +988,7 @@ pytae 'folder/*.parquet' -convert
 | `-convert` | Convert to another format (extension inferred from `-o`, defaults to `.csv`) |
 | `-o, --output PATH` | Output path for `-convert` |
 | `-nrows N` | Cap rows loaded |
-| `-dlim CHAR` | Delimiter for csv/txt/dat/sas7bdat |
+| `-dlim CHAR` | Delimiter for csv/txt/dat (not sas7bdat) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; csv/txt/dat: pandas infer) |
 | `-rename old:new,...` | Rename columns on convert |
 

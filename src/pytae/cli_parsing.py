@@ -344,7 +344,7 @@ def parse_value_map(raw: str) -> dict[str, str]:
         if ":" not in pair:
             raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
         old, new = pair.split(":", 1)
-        mapping[old.strip()] = new.strip()
+        mapping[_unquote_name(old)] = _unquote_name(new)
     if not mapping:
         raise SystemExit("-replace_values: v= needs at least one old:new pair")
     return mapping
@@ -483,7 +483,7 @@ def parse_file_arg(raw: str) -> list[dict]:
             entry[key] = _unquote_name(value)
         entries.append(entry)
     if len(entries) < 2:
-        raise SystemExit("-file: need at least two PATH=ALIAS entries to use with -merge")
+        raise SystemExit("-file: need at least two PATH=ALIAS entries")
     return entries
 
 
@@ -522,17 +522,24 @@ def parse_merge_arg(raw: str) -> dict:
     straight to pandas merge()).
     """
     kwargs = parse_reshape_kwargs(raw, keys=_MERGE_KEYS, flag="-merge")
-    missing = [k for k in ("left", "right", "on") if k not in kwargs]
+    how = kwargs.get("how", "inner")
+    required = ["left", "right"] if how == "cross" else ["left", "right", "on"]
+    missing = [k for k in required if k not in kwargs]
     if missing:
         raise SystemExit(f"-merge: missing required key(s): {', '.join(missing)}")
-    on_cols, left_cols, right_cols = parse_merge_on(kwargs["on"])
+    if how == "cross":
+        if "on" in kwargs:
+            raise SystemExit("-merge: on= cannot be used with how=cross (pandas cross joins don't take on=)")
+        on_cols, left_cols, right_cols = None, None, None
+    else:
+        on_cols, left_cols, right_cols = parse_merge_on(kwargs["on"])
     return {
         "left": kwargs["left"],
         "right": kwargs["right"],
         "on": on_cols,
         "left_on": left_cols,
         "right_on": right_cols,
-        "how": kwargs.get("how", "inner"),
+        "how": how,
         "validate": kwargs.get("validate"),
     }
 

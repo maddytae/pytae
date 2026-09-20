@@ -80,7 +80,12 @@ def test_all_agg_drop_na():
 
 
     pd.testing.assert_frame_equal(result, expected_df)
-    
+
+
+def test_agg_df_raises_when_n_collides_with_real_column():
+    df = pd.DataFrame({"g": ["x", "x", "y"], "n": [1, 2, 3], "v": [10, 20, 30]})
+    with pytest.raises(ValueError, match="already has a numeric column named 'n'"):
+        df.agg_df(["sum", "n"])
 
 
 if __name__ == '__main__':

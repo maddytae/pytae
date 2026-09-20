@@ -150,9 +150,12 @@ class _Pipeline:
 
     def head(self, n: int) -> pd.DataFrame:
         if self._df is None:
-            df = self._reader.head(n)
-            if self._pending_exact is not None:
-                df = df.select(*self._pending_exact)
+            if self._nrows is not None:
+                df = self.dataframe().head(n)
+            else:
+                df = self._reader.head(n)
+                if self._pending_exact is not None:
+                    df = df.select(*self._pending_exact)
         else:
             df = self.dataframe().head(n)
         self._df = df
@@ -160,9 +163,12 @@ class _Pipeline:
 
     def tail(self, n: int) -> pd.DataFrame:
         if self._df is None:
-            df = self._reader.tail(n)
-            if self._pending_exact is not None:
-                df = df.select(*self._pending_exact)
+            if self._nrows is not None:
+                df = self.dataframe().tail(n)
+            else:
+                df = self._reader.tail(n)
+                if self._pending_exact is not None:
+                    df = df.select(*self._pending_exact)
         else:
             df = self.dataframe().tail(n)
         self._df = df
