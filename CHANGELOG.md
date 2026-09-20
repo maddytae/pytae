@@ -64,6 +64,7 @@ A follow-up re-review (`.grok/full-review-rerun.md`) confirmed all of the above 
 - `-mutate` with an `@name` local-variable reference now gives a dedicated CLI error instead of a confusing "local variable is not defined" message; the `@` detector now ignores `@` characters inside quoted string literals (e.g. `-mutate "flag: s == 'a@b'"`), so it no longer misfires on emails or other literal `@` text.
 - `-qry`: column-name keys can now be quoted or unquoted (`species: 'Adelie'` == `'species': 'Adelie'`), matching `-select`'s convention. Values still need Python-literal quoting when they're strings (e.g. `'Adelie'`); numbers/tuples/lists already worked unquoted.
 - `-rename`: quoting an old/new name (e.g. `-rename "'old col':'new col'"`) previously left the literal quote characters in the parsed mapping, silently renaming nothing since no real column matched. Quoting is now optional and stripped if present, matching the rest of the CLI.
+- `plot`/`dev` extras now include `scipy` (pandas' own `kind="kde"`/`"density"` backend imports it internally) — previously only the `notebooks` extra had it, so a `pip install pytae[dev]`/`pytae[plot]`-only environment could hit `ModuleNotFoundError: No module named 'scipy'` the moment a kde/density chart was actually rendered.
 
 ## [3.3.1] - 2026-09-13
 
