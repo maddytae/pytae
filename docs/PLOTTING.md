@@ -157,6 +157,44 @@ k.fig
 
 This is the general escape hatch for anything `Plotter` doesn't expose as a kwarg — since `k.fig`/`k.axd` are plain matplotlib objects, nothing about `Plotter` stops you from dropping into regular matplotlib calls afterward (`ax.axhline()`, `ax.annotate()`, `ax.set_ylim()`, …) before the final `k.fig.savefig(...)`.
 
+### Per-axis-type fine control — branching inside the loop
+
+Branch on the axis key (or its position in `k.fig.axes`) to apply different tweaks to different panels — e.g. a percent formatter only on secondary axes, with a different fixed y-limit for primary vs. secondary panels:
+
+```python
+from matplotlib.ticker import FuncFormatter
+
+for ax_key, ax in k.axd.items():
+    if ax_key.endswith("^"):          # secondary axes (added via on="X^")
+        ax.set_ylim(0, 50)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:.0f}%"))
+    else:                              # primary axes
+        ax.set_ylim(0, 30)
+```
+
+### Data labels, highlighting, and annotations
+
+Once a chart is plotted, its matplotlib artists are sitting right there on the `Axes` to read back and tweak — e.g. `ax.patches` gives every bar as a `Rectangle`:
+
+```python
+# data label above every bar
+for patch in ax.patches:
+    height = patch.get_height()
+    ax.annotate(f"{height:.1f}", (patch.get_x() + patch.get_width() / 2, height),
+                ha="center", va="bottom", fontsize=9)
+
+# restyle a single bar after the fact (match it by its x-tick position)
+day_order = [t.get_text() for t in ax.get_xticklabels()]
+ax.patches[day_order.index("Sat")].set_facecolor("crimson")
+
+# shade a region and annotate a specific point with an arrow
+ax.axvspan(3, 6, color="orange", alpha=0.2)
+ax.annotate("peak", xy=(peak_x, peak_y), xytext=(peak_x - 2, peak_y - 40),
+            arrowprops=dict(arrowstyle="->", color="black"))
+```
+
+The same idea extends further: `ax.axhline(..., label=...)` drawn on `k.axd["A"]` *before* `.plot()`/`.finalize()` still shows up in a `consolidate_legends=True` legend; `ax.set_yticklabels([...])` rewrites tick *text* only (e.g. showing a diverging/mirrored bar chart's negative side as a positive magnitude, without touching the underlying data); `ax.inset_axes([...])` + `ax.indicate_inset_zoom(...)` embeds a fully separate zoomed-in `Axes` inside an existing panel. See [notebooks/plotter.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/plotter.ipynb) for all of these worked out end to end.
+
 ## Other plot kinds
 
 Everything `pandas.plot()` supports works through `.plot(kind=...)`: `line`, `bar`/`barh`, `area`, `hist`, `kde`/`density`, `scatter`, `hexbin`, `pie`. A few notes:
