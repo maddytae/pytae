@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- CLI `-drop`: subtract exact column names at that point in the pipeline (`df.drop(columns=...)`).
+  Names only — no `dtype=` / `contains=` / `regex=` / slices (those stay on `-select`). Remaining
+  columns keep their order. Repeatable; missing names error with a typo hint; dropping every
+  remaining column is an error.
+
 ## [3.4.2] - 2026-09-20
 
 ### Changed

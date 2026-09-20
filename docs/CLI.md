@@ -9,6 +9,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Sample datasets](#sample-datasets)
 - [Pytae-specific operations](#pytae-specific-operations)
   - [Column selection — `-select`](#select)
+  - [Drop columns — `-drop`](#drop)
   - [Row filtering — `-qry`](#qry)
   - [Mutated columns — `-mutate`](#mutate)
   - [SQL — `-sql`](#sql)
@@ -47,7 +48,7 @@ How the CLI pipeline works, and how to grab a real dataset to try it on.
 <a id="basics"></a>
 ### Basics
 
-Flag **order is the pipeline**, the same as a pandas/pytae method chain. `-select … -agg_df … -select … -shape` is `df.select(…).agg_df(…).select(…).shape`. Put `-qry` / `-query` first yourself if you need a column you later drop. **Only the last operation prints.** Earlier flags still run.
+Flag **order is the pipeline**, the same as a pandas/pytae method chain. `-select … -agg_df … -select … -shape` is `df.select(…).agg_df(…).select(…).shape`. Put `-qry` / `-query` first yourself if you need a column you later `-drop` / `-select` away. **Only the last operation prints.** Earlier flags still run.
 
 ```bash
 # first 3 rows, then shape of that 3-row frame → prints (3, n)
@@ -64,6 +65,9 @@ pytae penguins.parquet -select "species,body_mass_g" -agg_df mean
 
 # heaviest 5 penguins, name + weight only
 pytae penguins.parquet -select "species,body_mass_g" -sort_by "body_mass_g desc" -head 5
+
+# drop columns; the rest keep file order
+pytae penguins.parquet -drop "sex,island" -head 5
 
 # ad-hoc SQL over the same file
 pytae penguins.parquet -sql "select species, avg(body_mass_g) from df group by species"
@@ -178,10 +182,34 @@ Exact names must exist on the **current** columns; missing names error with a ty
 
 ---
 
+<a id="drop"></a>
+### Drop columns — `-drop`
+
+Subtract **exact column names**. Complements `-select`: `-select` picks (and may reorder); `-drop` removes and leaves the rest in their current order. No `dtype=` / `contains=` / `regex=` / slices — those stay on `-select`.
+
+```python
+df.drop(columns=["sex", "island"])
+```
+
+```bash
+# yank known columns
+pytae penguins.parquet -drop "sex,island" -head 5
+
+# keep a shape, then pull one column out of it
+pytae penguins.parquet -select "dtype=numeric,species" -drop "body_mass_g" -cols
+
+# filter on a column, then remove it
+pytae penguins.parquet -qry "species: 'Adelie'" -drop "species" -head
+```
+
+Same quoting as `-select` names (a space is not a separator; quote a name only to protect a comma). Missing names error with a typo suggestion. Repeat `-drop` to subtract more. Dropping every remaining column is an error.
+
+---
+
 <a id="qry"></a>
 ### Row filtering — `-qry`
 
-pytae's dict-based filter, `df.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
+pytae's dict-based filter, `df.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` / `-drop` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
 
 ```python
 df.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
@@ -193,8 +221,8 @@ df.qry({"species": "Adelie"}).select("species", "body_mass_g")
 # vs 3500 vs ('>', 3500)). That is not the same as -select contains=bill.
 pytae penguins.parquet -qry "species: 'Adelie', body_mass_g: ('>', 3500)"
 
-# filter first, then drop the filter column — same as df.qry(...).select(...)
-pytae penguins.parquet -qry "species: 'Adelie'" -select "species,body_mass_g" -head
+# filter first, then drop the filter column — same as df.qry(...).drop(columns=...)
+pytae penguins.parquet -qry "species: 'Adelie'" -drop "species" -head
 
 # string-matching operators: startswith / endswith / contains / regex (search-anywhere,
 # like re.search — 'regex' is 'contains' with regex=True); missing values never match (na=False)
@@ -682,7 +710,7 @@ Every structured flag is one of two families. Wrap the **whole spec** in `""` wh
 
 **kwargs** — `key=value,key=value`. Used by `-select` kwargs, `-agg`, `-group_x`, `-crosstab`, `-long`/`-wide`, `-merge`, `-concat`, `-replace_values`, `-clean_columns`, `-file` extras. Quote a value only when it contains a comma. `contains=bill`, `index=species`, and `dtype=numeric` stay unquoted — they are tokens, not Python literals (`contains='bill'` is accepted, not the style).
 
-**names and mappings** — `a,b` lists, or `name: payload`. Used by `-select` names/slices, `-group_by`, `-sort_by`, `-qry`, `-mutate`, `-rename`, and nested maps like `v=` / `on=` pairs. `-qry` is the exception that *requires* quotes on string values: they are typed literals (`'Adelie'` vs `3500` vs `('>', 3500)`), so unquoted `Adelie` is not valid. `-mutate` column names inside an expression must stay unquoted.
+**names and mappings** — `a,b` lists, or `name: payload`. Used by `-select` names/slices, `-drop`, `-group_by`, `-sort_by`, `-qry`, `-mutate`, `-rename`, and nested maps like `v=` / `on=` pairs. `-qry` is the exception that *requires* quotes on string values: they are typed literals (`'Adelie'` vs `3500` vs `('>', 3500)`), so unquoted `Adelie` is not valid. `-mutate` column names inside an expression must stay unquoted.
 
 Simple flags (`-head 5`, `-sql "..."`, `-query "..."`, `-pretty`, `-dropna false`) are neither family.
 
@@ -702,6 +730,7 @@ pytae -file "a.csv=df1;b.csv=df2" -concat "frames='df1,df2'"
 # names: comma list; quote a name only to protect a comma
 pytae data.parquet -select "bill length mm,body mass g"
 pytae data.parquet -select "'city, state',other_col"
+pytae penguins.parquet -drop "sex,island"
 pytae penguins.parquet -sort_by "species,body_mass_g desc"
 
 # mappings: name: payload. -qry strings are typed literals, so they need quotes
@@ -724,6 +753,7 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 | Flag / key | Pandas equivalent |
 |---|---|
 | `-query` | `df.query()` |
+| `-drop` | `df.drop(columns=...)` — exact names only; patterns/dtypes/slices stay on `-select` |
 | `-describe` / `-info` / `-shape` / `-cols` / `-dtype` / `-nulls` | `df.describe()` / `df.info()` / `df.shape` / `df.columns` / `df.dtypes` / `df.isna().sum()` |
 | `-sort_by` | `df.sort_values()` |
 | `-crosstab`'s `values=` / `aggfunc=` / `normalize=` / `margins=` | same keyword names as `pd.crosstab()` |
@@ -883,6 +913,7 @@ pytae penguins.parquet -qry "island: 'Dream'" -select "species,island,body_mass_
 | Flag | Description |
 |---|---|
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
+| `-drop COLUMNS` | Drop columns by exact name at this point (comma-separated names only; remaining keep their order) |
 | `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` and column-name quotes optional |
 | `-mutate SPEC` | Create/overwrite columns at this point (`df.mutate()`); `"new_col: expression"` entries, same tokenizer/key-quoting rules as `-qry` (no surrounding `{}`), but the value is a pandas `eval()` expression, not a literal |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
