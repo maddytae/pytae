@@ -192,7 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
                               "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
                               "regex, exclude_dtype); repeat to filter remaining columns, including after "
-                              "-agg_df/-long/-wide, e.g. -select dtype=numeric -select contains=bill")
+                              '-agg_df/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
     parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt/.dat, inferred from -o's extension, "

@@ -36,7 +36,7 @@ pytae -file "data1.parquet=df1; data2.parquet=df2" \
       -merge "left=df1,right=df2,on='col a:cola',how=inner"
 
 # join column name is shared, outer join, then keep going like any other pipeline
-pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',how=outer" -select id,x,y -shape
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',how=outer" -select "id,x,y" -shape
 
 # validate the join is truly one-to-one, erroring otherwise
 pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',validate=one_to_one"
