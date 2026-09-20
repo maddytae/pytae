@@ -16,7 +16,7 @@ Value is `;`-separated entries (at least two — any number is fine), each `PATH
 ```bash
 pytae -file "data1.parquet=df1; data2.parquet=df2" ...
 pytae -file "a.csv=a; b.csv=b; c.csv=c" ...   # three (or more) files are fine
-pytae -file "sales.txt=sales,dlim='|'; customers.csv=customers,encoding='latin-1'" ...
+pytae -file "sales.txt=sales,dlim='|'; customers.csv=customers,encoding=latin-1" ...
 ```
 
 ## `-merge` — join `-file` aliases
@@ -33,18 +33,18 @@ Must be the **first** operation when `-file` is used, unless [`-sql`](#sql-alter
 ```bash
 # join column names differ between the two files
 pytae -file "data1.parquet=df1; data2.parquet=df2" \
-      -merge "left=df1,right=df2,on='col a:cola',how=inner"
+      -merge "left=df1,right=df2,on=col a:cola,how=inner"
 
 # join column name is shared, outer join, then keep going like any other pipeline
-pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',how=outer" -select "id,x,y" -shape
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,how=outer" -select "id,x,y" -shape
 
 # validate the join is truly one-to-one, erroring otherwise
-pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id',validate=one_to_one"
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,validate=one_to_one"
 
 # fold a third file in: (a ⋈ b) ⋈ c — 'df' means "the result so far"
 pytae -file "a.csv=a; b.csv=b; c.csv=c" \
-      -merge "left=a,right=b,on='id'" \
-      -merge "left=df,right=c,on='id'"
+      -merge "left=a,right=b,on=id" \
+      -merge "left=df,right=c,on=id"
 ```
 
 ## `-concat` — stack `-file` aliases (pandas `concat()`)
@@ -76,7 +76,7 @@ pytae -file "data1.parquet=df1; data2.parquet=df2" \
 Once something in the pipeline has produced a current view (e.g. after `-merge`/`-concat`, or a later `-sql` call), `df` also becomes queryable — same as single-file mode:
 
 ```bash
-pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on='id'" -sql "select count(*) as n from df"
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id" -sql "select count(*) as n from df"
 ```
 
 ## Notes

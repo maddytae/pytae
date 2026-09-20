@@ -279,20 +279,3 @@ class _OrderedAppend(argparse.Action):
         items.append(values)
         setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
-
-
-class _OrderedSortBy(argparse.Action):
-    """-sort_by COLUMNS [asc|desc]; records dest in op_order. Default direction is asc."""
-
-    def __call__(self, parser, namespace, values, option_string=None) -> None:
-        values = list(values)
-        order = "asc"
-        if len(values) >= 2 and values[-1] in ("asc", "desc"):
-            order = values.pop()
-        if len(values) != 1:
-            raise argparse.ArgumentError(
-                self, "expected a column list, optionally followed by 'asc' or 'desc'"
-            )
-        setattr(namespace, self.dest, values[0])
-        setattr(namespace, "sort_by_order", order)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]

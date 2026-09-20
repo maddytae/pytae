@@ -32,13 +32,13 @@ def sample_dataset_dir(tmp_path_factory):
 
 # Mirrors docs/CLI.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
-    ("penguins.parquet", ["-qry", "'species': 'Adelie'", "-agg_df", "mean"]),
-    ("penguins.parquet", ["-crosstab", "index='species',columns='island'"]),
-    ("tips.parquet", ["-select", "day,total_bill,tip", "-group_x", "group='day',v='tip',a='mean'"]),
-    ("titanic.parquet", ["-crosstab", "index='pclass',columns='survived',margins=true"]),
+    ("penguins.parquet", ["-qry", "species: 'Adelie'", "-agg_df", "mean"]),
+    ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
+    ("tips.parquet", ["-select", "day,total_bill,tip", "-group_x", "group=day,v=tip,a=mean"]),
+    ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),
     ("diamonds.parquet", ["-select", "cut,price", "-agg_df", "mean"]),
-    ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg", "desc", "-head", "5"]),
-    ("flights.parquet", ["-group_by", "year", "-agg", "column='passengers',aggfunc='sum'"]),
+    ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
+    ("flights.parquet", ["-group_by", "year", "-agg", "column=passengers,aggfunc=sum"]),
 ]
 
 
@@ -51,7 +51,7 @@ def test_docs_sample_dataset_examples_run_cleanly(sample_dataset_dir, filename, 
 def test_crosstab_counts_match_known_penguins_distribution(sample_parquet, capsys):
     path = sample_parquet("penguins")
 
-    exit_code = cli.main([path, "-crosstab", "index='species',columns='island'"])
+    exit_code = cli.main([path, "-crosstab", "index=species,columns=island"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -64,7 +64,7 @@ def test_crosstab_counts_match_known_penguins_distribution(sample_parquet, capsy
 def test_crosstab_multi_column_index_on_real_penguins(sample_parquet, capsys):
     path = sample_parquet("penguins")
 
-    exit_code = cli.main([path, "-crosstab", "index='species,island',columns='sex'"])
+    exit_code = cli.main([path, "-crosstab", "index='species,island',columns=sex"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -77,17 +77,17 @@ def test_crosstab_multi_column_index_unknown_column_errors(sample_parquet):
     path = sample_parquet("penguins")
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-crosstab", "index='species,nope',columns='sex'"])
+        cli.main([path, "-crosstab", "index='species,nope',columns=sex"])
     assert exc_info.value.code == 2
 
 
 def test_wide_a_n_matches_crosstab_counts_on_real_penguins(sample_parquet, capsys):
     path = sample_parquet("penguins")
 
-    cli.main([path, "-select", "species,island,sex", "-wide", "c='island',v='sex',a='n'"])
+    cli.main([path, "-select", "species,island,sex", "-wide", "c=island,v=sex,a=n"])
     wide_out = capsys.readouterr().out
 
-    cli.main([path, "-crosstab", "index='species',columns='island'"])
+    cli.main([path, "-crosstab", "index=species,columns=island"])
     crosstab_out = capsys.readouterr().out
 
     def _row(line):
@@ -102,7 +102,7 @@ def test_wide_a_n_matches_crosstab_counts_on_real_penguins(sample_parquet, capsy
 def test_crosstab_margins_match_known_titanic_totals(sample_parquet, capsys):
     path = sample_parquet("titanic")
 
-    exit_code = cli.main([path, "-crosstab", "index='pclass',columns='survived',margins=true"])
+    exit_code = cli.main([path, "-crosstab", "index=pclass,columns=survived,margins=true"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -124,7 +124,7 @@ def test_group_by_agg_sum_matches_known_flights_totals(sample_parquet, capsys):
     path = sample_parquet("flights")
 
     exit_code = cli.main([
-        path, "-group_by", "year", "-agg", "column='passengers',aggfunc='sum'", "-head", "3",
+        path, "-group_by", "year", "-agg", "column=passengers,aggfunc=sum", "-head", "3",
     ])
 
     out = capsys.readouterr().out

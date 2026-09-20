@@ -23,6 +23,22 @@ def parse_columns(raw: str) -> list[str]:
         return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
 
 
+def parse_sort_by(raw: str) -> tuple[list[str], str]:
+    """Parse -sort_by SPEC: a comma-separated column list, optionally ending with
+    asc or desc as a trailing word (default asc). e.g. "species,body_mass_g desc"."""
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
+    order = "asc"
+    head, sep, tail = raw.rpartition(" ")
+    if sep and tail.lower() in ("asc", "desc"):
+        raw, order = head.rstrip(",").strip(), tail.lower()
+    cols = parse_columns(raw)
+    if not cols:
+        raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
+    return cols, order
+
+
 def _tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: bool = False) -> list[str]:
     """Split raw into segments at top-level occurrences of any character in `seps`,
     respecting quotes (a matched quote pair is never split inside) and, if
@@ -204,20 +220,40 @@ def parse_qry(raw: str) -> dict:
 
 
 def parse_agg(raw: str):
-    """Parse an --agg_df aggfunc value: bare string ('sum'), list literal, or dict of
-    quoted key:value pairs, surrounding {} optional, e.g. "'col':'sum','n':'n'"."""
-    raw = raw.strip()
-    if not (raw.startswith(("{", "[", "'", '"'))):
-        return raw
-    try:
-        return ast.literal_eval(raw)
-    except (ValueError, SyntaxError) as exc:
-        if raw.startswith("{"):
-            raise SystemExit(f"invalid --agg_df value: {exc}") from exc
-        try:
-            return ast.literal_eval(f"{{{raw}}}")
-        except (ValueError, SyntaxError):
-            raise SystemExit(f"invalid --agg_df value: {exc}") from exc
+    """Parse -agg_df: a name (mean), a comma list (mean,sum,n), or a col:aggfunc
+    mapping (body_mass_g: mean, n: n). Quote a mapping key only to protect a comma."""
+    raw = (raw or "").strip()
+    if not raw:
+        return "sum"
+    if raw[0] in "{[":
+        raise SystemExit(
+            "-agg_df: use a name (mean), a comma list (mean,sum), or a mapping "
+            "(col: mean, n: n)"
+        )
+    entries = [e for e in _tokenize(raw, ",", keep_quotes=True) if e]
+    if not entries:
+        raise SystemExit("-agg_df: expected a name, a comma list, or a mapping")
+
+    def _is_mapping(entry: str) -> bool:
+        return len(_tokenize(entry, ":", keep_quotes=True)) >= 2
+
+    mapped = [_is_mapping(e) for e in entries]
+    if all(mapped):
+        out: dict[str, str] = {}
+        for entry in entries:
+            parts = _tokenize(entry, ":", keep_quotes=True)
+            key = _unquote_name(parts[0])
+            value = _unquote_name(":".join(parts[1:]))
+            if not key or not value:
+                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
+            out[key] = value
+        return out
+    if any(mapped):
+        raise SystemExit(
+            "-agg_df: mix of names and col:aggfunc mappings; use one or the other"
+        )
+    names = [_unquote_name(e) for e in entries]
+    return names[0] if len(names) == 1 else names
 
 
 _AGG_KEYS = ("column", "aggfunc", "as")
@@ -227,15 +263,15 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     """Parse -agg as key=value specs: column=, aggfunc=, optional as=.
 
     Several specs are separated by ';'. Several source columns in one spec share
-    the same aggfunc: column='value,val_growth',aggfunc='sum'. as= needs a single column.
+    the same aggfunc: column='value,val_growth',aggfunc=sum. as= needs a single column.
     Returns (source_col, output_name, aggfunc) rows.
     """
     raw = (raw or "").strip()
     if not raw:
-        raise SystemExit("-agg: expected key=value specs, e.g. column='value',aggfunc='sum',as='v'")
+        raise SystemExit("-agg: expected key=value specs, e.g. column=value,aggfunc=sum,as=v")
     if raw.startswith("{"):
         raise SystemExit(
-            "-agg: use key=value specs, e.g. column='value',aggfunc='sum',as='v' "
+            "-agg: use key=value specs, e.g. column=value,aggfunc=sum,as=v "
             "(not a dict literal)"
         )
     rows: list[tuple[str, str, str]] = []
@@ -258,11 +294,11 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_GROUP_X_KEYS = ("group", "v", "a", "dropna", "observed")
+_GROUP_X_KEYS = ("group", "v", "a")
 
 
 def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. group='species',v='body_mass_g',a='max'."""
+    """Parse -group_x as key=value tokens, e.g. group=species,v=body_mass_g,a=max."""
     kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
     if "group" in kwargs and isinstance(kwargs["group"], str):
         kwargs["group"] = parse_columns(kwargs["group"])
@@ -277,11 +313,12 @@ def _unquote_name(raw: str) -> str:
 
 
 _LONG_KEYS = ("c", "v")
-_WIDE_KEYS = ("c", "v", "a", "dropna")
+_WIDE_KEYS = ("c", "v", "a")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide/-group_x as key=value tokens, e.g. c='metric',v='reading',a='mean'."""
+    """Parse -long/-wide/-group_x as key=value tokens, e.g. c=metric,v=reading,a=mean.
+    Quote a value only when it contains a comma."""
     raw = (raw or "").strip()
     if not raw:
         return {}
@@ -298,7 +335,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             raise SystemExit(f"{flag}: {key}= needs a value")
         if key in kwargs:
             raise SystemExit(f"{flag}: {key}= given more than once")
-        kwargs[key] = parse_bool_text(value) if key in ("dropna", "observed", "margins", "exact") else value
+        kwargs[key] = parse_bool_text(value) if key in ("margins", "exact") else value
     return kwargs
 
 
