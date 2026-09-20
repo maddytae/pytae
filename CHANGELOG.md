@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.4.3] - 2026-09-20
+
+### Added
+- CLI `-drop`: subtract exact column names at that point in the pipeline (`df.drop(columns=...)`).
+  Names only — no `dtype=` / `contains=` / `regex=` / slices (those stay on `-select`). Remaining
+  columns keep their order. Repeatable; missing names error with a typo hint; dropping every
+  remaining column is an error.
+
+### Documentation
+- `docs/CLI.md`: `-mutate` example for string concat via `species.str.cat(island, sep='_')`
+  (pandas `eval()` does not support `+` for strings).
+
 ## [3.4.2] - 2026-09-20
 
 ### Changed

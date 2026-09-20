@@ -20,6 +20,7 @@ from pytae.cli_parsing import (
     parse_columns,
     parse_concat_arg,
     parse_crosstab_arg,
+    parse_drop_spec,
     parse_file_arg,
     parse_fraction,
     parse_group_agg,
@@ -194,6 +195,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
                               "regex, exclude_dtype); repeat to filter remaining columns, including after "
                               '-agg_df/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
+    parser.add_argument("--drop", "-drop", dest="drop", action=_OrderedAppend, default=None, metavar="COLUMNS",
+                         help="drop columns by exact name at this point in the pipeline (comma-separated names "
+                              "only; use -select for dtype=/contains=/regex=/slices); remaining columns keep "
+                              'their order, e.g. -drop "sex,island"')
     parser.add_argument("-convert", "--convert", dest="convert",
                          action=_OrderedFlag,
                          help="convert to another format (.parquet/.csv/.txt/.dat, inferred from -o's extension, "
@@ -356,6 +361,7 @@ def _process_path(
     *,
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
+    drop_specs: list[list[str]],
     qry_specs: list[dict],
     mutate_specs: list[str],
     query_specs: list[str],
@@ -397,6 +403,7 @@ def _process_path(
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
     select_iter = iter(select_specs)
+    drop_iter = iter(drop_specs)
     qry_iter = iter(qry_specs)
     mutate_iter = iter(mutate_specs)
     query_iter = iter(query_specs)
@@ -422,6 +429,11 @@ def _process_path(
         if op == "select":
             names, kwargs = next(select_iter)
             err = pipeline.apply_select(names, kwargs)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "drop":
+            err = pipeline.apply_drop(next(drop_iter))
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -766,7 +778,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.convert, args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.qry, args.query, args.sql, args.replace_values,
+                         args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
                          args.clean_columns is not None, args.merge, args.concat])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
@@ -790,6 +802,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rename_map = parse_rename(args.rename) if args.rename else None
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
+    drop_specs = [parse_drop_spec(raw) for raw in (args.drop or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     mutate_specs = list(args.mutate or [])
     query_specs = list(args.query or [])
@@ -813,6 +826,7 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
+                                drop_specs=drop_specs,
                                 qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_map=rename_map, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
@@ -830,6 +844,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
+                                    drop_specs=drop_specs,
                                     qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_map=rename_map)
         except UnicodeError as exc:

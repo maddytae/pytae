@@ -90,6 +90,26 @@ def _split_groups(raw: str, sep: str = ";") -> list[str]:
     return [t for t in _tokenize(raw, sep, keep_quotes=True) if t]
 
 
+def parse_drop_spec(raw: str) -> list[str]:
+    """Parse -drop into exact column names.
+
+    Names only: comma-separated, same quoting as -select names (a space is not
+    a separator). key=value tokens and select matchers (dtype=/contains=/regex=/
+    slices) are rejected — those stay on -select.
+    """
+    tokens = _split_tokens(raw)
+    if not tokens:
+        raise SystemExit("-drop: expected column names")
+    names: list[str] = []
+    for token in tokens:
+        if "=" in token:
+            raise SystemExit(
+                "-drop: only column names; use -select for dtype=/contains=/regex=/exclude_dtype="
+            )
+        names.append(token)
+    return names
+
+
 def parse_select_spec(raw: str) -> tuple[list[str], dict]:
     """Parse -select into positional names/slices and select() kwargs.
 
