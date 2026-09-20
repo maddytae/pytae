@@ -1,14 +1,17 @@
+from __future__ import annotations
+
 import re
 
 import pandas as pd
 
-def to_clip(self):
+
+def to_clip(df):
     """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
-    return self.to_clipboard(index=False)
+    return df.to_clipboard(index=False)
 
 
-def handle_missing(self, fillna='.'):
-    df = self.copy()
+def handle_missing(df, fillna='.'):
+    df = df.copy()
 
     df_cat_cols = df.columns[df.dtypes == 'category'].tolist()
     for c in df_cat_cols:
@@ -35,12 +38,12 @@ def handle_missing(self, fillna='.'):
     return df
 
 
-def cols(self, ascending=True):
+def cols(df, ascending=True):
     '''
     Return the column names of the DataFrame sorted or in original order.
     
     Parameters:
-    self (pd.DataFrame): The DataFrame whose columns are to be returned.
+    df (pd.DataFrame): The DataFrame whose columns are to be returned.
     ascending (bool or None, optional): 
         - True (default): Sort alphabetically A-Z.
         - False: Sort alphabetically Z-A.
@@ -52,7 +55,7 @@ def cols(self, ascending=True):
     Raises:
     ValueError: If an invalid ascending parameter is provided.
     '''
-    columns = self.columns.to_list()
+    columns = df.columns.to_list()
     
     if ascending is True:
         return sorted(columns)
@@ -64,13 +67,13 @@ def cols(self, ascending=True):
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
 
 
-def group_x(self, group=None, dropna=True, observed=True, a="n", v=None):
+def group_x(df, group=None, dropna=True, observed=True, a="n", v=None):
     """Broadcast a group aggregate to every row (pandas transform).
 
     Default a='n' is group size. Pass v= and a= for another aggregate.
     If group is omitted, non-numeric columns are used.
     """
-    df = self.copy()
+    df = df.copy()
 
     if group is None:
         group = df.select_dtypes(exclude=["number"]).columns.tolist()
@@ -153,9 +156,9 @@ def clean_column_names(
     return cleaned
 
 
-def clean_columns(self, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
+def clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
     """Clean column header names (see clean_column_names() for the per-key behavior)."""
-    df = self.copy()
+    df = df.copy()
     df.columns = clean_column_names(
         list(df.columns), strip=strip, strip_special=strip_special,
         squeeze=squeeze, fill=fill, case=case, dedupe=dedupe,
@@ -163,7 +166,7 @@ def clean_columns(self, strip=False, strip_special=False, squeeze=False, fill=No
     return df
 
 
-def replace_values(self, v, c=None, exact=True):
+def replace_values(df, v, c=None, exact=True):
     """Replace values (pandas replace()), optionally scoped to specific columns.
     Parameter names match the -replace_values CLI flag's v=/c=/exact= keys.
 
@@ -173,7 +176,7 @@ def replace_values(self, v, c=None, exact=True):
         anywhere in the cell (v's keys are regex-escaped, so they're treated
         as literal text, not patterns).
     """
-    df = self.copy()
+    df = df.copy()
     to_replace = v if exact else {re.escape(str(old)): new for old, new in v.items()}
     target_cols = ([c] if isinstance(c, str) else list(c)) if c is not None else list(df.columns)
     if not exact:
@@ -188,12 +191,3 @@ def replace_values(self, v, c=None, exact=True):
     else:
         df = df.replace(to_replace, regex=not exact)
     return df
-
-
-
-pd.DataFrame.to_clip = to_clip
-pd.DataFrame.handle_missing = handle_missing
-pd.DataFrame.cols = cols
-pd.DataFrame.group_x = group_x
-pd.DataFrame.clean_columns = clean_columns
-pd.DataFrame.replace_values = replace_values

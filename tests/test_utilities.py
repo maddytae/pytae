@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-import pytae  # noqa: F401
+import pytae as pt
 from pytae.other_utilities import clean_column_names
 
 
@@ -19,7 +19,7 @@ def test_to_clip_copies_and_does_not_shadow_pandas_clip(monkeypatch):
         copied["index"] = kwargs.get("index")
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
-    df.to_clip()
+    pt.to_clip(df)
     assert copied["called"] is True
     assert copied["index"] is False
 
@@ -29,7 +29,7 @@ def test_to_clip_copies_and_does_not_shadow_pandas_clip(monkeypatch):
 
 def test_handle_missing_fills_object_and_numeric():
     df = pd.DataFrame({"grp": pd.Series(["x", None], dtype=object), "val": [1.0, None]})
-    result = df.handle_missing()
+    result = pt.handle_missing(df)
     assert result["grp"].tolist() == ["x", "."]
     assert result["val"].tolist() == [1.0, 0.0]
     assert df["grp"].isna().any()
@@ -37,55 +37,55 @@ def test_handle_missing_fills_object_and_numeric():
 
 def test_cols_sort_orders():
     df = pd.DataFrame({"c": [1], "a": [2], "b": [3]})
-    assert df.cols() == ["a", "b", "c"]
-    assert df.cols(ascending=False) == ["c", "b", "a"]
-    assert df.cols(ascending=None) == ["c", "a", "b"]
+    assert pt.cols(df) == ["a", "b", "c"]
+    assert pt.cols(df, ascending=False) == ["c", "b", "a"]
+    assert pt.cols(df, ascending=None) == ["c", "a", "b"]
     with pytest.raises(ValueError, match="Invalid ascending"):
-        df.cols(ascending="nope")
+        pt.cols(df, ascending="nope")
 
 
 def test_group_x_count_and_value():
     df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3]})
-    counted = df.group_x()
+    counted = pt.group_x(df)
     assert counted["n"].tolist() == [2, 2, 1]
-    averaged = df.group_x(group=["grp"], a="mean", v="val")
+    averaged = pt.group_x(df, group=["grp"], a="mean", v="val")
     assert averaged["x"].tolist() == [1.5, 1.5, 3.0]
 
 
 def test_clean_columns_strip_fill_case():
     df = pd.DataFrame({"  Col A  ": [1], "col   b": [2]})
-    result = df.clean_columns(strip=True, fill="_", case="lower")
+    result = pt.clean_columns(df, strip=True, fill="_", case="lower")
     assert list(result.columns) == ["col_a", "col___b"]
     assert list(df.columns) == ["  Col A  ", "col   b"]  # original untouched
 
 
 def test_clean_columns_squeeze_strip_special_dedupe():
     df = pd.DataFrame({"Col A": [1], "col  a": [2], "100% Match!": [3]})
-    result = df.clean_columns(strip=True, squeeze=True, strip_special=True, fill="_", case="lower", dedupe=True)
+    result = pt.clean_columns(df, strip=True, squeeze=True, strip_special=True, fill="_", case="lower", dedupe=True)
     assert list(result.columns) == ["col_a", "col_a_1", "100_match"]
 
 
 def test_clean_columns_no_fill_leaves_whitespace():
     df = pd.DataFrame({"col a": [1]})
-    result = df.clean_columns(case="upper")
+    result = pt.clean_columns(df, case="upper")
     assert list(result.columns) == ["COL A"]
 
 
 def test_clean_columns_strip_special_removes_quotes():
     df = pd.DataFrame({"'col a'": [1], '"col b"': [2]})
-    result = df.clean_columns(strip_special=True)
+    result = pt.clean_columns(df, strip_special=True)
     assert list(result.columns) == ["col a", "col b"]
 
 
 def test_clean_columns_strip_special_keeps_fill_character():
     df = pd.DataFrame({"co-op's data": [1]})
-    result = df.clean_columns(strip_special=True, fill="-")
+    result = pt.clean_columns(df, strip_special=True, fill="-")
     assert list(result.columns) == ["co-ops-data"]
 
 
 def test_replace_values_exact_whole_df():
     df = pd.DataFrame({"a": ["x", "not x exactly"], "b": ["x", "y"]})
-    result = df.replace_values({"x": "z"})
+    result = pt.replace_values(df, {"x": "z"})
     assert result["a"].tolist() == ["z", "not x exactly"]
     assert result["b"].tolist() == ["z", "y"]
     assert df["a"].tolist() == ["x", "not x exactly"]  # original untouched
@@ -93,33 +93,33 @@ def test_replace_values_exact_whole_df():
 
 def test_replace_values_scoped_to_columns():
     df = pd.DataFrame({"a": ["x"], "b": ["x"]})
-    result = df.replace_values({"x": "z"}, c="a")
+    result = pt.replace_values(df, {"x": "z"}, c="a")
     assert result["a"].tolist() == ["z"]
     assert result["b"].tolist() == ["x"]
 
 
 def test_replace_values_substring_match():
     df = pd.DataFrame({"a": ["not a magician exactly"]})
-    result = df.replace_values({"a magician": "the magic"}, exact=False)
+    result = pt.replace_values(df, {"a magician": "the magic"}, exact=False)
     assert result["a"].tolist() == ["not the magic exactly"]
 
 
 def test_replace_values_substring_match_on_numeric_column_raises():
     df = pd.DataFrame({"a": [1, 2, 3]})
     with pytest.raises(ValueError, match="only works on string/object columns"):
-        df.replace_values({1: 9}, exact=False)
+        pt.replace_values(df, {1: 9}, exact=False)
 
 
 def test_handle_missing_leaves_bool_column_untouched():
     df = pd.DataFrame({"b": [True, None]})
-    result = df.handle_missing()
+    result = pt.handle_missing(df)
     assert result["b"].iloc[0] is True
     assert pd.isna(result["b"].iloc[1])
 
 
 def test_clean_columns_int_names_are_stringified():
     df = pd.DataFrame({0: [1, 2], "b": [3, 4]})
-    result = df.clean_columns(strip=True)
+    result = pt.clean_columns(df, strip=True)
     assert list(result.columns) == ["0", "b"]
 
 
@@ -132,16 +132,16 @@ def test_clean_columns_dedupe_avoids_new_collisions():
 def test_group_x_raises_if_n_column_already_exists():
     df = pd.DataFrame({"grp": ["x", "x", "y"], "n": [10, 20, 30]})
     with pytest.raises(ValueError, match="column 'n' already exists"):
-        df.group_x()
+        pt.group_x(df)
 
 
 def test_group_x_raises_if_x_column_already_exists():
     df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "x": [1, 1, 1]})
     with pytest.raises(ValueError, match="column 'x' already exists"):
-        df.group_x(group=["grp"], a="mean", v="val")
+        pt.group_x(df, group=["grp"], a="mean", v="val")
 
 
 def test_group_x_raises_on_all_numeric_frame():
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
     with pytest.raises(ValueError, match="no non-numeric columns to group by"):
-        df.group_x()
+        pt.group_x(df)

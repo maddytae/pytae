@@ -1,19 +1,20 @@
+from __future__ import annotations
+
 import difflib
 import re
 
-import pandas as pd
 
 # Define the sentinel class
 class everything:
     pass
 
-def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None):
+def select(df, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None):
     '''
     Select columns from a DataFrame based on names, regex patterns, slices, data types, or string matching.
     
     Parameters:
     -----------
-    self : pd.DataFrame
+    df : pd.DataFrame
         The DataFrame from which to select columns.
     *args : variable-length arguments
         Can be: list of column names, string (exact name or slice like 'start:end'), everything(), or callable.
@@ -41,7 +42,7 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     
     selected_cols = set()
     ordered_cols = []
-    all_cols = self.columns.tolist()  # List of all columns for slice positioning
+    all_cols = df.columns.tolist()  # List of all columns for slice positioning
     
     if exclude_dtype is not None:
         _shorthands = {
@@ -51,26 +52,26 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             'bool': ['bool'],
         }
         if exclude_dtype == 'non_numeric':
-            exclude_cols = self.select_dtypes(include='number').columns.tolist()
+            exclude_cols = df.select_dtypes(include='number').columns.tolist()
         elif isinstance(exclude_dtype, str) and exclude_dtype in _shorthands:
-            exclude_cols = self.select_dtypes(exclude=_shorthands[exclude_dtype]).columns.tolist()
+            exclude_cols = df.select_dtypes(exclude=_shorthands[exclude_dtype]).columns.tolist()
         elif isinstance(exclude_dtype, (str, type)):
-            exclude_cols = self.select_dtypes(exclude=[exclude_dtype]).columns.tolist()
+            exclude_cols = df.select_dtypes(exclude=[exclude_dtype]).columns.tolist()
         elif isinstance(exclude_dtype, (list, tuple)):
-            exclude_cols = self.select_dtypes(exclude=list(exclude_dtype)).columns.tolist()
+            exclude_cols = df.select_dtypes(exclude=list(exclude_dtype)).columns.tolist()
         else:
             raise TypeError("exclude_dtype must be a string, type, or list of strings/types")
-        return self[exclude_cols]
+        return df[exclude_cols]
     
     for arg in args:
         if isinstance(arg, list):
-            missing_cols = [col for col in arg if col not in self.columns]
+            missing_cols = [col for col in arg if col not in df.columns]
             if missing_cols:
                 raise KeyError(f"Columns not found: {missing_cols}")
             selected_cols.update(arg)
             ordered_cols.extend([col for col in arg if col not in ordered_cols])
         elif isinstance(arg, str):
-            if arg in self.columns:  # Exact match first — a literal ':' in a real column name wins
+            if arg in df.columns:  # Exact match first — a literal ':' in a real column name wins
                 selected_cols.add(arg)
                 if arg not in ordered_cols:
                     ordered_cols.append(arg)
@@ -93,11 +94,11 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
                 regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?[]()") else ""
                 raise KeyError(f"Column not found: '{arg}'{hint}{regex_hint}")
         elif isinstance(arg, everything):
-            remaining_cols = [col for col in self.columns if col not in selected_cols]
+            remaining_cols = [col for col in df.columns if col not in selected_cols]
             selected_cols.update(remaining_cols)
             ordered_cols.extend([col for col in remaining_cols if col not in ordered_cols])
         elif callable(arg):
-            func_cols = [col for col in self.columns if arg(col)]
+            func_cols = [col for col in df.columns if arg(col)]
             selected_cols.update(func_cols)
             ordered_cols.extend([col for col in func_cols if col not in ordered_cols])
         else:
@@ -106,19 +107,19 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
     if dtype is not None:
         if isinstance(dtype, str):
             if dtype == 'numeric':
-                dtype_cols = self.select_dtypes(include='number').columns.tolist()
+                dtype_cols = df.select_dtypes(include='number').columns.tolist()
             elif dtype == 'non_numeric':
-                dtype_cols = self.select_dtypes(exclude='number').columns.tolist()
+                dtype_cols = df.select_dtypes(exclude='number').columns.tolist()
             elif dtype == 'datetime':
-                dtype_cols = self.select_dtypes(include=['datetime', 'datetimetz']).columns.tolist()
+                dtype_cols = df.select_dtypes(include=['datetime', 'datetimetz']).columns.tolist()
             elif dtype == 'category':
-                dtype_cols = self.select_dtypes(include=['category']).columns.tolist()
+                dtype_cols = df.select_dtypes(include=['category']).columns.tolist()
             elif dtype == 'bool':
-                dtype_cols = self.select_dtypes(include=['bool']).columns.tolist()
+                dtype_cols = df.select_dtypes(include=['bool']).columns.tolist()
             else:
-                dtype_cols = self.select_dtypes(include=[dtype]).columns.tolist()
+                dtype_cols = df.select_dtypes(include=[dtype]).columns.tolist()
         elif isinstance(dtype, (type, list, tuple)):
-            dtype_cols = self.select_dtypes(include=list(dtype) if isinstance(dtype, tuple) else dtype).columns.tolist()
+            dtype_cols = df.select_dtypes(include=list(dtype) if isinstance(dtype, tuple) else dtype).columns.tolist()
         else:
             raise TypeError(f"dtype must be a string, type, list, or tuple, got {type(dtype)}")
         selected_cols.update(dtype_cols)
@@ -126,25 +127,25 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
 
     if contains is not None:
         if isinstance(contains, str):
-            contains_cols = [col for col in self.columns if contains in str(col)]
+            contains_cols = [col for col in df.columns if contains in str(col)]
         elif isinstance(contains, list):
-            contains_cols = [col for col in self.columns if any(sub in str(col) for sub in contains)]
+            contains_cols = [col for col in df.columns if any(sub in str(col) for sub in contains)]
         selected_cols.update(contains_cols)
         ordered_cols.extend([col for col in contains_cols if col not in ordered_cols])
 
     if startswith is not None:
         if isinstance(startswith, str):
-            startswith_cols = [col for col in self.columns if str(col).startswith(startswith)]
+            startswith_cols = [col for col in df.columns if str(col).startswith(startswith)]
         elif isinstance(startswith, list):
-            startswith_cols = [col for col in self.columns if any(str(col).startswith(sub) for sub in startswith)]
+            startswith_cols = [col for col in df.columns if any(str(col).startswith(sub) for sub in startswith)]
         selected_cols.update(startswith_cols)
         ordered_cols.extend([col for col in startswith_cols if col not in ordered_cols])
 
     if endswith is not None:
         if isinstance(endswith, str):
-            endswith_cols = [col for col in self.columns if str(col).endswith(endswith)]
+            endswith_cols = [col for col in df.columns if str(col).endswith(endswith)]
         elif isinstance(endswith, list):
-            endswith_cols = [col for col in self.columns if any(str(col).endswith(sub) for sub in endswith)]
+            endswith_cols = [col for col in df.columns if any(str(col).endswith(sub) for sub in endswith)]
         selected_cols.update(endswith_cols)
         ordered_cols.extend([col for col in endswith_cols if col not in ordered_cols])
 
@@ -154,11 +155,8 @@ def select(self, *args, dtype=None, exclude_dtype=None, contains=None, startswit
             compiled = [re.compile(p) for p in patterns]
         except re.error as exc:
             raise ValueError(f"invalid regex: {exc}") from exc
-        regex_cols = [col for col in self.columns if any(p.search(str(col)) for p in compiled)]
+        regex_cols = [col for col in df.columns if any(p.search(str(col)) for p in compiled)]
         selected_cols.update(regex_cols)
         ordered_cols.extend([col for col in regex_cols if col not in ordered_cols])
 
-    return self[ordered_cols]
-
-# Attach to pandas DataFrame
-pd.DataFrame.select = select
+    return df[ordered_cols]

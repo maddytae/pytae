@@ -1,6 +1,6 @@
 # pytae — Library Reference
 
-Pandas extensions registered on `pd.DataFrame`. Importing `pytae` attaches the methods. `Plotter` is loaded only when you access it and needs `pip install pytae[plot]`.
+Package functions on a DataFrame: `import pytae as pt` then `pt.select(df, ...)`. They do **not** attach to `pd.DataFrame`. The CLI flags (`-select`, `-qry`, …) are unchanged. `Plotter` is loaded only when you access it and needs `pip install pytae[plot]`.
 
 ```python
 import pytae as pt
@@ -29,12 +29,12 @@ Plotter.facet(penguins, by="species", ncols=2, x="bill_length_mm", y="bill_depth
 Dict-based filters (equality, lists, `in` / `not in`, comparisons, intervals, string matching, null checks). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
 
 ```python
-penguins.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
-penguins.qry({"species": ["Adelie", "Gentoo"]})
-penguins.qry({"species": ("not in", ["Adelie"])})
-penguins.qry({"body_mass_g": "[3000,4000]"})
-penguins.qry({"species": ("startswith", "Ad")})   # also endswith, contains, regex (search-anywhere)
-penguins.qry({"sex": ("notna",)})                  # also isna \u2014 one-element tuple, no value
+pt.qry(penguins, {"species": "Adelie", "body_mass_g": (">", 3500)})
+pt.qry(penguins, {"species": ["Adelie", "Gentoo"]})
+pt.qry(penguins, {"species": ("not in", ["Adelie"])})
+pt.qry(penguins, {"body_mass_g": "[3000,4000]"})
+pt.qry(penguins, {"species": ("startswith", "Ad")})   # also endswith, contains, regex (search-anywhere)
+pt.qry(penguins, {"sex": ("notna",)})                  # also isna — one-element tuple, no value
 ```
 
 ## 3) Selection — `select()`
@@ -42,14 +42,14 @@ penguins.qry({"sex": ("notna",)})                  # also isna \u2014 one-elemen
 Pick columns by name, regex, dtype, or name pattern. [select.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/select.ipynb)
 
 ```python
-penguins.select("species", "island")
-penguins.select(regex="^bill")                 # regex= only; df.select("^bill") is an error
-penguins.select(dtype="numeric")
-penguins.select(exclude_dtype="numeric")       # keep non-numeric
-penguins.select(exclude_dtype="non_numeric")   # keep numeric
-penguins.select(contains="bill", startswith="flip")
-penguins.select("species", regex="bill|body")
-penguins.select("d", "a", "b")                 # KeyError if d is not a column
+pt.select(penguins, "species", "island")
+pt.select(penguins, regex="^bill")                 # regex= only; a bare "^bill" is an error
+pt.select(penguins, dtype="numeric")
+pt.select(penguins, exclude_dtype="numeric")       # keep non-numeric
+pt.select(penguins, exclude_dtype="non_numeric")   # keep numeric
+pt.select(penguins, contains="bill", startswith="flip")
+pt.select(penguins, "species", regex="bill|body")
+pt.select(penguins, "d", "a", "b")                 # KeyError if d is not a column
 ```
 
 ## 4) Reshaping — `long()`, `wide()`
@@ -57,10 +57,10 @@ penguins.select("d", "a", "b")                 # KeyError if d is not a column
 `long()` melts numeric columns to rows. `wide()` pivots a column's values into headers. [shape.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/shape.ipynb)
 
 ```python
-tall = penguins.long(c="feature")
-tall.wide(c="feature", v="value")
-tall.wide(c="feature", v="value", a="mean")
-tall.wide(c="feature", v="value", a="n")  # 'n' aliases pandas' 'size' (group row count), matching agg_df
+tall = pt.long(penguins, c="feature")
+pt.wide(tall, c="feature", v="value")
+pt.wide(tall, c="feature", v="value", a="mean")
+pt.wide(tall, c="feature", v="value", a="n")  # 'n' aliases pandas' 'size' (group row count), matching agg_df
 ```
 
 ## 5) Aggregation — `agg_df()`
@@ -68,10 +68,10 @@ tall.wide(c="feature", v="value", a="n")  # 'n' aliases pandas' 'size' (group ro
 Groups by all non-numeric columns and aggregates the rest. `n` is group count. [agg_df.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/agg_df.ipynb)
 
 ```python
-penguins.agg_df("mean")
-penguins.agg_df(["sum", "mean", "n"])
-penguins.agg_df({"body_mass_g": "mean", "n": "n"})
-penguins.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keywords are used
+pt.agg_df(penguins, "mean")
+pt.agg_df(penguins, ["sum", "mean", "n"])
+pt.agg_df(penguins, {"body_mass_g": "mean", "n": "n"})
+pt.agg_df(penguins, a=["mean", "n"], dropna=False)  # a= required when other keywords are used
 ```
 
 ## 6) Mutated columns — `mutate()`
@@ -79,30 +79,31 @@ penguins.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keyword
 Create/overwrite columns from `qry()`-style `"new_col: expression"` entries, evaluated in order via pandas `eval()` — a plain formula per column, no lambda required. Column names in the expression must stay unquoted — quoting one turns it into a string literal instead of a column reference.
 
 ```python
-penguins.mutate("bmi: body_mass_g / bill_length_mm ** 2")
-penguins.mutate("heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")  # multiple entries in one call
-penguins.mutate("mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")  # later entries can reference earlier ones
-penguins.mutate("is_adelie: species == 'Adelie'")  # string literals still need quotes
+pt.mutate(penguins, "bmi: body_mass_g / bill_length_mm ** 2")
+pt.mutate(penguins, "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")  # multiple entries in one call
+pt.mutate(penguins, "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")  # later entries can reference earlier ones
+pt.mutate(penguins, "is_adelie: species == 'Adelie'")  # string literals still need quotes
 ```
 
 A local variable from the calling scope can be referenced with an `@` prefix, same as pandas' own `eval()`/`query()`:
 
 ```python
 threshold = 4000
-penguins.mutate("heavy: body_mass_g >= @threshold")
+pt.mutate(penguins, "heavy: body_mass_g >= @threshold")
 ```
 
 For conditional/string outcomes — where plain `eval()` can't help — two dplyr-style forms are built in:
 
 ```python
 # if_else(condition, true_value, false_value) — like dplyr's if_else()
-penguins.mutate("weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')")
+pt.mutate(penguins, "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')")
 
 # case_when(cond1: val1, cond2: val2, ..., default) — like dplyr's case_when()
 # checked in order, first match wins; a last argument with no colon is the optional
 # catch-all (like SQL ELSE) and must be listed last; unmatched rows are NaN without it
-penguins.mutate(
-    "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', 'small')"
+pt.mutate(
+    penguins,
+    "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', 'small')",
 )
 ```
 
@@ -111,12 +112,12 @@ penguins.mutate(
 [other_utilities.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/other_utilities.ipynb)
 
 ```python
-penguins.cols()                    # sorted names; cols(ascending=None) keeps file order
-penguins.handle_missing()          # object NA -> '.', numeric NA -> 0
-penguins.group_x()                 # group size column `n`
-penguins.group_x(group=["species"], v="body_mass_g", a="max")
-penguins.to_clip()                 # copy to clipboard (does not shadow pandas clip)
-penguins.clean_columns(strip=True, fill="_", case="lower")  # clean header names
-penguins.replace_values({"Adelie": "Adelie (renamed)"})     # exact=True by default
-penguins.replace_values({"a": "z"}, c="species", exact=False)  # substring, scoped
+pt.cols(penguins)                    # sorted names; cols(..., ascending=None) keeps file order
+pt.handle_missing(penguins)          # object NA -> '.', numeric NA -> 0
+pt.group_x(penguins)                 # group size column `n`
+pt.group_x(penguins, group=["species"], v="body_mass_g", a="max")
+pt.to_clip(penguins)                 # copy to clipboard (does not shadow pandas clip)
+pt.clean_columns(penguins, strip=True, fill="_", case="lower")  # clean header names
+pt.replace_values(penguins, {"Adelie": "Adelie (renamed)"})     # exact=True by default
+pt.replace_values(penguins, {"a": "z"}, c="species", exact=False)  # substring, scoped
 ```

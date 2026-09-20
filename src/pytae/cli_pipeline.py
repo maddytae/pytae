@@ -8,6 +8,10 @@ import re
 import pandas as pd
 
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
+from pytae.mutate import mutate
+from pytae.other_utilities import replace_values
+from pytae.qry import qry
+from pytae.select import select
 
 
 def _sql_string_literal(value: str) -> str:
@@ -37,7 +41,7 @@ def _mask_quoted(spec: str) -> str:
 
 class _Pipeline:
     """Flag order is the method chain. Each -select/-drop/-qry/-query/-head/… call
-    runs on the current view, same as df.select().drop(columns=…).qry().head().
+    runs on the current view, same as pt.select(df, …) then pt.qry(df, …) then head.
     Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
     don't return a DataFrame/Series in pandas either, so (like main()'s validation)
@@ -77,7 +81,7 @@ class _Pipeline:
 
         df = self._df if self._df is not None else self.dataframe()
         try:
-            self._df = df.select(*names, **kwargs)
+            self._df = select(df, *names, **kwargs)
         except (ValueError, KeyError) as exc:
             return f"-select: {exc}"
         return None
@@ -108,7 +112,7 @@ class _Pipeline:
         """Apply one -qry spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         try:
-            self._df = df.qry(conditions)
+            self._df = qry(df, conditions)
         except Exception as exc:
             return f"-qry: {exc}"
         return None
@@ -116,10 +120,10 @@ class _Pipeline:
     def apply_mutate(self, spec: str) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         if re.search(r"@\w", _mask_quoted(spec)):
-            return "-mutate: '@name' local-variable references are library-only (df.mutate() from Python), not available on the CLI"
+            return "-mutate: '@name' local-variable references are library-only (pt.mutate() from Python), not available on the CLI"
         df = self.dataframe()
         try:
-            self._df = df.mutate(spec)
+            self._df = mutate(df, spec)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None
@@ -142,7 +146,7 @@ class _Pipeline:
             if unknown:
                 return unknown_columns_message("-replace_values", unknown, available)
         try:
-            self._df = df.replace_values(v=mapping, c=cols, exact=exact)
+            self._df = replace_values(df, v=mapping, c=cols, exact=exact)
         except Exception as exc:
             return f"-replace_values: {exc}"
         return None
@@ -235,7 +239,7 @@ class _Pipeline:
             else:
                 df = self._reader.head(n)
                 if self._pending_exact is not None:
-                    df = df.select(*self._pending_exact)
+                    df = select(df, *self._pending_exact)
         else:
             df = self.dataframe().head(n)
         self._df = df
@@ -248,7 +252,7 @@ class _Pipeline:
             else:
                 df = self._reader.tail(n)
                 if self._pending_exact is not None:
-                    df = df.select(*self._pending_exact)
+                    df = select(df, *self._pending_exact)
         else:
             df = self.dataframe().tail(n)
         self._df = df

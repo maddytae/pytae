@@ -2,6 +2,7 @@
 
 ```bash
 pip install -e ".[dev,notebooks]"
+ruff check src tests                          # lint (also runs in CI)
 pytest                                        # unit tests
 python scripts/run_notebooks.py               # run the notebook check manually
 ```

@@ -6,12 +6,13 @@ import argparse
 import io
 import subprocess
 import sys
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import pandas as pd
 
-from pytae.agg_df import agg_df  # noqa: F401  — registers pd.DataFrame.agg_df
+from pytae.agg_df import agg_df
 from pytae.cli_parsing import (
     expand_paths,
     parse_agg,
@@ -44,11 +45,8 @@ from pytae.cli_pipeline import (
     _OrderedValue,
     _Pipeline,
 )
-from pytae.mutate import mutate  # noqa: F401  — registers pd.DataFrame.mutate
-from pytae.other_utilities import group_x, handle_missing  # noqa: F401
-from pytae.qry import qry  # noqa: F401
+from pytae.other_utilities import clean_columns, group_x, handle_missing
 from pytae.readers import get_reader, write_dataframe
-from pytae.select import select  # noqa: F401
 
 try:
     __version__ = _pkg_version("pytae")
@@ -612,7 +610,7 @@ def _process_path(
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
         elif op == "agg_df":
             aggfunc = parse_agg(args.agg_df)
-            result = _apply_round(pipeline.dataframe().agg_df(a=aggfunc, dropna=args.dropna), args.round_ndigits)
+            result = _apply_round(agg_df(pipeline.dataframe(), a=aggfunc, dropna=args.dropna), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
@@ -650,14 +648,14 @@ def _process_path(
             value_col = gx.get("v")
             if value_col and value_col not in source_df.columns:
                 return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))
-            result = _apply_round(source_df.group_x(**gx), args.round_ndigits)
+            result = _apply_round(group_x(source_df, **gx), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
             if args.to_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "handle_missing":
-            result = _apply_round(pipeline.dataframe().handle_missing(fillna=args.handle_missing), args.round_ndigits)
+            result = _apply_round(handle_missing(pipeline.dataframe(), fillna=args.handle_missing), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
@@ -665,7 +663,7 @@ def _process_path(
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "clean_columns":
             opts = parse_clean_columns_arg(args.clean_columns)
-            result = _apply_round(pipeline.dataframe().clean_columns(**opts), args.round_ndigits)
+            result = _apply_round(clean_columns(pipeline.dataframe(), **opts), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))

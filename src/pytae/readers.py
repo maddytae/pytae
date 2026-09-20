@@ -1,4 +1,3 @@
-
 """Format-specific readers exposing a uniform metadata/inspection API.
 
 Each reader avoids loading full row data for shape/columns/dtypes/head where

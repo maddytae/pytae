@@ -1,17 +1,15 @@
 
-import pytest
+import os
+import sys
+
 import numpy as np
 import pandas as pd
-
-
-import sys
-import os
+import pytest
 
 # Assuming the current working directory is where the project root is
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from pytae import agg_df
-
+import pytae as pt
 
 
 def test_agg_df_sum():
@@ -23,7 +21,7 @@ def test_agg_df_sum():
     df = pd.DataFrame(data)
     
     # Act: Call the agg_df method with sum aggregation
-    result = df.agg_df(a=['sum'])
+    result = pt.agg_df(df, a=['sum'])
     
     # Assert: Check if the result is as expected
     expected_df =  pd.DataFrame(data).groupby('category').sum().reset_index()
@@ -36,7 +34,7 @@ def test_all_agg():
                   'country':['sg','cn','ca','np','in','in','in','in']})
     
     df['id'] = df['id'].replace('', np.nan)
-    result=df.agg_df(a=['sum','min','mean','min','max','n'])
+    result=pt.agg_df(df, a=['sum','min','mean','min','max','n'])
 
     # Group by 'id' and 'country', then aggregate
     expected_df = df.groupby(['id', 'country']).agg(
@@ -63,7 +61,7 @@ def test_all_agg_drop_na():
     
     df['id'] = df['id'].replace('', np.nan)
     
-    result=df.agg_df(a=['sum','min','mean','min','max','n'],dropna=False)
+    result=pt.agg_df(df, a=['sum','min','mean','min','max','n'],dropna=False)
 
     # Group by 'id' and 'country', then aggregate
     expected_df = df.groupby(['id', 'country'],dropna=False).agg(
@@ -85,7 +83,7 @@ def test_all_agg_drop_na():
 def test_agg_df_raises_when_n_collides_with_real_column():
     df = pd.DataFrame({"g": ["x", "x", "y"], "n": [1, 2, 3], "v": [10, 20, 30]})
     with pytest.raises(ValueError, match="already has a numeric column named 'n'"):
-        df.agg_df(["sum", "n"])
+        pt.agg_df(df, ["sum", "n"])
 
 
 if __name__ == '__main__':

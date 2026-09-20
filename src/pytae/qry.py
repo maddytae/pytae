@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import difflib
 import operator
 import re
@@ -25,7 +27,7 @@ unary_ops = {
     "notna": lambda s: s.notna(),
 }
 
-def qry(self, conditions):
+def qry(df, conditions):
     """
     Filters a DataFrame based on a dictionary of conditions.
 
@@ -37,7 +39,7 @@ def qry(self, conditions):
 
     Parameters:
     -----------
-    self : pd.DataFrame
+    df : pd.DataFrame
         The DataFrame to filter.
     conditions : dict
         A dictionary where keys are column names and values are conditions to apply.
@@ -146,8 +148,8 @@ def qry(self, conditions):
     - Filtering does not modify the original DataFrame. Each condition is applied with
       `.loc[...]` and a new filtered frame is returned; the caller's object is unchanged.
     """
-    out = self
-    available = list(self.columns)
+    out = df
+    available = list(df.columns)
     for col, cond in conditions.items():
         if col not in available:
             close = difflib.get_close_matches(col, available, n=1)
@@ -218,6 +220,3 @@ def qry(self, conditions):
             out = out.loc[out[col] == cond]
 
     return out
-
-# Attach the method to the DataFrame class
-pd.DataFrame.qry = qry

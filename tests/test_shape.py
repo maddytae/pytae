@@ -1,21 +1,22 @@
-import pytest
-import numpy as np
-import pandas as pd
-
-import sys
 import os
+import sys
+
+import pandas as pd
+import pytest
 
 # Assuming the current working directory is where the project root is
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from pytae import long, wide, sample
+import pytae as pt
+from pytae import sample
+
 
 def test_long():
 
     penguins = sample("penguins")
 
     
-    result = penguins.long(c='features')
+    result = pt.long(penguins, c='features')
     
 
     numeric_cols = penguins.select_dtypes(include=['number']).columns.tolist()
@@ -36,7 +37,7 @@ def test_wide_falls_back_to_sum_when_pivot_has_duplicate_keys():
         }
     )
 
-    result = df.wide(c="country", v="balance")
+    result = pt.wide(df, c="country", v="balance")
 
     expected_df = df.pivot_table(
         index="id", columns="country", values="balance", aggfunc="sum"
@@ -54,7 +55,7 @@ def test_wide_uses_pivot_when_keys_are_unique():
         }
     )
 
-    result = df.wide(c="country", v="balance")
+    result = pt.wide(df, c="country", v="balance")
 
     expected_df = df.pivot(index="id", columns="country", values="balance").reset_index()
     expected_df.columns.name = None
@@ -71,7 +72,7 @@ def test_wide_a_n_is_alias_for_size():
         }
     )
 
-    result = df.wide(c="country", v="balance", a="n")
+    result = pt.wide(df, c="country", v="balance", a="n")
 
     expected_df = df.pivot_table(
         index="id", columns="country", values="balance", aggfunc="size"
@@ -83,7 +84,7 @@ def test_wide_a_n_is_alias_for_size():
 def test_long_raises_when_no_numeric_columns():
     df = pd.DataFrame({"a": ["x", "y"], "b": ["p", "q"]})
     with pytest.raises(ValueError, match="no numeric columns to melt"):
-        df.long()
+        pt.long(df)
 
 
 if __name__ == '__main__':

@@ -36,7 +36,8 @@ long = pytae.long
 assert "pytae.shape" in sys.modules
 assert long is not None
 
-assert hasattr(pytae.pd.DataFrame, "mutate")
+assert callable(pytae.mutate)
+assert not hasattr(__import__("pandas").DataFrame, "mutate")
 
 Plotter = pytae.Plotter
 assert "pytae.plotting" in sys.modules
@@ -54,12 +55,11 @@ import pytae.cli
 assert "pytae.plotting" not in sys.modules
 assert "pytae.shape" not in sys.modules
 assert "matplotlib" not in sys.modules
-assert hasattr(sys.modules["pandas"].DataFrame, "qry")
-assert hasattr(sys.modules["pandas"].DataFrame, "select")
-assert hasattr(sys.modules["pandas"].DataFrame, "agg_df")
-assert hasattr(sys.modules["pandas"].DataFrame, "group_x")
-assert hasattr(sys.modules["pandas"].DataFrame, "handle_missing")
-assert hasattr(sys.modules["pandas"].DataFrame, "mutate")
+assert callable(__import__("pytae", fromlist=["qry"]).qry)
+assert callable(__import__("pytae", fromlist=["select"]).select)
+assert not hasattr(sys.modules["pandas"].DataFrame, "qry")
+assert not hasattr(sys.modules["pandas"].DataFrame, "select")
+assert not hasattr(sys.modules["pandas"].DataFrame, "mutate")
 """ % _SRC
     subprocess.check_call([sys.executable, "-c", code])
 

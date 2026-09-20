@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Library verbs are package functions, not pandas methods: `import pytae as pt` then
+  `pt.select(df, ...)`, `pt.qry(df, ...)`, `pt.mutate(df, ...)`, and the rest. They no
+  longer attach to `pd.DataFrame`. CLI flags (`-select`, `-qry`, `-mutate`, …) are
+  unchanged.
+
+### Added
+- `docs/FLAGS.md` — one-page "which flag?" card.
+- Ruff in CI (`ruff check src tests`).
+
 ## [3.4.3] - 2026-09-20
 
 ### Added

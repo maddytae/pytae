@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import math
 import warnings
-import pandas as pd
+
 import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
+import pandas as pd
 
 # pytae's own control kwargs -- these drive Plotter's behavior directly and are
 # never forwarded to pandas.plot() (see _prepare_plot_kwargs/_filter_plot_kwargs).

@@ -1,13 +1,24 @@
+"""pytae: pandas helpers as package functions (`pt.select(df, ...)`) plus a CLI."""
+
+from __future__ import annotations
+
 from collections.abc import Mapping
 from pathlib import Path
 
 import pandas as pd
 
-from .agg_df import *
-from .mutate import *
-from .other_utilities import *
-from .qry import *
-from .select import *
+from .agg_df import agg_df
+from .mutate import mutate
+from .other_utilities import (
+    clean_columns,
+    cols,
+    group_x,
+    handle_missing,
+    replace_values,
+    to_clip,
+)
+from .qry import qry
+from .select import everything, select
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -49,29 +60,6 @@ class _SampleData(Mapping):
 sample_data = _SampleData()
 
 
-def _bind_shape():
-    from .shape import long, wide
-    pd.DataFrame.long = long
-    pd.DataFrame.wide = wide
-    globals()["long"] = long
-    globals()["wide"] = wide
-    return long, wide
-
-
-def _lazy_long(self, **kwargs):
-    long, _ = _bind_shape()
-    return long(self, **kwargs)
-
-
-def _lazy_wide(self, **kwargs):
-    _, wide = _bind_shape()
-    return wide(self, **kwargs)
-
-
-pd.DataFrame.long = _lazy_long
-pd.DataFrame.wide = _lazy_wide
-
-
 def __getattr__(name):
     if name == "Plotter":
         try:
@@ -82,9 +70,28 @@ def __getattr__(name):
             ) from exc
         return Plotter
     if name in ("long", "wide"):
-        _bind_shape()
+        from .shape import long, wide
+        globals()["long"] = long
+        globals()["wide"] = wide
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["sample_data", "sample", "Plotter", "long", "wide"]
+__all__ = [
+    "sample_data",
+    "sample",
+    "Plotter",
+    "select",
+    "qry",
+    "mutate",
+    "agg_df",
+    "long",
+    "wide",
+    "group_x",
+    "handle_missing",
+    "cols",
+    "to_clip",
+    "clean_columns",
+    "replace_values",
+    "everything",
+]

@@ -1,9 +1,10 @@
 # pytae — CLI Reference
 
-Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's own library verbs — `qry()`, `select()`, `agg_df()`, `group_x()`, `handle_missing()`, `long()`, `wide()` — plus CLI-native operations like value replacement (`-replace_values`), header cleanup (`-clean_columns`), and multi-file merges/concats (`-file`/`-merge`/`-concat`).
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's library verbs — `pt.qry()`, `pt.select()`, `pt.agg_df()`, `pt.group_x()`, `pt.handle_missing()`, `pt.long()`, `pt.wide()` — plus CLI-native operations like value replacement (`-replace_values`), header cleanup (`-clean_columns`), and multi-file merges/concats (`-file`/`-merge`/`-concat`). Start with [Which flag?](FLAGS.md) if you just need the right switch.
 
 ## Contents
 
+- [Which flag?](FLAGS.md)
 - [Getting started](#getting-started)
   - [Basics](#basics)
   - [Sample datasets](#sample-datasets)
@@ -48,7 +49,7 @@ How the CLI pipeline works, and how to grab a real dataset to try it on.
 <a id="basics"></a>
 ### Basics
 
-Flag **order is the pipeline**, the same as a pandas/pytae method chain. `-select … -agg_df … -select … -shape` is `df.select(…).agg_df(…).select(…).shape`. Put `-qry` / `-query` first yourself if you need a column you later `-drop` / `-select` away. **Only the last operation prints.** Earlier flags still run.
+Flag **order is the pipeline**, the same as composing `pt.select` / `pt.agg_df` in order. `-select … -agg_df … -select … -shape` is `pt.select(…)` then `pt.agg_df(…)` then `pt.select(…)` then `.shape`. Put `-qry` / `-query` first yourself if you need a column you later `-drop` / `-select` away. **Only the last operation prints.** Earlier flags still run.
 
 ```bash
 # first 3 rows, then shape of that 3-row frame → prints (3, n)
@@ -110,9 +111,9 @@ These flags/verbs are pytae's own vocabulary — either a dedicated method the l
 <a id="select"></a>
 ### Column selection — `-select`
 
-Tokens in one `-select` are a **union** (each token *adds* columns). Repeat `-select` to filter that result: each call is `df.select()` on the current working columns (including after `-agg_df` / `-long` / `-wide`).
+Tokens in one `-select` are a **union** (each token *adds* columns). Repeat `-select` to filter that result: each call is `pt.select()` on the current working columns (including after `-agg_df` / `-long` / `-wide`).
 
-Bare tokens are column names or `start:end` slices. `key=value` tokens map to the same kwargs as `df.select(...)`.
+Bare tokens are column names or `start:end` slices. `key=value` tokens map to the same kwargs as `pt.select(df, ...)`.
 
 | Token | Meaning |
 |---|---|
@@ -129,10 +130,10 @@ Bare tokens are column names or `start:end` slices. `key=value` tokens map to th
 | `exclude_dtype=non_numeric` | keep numeric columns only |
 
 ```python
-df.select("species", "island")
-df.select(regex="^bill")
-df.select("species", contains="bill", dtype="numeric")
-df.select(exclude_dtype="numeric")
+pt.select(df, "species", "island")
+pt.select(df, regex="^bill")
+pt.select(df, "species", contains="bill", dtype="numeric")
+pt.select(df, exclude_dtype="numeric")
 ```
 
 ```bash
@@ -173,10 +174,10 @@ pytae penguins.parquet -select "species,body_mass_g" -agg_df mean -select "speci
 
 Exact names must exist on the **current** columns; missing names error with a typo suggestion — `-select "d,a,b"` does **not** silently return `a,b`. A positional token that is not a real column is **not** a regex — use `regex=`. Tokens in **one** spec are a union; each extra `-select` filters whatever is left (it is not last-wins).
 
-#### `df.select()` but not `-select`
+#### `pt.select()` but not `-select`
 
 - `everything()` — remaining columns after an explicit list
-- a callable, e.g. `df.select(lambda c: c.endswith("_mm"))`
+- a callable, e.g. `pt.select(df, lambda c: c.endswith("_mm"))`
 - a Python `list` as one positional arg (CLI sends each name as its own string)
 - `contains` / `regex` as a Python list — CLI repeats the key: `contains=bill,contains=body`
 
@@ -209,11 +210,11 @@ Same quoting as `-select` names (a space is not a separator; quote a name only t
 <a id="qry"></a>
 ### Row filtering — `-qry`
 
-pytae's dict-based filter, `df.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` / `-drop` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
+pytae's dict-based filter, `pt.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` / `-drop` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
 
 ```python
-df.qry({"species": "Adelie", "body_mass_g": (">", 3500)})
-df.qry({"species": "Adelie"}).select("species", "body_mass_g")
+pt.qry(df, {"species": "Adelie", "body_mass_g": (">", 3500)})
+pt.select(pt.qry(df, {"species": "Adelie"}), "species", "body_mass_g")
 ```
 
 ```bash
@@ -221,7 +222,7 @@ df.qry({"species": "Adelie"}).select("species", "body_mass_g")
 # vs 3500 vs ('>', 3500)). That is not the same as -select contains=bill.
 pytae penguins.parquet -qry "species: 'Adelie', body_mass_g: ('>', 3500)"
 
-# filter first, then drop the filter column — same as df.qry(...).drop(columns=...)
+# filter first, then drop the filter column — same as pt.qry(df, ...).drop(columns=...)
 pytae penguins.parquet -qry "species: 'Adelie'" -drop "species" -head
 
 # string-matching operators: startswith / endswith / contains / regex (search-anywhere,
@@ -232,23 +233,23 @@ pytae penguins.parquet -qry "species: ('startswith', 'Ad')" -head
 pytae penguins.parquet -qry "sex: ('isna',)" -head
 ```
 
-`-select "body_mass_g" -qry "species: 'Adelie'"` errors (`species` is already gone), matching `df.select("body_mass_g").qry({"species": "Adelie"})`.
+`-select "body_mass_g" -qry "species: 'Adelie'"` errors (`species` is already gone), matching `pt.qry(pt.select(df, "body_mass_g"), {"species": "Adelie"})`.
 
 ---
 
 <a id="mutate"></a>
 ### Mutated columns — `-mutate`
 
-pytae's expression-based column creator, `df.mutate()`. Creates or overwrites columns at this point in the pipeline. Uses the same tokenizer as `-qry` — `"new_col: expression"` entries, comma-separated, quoting the key optional. Unlike `-qry`, the value is a pandas `eval()` **expression**, not a literal: column names in it must stay unquoted (quoting one turns it into a string literal instead of a column reference — same rule as SQL identifiers, see [Spec families and quoting](#quoting)).
+pytae's expression-based column creator, `pt.mutate()`. Creates or overwrites columns at this point in the pipeline. Uses the same tokenizer as `-qry` — `"new_col: expression"` entries, comma-separated, quoting the key optional. Unlike `-qry`, the value is a pandas `eval()` **expression**, not a literal: column names in it must stay unquoted (quoting one turns it into a string literal instead of a column reference — same rule as SQL identifiers, see [Spec families and quoting](#quoting)).
 
 ```python
-df.mutate("bmi: body_mass_g / bill_length_mm ** 2")
-df.mutate("heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")
+pt.mutate(df, "bmi: body_mass_g / bill_length_mm ** 2")
+pt.mutate(df, "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")
 
 # a local variable from the calling scope can be referenced with an `@` prefix,
 # same as pandas' own eval()/query() — library-only, there's no local scope on the CLI
 threshold = 4000
-df.mutate("heavy: body_mass_g >= @threshold")
+pt.mutate(df, "heavy: body_mass_g >= @threshold")
 ```
 
 ```bash
@@ -351,10 +352,10 @@ Chains like any other op — runs on the current view and replaces it, so put `-
 Groups by all **non-numeric** columns and aggregates the rest. `n` is group count.
 
 ```python
-df.agg_df("mean")
-df.agg_df(["sum", "mean", "n"])
-df.agg_df({"body_mass_g": "mean", "n": "n"})
-df.agg_df(a=["mean", "n"], dropna=False)  # a= required when other keywords are used
+pt.agg_df(df, "mean")
+pt.agg_df(df, ["sum", "mean", "n"])
+pt.agg_df(df, {"body_mass_g": "mean", "n": "n"})
+pt.agg_df(df, a=["mean", "n"], dropna=False)  # a= required when other keywords are used
 ```
 
 ```bash
@@ -374,9 +375,9 @@ pytae penguins.parquet -agg_df mean -sort_by "body_mass_g desc"
 Keeps **every row** and adds a column (`n` = group size, `x` = another aggregate). Like pandas `transform`. `-agg` collapses; `-group_x` does not.
 
 ```python
-df.group_x()
-df.group_x(group=["species"])
-df.group_x(group=["species"], v="body_mass_g", a="max")
+pt.group_x(df)
+pt.group_x(df, group=["species"])
+pt.group_x(df, group=["species"], v="body_mass_g", a="max")
 ```
 
 ```bash
@@ -414,8 +415,8 @@ You do **not** need `-group_by` for `-group_x` (`-group_by` is for `-agg`).
 Object/category NA → `.` (or the fill you pass); numeric NA → `0`. Also strips object columns.
 
 ```python
-df.handle_missing()
-df.handle_missing(fillna="NA")
+pt.handle_missing(df)
+pt.handle_missing(df, fillna="NA")
 ```
 
 ```bash
@@ -477,7 +478,7 @@ pytae penguins.parquet -select "species,island" -unique
 <a id="reshape"></a>
 ### Reshape — `-long` / `-wide`
 
-Same as `df.long()` / `df.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `c=variable`, `v=value`. Quote the spec when values have spaces.
+Same as `pt.long()` / `pt.wide()`. `-long` melts numeric columns; id columns stay. `-wide` pivots a long column into headers. Defaults: `c=variable`, `v=value`. Quote the spec when values have spaces.
 
 ```bash
 pytae penguins.parquet -long
@@ -786,8 +787,8 @@ df.melt(id_vars=[...], value_vars=[...], var_name="metric", value_name="reading"
 df.pivot_table(index=[...], columns="metric", values="reading", aggfunc="mean")
 
 # pytae — same operations, shorter/consistent keys
-df.long(c="metric", v="reading")
-df.wide(c="metric", v="reading", a="mean")
+pt.long(df, c="metric", v="reading")
+pt.wide(df, c="metric", v="reading", a="mean")
 ```
 
 ```bash
@@ -917,11 +918,11 @@ pytae penguins.parquet -qry "island: 'Dream'" -select "species,island,body_mass_
 |---|---|
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
 | `-drop COLUMNS` | Drop columns by exact name at this point (comma-separated names only; remaining keep their order) |
-| `-qry CONDITIONS` | Filter rows at this point (`df.qry()`); surrounding `{}` and column-name quotes optional |
-| `-mutate SPEC` | Create/overwrite columns at this point (`df.mutate()`); `"new_col: expression"` entries, same tokenizer/key-quoting rules as `-qry` (no surrounding `{}`), but the value is a pandas `eval()` expression, not a literal |
+| `-qry CONDITIONS` | Filter rows at this point (`pt.qry()`); surrounding `{}` and column-name quotes optional |
+| `-mutate SPEC` | Create/overwrite columns at this point (`pt.mutate()`); `"new_col: expression"` entries, same tokenizer/key-quoting rules as `-qry` (no surrounding `{}`), but the value is a pandas `eval()` expression, not a literal |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
-| `-replace_values KEY=VALUE,...` | Replace values at this point (`df.replace_values()`); `v=` required, `c=`/`exact=` optional |
+| `-replace_values KEY=VALUE,...` | Replace values at this point (`pt.replace_values()`); `v=` required, `c=`/`exact=` optional |
 | `-clean_columns KEY=VALUE,...` | Clean header names, in order strip -> strip_special -> squeeze -> fill -> case -> dedupe |
 | `-sort_by SPEC` | Sort rows by a comma-separated column list, optionally ending with `asc`/`desc` |
 

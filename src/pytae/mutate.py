@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import difflib
 import inspect
 
@@ -5,49 +7,8 @@ import numpy as np
 import pandas as pd
 from pandas.errors import UndefinedVariableError
 
-
-def _tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: bool = False) -> list[str]:
-    """Split raw into segments at top-level occurrences of any character in `seps`,
-    respecting quotes and (), [], {} nesting. Duplicated from cli_parsing._tokenize
-    on purpose — mutate() is a plain library method and must not import the
-    CLI-only cli_parsing module."""
-    segments: list[str] = []
-    buf: list[str] = []
-    quote: str | None = None
-    depth = 0
-    for ch in raw:
-        if quote:
-            if ch == quote:
-                quote = None
-                if keep_quotes:
-                    buf.append(ch)
-            else:
-                buf.append(ch)
-            continue
-        if ch in "'\"":
-            quote = ch
-            if keep_quotes:
-                buf.append(ch)
-        elif track_brackets and ch in "([{":
-            depth += 1
-            buf.append(ch)
-        elif track_brackets and ch in ")]}":
-            depth -= 1
-            buf.append(ch)
-        elif depth == 0 and ch in seps:
-            segments.append("".join(buf).strip())
-            buf = []
-        else:
-            buf.append(ch)
-    segments.append("".join(buf).strip())
-    return segments
-
-
-def _unquote_name(raw: str) -> str:
-    raw = raw.strip()
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
-        return raw[1:-1]
-    return raw
+from pytae._text import tokenize as _tokenize
+from pytae._text import unquote_name as _unquote_name
 
 
 def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
@@ -168,7 +129,7 @@ def _apply_case_when(out: pd.DataFrame, args: list[str], local_dict: dict, globa
         return np.select(conditions, choices, default=default)
 
 
-def mutate(self, spec: str) -> pd.DataFrame:
+def mutate(df, spec: str) -> pd.DataFrame:
     """
     Create or overwrite columns from a qry()-style spec string, each evaluated in
     order via pandas eval() — no lambda needed for plain arithmetic/boolean column
@@ -176,7 +137,7 @@ def mutate(self, spec: str) -> pd.DataFrame:
 
     Parameters:
     -----------
-    self : pd.DataFrame
+    df : pd.DataFrame
         The DataFrame to mutate columns on.
     spec : str
         Entries like "new_col: expression", comma-separated; quoting the key is
@@ -204,7 +165,7 @@ def mutate(self, spec: str) -> pd.DataFrame:
     Returns:
     --------
     pd.DataFrame
-        A copy of self with each key assigned the result of its expression,
+        A copy of df with each key assigned the result of its expression,
         applied in order.
 
     Examples:
@@ -239,7 +200,7 @@ def mutate(self, spec: str) -> pd.DataFrame:
     del caller_frame  # avoid holding a reference cycle via the frame object
 
     expressions = parse_mutate_spec(spec)
-    out = self.copy()
+    out = df.copy()
     for col, expr in expressions.items():
         try:
             if_else_args = _parse_call(expr, "if_else")
@@ -255,7 +216,3 @@ def mutate(self, spec: str) -> pd.DataFrame:
             hint = f" (did you mean '{close[0]}'?)" if close else ""
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
-
-
-# Attach the method to the DataFrame class
-pd.DataFrame.mutate = mutate
