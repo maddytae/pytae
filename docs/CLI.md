@@ -104,7 +104,7 @@ pytae mpg.parquet -select "origin,mpg" -sort_by "mpg desc" -head 5
 <a id="pytae-specific-operations"></a>
 ## Pytae-specific operations
 
-These flags/verbs are pytae's own vocabulary — either a dedicated method the library adds (`qry()`, `clean_columns()`, `replace_values()`, `group_x()`) or a CLI-native capability with no direct pandas equivalent (`-sql`, `-file`/`-merge`/`-concat`). See [Pandas defaults vs pytae-specific](#pandas-vs-pytae) for the full flag/key-level breakdown.
+These flags/verbs are pytae's own vocabulary — either a dedicated method the library adds (`qry()`, `sql()`, `clean_columns()`, `replace_values()`, `group_x()`) or a CLI-native capability with no direct pandas equivalent (`-file`/`-merge`/`-concat`). See [Pandas defaults vs pytae-specific](#pandas-vs-pytae) for the full flag/key-level breakdown.
 
 ---
 
@@ -286,7 +286,7 @@ pytae penguins.parquet -mutate "size_class: case_when(body_mass_g >= 4500: 'larg
 <a id="sql"></a>
 ### SQL — `-sql`
 
-`-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). The view is queryable as table **`df`, and only `df`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember (and no ambiguity if you later pipe a differently-named file through the same command). `table` is also deliberately not registered: it's a reserved SQL keyword, so `select * from table` fails to parse unless quoted, which defeats the point of a short default name.
+`-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). Same verb in Python: `pt.sql(df, "select … from df")` / `df.pt.sql(…)` — see [docs/LIBRARY.md](LIBRARY.md). The view is queryable as table **`df`, and only `df`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember (and no ambiguity if you later pipe a differently-named file through the same command). `table` is also deliberately not registered: it's a reserved SQL keyword, so `select * from table` fails to parse unless quoted, which defeats the point of a short default name.
 
 Unlike `-qry`, this is **standard SQL**, not pytae's dict syntax — column names with spaces need **double** quotes (`"bill length mm"`), not single quotes. Single quotes are string literals in SQL, e.g. `'Adelie'`; using them around a column name either errors or silently compares against a constant string instead of the column.
 

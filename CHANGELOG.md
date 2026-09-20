@@ -5,14 +5,17 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Library verbs are package functions, not pandas methods: `import pytae as pt` then
-  `pt.select(df, ...)`, `pt.qry(df, ...)`, `pt.mutate(df, ...)`, and the rest. They no
-  longer attach to `pd.DataFrame`. CLI flags (`-select`, `-qry`, `-mutate`, …) are
-  unchanged.
+- Library verbs are package functions (`import pytae as pt` then `pt.select(df, ...)`)
+  **and** a DataFrame accessor (`df.pt.select(...).pt.agg_df(...)`). Mix with pandas
+  methods: `df.rename(...).pt.agg_df(...)`. Notebooks use the accessor chain. CLI
+  flags (`-select`, `-qry`, `-mutate`, …) are unchanged.
 
 ### Added
-- `docs/FLAGS.md` — one-page "which flag?" card.
-- Ruff in CI (`ruff check src tests`).
+- `docs/FLAGS.md` — one-page "which flag?" card. Pytae kwargs stay `c=` / `v=` / `a=`.
+- Ruff in CI (`ruff check src tests`) and mypy on 3.12 (`mypy` over `src/pytae`).
+- `df.pt` DataFrame accessor; `@` locals in `df.pt.mutate()` resolve in the calling scope.
+- Library `pt.sql(df, query)` / `df.pt.sql(query)` — same duckdb/`df` table as CLI `-sql`
+  (`pip install pytae[sql]`). Extra keyword frames register as extra tables.
 
 ## [3.4.3] - 2026-09-20
 

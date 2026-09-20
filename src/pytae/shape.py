@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 
-def long(df, c="variable", v="value"):
+def long(df: pd.DataFrame, c: str = "variable", v: str = "value") -> pd.DataFrame:
     """Melt all numeric columns to rows.
 
     Parameters:
@@ -22,7 +22,13 @@ def long(df, c="variable", v="value"):
     )
 
 
-def wide(df, c="variable", v="value", a=None, dropna=True):
+def wide(
+    df: pd.DataFrame,
+    c: str = "variable",
+    v: str = "value",
+    a: str | None = None,
+    dropna: bool = True,
+) -> pd.DataFrame:
     """Pivot a long column into headers.
 
     Parameters:

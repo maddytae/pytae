@@ -2,13 +2,26 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections.abc import Sequence
+from typing import Any
+
+import pandas as pd
 
 
 # Define the sentinel class
 class everything:
     pass
 
-def select(df, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None):
+def select(
+    df: pd.DataFrame,
+    *args: Any,
+    dtype: str | type | Sequence[str | type] | None = None,
+    exclude_dtype: str | type | Sequence[str | type] | None = None,
+    contains: str | Sequence[str] | None = None,
+    startswith: str | Sequence[str] | None = None,
+    endswith: str | Sequence[str] | None = None,
+    regex: str | Sequence[str] | None = None,
+) -> pd.DataFrame:
     '''
     Select columns from a DataFrame based on names, regex patterns, slices, data types, or string matching.
     
@@ -76,9 +89,9 @@ def select(df, *args, dtype=None, exclude_dtype=None, contains=None, startswith=
                 if arg not in ordered_cols:
                     ordered_cols.append(arg)
             elif ':' in arg:  # Handle slice notation
-                start, end = arg.split(':', 1)
-                start = start.strip() or None  # Empty start means from beginning
-                end = end.strip() or None     # Empty end means to end
+                start_raw, end_raw = arg.split(':', 1)
+                start: str | None = start_raw.strip() or None  # Empty start means from beginning
+                end: str | None = end_raw.strip() or None     # Empty end means to end
                 start_idx = all_cols.index(start) if start in all_cols else 0
                 end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
                 if start and start not in all_cols:

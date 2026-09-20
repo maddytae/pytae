@@ -395,7 +395,7 @@ def test_clip_suppresses_stdout_for_dataframe_ops(tmp_path, capsys, monkeypatch)
 def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
     copied = {}
-    monkeypatch.setattr(cli, "_copy_to_clipboard", lambda s: copied.setdefault("text", s))
+    monkeypatch.setattr("pytae.cli_run._copy_to_clipboard", lambda s: copied.setdefault("text", s))
 
     exit_code = cli.main([path, "-shape", "-to_clip"])
 

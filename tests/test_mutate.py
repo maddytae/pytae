@@ -145,6 +145,12 @@ def test_mutate_local_var_reference():
     assert list(result["heavy"]) == [False, True]
 
 
+def test_mutate_local_var_reference_via_accessor():
+    threshold = 3500.0
+    result = _df().pt.mutate("heavy: body_mass_g >= @threshold")
+    assert list(result["heavy"]) == [False, True]
+
+
 def test_mutate_local_var_reference_in_if_else():
     threshold = 3500.0
     result = pt.mutate(_df(), "size: if_else(body_mass_g >= @threshold, 'heavy', 'light')")

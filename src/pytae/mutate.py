@@ -120,16 +120,16 @@ def _apply_case_when(out: pd.DataFrame, args: list[str], local_dict: dict, globa
     if not conditions:
         raise ValueError("case_when needs at least one non-default condition")
     try:
-        return np.select(conditions, choices, default=default)
+        return np.select(conditions, choices, default=default)  # type: ignore[arg-type]
     except TypeError:
         # choices/default with incompatible dtypes have no common numpy dtype --
         # object arrays accept anything (same fallback as _apply_if_else above)
         choices = [np.asarray(choice, dtype=object) for choice in choices]
         default = default if default is None else np.asarray(default, dtype=object)
-        return np.select(conditions, choices, default=default)
+        return np.select(conditions, choices, default=default)  # type: ignore[arg-type]
 
 
-def mutate(df, spec: str) -> pd.DataFrame:
+def mutate(df: pd.DataFrame, spec: str) -> pd.DataFrame:
     """
     Create or overwrite columns from a qry()-style spec string, each evaluated in
     order via pandas eval() — no lambda needed for plain arithmetic/boolean column
@@ -194,9 +194,17 @@ def mutate(df, spec: str) -> pd.DataFrame:
     0       3000.0            30.0     C
     1       4000.0            40.0     A
     """
-    caller_frame = inspect.currentframe().f_back
-    local_dict = caller_frame.f_locals
-    global_dict = caller_frame.f_globals
+    _here = inspect.currentframe()
+    caller_frame = None if _here is None else _here.f_back
+    del _here
+    while caller_frame is not None:
+        # skip pytae internals (df.pt.mutate() sits in the accessor)
+        name = caller_frame.f_globals.get("__name__") or ""
+        if not name.startswith("pytae"):
+            break
+        caller_frame = caller_frame.f_back
+    local_dict = caller_frame.f_locals if caller_frame is not None else {}
+    global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
 
     expressions = parse_mutate_spec(spec)

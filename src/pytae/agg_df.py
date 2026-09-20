@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
 
-def _agg_df_list(df, agg_types, dropna, observed):
+import pandas as pd
+
+
+def _agg_df_list(df: pd.DataFrame, agg_types: str | list[str], dropna: bool, observed: bool) -> pd.DataFrame:
     """
     Helper function to handle string/list aggfunc for agg_df.
     Applies aggregations to all numeric columns.
@@ -59,7 +63,7 @@ def _agg_df_list(df, agg_types, dropna, observed):
 
     return grouped_df
 
-def _agg_df_dict(df, agg_types, dropna, observed):
+def _agg_df_dict(df: pd.DataFrame, agg_types: dict[str, Any], dropna: bool, observed: bool) -> pd.DataFrame:
     """
     Helper function to handle dictionary aggfunc for agg_df.
     Applies aggregations to specified columns, with 'n' keys used for count column names.
@@ -129,7 +133,7 @@ def _agg_df_dict(df, agg_types, dropna, observed):
 
     return grouped_df
 
-def agg_df(df, *args, **kwargs):
+def agg_df(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame:
     """
     Aggregate the DataFrame based on specified aggregation types, ensuring that aggregated
     column names, including 'n' for counts, follow the specified order in the 'a' parameter.

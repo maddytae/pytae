@@ -40,13 +40,16 @@ See [docs/PLOTTING.md](https://github.com/maddytae/pytae/blob/master/docs/PLOTTI
 
 ## Library
 
-Import `pytae as pt` and call package functions — they take the DataFrame as the first argument (`pt.select(df, ...)`). They do not attach to `pd.DataFrame`. CLI flags (`-select`, `-qry`, …) are unchanged.
+Import `pytae as pt`. Same verbs work as `pt.select(df, ...)` or as `df.pt.select(...)` (mix with pandas: `df.rename(...).pt.agg_df(...)`). Notebooks use the accessor chain. CLI flags (`-select`, `-qry`, …) are unchanged.
 
 ```python
 import pytae as pt
 penguins = pt.sample("penguins")
 pt.select(penguins, "species", contains="bill")
-pt.qry(penguins, {"species": "Adelie"})
+(penguins
+ .pt.select("species", "island", "bill_length_mm", "body_mass_g")
+ .pt.agg_df(a=["mean", "n"])
+)
 ```
 
 - **Filtering** — `pt.qry()`: dict-based filters (equality, lists, `in`/`not in`, comparisons, intervals)
@@ -54,6 +57,7 @@ pt.qry(penguins, {"species": "Adelie"})
 - **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns
 - **Aggregation** — `pt.agg_df()`: auto-detects group columns and aggregates the rest
 - **Utilities** — `pt.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
+- **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `df`
 
 See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
 

@@ -14,6 +14,7 @@ import pytae
 assert "pytae.plotting" not in sys.modules
 assert "pytae.shape" not in sys.modules
 assert "matplotlib" not in sys.modules
+assert "duckdb" not in sys.modules
 assert pytae._cache == {}
 assert "penguins" in pytae.sample_data
 assert list(pytae.sample_data.keys())
@@ -37,6 +38,7 @@ assert "pytae.shape" in sys.modules
 assert long is not None
 
 assert callable(pytae.mutate)
+assert hasattr(__import__("pandas").DataFrame, "pt")
 assert not hasattr(__import__("pandas").DataFrame, "mutate")
 
 Plotter = pytae.Plotter
@@ -57,9 +59,11 @@ assert "pytae.shape" not in sys.modules
 assert "matplotlib" not in sys.modules
 assert callable(__import__("pytae", fromlist=["qry"]).qry)
 assert callable(__import__("pytae", fromlist=["select"]).select)
-assert not hasattr(sys.modules["pandas"].DataFrame, "qry")
-assert not hasattr(sys.modules["pandas"].DataFrame, "select")
-assert not hasattr(sys.modules["pandas"].DataFrame, "mutate")
+DF = sys.modules["pandas"].DataFrame
+assert hasattr(DF, "pt")
+assert not hasattr(DF, "qry")
+assert not hasattr(DF, "select")
+assert not hasattr(DF, "mutate")
 """ % _SRC
     subprocess.check_call([sys.executable, "-c", code])
 

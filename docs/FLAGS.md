@@ -1,6 +1,6 @@
 # Which flag?
 
-One page. Full reference: [CLI.md](CLI.md). Library: `import pytae as pt` then `pt.select(df, …)` — same verbs, DataFrame first. CLI flags are unchanged.
+One page. Full reference: [CLI.md](CLI.md). Library: `import pytae as pt` then `pt.select(df, …)` or `df.pt.select(…)`. CLI flags are unchanged.
 
 | I want to… | Flag | Not that one |
 |---|---|---|
@@ -9,7 +9,7 @@ One page. Full reference: [CLI.md](CLI.md). Library: `import pytae as pt` then `
 | Filter rows (odd strings, dict syntax) | `-qry` | `-query` is pandas `query()` |
 | Filter rows with a pandas expression | `-query` | |
 | Create/overwrite columns | `-mutate` | |
-| Run SQL | `-sql` | view is table `df` |
+| Run SQL | `-sql` | view is table `df`; library: `pt.sql(df, …)` / `df.pt.sql(…)` |
 | Sort rows | `-sort_by` | |
 | Unique rows | `-unique` | `-drop` is columns |
 | Replace cell values | `-replace_values` | `-rename` is headers; `-clean_columns` is header *cleanup* |
@@ -35,3 +35,19 @@ pytae penguins.parquet -qry "species: 'Adelie'" -drop "species" -head
 ```
 
 `-select` picks (and may reorder). `-drop` subtracts and leaves order alone.
+
+## Pytae kwargs are `c=` / `v=` / `a=`
+
+Those three letters are pytae's own names. They stay:
+
+| Key | Meaning | Flags |
+|---|---|---|
+| `c=` | column role (melt/pivot dimension, or replace scope) | `-long`, `-wide`, `-replace_values` |
+| `v=` | value column (or the value map on replace) | `-long`, `-wide`, `-group_x`, `-replace_values` |
+| `a=` | aggregation | `-wide`, `-group_x`, `-agg_df` |
+
+When the spec *is* the column list, names stay bare (`-select`, `-drop`, `-group_by`, `-sort_by`) — not `c=`.
+
+Pandas-mirrored flags keep pandas names: `-agg` uses `column=` / `aggfunc=` / `as=`; `-crosstab` uses `index=` / `columns=` / `values=` / `aggfunc=`.
+
+Library: `pt.select(df, …)` or `df.pt.select(…)`. CLI flags are unchanged.

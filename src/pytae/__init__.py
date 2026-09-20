@@ -1,4 +1,4 @@
-"""pytae: pandas helpers as package functions (`pt.select(df, ...)`) plus a CLI."""
+"""pytae: package functions (`pt.select(df, ...)`) and DataFrame accessor `df.pt`, plus a CLI."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .accessor import PtAccessor  # noqa: F401  — registers df.pt
 from .agg_df import agg_df
 from .mutate import mutate
 from .other_utilities import (
@@ -19,13 +20,14 @@ from .other_utilities import (
 )
 from .qry import qry
 from .select import everything, select
+from .sql import sql
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
-_cache = {}
+_cache: dict[str, pd.DataFrame] = {}
 
 
-def sample(name):
+def sample(name: str) -> pd.DataFrame:
     """Load a bundled sample dataset by name (cached after the first call).
     Returns a copy each time — mutating the result does not affect later calls."""
     if name not in _DATASET_NAMES:
@@ -60,6 +62,13 @@ class _SampleData(Mapping):
 sample_data = _SampleData()
 
 
+def _bind_shape():
+    from .shape import long, wide
+    globals()["long"] = long
+    globals()["wide"] = wide
+    return long, wide
+
+
 def __getattr__(name):
     if name == "Plotter":
         try:
@@ -70,9 +79,7 @@ def __getattr__(name):
             ) from exc
         return Plotter
     if name in ("long", "wide"):
-        from .shape import long, wide
-        globals()["long"] = long
-        globals()["wide"] = wide
+        _bind_shape()
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -93,5 +100,7 @@ __all__ = [
     "to_clip",
     "clean_columns",
     "replace_values",
+    "sql",
     "everything",
+    "PtAccessor",
 ]

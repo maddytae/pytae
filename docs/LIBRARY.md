@@ -1,13 +1,35 @@
 # pytae — Library Reference
 
-Package functions on a DataFrame: `import pytae as pt` then `pt.select(df, ...)`. They do **not** attach to `pd.DataFrame`. The CLI flags (`-select`, `-qry`, …) are unchanged. `Plotter` is loaded only when you access it and needs `pip install pytae[plot]`.
+Two call styles, same functions: `pt.select(df, ...)` or the DataFrame accessor `df.pt` (mix with pandas methods: `df.rename(...).pt.agg_df(...)`). Notebooks use the accessor chain. CLI flags (`-select`, `-qry`, …) are unchanged. `Plotter` is loaded only when you access it and needs `pip install pytae[plot]`.
 
 ```python
 import pytae as pt
 import pandas as pd
 
 penguins = pt.sample("penguins")          # or pt.sample_data["penguins"]
+
+# function style
+pt.select(penguins, "species", contains="bill")
+
+# accessor chain (notebooks) — pandas methods sit in the same chain
+(penguins
+ .pt.select("species", "island", "bill_length_mm", "body_mass_g")
+ .pt.agg_df(a=["mean", "n"])
+)
+penguins.rename(columns={"body_mass_g": "mass"}).pt.agg_df(a="mean")
 ```
+
+## SQL — `sql()`
+
+Same as CLI `-sql`: duckdb, current frame is table **`df`**. Optional extra: `pip install pytae[sql]`. Extra keyword frames are extra tables (like `-file` aliases).
+
+```python
+pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from df group by species")
+penguins.pt.sql("select * from df where species = 'Adelie'")
+pt.sql(left, "select * from df inner join extra using (id)", extra=right)
+```
+
+Spaced column names need double quotes: `pt.sql(df, 'select "bill length mm" from df')`.
 
 ## 1) Plotting — `Plotter`
 

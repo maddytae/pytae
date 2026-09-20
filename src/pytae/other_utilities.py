@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Hashable, Sequence
+from typing import Any
 
 import pandas as pd
 
 
-def to_clip(df):
+def to_clip(df: pd.DataFrame) -> None:
     """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
     return df.to_clipboard(index=False)
 
 
-def handle_missing(df, fillna='.'):
+def handle_missing(df: pd.DataFrame, fillna: str = ".") -> pd.DataFrame:
     df = df.copy()
 
     df_cat_cols = df.columns[df.dtypes == 'category'].tolist()
@@ -38,7 +40,7 @@ def handle_missing(df, fillna='.'):
     return df
 
 
-def cols(df, ascending=True):
+def cols(df: pd.DataFrame, ascending: bool | None = True) -> list:
     '''
     Return the column names of the DataFrame sorted or in original order.
     
@@ -67,7 +69,14 @@ def cols(df, ascending=True):
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
 
 
-def group_x(df, group=None, dropna=True, observed=True, a="n", v=None):
+def group_x(
+    df: pd.DataFrame,
+    group: str | Sequence[str] | None = None,
+    dropna: bool = True,
+    observed: bool = True,
+    a: str = "n",
+    v: str | None = None,
+) -> pd.DataFrame:
     """Broadcast a group aggregate to every row (pandas transform).
 
     Default a='n' is group size. Pass v= and a= for another aggregate.
@@ -96,15 +105,15 @@ def group_x(df, group=None, dropna=True, observed=True, a="n", v=None):
 
 
 def clean_column_names(
-    names,
+    names: Sequence[Hashable],
     *,
-    strip=False,
-    strip_special=False,
-    squeeze=False,
-    fill=None,
-    case=None,
-    dedupe=False,
-):
+    strip: bool = False,
+    strip_special: bool = False,
+    squeeze: bool = False,
+    fill: str | None = None,
+    case: str | None = None,
+    dedupe: bool = False,
+) -> list:
     """Clean a list of header names, in a fixed order: strip -> strip_special
     -> squeeze -> fill -> case -> dedupe.
 
@@ -156,7 +165,15 @@ def clean_column_names(
     return cleaned
 
 
-def clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
+def clean_columns(
+    df: pd.DataFrame,
+    strip: bool = False,
+    strip_special: bool = False,
+    squeeze: bool = False,
+    fill: str | None = None,
+    case: str | None = None,
+    dedupe: bool = False,
+) -> pd.DataFrame:
     """Clean column header names (see clean_column_names() for the per-key behavior)."""
     df = df.copy()
     df.columns = clean_column_names(
@@ -166,7 +183,12 @@ def clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None
     return df
 
 
-def replace_values(df, v, c=None, exact=True):
+def replace_values(
+    df: pd.DataFrame,
+    v: dict[Any, Any],
+    c: str | Sequence[str] | None = None,
+    exact: bool = True,
+) -> pd.DataFrame:
     """Replace values (pandas replace()), optionally scoped to specific columns.
     Parameter names match the -replace_values CLI flag's v=/c=/exact= keys.
 

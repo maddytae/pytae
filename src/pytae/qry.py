@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 import operator
 import re
+from typing import Any
 
 import pandas as pd
 
@@ -27,7 +28,7 @@ unary_ops = {
     "notna": lambda s: s.notna(),
 }
 
-def qry(df, conditions):
+def qry(df: pd.DataFrame, conditions: dict[str, Any]) -> pd.DataFrame:
     """
     Filters a DataFrame based on a dictionary of conditions.
 

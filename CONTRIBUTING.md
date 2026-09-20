@@ -3,6 +3,7 @@
 ```bash
 pip install -e ".[dev,notebooks]"
 ruff check src tests                          # lint (also runs in CI)
+mypy                                          # types on src/pytae (CI runs this on 3.12)
 pytest                                        # unit tests
 python scripts/run_notebooks.py               # run the notebook check manually
 ```
