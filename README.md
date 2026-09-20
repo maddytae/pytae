@@ -17,9 +17,9 @@ pip install pytae
 
 ```bash
 pytae data.parquet -head
-pytae data.parquet -qry "'species': 'Adelie'" -select "species,body_mass_g" -convert -o subset.csv
+pytae data.parquet -qry "species: 'Adelie'" -select "species,body_mass_g" -convert -o subset.csv
 pytae data.parquet -sql "select species, avg(body_mass_g) from df group by species"
-pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on='id'"
+pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
 ```
 
 See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full flag reference, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.

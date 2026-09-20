@@ -133,11 +133,10 @@ def _apply_if_else(out: pd.DataFrame, args: list[str], local_dict: dict, global_
 
 
 def _apply_case_when(out: pd.DataFrame, args: list[str], local_dict: dict, global_dict: dict):
-    """case_when(cond1: val1, cond2: val2, ..., True: default) -> np.select(...),
-    dplyr-style: entries are checked in order, first match wins, an entry
-    whose condition is the literal `True` is the catch-all default (matching
-    dplyr's `TRUE ~ default`) and must be listed last; unmatched rows are NaN
-    if no default entry is given."""
+    """case_when(cond1: val1, cond2: val2, ..., default) -> np.select(...).
+    Entries are checked in order, first match wins. A last argument with no
+    colon is the catch-all default (like SQL ELSE); unmatched rows are NaN
+    if it is omitted."""
     if not args:
         raise ValueError("case_when expects at least one 'condition: value' entry")
     conditions = []
@@ -146,14 +145,15 @@ def _apply_case_when(out: pd.DataFrame, args: list[str], local_dict: dict, globa
     for i, raw_entry in enumerate(args):
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
         if len(pieces) < 2:
-            raise ValueError(f"invalid case_when entry '{raw_entry}': expected 'condition: value'")
+            if i != len(args) - 1:
+                raise ValueError(
+                    f"invalid case_when entry '{raw_entry}': expected 'condition: value' "
+                    "(a bare default must be last)"
+                )
+            default = _eval_value_arg(out, raw_entry, local_dict, global_dict)
+            continue
         condition_raw = pieces[0].strip()
         value_raw = ":".join(pieces[1:]).strip()
-        if condition_raw == "True":
-            if i != len(args) - 1:
-                raise ValueError("case_when: the 'True' default entry must be listed last")
-            default = _eval_value_arg(out, value_raw, local_dict, global_dict)
-            continue
         conditions.append(_eval(out, condition_raw, local_dict, global_dict))
         choices.append(_eval_value_arg(out, value_raw, local_dict, global_dict))
     if not conditions:
@@ -192,11 +192,11 @@ def mutate(self, spec: str) -> pd.DataFrame:
         conditional/string outcomes, which eval() itself cannot express:
           - "result: if_else(condition, true_value, false_value)" — like R's
             `if_else()`. Backed by `np.where()`.
-          - "result: case_when(cond1: val1, cond2: val2, ..., True: default)" —
+          - "result: case_when(cond1: val1, cond2: val2, ..., default)" —
             like R's `case_when()`. Conditions are checked in order, first match
-            wins; the literal `True` (matching dplyr's `TRUE ~ default`) is an
-            optional catch-all default and must be listed last. Unmatched rows
-            are NaN if no default is given. Backed by `np.select()`.
+            wins; a last argument with no colon is an optional catch-all default
+            (like SQL ELSE) and must be listed last. Unmatched rows are NaN if
+            no default is given. Backed by `np.select()`.
         In both forms, `condition`/`true_value`/`false_value`/`cond*` are eval()
         expressions (unquoted column names), while string outcomes need quotes
         (e.g. `"Pass"`).
@@ -228,7 +228,7 @@ def mutate(self, spec: str) -> pd.DataFrame:
     0       3000.0            30.0   light
     1       4000.0            40.0   heavy
 
-    >>> df.mutate("grade: case_when(body_mass_g >= 3800: 'A', body_mass_g >= 3200: 'B', True: 'C')")
+    >>> df.mutate("grade: case_when(body_mass_g >= 3800: 'A', body_mass_g >= 3200: 'B', 'C')")
        body_mass_g  bill_length_mm grade
     0       3000.0            30.0     C
     1       4000.0            40.0     A

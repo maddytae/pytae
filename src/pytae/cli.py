@@ -32,13 +32,13 @@ from pytae.cli_parsing import (
     parse_rename,
     parse_replace_values_arg,
     parse_select_spec,
+    parse_sort_by,
     parse_wide_arg,
     unknown_columns_message,
 )
 from pytae.cli_pipeline import (
     _OrderedAppend,
     _OrderedFlag,
-    _OrderedSortBy,
     _OrderedStore,
     _OrderedValue,
     _Pipeline,
@@ -149,7 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("path", nargs="?", default=None,
                          help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
                                       "or a glob pattern like 'data/*.parquet' for batch conversion; "
-                                      "omit when using -file/-merge instead")
+                                      "omit when using -file with -merge/-concat/-sql")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the first N rows (default 5)")
@@ -180,9 +180,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-frac", "--frac", dest="frac", type=parse_fraction, default=None, metavar="P",
                          help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
                               "requires -sample and overrides its N")
-    parser.add_argument("-sort_by", "--sort_by", dest="sort_by", nargs="+", default=None, metavar="COLUMNS",
-                         action=_OrderedSortBy,
-                         help="sort rows by column(s), comma-separated; optional asc|desc (default: asc)")
+    parser.add_argument("-sort_by", "--sort_by", dest="sort_by", default=None, metavar="SPEC",
+                         action=_OrderedStore,
+                         help="sort rows by a comma-separated column list, optionally ending with "
+                              "asc or desc (default: asc), e.g. species,body_mass_g desc")
     parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
                          help="explicit group-by columns for -agg (comma-separated); also used by -group_x "
                               "if group= is omitted")
@@ -200,17 +201,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-agg_df", "--agg_df", dest="agg_df", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
                          help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
-                              "defaults to 'sum' when no value given; "
-                              "accepts string ('mean'), list (\"['sum','mean']\"), or dict, surrounding {} "
-                              "optional (\"'col':'sum','n':'n'\")")
+                              "defaults to sum when no value given; "
+                              "accepts a name (mean), a comma list (mean,sum), or a mapping "
+                              "(body_mass_g: mean, n: n)")
     parser.add_argument("-agg", "--agg", dest="agg", metavar="KEY=VALUE,...", action=_OrderedStore,
                          help="aggregate using explicit -group_by columns; key=value specs "
                               "(column=, aggfunc=, optional as=), e.g. "
-                              "column='value',aggfunc='sum',as='v'; several specs separated by ';'; requires -group_by")
+                              "column=value,aggfunc=sum,as=v; several specs separated by ';'; requires -group_by")
     parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
-                              "size n on non-numeric columns; e.g. group='species',v='body_mass_g',a='max'")
+                              "size n on non-numeric columns; e.g. group=species,v=body_mass_g,a=max")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
@@ -226,12 +227,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="melt numeric columns to long form (pytae long()); defaults c=variable, "
-                              "v=value; e.g. c='metric',v='reading'")
+                              "v=value; e.g. c=metric,v=reading")
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
-                              "e.g. c='country',v='balance',a='mean'; a='n' is an alias for pandas' 'size' "
-                              "(group row count), matching agg_df's convention")
+                              "e.g. c=country,v=balance,a=mean; a=n is an alias for pandas' 'size' "
+                              "(group row count), matching agg_df's convention; honors -dropna")
     parser.add_argument("-crosstab", "--crosstab", dest="crosstab", metavar="KEY=VALUE,...", action=_OrderedStore,
                          help="cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
                               "index= (one or more comma-separated columns), columns= (single column, required), "
@@ -240,7 +241,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "requires margins=true); honors -dropna")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
-                         help="for -agg_df, -agg, -value_counts, and -crosstab: include NA keys when false; accepts true or false (default: true)")
+                         help="for -agg_df, -agg, -group_x, -wide, -value_counts, and -crosstab: "
+                              "include NA keys when false; accepts true or false (default: true)")
     parser.add_argument("-o", "--output", type=Path, default=None,
                          help="output path; its extension picks the format (default: .csv alongside the source file)")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
@@ -252,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
                          help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
-    parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS,...",
+    parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS;...",
                          help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
                               "';'-separated entries, each PATH=ALIAS optionally followed by "
                               ",dlim=/,encoding= overrides for that file, e.g. "
@@ -586,10 +588,10 @@ def _process_path(
                 clip_action = lambda d=sampled: d.to_clipboard(index=False)
         elif op == "sort_by":
             source_df = pipeline.dataframe()
-            sort_cols = parse_columns(args.sort_by)
+            sort_cols, order = parse_sort_by(args.sort_by)
             if any(c not in source_df.columns for c in sort_cols):
                 return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
-            ascending = getattr(args, "sort_by_order", "asc") != "desc"
+            ascending = order != "desc"
             sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
             pipeline._df = sorted_df
             if should_print(idx):
@@ -629,8 +631,7 @@ def _process_path(
             gx = parse_group_x_arg(args.group_x)
             if "group" not in gx and args.group_by:
                 gx["group"] = parse_columns(args.group_by)
-            if "dropna" not in gx:
-                gx["dropna"] = args.dropna
+            gx["dropna"] = args.dropna
             group_cols = gx.get("group")
             if group_cols and any(c not in source_df.columns for c in group_cols):
                 return _fail(parser, batch, unknown_columns_message("-group_x", group_cols, list(source_df.columns)))
@@ -670,6 +671,7 @@ def _process_path(
             from pytae.shape import wide as wide_fn
             source_df = pipeline.dataframe()
             wide_kwargs = parse_wide_arg(args.wide)
+            wide_kwargs["dropna"] = args.dropna
             missing = [c for c in (wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value"))
                        if c not in source_df.columns]
             if missing:

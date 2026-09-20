@@ -98,11 +98,11 @@ For conditional/string outcomes — where plain `eval()` can't help — two dply
 # if_else(condition, true_value, false_value) — like dplyr's if_else()
 penguins.mutate("weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')")
 
-# case_when(cond1: val1, cond2: val2, ..., True: default) — like dplyr's case_when()
-# checked in order, first match wins; `True` (matches dplyr's `TRUE ~ default`) is an
-# optional catch-all and must be listed last; unmatched rows are NaN without it
+# case_when(cond1: val1, cond2: val2, ..., default) — like dplyr's case_when()
+# checked in order, first match wins; a last argument with no colon is the optional
+# catch-all (like SQL ELSE) and must be listed last; unmatched rows are NaN without it
 penguins.mutate(
-    "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', True: 'small')"
+    "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', 'small')"
 )
 ```
 

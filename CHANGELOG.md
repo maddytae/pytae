@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.4.2] - 2026-09-20
+
+### Changed
+- CLI specs are two families: **kwargs** (`key=value`, quote a value only when it contains a
+  comma) and **names/mappings** (`a,b` lists and `name: payload` for `-qry`/`-mutate`/`-rename`
+  / slices). Examples, help, and `docs/CLI.md` follow that; simple values are unquoted.
+- `-sort_by` is one spec (`-sort_by "species,body_mass_g desc"`), not a column list plus a
+  sibling `asc`/`desc` argv token.
+- `-agg_df` no longer accepts Python list/dict literals. Use a name (`mean`), a comma list
+  (`mean,sum`), or a mapping (`body_mass_g: mean, n: n`).
+- `-dropna` is the only NA-key switch for `-group_x` and `-wide` as well (the `dropna=` spec
+  keys are gone). `-group_x`'s undocumented `observed=` CLI key is gone too.
+- `mutate()` / `-mutate` `case_when()`: the catch-all is a last argument with no colon
+  (`case_when(x >= 4500: 'large', x >= 3500: 'medium', 'small')`), like SQL ELSE, not
+  `True: 'small'`.
+
 ## [3.4.1] - 2026-09-20
 
 ### Changed

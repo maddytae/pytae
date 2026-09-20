@@ -61,7 +61,7 @@ def _penguins_frame():
 def test_crosstab_counts(tmp_path, capsys):
     path = _write_csv(tmp_path, _penguins_frame())
 
-    exit_code = cli.main([path, "-crosstab", "index='species',columns='island'"])
+    exit_code = cli.main([path, "-crosstab", "index=species,columns=island"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -73,7 +73,7 @@ def test_crosstab_counts(tmp_path, capsys):
 def test_crosstab_margins_adds_totals(tmp_path, capsys):
     path = _write_csv(tmp_path, _penguins_frame())
 
-    cli.main([path, "-crosstab", "index='species',columns='island',margins=true"])
+    cli.main([path, "-crosstab", "index=species,columns=island,margins=true"])
 
     out = capsys.readouterr().out
     assert "All" in out.strip().splitlines()[0]
@@ -82,7 +82,7 @@ def test_crosstab_margins_adds_totals(tmp_path, capsys):
 def test_crosstab_margins_name_renames_totals(tmp_path, capsys):
     path = _write_csv(tmp_path, _penguins_frame())
 
-    cli.main([path, "-crosstab", "index='species',columns='island',margins=true,margins_name='Total'"])
+    cli.main([path, "-crosstab", "index=species,columns=island,margins=true,margins_name=Total"])
 
     out = capsys.readouterr().out
     assert "Total" in out.strip().splitlines()[0]
@@ -93,7 +93,7 @@ def test_crosstab_margins_name_requires_margins(tmp_path):
     path = _write_csv(tmp_path, _penguins_frame())
 
     with pytest.raises(SystemExit, match="margins_name= requires margins=true"):
-        cli.main([path, "-crosstab", "index='species',columns='island',margins_name='Total'"])
+        cli.main([path, "-crosstab", "index=species,columns=island,margins_name=Total"])
 
 
 def test_crosstab_values_and_aggfunc(tmp_path, capsys):
@@ -101,7 +101,7 @@ def test_crosstab_values_and_aggfunc(tmp_path, capsys):
 
     exit_code = cli.main([
         path, "-crosstab",
-        "index='species',columns='sex',values='body_mass_g',aggfunc='mean'",
+        "index=species,columns=sex,values=body_mass_g,aggfunc=mean",
         "-round", "1",
     ])
 
@@ -114,14 +114,14 @@ def test_crosstab_values_requires_aggfunc(tmp_path):
     path = _write_csv(tmp_path, _penguins_frame())
 
     with pytest.raises(SystemExit, match="values= and aggfunc= must be given together"):
-        cli.main([path, "-crosstab", "index='species',columns='sex',values='body_mass_g'"])
+        cli.main([path, "-crosstab", "index=species,columns=sex,values=body_mass_g"])
 
 
 def test_crosstab_unknown_column_errors(tmp_path):
     path = _write_csv(tmp_path, _penguins_frame())
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-crosstab", "index='species',columns='nope'"])
+        cli.main([path, "-crosstab", "index=species,columns=nope"])
     assert exc_info.value.code == 2
 
 
@@ -269,7 +269,7 @@ def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1',aggfunc='sum'; column='v2',aggfunc='mean'"])
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column=v1,aggfunc=sum; column=v2,aggfunc=mean"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -287,7 +287,7 @@ def test_group_by_agg_named_output(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1',aggfunc='sum',as='total'"])
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column=v1,aggfunc=sum,as=total"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -299,7 +299,7 @@ def test_agg_same_func_on_multiple_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["x", "x"], "v1": [1, 2], "v2": [10, 20]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1,v2',aggfunc='sum'"])
+    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1,v2',aggfunc=sum"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -312,7 +312,7 @@ def test_agg_named_output_with_spaced_group(tmp_path, capsys):
     path = _write_csv(tmp_path, df)
 
     exit_code = cli.main(
-        [path, "-group_by", "Scenario Name", "-agg", "column='value',aggfunc='sum',as='v'"]
+        [path, "-group_by", "Scenario Name", "-agg", "column=value,aggfunc=sum,as=v"]
     )
 
     out = capsys.readouterr().out
@@ -333,7 +333,7 @@ def test_agg_requires_group_by(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-agg", "column='v1',aggfunc='sum'"])
+        cli.main([path, "-agg", "column=v1,aggfunc=sum"])
     assert exc_info.value.code == 2
 
 
@@ -341,7 +341,7 @@ def test_agg_df_and_agg_cannot_combine(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-agg_df", "-group_by", "grp", "-agg", "column='v1',aggfunc='sum'"])
+        cli.main([path, "-agg_df", "-group_by", "grp", "-agg", "column=v1,aggfunc=sum"])
     assert exc_info.value.code == 2
 
 
@@ -373,7 +373,7 @@ def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_x", "group='grp',v='val',a='mean'"])
+    exit_code = cli.main([path, "-group_x", "group=grp,v=val,a=mean"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -384,7 +384,7 @@ def test_group_x_still_accepts_group_by_flag(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [1, 2, 3, 4]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "v='val',a='mean'"])
+    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "v=val,a=mean"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -424,7 +424,7 @@ def test_long_renames_melt_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-long", "c='feature',v='amount'", "-cols"])
+    exit_code = cli.main([path, "-long", "c=feature,v=amount", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
@@ -440,7 +440,7 @@ def test_wide_pivots_long_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c='country',v='balance'", "-cols"])
+    exit_code = cli.main([path, "-wide", "c=country,v=balance", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -451,7 +451,7 @@ def test_long_quoted_names_with_spaces(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-long", "c='feature name',v='amount col'", "-cols"])
+    exit_code = cli.main([path, "-long", "c=feature name,v=amount col", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature name", "amount col"]
@@ -467,7 +467,7 @@ def test_wide_quoted_names_with_spaces(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c='country name',v='body mass'", "-cols"])
+    exit_code = cli.main([path, "-wide", "c=country name,v=body mass", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -484,7 +484,7 @@ def test_wide_aggfunc_mean(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c='country',v='balance',a='mean'", "-head", "1"])
+    exit_code = cli.main([path, "-wide", "c=country,v=balance,a=mean", "-head", "1"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -494,7 +494,7 @@ def test_wide_aggfunc_mean(tmp_path, capsys):
 def test_cli_long_short_aliases(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]}))
 
-    exit_code = cli.main([path, "-long", "c='feature',v='amount'", "-cols"])
+    exit_code = cli.main([path, "-long", "c=feature,v=amount", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
@@ -504,7 +504,7 @@ def test_cli_wide_short_aliases(tmp_path, capsys):
     df = pd.DataFrame({"id": ["a", "b"], "country": ["sg", "cn"], "balance": [10, 20]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c='country',v='balance',a='mean'", "-cols"])
+    exit_code = cli.main([path, "-wide", "c=country,v=balance,a=mean", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -515,7 +515,7 @@ def test_wide_unknown_column_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"id": ["a"], "balance": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-wide", "c='country',v='balance'"])
+        cli.main([path, "-wide", "c=country,v=balance"])
     assert exc_info.value.code == 2
 
 
@@ -638,7 +638,7 @@ def test_sort_by_respects_select_and_descending(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp,val", "-sort_by", "val", "desc", "-head", "1"])
+    exit_code = cli.main([path, "-select", "grp,val", "-sort_by", "val desc", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -761,7 +761,7 @@ def test_sort_by_default_is_ascending(tmp_path, capsys):
 def test_sort_by_explicit_asc(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a"], "val": [2, 1]}))
 
-    exit_code = cli.main([path, "-sort_by", "val", "asc", "-head", "1"])
+    exit_code = cli.main([path, "-sort_by", "val asc", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -795,6 +795,38 @@ def test_parse_select_spec_quoted_name_and_repeated_key():
     names, kwargs = cli.parse_select_spec("'bill length mm',contains=bill,contains=body")
     assert names == ["bill length mm"]
     assert kwargs == {"contains": ["bill", "body"]}
+
+
+def test_parse_agg_name_list_and_mapping():
+    from pytae.cli_parsing import parse_agg
+    assert parse_agg("mean") == "mean"
+    assert parse_agg("mean,sum,n") == ["mean", "sum", "n"]
+    assert parse_agg("val: sum, n: n") == {"val": "sum", "n": "n"}
+    assert parse_agg("'body mass': mean") == {"body mass": "mean"}
+    with pytest.raises(SystemExit, match="use a name"):
+        parse_agg("['mean', 'sum']")
+    with pytest.raises(SystemExit, match="mix of names"):
+        parse_agg("mean, val: sum")
+
+
+def test_parse_sort_by_trailing_direction():
+    from pytae.cli_parsing import parse_sort_by
+    assert parse_sort_by("val") == (["val"], "asc")
+    assert parse_sort_by("val desc") == (["val"], "desc")
+    assert parse_sort_by("species,body_mass_g desc") == (["species", "body_mass_g"], "desc")
+    assert parse_sort_by("bill length mm desc") == (["bill length mm"], "desc")
+
+
+def test_wide_and_group_x_reject_dropna_kwarg(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "val": [1]}))
+    with pytest.raises(SystemExit, match="unknown key 'dropna'"):
+        cli.main([path, "-group_x", "group=grp,dropna=false"])
+    path2 = _write_csv(
+        tmp_path,
+        pd.DataFrame({"country": ["a"], "variable": ["x"], "value": [1]}),
+    )
+    with pytest.raises(SystemExit, match="unknown key 'dropna'"):
+        cli.main([path2, "-wide", "dropna=false"])
 
 
 def test_select_dtype_unions_with_explicit_names(tmp_path, capsys):
@@ -894,23 +926,27 @@ def test_select_after_agg_df_sees_agg_columns(tmp_path, capsys):
 
     # n is created by agg_df; a starting-view -select would reject it
     exit_code = cli.main(
-        [path, "-agg_df", "{'val': 'sum', 'n': 'n'}", "-select", "grp,n", "-cols"]
+        [path, "-agg_df", "val: sum, n: n", "-select", "grp,n", "-cols"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
 
 
-def test_agg_df_dict_without_braces_is_equivalent(tmp_path, capsys):
+def test_agg_df_comma_list(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
-        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
+        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3]}),
     )
 
-    exit_code = cli.main(
-        [path, "-agg_df", "'val': 'sum', 'n': 'n'", "-select", "grp,n", "-cols"]
-    )
+    exit_code = cli.main([path, "-agg_df", "sum,n", "-cols"])
     assert exit_code == 0
-    assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "n", "val"]
+
+
+def test_agg_df_python_literal_is_rejected(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "val": [1]}))
+    with pytest.raises(SystemExit, match="use a name"):
+        cli.main([path, "-agg_df", "{'val': 'sum'}"])
 
 
 def test_select_agg_df_select_shape_chains(tmp_path, capsys):
@@ -1361,7 +1397,7 @@ def test_replace_scoped_columns_only(tmp_path, capsys):
     df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
     path = _write_csv(tmp_path, df)
 
-    cli.main([path, "-replace_values", "c='col a',v='alpha:bravo'"])
+    cli.main([path, "-replace_values", "c=col a,v=alpha:bravo"])
 
     out = capsys.readouterr().out.strip().splitlines()
     assert out[1].split() == ["bravo", "alpha"]
@@ -1381,7 +1417,7 @@ def test_replace_unknown_column_errors(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-replace_values", "c='missing',v='alpha:bravo'"])
+        cli.main([path, "-replace_values", "c=missing,v=alpha:bravo"])
     assert exc_info.value.code == 2
     assert "-replace_values" in capsys.readouterr().err
 
@@ -1390,7 +1426,7 @@ def test_replace_requires_v(tmp_path):
     path = _write_csv(tmp_path, _replace_frame())
 
     with pytest.raises(SystemExit):
-        cli.main([path, "-replace_values", "c='col a'"])
+        cli.main([path, "-replace_values", "c=col a"])
 
 
 def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
@@ -1401,7 +1437,7 @@ def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
     unquoted = capsys.readouterr().out.strip()
 
     path = _write_csv(tmp_path, df)
-    cli.main([path, "-replace_values", "v='alpha':'bravo'"])
+    cli.main([path, "-replace_values", "v=alpha:'bravo'"])
     quoted = capsys.readouterr().out.strip()
 
     assert unquoted == quoted
@@ -1441,7 +1477,7 @@ def test_clean_columns_strip_fill_case(tmp_path, capsys):
 def test_clean_columns_custom_fill_char(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
 
-    cli.main([path, "-clean_columns", "fill='$'"])
+    cli.main([path, "-clean_columns", "fill=$"])
 
     header = capsys.readouterr().out.strip().splitlines()[0].split()
     assert header == ["col$a"]
@@ -1500,7 +1536,7 @@ def test_clean_columns_strip_special_removes_quotes(tmp_path, capsys):
 def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"co-op's data": [1]}))
 
-    cli.main([path, "-clean_columns", "strip_special,fill='-'", "-cols"])
+    cli.main([path, "-clean_columns", "strip_special,fill=-", "-cols"])
 
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
@@ -1519,7 +1555,7 @@ def test_merge_on_differing_column_names(tmp_path, capsys):
 
     cli.main([
         "-file", f"{left}=df1;{right}=df2",
-        "-merge", "left=df1,right=df2,on='col a:cola'",
+        "-merge", "left=df1,right=df2,on=col a:cola",
     ])
 
     out = capsys.readouterr().out.strip()
@@ -1532,7 +1568,7 @@ def test_merge_on_pair_quoting_is_optional(tmp_path, capsys):
 
     cli.main([
         "-file", f"{left}=df1;{right}=df2",
-        "-merge", "left=df1,right=df2,on='col a':'cola'",
+        "-merge", "left=df1,right=df2,on=col a:'cola'",
     ])
 
     out = capsys.readouterr().out.strip()
@@ -1548,7 +1584,7 @@ def test_merge_shared_column_name_outer_join(tmp_path, capsys):
 
     cli.main([
         "-file", f"{left}=a;{right}=b",
-        "-merge", "left=a,right=b,on='id',how=outer", "-shape",
+        "-merge", "left=a,right=b,on=id,how=outer", "-shape",
     ])
 
     assert capsys.readouterr().out.strip() == "(4, 3)"
@@ -1558,7 +1594,7 @@ def test_merge_requires_file(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-merge", "left=df1,right=df2,on='id'"])
+        cli.main([path, "-merge", "left=df1,right=df2,on=id"])
     assert exc_info.value.code == 2
 
 
@@ -1574,7 +1610,7 @@ def test_file_cannot_combine_with_positional_path(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([left, "-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on='col a:cola'"])
+        cli.main([left, "-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on=col a:cola"])
     assert exc_info.value.code == 2
 
 
@@ -1582,7 +1618,7 @@ def test_merge_unknown_alias_errors(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=bogus,on='col a:cola'"])
+        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=bogus,on=col a:cola"])
     assert exc_info.value.code == 2
 
 
@@ -1590,7 +1626,7 @@ def test_merge_convert_requires_output(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on='col a:cola'", "-convert"])
+        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on=col a:cola", "-convert"])
     assert exc_info.value.code == 2
 
 
@@ -1601,7 +1637,7 @@ def test_merge_must_be_first_op_with_file(tmp_path):
         cli.main([
             "-file", f"{left}=df1;{right}=df2",
             "-shape",
-            "-merge", "left=df1,right=df2,on='col a:cola'",
+            "-merge", "left=df1,right=df2,on=col a:cola",
         ])
     assert exc_info.value.code == 2
 
@@ -1623,7 +1659,7 @@ def test_sql_after_merge_can_query_df(tmp_path, capsys):
 
     cli.main([
         "-file", f"{left}=df1;{right}=df2",
-        "-merge", "left=df1,right=df2,on='col a:cola'",
+        "-merge", "left=df1,right=df2,on=col a:cola",
         "-sql", "select count(*) as n from df",
     ])
 
@@ -1656,8 +1692,8 @@ def test_merge_chained_via_df_alias(tmp_path, capsys):
 
     cli.main([
         "-file", f"{a}=a;{b}=b;{c}=c",
-        "-merge", "left=a,right=b,on='id'",
-        "-merge", "left=df,right=c,on='id'",
+        "-merge", "left=a,right=b,on=id",
+        "-merge", "left=df,right=c,on=id",
     ])
 
     out = capsys.readouterr().out
@@ -1668,7 +1704,7 @@ def test_merge_df_not_available_before_anything_produced(tmp_path, capsys):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=df,right=b,on='id'"])
+        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=df,right=b,on=id"])
     assert exc_info.value.code == 2
     assert "'df' isn't available yet" in capsys.readouterr().err
 
@@ -1734,7 +1770,7 @@ def test_file_dlim_and_encoding_overrides_applied(tmp_path, capsys):
     pd.DataFrame({"id": [2], "name": ["bravo"]}).to_csv(plain_path, index=False)
 
     cli.main([
-        "-file", f"{pipe_path}=p,dlim='|',encoding='latin-1'; {plain_path}=q",
+        "-file", f"{pipe_path}=p,dlim=|,encoding=latin-1; {plain_path}=q",
         "-concat", "frames='p,q'",
     ])
 
@@ -1754,7 +1790,7 @@ def test_concat_requires_at_least_two_frame_names(tmp_path):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit, match="frames= needs at least two names"):
-        cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a'"])
+        cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames=a"])
 
 
 def test_file_duplicate_alias_errors(tmp_path):
@@ -1802,7 +1838,7 @@ def test_merge_validate_failure_errors(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([
             "-file", f"{left}=l;{right}=r",
-            "-merge", "left=l,right=r,on='id',validate=one_to_one",
+            "-merge", "left=l,right=r,on=id,validate=one_to_one",
         ])
     assert exc_info.value.code == 2
     assert "-merge:" in capsys.readouterr().err
@@ -1814,7 +1850,7 @@ def test_convert_succeeds_after_merge(tmp_path):
 
     exit_code = cli.main([
         "-file", f"{left}=df1;{right}=df2",
-        "-merge", "left=df1,right=df2,on='col a:cola'",
+        "-merge", "left=df1,right=df2,on=col a:cola",
         "-convert", "-o", str(dest),
     ])
 
@@ -1830,7 +1866,7 @@ def test_select_runs_after_merge(tmp_path, capsys):
 
     cli.main([
         "-file", f"{left}=df1;{right}=df2",
-        "-merge", "left=df1,right=df2,on='col a:cola'",
+        "-merge", "left=df1,right=df2,on=col a:cola",
         "-select", "val_l,val_r", "-shape",
     ])
 
