@@ -18,29 +18,29 @@ def _require_duckdb():
 def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
     """Run a SQL query via duckdb.
 
-    The current DataFrame is table ``df`` (same as CLI ``-sql``). Extra keyword
+    The current DataFrame is table ``data`` (same as CLI ``-sql``). Extra keyword
     frames are registered under those names, like ``-file`` aliases.
 
     Parameters
     ----------
     df:
-        Registered as table ``df``.
+        Registered as table ``data``.
     query:
         DuckDB SQL. Spaced column names need double quotes.
     **frames:
-        Additional DataFrames registered as tables. The name ``df`` is reserved.
+        Additional DataFrames registered as tables. The name ``data`` is reserved.
 
     Examples
     --------
     >>> import pytae as pt
     >>> penguins = pt.sample("penguins")
-    >>> pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from df group by species")
-    >>> penguins.pt.sql("select * from df where species = 'Adelie'")
-    >>> pt.sql(left, "select * from df join extra using (id)", extra=right)
+    >>> pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from data group by species")
+    >>> penguins.pt.sql("select * from data where species = 'Adelie'")
+    >>> pt.sql(left, "select * from data join extra using (id)", extra=right)
     """
-    if "df" in frames:
-        raise ValueError("sql(): extra frame cannot be named 'df' — that's the current DataFrame")
-    tables = {"df": df, **frames}
+    if "data" in frames:
+        raise ValueError("sql(): extra frame cannot be named 'data' — that's the current DataFrame")
+    tables = {"data": df, **frames}
     duckdb = _require_duckdb()
     con = duckdb.connect()
     try:
