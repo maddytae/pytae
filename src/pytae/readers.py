@@ -8,6 +8,8 @@ DTYPE_SAMPLE_ROWS rows.
 
 from __future__ import annotations
 
+import importlib.util
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -259,6 +261,11 @@ _READERS = {
     ".sas7bdat": SasReader,
 }
 
+# YAML connection configs (Databricks / SSH) are handled by the isolated pytae.connections
+# module, loaded lazily so the core package never imports its optional dependencies.
+_YAML_SUFFIXES = (".yaml", ".yml")
+_EXTERNAL_CONNECTIONS_MODULE = None
+
 # default field separator for TxtReader-backed suffixes (.txt/.dat)
 _TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
 
@@ -269,10 +276,33 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None):
     suffix = path.suffix.lower()
+    if suffix in _YAML_SUFFIXES:
+        global _EXTERNAL_CONNECTIONS_MODULE
+        if _EXTERNAL_CONNECTIONS_MODULE is None:
+            conn_env = os.environ.get("PYTAE_CONNECTIONS_PATH")
+            if not conn_env:
+                raise FileNotFoundError(
+                    "connection reader not configured; set the PYTAE_CONNECTIONS_PATH environment "
+                    "variable to a connections.py file"
+                )
+            module_path = Path(conn_env).expanduser()
+            if not module_path.is_file():
+                raise FileNotFoundError(
+                    "connection reader not found; set PYTAE_CONNECTIONS_PATH to a connections.py file "
+                    f"(looked for '{module_path}')"
+                )
+            module_spec = importlib.util.spec_from_file_location(
+                "_pytae_external_connections", module_path
+            )
+            if module_spec is None or module_spec.loader is None:
+                raise ImportError(f"cannot load connections module from '{module_path}'")
+            _EXTERNAL_CONNECTIONS_MODULE = importlib.util.module_from_spec(module_spec)
+            module_spec.loader.exec_module(_EXTERNAL_CONNECTIONS_MODULE)
+        return _EXTERNAL_CONNECTIONS_MODULE.build_yaml_reader(path)
     try:
         cls = _READERS[suffix]
     except KeyError:
-        supported = ", ".join(sorted(_READERS))
+        supported = ", ".join(sorted((*_READERS, *_YAML_SUFFIXES)))
         raise ValueError(f"unsupported file type '{path.suffix or path.name}'; supported: {supported}") from None
     if cls is CsvReader:
         return CsvReader(path, sep=sep or ",", encoding=encoding)

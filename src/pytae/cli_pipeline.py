@@ -169,10 +169,10 @@ class _Pipeline:
             for alias, frame in self._frames.items():
                 con.register(alias, frame)
             if self._df is not None:
-                con.register("df", self._df)
+                con.register("data", self._df)
             elif self._reader is not None:
                 if not self._register_source_view(con):
-                    con.register("df", self.dataframe())
+                    con.register("data", self.dataframe())
             try:
                 self._df = con.sql(query).df()
             except Exception as exc:
@@ -203,7 +203,7 @@ class _Pipeline:
         else:
             return False  # e.g. .sas7bdat -- duckdb has no native reader for it
         limit_sql = f" LIMIT {int(self._nrows)}" if self._nrows is not None else ""
-        con.execute(f"CREATE VIEW df AS SELECT * FROM {scan}{limit_sql}")
+        con.execute(f"CREATE VIEW data AS SELECT * FROM {scan}{limit_sql}")
         return True
 
     def dataframe(self) -> pd.DataFrame:

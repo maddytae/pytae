@@ -48,11 +48,12 @@ except PackageNotFoundError:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pytae",
-        description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once).",
+        description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
     )
     parser.add_argument("path", nargs="?", default=None,
                          help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
+                                      "a .yaml/.yml connection config (Databricks table or remote SSH file), "
                                       "or a glob pattern like 'data/*.parquet' for batch conversion; "
                                       "omit when using -file with -merge/-concat/-sql")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
@@ -183,13 +184,13 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"bmi: body_mass_g / bill_length_mm ** 2\"")
     parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
                          help="run a SQL query (via duckdb) against the current view at this point in "
-                              "the pipeline; the view is queryable as table `df`; standard SQL identifier "
+                              "the pipeline; the view is queryable as table `data`; standard SQL identifier "
                               "quoting applies (double quotes for names with spaces, e.g. \"col a\"; single "
                               "quotes are string literals, not identifiers), e.g. "
-                              "\"select \\\"col a\\\" from df where \\\"col a\\\" > 10\"; "
+                              "\"select \\\"col a\\\" from data where \\\"col a\\\" > 10\"; "
                               "in -file/-merge mode, may be used instead of -merge as the first op, with "
                               "every -file alias queryable by its own name (e.g. \"select * from df1 "
-                              "inner join df2 on df1.\\\"col a\\\" = df2.cola\") — `df` becomes queryable "
+                              "inner join df2 on df1.\\\"col a\\\" = df2.cola\") — `data` becomes queryable "
                               "too once something later in the pipeline has produced a current view")
     parser.add_argument("-replace_values", "--replace_values", dest="replace_values", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="replace values at this point in the pipeline; key=value tokens: v= (required) "
@@ -201,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="merge two frames into the pipeline (pandas merge()); repeatable, to fold in "
                               "one more file at a time; must be the first op when using -file (unless -sql/"
                               "-concat starts it instead); key=value tokens: left=/right= (required — -file "
-                              "aliases, or 'df' for the pipeline's current result so far), "
+                              "aliases, or 'data' for the pipeline's current result so far), "
                               "on= (required; shared column name(s), or 'left:right' pairs if they "
                               "differ between sides — quote on= if it has more than one column/pair, e.g. "
                               "\"on='col a:cola,colb:colb'\"), how= (optional, default 'inner': "
@@ -210,7 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="stack frames row-wise into the pipeline (pandas concat(), always with "
                               "ignore_index=True); repeatable; must be the first op when using -file "
                               "(unless -sql/-merge starts it instead); key=value tokens: frames= (required) "
-                              "an ordered comma-separated list of -file aliases (or 'df' for the pipeline's "
+                              "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
                               "current result so far), quoted since it has internal commas, e.g. "
                               "\"frames='df1,df2,df3'\"")
     parser.add_argument("-progress", "--progress", action="store_true",

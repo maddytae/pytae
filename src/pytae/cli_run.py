@@ -134,9 +134,9 @@ def _resolve_alias(alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipel
     """Look up a -merge/-concat alias: a -file alias, or 'df' for the pipeline's current
     result so far (lets repeated -merge/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
-    if alias == "df":
+    if alias == "data":
         if pipeline._df is None:
-            return None, f"{flag}: 'df' isn't available yet — nothing has produced a pipeline result yet"
+            return None, f"{flag}: 'data' isn't available yet — nothing has produced a pipeline result yet"
         return pipeline._df, None
     if alias not in frames:
         return None, f"{flag}: unknown -file alias '{alias}'"
@@ -173,7 +173,7 @@ def _process_path(
 
         try:
             reader = get_reader(path, sep=args.dlim, encoding=args.encoding)
-        except ValueError as exc:
+        except (ValueError,ImportError) as exc:
             return _fail(parser, batch, str(exc))
 
         pipeline = _Pipeline(

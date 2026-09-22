@@ -3,7 +3,7 @@
     df.rename(columns={...}).pt.agg_df(a="mean")
     df.pt.select("species", contains="bill").head()
     df.pt.select("species", "body_mass_g").pt.agg_df(a=["mean", "n"])
-    df.pt.sql("select species, avg(body_mass_g) from df group by species")
+    df.pt.sql("select species, avg(body_mass_g) from data group by species")
 """
 
 from __future__ import annotations
