@@ -21,15 +21,15 @@ penguins.rename(columns={"body_mass_g": "mass"}).pt.agg_df(a="mean")
 
 ## SQL — `sql()`
 
-Same as CLI `-sql`: duckdb, current frame is table **`df`**. Optional extra: `pip install pytae[sql]`. Extra keyword frames are extra tables (like `-file` aliases).
+Same as CLI `-sql`: duckdb, current frame is table **`data`**. Optional extra: `pip install pytae[sql]`. Extra keyword frames are extra tables (like `-file` aliases).
 
 ```python
-pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from df group by species")
-penguins.pt.sql("select * from df where species = 'Adelie'")
-pt.sql(left, "select * from df inner join extra using (id)", extra=right)
+pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from data group by species")
+penguins.pt.sql("select * from data where species = 'Adelie'")
+pt.sql(left, "select * from data inner join extra using (id)", extra=right)
 ```
 
-Spaced column names need double quotes: `pt.sql(df, 'select "bill length mm" from df')`.
+Spaced column names need double quotes: `pt.sql(df, 'select "bill length mm" from data')`.
 
 ## 1) Plotting — `Plotter`
 
@@ -114,19 +114,22 @@ threshold = 4000
 pt.mutate(penguins, "heavy: body_mass_g >= @threshold")
 ```
 
-For conditional/string outcomes — where plain `eval()` can't help — two dplyr-style forms are built in:
+Three dplyr-style helpers are built in and compose freely with each other and with pandas methods:
 
 ```python
 # if_else(condition, true_value, false_value) — like dplyr's if_else()
 pt.mutate(penguins, "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')")
 
-# case_when(cond1: val1, cond2: val2, ..., default) — like dplyr's case_when()
-# checked in order, first match wins; a last argument with no colon is the optional
-# catch-all (like SQL ELSE) and must be listed last; unmatched rows are NaN without it
+# case_when((cond1, val1), (cond2, val2), ..., default) — like dplyr's case_when()
+# checked in order, first match wins; a trailing bare argument is the optional
+# catch-all (like SQL ELSE); unmatched rows are NaN without it
 pt.mutate(
     penguins,
-    "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', 'small')",
+    "size_class: case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), 'small')",
 )
+
+# map(column, {key: value, ...}[, default]) — recode through a lookup dict
+pt.mutate(penguins, "code: map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
 ```
 
 ## 7) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`

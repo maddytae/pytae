@@ -10,10 +10,10 @@ from pytae import cli
 from tests.cli_helpers import _write_csv, _write_two_csvs
 
 
-def test_sql_query_via_df_alias(tmp_path, capsys):
+def test_sql_query_via_data_alias(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1, 20, 3], "col b": ["x", "y", "z"]}))
 
-    exit_code = cli.main([path, "-sql", 'select "col b" from df where "col a" > 10'])
+    exit_code = cli.main([path, "-sql", 'select "col b" from data where "col a" > 10'])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -24,19 +24,20 @@ def test_sql_spaced_column_name_needs_double_quotes(tmp_path, capsys):
     # Standard SQL identifier quoting: double quotes for names with spaces, not single quotes.
     path = _write_csv(tmp_path, pd.DataFrame({"bill length mm": [1, 20, 3], "species": ["a", "b", "c"]}))
 
-    exit_code = cli.main([path, "-sql", 'select species from df where "bill length mm" > 10'])
+    exit_code = cli.main([path, "-sql", 'select species from data where "bill length mm" > 10'])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines()[-1].strip() == "b"
 
-def test_sql_only_df_is_registered_no_file_derived_alias(tmp_path, capsys):
+def test_sql_only_data_is_registered_no_file_derived_alias(tmp_path, capsys):
     # The file is already named on the command line; -sql does not also register a
-    # file-stem alias (e.g. "data" for data.csv) -- only `df` is queryable.
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
+    # file-stem alias (e.g. "my_data" for my_data.csv) -- only `data` is queryable.
+    path = tmp_path / "my_data.csv"
+    pd.DataFrame({"a": [1, 2]}).to_csv(path, index=False)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-sql", "select * from data"])
+        cli.main([str(path), "-sql", "select * from my_data"])
     assert exc_info.value.code == 2
     assert "-sql" in capsys.readouterr().err
 
@@ -55,7 +56,7 @@ def test_sql_chains_after_select(tmp_path, capsys):
     )
 
     exit_code = cli.main(
-        [path, "-select", "keep,flt", "-sql", 'select "keep" from df where "flt" = \'A\'', "-shape"]
+        [path, "-select", "keep,flt", "-sql", 'select "keep" from data where "flt" = \'A\'', "-shape"]
     )
 
     assert exit_code == 0
@@ -75,7 +76,7 @@ def test_sql_first_op_scans_parquet_directly(tmp_path, capsys):
     path = tmp_path / "data.parquet"
     pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]}).to_parquet(path, index=False)
 
-    exit_code = cli.main([str(path), "-sql", "select b from df where a > 1"])
+    exit_code = cli.main([str(path), "-sql", "select b from data where a > 1"])
 
     out = capsys.readouterr().out.strip().splitlines()
     assert exit_code == 0
@@ -85,7 +86,7 @@ def test_sql_first_op_respects_nrows(tmp_path, capsys):
     path = tmp_path / "data.parquet"
     pd.DataFrame({"a": range(10)}).to_parquet(path, index=False)
 
-    exit_code = cli.main([str(path), "-nrows", "3", "-sql", "select * from df"])
+    exit_code = cli.main([str(path), "-nrows", "3", "-sql", "select * from data"])
 
     out = capsys.readouterr().out.strip().splitlines()
     assert exit_code == 0
@@ -95,7 +96,7 @@ def test_sql_first_op_with_progress_still_works(tmp_path, capsys):
     # -progress forces the pandas-materialize fallback instead of the direct duckdb scan.
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
 
-    exit_code = cli.main([path, "-progress", "-sql", "select * from df where a > 1"])
+    exit_code = cli.main([path, "-progress", "-sql", "select * from data where a > 1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -109,7 +110,7 @@ def test_sql_first_op_with_custom_encoding_still_works(tmp_path, capsys):
     path = tmp_path / "data.csv"
     pd.DataFrame({"a": [1, 2], "name": ["café", "naïve"]}).to_csv(path, index=False, encoding="latin-1")
 
-    exit_code = cli.main([str(path), "-encoding", "latin-1", "-sql", "select * from df"])
+    exit_code = cli.main([str(path), "-encoding", "latin-1", "-sql", "select * from data"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -126,13 +127,13 @@ def test_sql_can_join_file_aliases_directly(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "val_l" in out and "val_r" in out
 
-def test_sql_after_merge_can_query_df(tmp_path, capsys):
+def test_sql_after_merge_can_query_data(tmp_path, capsys):
     left, right = _write_two_csvs(tmp_path)
 
     cli.main([
         "-file", f"{left}=df1;{right}=df2",
         "-merge", "left=df1,right=df2,on=col a:cola",
-        "-sql", "select count(*) as n from df",
+        "-sql", "select count(*) as n from data",
     ])
 
     assert capsys.readouterr().out.strip().splitlines()[-1].strip() == "2"

@@ -71,7 +71,7 @@ pytae penguins.parquet -select "species,body_mass_g" -sort_by "body_mass_g desc"
 pytae penguins.parquet -drop "sex,island" -head 5
 
 # ad-hoc SQL over the same file
-pytae penguins.parquet -sql "select species, avg(body_mass_g) from df group by species"
+pytae penguins.parquet -sql "select species, avg(body_mass_g) from data group by species"
 ```
 
 See [Inspect & display](#listing) for the full list of inspection flags (`-head`/`-tail`/`-sample`/`-shape`/`-cols`/`-dtype`/`-nulls`/`-describe`/`-info`) and their chaining rules.
@@ -274,37 +274,40 @@ pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -qry "bm
 # dplyr-style if_else(condition, true_value, false_value)
 pytae penguins.parquet -mutate "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')" -select "species,weight_class" -head
 
-# case_when(cond1: val1, cond2: val2, ..., default) — first match wins;
-# a last argument with no colon is the optional catch-all (like SQL ELSE)
-pytae penguins.parquet -mutate "size_class: case_when(body_mass_g >= 4500: 'large', body_mass_g >= 3500: 'medium', 'small')" -select "species,size_class" -head
+# case_when((cond1, val1), (cond2, val2), ..., default) — first match wins;
+# a trailing bare argument is the optional catch-all (like SQL ELSE)
+pytae penguins.parquet -mutate "size_class: case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), 'small')" -select "species,size_class" -head
+
+# map(column, {key: value, ...}[, default]) — recode through a lookup dict
+pytae penguins.parquet -mutate "code: map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')" -select "species,code" -head
 ```
 
-`if_else()`/`case_when()` are the two exceptions to "the value is a plain `eval()` expression" — they're detected by name and evaluated via `np.where()`/`np.select()` instead, since `eval()` itself has no if/else support at all, regardless of engine. Their own arguments (conditions, and non-string values) are still `eval()` expressions — string outcomes still need quotes (`'heavy'`).
+Three dplyr-style helpers are available as ordinary function calls: `if_else(condition, true_value, false_value)`, `case_when((cond1, val1), (cond2, val2), ..., default)`, and `map(column, {key: value, ...}[, default])`. Because they are ordinary calls, they compose and chain freely with each other and with pandas methods (e.g. `.str.upper()`). String outcomes need quotes; conditions are vectorized — prefer `and`/`or`/`not` (bitwise `&`/`|`/`~` also work). Any expression pandas `eval()` cannot parse falls back to a plain Python `eval()` with each column exposed as a Series, so dict literals and method chains work naturally.
 
 ---
 
 <a id="sql"></a>
 ### SQL — `-sql`
 
-`-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). Same verb in Python: `pt.sql(df, "select … from df")` / `df.pt.sql(…)` — see [docs/LIBRARY.md](LIBRARY.md). The view is queryable as table **`df`, and only `df`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember (and no ambiguity if you later pipe a differently-named file through the same command). `table` is also deliberately not registered: it's a reserved SQL keyword, so `select * from table` fails to parse unless quoted, which defeats the point of a short default name.
+`-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). Same verb in Python: `pt.sql(df, "select … from data")` / `df.pt.sql(…)` — see [docs/LIBRARY.md](LIBRARY.md). The view is queryable as table **`data`, and only `data`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember (and no ambiguity if you later pipe a differently-named file through the same command). `table` is also deliberately not registered: it's a reserved SQL keyword, so `select * from table` fails to parse unless quoted, which defeats the point of a short default name.
 
 Unlike `-qry`, this is **standard SQL**, not pytae's dict syntax — column names with spaces need **double** quotes (`"bill length mm"`), not single quotes. Single quotes are string literals in SQL, e.g. `'Adelie'`; using them around a column name either errors or silently compares against a constant string instead of the column.
 
 **Performance:** when `-sql` is the first thing to touch the view (nothing has filtered/selected/aggregated yet), duckdb scans the source `.parquet`/`.csv`/`.txt`/`.dat` file **directly** instead of first loading it into pandas — often several times faster, especially on CSV. This fast path is skipped (falling back to the normal pandas-backed view, same as before) when: something earlier in the pipeline already ran, `-progress` was passed, the source is `.sas7bdat` (no native duckdb reader), or a non-UTF-8 `-encoding` was given (duckdb's CSV reader doesn't support arbitrary encodings). `-nrows` still applies either way.
 
 ```bash
-pytae penguins.parquet -sql "select species, body_mass_g from df where body_mass_g > 3500"
-pytae penguins.parquet -sql "select species, avg(body_mass_g) as avg_mass from df group by species"
+pytae penguins.parquet -sql "select species, body_mass_g from data where body_mass_g > 3500"
+pytae penguins.parquet -sql "select species, avg(body_mass_g) as avg_mass from data group by species"
 
 # a column name with a space: double quotes, not single quotes
-pytae data.parquet -sql 'select species from df where "bill length mm" > 40'
+pytae data.parquet -sql 'select species from data where "bill length mm" > 40'
 
 # chains like any other op — runs on the current view, replaces it
-pytae penguins.parquet -select "species,island,body_mass_g" -sql "select * from df where island = 'Dream'" -shape
+pytae penguins.parquet -select "species,island,body_mass_g" -sql "select * from data where island = 'Dream'" -shape
 
 # a query that needs BOTH a double-quoted identifier (space in the column name)
 # and a single-quoted string literal — wrap the spec in "" and escape the identifier
-pytae data.parquet -sql "select \"bill length mm\" from df where island = 'Dream'"
+pytae data.parquet -sql "select \"bill length mm\" from data where island = 'Dream'"
 ```
 
 Mixing a spaced identifier and a string literal in one `-sql` value means the shell has to see both `"` and `'` — one of them needs escaping. Two ways to handle it:
@@ -314,7 +317,7 @@ Mixing a spaced identifier and a string literal in one `-sql` value means the sh
 
   ```bash
   pytae data.parquet -convert -rename "bill length mm:bill_length_mm" -o clean.parquet
-  pytae clean.parquet -sql "select bill_length_mm from df where island = 'Dream'"
+  pytae clean.parquet -sql "select bill_length_mm from data where island = 'Dream'"
   ```
 
 ---
@@ -945,8 +948,8 @@ pytae penguins.parquet -qry "island: 'Dream'" -select "species,island,body_mass_
 | Flag | Description |
 |---|---|
 | `-file PATH=ALIAS;...` | Load named files instead of the positional `path`; `;`-separated, each optionally followed by `,dlim=`/`,encoding=`; requires `-merge`, `-concat`, or `-sql` as the first op |
-| `-merge KEY=VALUE,...` | Join `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); repeatable, `left=`/`right=` accept `df` for the running result; or use `-sql` instead |
-| `-concat KEY=VALUE,...` | Stack `-file` aliases row-wise (`frames=`, an ordered list, accepts `df` for the running result); repeatable; always resets the index |
+| `-merge KEY=VALUE,...` | Join `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); repeatable, `left=`/`right=` accept `data` for the running result; or use `-sql` instead |
+| `-concat KEY=VALUE,...` | Stack `-file` aliases row-wise (`frames=`, an ordered list, accepts `data` for the running result); repeatable; always resets the index |
 
 **Convert & I/O**
 

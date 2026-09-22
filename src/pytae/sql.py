@@ -34,9 +34,18 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
     --------
     >>> import pytae as pt
     >>> penguins = pt.sample("penguins")
-    >>> pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from data group by species")
-    >>> penguins.pt.sql("select * from data where species = 'Adelie'")
-    >>> pt.sql(left, "select * from data join extra using (id)", extra=right)
+    >>> pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from data group by species order by species")
+         species     avg_mass
+    0     Adelie  3700.662252
+    1  Chinstrap  3733.088235
+    2     Gentoo  5076.016260
+    >>> penguins.pt.sql("select * from data where species = 'Adelie'").shape
+    (152, 7)
+    >>> left = pd.DataFrame({"id": [1, 2], "x": ["a", "b"]})
+    >>> right = pd.DataFrame({"id": [1, 3], "y": ["p", "q"]})
+    >>> pt.sql(left, "select data.id, x, y from data join extra using (id)", extra=right)
+       id  x  y
+    0   1  a  p
     """
     if "data" in frames:
         raise ValueError("sql(): extra frame cannot be named 'data' — that's the current DataFrame")

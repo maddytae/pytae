@@ -73,6 +73,7 @@ def qry(df: pd.DataFrame, conditions: dict[str, Any]) -> pd.DataFrame:
     Examples:
     ---------
     >>> import pandas as pd
+    >>> import pytae as pt
     >>> data = {
     ...     'species': ['Adelie', 'Gentoo', 'Chinstrap', 'Adelie'],
     ...     'body_mass_g': [74125, 271425, 119925, 89100],
@@ -81,58 +82,60 @@ def qry(df: pd.DataFrame, conditions: dict[str, Any]) -> pd.DataFrame:
     >>> df = pd.DataFrame(data)
 
     >>> # Filter for rows where 'species' is 'Adelie'
-    >>> df.qry({'species': 'Adelie'})
-       species  body_mass_g code
-    0   Adelie      74125.0  A 1
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry({'species': 'Adelie'})
+      species  body_mass_g code
+    0  Adelie        74125  A 1
+    3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'body_mass_g' is greater than 81500
-    >>> df.qry({'body_mass_g': ('>', 81500)})
-       species  body_mass_g code
-    1   Gentoo     271425.0  B 2
-    2  Chinstrap    119925.0  C 3
+    >>> df.pt.qry({'body_mass_g': ('>', 81500)})
+         species  body_mass_g code
+    1     Gentoo       271425  B 2
+    2  Chinstrap       119925  C 3
+    3     Adelie        89100  D 4
 
     >>> # Filter for rows where 'species' is in ['Adelie', 'Gentoo']
-    >>> df.qry({'species': ('in', ['Adelie', 'Gentoo'])})
-       species  body_mass_g code
-    0   Adelie      74125.0  A 1
-    1   Gentoo     271425.0  B 2
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry({'species': ('in', ['Adelie', 'Gentoo'])})
+      species  body_mass_g code
+    0  Adelie        74125  A 1
+    1  Gentoo       271425  B 2
+    3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'species' is not in ['Adelie', 'Gentoo']
-    >>> df.qry({'species': ('not in', ['Adelie', 'Gentoo'])})
+    >>> df.pt.qry({'species': ('not in', ['Adelie', 'Gentoo'])})
          species  body_mass_g code
-    2  Chinstrap     119925.0  C 3
+    2  Chinstrap       119925  C 3
 
     >>> # Filter for rows where 'body_mass_g' is in the interval (80000, 120000)
-    >>> df.qry({'body_mass_g': '(80000,120000)'})
-       species  body_mass_g code
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry({'body_mass_g': '(80000,120000)'})
+         species  body_mass_g code
+    2  Chinstrap       119925  C 3
+    3     Adelie        89100  D 4
 
     >>> # Filter for rows where 'code' equals 'A 1' (whitespace preserved)
-    >>> df.qry({'code': ('==', 'A 1')})
+    >>> df.pt.qry({'code': ('==', 'A 1')})
       species  body_mass_g code
-    0  Adelie      74125.0  A 1
+    0  Adelie        74125  A 1
 
     >>> # Filter for rows where 'species' starts with 'Ad'
-    >>> df.qry({'species': ('startswith', 'Ad')})
+    >>> df.pt.qry({'species': ('startswith', 'Ad')})
       species  body_mass_g code
-    0  Adelie      74125.0  A 1
-    3  Adelie      89100.0  D 4
+    0  Adelie        74125  A 1
+    3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'code' matches a regex pattern anywhere in the string
-    >>> df.qry({'code': ('regex', r'^[AB]')})
+    >>> df.pt.qry({'code': ('regex', r'^[AB]')})
       species  body_mass_g code
-    0  Adelie      74125.0  A 1
-    1  Gentoo     271425.0  B 2
+    0  Adelie        74125  A 1
+    1  Gentoo       271425  B 2
 
     >>> # Filter for rows where 'species' is not null
-    >>> df.qry({'species': ('notna',)})
-       species  body_mass_g code
-    0   Adelie      74125.0  A 1
-    1   Gentoo     271425.0  B 2
-    2  Chinstrap    119925.0  C 3
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry({'species': ('notna',)})
+         species  body_mass_g code
+    0     Adelie        74125  A 1
+    1     Gentoo       271425  B 2
+    2  Chinstrap       119925  C 3
+    3     Adelie        89100  D 4
 
     Notes:
     ------

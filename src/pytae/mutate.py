@@ -277,32 +277,33 @@ def mutate(df: pd.DataFrame, spec: str) -> pd.DataFrame:
     Examples:
     ---------
     >>> import pandas as pd
+    >>> import pytae as pt
     >>> df = pd.DataFrame({'body_mass_g': [3000.0, 4000.0], 'bill_length_mm': [30.0, 40.0]})
-    >>> df.mutate("bmi: body_mass_g / bill_length_mm ** 2")
+    >>> df.pt.mutate("bmi: body_mass_g / bill_length_mm ** 2")
        body_mass_g  bill_length_mm       bmi
     0       3000.0            30.0  3.333333
     1       4000.0            40.0  2.500000
 
     >>> # later entries can reference columns derived earlier in the same call
-    >>> df.mutate("mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")
-       body_mass_g  bill_length_mm  mass_kg    mass_lb
-    0       3000.0            30.0      3.0   6.613860
-    1       4000.0            40.0      4.0   8.818480
+    >>> df.pt.mutate("mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")
+       body_mass_g  bill_length_mm  mass_kg  mass_lb
+    0       3000.0            30.0      3.0  6.61386
+    1       4000.0            40.0      4.0  8.81848
 
     >>> # dplyr-style if_else()/case_when() for conditional/string outcomes
-    >>> df.mutate("result: if_else(body_mass_g >= 3500, 'heavy', 'light')")
-       body_mass_g  bill_length_mm  result
-    0       3000.0            30.0   light
-    1       4000.0            40.0   heavy
+    >>> df.pt.mutate("result: if_else(body_mass_g >= 3500, 'heavy', 'light')")
+       body_mass_g  bill_length_mm result
+    0       3000.0            30.0  light
+    1       4000.0            40.0  heavy
 
-    >>> df.mutate("grade: case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')")
+    >>> df.pt.mutate("grade: case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')")
        body_mass_g  bill_length_mm grade
     0       3000.0            30.0     C
     1       4000.0            40.0     A
 
     >>> # natural pandas method chains work (dict literals + Series.map(), etc.)
     >>> s = pd.DataFrame({'species': ['Adelie', 'Gentoo', 'Chinstrap']})
-    >>> s.mutate("code: species.map({'Adelie': 'A', 'Gentoo': 'G'}).fillna('X')")
+    >>> s.pt.mutate("code: species.map({'Adelie': 'A', 'Gentoo': 'G'}).fillna('X')")
          species code
     0     Adelie    A
     1     Gentoo    G

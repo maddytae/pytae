@@ -25,7 +25,7 @@ Must be the **first** operation when `-file` is used, unless [`-sql`](#sql-alter
 
 | Key | Required? | Meaning |
 |---|---|---|
-| `left=` / `right=` | required | a `-file` alias, or the literal `df` for the pipeline's current result so far (only valid once something earlier has produced one) |
+| `left=` / `right=` | required | a `-file` alias, or the literal `data` for the pipeline's current result so far (only valid once something earlier has produced one) |
 | `on=` | required | shared join column(s) (comma list) when names match on both sides, or `left:right` pairs when they differ — **quote the whole value** if it has more than one column/pair, e.g. `on='col a:cola,colb:colb'` |
 | `how=` | optional (default `inner`) | `inner`/`left`/`right`/`outer`/`cross`, passed straight to pandas `merge()` |
 | `validate=` | optional | e.g. `one_to_one`/`one_to_many`/`many_to_one`/`many_to_many`, passed straight to pandas `merge()` |
@@ -41,10 +41,10 @@ pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,how=outer" -select "
 # validate the join is truly one-to-one, erroring otherwise
 pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,validate=one_to_one"
 
-# fold a third file in: (a ⋈ b) ⋈ c — 'df' means "the result so far"
+# fold a third file in: (a ⋈ b) ⋈ c — 'data' means "the result so far"
 pytae -file "a.csv=a; b.csv=b; c.csv=c" \
       -merge "left=a,right=b,on=id" \
-      -merge "left=df,right=c,on=id"
+      -merge "left=data,right=c,on=id"
 ```
 
 ## `-concat` — stack `-file` aliases (pandas `concat()`)
@@ -53,14 +53,14 @@ Must be the **first** operation when `-file` is used, unless `-merge` or [`-sql`
 
 | Key | Required? | Meaning |
 |---|---|---|
-| `frames=` | required | an ordered, comma-separated list of `-file` aliases (or `df` for the pipeline's current result so far) — **quote the whole value**, e.g. `frames='df1,df2,df3'` |
+| `frames=` | required | an ordered, comma-separated list of `-file` aliases (or `data` for the pipeline's current result so far) — **quote the whole value**, e.g. `frames='df1,df2,df3'` |
 
 ```bash
 # stack three files in one call
 pytae -file "a.csv=a; b.csv=b; c.csv=c" -concat "frames='a,b,c'"
 
 # or stack incrementally, folding more files onto the running result
-pytae -file "a.csv=a; b.csv=b; c.csv=c" -concat "frames='a,b'" -concat "frames='df,c'"
+pytae -file "a.csv=a; b.csv=b; c.csv=c" -concat "frames='a,b'" -concat "frames='data,c'"
 ```
 
 <a id="sql-alternative"></a>
@@ -73,10 +73,10 @@ pytae -file "data1.parquet=df1; data2.parquet=df2" \
       -sql 'select * from df1 inner join df2 on df1."col a" = df2.cola'
 ```
 
-Once something in the pipeline has produced a current view (e.g. after `-merge`/`-concat`, or a later `-sql` call), `df` also becomes queryable — same as single-file mode:
+Once something in the pipeline has produced a current view (e.g. after `-merge`/`-concat`, or a later `-sql` call), `data` also becomes queryable — same as single-file mode:
 
 ```bash
-pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id" -sql "select count(*) as n from df"
+pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id" -sql "select count(*) as n from data"
 ```
 
 ## Notes

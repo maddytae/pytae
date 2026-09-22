@@ -93,25 +93,25 @@ def test_merge_must_be_first_op_with_file(tmp_path):
         ])
     assert exc_info.value.code == 2
 
-def test_merge_chained_via_df_alias(tmp_path, capsys):
+def test_merge_chained_via_data_alias(tmp_path, capsys):
     a, b, c = _write_three_id_csvs(tmp_path)
 
     cli.main([
         "-file", f"{a}=a;{b}=b;{c}=c",
         "-merge", "left=a,right=b,on=id",
-        "-merge", "left=df,right=c,on=id",
+        "-merge", "left=data,right=c,on=id",
     ])
 
     out = capsys.readouterr().out
     assert all(col in out for col in ("x", "y", "z"))
 
-def test_merge_df_not_available_before_anything_produced(tmp_path, capsys):
+def test_merge_data_not_available_before_anything_produced(tmp_path, capsys):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=df,right=b,on=id"])
+        cli.main(["-file", f"{a}=a;{b}=b", "-merge", "left=data,right=b,on=id"])
     assert exc_info.value.code == 2
-    assert "'df' isn't available yet" in capsys.readouterr().err
+    assert "'data' isn't available yet" in capsys.readouterr().err
 
 def test_concat_stacks_three_frames_with_reset_index(tmp_path, capsys):
     a, b, c = _write_three_id_csvs(tmp_path)
@@ -135,13 +135,13 @@ def test_concat_resets_index(tmp_path, capsys, monkeypatch):
     result = copied["frame"]
     assert list(result.index) == list(range(len(result)))
 
-def test_concat_chained_via_df_alias(tmp_path, capsys):
+def test_concat_chained_via_data_alias(tmp_path, capsys):
     a, b, c = _write_three_id_csvs(tmp_path)
 
     cli.main([
         "-file", f"{a}=a;{b}=b;{c}=c",
         "-concat", "frames='a,b'",
-        "-concat", "frames='df,c'",
+        "-concat", "frames='data,c'",
         "-shape",
     ])
 

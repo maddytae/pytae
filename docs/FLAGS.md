@@ -9,7 +9,7 @@ One page. Full reference: [CLI.md](CLI.md). Library: `import pytae as pt` then `
 | Filter rows (odd strings, dict syntax) | `-qry` | `-query` is pandas `query()` |
 | Filter rows with a pandas expression | `-query` | |
 | Create/overwrite columns | `-mutate` | |
-| Run SQL | `-sql` | view is table `df`; library: `pt.sql(df, …)` / `df.pt.sql(…)` |
+| Run SQL | `-sql` | view is table `data`; library: `pt.sql(df, …)` / `df.pt.sql(…)` |
 | Sort rows | `-sort_by` | |
 | Unique rows | `-unique` | `-drop` is columns |
 | Replace cell values | `-replace_values` | `-rename` is headers; `-clean_columns` is header *cleanup* |

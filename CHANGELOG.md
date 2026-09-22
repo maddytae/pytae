@@ -14,7 +14,7 @@ All notable changes to this project are documented in this file.
 - `docs/FLAGS.md` — one-page "which flag?" card. Pytae kwargs stay `c=` / `v=` / `a=`.
 - Ruff in CI (`ruff check src tests`) and mypy on 3.12 (`mypy` over `src/pytae`).
 - `df.pt` DataFrame accessor; `@` locals in `df.pt.mutate()` resolve in the calling scope.
-- Library `pt.sql(df, query)` / `df.pt.sql(query)` — same duckdb/`df` table as CLI `-sql`
+- Library `pt.sql(df, query)` / `df.pt.sql(query)` — same duckdb/`data` table as CLI `-sql`
   (`pip install pytae[sql]`). Extra keyword frames register as extra tables.
 
 ## [3.4.3] - 2026-09-20

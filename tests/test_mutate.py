@@ -93,7 +93,7 @@ def test_mutate_if_else_value_can_be_column_expression():
 
 
 def test_mutate_if_else_wrong_arg_count_errors():
-    with pytest.raises(ValueError, match="if_else expects 3 arguments"):
+    with pytest.raises(TypeError):
         pt.mutate(_df(), "size: if_else(body_mass_g >= 3500, 'heavy')")
 
 
@@ -105,26 +105,26 @@ def test_mutate_if_else_mixed_dtype_branches():
 
 
 def test_mutate_case_when_mixed_dtype_choices():
-    result = pt.mutate(_df(), "g: case_when(body_mass_g >= 3500: 'heavy', 0)")
+    result = pt.mutate(_df(), "g: case_when((body_mass_g >= 3500, 'heavy'), 0)")
     assert list(result["g"]) == [0, "heavy"]
 
 
 def test_mutate_case_when_first_match_wins():
     result = pt.mutate(_df(), 
-        "grade: case_when(body_mass_g >= 3800: 'A', body_mass_g >= 3200: 'B', 'C')"
+        "grade: case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')"
     )
     assert list(result["grade"]) == ["C", "A"]
 
 
 def test_mutate_case_when_no_default_gives_nan_for_unmatched():
-    result = pt.mutate(_df(), "grade: case_when(body_mass_g >= 3800: 'A')")
+    result = pt.mutate(_df(), "grade: case_when((body_mass_g >= 3800, 'A'))")
     assert result["grade"].iloc[1] == "A"
     assert pd.isna(result["grade"].iloc[0])
 
 
 def test_mutate_case_when_default_must_be_last():
-    with pytest.raises(ValueError, match="a bare default must be last"):
-        pt.mutate(_df(), "grade: case_when('C', body_mass_g >= 3800: 'A')")
+    with pytest.raises(ValueError, match="case_when default .*must be the last argument"):
+        pt.mutate(_df(), "grade: case_when('C', (body_mass_g >= 3800, 'A'))")
 
 
 def test_mutate_case_when_requires_at_least_one_entry():
@@ -160,7 +160,7 @@ def test_mutate_local_var_reference_in_if_else():
 def test_mutate_local_var_reference_in_case_when():
     low, high = 3200.0, 3800.0
     result = pt.mutate(_df(), 
-        "grade: case_when(body_mass_g >= @high: 'A', body_mass_g >= @low: 'B', 'C')"
+        "grade: case_when((body_mass_g >= @high, 'A'), (body_mass_g >= @low, 'B'), 'C')"
     )
     assert list(result["grade"]) == ["C", "A"]
 
