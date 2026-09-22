@@ -159,11 +159,30 @@ def test_sql_load_from_file_cli(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(1, 2)"
 
 
+def test_sql_load_from_quoted_file_cli(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [10, 20]}))
+    sub = tmp_path / "subdir"
+    sub.mkdir()
+    qfile = sub / "query.txt"
+    qfile.write_text("select a, b from data where a > 1")
+
+    # Test with outer quotes around '@path'
+    exit_code = cli.main([str(path), "-sql", f"'@{qfile}'", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+    # Test with quotes around the path itself '@"path"'
+    exit_code = cli.main([str(path), "-sql", f'@"{qfile}"', "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+
 def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1, 2], "col b": [10, 20]}))
 
     exit_code = cli.main([str(path), "-sql", "select [col a], `col b` from data", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 2)"
+
 
 

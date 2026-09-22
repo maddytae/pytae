@@ -48,8 +48,12 @@ def parse_mutate_spec(raw: str) -> dict[str, str]:
     text — column names inside it must stay unquoted, since eval() treats a
     quoted name as a string literal, not a column reference."""
     stripped = raw.strip()
+    if (stripped.startswith("'") and stripped.endswith("'")) or (stripped.startswith('"') and stripped.endswith('"')):
+        stripped = stripped[1:-1].strip()
     if stripped.startswith("@"):
         path = stripped[1:].strip()
+        if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+            path = path[1:-1].strip()
         file_path = Path(path)
         if not file_path.is_file():
             raise FileNotFoundError(f"mutate spec file not found: '{path}'")

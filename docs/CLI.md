@@ -308,6 +308,7 @@ Column names with spaces can use SQL-style brackets `[bill length mm]` (recommen
 Queries can also be loaded from a file using `@path.txt`:
 ```bash
 pytae data.parquet -sql @query.txt
+pytae \path\to\abc.parquet -sql '@path\to\sql_query.txt'
 ```
 
 **Performance:** when `-sql` is the first thing to touch the view (nothing has filtered/selected/aggregated yet), duckdb scans the source `.parquet`/`.csv`/`.txt`/`.dat` file **directly** instead of first loading it into pandas — often several times faster, especially on CSV.
@@ -319,8 +320,9 @@ pytae penguins.parquet -sql "select species, avg(body_mass_g) as avg_mass from d
 # bracketed identifiers avoid bash backtick execution and ugly quote escaping
 pytae data.parquet -sql "select [bill length mm] from data where island = 'Dream'"
 
-# load full query from a file
+# load full query from a file (relative or absolute, with forward slashes or Windows backslashes)
 pytae data.parquet -sql @query.txt
+pytae \path\to\abc.parquet -sql '@path\to\sql_query.txt'
 
 # chains like any other op — runs on the current view, replaces it
 pytae penguins.parquet -select "species,island,body_mass_g" -sql "select * from data where island = 'Dream'" -shape

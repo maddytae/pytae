@@ -120,8 +120,12 @@ class _Pipeline:
     def apply_mutate(self, spec: str) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()
+        if (raw_spec.startswith("'") and raw_spec.endswith("'")) or (raw_spec.startswith('"') and raw_spec.endswith('"')):
+            raw_spec = raw_spec[1:-1].strip()
         if raw_spec.startswith("@"):
             path = raw_spec[1:].strip()
+            if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+                path = path[1:-1].strip()
             from pathlib import Path
             file_path = Path(path)
             if not file_path.is_file():
@@ -178,8 +182,12 @@ class _Pipeline:
         except ImportError as exc:
             return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
         q = query.strip()
+        if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
+            q = q[1:-1].strip()
         if q.startswith("@"):
             path = q[1:].strip()
+            if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+                path = path[1:-1].strip()
             from pathlib import Path
             file_path = Path(path)
             if not file_path.is_file():

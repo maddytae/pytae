@@ -18,8 +18,12 @@ def _require_duckdb():
 def _normalize_sql(query: str) -> str:
     """Normalize query: read from @path if given, and convert [col] and `col` to \"col\"."""
     q = query.strip()
+    if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
+        q = q[1:-1].strip()
     if q.startswith("@"):
         path = q[1:].strip()
+        if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+            path = path[1:-1].strip()
         from pathlib import Path
         file_path = Path(path)
         if not file_path.is_file():
