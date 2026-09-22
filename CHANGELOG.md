@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-09-22
+
 ### Breaking Changes
 - **Python library: Strict keyword arguments only** for `qry()`, `mutate()`, and `agg_df()`.
   - Positional dictionaries or strings now immediately raise a helpful `TypeError` instructing users to use keyword arguments (e.g. `df.pt.mutate(bmi='...')`, `df.pt.qry(col='> 5')`, `df.pt.agg_df(body_mass_g='mean')`). File loading via `@filename.txt` remains supported as positional string.
@@ -35,9 +37,9 @@ All notable changes to this project are documented in this file.
 - Enhanced `pt.agg_df()` / `df.pt.agg_df()`:
   - Accepts column keyword arguments directly (e.g. `df.pt.agg_df(body_mass_g="mean", count="n")`), with group columns and aggregated output columns following argument order.
 - CLI enhancements:
-  - Standardized on `=` across flags: `-mutate` (`col = expr`), `-rename` (`old=new`), `-agg_df` (`col = mean`), and `-qry` (`col = val`, `col = > 3500`).
-  - `-sql` supports loading queries from `@query.txt` and bracketed column names (`[col a]`).
-  - `-mutate` supports loading specs from `@specs.txt` and bracketed column names (`[col a]`).
+  - Standardized on `=` for assignments (`-mutate`, `-agg_df`, `-qry`) and strict `:` for mappings (`-rename`, `-replace_values`).
+  - `-sql` and `-mutate` support loading queries/specs from quoted and unquoted files (`@query.txt`, `'@query.txt'`) with relative, absolute, and Windows backslash paths.
+  - `-sql` supports bracketed column names (`[col a]`).
   - `-qry` supports direct comparison expressions (`col > 5`), operator prefixes (`col = > 5`), and assignment delimiters (`col= > 3500`, `col=>3500`, `col=3500`).
   - `-concat` and `-merge` support unquoted comma-separated lists (`frames=a,b,c`, `on=id:id,code:code`).
 
