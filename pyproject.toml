@@ -60,7 +60,7 @@ ignore = [
 "notebooks/*" = ["E402", "F401"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 files = ["src/pytae"]
 ignore_missing_imports = true
 check_untyped_defs = true
