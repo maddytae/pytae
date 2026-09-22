@@ -8,8 +8,9 @@ All notable changes to this project are documented in this file.
 - **Python library: Strict keyword arguments only** for `qry()`, `mutate()`, and `agg_df()`.
   - Positional dictionaries or strings now immediately raise a helpful `TypeError` instructing users to use keyword arguments (e.g. `df.pt.mutate(bmi='...')`, `df.pt.qry(col='> 5')`, `df.pt.agg_df(body_mass_g='mean')`). File loading via `@filename.txt` remains supported as positional string.
   - Removed dictionary acceptance across `qry()`, `mutate()`, and `agg_df()`.
-- **CLI: Strict `=` assignment delimiter** enforced across all structured flags (`-rename`, `-mutate`, `-agg_df`, `-qry`, `-replace_values`).
-  - Colon (`:`) separator is rejected and raises an informative error pointing users to use `=` instead.
+- **CLI: Strict separation between assignments (`=`) and translation mappings (`:`):**
+  - Assignments (`-mutate`, `-agg_df`, `-qry`) strictly require `=`. Colon (`:`) is rejected and raises an informative error.
+  - Translation mappings (`-rename`, `-replace_values`'s `v=`) strictly require `:` (`old:new`). Equals (`=`) is rejected and raises an informative error, directly matching Python dictionary syntax (`{'old': 'new'}`).
 
 ### Changed
 - Library verbs are package functions (`import pytae as pt` then `pt.select(df, ...)`)

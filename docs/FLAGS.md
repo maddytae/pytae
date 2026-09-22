@@ -12,8 +12,8 @@ One page. Full reference: [CLI.md](CLI.md). Library: `import pytae as pt` then `
 | Run SQL | `-sql` | view is table `data`, supports `@query.txt`, `[col a]`; library: `pt.sql(df, …)` / `df.pt.sql(…)` |
 | Sort rows | `-sort_by` | |
 | Unique rows | `-unique` | `-drop` is columns |
-| Replace cell values | `-replace_values` | `-rename` is headers; `-clean_columns` is header *cleanup* |
-| Rename headers | `-rename` | uses `old=new`; only at `-convert` / write |
+| Replace cell values | `-replace_values` | uses `v='old:new'`; `-rename` is headers; `-clean_columns` is header *cleanup* |
+| Rename headers | `-rename` | uses `old:new`; only at `-convert` / write |
 | Clean messy headers | `-clean_columns` | |
 | Fill NA | `-handle_missing` | `-dropna` is NA *keys* in agg/crosstab/value_counts |
 | Aggregate (auto groups = non-numeric cols) | `-agg_df` | |

@@ -30,7 +30,7 @@ def test_handle_missing_default_fill(tmp_path, capsys):
 def test_replace_whole_df_exact_match(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
-    cli.main([path, "-replace_values", "v='a magician=the magic,alpha=bravo'"])
+    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo'"])
 
     out = capsys.readouterr().out
     assert "the magic" in out
@@ -42,7 +42,7 @@ def test_replace_scoped_columns_only(tmp_path, capsys):
     df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
     path = _write_csv(tmp_path, df)
 
-    cli.main([path, "-replace_values", "c=col a,v=alpha=bravo"])
+    cli.main([path, "-replace_values", "c=col a,v=alpha:bravo"])
 
     out = capsys.readouterr().out.strip().splitlines()
     assert out[1].split() == ["bravo", "alpha"]
@@ -50,7 +50,7 @@ def test_replace_scoped_columns_only(tmp_path, capsys):
 def test_replace_exact_false_matches_substring(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
-    cli.main([path, "-replace_values", "v='a magician=the magic,alpha=bravo',exact=false"])
+    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo',exact=false"])
 
     out = capsys.readouterr().out
     assert "not the magic exactly" in out
@@ -60,7 +60,7 @@ def test_replace_unknown_column_errors(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-replace_values", "c=missing,v=alpha=bravo"])
+        cli.main([path, "-replace_values", "c=missing,v=alpha:bravo"])
     assert exc_info.value.code == 2
     assert "-replace_values" in capsys.readouterr().err
 
@@ -74,44 +74,44 @@ def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
     df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
 
     path = _write_csv(tmp_path, df)
-    cli.main([path, "-replace_values", "v=alpha=bravo"])
+    cli.main([path, "-replace_values", "v=alpha:bravo"])
     unquoted = capsys.readouterr().out.strip()
 
     path = _write_csv(tmp_path, df)
-    cli.main([path, "-replace_values", "v=alpha='bravo'"])
+    cli.main([path, "-replace_values", "v=alpha:'bravo'"])
     quoted = capsys.readouterr().out.strip()
 
     assert unquoted == quoted
     assert "bravo" in unquoted
 
-def test_replace_values_colon_raises_error(tmp_path):
+def test_replace_values_equals_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
-    with pytest.raises(SystemExit, match="use '='"):
-        cli.main([path, "-replace_values", "v=1:2"])
+    with pytest.raises(SystemExit, match="use ':'"):
+        cli.main([path, "-replace_values", "v=1=2"])
 
 def test_rename_quoting_is_optional(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
     out1 = tmp_path / "out1.csv"
     out2 = tmp_path / "out2.csv"
 
-    cli.main([path, "-convert", "-rename", "old col=new col", "-o", str(out1)])
-    cli.main([path, "-convert", "-rename", "'old col'='new col'", "-o", str(out2)])
+    cli.main([path, "-convert", "-rename", "old col:new col", "-o", str(out1)])
+    cli.main([path, "-convert", "-rename", "'old col':'new col'", "-o", str(out2)])
 
     assert list(pd.read_csv(out1).columns) == ["new col", "b"]
     assert list(pd.read_csv(out2).columns) == ["new col", "b"]
 
-def test_rename_colon_raises_error(tmp_path):
+def test_rename_equals_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
-    with pytest.raises(SystemExit, match="use '='"):
-        cli.main([path, "-rename", "old col:new col"])
+    with pytest.raises(SystemExit, match="use ':'"):
+        cli.main([path, "-rename", "old col=new col"])
 
-def test_rename_with_equals_sign(tmp_path):
+def test_rename_multiple_pairs(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
     out1 = tmp_path / "out1.csv"
     out2 = tmp_path / "out2.csv"
 
-    cli.main([path, "-convert", "-rename", "old col=new col,b=beta", "-o", str(out1)])
-    cli.main([path, "-convert", "-rename", "'old col'='new col','b'='beta'", "-o", str(out2)])
+    cli.main([path, "-convert", "-rename", "old col:new col,b:beta", "-o", str(out1)])
+    cli.main([path, "-convert", "-rename", "'old col':'new col','b':'beta'", "-o", str(out2)])
 
     assert list(pd.read_csv(out1).columns) == ["new col", "beta"]
     assert list(pd.read_csv(out2).columns) == ["new col", "beta"]

@@ -131,20 +131,20 @@ def unknown_columns_message(flag: str, requested: list[str], available: list[str
 
 
 def parse_rename(raw: str) -> dict[str, str]:
-    """Parse a rename mapping like "old_a=new_a,old_b=new_b" into a dict.
-    Quoting either side (e.g. "'old a'='new a'") is optional and stripped if present—
-    plain old_a=new_a already handles spaces, quoting just needs to not break things."""
+    """Parse a rename mapping like "old_a:new_a,old_b:new_b" into a dict.
+    Quoting either side (e.g. "'old a':'new a'") is optional and stripped if present—
+    plain old_a:new_a already handles spaces, quoting just needs to not break things."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
         if not pair:
             continue
-        if "=" in pair:
-            old, new = pair.split("=", 1)
-        elif ":" in pair:
-            raise SystemExit(f"invalid -rename mapping '{pair}'; use '=' (e.g. -rename 'old=new'). Colon ':' is not supported.")
+        if ":" in pair:
+            old, new = pair.split(":", 1)
+        elif "=" in pair:
+            raise SystemExit(f"invalid -rename mapping '{pair}'; use ':' (e.g. -rename 'old:new'). '=' is not supported.")
         else:
-            raise SystemExit(f"invalid -rename mapping '{pair}'; expected old=new")
+            raise SystemExit(f"invalid -rename mapping '{pair}'; expected old:new")
         mapping[_unquote_name(old)] = _unquote_name(new)
     return mapping
 
@@ -391,31 +391,31 @@ _REPLACE_KEYS = ("c", "v", "exact")
 
 
 def parse_value_map(raw: str) -> dict[str, str]:
-    """Parse a -replace_values v= mapping like "old_a=new_a,old_b=new_b" into a dict."""
+    """Parse a -replace_values v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
         if not pair:
             continue
-        if "=" in pair:
-            old, new = pair.split("=", 1)
-        elif ":" in pair:
-            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; use '=' (expected old=new). Colon ':' is not supported.")
+        if ":" in pair:
+            old, new = pair.split(":", 1)
+        elif "=" in pair:
+            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; use ':' (expected old:new). '=' is not supported.")
         else:
-            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old=new")
+            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
         mapping[_unquote_name(old)] = _unquote_name(new)
     if not mapping:
-        raise SystemExit("-replace_values: v= needs at least one old=new pair")
+        raise SystemExit("-replace_values: v= needs at least one old:new pair")
     return mapping
 
 
 def parse_replace_values_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
     """Parse -replace_values as key=value tokens: c= (optional column scope), v= (required
-    old=new mapping), exact= (optional bool, default true — whole-cell match vs
+    old:new mapping), exact= (optional bool, default true — whole-cell match vs
     substring match anywhere in the cell). Returns (cols_or_None, mapping, exact)."""
     kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace_values")
     if "v" not in kwargs:
-        raise SystemExit("-replace_values: expected v='old=new,...'")
+        raise SystemExit("-replace_values: expected v='old:new,...'")
     cols = parse_columns(kwargs["c"]) if "c" in kwargs else None
     mapping = parse_value_map(kwargs["v"])
     exact = kwargs.get("exact", True)
