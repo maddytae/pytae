@@ -68,3 +68,7 @@ warn_unused_ignores = true
 pretty = true
 # plotting is matplotlib-heavy; typed incrementally with the rest of the library
 exclude = ["src/pytae/plotting.py"]
+
+[[tool.mypy.overrides]]
+module = ["pytae.plotting", "pytae.plotting.*"]
+ignore_errors = true
