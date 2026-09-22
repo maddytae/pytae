@@ -32,7 +32,7 @@ def sample_dataset_dir(tmp_path_factory):
 
 # Mirrors docs/CLI.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
-    ("penguins.parquet", ["-qry", "species: 'Adelie'", "-agg_df", "mean"]),
+    ("penguins.parquet", ["-qry", "species = 'Adelie'", "-agg_df", "mean"]),
     ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
     ("tips.parquet", ["-select", "day,total_bill,tip", "-group_x", "group=day,v=tip,a=mean"]),
     ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),

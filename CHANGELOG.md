@@ -4,6 +4,45 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-09-22
+
+### Breaking Changes
+- **Python library: Strict keyword arguments only** for `qry()`, `mutate()`, and `agg_df()`.
+  - Positional dictionaries or strings now immediately raise a helpful `TypeError` instructing users to use keyword arguments (e.g. `df.pt.mutate(bmi='...')`, `df.pt.qry(col='> 5')`, `df.pt.agg_df(body_mass_g='mean')`). File loading via `@filename.txt` remains supported as positional string.
+  - Removed dictionary acceptance across `qry()`, `mutate()`, and `agg_df()`.
+- **CLI: Strict separation between assignments (`=`) and translation mappings (`:`):**
+  - Assignments (`-mutate`, `-agg_df`, `-qry`) strictly require `=`. Colon (`:`) is rejected and raises an informative error.
+  - Translation mappings (`-rename`, `-replace_values`'s `v=`) strictly require `:` (`old:new`). Equals (`=`) is rejected and raises an informative error, directly matching Python dictionary syntax (`{'old': 'new'}`).
+
+### Changed
+- Library verbs are package functions (`import pytae as pt` then `pt.select(df, ...)`)
+  **and** a DataFrame accessor (`df.pt.select(...).pt.agg_df(...)`). Mix with pandas
+  methods: `df.rename(...).pt.agg_df(...)`. Notebooks use the accessor chain.
+- Notebook formatting standard: every method call in a chain begins on its own line across all notebooks.
+
+### Added
+- `docs/FLAGS.md` — one-page "which flag?" card. Pytae kwargs stay `c=` / `v=` / `a=`.
+- Ruff in CI (`ruff check src tests`) and mypy on 3.12 (`mypy` over `src/pytae`).
+- `df.pt` DataFrame accessor; `@` locals in `df.pt.mutate()` resolve in the calling scope.
+- Library `pt.sql(df, query)` / `df.pt.sql(query)` — same duckdb/`data` table as CLI `-sql`
+  (`pip install pytae[sql]`). Extra keyword frames register as extra tables. Supports
+  loading queries from `@query.txt` and bracketed/backtick column identifiers (`[col a]`, `` `col a` ``).
+- Enhanced `pt.mutate()` / `df.pt.mutate()`:
+  - Clean keyword arguments syntax (`col="expr"`, `col=callable`, or constants).
+  - Supports loading mutation specs from file (`@specs.txt`), multiline specs, and comment lines starting with `#`.
+  - Added built-in `coalesce(*cols, default)` functional helper for first non-null resolution.
+  - `case_when()` now supports `default=` keyword argument and flat alternating pairs (`case_when(c1, v1, c2, v2, default=d)`).
+  - Bracketed identifiers (`[col a]`) and backticks (`` `col a` ``) are now fully supported in Python eval fallback mode.
+  - Added explicit `params=` dictionary for passing scoped variables without global/frame inspection.
+- Enhanced `pt.agg_df()` / `df.pt.agg_df()`:
+  - Accepts column keyword arguments directly (e.g. `df.pt.agg_df(body_mass_g="mean", count="n")`), with group columns and aggregated output columns following argument order.
+- CLI enhancements:
+  - Standardized on `=` for assignments (`-mutate`, `-agg_df`, `-qry`) and strict `:` for mappings (`-rename`, `-replace_values`).
+  - `-sql` and `-mutate` support loading queries/specs from quoted and unquoted files (`@query.txt`, `'@query.txt'`) with relative, absolute, and Windows backslash paths.
+  - `-sql` supports bracketed column names (`[col a]`).
+  - `-qry` supports direct comparison expressions (`col > 5`), operator prefixes (`col = > 5`), and assignment delimiters (`col= > 3500`, `col=>3500`, `col=3500`).
+  - `-concat` and `-merge` support unquoted comma-separated lists (`frames=a,b,c`, `on=id:id,code:code`).
+
 ## [3.4.3] - 2026-09-20
 
 ### Added

@@ -5,7 +5,7 @@
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
-Pandas extensions for everyday data-science tasks (filtering, selection, reshaping, aggregation, plotting), plus a `pytae` CLI that exposes the same operations for inspecting and converting tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`) without writing any Python.
+Pandas helpers for everyday data-science tasks (filtering, selection, reshaping, aggregation, plotting), plus a `pytae` CLI that exposes the same operations for inspecting and converting tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`) without writing any Python.
 
 ## Install
 
@@ -17,12 +17,12 @@ pip install pytae
 
 ```bash
 pytae data.parquet -head
-pytae data.parquet -qry "species: 'Adelie'" -select "species,body_mass_g" -convert -o subset.csv
-pytae data.parquet -sql "select species, avg(body_mass_g) from df group by species"
+pytae data.parquet -qry "species='Adelie'" -select "species,body_mass_g" -convert -o subset.csv
+pytae data.parquet -sql "select species, avg(body_mass_g) from data group by species"
 pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
 ```
 
-See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full flag reference, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
+See [docs/FLAGS.md](https://github.com/maddytae/pytae/blob/master/docs/FLAGS.md) for which flag to use, [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full reference, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
 
 ## Plotting
 
@@ -40,13 +40,25 @@ See [docs/PLOTTING.md](https://github.com/maddytae/pytae/blob/master/docs/PLOTTI
 
 ## Library
 
-Pandas extensions registered on `pd.DataFrame` — import `pytae` and the methods attach automatically.
+Import `pytae as pt`. Same verbs work as `pt.select(df, ...)` or as `df.pt.select(...)` (mix with pandas: `df.rename(...).pt.agg_df(...)`). Notebooks use the accessor chain. CLI flags (`-select`, `-qry`, …) are unchanged.
 
-- **Filtering** — `qry()`: dict-based filters (equality, lists, `in`/`not in`, comparisons, intervals)
-- **Selection** — `select()`: columns by name, regex, dtype, or name pattern
-- **Reshaping** — `long()` / `wide()`: melt numeric columns to rows, pivot back to columns
-- **Aggregation** — `agg_df()`: auto-detects group columns and aggregates the rest
-- **Utilities** — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
+```python
+import pytae as pt
+penguins = pt.sample("penguins")
+pt.select(penguins, "species", contains="bill")
+(penguins
+ .pt.select("species", "island", "bill_length_mm", "body_mass_g")
+ .pt.agg_df(a=["mean", "n"])
+)
+```
+
+- **Filtering** — `pt.qry()`: keyword filters (equality, lists, `in`/`not in`, comparisons, intervals)
+- **Selection** — `pt.select()`: columns by name, regex, dtype, or name pattern
+- **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, `if_else()`, `case_when()`, `map()`
+- **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns
+- **Aggregation** — `pt.agg_df()`: auto-detects group columns and aggregates the rest
+- **Utilities** — `pt.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
+- **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `data`
 
 See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
 

@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+from typing import Any
+
 import pandas as pd
 
-def _agg_df_list(self, agg_types, dropna, observed):
+
+def _agg_df_list(df: pd.DataFrame, agg_types: str | list[str], dropna: bool, observed: bool) -> pd.DataFrame:
     """
     Helper function to handle string/list aggfunc for agg_df.
     Applies aggregations to all numeric columns.
@@ -11,12 +16,12 @@ def _agg_df_list(self, agg_types, dropna, observed):
     remaining_agg_types = [agg for agg in unique_agg_types if agg != 'n']
 
     # Group by all non-numeric columns
-    group_cols = self.select_dtypes(exclude=['number']).columns.tolist()
+    group_cols = df.select_dtypes(exclude=['number']).columns.tolist()
     if not group_cols:
         raise ValueError("No non-numeric columns to group by")
 
     # Get numeric columns
-    numeric_cols = self.select_dtypes(include=['number']).columns.tolist()
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
 
     # A real numeric column named 'n' would collide with the count alias once
     # aggregation results are flattened back onto their bare column names below.
@@ -29,7 +34,7 @@ def _agg_df_list(self, agg_types, dropna, observed):
 
     # Check for no numeric columns and only 'n' requested
     if unique_agg_types == ['n'] and not numeric_cols:
-        grouped_df = self.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')
+        grouped_df = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')
         return grouped_df
 
     # Check for no numeric columns and no 'n'
@@ -40,7 +45,7 @@ def _agg_df_list(self, agg_types, dropna, observed):
     agg_operations = {col: [agg for agg in unique_agg_types if agg != 'n'] for col in numeric_cols}
 
     # Perform aggregation
-    grouped_df = self.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+    grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
 
     # Flatten MultiIndex in columns
     if len(remaining_agg_types) > 1:
@@ -50,7 +55,7 @@ def _agg_df_list(self, agg_types, dropna, observed):
 
     # Handle counting ('n') if specified
     if 'n' in unique_agg_types:
-        grouped_df['n'] = self.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')['n']
+        grouped_df['n'] = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')['n']
 
     # Reorder columns: group_cols + 'n' (if specified) + other aggregated columns
     g_cols = group_cols + (['n'] if 'n' in unique_agg_types else [])
@@ -58,19 +63,19 @@ def _agg_df_list(self, agg_types, dropna, observed):
 
     return grouped_df
 
-def _agg_df_dict(self, agg_types, dropna, observed):
+def _agg_df_dict(df: pd.DataFrame, agg_types: dict[str, Any], dropna: bool, observed: bool) -> pd.DataFrame:
     """
     Helper function to handle dictionary aggfunc for agg_df.
     Applies aggregations to specified columns, with 'n' keys used for count column names.
     Output columns follow the order of dictionary keys after group columns.
     """
     # Group by all non-numeric columns
-    group_cols = self.select_dtypes(exclude=['number']).columns.tolist()
+    group_cols = df.select_dtypes(exclude=['number']).columns.tolist()
     if not group_cols:
         raise ValueError("No non-numeric columns to group by")
 
     # Get numeric columns
-    numeric_cols = self.select_dtypes(include=['number']).columns.tolist()
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
 
     # Track output columns in dictionary order
     output_cols = []
@@ -101,7 +106,7 @@ def _agg_df_dict(self, agg_types, dropna, observed):
 
     # Check if only 'n' is requested and no numeric columns are specified
     if not agg_operations and count_cols:
-        grouped_df = self.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')
+        grouped_df = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')
         result = grouped_df[group_cols]
         for count_col in count_cols:
             result[count_col] = grouped_df['n']
@@ -110,7 +115,7 @@ def _agg_df_dict(self, agg_types, dropna, observed):
     # Perform numeric aggregation
     if not agg_operations:
         raise ValueError("No valid numeric aggregations specified")
-    grouped_df = self.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+    grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
 
     # Flatten MultiIndex in columns
     grouped_df.columns = [
@@ -120,7 +125,7 @@ def _agg_df_dict(self, agg_types, dropna, observed):
 
     # Handle count columns
     for count_col in count_cols:
-        grouped_df[count_col] = self.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')['n']
+        grouped_df[count_col] = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')['n']
 
     # Reorder columns: group_cols + output_cols (in dictionary key order)
     final_cols = group_cols + output_cols
@@ -128,25 +133,20 @@ def _agg_df_dict(self, agg_types, dropna, observed):
 
     return grouped_df
 
-def agg_df(self, *args, **kwargs):
+def agg_df(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame:
     """
     Aggregate the DataFrame based on specified aggregation types, ensuring that aggregated
     column names, including 'n' for counts, follow the specified order in the 'a' parameter.
 
     Parameters:
-    - self (DataFrame): The pandas DataFrame to be aggregated.
-    - *args: If provided, first positional argument is treated as a (str, list, or dict).
+    - df (DataFrame): The pandas DataFrame to be aggregated.
+    - *args: Whole-frame aggregation functions:
+        - If str (e.g., 'sum'): Apply the aggregation to all numeric columns.
+        - If list (e.g., ['sum', 'mean', 'n']): Apply the listed aggregations to all numeric columns.
     - **kwargs:
-        - a (str, list, or dict, optional): Required when other keywords (dropna, observed)
-          are used without a positional aggregation argument. Specifies the types of aggregation.
-            - If str (e.g., 'sum'): Apply the aggregation to all numeric columns.
-            - If list (e.g., ['sum', 'mean']): Apply the listed aggregations to all numeric columns.
-            - If dict (e.g., {'balance': 'mean', 'amount': ['sum', 'mean'], 'count': 'n'}):
-                Apply specified aggregations to the corresponding columns; keys for 'n' specify
-                the output column name for group counts, not an input column. 'n' cannot be used
-                as an aggregation function in a list (e.g., {'amount': ['sum', 'n']} is invalid).
-            The order in the list or dict determines the column order in the result.
-            Defaults to ['sum'] if no positional dictionary is provided.
+        - Column aggregations passed as keyword arguments (e.g. df.pt.agg_df(body_mass_g='mean', count='n')).
+          Keys with value 'n' specify the output column name for group counts, not an input column.
+        - a (str or list, optional): Whole-frame aggregation function(s) when passed as a keyword.
         - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
         - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
 
@@ -159,16 +159,27 @@ def agg_df(self, *args, **kwargs):
     """
 
     if args:
+        if isinstance(args[0], dict):
+            raise TypeError(
+                "agg_df() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "df.pt.agg_df(body_mass_g='mean', count='n')."
+            )
         agg_types = args[0]
+    elif "a" in kwargs:
+        if isinstance(kwargs["a"], dict):
+            raise TypeError(
+                "agg_df() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "df.pt.agg_df(body_mass_g='mean', count='n')."
+            )
+        agg_types = kwargs["a"]
     else:
-        agg_types = kwargs.get("a", ["sum"])
+        col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed")}
+        agg_types = col_kwargs if col_kwargs else ["sum"]
     dropna = kwargs.get('dropna', True)
     observed = kwargs.get('observed', True)
 
     # Dispatch to appropriate helper function
     if isinstance(agg_types, dict):
-        return _agg_df_dict(self, agg_types, dropna, observed)
+        return _agg_df_dict(df, agg_types, dropna, observed)
     else:
-        return _agg_df_list(self, agg_types, dropna, observed)
-
-pd.DataFrame.agg_df = agg_df
+        return _agg_df_list(df, agg_types, dropna, observed)

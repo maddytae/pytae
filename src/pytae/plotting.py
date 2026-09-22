@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import math
 import warnings
-import pandas as pd
+
 import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
+import pandas as pd
 
 # pytae's own control kwargs -- these drive Plotter's behavior directly and are
 # never forwarded to pandas.plot() (see _prepare_plot_kwargs/_filter_plot_kwargs).
@@ -464,11 +466,11 @@ class Plotter:
     
         Examples:
             >>> # Consolidated legend
-            >>> k.finalize(consolidate_legends=True, legend=True, bbox_to_anchor=(0.75, -0.005), ncols=2)
+            >>> k.finalize(consolidate_legends=True, legend=True, bbox_to_anchor=(0.75, -0.005), ncols=2)  # doctest: +SKIP
             >>> # Per-axis legends on primary axes only
-            >>> k.finalize(consolidate_legends=False, legend=True, legend_primary=True, legend_secondary=False)
+            >>> k.finalize(consolidate_legends=False, legend=True, legend_primary=True, legend_secondary=False)  # doctest: +SKIP
             >>> # No legends
-            >>> k.finalize(legend=False)
+            >>> k.finalize(legend=False)  # doctest: +SKIP
         """
         self.consolidate_legends = consolidate_legends
         self.bbox_to_anchor = bbox_to_anchor

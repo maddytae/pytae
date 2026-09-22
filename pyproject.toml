@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.4.3"
+version = "3.5.0"
 description = "A package to enhance common tasks in data and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "README.md"
@@ -27,7 +27,7 @@ classifiers = [
 [project.optional-dependencies]
 plot = ["matplotlib", "scipy"]
 sql = ["duckdb>=0.9"]
-dev = ["pytest>=8.0.0", "matplotlib", "duckdb>=0.9", "scipy"]
+dev = ["pytest>=8.0.0", "matplotlib", "duckdb>=0.9", "scipy", "ruff>=0.8", "mypy>=1.13"]
 notebooks = ["nbclient", "nbformat", "ipykernel", "scipy"]
 
 [project.scripts]
@@ -38,3 +38,33 @@ pytae = "pytae.cli:main"
 "Bug Tracker" = "https://github.com/maddytae/pytae/issues"
 "CLI Docs" = "https://github.com/maddytae/pytae/blob/master/docs/CLI.md"
 "Library Docs" = "https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md"
+"CLI flags" = "https://github.com/maddytae/pytae/blob/master/docs/FLAGS.md"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = [
+    "E501",  # line length — CLI specs and docs strings are long on purpose
+    "E731",  # clip_action = lambda ... in the CLI pipeline
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/pytae/__init__.py" = ["F401"]  # re-exports
+"tests/*" = ["E402"]  # sys.path insert before pytae import
+"tests/test_mutate.py" = ["E402", "F841"]  # @locals are used via pandas eval
+"src/pytae/plotting.py" = ["E741", "F841"]
+"notebooks/*" = ["E402", "F401"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/pytae"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+pretty = true
+# plotting is matplotlib-heavy; typed incrementally with the rest of the library
+exclude = ["src/pytae/plotting.py"]

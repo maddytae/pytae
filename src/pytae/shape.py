@@ -1,26 +1,34 @@
+from __future__ import annotations
+
 import pandas as pd
 
 
-def long(self, c="variable", v="value"):
+def long(df: pd.DataFrame, c: str = "variable", v: str = "value") -> pd.DataFrame:
     """Melt all numeric columns to rows.
 
     Parameters:
     - c: name for the melted-name column (default 'variable')
     - v: name for the melted-value column (default 'value')
     """
-    numeric_cols = self.select_dtypes(include=["number"]).columns.tolist()
+    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
     if not numeric_cols:
         raise ValueError("long(): no numeric columns to melt")
     return pd.melt(
-        self,
-        id_vars=[col for col in self.columns if col not in numeric_cols],
+        df,
+        id_vars=[col for col in df.columns if col not in numeric_cols],
         value_vars=numeric_cols,
         var_name=c,
         value_name=v,
     )
 
 
-def wide(df, c="variable", v="value", a=None, dropna=True):
+def wide(
+    df: pd.DataFrame,
+    c: str = "variable",
+    v: str = "value",
+    a: str | None = None,
+    dropna: bool = True,
+) -> pd.DataFrame:
     """Pivot a long column into headers.
 
     Parameters:
@@ -49,5 +57,3 @@ def wide(df, c="variable", v="value", a=None, dropna=True):
     return wide_df
 
 
-pd.DataFrame.long = long
-pd.DataFrame.wide = wide

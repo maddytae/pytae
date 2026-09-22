@@ -1,6 +1,10 @@
+from __future__ import annotations
+
+import ast
 import difflib
 import operator
 import re
+from typing import Any
 
 import pandas as pd
 
@@ -25,23 +29,28 @@ unary_ops = {
     "notna": lambda s: s.notna(),
 }
 
-def qry(self, conditions):
+def qry(
+    df: pd.DataFrame,
+    *args: Any,
+    **kwargs: Any,
+) -> pd.DataFrame:
     """
-    Filters a DataFrame based on a dictionary of conditions.
+    Filters a DataFrame based on keyword argument conditions.
 
-    This method provides a flexible way to filter rows in a DataFrame using a dictionary
-    of conditions. Conditions can include direct values, lists of values, tuple-based
-    comparisons (e.g., ('>', 100)), tuple-based list membership (e.g., ('in', ['a', 'b'])),
-    or interval conditions (e.g., '(a,b)', '[a,b]'). It supports both numeric and non-numeric
-    columns. Index is not reset for the returned DataFrame since querying should not alter indexing.
+    This method provides a clean, Pythonic way to filter rows in a DataFrame using keyword
+    arguments (e.g. df.pt.qry(species='Adelie', body_mass_g='> 5000')). Conditions can include
+    direct values, lists of values, tuple-based comparisons (e.g., ('>', 100)), tuple-based
+    list membership (e.g., ('in', ['a', 'b'])), or interval conditions (e.g., '(a,b)', '[a,b]').
+    It supports both numeric and non-numeric columns. Index is not reset for the returned
+    DataFrame since querying should not alter indexing.
 
     Parameters:
     -----------
-    self : pd.DataFrame
+    df : pd.DataFrame
         The DataFrame to filter.
-    conditions : dict
-        A dictionary where keys are column names and values are conditions to apply.
-        Conditions can be:
+    **kwargs : Any
+        Filter conditions specified as keyword arguments where the keyword is the column name
+        and the value is the condition to apply. Conditions can be:
         - A single value (e.g., 'Adelie'): Filters for rows where the column equals the value.
         - A list of values (e.g., ['Adelie', 'Gentoo']): Filters for rows where the column
           matches any value in the list.
@@ -70,6 +79,7 @@ def qry(self, conditions):
     Examples:
     ---------
     >>> import pandas as pd
+    >>> import pytae as pt
     >>> data = {
     ...     'species': ['Adelie', 'Gentoo', 'Chinstrap', 'Adelie'],
     ...     'body_mass_g': [74125, 271425, 119925, 89100],
@@ -78,58 +88,60 @@ def qry(self, conditions):
     >>> df = pd.DataFrame(data)
 
     >>> # Filter for rows where 'species' is 'Adelie'
-    >>> df.qry({'species': 'Adelie'})
-       species  body_mass_g code
-    0   Adelie      74125.0  A 1
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry(species='Adelie')
+      species  body_mass_g code
+    0  Adelie        74125  A 1
+    3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'body_mass_g' is greater than 81500
-    >>> df.qry({'body_mass_g': ('>', 81500)})
-       species  body_mass_g code
-    1   Gentoo     271425.0  B 2
-    2  Chinstrap    119925.0  C 3
+    >>> df.pt.qry(body_mass_g='> 81500')
+         species  body_mass_g code
+    1     Gentoo       271425  B 2
+    2  Chinstrap       119925  C 3
+    3     Adelie        89100  D 4
 
     >>> # Filter for rows where 'species' is in ['Adelie', 'Gentoo']
-    >>> df.qry({'species': ('in', ['Adelie', 'Gentoo'])})
-       species  body_mass_g code
-    0   Adelie      74125.0  A 1
-    1   Gentoo     271425.0  B 2
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry(species=['Adelie', 'Gentoo'])
+      species  body_mass_g code
+    0  Adelie        74125  A 1
+    1  Gentoo       271425  B 2
+    3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'species' is not in ['Adelie', 'Gentoo']
-    >>> df.qry({'species': ('not in', ['Adelie', 'Gentoo'])})
+    >>> df.pt.qry(species=('not in', ['Adelie', 'Gentoo']))
          species  body_mass_g code
-    2  Chinstrap     119925.0  C 3
+    2  Chinstrap       119925  C 3
 
     >>> # Filter for rows where 'body_mass_g' is in the interval (80000, 120000)
-    >>> df.qry({'body_mass_g': '(80000,120000)'})
-       species  body_mass_g code
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry(body_mass_g='(80000,120000)')
+         species  body_mass_g code
+    2  Chinstrap       119925  C 3
+    3     Adelie        89100  D 4
 
     >>> # Filter for rows where 'code' equals 'A 1' (whitespace preserved)
-    >>> df.qry({'code': ('==', 'A 1')})
+    >>> df.pt.qry(code=('==', 'A 1'))
       species  body_mass_g code
-    0  Adelie      74125.0  A 1
+    0  Adelie        74125  A 1
 
     >>> # Filter for rows where 'species' starts with 'Ad'
-    >>> df.qry({'species': ('startswith', 'Ad')})
+    >>> df.pt.qry(species=('startswith', 'Ad'))
       species  body_mass_g code
-    0  Adelie      74125.0  A 1
-    3  Adelie      89100.0  D 4
+    0  Adelie        74125  A 1
+    3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'code' matches a regex pattern anywhere in the string
-    >>> df.qry({'code': ('regex', r'^[AB]')})
+    >>> df.pt.qry(code=('regex', r'^[AB]'))
       species  body_mass_g code
-    0  Adelie      74125.0  A 1
-    1  Gentoo     271425.0  B 2
+    0  Adelie        74125  A 1
+    1  Gentoo       271425  B 2
 
     >>> # Filter for rows where 'species' is not null
-    >>> df.qry({'species': ('notna',)})
-       species  body_mass_g code
-    0   Adelie      74125.0  A 1
-    1   Gentoo     271425.0  B 2
-    2  Chinstrap    119925.0  C 3
-    3   Adelie      89100.0  D 4
+    >>> df.pt.qry(species=('notna',))
+         species  body_mass_g code
+    0     Adelie        74125  A 1
+    1     Gentoo       271425  B 2
+    2  Chinstrap       119925  C 3
+    3     Adelie        89100  D 4
 
     Notes:
     ------
@@ -146,9 +158,36 @@ def qry(self, conditions):
     - Filtering does not modify the original DataFrame. Each condition is applied with
       `.loc[...]` and a new filtered frame is returned; the caller's object is unchanged.
     """
-    out = self
-    available = list(self.columns)
-    for col, cond in conditions.items():
+    if args:
+        first_arg = args[0]
+        raise TypeError(
+            "qry() expects filter conditions as keyword arguments, e.g. df.pt.qry(species='Adelie', body_mass_g='> 5000'). "
+            f"Positional {type(first_arg).__name__} is not supported."
+        )
+
+    if not kwargs:
+        raise ValueError("qry() expects at least one condition keyword argument (e.g. df.pt.qry(col='> 5000'))")
+
+    cond_dict: dict[str, Any] = dict(kwargs)
+
+    normalized_conditions: dict[str, Any] = {}
+    for col, cond in cond_dict.items():
+        if isinstance(cond, str):
+            op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", cond.strip())
+            if op_match:
+                op = op_match.group(1)
+                val_str = op_match.group(2).strip()
+                try:
+                    val = ast.literal_eval(val_str)
+                except (ValueError, SyntaxError):
+                    val = val_str.strip("'\"")
+                normalized_conditions[col] = (op, val)
+                continue
+        normalized_conditions[col] = cond
+
+    out = df
+    available = list(df.columns)
+    for col, cond in normalized_conditions.items():
         if col not in available:
             close = difflib.get_close_matches(col, available, n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""
@@ -218,6 +257,3 @@ def qry(self, conditions):
             out = out.loc[out[col] == cond]
 
     return out
-
-# Attach the method to the DataFrame class
-pd.DataFrame.qry = qry

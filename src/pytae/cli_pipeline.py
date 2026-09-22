@@ -8,6 +8,10 @@ import re
 import pandas as pd
 
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
+from pytae.mutate import mutate
+from pytae.other_utilities import replace_values
+from pytae.qry import qry
+from pytae.select import select
 
 
 def _sql_string_literal(value: str) -> str:
@@ -37,7 +41,7 @@ def _mask_quoted(spec: str) -> str:
 
 class _Pipeline:
     """Flag order is the method chain. Each -select/-drop/-qry/-query/-head/… call
-    runs on the current view, same as df.select().drop(columns=…).qry().head().
+    runs on the current view, same as pt.select(df, …) then pt.qry(df, …) then head.
     Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
     don't return a DataFrame/Series in pandas either, so (like main()'s validation)
@@ -77,7 +81,7 @@ class _Pipeline:
 
         df = self._df if self._df is not None else self.dataframe()
         try:
-            self._df = df.select(*names, **kwargs)
+            self._df = select(df, *names, **kwargs)
         except (ValueError, KeyError) as exc:
             return f"-select: {exc}"
         return None
@@ -108,18 +112,35 @@ class _Pipeline:
         """Apply one -qry spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         try:
-            self._df = df.qry(conditions)
+            self._df = qry(df, **conditions)
         except Exception as exc:
             return f"-qry: {exc}"
         return None
 
     def apply_mutate(self, spec: str) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
-        if re.search(r"@\w", _mask_quoted(spec)):
-            return "-mutate: '@name' local-variable references are library-only (df.mutate() from Python), not available on the CLI"
+        raw_spec = spec.strip()
+        if (raw_spec.startswith("'") and raw_spec.endswith("'")) or (raw_spec.startswith('"') and raw_spec.endswith('"')):
+            raw_spec = raw_spec[1:-1].strip()
+        if raw_spec.startswith("@"):
+            path = raw_spec[1:].strip()
+            if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+                path = path[1:-1].strip()
+            from pathlib import Path
+            file_path = Path(path)
+            if not file_path.is_file():
+                return f"-mutate: spec file not found: '{path}'"
+            try:
+                raw_spec = file_path.read_text(encoding="utf-8").strip()
+            except Exception as exc:
+                return f"-mutate: failed to read spec file '{path}': {exc}"
+        if re.search(r"@\w", _mask_quoted(raw_spec)):
+            return "-mutate: '@name' local-variable references are library-only (pt.mutate() from Python), not available on the CLI"
         df = self.dataframe()
         try:
-            self._df = df.mutate(spec)
+            from pytae.mutate import parse_mutate_spec
+            parsed = parse_mutate_spec(raw_spec)
+            self._df = mutate(df, **parsed)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None
@@ -142,35 +163,52 @@ class _Pipeline:
             if unknown:
                 return unknown_columns_message("-replace_values", unknown, available)
         try:
-            self._df = df.replace_values(v=mapping, c=cols, exact=exact)
+            self._df = replace_values(df, v=mapping, c=cols, exact=exact)
         except Exception as exc:
             return f"-replace_values: {exc}"
         return None
 
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via duckdb. Single-file mode: the current view is registered
-        as table `df` (the file itself is already named on the command line, so there's no
+        as table `data` (the file itself is already named on the command line, so there's no
         separate file-derived alias) — if nothing has touched the view yet, duckdb scans the
         source parquet/csv/txt/dat file directly instead of first materializing it through
         pandas (much faster; pandas is only used as a fallback, see _register_source_view).
         -file/-merge mode: every -file alias is registered under its own name instead, so
-        -sql can do the join itself; `df` is also registered once something (e.g. -merge)
+        -sql can do the join itself; `data` is also registered once something (e.g. -merge)
         has produced a current view. Returns an error message or None."""
         try:
             import duckdb
         except ImportError as exc:
             return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
+        q = query.strip()
+        if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
+            q = q[1:-1].strip()
+        if q.startswith("@"):
+            path = q[1:].strip()
+            if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+                path = path[1:-1].strip()
+            from pathlib import Path
+            file_path = Path(path)
+            if not file_path.is_file():
+                return f"-sql: query file not found: '{path}'"
+            try:
+                q = file_path.read_text(encoding="utf-8").strip()
+            except Exception as exc:
+                return f"-sql: failed to read query file '{path}': {exc}"
+        from pytae.sql import _normalize_sql
+        normalized_query = _normalize_sql(q)
         con = duckdb.connect()
         try:
             for alias, frame in self._frames.items():
                 con.register(alias, frame)
             if self._df is not None:
-                con.register("df", self._df)
+                con.register("data", self._df)
             elif self._reader is not None:
                 if not self._register_source_view(con):
-                    con.register("df", self.dataframe())
+                    con.register("data", self.dataframe())
             try:
-                self._df = con.sql(query).df()
+                self._df = con.sql(normalized_query).df()
             except Exception as exc:
                 return f"-sql: {exc}"
         finally:
@@ -199,7 +237,7 @@ class _Pipeline:
         else:
             return False  # e.g. .sas7bdat -- duckdb has no native reader for it
         limit_sql = f" LIMIT {int(self._nrows)}" if self._nrows is not None else ""
-        con.execute(f"CREATE VIEW df AS SELECT * FROM {scan}{limit_sql}")
+        con.execute(f"CREATE VIEW data AS SELECT * FROM {scan}{limit_sql}")
         return True
 
     def dataframe(self) -> pd.DataFrame:
@@ -235,7 +273,7 @@ class _Pipeline:
             else:
                 df = self._reader.head(n)
                 if self._pending_exact is not None:
-                    df = df.select(*self._pending_exact)
+                    df = select(df, *self._pending_exact)
         else:
             df = self.dataframe().head(n)
         self._df = df
@@ -248,7 +286,7 @@ class _Pipeline:
             else:
                 df = self._reader.tail(n)
                 if self._pending_exact is not None:
-                    df = df.select(*self._pending_exact)
+                    df = select(df, *self._pending_exact)
         else:
             df = self.dataframe().tail(n)
         self._df = df
