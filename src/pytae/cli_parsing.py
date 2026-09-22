@@ -192,10 +192,10 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
 
 
 def parse_qry(raw: str) -> dict:
-    """Parse --qry conditions like "col: ('>', 5), other: ['a','b']"; wrapping {} and
+    """Parse -qry conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
-    "sex:'Male'" == "'sex':'Male'". Prefix operators (e.g. "col: > 5") and bare string
-    values (e.g. "species: Adelie") are also accepted."""
+    "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") and bare string
+    values (e.g. "species = Adelie") are also accepted."""
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
@@ -227,13 +227,13 @@ def parse_qry(raw: str) -> dict:
             ) from exc
         conditions[key] = value
     if not conditions:
-        raise SystemExit("--qry expects dict entries, e.g. \"col: ('>', 5)\" (braces/quotes optional)")
+        raise SystemExit("-qry expects keyword entries, e.g. \"col = ('>', 5)\" or \"col > 5\" (quotes around column name optional)")
     return conditions
 
 
 def parse_agg(raw: str):
-    """Parse -agg_df: a name (mean), a comma list (mean,sum,n), or a col:aggfunc
-    mapping (body_mass_g: mean, n: n). Quote a mapping key only to protect a comma."""
+    """Parse -agg_df: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
+    mapping (body_mass_g = mean, n = n). Quote a mapping key only to protect a comma."""
     raw = (raw or "").strip()
     if not raw:
         return "sum"
@@ -411,11 +411,11 @@ def parse_value_map(raw: str) -> dict[str, str]:
 
 def parse_replace_values_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
     """Parse -replace_values as key=value tokens: c= (optional column scope), v= (required
-    old:new mapping), exact= (optional bool, default true — whole-cell match vs
+    old=new mapping), exact= (optional bool, default true — whole-cell match vs
     substring match anywhere in the cell). Returns (cols_or_None, mapping, exact)."""
     kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace_values")
     if "v" not in kwargs:
-        raise SystemExit("-replace_values: expected v='old:new,...'")
+        raise SystemExit("-replace_values: expected v='old=new,...'")
     cols = parse_columns(kwargs["c"]) if "c" in kwargs else None
     mapping = parse_value_map(kwargs["v"])
     exact = kwargs.get("exact", True)

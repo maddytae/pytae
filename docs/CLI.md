@@ -59,7 +59,7 @@ pytae penguins.parquet -head 3 -shape
 pytae penguins.parquet -head 5 -cols
 
 # filter rows, then pick columns (see Spec families and quoting)
-pytae penguins.parquet -qry "species: 'Adelie'" -select "species,island,body_mass_g" -head 5
+pytae penguins.parquet -qry "species='Adelie'" -select "species,island,body_mass_g" -head 5
 
 # average body mass per species
 pytae penguins.parquet -select "species,body_mass_g" -agg_df mean
@@ -200,7 +200,7 @@ pytae penguins.parquet -drop "sex,island" -head 5
 pytae penguins.parquet -select "dtype=numeric,species" -drop "body_mass_g" -cols
 
 # filter on a column, then remove it
-pytae penguins.parquet -qry "species: 'Adelie'" -drop "species" -head
+pytae penguins.parquet -qry "species='Adelie'" -drop "species" -head
 ```
 
 Same quoting as `-select` names (a space is not a separator; quote a name only to protect a comma). Missing names error with a typo suggestion. Repeat `-drop` to subtract more. Dropping every remaining column is an error.
@@ -210,11 +210,11 @@ Same quoting as `-select` names (a space is not a separator; quote a name only t
 <a id="qry"></a>
 ### Row filtering — `-qry`
 
-pytae's dict-based filter, `pt.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` / `-drop` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
+pytae's keyword-based filter, `pt.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` / `-drop` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
 
 ```python
-pt.qry(df, {"species": "Adelie", "body_mass_g": (">", 3500)})
-pt.select(pt.qry(df, {"species": "Adelie"}), "species", "body_mass_g")
+pt.qry(df, species="Adelie", body_mass_g="> 3500")
+pt.select(pt.qry(df, species="Adelie"), "species", "body_mass_g")
 ```
 
 ```bash
@@ -235,26 +235,25 @@ pytae penguins.parquet -qry "species = ('startswith', 'Ad')" -head
 pytae penguins.parquet -qry "sex = ('isna',)" -head
 ```
 
-`-select "body_mass_g" -qry "species: 'Adelie'"` errors (`species` is already gone), matching `pt.qry(pt.select(df, "body_mass_g"), {"species": "Adelie"})`.
+`-select "body_mass_g" -qry "species='Adelie'"` errors (`species` is already gone), matching `pt.qry(pt.select(df, "body_mass_g"), species="Adelie")`.
 
 ---
 
 <a id="mutate"></a>
 ### Mutated columns — `-mutate`
 
-pytae's expression-based column creator, `pt.mutate()`. Creates or overwrites columns at this point in the pipeline. Uses `"new_col = expression"` entries (or `new_col: expression`), comma- or newline-separated, quoting the key optional. Can also read specs directly from a file: `-mutate @specs.txt`.
+pytae's expression-based column creator, `pt.mutate()`. Creates or overwrites columns at this point in the pipeline. Uses `"new_col = expression"` entries, comma- or newline-separated, quoting the key optional. Can also read specs directly from a file: `-mutate @specs.txt`.
 
 Unlike `-qry`, the value is a pandas `eval()` **expression**, not a literal: column names in it must stay unquoted (quoting one turns it into a string literal instead of a column reference — same rule as SQL identifiers, see [Spec families and quoting](#quoting)). Columns with spaces can be enclosed in SQL-style brackets `[col a]` or backticks `` `col a` ``.
 
 ```python
-pt.mutate(df, "bmi = body_mass_g / bill_length_mm ** 2")
-# kwargs and dict syntax also supported in Python:
+# kwargs in Python:
 pt.mutate(df, bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")
 
 # a local variable from the calling scope can be referenced with an `@` prefix,
 # same as pandas' own eval()/query() — library-only, there's no local scope on the CLI
 threshold = 4000
-pt.mutate(df, "heavy = body_mass_g >= @threshold")
+pt.mutate(df, heavy="body_mass_g >= @threshold")
 ```
 
 ```bash

@@ -163,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
                               "not used for .parquet")
     parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD=NEW,...",
-                         help="rename columns during conversion, e.g. \"old_a=new_a,old_b=new_b\" (or old:new)")
+                         help="rename columns during conversion, e.g. \"old_a=new_a,old_b=new_b\"")
     parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS;...",
                          help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
                               "';'-separated entries, each PATH=ALIAS optionally followed by "
@@ -175,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
                          help="filter rows at this point in the pipeline using pytae qry(); conditions like "
-                              "\"col = 'val', col > 5\" or dict syntax, surrounding {} optional")
+                              "\"col = 'val', col > 5\"")
     parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
                               "\"new_col = expression\" entries, comma-separated, quoting the key optional; "
@@ -193,10 +193,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "too once something later in the pipeline has produced a current view")
     parser.add_argument("-replace_values", "--replace_values", dest="replace_values", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="replace values at this point in the pipeline; key=value tokens: v= (required) "
-                              "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
-                              "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
+                              "an old=new mapping, e.g. \"v='old=new,alpha=bravo'\"; c= (optional) restrict "
+                              "to specific columns, e.g. \"c='col a,col b',v='old=new'\"; exact= (optional bool, "
                               "default true) — true matches whole cell values, false matches a substring "
-                              "anywhere in the cell, e.g. \"v='old:new',exact=false\"")
+                              "anywhere in the cell, e.g. \"v='old=new',exact=false\"")
     parser.add_argument("-merge", "--merge", dest="merge", action=_OrderedAppend, default=None, metavar="KEY=VALUE,...",
                          help="merge two frames into the pipeline (pandas merge()); repeatable, to fold in "
                               "one more file at a time; must be the first op when using -file (unless -sql/"

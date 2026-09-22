@@ -140,18 +140,13 @@ def agg_df(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame:
 
     Parameters:
     - df (DataFrame): The pandas DataFrame to be aggregated.
-    - *args: If provided, first positional argument is treated as a (str, list, or dict).
+    - *args: Whole-frame aggregation functions:
+        - If str (e.g., 'sum'): Apply the aggregation to all numeric columns.
+        - If list (e.g., ['sum', 'mean', 'n']): Apply the listed aggregations to all numeric columns.
     - **kwargs:
-        - a (str, list, or dict, optional): Required when other keywords (dropna, observed)
-          are used without a positional aggregation argument. Specifies the types of aggregation.
-            - If str (e.g., 'sum'): Apply the aggregation to all numeric columns.
-            - If list (e.g., ['sum', 'mean']): Apply the listed aggregations to all numeric columns.
-            - If dict (e.g., {'balance': 'mean', 'amount': ['sum', 'mean'], 'count': 'n'}):
-                Apply specified aggregations to the corresponding columns; keys for 'n' specify
-                the output column name for group counts, not an input column. 'n' cannot be used
-                as an aggregation function in a list (e.g., {'amount': ['sum', 'n']} is invalid).
-            The order in the list or dict determines the column order in the result.
-            Defaults to ['sum'] if no positional dictionary is provided.
+        - Column aggregations passed as keyword arguments (e.g. df.pt.agg_df(body_mass_g='mean', count='n')).
+          Keys with value 'n' specify the output column name for group counts, not an input column.
+        - a (str or list, optional): Whole-frame aggregation function(s) when passed as a keyword.
         - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
         - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
 

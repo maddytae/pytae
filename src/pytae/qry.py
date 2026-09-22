@@ -35,21 +35,22 @@ def qry(
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
-    Filters a DataFrame based on a dictionary of conditions.
+    Filters a DataFrame based on keyword argument conditions.
 
-    This method provides a flexible way to filter rows in a DataFrame using a dictionary
-    of conditions. Conditions can include direct values, lists of values, tuple-based
-    comparisons (e.g., ('>', 100)), tuple-based list membership (e.g., ('in', ['a', 'b'])),
-    or interval conditions (e.g., '(a,b)', '[a,b]'). It supports both numeric and non-numeric
-    columns. Index is not reset for the returned DataFrame since querying should not alter indexing.
+    This method provides a clean, Pythonic way to filter rows in a DataFrame using keyword
+    arguments (e.g. df.pt.qry(species='Adelie', body_mass_g='> 5000')). Conditions can include
+    direct values, lists of values, tuple-based comparisons (e.g., ('>', 100)), tuple-based
+    list membership (e.g., ('in', ['a', 'b'])), or interval conditions (e.g., '(a,b)', '[a,b]').
+    It supports both numeric and non-numeric columns. Index is not reset for the returned
+    DataFrame since querying should not alter indexing.
 
     Parameters:
     -----------
     df : pd.DataFrame
         The DataFrame to filter.
-    conditions : dict
-        A dictionary where keys are column names and values are conditions to apply.
-        Conditions can be:
+    **kwargs : Any
+        Filter conditions specified as keyword arguments where the keyword is the column name
+        and the value is the condition to apply. Conditions can be:
         - A single value (e.g., 'Adelie'): Filters for rows where the column equals the value.
         - A list of values (e.g., ['Adelie', 'Gentoo']): Filters for rows where the column
           matches any value in the list.
