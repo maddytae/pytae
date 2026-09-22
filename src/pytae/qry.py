@@ -31,7 +31,7 @@ unary_ops = {
 
 def qry(
     df: pd.DataFrame,
-    conditions: dict[str, Any] | str | None = None,
+    *args: Any,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
@@ -157,17 +157,17 @@ def qry(
     - Filtering does not modify the original DataFrame. Each condition is applied with
       `.loc[...]` and a new filtered frame is returned; the caller's object is unchanged.
     """
-    cond_dict: dict[str, Any] = {}
-    if isinstance(conditions, str):
-        from pytae.cli_parsing import parse_qry
-        cond_dict.update(parse_qry(conditions))
-    elif isinstance(conditions, dict):
-        cond_dict.update(conditions)
-    elif conditions is not None:
-        raise TypeError(f"qry conditions must be dict or str, got {type(conditions).__name__}")
+    if args:
+        first_arg = args[0]
+        raise TypeError(
+            "qry() expects filter conditions as keyword arguments, e.g. df.pt.qry(species='Adelie', body_mass_g='> 5000'). "
+            f"Positional {type(first_arg).__name__} is not supported."
+        )
 
-    if kwargs:
-        cond_dict.update(kwargs)
+    if not kwargs:
+        raise ValueError("qry() expects at least one condition keyword argument (e.g. df.pt.qry(col='> 5000'))")
+
+    cond_dict: dict[str, Any] = dict(kwargs)
 
     normalized_conditions: dict[str, Any] = {}
     for col, cond in cond_dict.items():

@@ -35,9 +35,8 @@ def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
             continue
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
         if len(pieces) >= 2:
-            entries.append((pieces[0].strip(), ":".join(pieces[1:]).strip()))
-            continue
-        raise ValueError(f"invalid mutate spec: missing ':' or '=' in entry '{raw_entry}'")
+            raise ValueError(f"invalid mutate spec: use '=' for assignment (e.g. 'col = expr'). Colon ':' is not supported in entry '{raw_entry}'")
+        raise ValueError(f"invalid mutate spec: missing '=' in entry '{raw_entry}'")
     return entries
 
 
@@ -372,51 +371,25 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
 
 def mutate(
     df: pd.DataFrame,
-    spec: str | dict[str, Any] | None = None,
-    *,
-    params: dict[str, Any] | None = None,
+    *args: Any,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
-    Create or overwrite columns from a qry()-style spec string, dict, kwargs, or
-    callables, each evaluated in order via pandas eval() — no lambda needed for plain
-    arithmetic/boolean column assignments (e.g. "bmi: body_mass_g / bill_length_mm ** 2").
+    Create or overwrite columns using keyword arguments (`col="expr"` or `col=callable`),
+    each evaluated in order via pandas eval() — no lambda needed for plain
+    arithmetic/boolean column assignments.
 
     Parameters:
     -----------
     df : pd.DataFrame
         The DataFrame to mutate columns on.
-    spec : str | dict | None, default None
-        Entries like "new_col: expression", comma- or newline-separated; quoting
-        the key is optional (matches qry()). Can also be passed as a dictionary
-        mapping column names to expressions or callables, or a file path prefixed
-        with '@', e.g. "@transforms.txt".
-        The expression is normally pandas eval() syntax (e.g. "body_mass_g / bill_length_mm ** 2")
-        — column names in it must stay unquoted, since quoting one turns it into a string
-        literal instead of a column reference. Later entries may reference columns derived by
-        earlier entries in the same call. A local variable from the caller's
-        scope can be referenced with an `@` prefix, e.g. "flag: body_mass_g >= @threshold"
-        (matches pandas eval()/query()'s own `@` convention).
-
-        Four functional helpers are available as ordinary function calls:
-          - "result: if_else(condition, true_value, false_value)" — like R's
-            `if_else()`. Backed by `np.where()`.
-          - "result: case_when((cond1, val1), (cond2, val2), ..., default=...)" —
-            like R's `case_when()`. Each (condition, value) pair is checked in
-            order, first match wins; a trailing bare argument or `default=` keyword
-            is an optional catch-all default (like SQL ELSE). Alternating flat pairs
-            also work: `case_when(c1, v1, c2, v2, default=...)`. Backed by `np.select()`.
-          - "result: coalesce(col1, col2, ..., default)" — like SQL COALESCE() or
-            dplyr::coalesce(); returns the first non-null value per row.
-          - "result: map(column, {key: value, ...}[, default])" — recode a
-            column through a lookup, like pandas `Series.map()`. Keys with no
-            match become `default` (NaN if omitted).
-        String outcomes need quotes (e.g. `'Pass'`); column names stay unquoted.
-        Columns with spaces can be written as `[col a]` or `col a`.
+    *args : Any
+        Positional arguments are not supported, except for a single file path
+        prefixed with '@' (e.g. "@transforms.txt").
     params : dict, optional
         Explicit dictionary of parameters/variables to make available for `@name` references.
     **kwargs : Any
-        Additional column expressions or callables passed as keyword arguments,
+        Column expressions or callables passed as keyword arguments,
         e.g. `df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", rank=1)`.
 
     Returns:
@@ -430,37 +403,31 @@ def mutate(
     >>> import pandas as pd
     >>> import pytae as pt
     >>> df = pd.DataFrame({'body_mass_g': [3000.0, 4000.0], 'bill_length_mm': [30.0, 40.0]})
-    >>> df.pt.mutate("bmi: body_mass_g / bill_length_mm ** 2")
-       body_mass_g  bill_length_mm       bmi
-    0       3000.0            30.0  3.333333
-    1       4000.0            40.0  2.500000
-
-    >>> # kwargs syntax
     >>> df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2")
        body_mass_g  bill_length_mm       bmi
     0       3000.0            30.0  3.333333
     1       4000.0            40.0  2.500000
 
     >>> # later entries can reference columns derived earlier in the same call
-    >>> df.pt.mutate("mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")
+    >>> df.pt.mutate(mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
        body_mass_g  bill_length_mm  mass_kg  mass_lb
     0       3000.0            30.0      3.0  6.61386
     1       4000.0            40.0      4.0  8.81848
 
     >>> # dplyr-style if_else()/case_when() for conditional/string outcomes
-    >>> df.pt.mutate("result: if_else(body_mass_g >= 3500, 'heavy', 'light')")
+    >>> df.pt.mutate(result="if_else(body_mass_g >= 3500, 'heavy', 'light')")
        body_mass_g  bill_length_mm result
     0       3000.0            30.0  light
     1       4000.0            40.0  heavy
 
-    >>> df.pt.mutate("grade: case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')")
+    >>> df.pt.mutate(grade="case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')")
        body_mass_g  bill_length_mm grade
     0       3000.0            30.0     C
     1       4000.0            40.0     A
 
     >>> # natural pandas method chains work (dict literals + Series.map(), etc.)
     >>> s = pd.DataFrame({'species': ['Adelie', 'Gentoo', 'Chinstrap']})
-    >>> s.pt.mutate("code: species.map({'Adelie': 'A', 'Gentoo': 'G'}).fillna('X')")
+    >>> s.pt.mutate(code="species.map({'Adelie': 'A', 'Gentoo': 'G'}).fillna('X')")
          species code
     0     Adelie    A
     1     Gentoo    G
@@ -479,22 +446,26 @@ def mutate(
     global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
 
+    params = kwargs.pop("params", None)
     if params is not None:
         local_dict.update(params)
 
     expressions: dict[str, Any] = {}
-    if isinstance(spec, str):
-        expressions.update(parse_mutate_spec(spec))
-    elif isinstance(spec, dict):
-        expressions.update(spec)
-    elif spec is not None:
-        raise TypeError(f"mutate spec must be str or dict, got {type(spec).__name__}")
+    if args:
+        if len(args) == 1 and isinstance(args[0], str) and args[0].strip().startswith("@"):
+            expressions.update(parse_mutate_spec(args[0]))
+        else:
+            first_arg = args[0]
+            raise TypeError(
+                "mutate() expects expressions as keyword arguments, e.g. df.pt.mutate(col='expr', new_col=func). "
+                f"Positional {type(first_arg).__name__} is not supported (use '@filename.txt' to load from a file)."
+            )
 
     if kwargs:
         expressions.update(kwargs)
 
     if not expressions:
-        raise ValueError('mutate expects entries like "col: expr"')
+        raise ValueError("mutate() expects at least one keyword argument (e.g. df.pt.mutate(col='expr'))")
 
     out = df.copy()
     for col, expr in expressions.items():

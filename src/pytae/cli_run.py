@@ -408,7 +408,10 @@ def _process_path(
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
         elif op == "agg_df":
             aggfunc = parse_agg(args.agg_df)
-            result = _apply_round(agg_df(pipeline.dataframe(), a=aggfunc, dropna=args.dropna), args.round_ndigits)
+            if isinstance(aggfunc, dict):
+                result = _apply_round(agg_df(pipeline.dataframe(), dropna=args.dropna, **aggfunc), args.round_ndigits)
+            else:
+                result = _apply_round(agg_df(pipeline.dataframe(), aggfunc, dropna=args.dropna), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))

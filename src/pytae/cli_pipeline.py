@@ -112,7 +112,7 @@ class _Pipeline:
         """Apply one -qry spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         try:
-            self._df = qry(df, conditions)
+            self._df = qry(df, **conditions)
         except Exception as exc:
             return f"-qry: {exc}"
         return None
@@ -134,7 +134,9 @@ class _Pipeline:
             return "-mutate: '@name' local-variable references are library-only (pt.mutate() from Python), not available on the CLI"
         df = self.dataframe()
         try:
-            self._df = mutate(df, raw_spec)
+            from pytae.mutate import parse_mutate_spec
+            parsed = parse_mutate_spec(raw_spec)
+            self._df = mutate(df, **parsed)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None

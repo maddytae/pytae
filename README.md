@@ -17,7 +17,7 @@ pip install pytae
 
 ```bash
 pytae data.parquet -head
-pytae data.parquet -qry "species: 'Adelie'" -select "species,body_mass_g" -convert -o subset.csv
+pytae data.parquet -qry "species='Adelie'" -select "species,body_mass_g" -convert -o subset.csv
 pytae data.parquet -sql "select species, avg(body_mass_g) from data group by species"
 pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
 ```
@@ -52,7 +52,7 @@ pt.select(penguins, "species", contains="bill")
 )
 ```
 
-- **Filtering** — `pt.qry()`: dict-based filters (equality, lists, `in`/`not in`, comparisons, intervals)
+- **Filtering** — `pt.qry()`: keyword filters (equality, lists, `in`/`not in`, comparisons, intervals)
 - **Selection** — `pt.select()`: columns by name, regex, dtype, or name pattern
 - **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, `if_else()`, `case_when()`, `map()`
 - **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns

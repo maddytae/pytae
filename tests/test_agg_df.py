@@ -95,5 +95,13 @@ def test_agg_df_column_kwargs():
     assert list(res["count"]) == [2, 1]
 
 
+def test_agg_df_rejects_dictionary():
+    df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30]})
+    with pytest.raises(TypeError, match="agg_df\\(\\) no longer accepts dictionaries"):
+        pt.agg_df(df, {"v1": "mean"})
+    with pytest.raises(TypeError, match="agg_df\\(\\) no longer accepts dictionaries"):
+        df.pt.agg_df(a={"v1": "mean"})
+
+
 if __name__ == '__main__':
     pytest.main()

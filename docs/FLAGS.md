@@ -6,9 +6,9 @@ One page. Full reference: [CLI.md](CLI.md). Library: `import pytae as pt` then `
 |---|---|---|
 | Keep these columns | `-select` | `-drop` is subtract; `-cols` only prints names |
 | Remove known column names | `-drop` | names only; patterns stay on `-select` |
-| Filter rows with pytae conditions | `-qry` | supports comparisons (`col > 5`), `col = val`, dicts; kwargs in library |
+| Filter rows with pytae conditions | `-qry` | uses `col=condition` (e.g. `col='> 5'`); strict kwargs in library |
 | Filter rows with a pandas expression | `-query` | |
-| Create/overwrite columns | `-mutate` | uses `col = expr`; supports `@specs.txt`, `[col a]`, `if_else`, `case_when`, `coalesce`; kwargs/dicts in library |
+| Create/overwrite columns | `-mutate` | uses `col=expr`; supports `@specs.txt`, `[col a]`, `if_else`, `case_when`, `coalesce`; strict kwargs in library |
 | Run SQL | `-sql` | view is table `data`, supports `@query.txt`, `[col a]`; library: `pt.sql(df, …)` / `df.pt.sql(…)` |
 | Sort rows | `-sort_by` | |
 | Unique rows | `-unique` | `-drop` is columns |

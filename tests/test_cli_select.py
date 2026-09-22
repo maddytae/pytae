@@ -142,7 +142,7 @@ def test_select_after_agg_df_sees_agg_columns(tmp_path, capsys):
 
     # n is created by agg_df; a starting-view -select would reject it
     exit_code = cli.main(
-        [path, "-agg_df", "val: sum, n: n", "-select", "grp,n", "-cols"]
+        [path, "-agg_df", "val = sum, n = n", "-select", "grp,n", "-cols"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
@@ -202,7 +202,7 @@ def test_select_then_qry_on_dropped_column_errors(tmp_path, capsys):
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-select", "keep,val", "-qry", "{'flt':'A'}", "-shape"])
+        cli.main([path, "-select", "keep,val", "-qry", "flt = 'A'", "-shape"])
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "-qry" in err

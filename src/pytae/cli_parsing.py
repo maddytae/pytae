@@ -131,7 +131,7 @@ def unknown_columns_message(flag: str, requested: list[str], available: list[str
 
 
 def parse_rename(raw: str) -> dict[str, str]:
-    """Parse a rename mapping like "old_a=new_a,old_b=new_b" (or old_a:new_a) into a dict.
+    """Parse a rename mapping like "old_a=new_a,old_b=new_b" into a dict.
     Quoting either side (e.g. "'old a'='new a'") is optional and stripped if present—
     plain old_a=new_a already handles spaces, quoting just needs to not break things."""
     mapping: dict[str, str] = {}
@@ -142,9 +142,9 @@ def parse_rename(raw: str) -> dict[str, str]:
         if "=" in pair:
             old, new = pair.split("=", 1)
         elif ":" in pair:
-            old, new = pair.split(":", 1)
+            raise SystemExit(f"invalid -rename mapping '{pair}'; use '=' (e.g. -rename 'old=new'). Colon ':' is not supported.")
         else:
-            raise SystemExit(f"invalid --rename mapping '{pair}'; expected old=new")
+            raise SystemExit(f"invalid -rename mapping '{pair}'; expected old=new")
         mapping[_unquote_name(old)] = _unquote_name(new)
     return mapping
 
@@ -160,33 +160,34 @@ def expand_paths(pattern: str) -> list[Path]:
 
 
 def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
-    """Split a --qry body into raw (key, value) text pairs on top-level commas/colons/equals,
+    """Split a -qry body into raw (key, value) text pairs on top-level commas and equals,
     respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
     aren't mistaken for entry or key/value separators. Direct comparisons like
-    'col > 5' or assignments like 'col = > 3500' or 'col = 3500' are also accepted."""
+    'col > 5' or assignments like 'col = > 3500' or 'col = 3500' are accepted."""
     entries: list[tuple[str, str]] = []
     for raw_entry in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
         if not raw_entry:
             continue
-        # only the FIRST top-level ':' separates key from value; rejoin the rest
-        # literally in case the value itself contains an unbracketed ':'
+        # Direct comparison first: col > 5, col >= 5, col <= 5, etc.
+        m_cmp = re.match(r"^([^>=<!:]+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw_entry)
+        if m_cmp:
+            col = m_cmp.group(1).strip()
+            op = m_cmp.group(2).strip()
+            val = m_cmp.group(3).strip()
+            entries.append((col, f"('{op}', {val})"))
+            continue
+        # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
+        m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
+        if m_eq:
+            col = m_eq.group(1).strip()
+            val = m_eq.group(2).strip()
+            entries.append((col, val))
+            continue
+        # If colon was used, give a helpful error
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
-        if len(pieces) < 2:
-            m = re.match(r"^([^>=<!]+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw_entry)
-            if m:
-                col = m.group(1).strip()
-                op = m.group(2).strip()
-                val = m.group(3).strip()
-                entries.append((col, f"('{op}', {val})"))
-                continue
-            m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
-            if m_eq:
-                col = m_eq.group(1).strip()
-                val = m_eq.group(2).strip()
-                entries.append((col, val))
-                continue
-            raise SystemExit(f"invalid --qry conditions: missing separator (':' or '=') in entry '{raw_entry}'")
-        entries.append((pieces[0], ":".join(pieces[1:])))
+        if len(pieces) >= 2:
+            raise SystemExit(f"invalid -qry condition '{raw_entry}': use '=' (e.g. -qry 'species = Adelie'). Colon ':' is not supported.")
+        raise SystemExit(f"invalid -qry conditions: missing '=' in entry '{raw_entry}'")
     return entries
 
 
@@ -256,10 +257,10 @@ def parse_agg(raw: str):
                 parts = _tokenize(entry, "=", keep_quotes=True)
                 key = _unquote_name(parts[0])
                 value = _unquote_name("=".join(parts[1:]))
+            elif ":" in entry:
+                raise SystemExit(f"-agg_df: invalid mapping entry '{entry}'; use '=' (e.g. -agg_df 'col = mean'). Colon ':' is not supported.")
             else:
-                parts = _tokenize(entry, ":", keep_quotes=True)
-                key = _unquote_name(parts[0])
-                value = _unquote_name(":".join(parts[1:]))
+                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
             if not key or not value:
                 raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
             out[key] = value
@@ -390,7 +391,7 @@ _REPLACE_KEYS = ("c", "v", "exact")
 
 
 def parse_value_map(raw: str) -> dict[str, str]:
-    """Parse a -replace_values v= mapping like "old_a=new_a,old_b=new_b" (or old_a:new_a) into a dict."""
+    """Parse a -replace_values v= mapping like "old_a=new_a,old_b=new_b" into a dict."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
@@ -399,7 +400,7 @@ def parse_value_map(raw: str) -> dict[str, str]:
         if "=" in pair:
             old, new = pair.split("=", 1)
         elif ":" in pair:
-            old, new = pair.split(":", 1)
+            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; use '=' (expected old=new). Colon ':' is not supported.")
         else:
             raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old=new")
         mapping[_unquote_name(old)] = _unquote_name(new)

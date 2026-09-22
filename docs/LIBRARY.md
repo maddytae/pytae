@@ -48,19 +48,16 @@ Plotter.facet(penguins, by="species", ncols=2, x="bill_length_mm", y="bill_depth
 
 ## 2) Filtering — `qry()`
 
-Clean keyword argument filters (equality, lists, comparisons, intervals, string matching, null checks) or direct string expressions. [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
+Clean keyword argument filters (equality, lists, comparisons, intervals, string matching, null checks). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
 
 ```python
-# Keyword arguments (most Pythonic):
+# Keyword arguments:
 pt.qry(penguins, species="Adelie", body_mass_g="> 3500")
 pt.qry(penguins, species=["Adelie", "Gentoo"])
 pt.qry(penguins, species=("not in", ["Adelie"]))
 pt.qry(penguins, body_mass_g="[3000,4000]")
 pt.qry(penguins, species=("startswith", "Ad"))   # also endswith, contains, regex (search-anywhere)
 pt.qry(penguins, sex=("notna",))                 # also isna — one-element tuple, no value
-
-# Direct string expression:
-pt.qry(penguins, "species = 'Adelie', body_mass_g > 3500")
 ```
 
 ## 3) Selection — `select()`
@@ -117,8 +114,7 @@ pt.mutate(penguins, mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
 # Callables / lambdas and constants
 pt.mutate(penguins, bmi=lambda d: d.body_mass_g / d.bill_length_mm ** 2, status="active")
 
-# Spec strings and external files (for CLI & config pipelines)
-pt.mutate(penguins, "bmi = body_mass_g / bill_length_mm ** 2")
+# Spec files (for external configurations)
 pt.mutate(penguins, "@features.txt")
 ```
 
@@ -126,31 +122,31 @@ A local variable from the calling scope can be referenced with an `@` prefix, sa
 
 ```python
 threshold = 4000
-pt.mutate(penguins, "heavy = body_mass_g >= @threshold")
+pt.mutate(penguins, heavy="body_mass_g >= @threshold")
 # or with explicit params:
-pt.mutate(penguins, "heavy = body_mass_g >= @thresh", params={"thresh": 4000})
+pt.mutate(penguins, heavy="body_mass_g >= @thresh", params={"thresh": 4000})
 ```
 
 Four functional helpers are built in and compose freely with each other and with pandas methods:
 
 ```python
 # if_else(condition, true_value, false_value) — like dplyr's if_else()
-pt.mutate(penguins, "weight_class = if_else(body_mass_g > 4000, 'heavy', 'light')")
+pt.mutate(penguins, weight_class="if_else(body_mass_g > 4000, 'heavy', 'light')")
 
 # case_when((cond1, val1), (cond2, val2), ..., default=...) — like dplyr's case_when()
 # checked in order, first match wins; supports tuples or flat alternating pairs
 pt.mutate(
     penguins,
-    "size_class = case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), default='small')",
+    size_class="case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), default='small')",
 )
 # flat pairs also work:
-pt.mutate(penguins, "size_class = case_when(body_mass_g >= 4500, 'large', body_mass_g >= 3500, 'medium', default='small')")
+pt.mutate(penguins, size_class="case_when(body_mass_g >= 4500, 'large', body_mass_g >= 3500, 'medium', default='small')")
 
 # coalesce(col1, col2, ..., default) — first non-null value per row
-pt.mutate(df, "contact = coalesce(mobile, home_phone, work_phone, 'N/A')")
+pt.mutate(df, contact="coalesce(mobile, home_phone, work_phone, 'N/A')")
 
 # map(column, {key: value, ...}[, default]) — recode through a lookup dict
-pt.mutate(penguins, "code = map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
+pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
 ```
 
 ## 7) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`

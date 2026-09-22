@@ -192,14 +192,14 @@ def test_parse_agg_name_list_and_mapping():
     from pytae.cli_parsing import parse_agg
     assert parse_agg("mean") == "mean"
     assert parse_agg("mean,sum,n") == ["mean", "sum", "n"]
-    assert parse_agg("val: sum, n: n") == {"val": "sum", "n": "n"}
     assert parse_agg("val = sum, n = n") == {"val": "sum", "n": "n"}
-    assert parse_agg("'body mass': mean") == {"body mass": "mean"}
     assert parse_agg("'body mass' = mean") == {"body mass": "mean"}
+    with pytest.raises(SystemExit, match="use '='"):
+        parse_agg("val: sum, n: n")
     with pytest.raises(SystemExit, match="use a name"):
         parse_agg("['mean', 'sum']")
     with pytest.raises(SystemExit, match="mix of names"):
-        parse_agg("mean, val: sum")
+        parse_agg("mean, val = sum")
 
 def test_agg_df_comma_list(tmp_path, capsys):
     path = _write_csv(

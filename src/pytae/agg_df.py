@@ -164,8 +164,18 @@ def agg_df(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame:
     """
 
     if args:
+        if isinstance(args[0], dict):
+            raise TypeError(
+                "agg_df() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "df.pt.agg_df(body_mass_g='mean', count='n')."
+            )
         agg_types = args[0]
     elif "a" in kwargs:
+        if isinstance(kwargs["a"], dict):
+            raise TypeError(
+                "agg_df() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "df.pt.agg_df(body_mass_g='mean', count='n')."
+            )
         agg_types = kwargs["a"]
     else:
         col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed")}

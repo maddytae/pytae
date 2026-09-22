@@ -138,7 +138,7 @@ def test_drop_after_agg_df_sees_agg_columns(tmp_path, capsys):
     )
 
     exit_code = cli.main(
-        [path, "-agg_df", "val: sum, n: n", "-drop", "val", "-cols"]
+        [path, "-agg_df", "val = sum, n = n", "-drop", "val", "-cols"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
@@ -149,7 +149,7 @@ def test_qry_then_drop_filter_column(tmp_path, capsys):
         pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
     )
 
-    exit_code = cli.main([path, "-qry", "flt: 'A'", "-drop", "flt", "-cols"])
+    exit_code = cli.main([path, "-qry", "flt = 'A'", "-drop", "flt", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]

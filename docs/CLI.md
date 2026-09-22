@@ -334,19 +334,19 @@ pytae penguins.parquet -select "species,island,body_mass_g" -sql "select * from 
 
 `-replace_values` swaps cell values at this point in the pipeline, same as `df.replace()` (or the library's `.replace_values()`). Its value is `key=value` tokens (comma-separated, quote a value if it needs an internal comma — same convention as `-crosstab`'s `index=`):
 
-- `v=` (**required**) — the `old:new` mapping, comma-separated pairs, e.g. `v='old:new,alpha:bravo'`.
+- `v=` (**required**) — the `old=new` mapping, comma-separated pairs, e.g. `v='old=new,alpha=bravo'`.
 - `c=` (optional) — restrict the replace to specific columns, e.g. `c='col a,col b'`. Omit it to replace across every column, like plain `df.replace()`.
 - `exact=` (optional, `true`/`false`, default `true`) — `true` only replaces a cell whose **entire value** matches a key exactly; `false` replaces a key **anywhere it occurs as a substring**, leaving the rest of the cell untouched (keys are escaped so they're matched literally, not as regex patterns).
 
 ```bash
 # whole df, exact match only
-pytae data.parquet -replace_values "v='a magician:the magic,alpha:bravo'"
+pytae data.parquet -replace_values "v='a magician=the magic,alpha=bravo'"
 
 # only touch col a and colb
-pytae data.parquet -replace_values "c='col a,colb',v='a magician:the magic,alpha:bravo'"
+pytae data.parquet -replace_values "c='col a,colb',v='a magician=the magic,alpha=bravo'"
 
 # substring match: replaces the key wherever it appears inside a cell
-pytae data.parquet -replace_values "v='a magician:the magic,alpha:bravo',exact=false"
+pytae data.parquet -replace_values "v='a magician=the magic,alpha=bravo',exact=false"
 ```
 
 With `exact=true` (default), a cell like `"not a magician exactly"` is left unchanged because it isn't *exactly* `"a magician"`. With `exact=false`, that same cell becomes `"not the magic exactly"` — but watch out for partial-word matches: a short key like `alpha` will also match inside `"analphabet"`, turning it into `"anbravobet"`.
@@ -536,7 +536,7 @@ pytae data.sas7bdat -convert -o data.parquet          # character columns decode
 pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
 pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter, latin-1 encoding
 pytae 'data/*.parquet' -convert
-pytae penguins.parquet -convert -rename "old name=new_name,another=clean"      # spaces in a name are fine — only "," and "=" (or ":") are delimiters
+pytae penguins.parquet -convert -rename "old name=new_name,another=clean"      # spaces in a name are fine — only "," and "=" are delimiters
 ```
 
 > **`-dlim`:** `.csv` / `.txt` / `.dat` only (not `.sas7bdat`, which has no delimiter concept). Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
@@ -569,7 +569,7 @@ df.query("body_mass_g > 3500 and island == 'Dream'")
 
 ```bash
 pytae penguins.parquet -query "body_mass_g > 3500 and island == 'Dream'"
-pytae penguins.parquet -qry "species: 'Adelie'" -query "body_mass_g > 3500" -head
+pytae penguins.parquet -qry "species='Adelie'" -query "body_mass_g > 3500" -head
 ```
 
 ---
@@ -697,7 +697,7 @@ pytae penguins.parquet -crosstab "index=species,columns=island,margins=true,marg
 pytae penguins.parquet -crosstab "index=species,columns=sex,values=body_mass_g,aggfunc=mean" -round 1
 
 # filter first, then cross-tab what's left
-pytae penguins.parquet -qry "island: 'Biscoe'" -crosstab "index=species,columns=sex"
+pytae penguins.parquet -qry "island='Biscoe'" -crosstab "index=species,columns=sex"
 
 # multi-level row index (comma-separated), single-column headers
 pytae penguins.parquet -crosstab "index='species,island',columns=sex"
@@ -724,7 +724,7 @@ Every structured flag is one of two families. Wrap the **whole spec** in `""` wh
 
 **kwargs** — `key=value,key=value`. Used by `-select` kwargs, `-agg`, `-group_x`, `-crosstab`, `-long`/`-wide`, `-merge`, `-concat`, `-replace_values`, `-clean_columns`, `-file` extras. Quote a value only when it contains a comma. `contains=bill`, `index=species`, and `dtype=numeric` stay unquoted — they are tokens, not Python literals (`contains='bill'` is accepted, not the style).
 
-**names and mappings** — `a,b` lists, or `name: payload`. Used by `-select` names/slices, `-drop`, `-group_by`, `-sort_by`, `-qry`, `-mutate`, `-rename`, and nested maps like `v=` / `on=` pairs. `-qry` is the exception that *requires* quotes on string values: they are typed literals (`'Adelie'` vs `3500` vs `('>', 3500)`), so unquoted `Adelie` is not valid. `-mutate` column names inside an expression must stay unquoted.
+**names and mappings** — `a,b` lists, or `name=payload`. Used by `-select` names/slices, `-drop`, `-group_by`, `-sort_by`, `-qry`, `-mutate`, `-rename`, and nested maps like `v=` / `on=` pairs. `-qry` is the exception that *requires* quotes on string values: they are typed literals (`'Adelie'` vs `3500` vs `('>', 3500)`), so unquoted `Adelie` is not valid. `-mutate` column names inside an expression must stay unquoted.
 
 Simple flags (`-head 5`, `-sql "..."`, `-query "..."`, `-pretty`, `-dropna false`) are neither family.
 
@@ -747,10 +747,10 @@ pytae data.parquet -select "'city, state',other_col"
 pytae penguins.parquet -drop "sex,island"
 pytae penguins.parquet -sort_by "species,body_mass_g desc"
 
-# mappings: name: payload. -qry strings are typed literals, so they need quotes
-pytae penguins.parquet -qry "species: 'Adelie', body_mass_g: ('>', 3500)"
-pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2"
-pytae data.parquet -convert -rename "old col:new col" -o clean.parquet
+# mappings: name=payload. -qry strings are typed literals, so they need quotes
+pytae penguins.parquet -qry "species='Adelie', body_mass_g=('>', 3500)"
+pytae penguins.parquet -mutate "bmi=body_mass_g / bill_length_mm ** 2"
+pytae data.parquet -convert -rename "old col=new col" -o clean.parquet
 ```
 
 `-clean_columns` `strip_special` removes quotes as punctuation — pair with `fill=` to keep one character (`fill='-'`).
@@ -779,7 +779,7 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 
 | Flag / key | pytae convention |
 |---|---|
-| `-qry` | dict-based filter syntax (`col: ('>', 5)`, column-name quotes optional) — pytae's own `qry()`, not a pandas method |
+| `-qry` | keyword filter syntax (`col=('>', 5)`, column-name quotes optional) — pytae's own `qry()`, not a pandas method |
 | `-sql` | real SQL via duckdb (not pandas) — the current view is registered as table `df` only (no file-derived alias) |
 | `-select`'s `contains=` / `startswith=` / `endswith=` / `regex=` / `dtype=` / `exclude_dtype=` | pytae's own column-picking vocabulary; no equivalent shorthand in plain pandas |
 | `-agg_df` | auto-detects group columns (every non-numeric column becomes a group key) — pandas' `groupby()` always requires you to name them |
@@ -893,10 +893,10 @@ pytae huge.csv -convert -o huge.parquet -progress
 
 ```bash
 # filter, then aggregate the remaining groups
-pytae penguins.parquet -qry "species: 'Adelie'" -agg_df mean
+pytae penguins.parquet -qry "species='Adelie'" -agg_df mean
 
 # subset + convert
-pytae penguins.parquet -qry "island: 'Dream'" -select "species,island,body_mass_g" -convert -o dream.parquet
+pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g" -convert -o dream.parquet
 ```
 
 ---
@@ -929,7 +929,7 @@ pytae penguins.parquet -qry "island: 'Dream'" -select "species,island,body_mass_
 | `-select SPEC` | Restrict columns at this point in the pipeline (union in one spec; repeat to filter remaining) |
 | `-drop COLUMNS` | Drop columns by exact name at this point (comma-separated names only; remaining keep their order) |
 | `-qry CONDITIONS` | Filter rows at this point (`pt.qry()`); surrounding `{}` and column-name quotes optional |
-| `-mutate SPEC` | Create/overwrite columns at this point (`pt.mutate()`); `"new_col: expression"` entries, same tokenizer/key-quoting rules as `-qry` (no surrounding `{}`), but the value is a pandas `eval()` expression, not a literal |
+| `-mutate SPEC` | Create/overwrite columns at this point (`pt.mutate()`); `"new_col=expression"` entries, same tokenizer/key-quoting rules as `-qry` (no surrounding `{}`), but the value is a pandas `eval()` expression, not a literal |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
 | `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
 | `-replace_values KEY=VALUE,...` | Replace values at this point (`pt.replace_values()`); `v=` required, `c=`/`exact=` optional |
@@ -940,7 +940,7 @@ pytae penguins.parquet -qry "island: 'Dream'" -select "species,island,body_mass_
 
 | Flag | Description |
 |---|---|
-| `-agg_df [SPEC]` | Auto-group aggregate; a name (`mean`), a comma list (`mean,sum`), or a mapping (`col: mean, n: n`); default `sum` |
+| `-agg_df [SPEC]` | Auto-group aggregate; a name (`mean`), a comma list (`mean,sum`), or a mapping (`col=mean, n=n`); default `sum` |
 | `-group_by COLUMNS` | Explicit groups for `-agg` (optional fallback for `-group_x`) |
 | `-agg KEY=VALUE,...` | Named aggregation with `-group_by` (`column`, `aggfunc`, optional `as`) |
 | `-group_x [KEY=VALUE,...]` | Broadcast group agg (`group`, `v`, `a`) |
