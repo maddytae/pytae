@@ -165,8 +165,11 @@ def agg_df(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame:
 
     if args:
         agg_types = args[0]
+    elif "a" in kwargs:
+        agg_types = kwargs["a"]
     else:
-        agg_types = kwargs.get("a", ["sum"])
+        col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed")}
+        agg_types = col_kwargs if col_kwargs else ["sum"]
     dropna = kwargs.get('dropna', True)
     observed = kwargs.get('observed', True)
 

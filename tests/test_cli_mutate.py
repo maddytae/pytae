@@ -73,3 +73,42 @@ def test_mutate_at_inside_quoted_string_is_not_flagged_as_local_var(tmp_path, ca
     assert "True" in out
     assert "False" in out
 
+
+def test_mutate_load_from_file_cli(tmp_path, capsys):
+    data_path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000.0, 4000.0]}))
+    spec_path = tmp_path / "specs.txt"
+    spec_path.write_text("mass_kg: body_mass_g / 1000\n# comment\nmass_lb: mass_kg * 2.2\n")
+
+    exit_code = cli.main([data_path, "-mutate", f"@{spec_path}", "-select", "mass_kg,mass_lb", "-head"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "mass_kg" in out and "mass_lb" in out
+
+
+def test_mutate_bracketed_column_names_cli(tmp_path, capsys):
+    data_path = _write_csv(tmp_path, pd.DataFrame({"col a": [10, 20], "col b": [1, 2]}))
+
+    exit_code = cli.main([data_path, "-mutate", "total: [col a] + [col b]", "-select", "total", "-head"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "11" in out and "22" in out
+
+
+def test_mutate_coalesce_cli(tmp_path, capsys):
+    data_path = _write_csv(tmp_path, pd.DataFrame({"a": [1.0, None], "b": [None, 2.0]}))
+
+    exit_code = cli.main([data_path, "-mutate", "c: coalesce(a, b, 0.0)", "-select", "c", "-head"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "1.0" in out and "2.0" in out
+
+
+def test_mutate_equals_syntax_cli(tmp_path, capsys):
+    data_path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000]}))
+
+    exit_code = cli.main([data_path, "-mutate", "mass_kg = body_mass_g / 1000, is_heavy = body_mass_g >= 3500", "-select", "mass_kg,is_heavy", "-head"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "3.0" in out and "4.0" in out
+
+

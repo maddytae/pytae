@@ -15,7 +15,24 @@ All notable changes to this project are documented in this file.
 - Ruff in CI (`ruff check src tests`) and mypy on 3.12 (`mypy` over `src/pytae`).
 - `df.pt` DataFrame accessor; `@` locals in `df.pt.mutate()` resolve in the calling scope.
 - Library `pt.sql(df, query)` / `df.pt.sql(query)` — same duckdb/`data` table as CLI `-sql`
-  (`pip install pytae[sql]`). Extra keyword frames register as extra tables.
+  (`pip install pytae[sql]`). Extra keyword frames register as extra tables. Supports
+  loading queries from `@query.txt` and bracketed/backtick column identifiers (`[col a]`, `` `col a` ``).
+- Enhanced `pt.mutate()` / `df.pt.mutate()`:
+  - Supports clean assignment syntax (`col = expr`) alongside classic colon (`col: expr`).
+  - Supports keyword arguments (`bmi="..."`), dictionaries (`{"bmi": "..."}`), callables/lambdas, and direct constants.
+  - Supports loading mutation specs from file (`@specs.txt`), multiline specs, and comment lines starting with `#`.
+  - Added built-in `coalesce(*cols, default)` functional helper for first non-null resolution.
+  - `case_when()` now supports `default=` keyword argument and flat alternating pairs (`case_when(c1, v1, c2, v2, default=d)`).
+  - Bracketed identifiers (`[col a]`) and backticks (`` `col a` ``) are now fully supported in Python eval fallback mode.
+  - Added explicit `params=` dictionary for passing scoped variables without global/frame inspection.
+- Enhanced `pt.agg_df()` / `df.pt.agg_df()`:
+  - Accepts column keyword arguments directly (e.g. `df.pt.agg_df(body_mass_g="mean", count="n")`), with group columns and aggregated output columns following argument order.
+- CLI enhancements:
+  - Standardized on `=` across flags: `-mutate` (`col = expr`), `-rename` (`old=new`), `-agg_df` (`col = mean`), and `-qry` (`col = val`, `col = > 3500`). Classic colon `:` remains fully supported as a backward-compatible alias.
+  - `-sql` supports loading queries from `@query.txt` and bracketed column names (`[col a]`).
+  - `-mutate` supports loading specs from `@specs.txt` and bracketed column names (`[col a]`).
+  - `-qry` supports direct comparison expressions (`col > 5`), operator prefixes (`col: > 5`), and assignment delimiters (`col= > 3500`, `col=>3500`, `col=3500`).
+  - `-concat` and `-merge` support unquoted comma-separated lists (`frames=a,b,c`, `on=id:id,code:code`).
 
 ## [3.4.3] - 2026-09-20
 

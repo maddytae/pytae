@@ -193,7 +193,9 @@ def test_parse_agg_name_list_and_mapping():
     assert parse_agg("mean") == "mean"
     assert parse_agg("mean,sum,n") == ["mean", "sum", "n"]
     assert parse_agg("val: sum, n: n") == {"val": "sum", "n": "n"}
+    assert parse_agg("val = sum, n = n") == {"val": "sum", "n": "n"}
     assert parse_agg("'body mass': mean") == {"body mass": "mean"}
+    assert parse_agg("'body mass' = mean") == {"body mass": "mean"}
     with pytest.raises(SystemExit, match="use a name"):
         parse_agg("['mean', 'sum']")
     with pytest.raises(SystemExit, match="mix of names"):

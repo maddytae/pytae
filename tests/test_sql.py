@@ -51,3 +51,19 @@ def test_sql_then_pandas_head():
     df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
     out = df.pt.sql("select b from data where a > 1").head(1)
     assert list(out["b"]) == ["y"]
+
+
+def test_sql_load_from_file(tmp_path):
+    df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    qfile = tmp_path / "query.txt"
+    qfile.write_text("select b from data where a > 1")
+    out = pt.sql(df, f"@{qfile}")
+    assert list(out["b"]) == ["y", "z"]
+
+
+def test_sql_bracketed_identifiers():
+    df = pd.DataFrame({"col a": [1, 2], "col b": [10, 20]})
+    out = pt.sql(df, "select [col a], `col b` from data")
+    assert list(out["col a"]) == [1, 2]
+    assert list(out["col b"]) == [10, 20]
+

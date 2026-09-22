@@ -119,11 +119,22 @@ class _Pipeline:
 
     def apply_mutate(self, spec: str) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
-        if re.search(r"@\w", _mask_quoted(spec)):
+        raw_spec = spec.strip()
+        if raw_spec.startswith("@"):
+            path = raw_spec[1:].strip()
+            from pathlib import Path
+            file_path = Path(path)
+            if not file_path.is_file():
+                return f"-mutate: spec file not found: '{path}'"
+            try:
+                raw_spec = file_path.read_text(encoding="utf-8").strip()
+            except Exception as exc:
+                return f"-mutate: failed to read spec file '{path}': {exc}"
+        if re.search(r"@\w", _mask_quoted(raw_spec)):
             return "-mutate: '@name' local-variable references are library-only (pt.mutate() from Python), not available on the CLI"
         df = self.dataframe()
         try:
-            self._df = mutate(df, spec)
+            self._df = mutate(df, raw_spec)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None
@@ -153,17 +164,30 @@ class _Pipeline:
 
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via duckdb. Single-file mode: the current view is registered
-        as table `df` (the file itself is already named on the command line, so there's no
+        as table `data` (the file itself is already named on the command line, so there's no
         separate file-derived alias) — if nothing has touched the view yet, duckdb scans the
         source parquet/csv/txt/dat file directly instead of first materializing it through
         pandas (much faster; pandas is only used as a fallback, see _register_source_view).
         -file/-merge mode: every -file alias is registered under its own name instead, so
-        -sql can do the join itself; `df` is also registered once something (e.g. -merge)
+        -sql can do the join itself; `data` is also registered once something (e.g. -merge)
         has produced a current view. Returns an error message or None."""
         try:
             import duckdb
         except ImportError as exc:
             return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
+        q = query.strip()
+        if q.startswith("@"):
+            path = q[1:].strip()
+            from pathlib import Path
+            file_path = Path(path)
+            if not file_path.is_file():
+                return f"-sql: query file not found: '{path}'"
+            try:
+                q = file_path.read_text(encoding="utf-8").strip()
+            except Exception as exc:
+                return f"-sql: failed to read query file '{path}': {exc}"
+        from pytae.sql import _normalize_sql
+        normalized_query = _normalize_sql(q)
         con = duckdb.connect()
         try:
             for alias, frame in self._frames.items():
@@ -174,7 +198,7 @@ class _Pipeline:
                 if not self._register_source_view(con):
                     con.register("data", self.dataframe())
             try:
-                self._df = con.sql(query).df()
+                self._df = con.sql(normalized_query).df()
             except Exception as exc:
                 return f"-sql: {exc}"
         finally:

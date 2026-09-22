@@ -219,18 +219,20 @@ pt.select(pt.qry(df, {"species": "Adelie"}), "species", "body_mass_g")
 
 ```bash
 # surrounding {} are optional; string values need quotes (typed literals: 'Adelie'
-# vs 3500 vs ('>', 3500)). That is not the same as -select contains=bill.
-pytae penguins.parquet -qry "species: 'Adelie', body_mass_g: ('>', 3500)"
+# vs 3500). Direct comparisons (col > 3500), equality (col = 'val'), and operator prefixes all work!
+pytae penguins.parquet -qry "species = 'Adelie', body_mass_g > 3500"
+pytae penguins.parquet -qry "body_mass_g > 3500"
+pytae penguins.parquet -qry "body_mass_g = > 3500"
 
 # filter first, then drop the filter column — same as pt.qry(df, ...).drop(columns=...)
-pytae penguins.parquet -qry "species: 'Adelie'" -drop "species" -head
+pytae penguins.parquet -qry "species = 'Adelie'" -drop "species" -head
 
 # string-matching operators: startswith / endswith / contains / regex (search-anywhere,
 # like re.search — 'regex' is 'contains' with regex=True); missing values never match (na=False)
-pytae penguins.parquet -qry "species: ('startswith', 'Ad')" -head
+pytae penguins.parquet -qry "species = ('startswith', 'Ad')" -head
 
 # null checks: isna / notna are one-element tuples (no value)
-pytae penguins.parquet -qry "sex: ('isna',)" -head
+pytae penguins.parquet -qry "sex = ('isna',)" -head
 ```
 
 `-select "body_mass_g" -qry "species: 'Adelie'"` errors (`species` is already gone), matching `pt.qry(pt.select(df, "body_mass_g"), {"species": "Adelie"})`.
@@ -240,85 +242,90 @@ pytae penguins.parquet -qry "sex: ('isna',)" -head
 <a id="mutate"></a>
 ### Mutated columns — `-mutate`
 
-pytae's expression-based column creator, `pt.mutate()`. Creates or overwrites columns at this point in the pipeline. Uses the same tokenizer as `-qry` — `"new_col: expression"` entries, comma-separated, quoting the key optional. Unlike `-qry`, the value is a pandas `eval()` **expression**, not a literal: column names in it must stay unquoted (quoting one turns it into a string literal instead of a column reference — same rule as SQL identifiers, see [Spec families and quoting](#quoting)).
+pytae's expression-based column creator, `pt.mutate()`. Creates or overwrites columns at this point in the pipeline. Uses `"new_col = expression"` entries (or `new_col: expression`), comma- or newline-separated, quoting the key optional. Can also read specs directly from a file: `-mutate @specs.txt`.
+
+Unlike `-qry`, the value is a pandas `eval()` **expression**, not a literal: column names in it must stay unquoted (quoting one turns it into a string literal instead of a column reference — same rule as SQL identifiers, see [Spec families and quoting](#quoting)). Columns with spaces can be enclosed in SQL-style brackets `[col a]` or backticks `` `col a` ``.
 
 ```python
-pt.mutate(df, "bmi: body_mass_g / bill_length_mm ** 2")
-pt.mutate(df, "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")
+pt.mutate(df, "bmi = body_mass_g / bill_length_mm ** 2")
+# kwargs and dict syntax also supported in Python:
+pt.mutate(df, bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")
 
 # a local variable from the calling scope can be referenced with an `@` prefix,
 # same as pandas' own eval()/query() — library-only, there's no local scope on the CLI
 threshold = 4000
-pt.mutate(df, "heavy: body_mass_g >= @threshold")
+pt.mutate(df, "heavy = body_mass_g >= @threshold")
 ```
 
 ```bash
 # single mutated column
-pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -head
+pytae penguins.parquet -mutate "bmi = body_mass_g / bill_length_mm ** 2" -head
 
 # multiple entries in one -mutate
-pytae penguins.parquet -mutate "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000" -select "species,mass_kg,heavy" -head
+pytae penguins.parquet -mutate "heavy = body_mass_g > 4000, mass_kg = body_mass_g / 1000" -select "species,mass_kg,heavy" -head
+
+# columns with spaces use [brackets] to avoid shell backtick substitution
+pytae data.parquet -mutate "total = [col a] + [col b]" -head
 
 # later entries can reference columns derived earlier in the same call
-pytae penguins.parquet -mutate "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462" -select "mass_kg,mass_lb" -head
+pytae penguins.parquet -mutate "mass_kg = body_mass_g / 1000, mass_lb = mass_kg * 2.20462" -select "mass_kg,mass_lb" -head
 
 # key quoting optional (matches -qry); string literals in the expression still need quotes
-pytae penguins.parquet -mutate "is_adelie: species == 'Adelie'" -select "species,is_adelie" -head
+pytae penguins.parquet -mutate "is_adelie = species == 'Adelie'" -select "species,is_adelie" -head
 
 # string concat: pandas eval does not support + for strings; use .str.cat
-pytae penguins.parquet -mutate "dummy: species.str.cat(island, sep='_')" -select "species,island,dummy" -head
+pytae penguins.parquet -mutate "dummy = species.str.cat(island, sep='_')" -select "species,island,dummy" -head
 
 # chains into -qry, filtering on a column just mutated
-pytae penguins.parquet -mutate "bmi: body_mass_g / bill_length_mm ** 2" -qry "bmi: ('>', 2)" -select "species,bmi" -head
+pytae penguins.parquet -mutate "bmi = body_mass_g / bill_length_mm ** 2" -qry "bmi > 2" -select "species,bmi" -head
 
 # dplyr-style if_else(condition, true_value, false_value)
-pytae penguins.parquet -mutate "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')" -select "species,weight_class" -head
+pytae penguins.parquet -mutate "weight_class = if_else(body_mass_g > 4000, 'heavy', 'light')" -select "species,weight_class" -head
 
-# case_when((cond1, val1), (cond2, val2), ..., default) — first match wins;
-# a trailing bare argument is the optional catch-all (like SQL ELSE)
-pytae penguins.parquet -mutate "size_class: case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), 'small')" -select "species,size_class" -head
+# case_when supports tuples or flat pairs with default=
+pytae penguins.parquet -mutate "size_class = case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), default='small')" -select "species,size_class" -head
+
+# coalesce(col1, col2, ..., default) — first non-null value per row
+pytae data.parquet -mutate "phone = coalesce(mobile, home, 'N/A')" -head
 
 # map(column, {key: value, ...}[, default]) — recode through a lookup dict
-pytae penguins.parquet -mutate "code: map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')" -select "species,code" -head
+pytae penguins.parquet -mutate "code = map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')" -select "species,code" -head
+
+# load complex multiline specs with comments from a file
+pytae penguins.parquet -mutate @features.txt -head
 ```
 
-Three dplyr-style helpers are available as ordinary function calls: `if_else(condition, true_value, false_value)`, `case_when((cond1, val1), (cond2, val2), ..., default)`, and `map(column, {key: value, ...}[, default])`. Because they are ordinary calls, they compose and chain freely with each other and with pandas methods (e.g. `.str.upper()`). String outcomes need quotes; conditions are vectorized — prefer `and`/`or`/`not` (bitwise `&`/`|`/`~` also work). Any expression pandas `eval()` cannot parse falls back to a plain Python `eval()` with each column exposed as a Series, so dict literals and method chains work naturally.
+Four functional helpers are available as ordinary function calls: `if_else(condition, true_value, false_value)`, `case_when((cond1, val1), ..., default=...)` (or flat pairs `case_when(c1, v1, c2, v2, default=d)`), `coalesce(*cols, default)`, and `map(column, {key: value, ...}[, default])`. Because they are ordinary calls, they compose and chain freely with each other and with pandas methods (e.g. `.str.upper()`). String outcomes need quotes; conditions are vectorized — prefer `and`/`or`/`not` (bitwise `&`/`|`/`~` also work).
 
 ---
 
 <a id="sql"></a>
 ### SQL — `-sql`
 
-`-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). Same verb in Python: `pt.sql(df, "select … from data")` / `df.pt.sql(…)` — see [docs/LIBRARY.md](LIBRARY.md). The view is queryable as table **`data`, and only `data`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember (and no ambiguity if you later pipe a differently-named file through the same command). `table` is also deliberately not registered: it's a reserved SQL keyword, so `select * from table` fails to parse unless quoted, which defeats the point of a short default name.
+`-sql` runs a real SQL query against the current view at this point in the pipeline, using [duckdb](https://duckdb.org/) (an optional dependency — install with `pip install pytae[sql]`). Same verb in Python: `pt.sql(df, "select … from data")` / `df.pt.sql(…)` — see [docs/LIBRARY.md](LIBRARY.md). The view is queryable as table **`data`, and only `data`** — the file itself is already named on the command line (`pytae penguins.parquet ...`), so there's no separate file-derived alias to remember.
 
-Unlike `-qry`, this is **standard SQL**, not pytae's dict syntax — column names with spaces need **double** quotes (`"bill length mm"`), not single quotes. Single quotes are string literals in SQL, e.g. `'Adelie'`; using them around a column name either errors or silently compares against a constant string instead of the column.
+Column names with spaces can use SQL-style brackets `[bill length mm]` (recommended to avoid bash backtick substitution), double quotes (`"bill length mm"`), or backticks. Single quotes are string literals in SQL, e.g. `'Adelie'`.
 
-**Performance:** when `-sql` is the first thing to touch the view (nothing has filtered/selected/aggregated yet), duckdb scans the source `.parquet`/`.csv`/`.txt`/`.dat` file **directly** instead of first loading it into pandas — often several times faster, especially on CSV. This fast path is skipped (falling back to the normal pandas-backed view, same as before) when: something earlier in the pipeline already ran, `-progress` was passed, the source is `.sas7bdat` (no native duckdb reader), or a non-UTF-8 `-encoding` was given (duckdb's CSV reader doesn't support arbitrary encodings). `-nrows` still applies either way.
+Queries can also be loaded from a file using `@path.txt`:
+```bash
+pytae data.parquet -sql @query.txt
+```
+
+**Performance:** when `-sql` is the first thing to touch the view (nothing has filtered/selected/aggregated yet), duckdb scans the source `.parquet`/`.csv`/`.txt`/`.dat` file **directly** instead of first loading it into pandas — often several times faster, especially on CSV.
 
 ```bash
 pytae penguins.parquet -sql "select species, body_mass_g from data where body_mass_g > 3500"
 pytae penguins.parquet -sql "select species, avg(body_mass_g) as avg_mass from data group by species"
 
-# a column name with a space: double quotes, not single quotes
-pytae data.parquet -sql 'select species from data where "bill length mm" > 40'
+# bracketed identifiers avoid bash backtick execution and ugly quote escaping
+pytae data.parquet -sql "select [bill length mm] from data where island = 'Dream'"
+
+# load full query from a file
+pytae data.parquet -sql @query.txt
 
 # chains like any other op — runs on the current view, replaces it
 pytae penguins.parquet -select "species,island,body_mass_g" -sql "select * from data where island = 'Dream'" -shape
-
-# a query that needs BOTH a double-quoted identifier (space in the column name)
-# and a single-quoted string literal — wrap the spec in "" and escape the identifier
-pytae data.parquet -sql "select \"bill length mm\" from data where island = 'Dream'"
 ```
-
-Mixing a spaced identifier and a string literal in one `-sql` value means the shell has to see both `"` and `'` — one of them needs escaping. Two ways to handle it:
-
-- **Escape in place** (above): wrap the whole `-sql` value in double quotes and escape the identifier's quotes (`\"bill length mm\"`); the string literal's single quotes pass through untouched.
-- **Rename the column first, then no quoting needed.** `-rename` only applies at `-convert`/write time (see [Convert / rename](#convert)), not mid-pipeline, so this is a two-step workflow — convert once to a space-free schema, then run `-sql` against that file with plain identifiers:
-
-  ```bash
-  pytae data.parquet -convert -rename "bill length mm:bill_length_mm" -o clean.parquet
-  pytae clean.parquet -sql "select bill_length_mm from data where island = 'Dream'"
-  ```
 
 ---
 
@@ -357,7 +364,7 @@ Groups by all **non-numeric** columns and aggregates the rest. `n` is group coun
 ```python
 pt.agg_df(df, "mean")
 pt.agg_df(df, ["sum", "mean", "n"])
-pt.agg_df(df, {"body_mass_g": "mean", "n": "n"})
+pt.agg_df(df, body_mass_g="mean", n="n")
 pt.agg_df(df, a=["mean", "n"], dropna=False)  # a= required when other keywords are used
 ```
 
@@ -365,7 +372,7 @@ pt.agg_df(df, a=["mean", "n"], dropna=False)  # a= required when other keywords 
 pytae penguins.parquet -agg_df           # defaults to sum
 pytae penguins.parquet -agg_df mean
 pytae penguins.parquet -agg_df "mean,sum"
-pytae penguins.parquet -agg_df "body_mass_g: mean, n: n"
+pytae penguins.parquet -agg_df "body_mass_g = mean, n = n"
 pytae penguins.parquet -agg_df sum -dropna false   # keep NA group keys
 pytae penguins.parquet -agg_df mean -sort_by "body_mass_g desc"
 ```
@@ -529,7 +536,7 @@ pytae data.sas7bdat -convert -o data.parquet          # character columns decode
 pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
 pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter, latin-1 encoding
 pytae 'data/*.parquet' -convert
-pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      # spaces in a name are fine — only "," and ":" are delimiters
+pytae penguins.parquet -convert -rename "old name=new_name,another=clean"      # spaces in a name are fine — only "," and "=" (or ":") are delimiters
 ```
 
 > **`-dlim`:** `.csv` / `.txt` / `.dat` only (not `.sas7bdat`, which has no delimiter concept). Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
@@ -960,7 +967,7 @@ pytae penguins.parquet -qry "island: 'Dream'" -select "species,island,body_mass_
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/dat (not sas7bdat) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; dat default: latin-1; csv/txt: pandas infer) |
-| `-rename old:new,...` | Rename columns on convert |
+| `-rename OLD=NEW,...` | Rename columns on convert |
 
 **Output formatting**
 

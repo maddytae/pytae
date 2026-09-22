@@ -6,6 +6,7 @@ import argparse
 import ast
 import difflib
 import glob
+import re
 from pathlib import Path
 
 from pytae._text import tokenize as _tokenize
@@ -130,17 +131,20 @@ def unknown_columns_message(flag: str, requested: list[str], available: list[str
 
 
 def parse_rename(raw: str) -> dict[str, str]:
-    """Parse a rename mapping like "old_a:new_a,old_b:new_b" into a dict.
-    Quoting either side (e.g. "'old a':'new a'") is optional and stripped if present—
-    plain old_a:new_a already handles spaces, quoting just needs to not break things."""
+    """Parse a rename mapping like "old_a=new_a,old_b=new_b" (or old_a:new_a) into a dict.
+    Quoting either side (e.g. "'old a'='new a'") is optional and stripped if present—
+    plain old_a=new_a already handles spaces, quoting just needs to not break things."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
         if not pair:
             continue
-        if ":" not in pair:
-            raise SystemExit(f"invalid --rename mapping '{pair}'; expected old:new")
-        old, new = pair.split(":", 1)
+        if "=" in pair:
+            old, new = pair.split("=", 1)
+        elif ":" in pair:
+            old, new = pair.split(":", 1)
+        else:
+            raise SystemExit(f"invalid --rename mapping '{pair}'; expected old=new")
         mapping[_unquote_name(old)] = _unquote_name(new)
     return mapping
 
@@ -156,9 +160,10 @@ def expand_paths(pattern: str) -> list[Path]:
 
 
 def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
-    """Split a --qry body into raw (key, value) text pairs on top-level commas/colons,
+    """Split a --qry body into raw (key, value) text pairs on top-level commas/colons/equals,
     respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
-    aren't mistaken for entry or key/value separators."""
+    aren't mistaken for entry or key/value separators. Direct comparisons like
+    'col > 5' or assignments like 'col = > 3500' or 'col = 3500' are also accepted."""
     entries: list[tuple[str, str]] = []
     for raw_entry in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
         if not raw_entry:
@@ -167,7 +172,20 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
         # literally in case the value itself contains an unbracketed ':'
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
         if len(pieces) < 2:
-            raise SystemExit(f"invalid --qry conditions: missing ':' in entry '{raw_entry}'")
+            m = re.match(r"^([^>=<!]+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw_entry)
+            if m:
+                col = m.group(1).strip()
+                op = m.group(2).strip()
+                val = m.group(3).strip()
+                entries.append((col, f"('{op}', {val})"))
+                continue
+            m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
+            if m_eq:
+                col = m_eq.group(1).strip()
+                val = m_eq.group(2).strip()
+                entries.append((col, val))
+                continue
+            raise SystemExit(f"invalid --qry conditions: missing separator (':' or '=') in entry '{raw_entry}'")
         entries.append((pieces[0], ":".join(pieces[1:])))
     return entries
 
@@ -175,8 +193,8 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
 def parse_qry(raw: str) -> dict:
     """Parse --qry conditions like "col: ('>', 5), other: ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
-    "sex:'Male'" == "'sex':'Male'". Values still need Python-literal quoting for
-    strings, e.g. 'Male', since they can also be numbers/tuples/lists."""
+    "sex:'Male'" == "'sex':'Male'". Prefix operators (e.g. "col: > 5") and bare string
+    values (e.g. "species: Adelie") are also accepted."""
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
@@ -187,6 +205,18 @@ def parse_qry(raw: str) -> dict:
             raise SystemExit("invalid --qry conditions: empty column name")
         if not value_raw:
             raise SystemExit(f"invalid --qry conditions: '{key}' has no value")
+        
+        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", value_raw)
+        if op_match:
+            op = op_match.group(1)
+            sub_raw = op_match.group(2).strip()
+            try:
+                sub_val = ast.literal_eval(sub_raw)
+            except (ValueError, SyntaxError):
+                sub_val = _unquote_name(sub_raw)
+            conditions[key] = (op, sub_val)
+            continue
+
         try:
             value = ast.literal_eval(value_raw)
         except (ValueError, SyntaxError) as exc:
@@ -216,22 +246,27 @@ def parse_agg(raw: str):
         raise SystemExit("-agg_df: expected a name, a comma list, or a mapping")
 
     def _is_mapping(entry: str) -> bool:
-        return len(_tokenize(entry, ":", keep_quotes=True)) >= 2
+        return len(_tokenize(entry, "=", keep_quotes=True)) >= 2 or len(_tokenize(entry, ":", keep_quotes=True)) >= 2
 
     mapped = [_is_mapping(e) for e in entries]
     if all(mapped):
         out: dict[str, str] = {}
         for entry in entries:
-            parts = _tokenize(entry, ":", keep_quotes=True)
-            key = _unquote_name(parts[0])
-            value = _unquote_name(":".join(parts[1:]))
+            if "=" in entry:
+                parts = _tokenize(entry, "=", keep_quotes=True)
+                key = _unquote_name(parts[0])
+                value = _unquote_name("=".join(parts[1:]))
+            else:
+                parts = _tokenize(entry, ":", keep_quotes=True)
+                key = _unquote_name(parts[0])
+                value = _unquote_name(":".join(parts[1:]))
             if not key or not value:
                 raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
             out[key] = value
         return out
     if any(mapped):
         raise SystemExit(
-            "-agg_df: mix of names and col:aggfunc mappings; use one or the other"
+            "-agg_df: mix of names and col=aggfunc mappings; use one or the other"
         )
     names = [_unquote_name(e) for e in entries]
     return names[0] if len(names) == 1 else names
@@ -294,23 +329,30 @@ _WIDE_KEYS = ("c", "v", "a")
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
     """Parse -long/-wide/-group_x as key=value tokens, e.g. c=metric,v=reading,a=mean.
-    Quote a value only when it contains a comma."""
+    Comma-separated lists like frames=a,b,c or on=id:id,code:code work with or without quotes."""
     raw = (raw or "").strip()
     if not raw:
         return {}
     kwargs: dict = {}
+    current_key: str | None = None
     for token in _split_tokens(raw):
-        if "=" not in token:
-            raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
-        key, _, value = token.partition("=")
-        key = key.strip()
-        value = _unquote_name(value)
-        if key not in keys:
-            raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
-        if not value:
-            raise SystemExit(f"{flag}: {key}= needs a value")
-        if key in kwargs:
-            raise SystemExit(f"{flag}: {key}= given more than once")
+        if "=" in token:
+            key, _, value = token.partition("=")
+            key = key.strip()
+            value = _unquote_name(value)
+            if key not in keys:
+                raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
+            if not value:
+                raise SystemExit(f"{flag}: {key}= needs a value")
+            if key in kwargs:
+                raise SystemExit(f"{flag}: {key}= given more than once")
+            current_key = key
+            kwargs[key] = value
+        else:
+            if current_key is None:
+                raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
+            kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
+    for key, value in list(kwargs.items()):
         kwargs[key] = parse_bool_text(value) if key in ("margins", "exact") else value
     return kwargs
 
@@ -348,18 +390,21 @@ _REPLACE_KEYS = ("c", "v", "exact")
 
 
 def parse_value_map(raw: str) -> dict[str, str]:
-    """Parse a -replace_values v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
+    """Parse a -replace_values v= mapping like "old_a=new_a,old_b=new_b" (or old_a:new_a) into a dict."""
     mapping: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
         if not pair:
             continue
-        if ":" not in pair:
-            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
-        old, new = pair.split(":", 1)
+        if "=" in pair:
+            old, new = pair.split("=", 1)
+        elif ":" in pair:
+            old, new = pair.split(":", 1)
+        else:
+            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old=new")
         mapping[_unquote_name(old)] = _unquote_name(new)
     if not mapping:
-        raise SystemExit("-replace_values: v= needs at least one old:new pair")
+        raise SystemExit("-replace_values: v= needs at least one old=new pair")
     return mapping
 
 

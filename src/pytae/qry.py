@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import difflib
 import operator
 import re
@@ -28,7 +29,11 @@ unary_ops = {
     "notna": lambda s: s.notna(),
 }
 
-def qry(df: pd.DataFrame, conditions: dict[str, Any]) -> pd.DataFrame:
+def qry(
+    df: pd.DataFrame,
+    conditions: dict[str, Any] | str | None = None,
+    **kwargs: Any,
+) -> pd.DataFrame:
     """
     Filters a DataFrame based on a dictionary of conditions.
 
@@ -82,55 +87,55 @@ def qry(df: pd.DataFrame, conditions: dict[str, Any]) -> pd.DataFrame:
     >>> df = pd.DataFrame(data)
 
     >>> # Filter for rows where 'species' is 'Adelie'
-    >>> df.pt.qry({'species': 'Adelie'})
+    >>> df.pt.qry(species='Adelie')
       species  body_mass_g code
     0  Adelie        74125  A 1
     3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'body_mass_g' is greater than 81500
-    >>> df.pt.qry({'body_mass_g': ('>', 81500)})
+    >>> df.pt.qry(body_mass_g='> 81500')
          species  body_mass_g code
     1     Gentoo       271425  B 2
     2  Chinstrap       119925  C 3
     3     Adelie        89100  D 4
 
     >>> # Filter for rows where 'species' is in ['Adelie', 'Gentoo']
-    >>> df.pt.qry({'species': ('in', ['Adelie', 'Gentoo'])})
+    >>> df.pt.qry(species=['Adelie', 'Gentoo'])
       species  body_mass_g code
     0  Adelie        74125  A 1
     1  Gentoo       271425  B 2
     3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'species' is not in ['Adelie', 'Gentoo']
-    >>> df.pt.qry({'species': ('not in', ['Adelie', 'Gentoo'])})
+    >>> df.pt.qry(species=('not in', ['Adelie', 'Gentoo']))
          species  body_mass_g code
     2  Chinstrap       119925  C 3
 
     >>> # Filter for rows where 'body_mass_g' is in the interval (80000, 120000)
-    >>> df.pt.qry({'body_mass_g': '(80000,120000)'})
+    >>> df.pt.qry(body_mass_g='(80000,120000)')
          species  body_mass_g code
     2  Chinstrap       119925  C 3
     3     Adelie        89100  D 4
 
     >>> # Filter for rows where 'code' equals 'A 1' (whitespace preserved)
-    >>> df.pt.qry({'code': ('==', 'A 1')})
+    >>> df.pt.qry(code=('==', 'A 1'))
       species  body_mass_g code
     0  Adelie        74125  A 1
 
     >>> # Filter for rows where 'species' starts with 'Ad'
-    >>> df.pt.qry({'species': ('startswith', 'Ad')})
+    >>> df.pt.qry(species=('startswith', 'Ad'))
       species  body_mass_g code
     0  Adelie        74125  A 1
     3  Adelie        89100  D 4
 
     >>> # Filter for rows where 'code' matches a regex pattern anywhere in the string
-    >>> df.pt.qry({'code': ('regex', r'^[AB]')})
+    >>> df.pt.qry(code=('regex', r'^[AB]'))
       species  body_mass_g code
     0  Adelie        74125  A 1
     1  Gentoo       271425  B 2
 
     >>> # Filter for rows where 'species' is not null
-    >>> df.pt.qry({'species': ('notna',)})
+    >>> df.pt.qry(species=('notna',))
          species  body_mass_g code
     0     Adelie        74125  A 1
     1     Gentoo       271425  B 2
@@ -152,9 +157,36 @@ def qry(df: pd.DataFrame, conditions: dict[str, Any]) -> pd.DataFrame:
     - Filtering does not modify the original DataFrame. Each condition is applied with
       `.loc[...]` and a new filtered frame is returned; the caller's object is unchanged.
     """
+    cond_dict: dict[str, Any] = {}
+    if isinstance(conditions, str):
+        from pytae.cli_parsing import parse_qry
+        cond_dict.update(parse_qry(conditions))
+    elif isinstance(conditions, dict):
+        cond_dict.update(conditions)
+    elif conditions is not None:
+        raise TypeError(f"qry conditions must be dict or str, got {type(conditions).__name__}")
+
+    if kwargs:
+        cond_dict.update(kwargs)
+
+    normalized_conditions: dict[str, Any] = {}
+    for col, cond in cond_dict.items():
+        if isinstance(cond, str):
+            op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", cond.strip())
+            if op_match:
+                op = op_match.group(1)
+                val_str = op_match.group(2).strip()
+                try:
+                    val = ast.literal_eval(val_str)
+                except (ValueError, SyntaxError):
+                    val = val_str.strip("'\"")
+                normalized_conditions[col] = (op, val)
+                continue
+        normalized_conditions[col] = cond
+
     out = df
     available = list(df.columns)
-    for col, cond in conditions.items():
+    for col, cond in normalized_conditions.items():
         if col not in available:
             close = difflib.get_close_matches(col, available, n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""

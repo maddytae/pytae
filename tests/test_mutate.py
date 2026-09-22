@@ -168,3 +168,102 @@ def test_mutate_local_var_reference_in_case_when():
 def test_mutate_unknown_local_var_suggests_typo_free_error():
     with pytest.raises(KeyError, match="threshol"):
         pt.mutate(_df(), "heavy: body_mass_g >= @threshol")
+
+
+def test_mutate_kwargs():
+    df = _df()
+    res = pt.mutate(df, bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")
+    assert "bmi" in res.columns
+    assert "mass_kg" in res.columns
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+
+
+def test_mutate_dict_and_accessor():
+    df = _df()
+    res = df.pt.mutate({"bmi": "body_mass_g / bill_length_mm ** 2", "mass_kg": "body_mass_g / 1000"})
+    assert "bmi" in res.columns
+    assert "mass_kg" in res.columns
+
+
+def test_mutate_callable_lambda():
+    df = _df()
+    res = pt.mutate(df, bmi=lambda d: d["body_mass_g"] / d["bill_length_mm"] ** 2)
+    assert "bmi" in res.columns
+    assert list(res["bmi"]) == [pytest.approx(3.333333, rel=1e-4), pytest.approx(2.5)]
+
+
+def test_mutate_constants():
+    df = _df()
+    res = pt.mutate(df, status="'active'", count=42)
+    assert list(res["status"]) == ["active", "active"]
+    assert list(res["count"]) == [42, 42]
+
+
+def test_mutate_case_when_default_kwarg():
+    df = _df()
+    res = pt.mutate(df, "g: case_when((body_mass_g >= 3500, 'A'), default='B')")
+    assert list(res["g"]) == ["B", "A"]
+
+
+def test_mutate_case_when_flat_alternating_pairs():
+    df = _df()
+    res = pt.mutate(df, "g: case_when(body_mass_g >= 3800, 'A', body_mass_g >= 3200, 'B', default='C')")
+    assert list(res["g"]) == ["C", "A"]
+
+
+def test_mutate_coalesce_helper():
+    df = pd.DataFrame({"a": [1.0, None, None], "b": [None, 2.0, None]})
+    res = pt.mutate(df, "c: coalesce(a, b, 0.0)")
+    assert list(res["c"]) == [1.0, 2.0, 0.0]
+
+
+def test_mutate_bracketed_and_backtick_columns_in_fallback():
+    df = pd.DataFrame({"col a": [10, 20], "col b": [1, 2]})
+    res1 = pt.mutate(df, "c: if_else([col a] > 15, 'high', 'low')")
+    assert list(res1["c"]) == ["low", "high"]
+    res2 = pt.mutate(df, "c: if_else(`col a` > 15, 'high', 'low')")
+    assert list(res2["c"]) == ["low", "high"]
+    res3 = pt.mutate(df, "total: [col a] + [col b]")
+    assert list(res3["total"]) == [11, 22]
+
+
+def test_mutate_multiline_spec_with_comments():
+    df = _df()
+    spec = """
+    # calculate weight in kg
+    mass_kg: body_mass_g / 1000
+    # calculate weight in lbs
+    mass_lb: mass_kg * 2.2
+    """
+    res = pt.mutate(df, spec)
+    assert "mass_kg" in res.columns
+    assert "mass_lb" in res.columns
+
+
+def test_mutate_load_from_file(tmp_path):
+    df = _df()
+    file_path = tmp_path / "specs.txt"
+    file_path.write_text("mass_kg: body_mass_g / 1000\n# comment\nmass_lb: mass_kg * 2.2\n")
+    res = pt.mutate(df, f"@{file_path}")
+    assert "mass_kg" in res.columns
+    assert "mass_lb" in res.columns
+
+
+def test_mutate_explicit_params():
+    df = _df()
+    res = pt.mutate(df, "flag: body_mass_g >= @thresh", params={"thresh": 3500.0})
+    assert list(res["flag"]) == [False, True]
+
+
+def test_mutate_unquoted_string_literal_hint():
+    df = _df()
+    with pytest.raises(KeyError, match="if you intended a string literal, quote it like 'heavy'"):
+        pt.mutate(df, "status: if_else(body_mass_g > 3500, heavy, light)")
+
+
+def test_mutate_equals_syntax():
+    df = _df()
+    res = pt.mutate(df, "mass_kg = body_mass_g / 1000, is_heavy = body_mass_g >= 3500")
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+    assert list(res["is_heavy"]) == [False, True]
+

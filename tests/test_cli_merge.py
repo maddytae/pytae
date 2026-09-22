@@ -269,3 +269,29 @@ def test_file_bad_encoding_errors(tmp_path, capsys):
     assert exc_info.value.code == 2
     assert "try -encoding" in capsys.readouterr().err
 
+
+def test_concat_unquoted_frames(tmp_path, capsys):
+    a, b, c = _write_three_id_csvs(tmp_path)
+
+    # unquoted frames=a,b,c without inner quotes
+    exit_code = cli.main(["-file", f"{a}=a;{b}=b;{c}=c", "-concat", "frames=a,b,c", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(8, 4)"
+
+
+def test_merge_unquoted_on_pairs(tmp_path, capsys):
+    left = tmp_path / "l.csv"
+    right = tmp_path / "r.csv"
+    pd.DataFrame({"id": [1, 2], "code": ["x", "y"], "v1": [10, 20]}).to_csv(left, index=False)
+    pd.DataFrame({"id": [1, 2], "code": ["x", "y"], "v2": [100, 200]}).to_csv(right, index=False)
+
+    exit_code = cli.main([
+        "-file", f"{left}=df1;{right}=df2",
+        "-merge", "left=df1,right=df2,on=id:id,code:code",
+        "-shape",
+    ])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 4)"
+
+
+

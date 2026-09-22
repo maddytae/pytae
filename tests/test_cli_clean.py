@@ -95,6 +95,18 @@ def test_rename_quoting_is_optional(tmp_path):
     assert list(pd.read_csv(out1).columns) == ["new col", "b"]
     assert list(pd.read_csv(out2).columns) == ["new col", "b"]
 
+
+def test_rename_with_equals_sign(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
+    out1 = tmp_path / "out1.csv"
+    out2 = tmp_path / "out2.csv"
+
+    cli.main([path, "-convert", "-rename", "old col=new col,b=beta", "-o", str(out1)])
+    cli.main([path, "-convert", "-rename", "'old col'='new col','b'='beta'", "-o", str(out2)])
+
+    assert list(pd.read_csv(out1).columns) == ["new col", "beta"]
+    assert list(pd.read_csv(out2).columns) == ["new col", "beta"]
+
 def test_clean_columns_strip_fill_case(tmp_path, capsys):
     path = _write_csv(tmp_path, _messy_headers_frame())
 

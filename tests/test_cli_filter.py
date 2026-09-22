@@ -97,3 +97,44 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
         pd.DataFrame({"month": [202607, 202607], "value": [2, 3]}),
     )
 
+
+def test_qry_direct_comparison(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
+
+    exit_code = cli.main([path, "-qry", "body_mass_g > 3500", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+
+def test_qry_operator_prefix(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
+
+    exit_code = cli.main([path, "-qry", "body_mass_g: > 3500", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+
+def test_qry_equals_separator(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
+
+    # col= > val
+    exit_code = cli.main([path, "-qry", "body_mass_g= > 3500", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+    # col=>val
+    exit_code = cli.main([path, "-qry", "body_mass_g=>3500", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+    # col = > val
+    exit_code = cli.main([path, "-qry", "body_mass_g = > 3500", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+    # col = val
+    exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 1)"
+
+

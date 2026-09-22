@@ -48,15 +48,19 @@ Plotter.facet(penguins, by="species", ncols=2, x="bill_length_mm", y="bill_depth
 
 ## 2) Filtering — `qry()`
 
-Dict-based filters (equality, lists, `in` / `not in`, comparisons, intervals, string matching, null checks). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
+Clean keyword argument filters (equality, lists, comparisons, intervals, string matching, null checks) or direct string expressions. [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
 
 ```python
-pt.qry(penguins, {"species": "Adelie", "body_mass_g": (">", 3500)})
-pt.qry(penguins, {"species": ["Adelie", "Gentoo"]})
-pt.qry(penguins, {"species": ("not in", ["Adelie"])})
-pt.qry(penguins, {"body_mass_g": "[3000,4000]"})
-pt.qry(penguins, {"species": ("startswith", "Ad")})   # also endswith, contains, regex (search-anywhere)
-pt.qry(penguins, {"sex": ("notna",)})                  # also isna — one-element tuple, no value
+# Keyword arguments (most Pythonic):
+pt.qry(penguins, species="Adelie", body_mass_g="> 3500")
+pt.qry(penguins, species=["Adelie", "Gentoo"])
+pt.qry(penguins, species=("not in", ["Adelie"]))
+pt.qry(penguins, body_mass_g="[3000,4000]")
+pt.qry(penguins, species=("startswith", "Ad"))   # also endswith, contains, regex (search-anywhere)
+pt.qry(penguins, sex=("notna",))                 # also isna — one-element tuple, no value
+
+# Direct string expression:
+pt.qry(penguins, "species = 'Adelie', body_mass_g > 3500")
 ```
 
 ## 3) Selection — `select()`
@@ -90,46 +94,63 @@ pt.wide(tall, c="feature", v="value", a="n")  # 'n' aliases pandas' 'size' (grou
 Groups by all non-numeric columns and aggregates the rest. `n` is group count. [agg_df.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/agg_df.ipynb)
 
 ```python
+# Aggregate all numeric columns:
 pt.agg_df(penguins, "mean")
 pt.agg_df(penguins, ["sum", "mean", "n"])
-pt.agg_df(penguins, {"body_mass_g": "mean", "n": "n"})
-pt.agg_df(penguins, a=["mean", "n"], dropna=False)  # a= required when other keywords are used
+
+# Keyword arguments for specific columns (most Pythonic):
+pt.agg_df(penguins, body_mass_g="mean", flipper_length_mm="max", count="n")
+pt.agg_df(penguins, a=["mean", "n"], dropna=False)
 ```
 
 ## 6) Mutated columns — `mutate()`
 
-Create/overwrite columns from `qry()`-style `"new_col: expression"` entries, evaluated in order via pandas `eval()` — a plain formula per column, no lambda required. Column names in the expression must stay unquoted — quoting one turns it into a string literal instead of a column reference.
+Create/overwrite columns using clean keyword arguments (`col="expr"` or `col=callable`), evaluated in order via pandas `eval()` — a plain formula per column, no lambda required (though lambdas are supported if desired).
 
 ```python
-pt.mutate(penguins, "bmi: body_mass_g / bill_length_mm ** 2")
-pt.mutate(penguins, "heavy: body_mass_g > 4000, mass_kg: body_mass_g / 1000")  # multiple entries in one call
-pt.mutate(penguins, "mass_kg: body_mass_g / 1000, mass_lb: mass_kg * 2.20462")  # later entries can reference earlier ones
-pt.mutate(penguins, "is_adelie: species == 'Adelie'")  # string literals still need quotes
+# Kwargs syntax (most Pythonic)
+pt.mutate(penguins, bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")
+
+# Later entries can reference earlier ones in the same call
+pt.mutate(penguins, mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
+
+# Callables / lambdas and constants
+pt.mutate(penguins, bmi=lambda d: d.body_mass_g / d.bill_length_mm ** 2, status="active")
+
+# Spec strings and external files (for CLI & config pipelines)
+pt.mutate(penguins, "bmi = body_mass_g / bill_length_mm ** 2")
+pt.mutate(penguins, "@features.txt")
 ```
 
-A local variable from the calling scope can be referenced with an `@` prefix, same as pandas' own `eval()`/`query()`:
+A local variable from the calling scope can be referenced with an `@` prefix, same as pandas' own `eval()`/`query()`, or passed explicitly via `params=`:
 
 ```python
 threshold = 4000
-pt.mutate(penguins, "heavy: body_mass_g >= @threshold")
+pt.mutate(penguins, "heavy = body_mass_g >= @threshold")
+# or with explicit params:
+pt.mutate(penguins, "heavy = body_mass_g >= @thresh", params={"thresh": 4000})
 ```
 
-Three dplyr-style helpers are built in and compose freely with each other and with pandas methods:
+Four functional helpers are built in and compose freely with each other and with pandas methods:
 
 ```python
 # if_else(condition, true_value, false_value) — like dplyr's if_else()
-pt.mutate(penguins, "weight_class: if_else(body_mass_g > 4000, 'heavy', 'light')")
+pt.mutate(penguins, "weight_class = if_else(body_mass_g > 4000, 'heavy', 'light')")
 
-# case_when((cond1, val1), (cond2, val2), ..., default) — like dplyr's case_when()
-# checked in order, first match wins; a trailing bare argument is the optional
-# catch-all (like SQL ELSE); unmatched rows are NaN without it
+# case_when((cond1, val1), (cond2, val2), ..., default=...) — like dplyr's case_when()
+# checked in order, first match wins; supports tuples or flat alternating pairs
 pt.mutate(
     penguins,
-    "size_class: case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), 'small')",
+    "size_class = case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), default='small')",
 )
+# flat pairs also work:
+pt.mutate(penguins, "size_class = case_when(body_mass_g >= 4500, 'large', body_mass_g >= 3500, 'medium', default='small')")
+
+# coalesce(col1, col2, ..., default) — first non-null value per row
+pt.mutate(df, "contact = coalesce(mobile, home_phone, work_phone, 'N/A')")
 
 # map(column, {key: value, ...}[, default]) — recode through a lookup dict
-pt.mutate(penguins, "code: map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
+pt.mutate(penguins, "code = map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
 ```
 
 ## 7) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`

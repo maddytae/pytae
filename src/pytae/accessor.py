@@ -46,11 +46,11 @@ class PtAccessor:
     def select(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
         return _select(self._obj, *args, **kwargs)
 
-    def qry(self, conditions: dict[str, Any]) -> pd.DataFrame:
-        return _qry(self._obj, conditions)
+    def qry(self, conditions: dict[str, Any] | str | None = None, **kwargs: Any) -> pd.DataFrame:
+        return _qry(self._obj, conditions, **kwargs)
 
-    def mutate(self, spec: str) -> pd.DataFrame:
-        return _mutate(self._obj, spec)
+    def mutate(self, spec: str | dict[str, Any] | None = None, **kwargs: Any) -> pd.DataFrame:
+        return _mutate(self._obj, spec, **kwargs)
 
     def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
         return _sql(self._obj, query, **frames)

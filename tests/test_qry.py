@@ -122,3 +122,46 @@ def test_qry_unsupported_tuple_operator_lists_string_ops():
 def test_qry_unsupported_unary_operator():
     with pytest.raises(ValueError, match="Unsupported 1-element tuple operator"):
         pt.qry(_df(), {"species": ("badop",)})
+
+
+def test_qry_string_expression():
+    df = _df()
+    res = df.pt.qry("body_mass_g > 100000")
+    assert list(res["species"]) == ["Gentoo", "Chinstrap"]
+
+
+def test_qry_kwargs_operator():
+    df = _df()
+    res = df.pt.qry(body_mass_g="> 100000")
+    assert list(res["species"]) == ["Gentoo", "Chinstrap"]
+
+
+def test_qry_kwargs_tuple():
+    df = _df()
+    res = df.pt.qry(body_mass_g=(">", 100000))
+    assert list(res["species"]) == ["Gentoo", "Chinstrap"]
+
+
+def test_qry_kwargs_equality():
+    df = _df()
+    res = df.pt.qry(species="Adelie")
+    assert list(res.index) == [0, 3]
+
+
+def test_qry_dict_operator_string():
+    df = _df()
+    res = df.pt.qry({"body_mass_g": "> 100000"})
+    assert list(res["species"]) == ["Gentoo", "Chinstrap"]
+
+
+def test_qry_string_expr_equals_separator():
+    df = _df()
+    res1 = df.pt.qry("body_mass_g= > 100000")
+    res2 = df.pt.qry("body_mass_g=>100000")
+    res3 = df.pt.qry("body_mass_g = > 100000")
+    res4 = df.pt.qry("body_mass_g = 74125")
+    assert list(res1["species"]) == ["Gentoo", "Chinstrap"]
+    assert list(res2["species"]) == ["Gentoo", "Chinstrap"]
+    assert list(res3["species"]) == ["Gentoo", "Chinstrap"]
+    assert list(res4["species"]) == ["Adelie"]
+

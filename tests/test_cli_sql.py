@@ -148,3 +148,22 @@ def test_sql_as_first_op_satisfies_file_requirement(tmp_path):
     ])
     assert exit_code == 0
 
+
+def test_sql_load_from_file_cli(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [10, 20]}))
+    qfile = tmp_path / "query.txt"
+    qfile.write_text("select a, b from data where a > 1")
+
+    exit_code = cli.main([str(path), "-sql", f"@{qfile}", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+
+def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"col a": [1, 2], "col b": [10, 20]}))
+
+    exit_code = cli.main([str(path), "-sql", "select [col a], `col b` from data", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 2)"
+
+

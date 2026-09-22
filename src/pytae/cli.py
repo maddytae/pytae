@@ -162,8 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
                               "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
                               "not used for .parquet")
-    parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
-                         help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
+    parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD=NEW,...",
+                         help="rename columns during conversion, e.g. \"old_a=new_a,old_b=new_b\" (or old:new)")
     parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS;...",
                          help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
                               "';'-separated entries, each PATH=ALIAS optionally followed by "
@@ -174,14 +174,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
                          help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
-                         help="filter rows at this point in the pipeline using pytae qry(); dict entries, "
-                              "surrounding {} optional, e.g. \"'col': ('>', 5), 'other': ['a', 'b']\"")
+                         help="filter rows at this point in the pipeline using pytae qry(); conditions like "
+                              "\"col = 'val', col > 5\" or dict syntax, surrounding {} optional")
     parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
-                              "\"new_col: expression\" entries, comma-separated, quoting the key optional "
-                              "(matches -qry); the expression is pandas eval() syntax and column names in "
-                              "it must stay unquoted, e.g. "
-                              "\"bmi: body_mass_g / bill_length_mm ** 2\"")
+                              "\"new_col = expression\" entries, comma-separated, quoting the key optional; "
+                              "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
+                              "\"bmi = body_mass_g / bill_length_mm ** 2\"")
     parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
                          help="run a SQL query (via duckdb) against the current view at this point in "
                               "the pipeline; the view is queryable as table `data`; standard SQL identifier "

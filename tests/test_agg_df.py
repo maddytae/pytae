@@ -86,5 +86,14 @@ def test_agg_df_raises_when_n_collides_with_real_column():
         pt.agg_df(df, ["sum", "n"])
 
 
+def test_agg_df_column_kwargs():
+    df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30], "v2": [1, 2, 3]})
+    res = df.pt.agg_df(v1="mean", v2="max", count="n")
+    assert list(res.columns) == ["grp", "v1", "v2", "count"]
+    assert list(res["v1"]) == [15.0, 30.0]
+    assert list(res["v2"]) == [2, 3]
+    assert list(res["count"]) == [2, 1]
+
+
 if __name__ == '__main__':
     pytest.main()

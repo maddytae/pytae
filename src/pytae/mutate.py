@@ -3,6 +3,9 @@ from __future__ import annotations
 import ast
 import difflib
 import inspect
+import re
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -14,27 +17,45 @@ from pytae._text import unquote_name as _unquote_name
 
 def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
     """Split a mutate spec into raw (key, expression) text pairs on top-level
-    commas/colons, respecting quotes and nested (), [], {} — same tokenizing
-    convention as qry()'s conditions dict."""
+    commas/newlines/equals/colons, respecting quotes and nested (), [], {} — same tokenizing
+    convention as qry()'s conditions dict. Lines starting with # are stripped."""
+    lines = [line for line in raw.splitlines() if not line.strip().startswith("#")]
+    cleaned = "\n".join(lines)
     entries: list[tuple[str, str]] = []
-    for raw_entry in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
+    for raw_entry in _tokenize(cleaned, ",\n", keep_quotes=True, track_brackets=True):
         if not raw_entry:
             continue
+        # Support '=' as primary assignment operator (ignoring ==, <=, >=, !=)
+        m_eq = re.match(
+            r"^((?:[^\x22\x27\[\]=]|\x22[^\x22]*\x22|\x27[^\x27]*\x27|\[[^\]]*\])+?)(?<![<>!=])=(?!=)(.+)$",
+            raw_entry,
+        )
+        if m_eq:
+            entries.append((m_eq.group(1).strip(), m_eq.group(2).strip()))
+            continue
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
-        if len(pieces) < 2:
-            raise ValueError(f"invalid mutate spec: missing ':' in entry '{raw_entry}'")
-        entries.append((pieces[0], ":".join(pieces[1:])))
+        if len(pieces) >= 2:
+            entries.append((pieces[0].strip(), ":".join(pieces[1:]).strip()))
+            continue
+        raise ValueError(f"invalid mutate spec: missing ':' or '=' in entry '{raw_entry}'")
     return entries
 
 
-def parse_mutate_spec(raw: str) -> dict:
+def parse_mutate_spec(raw: str) -> dict[str, str]:
     """Parse a mutate spec string like "bmi: body_mass_g / bill_length_mm ** 2,
     mass_kg: body_mass_g / 1000" into an ordered {new_col: expression} dict.
+    If raw starts with '@', it reads the spec from the specified file path.
     Quoting the key is optional (matches qry()); the expression is kept as raw
     text — column names inside it must stay unquoted, since eval() treats a
     quoted name as a string literal, not a column reference."""
     stripped = raw.strip()
-    expressions: dict = {}
+    if stripped.startswith("@"):
+        path = stripped[1:].strip()
+        file_path = Path(path)
+        if not file_path.is_file():
+            raise FileNotFoundError(f"mutate spec file not found: '{path}'")
+        stripped = file_path.read_text(encoding="utf-8").strip()
+    expressions: dict[str, str] = {}
     for key_raw, expr_raw in _split_mutate_entries(stripped):
         key = _unquote_name(key_raw)
         if not key:
@@ -89,36 +110,156 @@ def _if_else(condition, true_value, false_value):
     return pd.Series(result, index=_result_index(condition, true_value, false_value))
 
 
-def _case_when(*entries):
-    """case_when((cond, value), ..., [default]) helper injected into the fallback
+def _case_when(*entries, default=None):
+    """case_when((cond, value), ..., [default=...]) helper injected into the fallback
     eval namespace -> np.select(...), returned as a Series so it chains and
-    composes. Each positional arg is a (condition, value) pair checked in order
-    (first match wins); a trailing non-tuple arg is the catch-all default
-    (unmatched rows are NaN if omitted)."""
+    composes. Each positional arg can be a (condition, value) pair checked in order
+    (first match wins); a trailing non-tuple arg or `default=` keyword argument
+    is the catch-all default (unmatched rows are NaN if omitted).
+    Also supports flat alternating arguments: case_when(c1, v1, c2, v2, default=d)."""
     if not entries:
         raise ValueError("case_when expects at least one (condition, value) pair")
-    conditions, choices, default = [], [], None
-    for i, entry in enumerate(entries):
-        if isinstance(entry, tuple):
-            if len(entry) != 2:
-                raise ValueError(f"case_when pair must be (condition, value), got a {len(entry)}-tuple")
-            condition, value = entry
-            conditions.append(condition)
-            choices.append(value)
-        elif i == len(entries) - 1:
-            default = entry
-        else:
-            raise ValueError("case_when default (a non-tuple) must be the last argument")
+    conditions, choices = [], []
+    has_tuple = any(isinstance(e, tuple) for e in entries)
+    if not has_tuple:
+        flat_entries = list(entries)
+        if len(flat_entries) % 2 == 1:
+            if default is not None:
+                raise ValueError("case_when received an odd number of flat arguments and an explicit default=")
+            default = flat_entries.pop()
+        if len(flat_entries) < 2:
+            raise ValueError("case_when needs at least one (condition, value) pair")
+        for i in range(0, len(flat_entries), 2):
+            conditions.append(flat_entries[i])
+            choices.append(flat_entries[i + 1])
+    else:
+        for i, entry in enumerate(entries):
+            if isinstance(entry, tuple):
+                if len(entry) != 2:
+                    raise ValueError(f"case_when pair must be (condition, value), got a {len(entry)}-tuple")
+                condition, value = entry
+                conditions.append(condition)
+                choices.append(value)
+            elif i == len(entries) - 1:
+                if default is not None:
+                    raise ValueError("case_when default specified both positionally and via keyword")
+                default = entry
+            else:
+                raise ValueError("case_when default (a non-tuple) must be the last argument")
     if not conditions:
         raise ValueError("case_when needs at least one (condition, value) pair")
     try:
-        result = np.select(conditions, choices, default=default)  # type: ignore[arg-type]
+        result = np.select(conditions, choices, default=default)
     except TypeError:
         # incompatible dtypes across choices/default -- object arrays accept anything
         object_choices = [np.asarray(choice, dtype=object) for choice in choices]
         object_default = default if default is None else np.asarray(default, dtype=object)
         result = np.select(conditions, object_choices, default=object_default)  # type: ignore[arg-type]
     return pd.Series(result, index=_result_index(*conditions, *choices))
+
+
+def _coalesce(*candidates):
+    """coalesce(col1, col2, ..., default) helper injected into the fallback eval namespace:
+    returns the first non-null value for each row, like SQL COALESCE() or dplyr::coalesce()."""
+    if not candidates:
+        raise ValueError("coalesce expects at least one argument")
+    res = None
+    for cand in candidates:
+        if isinstance(cand, pd.Series):
+            res = cand.copy() if res is None else res.combine_first(cand)
+        else:
+            res = res.fillna(cand) if res is not None else pd.Series(cand)
+    idx = _result_index(*candidates)
+    if res is not None and idx is not None:
+        res.index = idx
+    return res
+
+
+def _normalize_col_brackets(expr: str, columns: set[str]) -> str:
+    """Rewrite [col] to `col` when col is a known DataFrame column, outside string literals."""
+    out_chars: list[str] = []
+    quote = None
+    i, n = 0, len(expr)
+    while i < n:
+        ch = expr[i]
+        if quote is not None:
+            out_chars.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out_chars.append(expr[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            out_chars.append(ch)
+            i += 1
+            continue
+        if ch == "[":
+            j = expr.find("]", i + 1)
+            if j != -1:
+                inner = expr[i + 1 : j]
+                if inner in columns:
+                    out_chars.append(f"`{inner}`")
+                    i = j + 1
+                    continue
+        out_chars.append(ch)
+        i += 1
+    return "".join(out_chars)
+
+
+def _rewrite_fallback_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[str, str]]:
+    """Rewrite `col` and [col] for known columns to synthetic identifiers like __col_safe_0__
+    for the plain Python eval() fallback, outside string literals."""
+    out_chars: list[str] = []
+    quote = None
+    i, n = 0, len(expr)
+    mapping: dict[str, str] = {}
+    col_idx = 0
+    while i < n:
+        ch = expr[i]
+        if quote is not None:
+            out_chars.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out_chars.append(expr[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            out_chars.append(ch)
+            i += 1
+            continue
+        if ch == "`":
+            j = expr.find("`", i + 1)
+            if j != -1:
+                inner = expr[i + 1 : j]
+                if inner in columns:
+                    alias = f"__col_safe_{col_idx}__"
+                    col_idx += 1
+                    mapping[alias] = inner
+                    out_chars.append(alias)
+                    i = j + 1
+                    continue
+        if ch == "[":
+            j = expr.find("]", i + 1)
+            if j != -1:
+                inner = expr[i + 1 : j]
+                if inner in columns:
+                    alias = f"__col_safe_{col_idx}__"
+                    col_idx += 1
+                    mapping[alias] = inner
+                    out_chars.append(alias)
+                    i = j + 1
+                    continue
+        out_chars.append(ch)
+        i += 1
+    return "".join(out_chars), mapping
 
 
 def _strip_at_refs(expr: str) -> tuple[str, set[str]]:
@@ -196,24 +337,29 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     otherwise look in the wrong place.
 
     pandas' eval() can't parse some Python constructs (notably dict literals,
-    e.g. `species.map({'a': 1})`, and string slicing like `col.str[:8]`); when
-    it rejects one (NotImplementedError, or ValueError for unsupported
-    functions such as slicing) we fall back to a plain Python eval() with each
-    column exposed as a Series plus the caller's scope, so natural pandas method
-    chains work. `@name` refs are rewritten to the caller-scope value so they
-    keep working in the fallback, and `and`/`or`/`not` are rewritten to
-    `&`/`|`/`~` so boolean conditions on a Series work. UndefinedVariableError
-    (an unknown column) is a NameError subclass, so it is not caught here and
-    still surfaces mutate()'s typo suggestion."""
+    e.g. `species.map({'a': 1})`, string slicing like `col.str[:8]`, and custom
+    helpers like `if_else`, `case_when`, `coalesce`); when it rejects one
+    (NotImplementedError, ValueError, or SyntaxError) we fall back to a plain
+    Python eval() with each column exposed as a Series plus the caller's scope,
+    so natural pandas method chains work. Bracketed `[col]` and backtick `col`
+    names are safely mapped to valid identifiers in fallback mode. `@name` refs
+    are rewritten to the caller-scope value, and `and`/`or`/`not` are rewritten
+    to `&`/`|`/`~` so boolean conditions on a Series work."""
+    known_cols = set(out.columns)
+    normalized = _normalize_col_brackets(expr, known_cols)
     try:
-        return out.eval(expr, local_dict=local_dict, global_dict=global_dict)
-    except (NotImplementedError, ValueError):
-        rewritten, at_names = _strip_at_refs(expr)
+        return out.eval(normalized, local_dict=local_dict, global_dict=global_dict)
+    except (NotImplementedError, ValueError, SyntaxError):
+        safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
+        rewritten, at_names = _strip_at_refs(safe_expr)
         namespace = {**global_dict, **local_dict}
-        namespace.update({col: out[col] for col in out.columns})
+        namespace.update({col: out[col] for col in out.columns if col.isidentifier()})
+        for alias, orig_col in col_map.items():
+            namespace[alias] = out[orig_col]
         namespace["map"] = _map_values  # prefix map(col, {...}[, default]) form
         namespace["if_else"] = _if_else
         namespace["case_when"] = _case_when
+        namespace["coalesce"] = _coalesce
         for name in at_names:  # @-refs mean caller-scope vars, so they win over columns
             if name in local_dict:
                 namespace[name] = local_dict[name]
@@ -224,49 +370,54 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         return eval(_compile_fallback(rewritten), namespace)  # noqa: S307 - spec is developer-authored, same trust as pandas eval
 
 
-def mutate(df: pd.DataFrame, spec: str) -> pd.DataFrame:
+def mutate(
+    df: pd.DataFrame,
+    spec: str | dict[str, Any] | None = None,
+    *,
+    params: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> pd.DataFrame:
     """
-    Create or overwrite columns from a qry()-style spec string, each evaluated in
-    order via pandas eval() — no lambda needed for plain arithmetic/boolean column
-    assignments (e.g. "bmi: body_mass_g / bill_length_mm ** 2").
+    Create or overwrite columns from a qry()-style spec string, dict, kwargs, or
+    callables, each evaluated in order via pandas eval() — no lambda needed for plain
+    arithmetic/boolean column assignments (e.g. "bmi: body_mass_g / bill_length_mm ** 2").
 
     Parameters:
     -----------
     df : pd.DataFrame
         The DataFrame to mutate columns on.
-    spec : str
-        Entries like "new_col: expression", comma-separated; quoting the key is
-        optional (matches qry()). The expression is normally pandas eval() syntax
-        (e.g. "body_mass_g / bill_length_mm ** 2") — column names in it must stay
-        unquoted, since quoting one turns it into a string literal instead of a
-        column reference. Later entries may reference columns derived by
+    spec : str | dict | None, default None
+        Entries like "new_col: expression", comma- or newline-separated; quoting
+        the key is optional (matches qry()). Can also be passed as a dictionary
+        mapping column names to expressions or callables, or a file path prefixed
+        with '@', e.g. "@transforms.txt".
+        The expression is normally pandas eval() syntax (e.g. "body_mass_g / bill_length_mm ** 2")
+        — column names in it must stay unquoted, since quoting one turns it into a string
+        literal instead of a column reference. Later entries may reference columns derived by
         earlier entries in the same call. A local variable from the caller's
-        scope can be referenced with an `@` prefix, e.g. "flag: body_mass_g >=
-        @threshold" (matches pandas eval()/query()'s own `@` convention).
+        scope can be referenced with an `@` prefix, e.g. "flag: body_mass_g >= @threshold"
+        (matches pandas eval()/query()'s own `@` convention).
 
-        Three dplyr-style helpers are available as ordinary function calls, so
-        they compose with each other and with any pandas method chain:
+        Four functional helpers are available as ordinary function calls:
           - "result: if_else(condition, true_value, false_value)" — like R's
             `if_else()`. Backed by `np.where()`.
-          - "result: case_when((cond1, val1), (cond2, val2), ..., default)" —
+          - "result: case_when((cond1, val1), (cond2, val2), ..., default=...)" —
             like R's `case_when()`. Each (condition, value) pair is checked in
-            order, first match wins; a trailing bare argument is an optional
-            catch-all default (like SQL ELSE). Unmatched rows are NaN if no
-            default is given. Backed by `np.select()`.
+            order, first match wins; a trailing bare argument or `default=` keyword
+            is an optional catch-all default (like SQL ELSE). Alternating flat pairs
+            also work: `case_when(c1, v1, c2, v2, default=...)`. Backed by `np.select()`.
+          - "result: coalesce(col1, col2, ..., default)" — like SQL COALESCE() or
+            dplyr::coalesce(); returns the first non-null value per row.
           - "result: map(column, {key: value, ...}[, default])" — recode a
             column through a lookup, like pandas `Series.map()`. Keys with no
             match become `default` (NaN if omitted).
         String outcomes need quotes (e.g. `'Pass'`); column names stay unquoted.
-        Conditions are vectorized: prefer `and`/`or`/`not` (the bitwise
-        `&`/`|`/`~` also work), parenthesizing when mixing with comparisons.
-        Because the helpers are ordinary calls they nest and chain freely, e.g.
-        "x: if_else(m >= 4000, map(s, {'G': 'g'}), 'small').str.upper()".
-
-        Any other expression is evaluated with pandas eval(), falling back to a
-        plain Python eval() (with each column exposed as a Series) for constructs
-        pandas eval() can't parse — dict literals, string slicing like
-        `col.str[:8]`, and the helper calls above — so natural pandas method
-        chains work, e.g. "code: species.map({'Adelie': 'A'}).fillna('X')".
+        Columns with spaces can be written as `[col a]` or `col a`.
+    params : dict, optional
+        Explicit dictionary of parameters/variables to make available for `@name` references.
+    **kwargs : Any
+        Additional column expressions or callables passed as keyword arguments,
+        e.g. `df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", rank=1)`.
 
     Returns:
     --------
@@ -280,6 +431,12 @@ def mutate(df: pd.DataFrame, spec: str) -> pd.DataFrame:
     >>> import pytae as pt
     >>> df = pd.DataFrame({'body_mass_g': [3000.0, 4000.0], 'bill_length_mm': [30.0, 40.0]})
     >>> df.pt.mutate("bmi: body_mass_g / bill_length_mm ** 2")
+       body_mass_g  bill_length_mm       bmi
+    0       3000.0            30.0  3.333333
+    1       4000.0            40.0  2.500000
+
+    >>> # kwargs syntax
+    >>> df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2")
        body_mass_g  bill_length_mm       bmi
     0       3000.0            30.0  3.333333
     1       4000.0            40.0  2.500000
@@ -318,20 +475,44 @@ def mutate(df: pd.DataFrame, spec: str) -> pd.DataFrame:
         if not name.startswith("pytae"):
             break
         caller_frame = caller_frame.f_back
-    local_dict = caller_frame.f_locals if caller_frame is not None else {}
+    local_dict = caller_frame.f_locals.copy() if caller_frame is not None else {}
     global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
 
-    expressions = parse_mutate_spec(spec)
+    if params is not None:
+        local_dict.update(params)
+
+    expressions: dict[str, Any] = {}
+    if isinstance(spec, str):
+        expressions.update(parse_mutate_spec(spec))
+    elif isinstance(spec, dict):
+        expressions.update(spec)
+    elif spec is not None:
+        raise TypeError(f"mutate spec must be str or dict, got {type(spec).__name__}")
+
+    if kwargs:
+        expressions.update(kwargs)
+
+    if not expressions:
+        raise ValueError('mutate expects entries like "col: expr"')
+
     out = df.copy()
     for col, expr in expressions.items():
         try:
-            out[col] = _eval(out, expr, local_dict, global_dict)
+            if callable(expr):
+                out[col] = expr(out)
+            elif isinstance(expr, str):
+                out[col] = _eval(out, expr, local_dict, global_dict)
+            else:
+                out[col] = expr
         except NameError as exc:  # UndefinedVariableError (pandas) and plain NameError (fallback)
             parts = str(exc).split("'")
             missing = parts[1] if len(parts) > 1 else ""
             close = difflib.get_close_matches(missing, list(out.columns), n=1) if missing else []
-            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            hint = (
+                f" (did you mean '{close[0]}'?)"
+                if close
+                else f" (if you intended a string literal, quote it like '{missing}')"
+            )
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
-
