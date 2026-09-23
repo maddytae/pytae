@@ -22,7 +22,7 @@ pytae data.parquet -sql "select species, avg(body_mass_g) from data group by spe
 pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
 ```
 
-See [docs/FLAGS.md](https://github.com/maddytae/pytae/blob/master/docs/FLAGS.md) for which flag to use, [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full reference, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
+See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full CLI reference and flag guide, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
 
 ## Plotting
 
@@ -52,7 +52,7 @@ pt.select(penguins, "species", contains="bill")
 )
 ```
 
-- **Filtering** — `pt.qry()`: keyword filters (equality, lists, `in`/`not in`, comparisons, intervals)
+- **Filtering** — `pt.qry()` / `df.pt.qry()`: string expressions, dicts, or keyword filters (equality, lists, `in`/`not in`, comparisons, intervals)
 - **Selection** — `pt.select()`: columns by name, regex, dtype, or name pattern
 - **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, `if_else()`, `case_when()`, `map()`
 - **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns

@@ -108,6 +108,16 @@ class _Pipeline:
             self._pending_exact = remaining
         return None
 
+    def apply_rename(self, mapping: dict[str, str]) -> str | None:
+        """Apply one -rename mapping to the current view. Returns an error message or None."""
+        available = self._available_columns()
+        unknown = [c for c in mapping if c not in available]
+        if unknown:
+            return unknown_columns_message("-rename", unknown, available)
+        df = self.dataframe()
+        self._df = df.rename(columns=mapping)
+        return None
+
     def apply_qry(self, conditions: dict) -> str | None:
         """Apply one -qry spec to the current view. Returns an error message or None."""
         df = self.dataframe()

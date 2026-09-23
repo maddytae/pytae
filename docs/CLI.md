@@ -1,10 +1,9 @@
 # pytae — CLI Reference
 
-Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's library verbs — `pt.qry()`, `pt.select()`, `pt.agg_df()`, `pt.group_x()`, `pt.handle_missing()`, `pt.long()`, `pt.wide()` — plus CLI-native operations like value replacement (`-replace_values`), header cleanup (`-clean_columns`), and multi-file merges/concats (`-file`/`-merge`/`-concat`). Start with [Which flag?](FLAGS.md) if you just need the right switch.
+Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`). The CLI mirrors pytae's library verbs — `pt.qry()`, `pt.select()`, `pt.agg_df()`, `pt.group_x()`, `pt.handle_missing()`, `pt.long()`, `pt.wide()` — plus CLI-native operations like value replacement (`-replace_values`), header cleanup (`-clean_columns`), column renaming (`-rename`), and multi-file merges/concats (`-file`/`-merge`/`-concat`).
 
 ## Contents
 
-- [Which flag?](FLAGS.md)
 - [Getting started](#getting-started)
   - [Basics](#basics)
   - [Sample datasets](#sample-datasets)
@@ -21,8 +20,9 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Header cleanup — `-clean_columns`](#clean-columns)
   - [Unique rows — `-unique`](#unique)
   - [Reshape — `-long` / `-wide`](#reshape)
+  - [Column renaming — `-rename`](#rename)
+  - [Conversion & file I/O — `-convert`](#convert)
   - [Multi-file operations — `-file` / `-merge` / `-concat`](#merge)
-  - [Conversion — `-convert` / `-rename`](#convert)
 - [Pandas-mirrored operations](#pandas-mirrored-operations)
   - [Row filtering — `-query`](#query)
   - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
@@ -38,11 +38,17 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Display extras](#display-extras)
   - [Recipes](#recipes)
   - [Flag reference](#flag-reference)
+- [Which flag should I use?](#which-flag)
+  - [Decision table](#decision-table)
+  - [Polarity chaining: `-select` vs `-drop`](#polarity-chaining)
+  - [Standard parameter keys: `c=`, `v=`, `a=`](#pytae-kwargs)
+
+---
 
 <a id="getting-started"></a>
 ## Getting started
 
-How the CLI pipeline works, and how to grab a real dataset to try it on.
+The `pytae` CLI brings the expressive power of Python and SQL directly to the command line. By chaining intuitive flags that mirror library operations and SQL queries, you can inspect, filter, transform, and convert datasets with very little friction from raw data to results—without needing to write boilerplate code or Python scripts.
 
 ---
 
@@ -213,7 +219,14 @@ Same quoting as `-select` names (a space is not a separator; quote a name only t
 pytae's keyword-based filter, `pt.qry()` — safer than `-query` for odd strings (values with spaces or special characters). **Narrows rows** at this point in the pipeline. Put it **before** `-select` / `-drop` if you need a column you then drop. Can be combined with [`-query`](#query) (stacks sequentially — AND on the remaining rows).
 
 ```python
+# Keyword filtering:
 pt.qry(df, species="Adelie", body_mass_g="> 3500")
+
+# Positional string expressions or dicts (convenient for columns with spaces):
+df.pt.qry("bill length mm > 40", species="Adelie")
+df.pt.qry({"bill length mm": "> 40"})
+
+# Compose with other operations:
 pt.select(pt.qry(df, species="Adelie"), "species", "body_mass_g")
 ```
 
@@ -503,20 +516,32 @@ pytae tall.csv -wide
 
 ---
 
-<a id="merge"></a>
-### Multi-file operations — `-file` / `-merge` / `-concat`
+<a id="rename"></a>
+### Column renaming — `-rename`
 
-Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-concat`/`-sql` are a separate mode for combining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MULTI_FILE.md](CLI_MULTI_FILE.md)** for the full reference and examples.
+`-rename` renames columns anywhere in the pipeline using `old:new` translation mappings (colon-separated, matching dictionary syntax `{"old": "new"}`). Multiple mappings are comma-separated. Spaces in column names are supported directly without internal quoting:
 
 ```bash
-pytae -file "data1.parquet=df1; data2.parquet=df2" \
-      -merge "left=df1,right=df2,on='col a:cola,colb:colb',how=inner"
+# Rename in-place and inspect the output
+pytae penguins.parquet -rename "island:location" -head
+
+# Multiple renames, including names with spaces
+pytae data.parquet -rename "bill length mm:bill_len,body mass g:body_mass" -cols
+
+# Chain with other operations
+pytae penguins.parquet -rename "species:penguin_species" -select "penguin_species,island" -head 5
+
+# Rename during file conversion
+pytae penguins.parquet -rename "island:location" -convert -o renamed.parquet
 ```
+
+- In Python: use pandas' `df.rename(columns={"old": "new"})` within an accessor chain, e.g. `df.rename(columns={"island": "location"}).pt.select(...)`.
+- Colon (`:`) is strictly required for translation mappings; `=` is rejected with a helpful message.
 
 ---
 
 <a id="convert"></a>
-### Conversion — `-convert` / `-rename`
+### Conversion & file I/O — `-convert`
 
 Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the source. Cannot write `.sas7bdat`.
 
@@ -549,6 +574,18 @@ pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      #
 
 > **`-encoding`:** default is `utf-8` for `.sas7bdat`, `latin-1` for `.dat`, and pandas' own inference for `.csv`/`.txt` (usually `utf-8`). If the file can't be decoded with the current encoding, pytae reports the
 > failing encoding and suggests common alternatives to try (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`).
+
+---
+
+<a id="merge"></a>
+### Multi-file operations — `-file` / `-merge` / `-concat`
+
+Everything above operates on **one** file (the positional `path`). `-file` + `-merge`/`-concat`/`-sql` are a separate mode for combining **two or more named files** into a single pipeline, replacing the positional `path` entirely. See **[docs/CLI_MULTI_FILE.md](CLI_MULTI_FILE.md)** for the full reference and examples.
+
+```bash
+pytae -file "data1.parquet=df1; data2.parquet=df2" \
+      -merge "left=df1,right=df2,on='col a:cola,colb:colb',how=inner"
+```
 
 ---
 
@@ -784,7 +821,7 @@ Some flags/keys are thin passthroughs to standard pandas methods and parameter n
 | Flag / key | pytae convention |
 |---|---|
 | `-qry` | keyword filter syntax (`col=('>', 5)`, column-name quotes optional) — pytae's own `qry()`, not a pandas method |
-| `-sql` | real SQL via duckdb (not pandas) — the current view is registered as table `df` only (no file-derived alias) |
+| `-sql` | real SQL via duckdb (not pandas) — the current view is registered as table `data` only (no file-derived alias) |
 | `-select`'s `contains=` / `startswith=` / `endswith=` / `regex=` / `dtype=` / `exclude_dtype=` | pytae's own column-picking vocabulary; no equivalent shorthand in plain pandas |
 | `-agg_df` | auto-detects group columns (every non-numeric column becomes a group key) — pandas' `groupby()` always requires you to name them |
 | `-group_x` | broadcasts a group aggregate to every row via `group=`/`v=`/`a=` keys — wraps pandas `transform()` as a ready-made verb |
@@ -935,7 +972,7 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 | `-qry CONDITIONS` | Filter rows at this point (`pt.qry()`); surrounding `{}` and column-name quotes optional |
 | `-mutate SPEC` | Create/overwrite columns at this point (`pt.mutate()`); `"new_col=expression"` entries, same tokenizer/key-quoting rules as `-qry` (no surrounding `{}`), but the value is a pandas `eval()` expression, not a literal |
 | `-query EXPR` | Filter rows at this point (`df.query()`) |
-| `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `df` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
+| `-sql QUERY` | Run a SQL query at this point via duckdb; view is table `data` (in `-file` mode, each alias is also queryable, and may be used instead of `-merge`/`-concat`) |
 | `-replace_values KEY=VALUE,...` | Replace values at this point (`pt.replace_values()`); `v=` required, `c=`/`exact=` optional |
 | `-clean_columns KEY=VALUE,...` | Clean header names, in order strip -> strip_special -> squeeze -> fill -> case -> dedupe |
 | `-sort_by SPEC` | Sort rows by a comma-separated column list, optionally ending with `asc`/`desc` |
@@ -971,7 +1008,7 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/dat (not sas7bdat) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; dat default: latin-1; csv/txt: pandas infer) |
-| `-rename OLD:NEW,...` | Rename columns on convert |
+| `-rename OLD:NEW,...` | Rename columns anywhere in pipeline or during convert |
 
 **Output formatting**
 
@@ -981,3 +1018,70 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 | `-round N` | Round numeric print/copy |
 | `-to_clip` | Copy last result; suppress stdout |
 | `-progress` | Progress for large converts |
+
+---
+
+<a id="which-flag"></a>
+## Which flag should I use?
+
+Use this quick-decision guide to find the right flag for your task. Each flag links directly to its detailed section in this document.
+
+<a id="decision-table"></a>
+### Decision table
+
+| Task | Flag | Notes |
+|---|---|---|
+| **Pick columns** | [`-select`](#select) | Union of names, slices (`a:b`), patterns (`contains=`, `regex=`), or `dtype=`; [`-drop`](#drop) only subtracts names |
+| **Drop columns** | [`-drop`](#drop) | Subtracts exact column names and preserves order; patterns and dtypes stay on [`-select`](#select) |
+| **Rename columns** | [`-rename`](#rename) | Uses `old:new` mapping; works anywhere in pipeline or during [`-convert`](#convert) |
+| **Clean messy headers** | [`-clean_columns`](#clean-columns) | Standardizes header names (strip, squeeze, case, fill, dedupe); for cell values use [`-replace_values`](#replace-values) |
+| **Filter rows (pytae)** | [`-qry`](#qry) | Uses `col=condition` or expressions (`body_mass_g > 3500`); handles spaces and special characters safely |
+| **Filter rows (pandas)** | [`-query`](#query) | Direct passthrough to pandas `df.query()` (numexpr syntax) |
+| **Compute / mutate columns** | [`-mutate`](#mutate) | Uses `col=expr`; supports `@specs.txt`, `[col a]`, `if_else`, `case_when`, `coalesce`, `map` |
+| **Run SQL queries** | [`-sql`](#sql) | Queries current view as table `data` via DuckDB; supports `@query.txt`, `[col a]`, zero-copy scans |
+| **Replace cell values** | [`-replace_values`](#replace-values) | Swaps cell contents via `v='old:new'`; distinct from header [`-rename`](#rename) |
+| **Fill missing values (NA)** | [`-handle_missing`](#handle-missing) | Replaces NA with `.` / `0`; [`-dropna`](#flag-reference) controls NA keys in aggregations |
+| **Sort rows** | [`-sort_by`](#sort-by) | Comma-separated column list with optional `asc`/`desc` (e.g. `body_mass_g desc`) |
+| **Deduplicate rows** | [`-unique`](#unique) | Drops duplicate rows; [`-drop`](#drop) is for columns |
+| **Aggregate (auto groups)** | [`-agg_df`](#agg-df) | Auto-groups by all non-numeric columns and aggregates numerics (e.g. `-agg_df mean`) |
+| **Aggregate (explicit groups)** | [`-group_by`](#group-by-agg) + [`-agg`](#group-by-agg) | Explicit group columns; supports custom output names via `as=` and standard pandas aggfuncs |
+| **Broadcast group stat** | [`-group_x`](#group-x) | Appends group aggregate column to every row without collapsing (like pandas `transform()`) |
+| **Melt (wide → long)** | [`-long`](#reshape) | Unpivots numeric columns into rows (`c=metric,v=reading`); id columns stay |
+| **Pivot (long → wide)** | [`-wide`](#reshape) | Reshapes long column into headers (`c=`, `v=`, `a=`); [`-crosstab`](#crosstab) is for count/mean matrices |
+| **Cross-tabulate** | [`-crosstab`](#crosstab) | Two-way contingency matrix; supports `normalize=` percentages and `margins=` totals |
+| **Frequency counts** | [`-value_counts`](#value-counts) | Counts unique combinations across current working columns (pair with [`-select`](#select)) |
+| **Peek at rows** | [`-head`](#listing) / [`-tail`](#listing) / [`-sample`](#listing) | View first, last, or random sampled rows (default 5 rows; supports `-seed` and `-frac`) |
+| **Schema & summary** | [`-shape`](#listing) / [`-cols`](#listing) / [`-dtype`](#listing) / [`-nulls`](#listing) / [`-info`](#listing) / [`-describe`](#listing) | Terminal inspection flags (cannot be followed except by [`-to_clip`](#display-extras)) |
+| **Convert file format** | [`-convert`](#convert) | Converts between parquet, csv, txt, dat (and reads sas7bdat) via `-o` |
+| **Combine multiple files** | [`-file`](#merge) + [`-merge`](#merge) / [`-concat`](#merge) / [`-sql`](#sql) | Multi-file mode replacing positional path; see [CLI_MULTI_FILE.md](CLI_MULTI_FILE.md) |
+
+<a id="polarity-chaining"></a>
+### Polarity chaining: `-select` vs `-drop`
+
+Compose polarities by **chaining**, not by mixing tokens:
+
+```bash
+# Pick numeric columns plus species, then drop body_mass_g
+pytae penguins.parquet -select "dtype=numeric,species" -drop "body_mass_g" -cols
+
+# Filter rows first, then drop the filtering column
+pytae penguins.parquet -qry "species = 'Adelie'" -drop "species" -head
+```
+
+- [`-select`](#select) picks (and may reorder) columns.
+- [`-drop`](#drop) subtracts specific columns and preserves existing column order.
+
+<a id="pytae-kwargs"></a>
+### Standard parameter keys: `c=`, `v=`, `a=`
+
+Pytae standardizes common reshape and transformation roles across operations into three simple letters:
+
+| Key | Meaning | Flags |
+|---|---|---|
+| `c=` | **Column role** (melt/pivot dimension, or replace column scope) | [`-long`](#reshape), [`-wide`](#reshape), [`-replace_values`](#replace-values) |
+| `v=` | **Value column** (or the value replacement mapping) | [`-long`](#reshape), [`-wide`](#reshape), [`-group_x`](#group-x), [`-replace_values`](#replace-values) |
+| `a=` | **Aggregation** function (`mean`, `sum`, `n`, etc.) | [`-wide`](#reshape), [`-group_x`](#group-x), [`-agg_df`](#agg-df) |
+
+- When the argument **is** the column list itself, column names stay bare without `c=` ([`-select`](#select), [`-drop`](#drop), [`-group_by`](#group-by-agg), [`-sort_by`](#sort-by)).
+- Flags mirroring pandas keep pandas parameter names: [`-agg`](#group-by-agg) uses `column=`, `aggfunc=`, and `as=`; [`-crosstab`](#crosstab) uses `index=`, `columns=`, `values=`, and `aggfunc=`.
+- In Python code, the same operations are available via `import pytae as pt` (e.g. `pt.select(df, ...)` or `df.pt.select(...)`). CLI flags remain identical.

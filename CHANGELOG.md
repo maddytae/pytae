@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-09-23
+
+### Added
+- Flexible argument support in `pt.qry()` and `df.pt.qry()`: accepts positional string expressions (e.g. `df.pt.qry("bill length mm > 40")`) and plain dictionaries (e.g. `df.pt.qry({"bill length mm": "> 40"})`) for querying columns with spaces without dictionary unpacking, alongside `**kwargs`.
+- First-class CLI `-rename` support: can be used standalone or anywhere in a pipeline without requiring `-convert`.
+
+### Changed
+- Consolidated `docs/FLAGS.md` into `docs/CLI.md` with an integrated "Which flag should I use?" decision guide, polarity chaining patterns, and `c=`/`v=`/`a=` parameter conventions.
+
 ## [3.5.0] - 2026-09-22
 
 ### Breaking Changes

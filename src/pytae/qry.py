@@ -8,6 +8,9 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
+from pytae.cli_parsing import _split_qry_entries
+
 # Dictionary mapping string operators to their corresponding functions
 ops = {
     ">=": operator.ge, "<=": operator.le,
@@ -29,18 +32,59 @@ unary_ops = {
     "notna": lambda s: s.notna(),
 }
 
+
+def _parse_qry_string(raw: str) -> list[tuple[str, Any]]:
+    stripped = raw.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        stripped = stripped[1:-1]
+    try:
+        entries = _split_qry_entries(stripped)
+    except SystemExit as exc:
+        raise ValueError(str(exc)) from exc
+    pairs: list[tuple[str, Any]] = []
+    for key_raw, value_raw in entries:
+        key = _unquote_name(key_raw)
+        if not key:
+            raise ValueError("invalid qry conditions: empty column name")
+        if not value_raw:
+            raise ValueError(f"invalid qry conditions: '{key}' has no value")
+        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", value_raw)
+        if op_match:
+            op = op_match.group(1)
+            sub_raw = op_match.group(2).strip()
+            try:
+                sub_val = ast.literal_eval(sub_raw)
+            except (ValueError, SyntaxError):
+                sub_val = _unquote_name(sub_raw)
+            pairs.append((key, (op, sub_val)))
+            continue
+        try:
+            value = ast.literal_eval(value_raw)
+        except (ValueError, SyntaxError):
+            value = _unquote_name(value_raw)
+        pairs.append((key, value))
+    if not pairs:
+        raise ValueError("qry() expects at least one condition")
+    return pairs
+
 def qry(
     df: pd.DataFrame,
     *args: Any,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
-    Filters a DataFrame based on keyword argument conditions.
+    Filters a DataFrame based on string expressions, dictionary mappings, or keyword arguments.
 
-    This method provides a clean, Pythonic way to filter rows in a DataFrame using keyword
-    arguments (e.g. df.pt.qry(species='Adelie', body_mass_g='> 5000')). Conditions can include
-    direct values, lists of values, tuple-based comparisons (e.g., ('>', 100)), tuple-based
-    list membership (e.g., ('in', ['a', 'b'])), or interval conditions (e.g., '(a,b)', '[a,b]').
+    This method provides a clean, Pythonic way to filter rows in a DataFrame. Conditions can be
+    passed as:
+    - String expressions matching the CLI -qry syntax (e.g. df.pt.qry("body_mass_g > 5000"),
+      df.pt.qry("bill length mm > 40"))
+    - Plain dictionaries (e.g. df.pt.qry({"bill length mm": "> 40", "species": "Adelie"}))
+    - Keyword arguments (e.g. df.pt.qry(species='Adelie', body_mass_g='> 5000'))
+    - Any mix of the above (e.g. df.pt.qry("bill length mm > 40", species="Adelie"))
+
+    Conditions can include direct values, lists of values, tuple-based comparisons (e.g., ('>', 100)),
+    tuple-based list membership (e.g., ('in', ['a', 'b'])), or interval conditions (e.g., '(a,b)', '[a,b]').
     It supports both numeric and non-numeric columns. Index is not reset for the returned
     DataFrame since querying should not alter indexing.
 
@@ -48,6 +92,11 @@ def qry(
     -----------
     df : pd.DataFrame
         The DataFrame to filter.
+    *args : str or dict
+        Positional filter conditions:
+        - String expressions, e.g. "body_mass_g > 3500", "bill length mm > 40", or comma-separated
+          "species = 'Adelie', body_mass_g > 3500".
+        - Dictionaries mapping column names to conditions, e.g. {"bill length mm": "> 40"}.
     **kwargs : Any
         Filter conditions specified as keyword arguments where the keyword is the column name
         and the value is the condition to apply. Conditions can be:
@@ -82,66 +131,33 @@ def qry(
     >>> import pytae as pt
     >>> data = {
     ...     'species': ['Adelie', 'Gentoo', 'Chinstrap', 'Adelie'],
-    ...     'body_mass_g': [74125, 271425, 119925, 89100],
+    ...     'body mass g': [74125, 271425, 119925, 89100],
     ...     'code': ['A 1', 'B 2', 'C 3', 'D 4']
     ... }
     >>> df = pd.DataFrame(data)
 
-    >>> # Filter for rows where 'species' is 'Adelie'
+    >>> # Filter using a string expression (columns with spaces work directly!)
+    >>> df.pt.qry("body mass g > 81500")
+         species  body mass g code
+    1     Gentoo       271425  B 2
+    2  Chinstrap       119925  C 3
+    3     Adelie        89100  D 4
+
+    >>> # Filter using a plain dictionary
+    >>> df.pt.qry({"body mass g": "> 81500", "species": "Gentoo"})
+      species  body mass g code
+    1  Gentoo       271425  B 2
+
+    >>> # Filter using keyword arguments
     >>> df.pt.qry(species='Adelie')
-      species  body_mass_g code
+      species  body mass g code
     0  Adelie        74125  A 1
     3  Adelie        89100  D 4
 
-    >>> # Filter for rows where 'body_mass_g' is greater than 81500
-    >>> df.pt.qry(body_mass_g='> 81500')
-         species  body_mass_g code
-    1     Gentoo       271425  B 2
-    2  Chinstrap       119925  C 3
-    3     Adelie        89100  D 4
-
-    >>> # Filter for rows where 'species' is in ['Adelie', 'Gentoo']
-    >>> df.pt.qry(species=['Adelie', 'Gentoo'])
-      species  body_mass_g code
-    0  Adelie        74125  A 1
-    1  Gentoo       271425  B 2
+    >>> # Mix string expressions and kwargs
+    >>> df.pt.qry("body mass g > 80000", species="Adelie")
+      species  body mass g code
     3  Adelie        89100  D 4
-
-    >>> # Filter for rows where 'species' is not in ['Adelie', 'Gentoo']
-    >>> df.pt.qry(species=('not in', ['Adelie', 'Gentoo']))
-         species  body_mass_g code
-    2  Chinstrap       119925  C 3
-
-    >>> # Filter for rows where 'body_mass_g' is in the interval (80000, 120000)
-    >>> df.pt.qry(body_mass_g='(80000,120000)')
-         species  body_mass_g code
-    2  Chinstrap       119925  C 3
-    3     Adelie        89100  D 4
-
-    >>> # Filter for rows where 'code' equals 'A 1' (whitespace preserved)
-    >>> df.pt.qry(code=('==', 'A 1'))
-      species  body_mass_g code
-    0  Adelie        74125  A 1
-
-    >>> # Filter for rows where 'species' starts with 'Ad'
-    >>> df.pt.qry(species=('startswith', 'Ad'))
-      species  body_mass_g code
-    0  Adelie        74125  A 1
-    3  Adelie        89100  D 4
-
-    >>> # Filter for rows where 'code' matches a regex pattern anywhere in the string
-    >>> df.pt.qry(code=('regex', r'^[AB]'))
-      species  body_mass_g code
-    0  Adelie        74125  A 1
-    1  Gentoo       271425  B 2
-
-    >>> # Filter for rows where 'species' is not null
-    >>> df.pt.qry(species=('notna',))
-         species  body_mass_g code
-    0     Adelie        74125  A 1
-    1     Gentoo       271425  B 2
-    2  Chinstrap       119925  C 3
-    3     Adelie        89100  D 4
 
     Notes:
     ------
@@ -158,20 +174,25 @@ def qry(
     - Filtering does not modify the original DataFrame. Each condition is applied with
       `.loc[...]` and a new filtered frame is returned; the caller's object is unchanged.
     """
-    if args:
-        first_arg = args[0]
-        raise TypeError(
-            "qry() expects filter conditions as keyword arguments, e.g. df.pt.qry(species='Adelie', body_mass_g='> 5000'). "
-            f"Positional {type(first_arg).__name__} is not supported."
-        )
+    cond_pairs: list[tuple[str, Any]] = []
+    for arg in args:
+        if isinstance(arg, str):
+            cond_pairs.extend(_parse_qry_string(arg))
+        elif isinstance(arg, dict):
+            for col, cond in arg.items():
+                cond_pairs.append((str(col), cond))
+        else:
+            raise TypeError(
+                f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
+            )
+    for col, cond in kwargs.items():
+        cond_pairs.append((col, cond))
 
-    if not kwargs:
-        raise ValueError("qry() expects at least one condition keyword argument (e.g. df.pt.qry(col='> 5000'))")
+    if not cond_pairs:
+        raise ValueError("qry() expects at least one condition (e.g. df.pt.qry('col > 5000') or df.pt.qry(col='> 5000'))")
 
-    cond_dict: dict[str, Any] = dict(kwargs)
-
-    normalized_conditions: dict[str, Any] = {}
-    for col, cond in cond_dict.items():
+    normalized_conditions: list[tuple[str, Any]] = []
+    for col, cond in cond_pairs:
         if isinstance(cond, str):
             op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", cond.strip())
             if op_match:
@@ -181,13 +202,13 @@ def qry(
                     val = ast.literal_eval(val_str)
                 except (ValueError, SyntaxError):
                     val = val_str.strip("'\"")
-                normalized_conditions[col] = (op, val)
+                normalized_conditions.append((col, (op, val)))
                 continue
-        normalized_conditions[col] = cond
+        normalized_conditions.append((col, cond))
 
     out = df
     available = list(df.columns)
-    for col, cond in normalized_conditions.items():
+    for col, cond in normalized_conditions:
         if col not in available:
             close = difflib.get_close_matches(col, available, n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""
