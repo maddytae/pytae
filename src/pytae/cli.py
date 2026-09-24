@@ -162,8 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
                               "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
                               "not used for .parquet")
-    parser.add_argument("-rename", "--rename", dest="rename", default=None, metavar="OLD:NEW,...",
-                         help="rename columns during conversion, e.g. \"old_a:new_a,old_b:new_b\"")
+    parser.add_argument("-rename", "--rename", dest="rename", action=_OrderedAppend, default=None, metavar="OLD:NEW,...",
+                         help="rename columns at this point in the pipeline (or during conversion), e.g. \"old_a:new_a,old_b:new_b\"")
     parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS;...",
                          help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
                               "';'-separated entries, each PATH=ALIAS optionally followed by "
@@ -227,6 +227,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _normalize_op_order(op_order: list[str]) -> list[str]:
+    """If -convert appears before -rename in op_order (e.g. pytae ... -convert -rename ...),
+    ensure renames apply before the conversion writes to disk."""
+    if "convert" not in op_order or "rename" not in op_order:
+        return op_order
+    convert_idx = op_order.index("convert")
+    before = op_order[:convert_idx]
+    after = op_order[convert_idx:]
+    renames_after = [op for op in after if op == "rename"]
+    non_renames_after = [op for op in after if op != "rename"]
+    return before + renames_after + non_renames_after
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
@@ -241,7 +254,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         parser.error(msg)
 
-    op_order = getattr(args, "op_order", [])
+    op_order = _normalize_op_order(getattr(args, "op_order", []))
+    setattr(args, "op_order", op_order)
     last_idx = len(op_order) - 1
     for idx, op in enumerate(op_order):
         if op in NON_DF_TERMINAL_OPS and idx != last_idx:
@@ -270,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
-                         args.clean_columns is not None, args.merge, args.concat])
+                         args.rename, args.clean_columns is not None, args.merge, args.concat])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -291,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
-    rename_map = parse_rename(args.rename) if args.rename else None
+    rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     drop_specs = [parse_drop_spec(raw) for raw in (args.drop or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
@@ -319,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
                                 drop_specs=drop_specs,
                                 qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
-                                replace_specs=replace_specs, rename_map=rename_map, frames=frames,
+                                replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
 
@@ -339,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
                                     drop_specs=drop_specs,
                                     qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
-                                    replace_specs=replace_specs, rename_map=rename_map)
+                                    replace_specs=replace_specs, rename_specs=rename_specs)
         except UnicodeError as exc:
             failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
         if failed:

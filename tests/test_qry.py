@@ -125,12 +125,72 @@ def test_qry_unsupported_unary_operator():
         pt.qry(_df(), species=("badop",))
 
 
-def test_qry_rejects_positional_dict_and_string():
+def test_qry_accepts_positional_dict_and_string():
     df = _df()
-    with pytest.raises(TypeError, match="qry\\(\\) expects filter conditions as keyword arguments"):
-        pt.qry(df, {"species": "Adelie"})
-    with pytest.raises(TypeError, match="qry\\(\\) expects filter conditions as keyword arguments"):
-        df.pt.qry("body_mass_g > 100000")
+    res_dict = pt.qry(df, {"species": "Adelie"})
+    assert list(res_dict.index) == [0, 3]
+
+    res_str = df.pt.qry("body_mass_g > 100000")
+    assert list(res_str["species"]) == ["Gentoo", "Chinstrap"]
+
+
+def test_qry_rejects_invalid_positional_type():
+    df = _df()
+    with pytest.raises(TypeError, match=r"qry\(\) expects filter conditions as strings, dicts, or keyword arguments"):
+        pt.qry(df, 123)
+    with pytest.raises(TypeError, match=r"qry\(\) expects filter conditions as strings, dicts, or keyword arguments"):
+        df.pt.qry(["species = Adelie"])
+
+
+def test_qry_empty_conditions_raises():
+    df = _df()
+    with pytest.raises(ValueError, match=r"qry\(\) expects at least one condition"):
+        df.pt.qry()
+
+
+def test_qry_spaced_column_name_string_and_dict():
+    df = pd.DataFrame(
+        {
+            "bill length mm": [35.0, 42.0, 51.0],
+            "body mass g": [3000, 4500, 3200],
+            "species": ["Adelie", "Gentoo", "Chinstrap"],
+        }
+    )
+    # String condition with spaces in column name (no dict unpacking!)
+    res_str = df.pt.qry("bill length mm > 40")
+    assert list(res_str["species"]) == ["Gentoo", "Chinstrap"]
+
+    # Plain dict with spaces in column name (no **kwargs unpacking!)
+    res_dict = df.pt.qry({"bill length mm": "> 40"})
+    assert list(res_dict["species"]) == ["Gentoo", "Chinstrap"]
+
+
+def test_qry_mixed_strings_dicts_and_kwargs():
+    df = pd.DataFrame(
+        {
+            "bill length mm": [35.0, 42.0, 51.0],
+            "body mass g": [3000, 4500, 3200],
+            "species": ["Adelie", "Gentoo", "Chinstrap"],
+        }
+    )
+    res = df.pt.qry("bill length mm > 40", {"body mass g": "> 4000"}, species="Gentoo")
+    assert len(res) == 1
+    assert res.iloc[0]["species"] == "Gentoo"
+
+
+def test_qry_multiple_conditions_on_same_column():
+    df = pd.DataFrame(
+        {
+            "mass": [2000, 3500, 4500, 6000],
+        }
+    )
+    # Comma-separated in single string
+    res1 = df.pt.qry("mass > 3000, mass < 5000")
+    assert list(res1["mass"]) == [3500, 4500]
+
+    # Multiple string args
+    res2 = df.pt.qry("mass > 3000", "mass < 5000")
+    assert list(res2["mass"]) == [3500, 4500]
 
 
 def test_qry_kwargs_operator():

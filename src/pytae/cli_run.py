@@ -157,7 +157,7 @@ def _process_path(
     query_specs: list[str],
     sql_specs: list[str],
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
-    rename_map: dict[str, str] | None,
+    rename_specs: list[dict[str, str]],
     frames: dict[str, pd.DataFrame] | None = None,
     merge_specs: list[dict] | None = None,
     concat_specs: list[dict] | None = None,
@@ -201,6 +201,7 @@ def _process_path(
     query_iter = iter(query_specs)
     sql_iter = iter(sql_specs)
     replace_iter = iter(replace_specs)
+    rename_iter = iter(rename_specs)
     merge_iter = iter(merge_specs)
     concat_iter = iter(concat_specs)
 
@@ -226,6 +227,11 @@ def _process_path(
             emit_frame(idx)
         elif op == "drop":
             err = pipeline.apply_drop(next(drop_iter))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "rename":
+            err = pipeline.apply_rename(next(rename_iter))
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -525,7 +531,7 @@ def _process_path(
                 return _fail(parser, batch, "-convert requires -o/--output in -file/-merge mode (no source file to derive a default from)")
             cmd_convert(
                 pipeline.dataframe(), path if path is not None else Path("<merged>"), args.output,
-                rename=rename_map, sep=args.dlim, encoding=args.encoding, progress=args.progress,
+                sep=args.dlim, encoding=args.encoding, progress=args.progress,
                 announce=should_print(idx),
             )
 

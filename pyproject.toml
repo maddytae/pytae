@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.5.0"
+version = "3.5.1"
 description = "A package to enhance common tasks in data and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "README.md"
@@ -38,7 +38,6 @@ pytae = "pytae.cli:main"
 "Bug Tracker" = "https://github.com/maddytae/pytae/issues"
 "CLI Docs" = "https://github.com/maddytae/pytae/blob/master/docs/CLI.md"
 "Library Docs" = "https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md"
-"CLI flags" = "https://github.com/maddytae/pytae/blob/master/docs/FLAGS.md"
 
 [tool.ruff]
 target-version = "py310"

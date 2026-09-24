@@ -116,6 +116,40 @@ def test_rename_multiple_pairs(tmp_path):
     assert list(pd.read_csv(out1).columns) == ["new col", "beta"]
     assert list(pd.read_csv(out2).columns) == ["new col", "beta"]
 
+def test_rename_pipeline_head_without_convert(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"island": ["Torgersen"], "species": ["Adelie"]}))
+    cli.main([path, "-rename", "island:kailand", "-head"])
+    out = capsys.readouterr().out
+    assert "kailand" in out
+    assert "island" not in out
+
+def test_rename_pipeline_show_all(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"island": ["Torgersen"], "species": ["Adelie"]}))
+    cli.main([path, "-rename", "island:kailand"])
+    out = capsys.readouterr().out
+    assert "kailand" in out
+    assert "island" not in out
+
+def test_rename_pipeline_chained_with_select(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
+    cli.main([path, "-rename", "a:alpha", "-select", "alpha,b", "-head"])
+    out = capsys.readouterr().out
+    assert "alpha" in out
+    assert "b" in out
+    assert "c" not in out
+
+def test_rename_repeated_flags(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
+    cli.main([path, "-rename", "a:alpha", "-rename", "b:beta", "-head"])
+    out = capsys.readouterr().out
+    assert "alpha" in out
+    assert "beta" in out
+
+def test_rename_unknown_column_raises_error(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
+    with pytest.raises(SystemExit):
+        cli.main([path, "-rename", "unknown_col:x", "-head"])
+
 def test_clean_columns_strip_fill_case(tmp_path, capsys):
     path = _write_csv(tmp_path, _messy_headers_frame())
 

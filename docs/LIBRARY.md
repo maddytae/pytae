@@ -48,9 +48,16 @@ Plotter.facet(penguins, by="species", ncols=2, x="bill_length_mm", y="bill_depth
 
 ## 2) Filtering — `qry()`
 
-Clean keyword argument filters (equality, lists, comparisons, intervals, string matching, null checks). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
+Clean filters via string expressions, plain dictionaries, or keyword arguments (equality, lists, comparisons, intervals, string matching, null checks). [qry.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/qry.ipynb)
 
 ```python
+# String expressions (same as CLI -qry; handles columns with spaces directly):
+penguins.pt.qry("body_mass_g > 3500, species = 'Adelie'")
+df.pt.qry("bill length mm > 40")
+
+# Plain dictionaries (handles columns with spaces without **kwargs unpacking):
+df.pt.qry({"bill length mm": "> 40", "island": "Biscoe"})
+
 # Keyword arguments:
 pt.qry(penguins, species="Adelie", body_mass_g="> 3500")
 pt.qry(penguins, species=["Adelie", "Gentoo"])
@@ -58,6 +65,9 @@ pt.qry(penguins, species=("not in", ["Adelie"]))
 pt.qry(penguins, body_mass_g="[3000,4000]")
 pt.qry(penguins, species=("startswith", "Ad"))   # also endswith, contains, regex (search-anywhere)
 pt.qry(penguins, sex=("notna",))                 # also isna — one-element tuple, no value
+
+# Mix and match freely:
+df.pt.qry("bill length mm > 40", species="Adelie")
 ```
 
 ## 3) Selection — `select()`
