@@ -10,19 +10,40 @@ import pytae as pt
 from pytae.other_utilities import clean_column_names
 
 
-def test_to_clip_copies_and_does_not_shadow_pandas_clip(monkeypatch):
+def test_snip_copies_as_property_and_does_not_shadow_pandas_clip(monkeypatch):
     df = pd.DataFrame({"a": [-1, 2]})
-    copied = {}
+    copied: dict[str, Any] = {}
 
     def _fake_to_clipboard(self, *args, **kwargs):
         copied["called"] = True
         copied["index"] = kwargs.get("index")
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
-    pt.to_clip(df)
+
+    # 1. df.snip property without ()
+    res = df.snip
+    assert res is None
     assert copied["called"] is True
     assert copied["index"] is False
 
+    # 2. pt.snip(df) top-level function
+    copied["called"] = False
+    pt.snip(df)
+    assert copied["called"] is True
+
+    # 3. df.pt.snip accessor property
+    copied["called"] = False
+    res3 = df.pt.snip
+    assert res3 is None
+    assert copied["called"] is True
+
+    # 4. Series snip property
+    copied_series: dict[str, Any] = {}
+    monkeypatch.setattr(pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True))
+    df["a"].snip
+    assert copied_series.get("called") is True
+
+    # 5. verify pandas df.clip is preserved and not shadowed
     clipped = df.clip(lower=0)
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))
 

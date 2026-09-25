@@ -118,6 +118,12 @@ Create/overwrite columns using clean keyword arguments (`col="expr"` or `col=cal
 # Kwargs syntax (most Pythonic)
 pt.mutate(penguins, bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")
 
+# For new column names containing spaces, unpack a dictionary:
+pt.mutate(penguins, **{"body mass kg": "body_mass_g / 1000"})
+
+# Referencing existing columns with spaces: use SQL brackets [col] or backticks `col`
+pt.mutate(penguins, ratio="[bill length mm] / [bill depth mm]")
+
 # Later entries can reference earlier ones in the same call
 pt.mutate(penguins, mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
 
@@ -159,7 +165,7 @@ pt.mutate(df, contact="coalesce(mobile, home_phone, work_phone, 'N/A')")
 pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
 ```
 
-## 7) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
+## 7) Utilities — `df.snip`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
 
 [other_utilities.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/other_utilities.ipynb)
 
@@ -168,7 +174,7 @@ pt.cols(penguins)                    # sorted names; cols(..., ascending=None) k
 pt.handle_missing(penguins)          # object NA -> '.', numeric NA -> 0
 pt.group_x(penguins)                 # group size column `n`
 pt.group_x(penguins, group=["species"], v="body_mass_g", a="max")
-pt.to_clip(penguins)                 # copy to clipboard (does not shadow pandas clip)
+penguins.snip                        # copy to clipboard (silent property, no parentheses needed)
 pt.clean_columns(penguins, strip=True, fill="_", case="lower")  # clean header names
 pt.replace_values(penguins, {"Adelie": "Adelie (renamed)"})     # exact=True by default
 pt.replace_values(penguins, {"a": "z"}, c="species", exact=False)  # substring, scoped

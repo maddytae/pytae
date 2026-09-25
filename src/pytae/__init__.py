@@ -16,7 +16,7 @@ from .other_utilities import (
     group_x,
     handle_missing,
     replace_values,
-    to_clip,
+    snip,
 )
 from .qry import qry
 from .select import everything, select
@@ -97,7 +97,7 @@ __all__ = [
     "group_x",
     "handle_missing",
     "cols",
-    "to_clip",
+    "snip",
     "clean_columns",
     "replace_values",
     "sql",

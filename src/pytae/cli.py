@@ -220,7 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
-    parser.add_argument("-to_clip", "--to_clip", action="store_true",
+    parser.add_argument("-snip", "--snip", action="store_true",
                          help="also copy the result to the system clipboard: real tab-separated data "
                               "for DataFrame/Series output (-head/-tail/-nulls/-cols/etc.), plain text for -shape "
                               "(cannot combine -shape with a DataFrame-producing flag)")
@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
         if op in NON_DF_TERMINAL_OPS and idx != last_idx:
             parser.error(
                 f"-{op} does not return a DataFrame/Series, so no flag may follow it "
-                f"except -to_clip (matches pandas: you can't chain another call off "
+                f"except -snip (matches pandas: you can't chain another call off "
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
 
@@ -293,8 +293,8 @@ def main(argv: list[str] | None = None) -> int:
                      args.group_x is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
                      args.clean_columns is not None, args.merge, args.concat])
-    if args.to_clip and args.shape and wants_df:
-        parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
+    if args.snip and args.shape and wants_df:
+        parser.error("-snip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
                      "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
                      "run -shape separately")

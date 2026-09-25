@@ -130,7 +130,7 @@ def test_concat_resets_index(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,b'", "-to_clip"])
+    cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,b'", "-snip"])
 
     result = copied["frame"]
     assert list(result.index) == list(range(len(result)))

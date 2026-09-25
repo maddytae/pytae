@@ -31,7 +31,7 @@ from .other_utilities import (
     replace_values as _replace_values,
 )
 from .other_utilities import (
-    to_clip as _to_clip,
+    snip as _snip,
 )
 from .qry import qry as _qry
 from .select import select as _select
@@ -84,8 +84,9 @@ class PtAccessor:
     def cols(self, ascending: bool | None = True) -> list:
         return _cols(self._obj, ascending=ascending)
 
-    def to_clip(self) -> None:
-        return _to_clip(self._obj)
+    @property
+    def snip(self) -> None:
+        return _snip(self._obj)
 
     def clean_columns(self, **kwargs: Any) -> pd.DataFrame:
         return _clean_columns(self._obj, **kwargs)
