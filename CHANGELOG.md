@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.5.3] - Unreleased
+
+### Breaking Changes
+- **CLI output routing unified under `-o, --output`**:
+  - Removed redundant `-convert` and `-to_clip` flags.
+  - `-o <filename>.<ext>`: exports to explicit file path (format inferred from extension).
+  - `-o <format>`: in-place conversion adjacent to source file (`csv`, `parquet`, `txt`, `dat`), or batch conversion for glob matches (e.g. `pytae 'data/*.parquet' -o csv`).
+  - `-o clip` / `-o clipboard`: copies result to clipboard while suppressing stdout.
+  - Informative migration errors guide users if legacy `-convert` or `-to_clip` flags are invoked.
+  - Terminal non-DataFrame inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`) are barred from tabular file export but support clipboard copy via `-o clip`.
+
 ## [3.5.2] - 2026-09-24
 
 ### Breaking Changes
