@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -20,26 +21,24 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    # 1. hasattr does NOT trigger copying
+    # hasattr does not trigger clipboard copy
     assert hasattr(df, "to_clip") is True
     assert copied.get("called") is None
 
-    # 2. df.to_clip() method directly on DataFrame
     df.to_clip()
     assert copied["called"] is True
     assert copied["index"] is False
 
-    # 3. to_clip is NOT exported on pt or df.pt
+    # to_clip is attached directly to DataFrame/Series, not under pt or df.pt
     assert not hasattr(pt, "to_clip")
     assert not hasattr(df.pt, "to_clip")
 
-    # 4. Series to_clip method
     copied_series: dict[str, Any] = {}
     monkeypatch.setattr(pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True))
     df["a"].to_clip()
     assert copied_series.get("called") is True
 
-    # 6. verify pandas df.clip is preserved and not shadowed
+    # verify pandas df.clip is preserved and not shadowed
     clipped = df.clip(lower=0)
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))
 
