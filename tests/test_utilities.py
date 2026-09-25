@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -10,18 +11,31 @@ import pytae as pt
 from pytae.other_utilities import clean_column_names
 
 
-def test_to_clip_copies_and_does_not_shadow_pandas_clip(monkeypatch):
+def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     df = pd.DataFrame({"a": [-1, 2]})
-    copied = {}
+    copied: dict[str, Any] = {}
 
     def _fake_to_clipboard(self, *args, **kwargs):
         copied["called"] = True
         copied["index"] = kwargs.get("index")
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
-    pt.to_clip(df)
+
+    # hasattr does not trigger clipboard copy
+    assert hasattr(df, "to_clip") is True
+    assert copied.get("called") is None
+
+    df.to_clip()
     assert copied["called"] is True
     assert copied["index"] is False
+
+    assert not hasattr(pt, "to_clip")
+    assert not hasattr(df.pt, "to_clip")
+
+    copied_series: dict[str, Any] = {}
+    monkeypatch.setattr(pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True))
+    df["a"].to_clip()
+    assert copied_series.get("called") is True
 
     clipped = df.clip(lower=0)
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))

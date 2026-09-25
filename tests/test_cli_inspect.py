@@ -404,6 +404,12 @@ def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     assert captured.out == ""
     assert copied["text"] == "(2, 2)"
 
+def test_clip_shape_and_df_flag_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-head", "1", "-shape", "-to_clip"])
+    assert exc_info.value.code == 2
+
 def test_cli_convert_csv_to_parquet(tmp_path, capsys):
     src = tmp_path / "data.csv"
     pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}).to_csv(src, index=False)

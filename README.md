@@ -10,7 +10,9 @@ Pandas helpers for everyday data-science tasks (filtering, selection, reshaping,
 ## Install
 
 ```bash
-pip install pytae
+pip install pytae             # Core library and CLI
+pip install "pytae[plot]"      # Adds Plotter (matplotlib, scipy)
+pip install "pytae[sql]"       # Adds SQL engine (duckdb)
 ```
 
 ## CLI
@@ -57,10 +59,21 @@ pt.select(penguins, "species", contains="bill")
 - **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, `if_else()`, `case_when()`, `map()`
 - **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns
 - **Aggregation** — `pt.agg_df()`: auto-detects group columns and aggregates the rest
-- **Utilities** — `pt.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
+- **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
 - **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `data`
 
 See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
+
+## Key Conventions & Syntax Cheat Sheet
+
+| Task | Syntax | Example |
+|---|---|---|
+| **Copy to Clipboard** | `df.to_clip()` in Python; `-to_clip` in CLI | `df.head().to_clip()` vs. `pytae data.parquet -head -to_clip` |
+| **Mapping vs. Assignment** | `:` maps old to new; `=` assigns values | `-rename "old:new"` vs. `-mutate "col = expr"` |
+| **Spaced Columns (Filter)** | String expressions handle spaces directly | `df.pt.qry("bill length mm > 40")` |
+| **Spaced Columns (Create)** | Unpack dictionary with `**` | `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})` |
+| **Spaced Columns (Expr)** | Reference via brackets `[col]` or backticks `` `col` `` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
+| **Selective Grouping** | `agg_df` groups by all non-numeric cols; select first | `df.pt.select("species", "body_mass_g").pt.agg_df("mean")` |
 
 ## License
 

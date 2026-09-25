@@ -7,9 +7,13 @@ from typing import Any
 import pandas as pd
 
 
-def to_clip(df: pd.DataFrame) -> None:
-    """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
+def to_clip(df: pd.DataFrame | pd.Series) -> None:
+    """Copy the DataFrame or Series to the system clipboard (tab-separated, no index)."""
     return df.to_clipboard(index=False)
+
+
+pd.DataFrame.to_clip = to_clip
+pd.Series.to_clip = to_clip
 
 
 def handle_missing(df: pd.DataFrame, fillna: str = ".") -> pd.DataFrame:
