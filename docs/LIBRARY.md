@@ -165,7 +165,7 @@ pt.mutate(df, contact="coalesce(mobile, home_phone, work_phone, 'N/A')")
 pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
 ```
 
-## 7) Utilities — `df.snip`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
+## 7) Utilities — `to_clip()`, `handle_missing()`, `cols()`, `group_x()`, `clean_columns()`, `replace_values()`
 
 [other_utilities.ipynb](https://github.com/maddytae/pytae/blob/master/notebooks/other_utilities.ipynb)
 
@@ -174,7 +174,7 @@ pt.cols(penguins)                    # sorted names; cols(..., ascending=None) k
 pt.handle_missing(penguins)          # object NA -> '.', numeric NA -> 0
 pt.group_x(penguins)                 # group size column `n`
 pt.group_x(penguins, group=["species"], v="body_mass_g", a="max")
-penguins.snip                        # copy to clipboard (silent property, no parentheses needed)
+penguins.to_clip()                   # copy to clipboard (does not shadow pandas clip)
 pt.clean_columns(penguins, strip=True, fill="_", case="lower")  # clean header names
 pt.replace_values(penguins, {"Adelie": "Adelie (renamed)"})     # exact=True by default
 pt.replace_values(penguins, {"a": "z"}, c="species", exact=False)  # substring, scoped

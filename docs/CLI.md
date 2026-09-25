@@ -668,14 +668,14 @@ pytae penguins.parquet -info
 
 `-shape` / `-cols` / `-dtype` / `-nulls` / `-info` mirror pandas attributes/methods that
 don't return a DataFrame (`df.shape`, `df.columns`, `df.dtypes`, `df.info()` — `-nulls` is
-`df.isna().sum()`). Like real method chaining, nothing may follow them except `-snip`;
+`df.isna().sum()`). Like real method chaining, nothing may follow them except `-to_clip`;
 put them last. `-describe` is the exception — `df.describe()` returns a DataFrame, so it
 can still be chained into further flags (e.g. `-describe -shape`, `-describe -round 2`).
 
 ```bash
-pytae penguins.parquet -shape -snip     # ok: -snip is the only thing allowed after -shape
-pytae penguins.parquet -shape -head 3   # error: -shape isn't a DataFrame, can't chain -head off it
-pytae penguins.parquet -describe -shape # ok: describe() returns a DataFrame
+pytae penguins.parquet -shape -to_clip     # ok: -to_clip is the only thing allowed after -shape
+pytae penguins.parquet -shape -head 3      # error: -shape isn't a DataFrame, can't chain -head off it
+pytae penguins.parquet -describe -shape    # ok: describe() returns a DataFrame
 ```
 
 `-cols` / `-dtype` / `-nulls` list in file (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
@@ -921,11 +921,11 @@ pytae penguins.parquet -describe -round 2
 pytae penguins.parquet -head 20 -nrows 1000
 pytae penguins.parquet -sample 10 -seed 42       # reproducible: same rows every run
 pytae penguins.parquet -sample -frac 0.1         # 10% of rows instead of a fixed count
-pytae penguins.parquet -head -snip              # copy; no stdout
+pytae penguins.parquet -head -to_clip          # copy; no stdout
 pytae huge.csv -convert -o huge.parquet -progress
 ```
 
-`-snip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -snip` copies the tail). Do not combine `-snip -shape` with a table-producing flag.
+`-to_clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -to_clip` copies the tail). Do not combine `-to_clip -shape` with a table-producing flag.
 
 ---
 
@@ -1016,7 +1016,7 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 |---|---|
 | `-pretty` | Markdown table |
 | `-round N` | Round numeric print/copy |
-| `-snip` | Copy last result; suppress stdout |
+| `-to_clip` | Copy last result; suppress stdout |
 | `-progress` | Progress for large converts |
 
 ---
@@ -1051,7 +1051,7 @@ Use this quick-decision guide to find the right flag for your task. Each flag li
 | **Cross-tabulate** | [`-crosstab`](#crosstab) | Two-way contingency matrix; supports `normalize=` percentages and `margins=` totals |
 | **Frequency counts** | [`-value_counts`](#value-counts) | Counts unique combinations across current working columns (pair with [`-select`](#select)) |
 | **Peek at rows** | [`-head`](#listing) / [`-tail`](#listing) / [`-sample`](#listing) | View first, last, or random sampled rows (default 5 rows; supports `-seed` and `-frac`) |
-| **Schema & summary** | [`-shape`](#listing) / [`-cols`](#listing) / [`-dtype`](#listing) / [`-nulls`](#listing) / [`-info`](#listing) / [`-describe`](#listing) | Terminal inspection flags (cannot be followed except by [`-snip`](#display-extras)) |
+| **Schema & summary** | [`-shape`](#listing) / [`-cols`](#listing) / [`-dtype`](#listing) / [`-nulls`](#listing) / [`-info`](#listing) / [`-describe`](#listing) | Terminal inspection flags (cannot be followed except by [`-to_clip`](#display-extras)) |
 | **Convert file format** | [`-convert`](#convert) | Converts between parquet, csv, txt, dat (and reads sas7bdat) via `-o` |
 | **Combine multiple files** | [`-file`](#merge) + [`-merge`](#merge) / [`-concat`](#merge) / [`-sql`](#sql) | Multi-file mode replacing positional path; see [CLI_MULTI_FILE.md](CLI_MULTI_FILE.md) |
 

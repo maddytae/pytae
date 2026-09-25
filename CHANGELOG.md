@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- First-class `df.to_clip()` and `s.to_clip()` methods attached directly to `pd.DataFrame` and `pd.Series` on `import pytae`, restoring convenient clipboard copying without needing `.pt.` (`df.to_clip()` / `df.head().to_clip()`).
+- Documented handling of spaced column names across verbs in `README.md` and `docs/LIBRARY.md` (dictionary unpacking for creation, bracketed/backtick identifiers for formulas).
+- Added optional extras (`pytae[plot]`, `pytae[sql]`) to the `Install` section and added a Key Conventions & Syntax Cheat Sheet table in `README.md`.
+
 ## [3.5.1] - 2026-09-23
 
 ### Added

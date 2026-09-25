@@ -82,7 +82,7 @@ def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
     assert "(2, 2)" in out
 
 
-def test_qry_snip_copies_filtered_frame_without_output_op(tmp_path, capsys, monkeypatch):
+def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"month": [202606, 202607, 202607], "value": [1, 2, 3]}))
 
     copied = {}
@@ -92,7 +92,7 @@ def test_qry_snip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-qry", "month = 202607", "-snip"])
+    exit_code = cli.main([path, "-qry", "month = 202607", "-to_clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0

@@ -48,7 +48,7 @@ def test_frac_requires_sample(tmp_path):
 
 def test_shape_cannot_be_followed_by_another_flag(tmp_path):
     # -shape returns a tuple in pandas terms (not a DataFrame), so nothing may
-    # chain after it except -snip.
+    # chain after it except -to_clip.
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10, 20)}))
 
     with pytest.raises(SystemExit) as exc_info:
@@ -385,29 +385,29 @@ def test_clip_suppresses_stdout_for_dataframe_ops(tmp_path, capsys, monkeypatch)
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-head", "2", "-snip"])
+    exit_code = cli.main([path, "-head", "2", "-to_clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert captured.out == ""
     assert copied["called"] is True
 
-def test_snip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
+def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
     copied = {}
     monkeypatch.setattr("pytae.cli_run._copy_to_clipboard", lambda s: copied.setdefault("text", s))
 
-    exit_code = cli.main([path, "-shape", "-snip"])
+    exit_code = cli.main([path, "-shape", "-to_clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert captured.out == ""
     assert copied["text"] == "(2, 2)"
 
-def test_snip_shape_and_df_flag_errors(tmp_path):
+def test_clip_shape_and_df_flag_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-head", "1", "-shape", "-snip"])
+        cli.main([path, "-head", "1", "-shape", "-to_clip"])
     assert exc_info.value.code == 2
 
 def test_cli_convert_csv_to_parquet(tmp_path, capsys):

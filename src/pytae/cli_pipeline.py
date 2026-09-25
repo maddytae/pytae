@@ -45,7 +45,7 @@ class _Pipeline:
     Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
     don't return a DataFrame/Series in pandas either, so (like main()'s validation)
-    nothing may follow them except -snip.
+    nothing may follow them except -to_clip.
     """
 
     def __init__(self, reader=None, *, nrows=None, progress=False, frames=None) -> None:

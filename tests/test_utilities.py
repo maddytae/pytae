@@ -10,7 +10,7 @@ import pytae as pt
 from pytae.other_utilities import clean_column_names
 
 
-def test_snip_copies_as_property_and_does_not_shadow_pandas_clip(monkeypatch):
+def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     df = pd.DataFrame({"a": [-1, 2]})
     copied: dict[str, Any] = {}
 
@@ -20,30 +20,32 @@ def test_snip_copies_as_property_and_does_not_shadow_pandas_clip(monkeypatch):
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    # 1. df.snip property without ()
-    res = df.snip
-    assert res is None
+    # 1. hasattr does NOT trigger copying
+    assert hasattr(df, "to_clip") is True
+    assert copied.get("called") is None
+
+    # 2. df.to_clip() method directly on DataFrame
+    df.to_clip()
     assert copied["called"] is True
     assert copied["index"] is False
 
-    # 2. pt.snip(df) top-level function
+    # 3. pt.to_clip(df) top-level function
     copied["called"] = False
-    pt.snip(df)
+    pt.to_clip(df)
     assert copied["called"] is True
 
-    # 3. df.pt.snip accessor property
+    # 4. df.pt.to_clip() accessor method
     copied["called"] = False
-    res3 = df.pt.snip
-    assert res3 is None
+    df.pt.to_clip()
     assert copied["called"] is True
 
-    # 4. Series snip property
+    # 5. Series to_clip method
     copied_series: dict[str, Any] = {}
     monkeypatch.setattr(pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True))
-    df["a"].snip
+    df["a"].to_clip()
     assert copied_series.get("called") is True
 
-    # 5. verify pandas df.clip is preserved and not shadowed
+    # 6. verify pandas df.clip is preserved and not shadowed
     clipped = df.clip(lower=0)
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))
 
