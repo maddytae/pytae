@@ -29,17 +29,11 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     assert copied["called"] is True
     assert copied["index"] is False
 
-    # 3. pt.to_clip(df) top-level function
-    copied["called"] = False
-    pt.to_clip(df)
-    assert copied["called"] is True
+    # 3. to_clip is NOT exported on pt or df.pt
+    assert not hasattr(pt, "to_clip")
+    assert not hasattr(df.pt, "to_clip")
 
-    # 4. df.pt.to_clip() accessor method
-    copied["called"] = False
-    df.pt.to_clip()
-    assert copied["called"] is True
-
-    # 5. Series to_clip method
+    # 4. Series to_clip method
     copied_series: dict[str, Any] = {}
     monkeypatch.setattr(pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True))
     df["a"].to_clip()
