@@ -48,7 +48,7 @@ def test_frac_requires_sample(tmp_path):
 
 def test_shape_cannot_be_followed_by_another_flag(tmp_path):
     # -shape returns a tuple in pandas terms (not a DataFrame), so nothing may
-    # chain after it except -to_clip.
+    # chain after it except -o clip.
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10, 20)}))
 
     with pytest.raises(SystemExit) as exc_info:
@@ -385,7 +385,7 @@ def test_clip_suppresses_stdout_for_dataframe_ops(tmp_path, capsys, monkeypatch)
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-head", "2", "-to_clip"])
+    exit_code = cli.main([path, "-head", "2", "-o", "clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -397,7 +397,7 @@ def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     copied = {}
     monkeypatch.setattr("pytae.cli_run._copy_to_clipboard", lambda s: copied.setdefault("text", s))
 
-    exit_code = cli.main([path, "-shape", "-to_clip"])
+    exit_code = cli.main([path, "-shape", "-o", "clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -407,7 +407,7 @@ def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
 def test_clip_shape_and_df_flag_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-head", "1", "-shape", "-to_clip"])
+        cli.main([path, "-head", "1", "-shape", "-o", "clip"])
     assert exc_info.value.code == 2
 
 def test_cli_convert_csv_to_parquet(tmp_path, capsys):
@@ -415,7 +415,7 @@ def test_cli_convert_csv_to_parquet(tmp_path, capsys):
     pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}).to_csv(src, index=False)
     dest = tmp_path / "data.parquet"
 
-    exit_code = cli.main([str(src), "-convert", "-o", str(dest)])
+    exit_code = cli.main([str(src), "-o", str(dest)])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -424,4 +424,36 @@ def test_cli_convert_csv_to_parquet(tmp_path, capsys):
     result = pd.read_parquet(dest)
     assert list(result.columns) == ["a", "b"]
     assert len(result) == 2
+
+def test_cli_output_bare_format(tmp_path, capsys):
+    src = tmp_path / "input.csv"
+    pd.DataFrame({"x": [10, 20]}).to_csv(src, index=False)
+
+    exit_code = cli.main([str(src), "-o", "parquet"])
+    assert exit_code == 0
+    dest = tmp_path / "input.parquet"
+    assert dest.exists()
+    assert len(pd.read_parquet(dest)) == 2
+
+def test_cli_output_shape_to_file_errors(tmp_path):
+    src = tmp_path / "data.csv"
+    pd.DataFrame({"a": [1]}).to_csv(src, index=False)
+    dest = tmp_path / "out.parquet"
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-shape", "-o", str(dest)])
+    assert exc_info.value.code == 2
+
+def test_cli_removed_flags_migration_errors(tmp_path):
+    src = tmp_path / "data.csv"
+    pd.DataFrame({"a": [1]}).to_csv(src, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-to_clip"])
+    assert exc_info.value.code == 2
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-convert"])
+    assert exc_info.value.code == 2
+
 

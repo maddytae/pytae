@@ -75,11 +75,11 @@ def test_merge_unknown_alias_errors(tmp_path):
         cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=bogus,on=col a:cola"])
     assert exc_info.value.code == 2
 
-def test_merge_convert_requires_output(tmp_path):
+def test_merge_output_format_requires_concrete_path(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on=col a:cola", "-convert"])
+        cli.main(["-file", f"{left}=df1;{right}=df2", "-merge", "left=df1,right=df2,on=col a:cola", "-o", "csv"])
     assert exc_info.value.code == 2
 
 def test_merge_must_be_first_op_with_file(tmp_path):
@@ -130,7 +130,7 @@ def test_concat_resets_index(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,b'", "-to_clip"])
+    cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,b'", "-o", "clip"])
 
     result = copied["frame"]
     assert list(result.index) == list(range(len(result)))
@@ -234,14 +234,14 @@ def test_merge_validate_failure_errors(tmp_path, capsys):
     assert exc_info.value.code == 2
     assert "-merge:" in capsys.readouterr().err
 
-def test_convert_succeeds_after_merge(tmp_path):
+def test_output_succeeds_after_merge(tmp_path):
     left, right = _write_two_csvs(tmp_path)
     dest = tmp_path / "merged.parquet"
 
     exit_code = cli.main([
         "-file", f"{left}=df1;{right}=df2",
         "-merge", "left=df1,right=df2,on=col a:cola",
-        "-convert", "-o", str(dest),
+        "-o", str(dest),
     ])
 
     assert exit_code == 0

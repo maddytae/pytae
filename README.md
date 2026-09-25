@@ -19,7 +19,7 @@ pip install "pytae[sql]"       # Adds SQL engine (duckdb)
 
 ```bash
 pytae data.parquet -head
-pytae data.parquet -qry "species='Adelie'" -select "species,body_mass_g" -convert -o subset.csv
+pytae data.parquet -qry "species='Adelie'" -select "species,body_mass_g" -o subset.csv
 pytae data.parquet -sql "select species, avg(body_mass_g) from data group by species"
 pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
 ```
@@ -68,7 +68,7 @@ See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY
 
 | Task | Syntax | Example |
 |---|---|---|
-| **Copy to Clipboard** | `df.to_clip()` in Python; `-to_clip` in CLI | `df.head().to_clip()` vs. `pytae data.parquet -head -to_clip` |
+| **Copy to Clipboard** | `df.to_clip()` in Python; `-o clip` in CLI | `df.head().to_clip()` vs. `pytae data.parquet -head -o clip` |
 | **Mapping vs. Assignment** | `:` maps old to new; `=` assigns values | `-rename "old:new"` vs. `-mutate "col = expr"` |
 | **Spaced Columns (Filter)** | String expressions handle spaces directly | `df.pt.qry("bill length mm > 40")` |
 | **Spaced Columns (Create)** | Unpack dictionary with `**` | `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})` |

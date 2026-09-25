@@ -65,7 +65,7 @@ def _copy_to_clipboard(text: str) -> None:
 
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None). Like real method chaining, nothing can
-# follow them except -to_clip. -describe is excluded: df.describe() returns a DataFrame.
+# follow them except -o clip. -describe is excluded: df.describe() returns a DataFrame.
 NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info"})
 
 
@@ -162,7 +162,7 @@ def _process_path(
     merge_specs: list[dict] | None = None,
     concat_specs: list[dict] | None = None,
 ) -> bool:
-    """Run every requested display/-convert/-agg action against one file, or (when frames
+    """Run every requested display/export/-agg action against one file, or (when frames
     is given, i.e. -file/-merge mode) against named in-memory frames instead. Returns True
     if an error occurred."""
     merge_specs = merge_specs or []
@@ -182,14 +182,17 @@ def _process_path(
     else:
         pipeline = _Pipeline(frames=frames)
 
+    out_target = str(args.output).strip() if args.output is not None else None
+    is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
+    is_file = out_target is not None and not is_clip
     clip_action = None
-    emit_stdout = not args.to_clip
+    emit_stdout = not is_clip and not is_file
 
     if show_all:
         df = _apply_round(pipeline.dataframe(), args.round_ndigits)
         if emit_stdout:
             print(_format_table(df, pretty=args.pretty))
-        if args.to_clip:
+        if is_clip:
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     op_order = getattr(args, "op_order", [])
@@ -210,12 +213,12 @@ def _process_path(
 
     def emit_frame(idx: int) -> None:
         nonlocal clip_action
-        if not (should_print(idx) or args.to_clip):
+        if not (should_print(idx) or is_clip):
             return
         df = _apply_round(pipeline.dataframe(), args.round_ndigits)
         if should_print(idx):
             print(_format_table(df, pretty=args.pretty))
-        if args.to_clip:
+        if is_clip:
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     for idx, op in enumerate(op_order):
@@ -298,7 +301,7 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "concat":
             spec = next(concat_iter)
@@ -318,45 +321,45 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
                 print(shape_str)
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda s=shape_str: _copy_to_clipboard(s)
         elif op == "cols":
             names = _list_order_names(pipeline.columns(), args.cols)
             if should_print(idx):
                 for name in names:
                     print(name)
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda n=names: pd.Series(n).to_clipboard(index=False, header=False)
         elif op == "dtype":
             dtypes = _list_order_index(pipeline.dtypes(), args.dtype)
             if should_print(idx):
                 print(dtypes.to_string())
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
             nulls = _list_order_index(pipeline.dataframe().isna().sum(), args.nulls)
             if should_print(idx):
                 print(nulls.to_string())
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
             described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
             pipeline._df = described
             if should_print(idx):
                 print(_format_table(described, index=True, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=described: d.to_clipboard(index=True)
         elif op == "info":
             info_str = _dataframe_info(pipeline.dataframe())
             if should_print(idx):
                 print(info_str)
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
         elif op == "value_counts":
             source_df = pipeline.dataframe()
@@ -372,33 +375,33 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "unique":
             unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
             pipeline._df = unique_df
             if should_print(idx):
                 print(_format_table(unique_df, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=unique_df: d.to_clipboard(index=False)
         elif op == "head":
             df = _apply_round(pipeline.head(args.head), args.round_ndigits)
             if should_print(idx):
                 print(_format_table(df, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "tail":
             df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
             if should_print(idx):
                 print(_format_table(df, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "sample":
             sampled = _apply_round(pipeline.sample(args.sample, seed=args.seed, frac=args.frac), args.round_ndigits)
             n = len(sampled)
             if should_print(idx):
                 print(_format_table(sampled, pretty=args.pretty) if n else "(no rows)")
-            if args.to_clip and n:
+            if is_clip and n:
                 clip_action = lambda d=sampled: d.to_clipboard(index=False)
         elif op == "sort_by":
             source_df = pipeline.dataframe()
@@ -410,7 +413,7 @@ def _process_path(
             pipeline._df = sorted_df
             if should_print(idx):
                 print(_format_table(sorted_df, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
         elif op == "agg_df":
             aggfunc = parse_agg(args.agg_df)
@@ -421,7 +424,7 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "agg":
             if not args.group_by:
@@ -441,7 +444,7 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "group_x":
             source_df = pipeline.dataframe()
@@ -459,14 +462,14 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "handle_missing":
             result = _apply_round(handle_missing(pipeline.dataframe(), fillna=args.handle_missing), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "clean_columns":
             opts = parse_clean_columns_arg(args.clean_columns)
@@ -474,7 +477,7 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "long":
             from pytae.shape import long as long_fn
@@ -482,7 +485,7 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "wide":
             from pytae.shape import wide as wide_fn
@@ -497,7 +500,7 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "crosstab":
             source_df = pipeline.dataframe()
@@ -524,19 +527,35 @@ def _process_path(
             pipeline._df = result
             if should_print(idx):
                 print(_format_table(result, index=True, pretty=args.pretty))
-            if args.to_clip:
+            if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=True)
-        elif op == "convert":
-            if path is None and args.output is None:
-                return _fail(parser, batch, "-convert requires -o/--output in -file/-merge mode (no source file to derive a default from)")
-            cmd_convert(
-                pipeline.dataframe(), path if path is not None else Path("<merged>"), args.output,
-                sep=args.dlim, encoding=args.encoding, progress=args.progress,
-                announce=should_print(idx),
-            )
 
-    if args.to_clip and clip_action is not None:
+    if is_clip and clip_action is not None:
         clip_action()
+    elif is_file:
+        assert out_target is not None
+        fmt = out_target.lower()
+        if fmt in ("csv", "parquet", "pq", "txt", "dat"):
+            if path is None:
+                return _fail(parser, batch, f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
+            ext = ".parquet" if fmt == "pq" else f".{fmt}"
+            dest = path.with_suffix(ext)
+        else:
+            dest = Path(out_target)
+
+        df_to_write = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        try:
+            cmd_convert(
+                df_to_write,
+                path if path is not None else Path("<merged>"),
+                dest,
+                sep=args.dlim,
+                encoding=args.encoding,
+                progress=args.progress,
+                announce=True,
+            )
+        except SystemExit as exc:
+            return _fail(parser, batch, str(exc))
 
     return False
 

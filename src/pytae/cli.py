@@ -104,10 +104,6 @@ def build_parser() -> argparse.ArgumentParser:
                          help="drop columns by exact name at this point in the pipeline (comma-separated names "
                               "only; use -select for dtype=/contains=/regex=/slices); remaining columns keep "
                               'their order, e.g. -drop "sex,island"')
-    parser.add_argument("-convert", "--convert", dest="convert",
-                         action=_OrderedFlag,
-                         help="convert to another format (.parquet/.csv/.txt/.dat, inferred from -o's extension, "
-                              "defaults to .csv); use -select to restrict columns")
     parser.add_argument("-agg_df", "--agg_df", dest="agg_df", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
                          help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
@@ -153,8 +149,10 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="BOOL",
                          help="for -agg_df, -agg, -group_x, -wide, -value_counts, and -crosstab: "
                               "include NA keys when false; accepts true or false (default: true)")
-    parser.add_argument("-o", "--output", type=Path, default=None,
-                         help="output path; its extension picks the format (default: .csv alongside the source file)")
+    parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
+                         help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
+                              "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat'), "
+                              "or 'clip'/'clipboard' to copy to system clipboard")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
                               "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
@@ -220,30 +218,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
-    parser.add_argument("-to_clip", "--to_clip", action="store_true",
-                         help="also copy the result to the system clipboard: real tab-separated data "
-                              "for DataFrame/Series output (-head/-tail/-nulls/-cols/etc.), plain text for -shape "
-                              "(cannot combine -shape with a DataFrame-producing flag)")
     return parser
-
-
-def _normalize_op_order(op_order: list[str]) -> list[str]:
-    """If -convert appears before -rename in op_order (e.g. pytae ... -convert -rename ...),
-    ensure renames apply before the conversion writes to disk."""
-    if "convert" not in op_order or "rename" not in op_order:
-        return op_order
-    convert_idx = op_order.index("convert")
-    before = op_order[:convert_idx]
-    after = op_order[convert_idx:]
-    renames_after = [op for op in after if op == "rename"]
-    non_renames_after = [op for op in after if op != "rename"]
-    return before + renames_after + non_renames_after
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
+        if any(e in ("-to_clip", "--to_clip") for e in extras):
+            parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
+        if any(e in ("-convert", "--convert") for e in extras):
+            parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
         msg = f"unrecognized arguments: {' '.join(extras)}"
         if extras and all(not e.startswith("-") for e in extras):
             # likely an unquoted value with a space (e.g. a column name) split by the
@@ -254,16 +239,27 @@ def main(argv: list[str] | None = None) -> int:
             )
         parser.error(msg)
 
-    op_order = _normalize_op_order(getattr(args, "op_order", []))
-    setattr(args, "op_order", op_order)
+    op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
     for idx, op in enumerate(op_order):
         if op in NON_DF_TERMINAL_OPS and idx != last_idx:
             parser.error(
                 f"-{op} does not return a DataFrame/Series, so no flag may follow it "
-                f"except -to_clip (matches pandas: you can't chain another call off "
+                f"(matches pandas: you can't chain another call off "
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
+
+    out_target = str(args.output).strip() if args.output is not None else None
+    args.output = out_target
+    is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
+    is_file = out_target is not None and not is_clip
+
+    if is_file and any(op in NON_DF_TERMINAL_OPS for op in op_order):
+        bad_op = next(op for op in op_order if op in NON_DF_TERMINAL_OPS)
+        parser.error(
+            f"-{bad_op} does not produce a tabular DataFrame, so it cannot be exported to a file; "
+            f"use '-o clip' or view in terminal"
+        )
 
     if args.merge and args.file is None:
         parser.error("-merge requires -file")
@@ -274,13 +270,15 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
         if not op_order or op_order[0] not in ("merge", "sql", "concat"):
             parser.error("-file requires -merge, -concat, or -sql as its first operation")
+        if is_file and out_target is not None and out_target.lower() in ("csv", "parquet", "pq", "txt", "dat"):
+            parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
     elif args.path is None:
         parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.convert, args.agg_df is not None, args.agg is not None,
+                         args.agg_df is not None, args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
@@ -293,8 +291,8 @@ def main(argv: list[str] | None = None) -> int:
                      args.group_x is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
                      args.clean_columns is not None, args.merge, args.concat])
-    if args.to_clip and args.shape and wants_df:
-        parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
+    if is_clip and args.shape and wants_df:
+        parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
                      "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
                      "run -shape separately")
@@ -340,10 +338,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.path is None:
         parser.error("the following arguments are required: path")
     paths = expand_paths(args.path)
-    if len(paths) > 1 and args.output is not None:
-        parser.error("-o/--output cannot be used with multiple matched files; each output path is derived automatically")
-
     batch = len(paths) > 1
+
+    if batch and args.output is not None:
+        if is_clip:
+            parser.error("-o clip cannot be used with multiple matched files")
+        if out_target is not None and out_target.lower() not in ("csv", "parquet", "pq", "txt", "dat"):
+            parser.error(
+                "-o/--output with multiple matched files requires a format (e.g. '-o csv' or '-o parquet'), "
+                "not a single file path"
+            )
+
     exit_code = 0
 
     for path in paths:

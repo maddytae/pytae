@@ -92,7 +92,7 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-qry", "month = 202607", "-to_clip"])
+    exit_code = cli.main([path, "-qry", "month = 202607", "-o", "clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0

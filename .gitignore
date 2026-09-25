@@ -41,7 +41,7 @@ TEST*.xml
 .DS_Store
 
 # Sample/output data files generated at the repo root while following the docs
-# (e.g. `pytae.sample_data['tips'].to_parquet('tips.parquet')`, or -convert/-o
+# (e.g. `pytae.sample_data['tips'].to_parquet('tips.parquet')`, or -o
 # output). Root-only (leading /) so real package data under src/pytae/datasets/
 # is unaffected.
 /*.parquet

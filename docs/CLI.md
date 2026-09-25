@@ -21,7 +21,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Unique rows — `-unique`](#unique)
   - [Reshape — `-long` / `-wide`](#reshape)
   - [Column renaming — `-rename`](#rename)
-  - [Conversion & file I/O — `-convert`](#convert)
+  - [Output routing & file I/O — `-o`](#output)
   - [Multi-file operations — `-file` / `-merge` / `-concat`](#merge)
 - [Pandas-mirrored operations](#pandas-mirrored-operations)
   - [Row filtering — `-query`](#query)
@@ -510,7 +510,7 @@ pytae penguins.parquet -long "c=metric,v=reading"
 
 # create a long-form file first, then pivot it back with -wide
 # (c=/v= must match the long-form column names — defaults are variable/value)
-pytae penguins.parquet -long -convert -o tall.csv
+pytae penguins.parquet -long -o tall.csv
 pytae tall.csv -wide
 ```
 
@@ -532,7 +532,7 @@ pytae data.parquet -rename "bill length mm:bill_len,body mass g:body_mass" -cols
 pytae penguins.parquet -rename "species:penguin_species" -select "penguin_species,island" -head 5
 
 # Rename during file conversion
-pytae penguins.parquet -rename "island:location" -convert -o renamed.parquet
+pytae penguins.parquet -rename "island:location" -o renamed.parquet
 ```
 
 - In Python: use pandas' `df.rename(columns={"old": "new"})` within an accessor chain, e.g. `df.rename(columns={"island": "location"}).pt.select(...)`.
@@ -540,10 +540,17 @@ pytae penguins.parquet -rename "island:location" -convert -o renamed.parquet
 
 ---
 
+<a id="output"></a>
 <a id="convert"></a>
-### Conversion & file I/O — `-convert`
+### Output routing & file I/O — `-o`
 
-Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the source. Cannot write `.sas7bdat`.
+`-o` specifies the destination for the pipeline result: an explicit output file path, a format for in-place or batch conversion, or `clip` to copy to the clipboard. Omitting `-o` prints to stdout. Cannot write `.sas7bdat`.
+
+| Target | Description | Example |
+|---|---|---|
+| `<filename>.<ext>` | Write directly to specified path | `pytae penguins.parquet -o clean.csv` |
+| `csv` / `parquet` / `txt` / `dat` | In-place or batch conversion alongside source file | `pytae penguins.parquet -o csv`<br>`pytae 'data/*.parquet' -o csv` |
+| `clip` / `clipboard` | Copy result to system clipboard (suppresses stdout) | `pytae penguins.parquet -head 5 -o clip` |
 
 | Format | Read | Write |
 |---|---|---|
@@ -554,22 +561,29 @@ Output format is the `-o` extension. Omitting `-o` writes `.csv` next to the sou
 | `.sas7bdat` | ✓ | — |
 
 ```bash
-pytae penguins.parquet -convert
-pytae penguins.parquet -convert -o penguins.txt
-pytae penguins.parquet -select "species,body_mass_g" -convert -o subset.parquet
-pytae penguins.csv -convert -o penguins.parquet
-pytae data.sas7bdat -convert -o data.parquet          # character columns decoded as utf-8
-pytae data.sas7bdat -encoding latin-1 -convert -o data.parquet
-pytae data.dat -convert -o data.csv                   # .dat defaults to '|' delimiter, latin-1 encoding
-pytae 'data/*.parquet' -convert
-pytae penguins.parquet -convert -rename "old name:new_name,another:clean"      # spaces in a name are fine — only "," and ":" are delimiters
+# Save to an explicit destination file
+pytae penguins.parquet -o penguins.txt
+pytae penguins.parquet -select "species,body_mass_g" -o subset.parquet
+pytae penguins.csv -o penguins.parquet
+pytae data.sas7bdat -o data.parquet          # character columns decoded as utf-8
+pytae data.sas7bdat -encoding latin-1 -o data.parquet
+pytae data.dat -o data.csv                   # .dat defaults to '|' delimiter, latin-1 encoding
+
+# In-place conversion (saves data.csv next to data.parquet)
+pytae penguins.parquet -o csv
+
+# Batch conversion (converts all matched files)
+pytae 'data/*.parquet' -o csv
+
+# Rename during export
+pytae penguins.parquet -rename "old name:new_name,another:clean" -o clean.parquet
 ```
 
 > **`-dlim`:** `.csv` / `.txt` / `.dat` only (not `.sas7bdat`, which has no delimiter concept). Defaults: `,` for csv, tab for txt, `|` for dat. Common: `|`, `;`, `:`, `~`.
 >
 > ```bash
 > pytae data.txt -dlim "|" -head
-> pytae data.csv -dlim ";" -convert -o data.parquet
+> pytae data.csv -dlim ";" -o data.parquet
 > ```
 
 > **`-encoding`:** default is `utf-8` for `.sas7bdat`, `latin-1` for `.dat`, and pandas' own inference for `.csv`/`.txt` (usually `utf-8`). If the file can't be decoded with the current encoding, pytae reports the
@@ -668,12 +682,12 @@ pytae penguins.parquet -info
 
 `-shape` / `-cols` / `-dtype` / `-nulls` / `-info` mirror pandas attributes/methods that
 don't return a DataFrame (`df.shape`, `df.columns`, `df.dtypes`, `df.info()` — `-nulls` is
-`df.isna().sum()`). Like real method chaining, nothing may follow them except `-to_clip`;
+`df.isna().sum()`). Like real method chaining, nothing may follow them except `-o clip`;
 put them last. `-describe` is the exception — `df.describe()` returns a DataFrame, so it
 can still be chained into further flags (e.g. `-describe -shape`, `-describe -round 2`).
 
 ```bash
-pytae penguins.parquet -shape -to_clip     # ok: -to_clip is the only thing allowed after -shape
+pytae penguins.parquet -shape -o clip     # ok: -o clip is the only thing allowed after -shape
 pytae penguins.parquet -shape -head 3      # error: -shape isn't a DataFrame, can't chain -head off it
 pytae penguins.parquet -describe -shape    # ok: describe() returns a DataFrame
 ```
@@ -790,7 +804,7 @@ pytae penguins.parquet -qry "species='Adelie', body_mass_g=('>', 3500)"
 pytae penguins.parquet -mutate "bmi=body_mass_g / bill_length_mm ** 2"
 
 # translation mappings use ':':
-pytae data.parquet -convert -rename "old col:new col" -o clean.parquet
+pytae data.parquet -rename "old col:new col" -o clean.parquet
 pytae data.parquet -replace_values "v='a magician:the magic'"
 ```
 
@@ -843,7 +857,7 @@ pt.wide(df, c="metric", v="reading", a="mean")
 ```
 
 ```bash
-pytae penguins.parquet -long "c=metric,v=reading" -convert -o metrics.csv
+pytae penguins.parquet -long "c=metric,v=reading" -o metrics.csv
 pytae metrics.csv -wide "c=metric,v=reading,a=mean"
 ```
 
@@ -921,11 +935,11 @@ pytae penguins.parquet -describe -round 2
 pytae penguins.parquet -head 20 -nrows 1000
 pytae penguins.parquet -sample 10 -seed 42       # reproducible: same rows every run
 pytae penguins.parquet -sample -frac 0.1         # 10% of rows instead of a fixed count
-pytae penguins.parquet -head -to_clip          # copy; no stdout
-pytae huge.csv -convert -o huge.parquet -progress
+pytae penguins.parquet -head -o clip             # copy; no stdout
+pytae huge.csv -o huge.parquet -progress
 ```
 
-`-to_clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -to_clip` copies the tail). Do not combine `-to_clip -shape` with a table-producing flag.
+`-o clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -o clip` copies the tail). Non-DataFrame terminal inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`) copy their text output to clipboard via `-o clip`, but cannot be exported to table files (`-o out.csv`).
 
 ---
 
@@ -936,8 +950,8 @@ pytae huge.csv -convert -o huge.parquet -progress
 # filter, then aggregate the remaining groups
 pytae penguins.parquet -qry "species='Adelie'" -agg_df mean
 
-# subset + convert
-pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g" -convert -o dream.parquet
+# subset + export
+pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g" -o dream.parquet
 ```
 
 ---
@@ -999,25 +1013,18 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 | `-merge KEY=VALUE,...` | Join `-file` aliases (`left`, `right`, `on`, optional `how` default `inner`, optional `validate`); repeatable, `left=`/`right=` accept `data` for the running result; or use `-sql` instead |
 | `-concat KEY=VALUE,...` | Stack `-file` aliases row-wise (`frames=`, an ordered list, accepts `data` for the running result); repeatable; always resets the index |
 
-**Convert & I/O**
+**Output & I/O**
 
 | Flag | Description |
 |---|---|
-| `-convert` | Convert to another format (extension inferred from `-o`, defaults to `.csv`) |
-| `-o, --output PATH` | Output path for `-convert` |
+| `-o, --output TARGET` | Output destination: `<path>.<ext>`, format (`csv`, `parquet`), or `clip`/`clipboard` |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/dat (not sas7bdat) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; dat default: latin-1; csv/txt: pandas infer) |
-| `-rename OLD:NEW,...` | Rename columns anywhere in pipeline or during convert |
-
-**Output formatting**
-
-| Flag | Description |
-|---|---|
+| `-rename OLD:NEW,...` | Rename columns anywhere in pipeline or during export |
 | `-pretty` | Markdown table |
 | `-round N` | Round numeric print/copy |
-| `-to_clip` | Copy last result; suppress stdout |
-| `-progress` | Progress for large converts |
+| `-progress` | Progress for large file exports |
 
 ---
 
@@ -1033,7 +1040,7 @@ Use this quick-decision guide to find the right flag for your task. Each flag li
 |---|---|---|
 | **Pick columns** | [`-select`](#select) | Union of names, slices (`a:b`), patterns (`contains=`, `regex=`), or `dtype=`; [`-drop`](#drop) only subtracts names |
 | **Drop columns** | [`-drop`](#drop) | Subtracts exact column names and preserves order; patterns and dtypes stay on [`-select`](#select) |
-| **Rename columns** | [`-rename`](#rename) | Uses `old:new` mapping; works anywhere in pipeline or during [`-convert`](#convert) |
+| **Rename columns** | [`-rename`](#rename) | Uses `old:new` mapping; works anywhere in pipeline or during export ([`-o`](#output)) |
 | **Clean messy headers** | [`-clean_columns`](#clean-columns) | Standardizes header names (strip, squeeze, case, fill, dedupe); for cell values use [`-replace_values`](#replace-values) |
 | **Filter rows (pytae)** | [`-qry`](#qry) | Uses `col=condition` or expressions (`body_mass_g > 3500`); handles spaces and special characters safely |
 | **Filter rows (pandas)** | [`-query`](#query) | Direct passthrough to pandas `df.query()` (numexpr syntax) |
@@ -1051,8 +1058,8 @@ Use this quick-decision guide to find the right flag for your task. Each flag li
 | **Cross-tabulate** | [`-crosstab`](#crosstab) | Two-way contingency matrix; supports `normalize=` percentages and `margins=` totals |
 | **Frequency counts** | [`-value_counts`](#value-counts) | Counts unique combinations across current working columns (pair with [`-select`](#select)) |
 | **Peek at rows** | [`-head`](#listing) / [`-tail`](#listing) / [`-sample`](#listing) | View first, last, or random sampled rows (default 5 rows; supports `-seed` and `-frac`) |
-| **Schema & summary** | [`-shape`](#listing) / [`-cols`](#listing) / [`-dtype`](#listing) / [`-nulls`](#listing) / [`-info`](#listing) / [`-describe`](#listing) | Terminal inspection flags (cannot be followed except by [`-to_clip`](#display-extras)) |
-| **Convert file format** | [`-convert`](#convert) | Converts between parquet, csv, txt, dat (and reads sas7bdat) via `-o` |
+| **Schema & summary** | [`-shape`](#listing) / [`-cols`](#listing) / [`-dtype`](#listing) / [`-nulls`](#listing) / [`-info`](#listing) / [`-describe`](#listing) | Terminal inspection flags (cannot be followed except by [`-o clip`](#output)) |
+| **Output / convert format** | [`-o`](#output) | Export to file (`-o out.parquet`), in-place/batch convert (`-o csv`), or clipboard (`-o clip`) |
 | **Combine multiple files** | [`-file`](#merge) + [`-merge`](#merge) / [`-concat`](#merge) / [`-sql`](#sql) | Multi-file mode replacing positional path; see [CLI_MULTI_FILE.md](CLI_MULTI_FILE.md) |
 
 <a id="polarity-chaining"></a>

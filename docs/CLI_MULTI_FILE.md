@@ -81,6 +81,6 @@ pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id" -sql "select count(
 
 ## Notes
 
-- `-convert` after a merge/concat requires `-o`/`--output` explicitly (there's no single source file to derive a default `.csv` name from).
-- Glob-pattern batch mode (`pytae 'data/*.parquet' -convert`) is a different, unrelated feature — it can't be combined with `-file`.
+- Saving output after a merge/concat requires `-o`/`--output <filename>` explicitly (there's no single source file to derive a default filename from).
+- Glob-pattern batch mode (`pytae 'data/*.parquet' -o csv`) is a different, unrelated feature — it can't be combined with `-file`.
 
