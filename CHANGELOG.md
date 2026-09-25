@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [3.5.2] - 2026-09-24
 
 ### Breaking Changes
 - `to_clip()` has been removed from the package namespace (`pt.to_clip()`) and DataFrame accessor (`df.pt.to_clip()`). Clipboard copying is now attached directly as methods on `pd.DataFrame.to_clip()` and `pd.Series.to_clip()` upon `import pytae`, allowing direct calls like `df.to_clip()` and `df.head().to_clip()`.

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.5.1"
-description = "A package to enhance common tasks in data and plotting"
+version = "3.5.2"
+description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.10"
