@@ -220,7 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
-    parser.add_argument("-to_clip", "--to_clip", "-snip", "--snip", dest="to_clip", action="store_true",
+    parser.add_argument("-to_clip", "--to_clip", action="store_true",
                          help="also copy the result to the system clipboard: real tab-separated data "
                               "for DataFrame/Series output (-head/-tail/-nulls/-cols/etc.), plain text for -shape "
                               "(cannot combine -shape with a DataFrame-producing flag)")
