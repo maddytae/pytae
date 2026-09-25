@@ -122,7 +122,8 @@ pt.mutate(penguins, bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_
 pt.mutate(penguins, **{"body mass kg": "body_mass_g / 1000"})
 
 # Referencing existing columns with spaces: use SQL brackets [col] or backticks `col`
-pt.mutate(penguins, ratio="[bill length mm] / [bill depth mm]")
+spaced = penguins.rename(columns={"bill_length_mm": "bill length mm", "bill_depth_mm": "bill depth mm"})
+pt.mutate(spaced, ratio="[bill length mm] / [bill depth mm]")
 
 # Later entries can reference earlier ones in the same call
 pt.mutate(penguins, mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")

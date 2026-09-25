@@ -29,7 +29,6 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     assert copied["called"] is True
     assert copied["index"] is False
 
-    # to_clip is attached directly to DataFrame/Series, not under pt or df.pt
     assert not hasattr(pt, "to_clip")
     assert not hasattr(df.pt, "to_clip")
 
@@ -38,7 +37,6 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     df["a"].to_clip()
     assert copied_series.get("called") is True
 
-    # verify pandas df.clip is preserved and not shadowed
     clipped = df.clip(lower=0)
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))
 
