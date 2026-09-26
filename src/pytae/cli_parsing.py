@@ -149,14 +149,26 @@ def parse_rename(raw: str) -> dict[str, str]:
     return mapping
 
 
-def expand_paths(pattern: str) -> list[Path]:
-    """Expand a glob pattern (e.g. "data/*.parquet") into matching paths, or wrap a plain path as-is."""
-    if any(ch in pattern for ch in "*?["):
-        matches = sorted(Path(p) for p in glob.glob(pattern))
-        if not matches:
-            raise SystemExit(f"no files matched pattern: {pattern}")
-        return matches
-    return [Path(pattern)]
+def expand_paths(patterns: str | list[str]) -> list[Path]:
+    """Expand glob pattern(s) into matching paths, or wrap plain paths as-is."""
+    items = [patterns] if isinstance(patterns, str) else list(patterns)
+    results: list[Path] = []
+    seen: set[Path] = set()
+    for item in items:
+        if any(ch in item for ch in "*?["):
+            matches = sorted(Path(p) for p in glob.glob(item))
+            if not matches:
+                raise SystemExit(f"no files matched pattern: {item}")
+            for m in matches:
+                if m not in seen:
+                    results.append(m)
+                    seen.add(m)
+        else:
+            p = Path(item)
+            if p not in seen:
+                results.append(p)
+                seen.add(p)
+    return results
 
 
 def _split_qry_entries(raw: str) -> list[tuple[str, str]]:

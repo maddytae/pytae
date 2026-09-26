@@ -457,3 +457,78 @@ def test_cli_removed_flags_migration_errors(tmp_path):
     assert exc_info.value.code == 2
 
 
+def test_cli_multiple_positional_files_batch_convert(tmp_path, capsys):
+    f1 = tmp_path / "data1.parquet"
+    f2 = tmp_path / "data2.parquet"
+    pd.DataFrame({"x": [1, 2]}).to_parquet(f1, index=False)
+    pd.DataFrame({"y": [3, 4]}).to_parquet(f2, index=False)
+
+    exit_code = cli.main([str(f1), str(f2), "-o", "csv"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert (tmp_path / "data1.csv").exists()
+    assert (tmp_path / "data2.csv").exists()
+    assert f"== {f1} ==" in out
+    assert f"== {f2} ==" in out
+    assert "Wrote 2 rows" in out
+
+
+def test_cli_multiple_positional_files_inspect(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"col": [10, 20]}).to_csv(f1, index=False)
+    pd.DataFrame({"col": [30, 40]}).to_csv(f2, index=False)
+
+    exit_code = cli.main([str(f1), str(f2), "-head", "1"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert f"== {f1} ==" in out
+    assert f"== {f2} ==" in out
+    assert "10" in out
+    assert "30" in out
+
+
+def test_cli_multiple_files_single_destination_errors(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"col": [1]}).to_csv(f1, index=False)
+    pd.DataFrame({"col": [2]}).to_csv(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", str(tmp_path / "out.parquet")])
+    assert exc_info.value.code == 2
+    assert "requires a format" in capsys.readouterr().err
+
+
+def test_cli_multiple_files_clip_errors(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"col": [1]}).to_csv(f1, index=False)
+    pd.DataFrame({"col": [2]}).to_csv(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", "clip"])
+    assert exc_info.value.code == 2
+    assert "-o clip cannot be used with multiple matched files" in capsys.readouterr().err
+
+
+def test_cli_no_path_errors(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([])
+    assert exc_info.value.code == 2
+    assert "the following arguments are required: path" in capsys.readouterr().err
+
+
+def test_cli_positional_with_file_errors(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"id": [1]}).to_csv(f1, index=False)
+    pd.DataFrame({"id": [2]}).to_csv(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{f1}=a", str(f2), "-merge", "how=inner"])
+    assert exc_info.value.code == 2
+    assert "can't be combined with a positional path" in capsys.readouterr().err
+
+
+

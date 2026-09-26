@@ -51,11 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
     )
-    parser.add_argument("path", nargs="?", default=None,
+    parser.add_argument("path", nargs="*", default=None,
                          help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
-                                      "a .yaml/.yml connection config (Databricks table or remote SSH file), "
-                                      "or a glob pattern like 'data/*.parquet' for batch conversion; "
-                                      "omit when using -file with -merge/-concat/-sql")
+                              "a .yaml/.yml connection config (Databricks table or remote SSH file), "
+                              "or glob patterns/multiple files for batch operations; "
+                              "omit when using -file with -merge/-concat/-sql")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the first N rows (default 5)")
@@ -261,18 +261,20 @@ def main(argv: list[str] | None = None) -> int:
             f"use '-o clip' or view in terminal"
         )
 
+    raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
+
     if args.merge and args.file is None:
         parser.error("-merge requires -file")
     if args.concat and args.file is None:
         parser.error("-concat requires -file")
     if args.file is not None:
-        if args.path is not None:
+        if raw_paths:
             parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
         if not op_order or op_order[0] not in ("merge", "sql", "concat"):
             parser.error("-file requires -merge, -concat, or -sql as its first operation")
         if is_file and out_target is not None and out_target.lower() in ("csv", "parquet", "pq", "txt", "dat"):
             parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
-    elif args.path is None:
+    elif not raw_paths:
         parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
@@ -335,9 +337,9 @@ def main(argv: list[str] | None = None) -> int:
                                 merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
 
-    if args.path is None:
+    if not raw_paths:
         parser.error("the following arguments are required: path")
-    paths = expand_paths(args.path)
+    paths = expand_paths(raw_paths)
     batch = len(paths) > 1
 
     if batch and args.output is not None:

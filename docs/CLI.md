@@ -549,7 +549,7 @@ pytae penguins.parquet -rename "island:location" -o renamed.parquet
 | Target | Description | Example |
 |---|---|---|
 | `<filename>.<ext>` | Write directly to specified path | `pytae penguins.parquet -o clean.csv` |
-| `csv` / `parquet` / `txt` / `dat` | In-place or batch conversion alongside source file | `pytae penguins.parquet -o csv`<br>`pytae 'data/*.parquet' -o csv` |
+| `csv` / `parquet` / `txt` / `dat` | In-place or batch conversion alongside source file | `pytae penguins.parquet -o csv`<br>`pytae data/*.parquet -o csv`<br>`pytae 'data/*.parquet' -o csv` |
 | `clip` / `clipboard` | Copy result to system clipboard (suppresses stdout) | `pytae penguins.parquet -head 5 -o clip` |
 
 | Format | Read | Write |
@@ -572,7 +572,9 @@ pytae data.dat -o data.csv                   # .dat defaults to '|' delimiter, l
 # In-place conversion (saves data.csv next to data.parquet)
 pytae penguins.parquet -o csv
 
-# Batch conversion (converts all matched files)
+# Batch conversion (converts all matched files; works with unquoted shell glob or quoted pattern)
+pytae data/*.parquet -o csv
+pytae data/*.* -o csv
 pytae 'data/*.parquet' -o csv
 
 # Rename during export
