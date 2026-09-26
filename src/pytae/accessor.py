@@ -126,12 +126,17 @@ class PtAccessor:
             and has_facet_trigger
             and is_plot_call
         ):
+            if "mosaic" in kwargs or (len(args) > 0 and args[0] is not None):
+                raise ValueError("Cannot combine 'mosaic' with faceting ('by' with 'ncols'/'facet'/'col').")
+            if "nrows" in kwargs:
+                raise ValueError("Cannot combine 'nrows' with faceting ('by' with 'ncols'/'facet'/'col'). Use 'ncols' to control grid columns.")
+
             facet_kwargs = dict(kwargs)
             facet_kwargs.pop("by", None)
             facet_kwargs.pop("col", None)
             facet_kwargs.pop("facet", None)
             ncols = facet_kwargs.pop("ncols", None)
-            return Plotter.facet(self._obj, by=by_col, ncols=ncols, *args, **facet_kwargs)
+            return Plotter.facet(self._obj, by=by_col, ncols=ncols, **facet_kwargs)
 
         plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
         init_kwargs = {k: v for k, v in kwargs.items() if k in plotter_keys}

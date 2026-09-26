@@ -362,6 +362,146 @@ def test_auto_facet_by_and_ncols():
     assert set(p5.axd.keys()) == {"A", "B"}
 
 
+def test_plot_line_color_string_and_list():
+    import matplotlib.colors as mcolors
+
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri", "Sat"], "bill": [10, 20, 30], "tip": [2, 4, 6]})
+
+    # String color
+    p = pt.Plotter(df).plot(kind="line", x="day", y="bill", color="crimson").finalize()
+    line_color = p.axd["A"].get_lines()[0].get_color()
+    assert mcolors.to_hex(line_color) == mcolors.to_hex("crimson")
+
+    # List of colors for multiple lines
+    df_multi = pd.DataFrame({"day": ["Thur", "Fri"], "A": [1, 2], "B": [3, 4]})
+    p2 = pt.Plotter(df_multi).plot(kind="line", x="day", y=["A", "B"], color=["crimson", "navy"]).finalize()
+    lines = p2.axd["A"].get_lines()
+    assert mcolors.to_hex(lines[0].get_color()) == mcolors.to_hex("crimson")
+    assert mcolors.to_hex(lines[1].get_color()) == mcolors.to_hex("navy")
+
+
+def test_plot_scatter_by_title_labels_kwargs():
+    import pytae as pt
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
+        "bill_len": [39.1, 46.5, 40.3, 48.0],
+        "bill_dep": [18.7, 14.5, 18.0, 15.0],
+        "size_col": [20, 40, 25, 45],
+    })
+
+    p = (
+        pt.Plotter(df)
+        .plot(
+            kind="scatter",
+            x="bill_len",
+            y="bill_dep",
+            by="species",
+            title="Penguin Bill Dimensions",
+            s=df["size_col"],
+            edgecolors="black",
+        )
+        .finalize()
+    )
+    ax = p.axd["A"]
+    assert ax.get_title() == "Penguin Bill Dimensions"
+    assert ax.get_xlabel() == "bill_len"
+    assert ax.get_ylabel() == "bill_dep"
+    # Check collections have edgecolors set
+    for coll in ax.collections:
+        assert len(coll.get_edgecolors()) > 0
+
+
+def test_heatmap_title_vmin_vmax_and_contrast():
+    import pytae as pt
+    df = pd.DataFrame({
+        "A": [1.0, 0.0, -1.0],
+        "B": [0.0, 1.0, 0.5],
+        "C": [-1.0, 0.5, 1.0],
+    })
+    p = pt.Plotter(df).plot(
+        kind="heatmap",
+        annot=True,
+        fmt=".2f",
+        cmap="coolwarm",
+        title="Correlation Heatmap",
+        vmin=-1,
+        vmax=1,
+    ).finalize()
+    ax = p.axd["A"]
+    assert ax.get_title() == "Correlation Heatmap"
+    images = ax.get_images()
+    assert len(images) == 1
+    assert images[0].get_clim() == (-1.0, 1.0)
+    # Check text contrast: text annotations exist and contain black or white
+    texts = ax.texts
+    assert len(texts) == 9
+    colors = {t.get_color() for t in texts}
+    assert "white" in colors or "black" in colors
+
+
+def test_unknown_palette_warning():
+    import pytest
+
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
+    with pytest.warns(UserWarning, match="Unknown palette 'non_existent_palette'"):
+        pt.Plotter(df).plot(kind="bar", x="day", y="bill", palette="non_existent_palette").finalize()
+
+
+def test_facet_layout_kwargs_conflict_error():
+    import pytest
+
+    import pytae as pt
+    df = pd.DataFrame({"grp": ["g1", "g2"], "x": [1, 2], "y": [3, 4]})
+
+    with pytest.raises(ValueError, match="Cannot combine 'mosaic' with faceting"):
+        pt.Plotter(df, mosaic="AB", ncols=2, by="grp", kind="line", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'nrows' with faceting"):
+        df.pt.plot(nrows=1, ncols=2, by="grp", kind="bar", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'mosaic' with faceting"):
+        pt.Plotter(df, "AB", by="grp", ncols=2, kind="scatter", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'mosaic' with faceting"):
+        pt.Plotter.facet(df, by="grp", ncols=2, mosaic="AB", kind="line", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'nrows' with faceting"):
+        pt.Plotter.facet(df, by="grp", ncols=2, nrows=1, kind="line", x="x", y="y")
+
+
+def test_plotter_init_immediate_plot_and_unexpected_kwargs():
+    import pytest
+
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
+
+    # Passing plot kwargs to Plotter constructor draws immediately
+    p = pt.Plotter(df, kind="bar", x="day", y="bill", aggfunc="mean")
+    assert p.axd["A"].has_data()
+
+    # Unexpected kwargs raise TypeError
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        pt.Plotter(df, nonexistent_kwarg="invalid")
+
+
+def test_box_palette_colors():
+    import pytae as pt
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
+        "body_mass": [3000, 4500, 3200, 4700],
+    })
+    p = pt.Plotter(df).plot(kind="box", x="species", y="body_mass", palette="Set1").finalize()
+    ax = p.axd["A"]
+    assert len(ax.patches) == 2
+    # Verify patches have facecolors assigned from palette
+    c0 = ax.patches[0].get_facecolor()
+    c1 = ax.patches[1].get_facecolor()
+    assert c0 != c1
+
+
+
 
 
 

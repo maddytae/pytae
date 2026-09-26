@@ -90,6 +90,8 @@ Top-Level Functions exported by `pytae`:
   - pt.sample(name)
   - pt.sample_data (Mapping of bundled datasets)
   - pt.Plotter (lazy loaded when matplotlib is installed)
+  - pt.plot(df, *args, **kwargs)
+  - pt.finalize(plotter=None, **kwargs)
 
 DataFrame Accessor:
   Importing pytae automatically registers the `.pt` accessor on `pd.DataFrame`.
@@ -106,6 +108,8 @@ DataFrame Accessor:
     df.pt.cols(...)
     df.pt.clean_columns(...)
     df.pt.replace_values(...)
+    df.pt.plot(...)
+    df.pt.finalize(...)
 
 
 3. SAMPLE DATASETS
@@ -442,17 +446,25 @@ Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
 
 Key Concepts:
+  - Fluent Accessor & Functional Shortcuts:
+    tips.pt.plot(kind="bar", x="day", y="total_bill", by="sex", aggfunc="mean", palette="tab10").pt.finalize()
+    pt.plot(tips, kind="bar", x="day", y="total_bill", aggfunc="mean").finalize()
   - Chain Pattern:
     k = pt.Plotter(figsize=(6, 4))
     (k
      .data(df)
-     .plot(kind="scatter", x="bill_length_mm", y="bill_depth_mm", c="species")
+     .plot(kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species", palette="Set1")
      .finalize()
     )
     k.fig  # access matplotlib figure
   - Auto-Aggregation:
     No need to pre-aggregate data. Pass `by=` and `aggfunc=`:
     k.data(tips).plot(kind="bar", x="day", y="total_bill", by="sex", aggfunc="mean").finalize()
+  - Box Plots (True Unaggregated Quartiles):
+    pt.Plotter(penguins).plot(kind="box", x="species", y="body_mass_g", palette="Set1").finalize()
+  - Heatmap Matrix:
+    corr = penguins.select_dtypes("number").corr()
+    pt.Plotter(corr).plot(kind="heatmap", annot=True, fmt=".2f", cmap="coolwarm", title="Correlation").finalize()
   - Multi-Panel Dashboards (Mosaic Layouts):
     mosaic = '''
     AB
@@ -460,19 +472,19 @@ Key Concepts:
     '''
     k = pt.Plotter(mosaic, figsize=(10, 8))
     (k
-     .data(penguins).plot(on="A", kind="scatter", x="bill_length_mm", y="bill_depth_mm")
+     .data(penguins).plot(on="A", kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species")
      .data(tips).plot(on="B", kind="bar", x="day", y="total_bill", aggfunc="mean")
      .finalize(consolidate_legends=True)
     )
   - Secondary Y-Axis ('^'):
-    Append `^` to panel name (e.g. `on="A^"`) to create a secondary y-axis sharing 
-    the same x-axis scale:
+    Append `^` to panel name (e.g. `on="A^"` or `secondary_y=True`) to create a secondary y-axis:
     (k
      .plot(kind="bar", x="day", y="total_bill", on="A", color="skyblue")
-     .plot(kind="line", x="day", y="tip", on="A^", color="crimson")
+     .plot(kind="line", x="day", y="tip", secondary_y=True, color="crimson")
      .finalize()
     )
-  - Small Multiples / Faceting:
+  - Small Multiples / Auto-Faceting:
+    pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="bill_depth_mm").finalize()
     pt.Plotter.facet(df, by="species", ncols=2, kind="scatter", x="bill_length_mm", y="bill_depth_mm")
   - Saving:
     k.save("chart.png", dpi=300)
@@ -766,44 +778,51 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
 ================================================================================
 
 .
-├── .githooks
-│   └── pre-commit
 ├── .github
 │   └── workflows
 │       └── ci.yml
+├── .githooks
+│   └── pre-commit
 ├── .gitignore
-├── .grok
-│   ├── grok-review-0a076f0e.md
-│   ├── grok-review-3eb13ffc.md
-│   ├── grok-review-5dc28e98.md
-│   ├── grok-review-summary-0a076f0e.md
-│   ├── grok-review-summary-3eb13ffc.md
-│   └── grok-review-summary-5dc28e98.md
-├── CHANGELOG.md
-├── CONTRIBUTING.md
 ├── LICENSE
-├── README.md
+├── changelog.md
+├── contributing.md
 ├── docs
-│   ├── CLI.md
-│   ├── CLI_MULTI_FILE.md
-│   ├── LIBRARY.md
-│   └── PLOTTING.md
-├── notebooks
-│   ├── agg_df.ipynb
-│   ├── more_plots.ipynb
-│   ├── mutate.ipynb
-│   ├── other_utilities.ipynb
-│   ├── plotter.ipynb
-│   ├── qry.ipynb
-│   ├── select.ipynb
-│   ├── shape.ipynb
-│   └── sql.ipynb
+│   ├── cli
+│   │   ├── aggregate.md
+│   │   ├── clean_replace.md
+│   │   ├── diff.md
+│   │   ├── export_io.md
+│   │   ├── filter.md
+│   │   ├── inspect.md
+│   │   ├── multi_file.md
+│   │   ├── mutate.md
+│   │   ├── reshape.md
+│   │   ├── select_drop.md
+│   │   └── sql.md
+│   ├── cli.md
+│   ├── library
+│   │   ├── agg_df.ipynb
+│   │   ├── mutate.ipynb
+│   │   ├── other_utilities.ipynb
+│   │   ├── qry.ipynb
+│   │   ├── select.ipynb
+│   │   ├── shape.ipynb
+│   │   └── sql.ipynb
+│   ├── library.md
+│   ├── plotting
+│   │   └── plotter.ipynb
+│   └── plotting.md
 ├── pyproject.toml
+├── readme.md
+├── reference
+│   └── pytae_reference.txt
 ├── scripts
 │   └── run_notebooks.py
 ├── src
 │   └── pytae
 │       ├── __init__.py
+│       ├── __main__.py
 │       ├── _text.py
 │       ├── accessor.py
 │       ├── agg_df.py
@@ -887,7 +906,7 @@ name = "pytae"
 version = "3.5.2"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
-readme = "README.md"
+readme = "readme.md"
 requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0",
@@ -916,8 +935,11 @@ pytae = "pytae.cli:main"
 [project.urls]
 "Homepage" = "https://github.com/maddytae/pytae"
 "Bug Tracker" = "https://github.com/maddytae/pytae/issues"
-"CLI Docs" = "https://github.com/maddytae/pytae/blob/master/docs/CLI.md"
-"Library Docs" = "https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md"
+"CLI Docs" = "https://github.com/maddytae/pytae/blob/master/docs/cli.md"
+"Library Docs" = "https://github.com/maddytae/pytae/blob/master/docs/library.md"
+
+[tool.hatch.build.targets.wheel.force-include]
+"reference" = "pytae/reference"
 
 [tool.ruff]
 target-version = "py310"
@@ -936,7 +958,8 @@ ignore = [
 "tests/*" = ["E402"]  # sys.path insert before pytae import
 "tests/test_mutate.py" = ["E402", "F841"]  # @locals are used via pandas eval
 "src/pytae/plotting.py" = ["E741", "F841"]
-"notebooks/*" = ["E402", "F401"]
+"docs/library/*" = ["E402", "F401"]
+"docs/plotting/*" = ["E402", "F401"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -961,7 +984,6 @@ ignore_errors = true
 ################################################################################
 # FILE: src/pytae/__init__.py
 ################################################################################
-
 """pytae: package functions (`pt.select(df, ...)`) and DataFrame accessor `df.pt`, plus a CLI."""
 
 from __future__ import annotations
@@ -1033,14 +1055,19 @@ def _bind_shape():
 
 
 def __getattr__(name):
-    if name == "Plotter":
+    if name in ("Plotter", "plot", "finalize"):
         try:
-            from .plotting import Plotter
+            from .plotting import Plotter, finalize, plot
         except ImportError as exc:
             raise ImportError(
-                "Plotter requires matplotlib. Install with: pip install 'pytae[plot]'"
+                f"{name} requires matplotlib. Install with: pip install 'pytae[plot]'"
             ) from exc
-        return Plotter
+        if name == "Plotter":
+            return Plotter
+        elif name == "plot":
+            return plot
+        else:
+            return finalize
     if name in ("long", "wide"):
         _bind_shape()
         return globals()[name]
@@ -1051,10 +1078,13 @@ __all__ = [
     "sample_data",
     "sample",
     "Plotter",
+    "plot",
+    "finalize",
     "select",
     "qry",
     "mutate",
     "agg_df",
+
     "long",
     "wide",
     "group_x",
@@ -1066,12 +1096,9 @@ __all__ = [
     "everything",
     "PtAccessor",
 ]
-
-
 ################################################################################
 # FILE: src/pytae/_text.py
 ################################################################################
-
 """Quote-aware string splitting shared by mutate() and the CLI parser."""
 
 from __future__ import annotations
@@ -1123,12 +1150,9 @@ def unquote_name(raw: str) -> str:
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
         return raw[1:-1]
     return raw
-
-
 ################################################################################
 # FILE: src/pytae/accessor.py
 ################################################################################
-
 """DataFrame accessor `df.pt` — mix with pandas methods in one chain.
 
     df.rename(columns={...}).pt.agg_df(a="mean")
@@ -1220,11 +1244,68 @@ class PtAccessor:
     ) -> pd.DataFrame:
         return _replace_values(self._obj, v, c=c, exact=exact)
 
+    def plot(self, *args: Any, **kwargs: Any) -> Any:
+        """Create a pytae Plotter pre-loaded with this DataFrame.
+
+        Can be called with layout parameters to start a pipeline:
+            df.pt.plot(mosaic="AB", figsize=(10, 5)).plot(on="A", ...)
+
+        Or with direct plot arguments to plot immediately:
+            df.pt.plot(kind="bar", x="day", y="total_bill", aggfunc="mean").pt.finalize()
+
+        Or with faceting parameters (e.g. by="species", ncols=3) to automatically
+        produce a small-multiples grid across groups:
+            df.pt.plot(by="species", ncols=3, kind="scatter", x="a", y="b").pt.finalize()
+        """
+        try:
+            from .plotting import Plotter
+        except ImportError as exc:
+            raise ImportError(
+                "df.pt.plot() requires matplotlib. Install with: pip install 'pytae[plot]'"
+            ) from exc
+
+        by_col = kwargs.get("by") or kwargs.get("col")
+        has_facet_trigger = (
+            kwargs.get("ncols") is not None
+            or kwargs.get("facet") is True
+            or "col" in kwargs
+        )
+        is_plot_call = bool(
+            {"kind", "x", "y", "column"}.intersection(kwargs.keys())
+        )
+
+        if (
+            isinstance(self._obj, pd.DataFrame)
+            and by_col
+            and by_col in self._obj
+            and has_facet_trigger
+            and is_plot_call
+        ):
+            if "mosaic" in kwargs or (len(args) > 0 and args[0] is not None):
+                raise ValueError("Cannot combine 'mosaic' with faceting ('by' with 'ncols'/'facet'/'col').")
+            if "nrows" in kwargs:
+                raise ValueError("Cannot combine 'nrows' with faceting ('by' with 'ncols'/'facet'/'col'). Use 'ncols' to control grid columns.")
+
+            facet_kwargs = dict(kwargs)
+            facet_kwargs.pop("by", None)
+            facet_kwargs.pop("col", None)
+            facet_kwargs.pop("facet", None)
+            ncols = facet_kwargs.pop("ncols", None)
+            return Plotter.facet(self._obj, by=by_col, ncols=ncols, **facet_kwargs)
+
+        plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
+        init_kwargs = {k: v for k, v in kwargs.items() if k in plotter_keys}
+        plot_kwargs = {k: v for k, v in kwargs.items() if k not in plotter_keys}
+
+        plotter = Plotter(*args, **init_kwargs)
+        plotter.data(self._obj)
+        if plot_kwargs:
+            plotter.plot(**plot_kwargs)
+        return plotter
 
 ################################################################################
 # FILE: src/pytae/agg_df.py
 ################################################################################
-
 from __future__ import annotations
 
 from typing import Any
@@ -1411,17 +1492,16 @@ def agg_df(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame:
     else:
         return _agg_df_list(df, agg_types, dropna, observed)
 
-
 ################################################################################
 # FILE: src/pytae/cli.py
 ################################################################################
-
 """Command line tool for inspecting tabular files (parquet/csv/txt/sas7bdat) and converting between formats."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -1462,9 +1542,71 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
+_DATA_SUFFIXES = frozenset((".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".jsonl", ".ndjson", ".gz", ".yaml", ".yml"))
+_FORMAT_SHORTHANDS = frozenset((
+    "csv", "parquet", "pq", "txt", "dat", "jsonl", "ndjson",
+    "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
+))
+
+
+def _is_path_like(token: str) -> bool:
+    if token.startswith("-"):
+        return False
+    if any(ch in token for ch in "*?[]"):
+        return True
+    if "/" in token or "\\" in token:
+        return True
+    p = Path(token)
+    if p.exists():
+        return True
+    if p.suffix.lower() in _DATA_SUFFIXES:
+        return True
+    return False
+
+
+def _normalize_progress_args(argv: list[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-progress", "--progress"):
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                try:
+                    int(nxt)
+                    out.append(arg)
+                    out.append(nxt)
+                    i += 2
+                    continue
+                except ValueError:
+                    out.append("--progress=200000")
+                    i += 1
+                    continue
+            else:
+                out.append("--progress=200000")
+                i += 1
+                continue
+        out.append(arg)
+        i += 1
+    return out
+
+
+class PytaeParser(argparse.ArgumentParser):
+    """Custom parser that normalizes optional-value flags such as -progress."""
+
+    def parse_known_args(  # type: ignore[override]
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        if args is None:
+            args = sys.argv[1:]
+        normalized = _normalize_progress_args(list(args))
+        return super().parse_known_args(normalized, namespace)
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = PytaeParser(
         prog="pytae",
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
@@ -1493,6 +1635,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="print pandas describe() summary (count/mean/std/min/quartiles/max)")
     parser.add_argument("-info", "--info", dest="info", action=_OrderedFlag,
                          help="print pandas info() (columns, non-null counts, dtypes, memory)")
+    parser.add_argument("-meta", "--meta", dest="meta", action=_OrderedFlag,
+                         help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data")
+    parser.add_argument("-diff", "--diff", dest="diff", default=None, metavar="PATH", action=_OrderedStore,
+                         help="compare schema and contents against another dataset file")
     parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
                          help="show pandas value_counts across current working columns (use -select to choose columns)")
     parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
@@ -1569,8 +1715,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "include NA keys when false; accepts true or false (default: true)")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
-                              "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat'), "
+                              "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
                               "or 'clip'/'clipboard' to copy to system clipboard")
+    parser.add_argument("-out_dir", "--out_dir", "-od", "--out-dir", dest="out_dir", type=Path, default=None, metavar="DIR",
+                         help="target directory for exported files (created if it does not exist); requires -o/--output")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
                               "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
@@ -1634,6 +1782,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
                          help="render tables as a bordered markdown table instead of plain pandas text")
+    parser.add_argument("-pager", "--pager", action="store_true",
+                         help="pipe long table or inspect outputs through system pager ($PAGER or less)")
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
@@ -1648,15 +1798,26 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
         if any(e in ("-convert", "--convert") for e in extras):
             parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
-        msg = f"unrecognized arguments: {' '.join(extras)}"
-        if extras and all(not e.startswith("-") for e in extras):
-            # likely an unquoted value with a space (e.g. a column name) split by the
-            # shell into separate argv tokens -- the whole spec needs one pair of quotes
-            msg += (
-                "\nIf this is part of a value with a space (e.g. a column name), wrap the "
-                'whole spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.'
-            )
-        parser.error(msg)
+        if args.file is None:
+            path_extras = [e for e in extras if _is_path_like(e)]
+            if path_extras:
+                if args.path is None:
+                    args.path = []
+                elif not isinstance(args.path, list):
+                    args.path = [args.path]
+                args.path.extend(path_extras)
+                extras = [e for e in extras if not _is_path_like(e)]
+
+        if extras:
+            msg = f"unrecognized arguments: {' '.join(extras)}"
+            if extras and all(not e.startswith("-") for e in extras):
+                # likely an unquoted value with a space (e.g. a column name) split by the
+                # shell into separate argv tokens -- the whole spec needs one pair of quotes
+                msg += (
+                    "\nIf this is part of a value with a space (e.g. a column name), wrap the "
+                    'whole spec in quotes, e.g. -select "col a,col b" -- see docs/cli.md#quoting.'
+                )
+            parser.error(msg)
 
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000
@@ -1669,7 +1830,7 @@ def main(argv: list[str] | None = None) -> int:
         if op in NON_DF_TERMINAL_OPS and idx != last_idx:
             parser.error(
                 f"-{op} does not return a DataFrame/Series, so no flag may follow it "
-                f"(matches pandas: you can't chain another call off "
+                f"(except '-o clip'; matches pandas: you can't chain another call off "
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
 
@@ -1677,6 +1838,13 @@ def main(argv: list[str] | None = None) -> int:
     args.output = out_target
     is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
     is_file = out_target is not None and not is_clip
+
+    if args.out_dir is not None:
+        if args.output is None:
+            parser.error("-out_dir requires -o/--output")
+        if is_clip:
+            parser.error("-out_dir cannot be used with '-o clip'")
+        args.out_dir.mkdir(parents=True, exist_ok=True)
 
     if is_file and any(op in NON_DF_TERMINAL_OPS for op in op_order):
         bad_op = next(op for op in op_order if op in NON_DF_TERMINAL_OPS)
@@ -1687,6 +1855,8 @@ def main(argv: list[str] | None = None) -> int:
 
     raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
 
+    if args.meta and args.file is not None:
+        parser.error("-meta cannot be used with -file")
     if args.merge and args.file is None:
         parser.error("-merge requires -file")
     if args.concat and args.file is None:
@@ -1696,7 +1866,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
         if not op_order or op_order[0] not in ("merge", "sql", "concat"):
             parser.error("-file requires -merge, -concat, or -sql as its first operation")
-        if is_file and out_target is not None and out_target.lower() in ("csv", "parquet", "pq", "txt", "dat"):
+        if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
             parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
     elif not raw_paths:
         parser.error("the following arguments are required: path")
@@ -1708,7 +1878,8 @@ def main(argv: list[str] | None = None) -> int:
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
-                         args.rename, args.clean_columns is not None, args.merge, args.concat])
+                         args.rename, args.clean_columns is not None, args.merge, args.concat,
+                         args.meta, args.diff is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -1769,11 +1940,25 @@ def main(argv: list[str] | None = None) -> int:
     if batch and args.output is not None:
         if is_clip:
             parser.error("-o clip cannot be used with multiple matched files")
-        if out_target is not None and out_target.lower() not in ("csv", "parquet", "pq", "txt", "dat"):
+        if out_target is not None and out_target.lower() not in _FORMAT_SHORTHANDS:
             parser.error(
                 "-o/--output with multiple matched files requires a format (e.g. '-o csv' or '-o parquet'), "
                 "not a single file path"
             )
+        assert out_target is not None
+        fmt = out_target.lower()
+        ext = ".parquet" if fmt == "pq" else f".{fmt}"
+        dest_map: dict[Path, Path] = {}
+        for p in paths:
+            clean_name = p.name[:-3] if p.name.lower().endswith(".gz") else p.name
+            dest_name = f"{Path(clean_name).stem}{ext}"
+            dest = (args.out_dir / dest_name).resolve() if args.out_dir is not None else p.with_name(dest_name).resolve()
+            if dest in dest_map:
+                parser.error(
+                    f"-o {out_target}: multiple input files resolve to the same destination path '{dest}': "
+                    f"'{dest_map[dest]}' and '{p}'"
+                )
+            dest_map[dest] = p
 
     exit_code = 0
 
@@ -1796,11 +1981,9 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     sys.exit(main())
 
-
 ################################################################################
 # FILE: src/pytae/cli_parsing.py
 ################################################################################
-
 """Parsing helpers for pytae CLI flag values (pure string parsing; no pandas/pipeline state)."""
 
 from __future__ import annotations
@@ -2434,12 +2617,9 @@ def parse_concat_arg(raw: str) -> dict:
     if len(names) < 2:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
-
-
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
-
 """The _Pipeline view and the argparse Actions that record CLI flag order (op_order)."""
 
 from __future__ import annotations
@@ -2753,6 +2933,7 @@ class _Pipeline:
         else:
             n = min(n, len(df))
             sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
+        sampled = sampled.reset_index(drop=True)
         self._df = sampled
         return sampled
 
@@ -2793,12 +2974,9 @@ class _OrderedAppend(argparse.Action):
         items.append(values)
         setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
-
-
 ################################################################################
 # FILE: src/pytae/cli_run.py
 ################################################################################
-
 """Execute one CLI pipeline: display/convert/agg ops against a file or named frames."""
 
 from __future__ import annotations
@@ -2826,7 +3004,7 @@ from pytae.cli_parsing import (
 )
 from pytae.cli_pipeline import _Pipeline
 from pytae.other_utilities import clean_columns, group_x, handle_missing
-from pytae.readers import get_reader, write_dataframe
+from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
 
 
 def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
@@ -2864,10 +3042,168 @@ def _copy_to_clipboard(text: str) -> None:
         print("pytae: unable to copy to clipboard (no clipboard utility found)", file=sys.stderr)
 
 
+def _output_text(text: str, args: argparse.Namespace) -> None:
+    """Output text to stdout, piping through pydoc.pager if -pager is requested."""
+    if getattr(args, "pager", False):
+        import pydoc
+
+        pydoc.pager(text)
+    else:
+        print(text)
+
+
+def _format_bytes(num: int | float) -> str:
+    """Format byte counts into human-readable strings (e.g. 1.2 KB, 3.4 MB)."""
+    val = float(num)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(val) < 1024.0:
+            return f"{val:3.1f} {unit}" if unit != "B" else f"{int(val)} B"
+        val /= 1024.0
+    return f"{val:.1f} PB"
+
+
+def _extract_metadata(path: Path) -> str:
+    """Extract file metadata without scanning full row data (fastest on Parquet)."""
+    if not path.exists():
+        return f"File not found: {path}"
+    suffix, compression = _split_path_suffixes(path)
+    file_bytes = path.stat().st_size
+    lines: list[str] = [f"File: {path.name}", f"File size: {_format_bytes(file_bytes)}"]
+    if suffix in (".parquet", ".pq"):
+        try:
+            import pyarrow.parquet as pa_parquet
+
+            pf = pa_parquet.ParquetFile(path)
+            md = pf.metadata
+            lines.append(f"Format: Parquet (version {md.format_version})")
+            lines.append(f"Rows: {md.num_rows:,}")
+            lines.append(f"Columns: {md.num_columns}")
+            lines.append(f"Row groups: {md.num_row_groups}")
+            codecs: set[str] = set()
+            total_uncompressed = 0
+            for j in range(md.num_row_groups):
+                rg = md.row_group(j)
+                total_uncompressed += rg.total_byte_size
+                for i in range(md.num_columns):
+                    codecs.add(str(rg.column(i).compression))
+            codec_str = ", ".join(sorted(codecs)) if codecs else "None"
+            lines.append(f"Compression: {codec_str}")
+            lines.append(f"Uncompressed data size: {_format_bytes(total_uncompressed)}")
+            ratio = (file_bytes / total_uncompressed * 100) if total_uncompressed else 100
+            lines.append(f"Space saving: {100 - ratio:.1f}%")
+            lines.append("")
+            lines.append("Schema:")
+            schema = pf.schema_arrow
+            max_name_len = max(len(name) for name in schema.names) if schema.names else 10
+            lines.append(f"  {'#':<4} {'Column':<{max_name_len}}  {'Type'}")
+            lines.append(f"  {'-'*4} {'-'*max_name_len}  {'-'*20}")
+            for idx, field in enumerate(schema):
+                lines.append(f"  {idx:<4} {field.name:<{max_name_len}}  {field.type}")
+        except Exception as exc:
+            lines.append(f"Error reading Parquet metadata: {exc}")
+    else:
+        fmt_name = "CSV" if suffix == ".csv" else ("JSON Lines" if suffix in (".jsonl", ".ndjson") else suffix.lstrip(".").upper())
+        comp_str = f" ({compression})" if compression else ""
+        lines.append(f"Format: {fmt_name}{comp_str}")
+        try:
+            reader = get_reader(path)
+            cols = reader.columns()
+            lines.append(f"Columns: {len(cols)}")
+            lines.append(f"Column names: {', '.join(cols[:15])}{'...' if len(cols) > 15 else ''}")
+        except Exception:
+            pass
+    return "\n".join(lines)
+
+
+def _compute_diff(left_df: pd.DataFrame, right_path: Path, left_name: str) -> str:
+    """Compare the current pipeline result against another tabular file."""
+    if not right_path.exists():
+        return f"Diff target not found: {right_path}"
+    try:
+        reader = get_reader(right_path)
+        right_df = reader.to_dataframe()
+    except Exception as exc:
+        return f"Cannot read diff target '{right_path}': {exc}"
+
+    r1, c1 = left_df.shape
+    r2, c2 = right_df.shape
+    cols1 = list(left_df.columns)
+    cols2 = list(right_df.columns)
+
+    lines: list[str] = [
+        "Comparing:",
+        f"  Left (source):  {left_name} ({r1:,} rows, {c1} cols)",
+        f"  Right (target): {right_path.name} ({r2:,} rows, {c2} cols)",
+        "",
+        "Shape:",
+        f"  Rows: {r1:,} vs {r2:,} ({'+' if r1 >= r2 else ''}{r1 - r2:,})",
+        f"  Cols: {c1} vs {c2} ({'+' if c1 >= c2 else ''}{c1 - c2})",
+    ]
+
+    added_cols = [c for c in cols1 if c not in cols2]
+    removed_cols = [c for c in cols2 if c not in cols1]
+    common_cols = [c for c in cols1 if c in cols2]
+
+    lines.append("")
+    lines.append("Columns:")
+    if added_cols:
+        lines.append(f"  + Added in left ({len(added_cols)}):   {', '.join(added_cols)}")
+    if removed_cols:
+        lines.append(f"  - Removed in left ({len(removed_cols)}): {', '.join(removed_cols)}")
+    lines.append(f"  Common ({len(common_cols)}):        {', '.join(common_cols)}")
+
+    dtype_diffs: list[str] = []
+    for c in common_cols:
+        d1 = str(left_df[c].dtype)
+        d2 = str(right_df[c].dtype)
+        if d1 != d2:
+            dtype_diffs.append(f"  * {c}: {d2} (right) -> {d1} (left)")
+
+    lines.append("")
+    lines.append("Schema Drift:")
+    if dtype_diffs:
+        lines.extend(dtype_diffs)
+    else:
+        lines.append("  None (all common columns have matching dtypes)")
+
+    null_diffs: list[str] = []
+    for c in common_cols:
+        n1 = int(left_df[c].isna().sum())
+        n2 = int(right_df[c].isna().sum())
+        if n1 != n2:
+            null_diffs.append(f"  * {c}: {n1:,} vs {n2:,} nulls ({'+' if n1 >= n2 else ''}{n1 - n2:,})")
+
+    if null_diffs:
+        lines.append("")
+        lines.append("Null Counts:")
+        lines.extend(null_diffs)
+
+    if r1 == r2 and common_cols:
+        try:
+            mismatches = 0
+            for c in common_cols:
+                s1 = left_df[c]
+                s2 = right_df[c]
+                diff = ~((s1 == s2) | (s1.isna() & s2.isna()))
+                mismatches += int(diff.sum())
+            lines.append("")
+            lines.append("Values:")
+            if mismatches == 0 and cols1 == cols2:
+                lines.append("  Identical: all cell values match exactly.")
+            elif mismatches == 0:
+                lines.append("  Matching: all cell values in common columns match.")
+            else:
+                lines.append(f"  Mismatches found in {mismatches:,} cells across common columns.")
+        except Exception:
+            pass
+
+    return "\n".join(lines)
+
+
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
-# dtype -> Series, nulls -> Series, info() -> None). Like real method chaining, nothing can
-# follow them except -o clip. -describe is excluded: df.describe() returns a DataFrame.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info"})
+# dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
+# chaining, nothing can follow them except -o clip.
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff"})
 
 
 def _list_order_names(names, order):
@@ -2901,14 +3237,18 @@ def cmd_convert(
     progress: bool = False,
     announce: bool = True,
     chunk_size: int = 200_000,
+    index: bool | None = None,
 ) -> None:
     if rename:
         df = df.rename(columns=rename)
     dest = output if output is not None else source.with_suffix(".csv")
     if dest.resolve() == source.resolve():
-        raise SystemExit(f"refusing to overwrite the source file '{source}'; pass -o/--output to choose a different path")
+        raise SystemExit(
+            f"refusing to overwrite the source file '{source}'; "
+            f"specify a different format or an explicit path with -o/--output"
+        )
     try:
-        write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size)
+        write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size, index=index)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if announce:
@@ -3123,47 +3463,59 @@ def _process_path(
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
-                print(shape_str)
+                _output_text(shape_str, args)
             if is_clip:
                 clip_action = lambda s=shape_str: _copy_to_clipboard(s)
         elif op == "cols":
             names = _list_order_names(pipeline.columns(), args.cols)
             if should_print(idx):
-                for name in names:
-                    print(name)
+                _output_text("\n".join(names), args)
             if is_clip:
                 clip_action = lambda n=names: pd.Series(n).to_clipboard(index=False, header=False)
         elif op == "dtype":
             dtypes = _list_order_index(pipeline.dtypes(), args.dtype)
             if should_print(idx):
-                print(dtypes.to_string())
+                _output_text(dtypes.to_string(), args)
             if is_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
             nulls = _list_order_index(pipeline.dataframe().isna().sum(), args.nulls)
             if should_print(idx):
-                print(nulls.to_string())
+                _output_text(nulls.to_string(), args)
             if is_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
             described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
             pipeline._df = described
             if should_print(idx):
-                print(_format_table(described, index=True, pretty=args.pretty))
+                _output_text(_format_table(described, index=True, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=described: d.to_clipboard(index=True)
         elif op == "info":
             info_str = _dataframe_info(pipeline.dataframe())
             if should_print(idx):
-                print(info_str)
+                _output_text(info_str, args)
             if is_clip:
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
+        elif op == "meta":
+            meta_str = _extract_metadata(path if path is not None else Path("<merged>"))
+            if should_print(idx):
+                _output_text(meta_str, args)
+            if is_clip:
+                clip_action = lambda s=meta_str: _copy_to_clipboard(s)
+        elif op == "diff":
+            diff_path = Path(args.diff)
+            diff_str = _compute_diff(pipeline.dataframe(), diff_path, path.name if path is not None else "<pipeline>")
+            if should_print(idx):
+                _output_text(diff_str, args)
+            if is_clip:
+                clip_action = lambda s=diff_str: _copy_to_clipboard(s)
         elif op == "value_counts":
             source_df = pipeline.dataframe()
             value_count_cols = list(source_df.columns)
@@ -3177,33 +3529,33 @@ def _process_path(
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "unique":
             unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
             pipeline._df = unique_df
             if should_print(idx):
-                print(_format_table(unique_df, pretty=args.pretty))
+                _output_text(_format_table(unique_df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=unique_df: d.to_clipboard(index=False)
         elif op == "head":
             df = _apply_round(pipeline.head(args.head), args.round_ndigits)
             if should_print(idx):
-                print(_format_table(df, pretty=args.pretty))
+                _output_text(_format_table(df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "tail":
             df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
             if should_print(idx):
-                print(_format_table(df, pretty=args.pretty))
+                _output_text(_format_table(df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "sample":
             sampled = _apply_round(pipeline.sample(args.sample, seed=args.seed, frac=args.frac), args.round_ndigits)
             n = len(sampled)
             if should_print(idx):
-                print(_format_table(sampled, pretty=args.pretty) if n else "(no rows)")
+                _output_text(_format_table(sampled, pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
                 clip_action = lambda d=sampled: d.to_clipboard(index=False)
         elif op == "sort_by":
@@ -3215,7 +3567,7 @@ def _process_path(
             sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
             pipeline._df = sorted_df
             if should_print(idx):
-                print(_format_table(sorted_df, pretty=args.pretty))
+                _output_text(_format_table(sorted_df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
         elif op == "agg_df":
@@ -3226,7 +3578,7 @@ def _process_path(
                 result = _apply_round(agg_df(pipeline.dataframe(), aggfunc, dropna=args.dropna), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "agg":
@@ -3246,7 +3598,7 @@ def _process_path(
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "group_x":
@@ -3264,14 +3616,14 @@ def _process_path(
             result = _apply_round(group_x(source_df, **gx), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "handle_missing":
             result = _apply_round(handle_missing(pipeline.dataframe(), fillna=args.handle_missing), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "clean_columns":
@@ -3279,7 +3631,7 @@ def _process_path(
             result = _apply_round(clean_columns(pipeline.dataframe(), **opts), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "long":
@@ -3287,7 +3639,7 @@ def _process_path(
             result = _apply_round(long_fn(pipeline.dataframe(), **parse_long_arg(args.long)), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "wide":
@@ -3302,7 +3654,7 @@ def _process_path(
             result = _apply_round(wide_fn(source_df, **wide_kwargs), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "crosstab":
@@ -3329,7 +3681,7 @@ def _process_path(
             )
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, index=True, pretty=args.pretty))
+                _output_text(_format_table(result, index=True, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=True)
 
@@ -3338,13 +3690,22 @@ def _process_path(
     elif is_file:
         assert out_target is not None
         fmt = out_target.lower()
-        if fmt in ("csv", "parquet", "pq", "txt", "dat"):
+        out_dir: Path | None = getattr(args, "out_dir", None)
+        valid_formats = (
+            "csv", "parquet", "pq", "txt", "dat", "jsonl", "ndjson",
+            "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
+        )
+        if fmt in valid_formats:
             if path is None:
                 return _fail(parser, batch, f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
             ext = ".parquet" if fmt == "pq" else f".{fmt}"
-            dest = path.with_suffix(ext)
+            clean_name = path.name[:-3] if path.name.lower().endswith(".gz") else path.name
+            dest_name = f"{Path(clean_name).stem}{ext}"
+            dest = (out_dir / dest_name) if out_dir is not None else path.with_name(dest_name)
         else:
             dest = Path(out_target)
+            if out_dir is not None and not dest.is_absolute():
+                dest = out_dir / dest
 
         df_to_write = _apply_round(pipeline.dataframe(), args.round_ndigits)
         try:
@@ -3364,12 +3725,9 @@ def _process_path(
     return False
 
 
-
-
 ################################################################################
 # FILE: src/pytae/mutate.py
 ################################################################################
-
 from __future__ import annotations
 
 import ast
@@ -3863,12 +4221,9 @@ def mutate(
             )
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
-
-
 ################################################################################
 # FILE: src/pytae/other_utilities.py
 ################################################################################
-
 from __future__ import annotations
 
 import re
@@ -4089,13 +4444,12 @@ def replace_values(
         df = df.replace(to_replace, regex=not exact)
     return df
 
-
 ################################################################################
 # FILE: src/pytae/plotting.py
 ################################################################################
-
 from __future__ import annotations
 
+import io
 import math
 import warnings
 
@@ -4104,7 +4458,10 @@ import pandas as pd
 
 # pytae's own control kwargs -- these drive Plotter's behavior directly and are
 # never forwarded to pandas.plot() (see _prepare_plot_kwargs/_filter_plot_kwargs).
-_CONTROL_KWARGS = ['on', 'print_data', 'clip_data', 'secondary_y', 'aggregate']
+_CONTROL_KWARGS = [
+    'on', 'print_data', 'clip_data', 'secondary_y', 'aggregate',
+    'xlabel', 'ylabel', 'palette', 'annot', 'fmt',
+]
 
 # Per-kind config: `strip` = last_kwargs keys to remove before calling pandas'
 # own .plot(kind=...) (pytae-only knobs that aren't real pandas.plot() kwargs for
@@ -4112,11 +4469,10 @@ _CONTROL_KWARGS = ['on', 'print_data', 'clip_data', 'secondary_y', 'aggregate']
 # apply to this kind at all (warned about, then dropped via `strip`).
 _KIND_SPECS = {
     'scatter': {
-        'strip': ['by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'strip': ['aggfunc', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {
             'aggfunc': "Aggregation is not supported for scatter plots. The 'aggfunc' argument will be ignored.",
             'dropna': "The 'dropna' argument is not applicable to scatter plots and will be ignored.",
-            'by': "Use 'c' and 'cmap' to split the scatter plot by a particular column. The 'by' argument will be ignored.",
         },
     },
     'hexbin': {
@@ -4135,12 +4491,23 @@ _KIND_SPECS = {
         'strip': ['y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {},
     },
+    'box': {
+        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
+        'unsupported': {
+            'aggfunc': "Aggregation is not supported for box plots. The 'aggfunc' argument will be ignored.",
+            'dropna': "The 'dropna' argument is not applicable to box plots and will be ignored.",
+        },
+    },
+    'heatmap': {
+        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
+        'unsupported': {},
+    },
     'other': {
         'strip': ['y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {},
     },
     'kde': {
-        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
         'unsupported': {
             'aggfunc': "Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.",
             'dropna': "The 'dropna' argument is not applicable to kde/density plots and will be ignored.",
@@ -4164,45 +4531,139 @@ _REQUIRED_KWARGS = {
     'hexbin': ['x', 'y'],
     'line': ['x', 'y'],
     'other': ['x', 'y'],
+    'box': ['y'],
     'pie': ['by', 'y'],
     'kde': ['column'],
     'density': ['column'],
     'hist': ['column'],
+    'heatmap': [],
 }
 
 class Plotter:
     """
     Method chainable .data() .. .plot() .. .plot() .. .data() .. .plot() .. .finalize().. 
-    All args from previous plot call is carried   forward unless data is changed or plot kind is changed.
+    All args from previous plot call are carried forward unless data is changed or plot kind is changed.
 
-    All pandas.plot **kwargs are supported except secondary_y. This is because we are handling secondary axis ourseves as for ex A^
-    All artists like color, style etc are supposed to be explicitly set via dict. 
-    Changing artist attribute post plotting is discouraged respects pandas categorical col for ordering. 
-    This is more consistent with general plotting
+    All pandas.plot **kwargs are supported except secondary_y. This is because we are handling secondary axis ourselves (e.g. A^).
+    All artists like color, style etc are supported explicitly via dict or built-in palette.
     """
 
+    _last_active = None
 
-    def __init__(self, mosaic=None, figsize=None, aggregate=True):
-        
-        if mosaic is None: #If not provided, a single axis labeled 'A' is created. 'on' is optional in this case
+    def __new__(cls, *args, **kwargs):
+        df = args[0] if args else kwargs.get("df")
+        by_col = kwargs.get("by") or kwargs.get("col")
+        has_facet_trigger = (
+            kwargs.get("ncols") is not None
+            or kwargs.get("facet") is True
+            or "col" in kwargs
+        )
+        is_plot_call = bool(
+            {"kind", "x", "y", "column"}.intersection(kwargs.keys())
+        )
+
+        if (
+            not kwargs.get("_is_facet_grid")
+            and isinstance(df, pd.DataFrame)
+            and by_col
+            and by_col in df
+            and has_facet_trigger
+            and is_plot_call
+        ):
+            if "mosaic" in kwargs or (len(args) > 1 and args[1] is not None):
+                raise ValueError("Cannot combine 'mosaic' with faceting ('by' with 'ncols'/'facet'/'col').")
+            if "nrows" in kwargs:
+                raise ValueError("Cannot combine 'nrows' with faceting ('by' with 'ncols'/'facet'/'col'). Use 'ncols' to control grid columns.")
+
+            facet_kwargs = dict(kwargs)
+            facet_kwargs.pop("df", None)
+            facet_kwargs.pop("by", None)
+            facet_kwargs.pop("col", None)
+            facet_kwargs.pop("facet", None)
+            ncols = facet_kwargs.pop("ncols", None)
+            return cls.facet(df, by=by_col, ncols=ncols, **facet_kwargs)
+
+        return super().__new__(cls)
+
+    def __init__(self, df=None, mosaic=None, figsize=None, aggregate=True, sharex=False, sharey=False, nrows=None, ncols=None, **kwargs):
+        if getattr(self, '_initialized', False):
+            return
+        self._initialized = True
+        Plotter._last_active = self
+        if df is not None and not isinstance(df, pd.DataFrame):
+            # df was passed as mosaic string or grid list e.g. Plotter("AB")
+            if mosaic is None:
+                mosaic = df
+                df = None
+
+        if mosaic is None and (nrows is not None or ncols is not None):
+            nrows = nrows or 1
+            ncols = ncols or 1
+            import string
+            labels = string.ascii_uppercase
+            grid = []
+            idx = 0
+            for r in range(nrows):
+                row = []
+                for c in range(ncols):
+                    label = labels[idx] if idx < len(labels) else f"ax_{idx}"
+                    row.append(label)
+                    idx += 1
+                grid.append(row)
+            mosaic = grid
+
+        if mosaic is None:  # If not provided, a single axis labeled 'A' is created. 'on' is optional in this case
             mosaic = """
             A
             """
-        self.fig, self.axd = plt.subplot_mosaic(mosaic=mosaic, figsize=figsize)
+        self.fig, self.axd = plt.subplot_mosaic(mosaic=mosaic, figsize=figsize, sharex=sharex, sharey=sharey)
+
         self.last_kwargs = {}
         self.df = None
         self.plot_kwargs_store = {}
+        self.tables = {}
         self.aggregate = aggregate  # Class-level default for aggregation; can be overridden at plot level for flexibility
+        if df is not None:
+            self.data(df)
         plt.close()
 
+        plot_keys = {"kind", "x", "y", "column"}
+        plot_kwargs = {k: v for k, v in kwargs.items() if k != "_is_facet_grid"}
+        if plot_keys.intersection(plot_kwargs.keys()):
+            if self.df is not None:
+                self.plot(**plot_kwargs)
+        elif plot_kwargs:
+            unexpected = ", ".join(repr(k) for k in plot_kwargs.keys())
+            raise TypeError(f"Plotter.__init__() got unexpected keyword argument(s): {unexpected}")
 
-    def data(self, df):
-        self.df = df
-        self.last_kwargs = {} #Reset kwargs when new data is chained!
+    def _repr_png_(self):
+        """Render figure as PNG bytes for automatic display in Jupyter notebooks."""
+        buf = io.BytesIO()
+        self.fig.savefig(buf, format="png", bbox_inches="tight")
+        return buf.getvalue()
+
+    @property
+    def pt(self):
+        """Allow consistent fluent chaining using the .pt namespace (e.g. df.pt.plot().pt.finalize())."""
         return self
 
+    def data(self, df):
+        Plotter._last_active = self
+        self.df = df
+        self.last_kwargs = {}  # Reset kwargs when new data is chained!
+        return self
+
+    def get_data(self, on="A"):
+        """Retrieve the DataFrame plotted on the specified axis key."""
+        if on in self.tables:
+            return self.tables[on]
+        for k, v in self.tables.items():
+            if k == on or k.rstrip("^") == on:
+                return v
+        raise KeyError(f"No plotted data found for axis {on!r}; available: {list(self.tables)}")
+
     @classmethod
-    def facet(cls, df, by, *, ncols=None, sort=True, titles=True, figsize=None, aggregate=True, **plot_kwargs):
+    def facet(cls, df, by, *, ncols=None, sort=True, titles=True, figsize=None, aggregate=True, sharex=False, sharey=False, **plot_kwargs):
         """Build a small-multiples grid, one axis per distinct value of `by`, and plot
         the same chart (**plot_kwargs, e.g. x=/y=/kind=) on each facet's own subset of
         rows. A grid isn't always exactly fillable (e.g. 5 groups doesn't tile a 2x3
@@ -4224,6 +4685,8 @@ class Plotter:
             Set each facet's axis title to its group value (default True).
         figsize, aggregate :
             Passed straight through to the underlying Plotter().
+        sharex, sharey : bool, optional
+            Share x or y axis scales across facets (default False).
         **plot_kwargs :
             Passed straight through to .plot() for every facet, e.g. x=, y=, kind=.
 
@@ -4254,16 +4717,29 @@ class Plotter:
         cells = keys + ["."] * (nrows * ncols - len(keys))  # pad leftover cells blank -- grid may not tile exactly
         grid = [cells[i:i + ncols] for i in range(0, len(cells), ncols)]
 
-        plotter = cls(mosaic=grid, figsize=figsize, aggregate=aggregate)
+        plot_kwargs = dict(plot_kwargs)
+        if "mosaic" in plot_kwargs:
+            raise ValueError("Cannot combine 'mosaic' with faceting. Faceting generates its own layout grid.")
+        if "nrows" in plot_kwargs:
+            raise ValueError("Cannot combine 'nrows' with faceting. Use 'ncols' to control grid columns.")
+        plot_kwargs.pop('mosaic', None)
+        plot_kwargs.pop('nrows', None)
+        plot_kwargs.pop('on', None)
+        suptitle = plot_kwargs.pop('suptitle', None) or plot_kwargs.pop('title', None)
+        plotter = cls(mosaic=grid, figsize=figsize, aggregate=aggregate, sharex=sharex, sharey=sharey, _is_facet_grid=True)
         for group, key in zip(groups, keys):
             plotter.data(df[df[by] == group]).plot(on=key, **plot_kwargs)
             if titles:
                 plotter.axd[key].set_title(str(group))
+        if suptitle:
+            plotter.fig.suptitle(str(suptitle))
         plotter.df = df  # restore the full input frame -- each facet call above narrowed it to one group
+        plotter._initialized = True
+        Plotter._last_active = plotter
         return plotter
 
     def plot(self, **kwargs):
-
+        Plotter._last_active = self
         self._update_kwargs(kwargs)
         self._validate_required_kwargs()
         ax = self._get_target_axis()
@@ -4280,6 +4756,10 @@ class Plotter:
             self._plot_pie(ax)
         elif self.kind == 'hist':
             self._plot_hist(ax)
+        elif self.kind == 'box':
+            self._plot_box(ax)
+        elif self.kind == 'heatmap':
+            self._plot_heatmap(ax)
         else:
             self._plot_other(ax)
 
@@ -4290,29 +4770,35 @@ class Plotter:
         self.print_data = kwargs.get('print_data', False)
         self.clip_data = kwargs.get('clip_data', False)
 
-        
         # Store the current kind and check if it has changed
         new_kind = kwargs.get('kind', self.current_kind if hasattr(self, 'current_kind') else 'line')
         
         if hasattr(self, 'current_kind') and self.current_kind != new_kind:
-            self.last_kwargs = {} # Reset kwargs if kind changes
+            self.last_kwargs = {}  # Reset kwargs if kind changes
         self.current_kind = new_kind
 
-        #Combine kwargs but exclude print_data and clip_data from last_kwargs
+        # Combine kwargs but exclude print_data and clip_data from last_kwargs
         combined_kwargs = {**self.last_kwargs, **kwargs}
         self.last_kwargs = {k: v for k, v in combined_kwargs.items() if k not in ['print_data', 'clip_data']}
         
         self.x = combined_kwargs.get('x', None)
         self.y = combined_kwargs.get('y', None)
         self.by = combined_kwargs.get('by', None)
-        self.column = combined_kwargs.get('column', None)
+        self.column = combined_kwargs.get('column', None) or combined_kwargs.get('x', None)
         self.kind = new_kind
-        self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind in ['scatter', 'density', 'kde', 'hist'] else combined_kwargs.get('aggfunc', 'sum')
+
+        if self.kind == 'box':
+            self.y = self.y or self.column
+            self.x = self.x or self.by
+
+        self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind in ['scatter', 'density', 'kde', 'hist', 'box'] else combined_kwargs.get('aggfunc', 'sum')
         self.dropna = combined_kwargs.get('dropna', False)
         self.aggregate = combined_kwargs.get('aggregate', self.aggregate)  # Plot-level overrides class-level
 
     def _get_target_axis(self):
         ax_key = self.last_kwargs.get('on', 'A')
+        if self.last_kwargs.get('secondary_y') and not ax_key.endswith('^'):
+            ax_key = f"{ax_key}^"
         if '^' in ax_key:
             base_key = ax_key.rstrip('^')
             if base_key not in self.axd:
@@ -4355,17 +4841,105 @@ class Plotter:
                 warnings.warn(message)
         return self._filter_plot_kwargs(spec['strip'])
 
+    def _apply_axis_labels(self, ax):
+        """Apply optional custom xlabel and ylabel."""
+        xlabel = self.last_kwargs.get('xlabel')
+        ylabel = self.last_kwargs.get('ylabel')
+        if xlabel is not None:
+            ax.set_xlabel(xlabel)
+        if ylabel is not None:
+            ax.set_ylabel(ylabel)
+
+    def _get_palette_colors(self, categories, palette=None, explicit_colors=None):
+        """Map category names to colors from an explicit dict, list, or named matplotlib colormap/palette."""
+        if isinstance(explicit_colors, dict):
+            return explicit_colors
+        if isinstance(explicit_colors, (list, tuple)):
+            return {cat: explicit_colors[i % len(explicit_colors)] for i, cat in enumerate(categories)}
+
+        palette = palette or "tab10"
+        try:
+            cmap = plt.get_cmap(palette)
+        except (ValueError, AttributeError):
+            warnings.warn(f"Unknown palette '{palette}', falling back to 'tab10'.")
+            cmap = plt.get_cmap("tab10")
+
+        n = len(categories)
+        if hasattr(cmap, "colors") and len(cmap.colors) >= n:
+            return {cat: cmap.colors[i] for i, cat in enumerate(categories)}
+        elif n <= 1:
+            return {categories[0]: cmap(0.5)}
+        else:
+            return {cat: cmap(i / max(n - 1, 1)) for i, cat in enumerate(categories)}
+
     def _plot_scatter(self, ax):
-        """Plot a scatter chart."""
+        """Plot a scatter chart with support for continuous 'c' or discrete 'by' categories."""
         plot_dict = self._prepare_plot_kwargs('scatter')
         self._store_plot_kwargs(ax, plot_dict)
         k = self.df.copy()
 
+        if self.by and self.by in k:
+            if isinstance(k[self.by].dtype, pd.CategoricalDtype):
+                present = set(k[self.by].dropna().unique())
+                groups = [g for g in k[self.by].cat.categories if g in present]
+            else:
+                groups = list(pd.unique(k[self.by].dropna()))
+
+            palette_name = self.last_kwargs.get('palette')
+            color_arg = self.last_kwargs.get('color')
+            color_map = self._get_palette_colors(groups, palette=palette_name, explicit_colors=color_arg)
+
+            scatter_kwargs = dict(plot_dict)
+            for non_scatter in ['x', 'y', 'by', 'kind', 'title', 'color', 'c', 'legend', 'grid', 'logx', 'logy', 'rot', 'fontsize', 'colormap', 'colorbar']:
+                scatter_kwargs.pop(non_scatter, None)
+
+            s_arg = scatter_kwargs.pop('s', 20)
+            marker = scatter_kwargs.pop('marker', 'o')
+            alpha = scatter_kwargs.pop('alpha', 0.8)
+
+            for group in groups:
+                grp_mask = (k[self.by] == group)
+                grp_df = k[grp_mask]
+                grp_color = color_map.get(group) if isinstance(color_map, dict) else None
+                if hasattr(s_arg, '__len__') and not isinstance(s_arg, (str, bytes)):
+                    import numpy as np
+                    grp_s = np.asarray(s_arg)[grp_mask.to_numpy()]
+                else:
+                    grp_s = s_arg
+
+                ax.scatter(
+                    grp_df[self.x],
+                    grp_df[self.y],
+                    label=str(group),
+                    color=grp_color,
+                    s=grp_s,
+                    marker=marker,
+                    alpha=alpha,
+                    **scatter_kwargs,
+                )
+            if plot_dict.get('grid'):
+                ax.grid(True)
+            if plot_dict.get('logx'):
+                ax.set_xscale('log')
+            if plot_dict.get('logy'):
+                ax.set_yscale('log')
+            self.ax = ax
+            if self.last_kwargs.get('title'):
+                ax.set_title(self.last_kwargs['title'])
+            if self.last_kwargs.get('xlabel') is None and self.x:
+                ax.set_xlabel(str(self.x))
+            if self.last_kwargs.get('ylabel') is None and self.y:
+                ax.set_ylabel(str(self.y))
+            self._apply_axis_labels(ax)
+            self._handle_data_output(k, ax)
+            return
+
         c = plot_dict.get('c', None)
-        if c:
+        if c and not pd.api.types.is_numeric_dtype(k[c]):
             k[c] = k[c].astype('category')
         self.ax = k.plot(ax=ax, **plot_dict)
-        self._handle_data_output(k)
+        self._apply_axis_labels(ax)
+        self._handle_data_output(k, ax)
 
     def _plot_pie(self, ax):
         """Plot a pie chart."""
@@ -4375,15 +4949,20 @@ class Plotter:
         if 'colors' in self.last_kwargs:
             color_dict = self.last_kwargs['colors']
             plot_dict['colors'] = [color_dict.get(category, 'grey') for category in pie_df.index]
+        elif 'palette' in self.last_kwargs:
+            colors = self._get_palette_colors(list(pie_df.index), palette=self.last_kwargs['palette'])
+            plot_dict['colors'] = [colors.get(category, 'grey') for category in pie_df.index]
         self.ax = pie_df.plot(ax=ax, **plot_dict)
-        self._handle_data_output(pie_df)
+        self._apply_axis_labels(ax)
+        self._handle_data_output(pie_df, ax)
 
     def _plot_hexbin(self, ax):
         """Plot a hexbin chart."""
         plot_dict = self._prepare_plot_kwargs('hexbin')
         self._store_plot_kwargs(ax, plot_dict)
         self.ax = self.df.plot(ax=ax, **plot_dict)
-        self._handle_data_output(self.df)
+        self._apply_axis_labels(ax)
+        self._handle_data_output(self.df, ax)
 
     def _plot_line(self, ax):
         """Plot a line chart."""
@@ -4392,13 +4971,19 @@ class Plotter:
         style = plot_dict.pop('style', None)
         width = plot_dict.pop('width', None)
         color_map = plot_dict.pop('color', None)
+        palette = self.last_kwargs.get('palette')
         pivot_data = self.get_pivot_data()
-        # Build color list from color_map if provided as dict
+        data_cols = [c for c in pivot_data.columns if c != self.x]
+
         if color_map and isinstance(color_map, dict):
-            # Get column names (excluding x column which is first)
-            data_cols = [c for c in pivot_data.columns if c != self.x]
             color_list = [color_map.get(col, None) for col in data_cols]
             plot_dict['color'] = color_list
+        elif palette:
+            colors = self._get_palette_colors(data_cols, palette=palette)
+            plot_dict['color'] = [colors.get(c) for c in data_cols]
+        elif color_map is not None:
+            plot_dict['color'] = color_map
+
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
         if style:
             for line, (name, style_value) in zip(self.ax.get_lines(), style.items()):
@@ -4406,17 +4991,105 @@ class Plotter:
         if width:
             for line, (name, width_value) in zip(self.ax.get_lines(), width.items()):
                 line.set_linewidth(width_value)
-        self._handle_data_output(pivot_data)
+        self._apply_axis_labels(ax)
+        self._handle_data_output(pivot_data, ax)
 
-    #bar, barh, area
+    def _plot_box(self, ax):
+        """Plot a box chart showing unaggregated distributions per group or single column."""
+        plot_dict = self._prepare_plot_kwargs('box')
+        self._store_plot_kwargs(ax, plot_dict)
+        val_col = self.y
+        cat_col = self.x
+
+        if cat_col and cat_col in self.df:
+            if isinstance(self.df[cat_col].dtype, pd.CategoricalDtype):
+                present = set(self.df[cat_col].dropna().unique())
+                categories = [c for c in self.df[cat_col].cat.categories if c in present]
+            else:
+                categories = list(pd.unique(self.df[cat_col].dropna()))
+            cols = {str(cat): self.df.loc[self.df[cat_col] == cat, val_col].reset_index(drop=True) for cat in categories}
+            box_df = pd.DataFrame(cols)
+        else:
+            box_df = self.df[[val_col]]
+
+        palette = self.last_kwargs.get('palette')
+        color_arg = self.last_kwargs.get('color')
+        if palette or color_arg:
+            plot_dict['patch_artist'] = True
+
+        self.ax = box_df.plot(ax=ax, **plot_dict)
+
+        if palette or color_arg:
+            colors = self._get_palette_colors(list(box_df.columns), palette=palette, explicit_colors=color_arg)
+            new_patches = ax.patches[-len(box_df.columns):]
+            for patch, col in zip(new_patches, box_df.columns):
+                if col in colors:
+                    patch.set_facecolor(colors[col])
+
+        self._apply_axis_labels(ax)
+        self._handle_data_output(box_df, ax)
+
+    def _plot_heatmap(self, ax):
+        """Plot a 2D heatmap matrix (correlation matrix or pivoted data)."""
+        plot_dict = self._prepare_plot_kwargs('heatmap')
+        self._store_plot_kwargs(ax, plot_dict)
+        cmap = self.last_kwargs.get('cmap', self.last_kwargs.get('palette', 'viridis'))
+        annot = self.last_kwargs.get('annot', False)
+        fmt = self.last_kwargs.get('fmt', '.2f')
+
+        imshow_kwargs = {}
+        for key in ['vmin', 'vmax', 'interpolation', 'origin', 'norm', 'alpha']:
+            if key in self.last_kwargs:
+                imshow_kwargs[key] = self.last_kwargs[key]
+
+        if self.x and self.by and self.y:
+            matrix = self.get_pivot_data().set_index(self.x)
+        elif self.x and self.y:
+            matrix = self.df.pivot_table(index=self.x, columns=self.y, aggfunc='size', fill_value=0)
+        else:
+            matrix = self.df.select_dtypes(include='number')
+
+        im = ax.imshow(matrix.values, cmap=cmap, aspect='auto', **imshow_kwargs)
+        ax.set_xticks(range(len(matrix.columns)))
+        ax.set_xticklabels([str(c) for c in matrix.columns], rotation=45, ha='right')
+        ax.set_yticks(range(len(matrix.index)))
+        ax.set_yticklabels([str(idx) for idx in matrix.index])
+
+        if annot:
+            for i in range(len(matrix.index)):
+                for j in range(len(matrix.columns)):
+                    val = matrix.iloc[i, j]
+                    text_str = format(val, fmt) if isinstance(val, (int, float)) else str(val)
+                    if isinstance(val, (int, float)) and not math.isnan(val):
+                        rgba = im.cmap(im.norm(val))
+                        luminance = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
+                        text_color = "white" if luminance < 0.5 else "black"
+                    else:
+                        text_color = "white"
+                    ax.text(j, i, text_str, ha='center', va='center', color=text_color)
+
+        self.fig.colorbar(im, ax=ax)
+        if self.last_kwargs.get('title'):
+            ax.set_title(self.last_kwargs['title'])
+        self._apply_axis_labels(ax)
+        self.ax = ax
+        self._handle_data_output(matrix, ax)
+
+    # bar, barh, area
     def _plot_other(self, ax):
         plot_dict = self._prepare_plot_kwargs('other')
         self._store_plot_kwargs(ax, plot_dict)
         pivot_data = self.get_pivot_data()
+        palette = self.last_kwargs.get('palette')
+        if palette and 'color' not in plot_dict:
+            data_cols = [c for c in pivot_data.columns if c != self.x]
+            colors = self._get_palette_colors(data_cols, palette=palette)
+            plot_dict['color'] = [colors.get(c) for c in data_cols]
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
-        self._handle_data_output(pivot_data)
+        self._apply_axis_labels(ax)
+        self._handle_data_output(pivot_data, ax)
 
-    #kde, density
+    # kde, density
     def _plot_density(self, ax):
         """Plot a density or KDE chart."""
         plot_dict = self._prepare_plot_kwargs('density')
@@ -4425,10 +5098,15 @@ class Plotter:
             k = self.df.pivot(columns=self.by, values=self.column)
         else:
             k = self.df[[self.column]]
+        palette = self.last_kwargs.get('palette')
+        if palette and 'color' not in plot_dict:
+            colors = self._get_palette_colors(list(k.columns), palette=palette)
+            plot_dict['color'] = [colors.get(c) for c in k.columns]
         self.ax = k.plot(ax=ax, **plot_dict)
-        self._handle_data_output(k)
+        self._apply_axis_labels(ax)
+        self._handle_data_output(k, ax)
 
-    #hist
+    # hist
     def _plot_hist(self, ax):
         """Plot a histogram."""
         plot_dict = self._prepare_plot_kwargs('hist')
@@ -4439,8 +5117,13 @@ class Plotter:
             k = k.pivot(columns=self.by, values=self.column)
         else:
             k = k[[self.column]]
+        palette = self.last_kwargs.get('palette')
+        if palette and 'color' not in plot_dict:
+            colors = self._get_palette_colors(list(k.columns), palette=palette)
+            plot_dict['color'] = [colors.get(c) for c in k.columns]
         self.ax = k.plot(ax=ax, **plot_dict)
-        self._handle_data_output(k)
+        self._apply_axis_labels(ax)
+        self._handle_data_output(k, ax)
 
     def _filter_plot_kwargs(self, keys_to_remove):
         return {k: v for k, v in self.last_kwargs.items() if k not in keys_to_remove}
@@ -4451,29 +5134,33 @@ class Plotter:
         Returns:
             pandas.DataFrame: Pivoted DataFrame ready for plotting.
         """
-        if not self.aggregate:  #when aggregation is not required
-            if self.by:  #to convert to wide format without aggregate because pandas plot would expect wide data
+        if not self.aggregate:  # when aggregation is not required
+            if self.by:  # to convert to wide format without aggregate because pandas plot would expect wide data
                 # Check for potential duplicates and raise error if found
                 unique_combos = self.df[[self.x, self.by]].drop_duplicates().shape[0]
-                if unique_combos < len(self.df): #to ensure data is ready for wide formatting without agg
+                if unique_combos < len(self.df):  # to ensure data is ready for wide formatting without agg
                     raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
                 pivot_table = self.df.pivot(index=self.x, columns=self.by, values=self.y).reset_index()
             else:
                 pivot_table = self.df[[self.x, self.y]].copy()
-                # No renaming: Preserve original self.y column name for legend
         else:
             pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
                                             aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
         pivot_table[self.x] = pivot_table[self.x].astype('object') if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]) else pivot_table[self.x]
-        pivot_table.columns.name = None #ensure col names are not corrup with multi index names post pivot
+        pivot_table.columns.name = None  # ensure col names are not corrupt with multi index names post pivot
         return pivot_table
 
-    def _handle_data_output(self, data):
-        """Handle data output options (print or copy to clipboard)."""
+    def _handle_data_output(self, data, ax=None):
+        """Handle data output options (print, copy to clipboard, record table)."""
+        if ax is not None:
+            self.tables[ax.get_label()] = data
         if self.print_data:
             print(data)
         if self.clip_data:
-            data.to_clipboard(index=False)
+            try:
+                data.to_clipboard(index=False)
+            except Exception:
+                pass
 
     def _collect_handles_and_legends(self):
         """
@@ -4487,19 +5174,15 @@ class Plotter:
         seen = set()
         
         for ax in self.fig.axes:
-
             ax_label = ax.get_label()
-            
             
             # Skip this axis if legend=False is set in plot_kwargs_store
             if ax_label in self.plot_kwargs_store and not self.plot_kwargs_store[ax_label].get('legend', True):
                 continue
-   
 
             h, l = ax.get_legend_handles_labels()
 
             for handle, label in zip(h, l):
-                
                 label = label.replace(" (right)", "")
                 identifier = (label, type(handle))
                 if identifier not in seen:
@@ -4518,56 +5201,8 @@ class Plotter:
                  style=True):
         """
         Finalize the plot with layout adjustments and legend settings.
-    
-        Args:
-            consolidate_legends (bool, optional): If True, create a single legend for all axes at the 
-                specified `bbox_to_anchor`. If False, allow per-axis legends controlled by `legend_primary` 
-                and `legend_secondary`. When True, per-axis legends are suppressed, and only the consolidated 
-                legend is displayed if `legend` is True. Default is False.
-            bbox_to_anchor (tuple, optional): Anchor point for the consolidated legend as (x, y) in 
-                figure coordinates (0 to 1). Ignored if `consolidate_legends` is False. Default is (0.8, -0.05).
-            ncols (int, optional): Number of columns in the consolidated legend. Ignored if 
-                `consolidate_legends` is False. Default is 10.
-            hide_secondary_y (bool, optional): If True, hide secondary y-axis elements (ticks, labels, 
-                and right spine) for axes with '^' in their key (e.g., 'A^'). Default is False.
-            legend (bool, optional): Global switch to enable or disable all legends (consolidated or 
-                per-axis). If False, no legends are displayed regardless of other settings. Default is True.
-            legend_primary (bool, optional): Enable/disable legends on primary axes (e.g., 'A') when 
-                `consolidate_legends` is False. Ignored when `consolidate_legends` is True. Default is True.
-            legend_secondary (bool, optional): Enable/disable legends on secondary axes (e.g., 'A^') when 
-                `consolidate_legends` is False. Ignored when `consolidate_legends` is True. Default is True.
-            legend_loc (str, optional): Location of per-axis legends (e.g., 'best', 'upper left', 'upper right') 
-                when `consolidate_legends` is False. Ignored for consolidated legends, which use `bbox_to_anchor`. 
-                Default is 'best'.
-            legend_frameon (bool, optional): If True, display a frame around legends (both consolidated and 
-                per-axis). Default is False.
-            style (bool, optional): If True (default), apply pytae's opinionated spine-hiding and blank-axis
-                tick cleanup (see _hide_spines()/_adjust_ticks_and_spines()). Set False to leave matplotlib's
-                own default spines/ticks untouched.
-    
-        Returns:
-            Plotter: Self, for method chaining.
-    
-        Notes:
-            - When `consolidate_legends=True`, a single legend is created using all unique handles and labels 
-              from all axes, positioned at `bbox_to_anchor`. The `legend_primary` and `legend_secondary` settings 
-              are ignored, and per-axis legends are removed. The `legend` parameter must be True for the 
-              consolidated legend to appear.
-            - When `consolidate_legends=False`, per-axis legends are displayed based on `legend_primary` and 
-              `legend_secondary`, with their locations determined by `legend_loc`. The `bbox_to_anchor` and 
-              `ncols` parameters are ignored.
-            - The `legend` parameter acts as a master switch. If False, no legends (consolidated or per-axis) 
-              are shown, overriding all other legend-related settings.
-            - Tight layout is applied to prevent overlap of plot elements.
-    
-        Examples:
-            >>> # Consolidated legend
-            >>> k.finalize(consolidate_legends=True, legend=True, bbox_to_anchor=(0.75, -0.005), ncols=2)  # doctest: +SKIP
-            >>> # Per-axis legends on primary axes only
-            >>> k.finalize(consolidate_legends=False, legend=True, legend_primary=True, legend_secondary=False)  # doctest: +SKIP
-            >>> # No legends
-            >>> k.finalize(legend=False)  # doctest: +SKIP
         """
+        Plotter._last_active = self
         self.consolidate_legends = consolidate_legends
         self.bbox_to_anchor = bbox_to_anchor
         self.ncols = ncols
@@ -4580,16 +5215,21 @@ class Plotter:
         
         handles, labels = self._collect_handles_and_legends()
         
-        if legend and self.consolidate_legends:
-            self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=legend_frameon)
-        
         if hide_secondary_y:
             for ax_key, ax in self.axd.items():
                 if '^' in ax_key:
                     ax.tick_params(axis='y', labelright=False, right=False)
                     ax.spines['right'].set_visible(False)
         
-        self.fig.tight_layout()
+        # Apply layout adjustments before drawing figure-level legend to avoid clipping
+        if self.consolidate_legends and self.bbox_to_anchor[1] < 0:
+            self.fig.tight_layout(rect=[0, 0.08, 1, 1])
+        else:
+            self.fig.tight_layout()
+
+        if legend and self.consolidate_legends and handles:
+            self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=legend_frameon)
+
         return self
 
     def save(self, path, **kwargs):
@@ -4603,8 +5243,7 @@ class Plotter:
         """Describe which kwargs are ignored (with a warning) for a given plot
         `kind`, and which pytae-only control kwargs are never forwarded to
         pandas.plot() at all. Everything else in a .plot() call is passed
-        straight through to the matching pandas.plot(kind=...) call, so see
-        pandas' own docs for the full list of what that kind itself accepts.
+        straight through to the matching pandas.plot(kind=...) call.
 
         Returns:
         --------
@@ -4635,10 +5274,7 @@ class Plotter:
     
     def _adjust_ticks_and_spines(self):
         """Adjust tick visibility and spine settings based on whether anything was
-        actually plotted on each axis -- using matplotlib's own Axes.has_data()
-        rather than pattern-matching its default blank-axis tick label text
-        (fragile: real data spanning exactly 0-1 in 0.2 steps would coincidentally
-        match the old hardcoded default_labels list and be wrongly treated as blank)."""
+        actually plotted on each axis."""
         for ax in self.fig.axes:
             ax_label = ax.get_label()
             if '<colorbar>' in ax_label or ax_label == '':
@@ -4672,20 +5308,10 @@ class Plotter:
                     )
     
     def _manage_legend(self, legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False):
-        """
-        Manage legend display for each axis.
-
-        Args:
-            legend (bool): Enable/disable all legends.
-            legend_primary (bool): Enable/disable legends on primary axes.
-            legend_secondary (bool): Enable/disable legends on secondary axes.
-            legend_loc (str): Location of per-axis legends.
-            legend_frameon (bool): Display a frame around legends.
-        """
+        """Manage legend display for each axis."""
         for ax in self.fig.axes:
             ax_label = ax.get_label()
             is_secondary = '^' in ax_label
-            count = sum(1 for k in self.plot_kwargs_store if k.replace('^', '') == ax_label.replace('^', ''))
             
             handles, labels = ax.get_legend_handles_labels()
             labels = [label.replace(" (right)", "") for label in labels]
@@ -4709,10 +5335,71 @@ class Plotter:
                         ax.get_legend().remove()
 
 
+def plot(df: pd.DataFrame, *args, **kwargs) -> Plotter:
+    """Create a pytae Plotter pre-loaded with `df`, optionally executing a plot.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame to plot.
+    *args :
+        Positional arguments passed to Plotter constructor (e.g. mosaic).
+    **kwargs :
+        Plotter constructor arguments (mosaic, figsize, aggregate, sharex, sharey)
+        or .plot() parameters (kind, x, y, by, aggfunc, palette, etc.).
+
+    Examples:
+    ---------
+    >>> import pytae as pt
+    >>> tips = pt.sample("tips")
+    >>> pt.plot(tips, kind="bar", x="day", y="total_bill", aggfunc="mean").finalize()
+    """
+    return df.pt.plot(*args, **kwargs)
+
+
+def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
+    """Finalize layout, spines, and legends for a Plotter.
+
+    If `plotter` is omitted, finalizes the most recently active Plotter
+    instance (similar to matplotlib's ``plt.tight_layout()``).
+
+    Parameters:
+    -----------
+    plotter : Plotter, optional
+        The Plotter instance to finalize. If None, finalizes the last active Plotter.
+    **kwargs :
+        Optional keyword arguments passed directly to ``Plotter.finalize()``:
+        - `consolidate_legends` (bool): Consolidate all legends into one unified figure legend.
+        - `bbox_to_anchor` (tuple): Position for consolidated legend (e.g. `(0.5, -0.05)`).
+        - `ncols` (int): Number of columns in consolidated legend.
+        - `hide_secondary_y` (bool): Hide secondary y-axis spines/ticks.
+        - `legend` (bool): Master toggle to display or hide legends.
+        - `style` (bool): Apply pytae's spine and tick cleanup.
+
+    Returns:
+    --------
+    Plotter
+        The finalized Plotter instance.
+
+    Examples:
+    ---------
+    >>> import pytae as pt
+    >>> tips = pt.sample("tips")
+    >>> p = pt.plot(tips, kind="bar", x="day", y="total_bill")
+    >>> pt.finalize(p)
+    """
+    if plotter is None:
+        plotter = Plotter._last_active
+        if plotter is None:
+            raise ValueError("No active pytae Plotter to finalize.")
+    elif not isinstance(plotter, Plotter):
+        raise TypeError(f"Expected a Plotter instance, got {type(plotter).__name__}")
+    return plotter.finalize(**kwargs)
+
+
 ################################################################################
 # FILE: src/pytae/qry.py
 ################################################################################
-
 from __future__ import annotations
 
 import ast
@@ -4994,11 +5681,9 @@ def qry(
 
     return out
 
-
 ################################################################################
 # FILE: src/pytae/readers.py
 ################################################################################
-
 """Format-specific readers exposing a uniform metadata/inspection API.
 
 Each reader avoids loading full row data for shape/columns/dtypes/head where
@@ -5022,9 +5707,20 @@ CHUNK_SIZE = DEFAULT_CHUNK_SIZE
 DTYPE_SAMPLE_ROWS = 10_000
 
 
-def _delimited_dtypes(path: Path, *, sep: str, encoding: str | None) -> pd.Series:
+def _split_path_suffixes(path: Path) -> tuple[str, str | None]:
+    """Return (base_suffix, compression) e.g. ('.csv', 'gzip') or ('.parquet', None)."""
+    suffixes = [s.lower() for s in path.suffixes]
+    if not suffixes:
+        return ("", None)
+    if suffixes[-1] == ".gz":
+        base = suffixes[-2] if len(suffixes) >= 2 else ""
+        return (base, "gzip")
+    return (suffixes[-1], None)
+
+
+def _delimited_dtypes(path: Path, *, sep: str, encoding: str | None, compression: str | None = None) -> pd.Series:
     return pd.read_csv(
-        path, sep=sep, encoding=encoding, nrows=DTYPE_SAMPLE_ROWS, low_memory=False
+        path, sep=sep, encoding=encoding, nrows=DTYPE_SAMPLE_ROWS, low_memory=False, compression=compression
     ).dtypes
 
 
@@ -5103,48 +5799,103 @@ class ParquetReader:
 
 
 class CsvReader:
-    def __init__(self, path: Path, sep: str = ",", encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+    def __init__(
+        self,
+        path: Path,
+        sep: str = ",",
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        compression: str | None = None,
+    ) -> None:
         self.path = path
         self.sep = sep
         self.encoding = encoding
         self.chunk_size = chunk_size
+        self.compression = compression
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
         total = 0
         for chunk in pd.read_csv(
-            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=self.chunk_size, low_memory=False
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=[0],
+            chunksize=self.chunk_size,
+            low_memory=False,
+            compression=self.compression,
         ):
             total += len(chunk)
         return (total, n_cols)
 
     def columns(self) -> list[str]:
         try:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                nrows=0,
+                low_memory=False,
+                compression=self.compression,
+            ).columns.tolist()
         except pd.errors.EmptyDataError as exc:
             raise ValueError(f"'{self.path.name}' is empty or not a valid CSV file") from exc
 
     def dtypes(self) -> pd.Series:
-        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
+        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
 
     def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            nrows=n,
+            low_memory=False,
+            compression=self.compression,
+        )
 
     def tail(self, n: int) -> pd.DataFrame:
         total = self.shape()[0]
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            skiprows=skip,
+            low_memory=False,
+            compression=self.compression,
+        )
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
-                     chunk_size: int | None = None) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
         if not progress:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
-                               low_memory=False)
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                usecols=columns,
+                nrows=nrows,
+                low_memory=False,
+                compression=self.compression,
+            )
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
         csize = chunk_size or self.chunk_size
-        reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                      chunksize=csize, nrows=nrows, low_memory=False)
+        reader = pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=columns,
+            chunksize=csize,
+            nrows=nrows,
+            low_memory=False,
+            compression=self.compression,
+        )
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
@@ -5156,48 +5907,103 @@ class CsvReader:
 class TxtReader:
     """Reads delimited .txt/.dat files (tab-delimited for .txt, pipe-delimited for .dat by default)."""
 
-    def __init__(self, path: Path, sep: str = "\t", encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+    def __init__(
+        self,
+        path: Path,
+        sep: str = "\t",
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        compression: str | None = None,
+    ) -> None:
         self.path = path
         self.sep = sep
         self.encoding = encoding
         self.chunk_size = chunk_size
+        self.compression = compression
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
         total = 0
         for chunk in pd.read_csv(
-            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=self.chunk_size, low_memory=False
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=[0],
+            chunksize=self.chunk_size,
+            low_memory=False,
+            compression=self.compression,
         ):
             total += len(chunk)
         return (total, n_cols)
 
     def columns(self) -> list[str]:
         try:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                nrows=0,
+                low_memory=False,
+                compression=self.compression,
+            ).columns.tolist()
         except pd.errors.EmptyDataError as exc:
             raise ValueError(f"'{self.path.name}' is empty or not a valid delimited file") from exc
 
     def dtypes(self) -> pd.Series:
-        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
+        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
 
     def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            nrows=n,
+            low_memory=False,
+            compression=self.compression,
+        )
 
     def tail(self, n: int) -> pd.DataFrame:
         total = self.shape()[0]
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            skiprows=skip,
+            low_memory=False,
+            compression=self.compression,
+        )
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
-                     chunk_size: int | None = None) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
         if not progress:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
-                               low_memory=False)
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                usecols=columns,
+                nrows=nrows,
+                low_memory=False,
+                compression=self.compression,
+            )
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
         csize = chunk_size or self.chunk_size
-        reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                      chunksize=csize, nrows=nrows, low_memory=False)
+        reader = pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=columns,
+            chunksize=csize,
+            nrows=nrows,
+            low_memory=False,
+            compression=self.compression,
+        )
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
@@ -5266,6 +6072,102 @@ class SasReader:
         return df[columns] if columns else df
 
 
+class JsonlReader:
+    """Reads line-delimited JSON (.jsonl / .ndjson) files."""
+
+    def __init__(
+        self,
+        path: Path,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        compression: str | None = None,
+    ) -> None:
+        self.path = path
+        self.chunk_size = chunk_size
+        self.compression = compression
+
+    def shape(self) -> tuple[int, int]:
+        n_cols = len(self.columns())
+        total = 0
+        for chunk in pd.read_json(
+            self.path,
+            lines=True,
+            chunksize=self.chunk_size,
+            compression=self.compression,
+        ):
+            total += len(chunk)
+        return (total, n_cols)
+
+    def columns(self) -> list[str]:
+        try:
+            cols = pd.read_json(
+                self.path,
+                lines=True,
+                nrows=1,
+                compression=self.compression,
+            ).columns.tolist()
+            if not cols:
+                raise ValueError(f"'{self.path.name}' is empty or not a valid JSON Lines file")
+            return cols
+        except Exception as exc:
+            if isinstance(exc, ValueError) and "is empty or not a valid JSON Lines file" in str(exc):
+                raise
+            raise ValueError(f"'{self.path.name}' is empty or not a valid JSON Lines file") from exc
+
+    def dtypes(self) -> pd.Series:
+        return pd.read_json(
+            self.path,
+            lines=True,
+            nrows=DTYPE_SAMPLE_ROWS,
+            compression=self.compression,
+        ).dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        if n <= 0:
+            return pd.DataFrame(columns=self.columns())
+        return pd.read_json(
+            self.path,
+            lines=True,
+            nrows=n,
+            compression=self.compression,
+        )
+
+    def tail(self, n: int) -> pd.DataFrame:
+        df = self.to_dataframe()
+        return df.tail(n)
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        if not progress:
+            df = pd.read_json(
+                self.path,
+                lines=True,
+                nrows=nrows,
+                compression=self.compression,
+            )
+            return df[columns] if columns else df
+        total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
+        chunks, done = [], 0
+        csize = chunk_size or self.chunk_size
+        for chunk in pd.read_json(
+            self.path,
+            lines=True,
+            chunksize=csize,
+            nrows=nrows,
+            compression=self.compression,
+        ):
+            chunks.append(chunk)
+            done += len(chunk)
+            _print_progress(done, total, "reading")
+        print()
+        df = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+        return df[columns] if columns else df
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
@@ -5273,6 +6175,8 @@ _READERS = {
     ".txt": TxtReader,
     ".dat": TxtReader,
     ".sas7bdat": SasReader,
+    ".jsonl": JsonlReader,
+    ".ndjson": JsonlReader,
 }
 
 # YAML connection configs (Databricks / SSH) are handled by the isolated pytae.connections
@@ -5289,7 +6193,7 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
 def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE):
-    suffix = path.suffix.lower()
+    suffix, compression = _split_path_suffixes(path)
     if suffix in _YAML_SUFFIXES:
         global _EXTERNAL_CONNECTIONS_MODULE
         if _EXTERNAL_CONNECTIONS_MODULE is None:
@@ -5316,33 +6220,61 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
     try:
         cls = _READERS[suffix]
     except KeyError:
-        supported = ", ".join(sorted((*_READERS, *_YAML_SUFFIXES)))
+        supported = ", ".join(sorted((*_READERS, *_YAML_SUFFIXES, ".csv.gz", ".txt.gz", ".dat.gz", ".jsonl.gz", ".ndjson.gz")))
         raise ValueError(f"unsupported file type '{path.suffix or path.name}'; supported: {supported}") from None
     if cls is CsvReader:
-        return CsvReader(path, sep=sep or ",", encoding=encoding, chunk_size=chunk_size)
+        return CsvReader(path, sep=sep or ",", encoding=encoding, chunk_size=chunk_size, compression=compression)
     if cls is TxtReader:
         return TxtReader(
             path,
             sep=sep or _TXT_DEFAULT_SEP[suffix],
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
             chunk_size=chunk_size,
+            compression=compression,
         )
+    if cls is JsonlReader:
+        return JsonlReader(path, chunk_size=chunk_size, compression=compression)
     if cls is SasReader:
         return SasReader(path, encoding=encoding, chunk_size=chunk_size)
     return cls(path, chunk_size=chunk_size)
 
 
 # .sas7bdat is intentionally excluded: pandas has no writer for that format.
-_WRITABLE_SUFFIXES = (".parquet", ".pq", ".csv", ".txt", ".dat")
+_WRITABLE_SUFFIXES = (
+    ".parquet",
+    ".pq",
+    ".csv",
+    ".txt",
+    ".dat",
+    ".jsonl",
+    ".ndjson",
+    ".csv.gz",
+    ".txt.gz",
+    ".dat.gz",
+    ".jsonl.gz",
+    ".ndjson.gz",
+)
 
 
-def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, encoding: str | None = None,
-                     progress: bool = False, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
-    suffix = dest.suffix.lower()
+def write_dataframe(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    sep: str | None = None,
+    encoding: str | None = None,
+    progress: bool = False,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    index: bool | None = None,
+) -> None:
+    if index is None:
+        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+    suffix, compression = _split_path_suffixes(dest)
     if suffix in (".parquet", ".pq"):
-        _write_parquet(df, dest, progress=progress, chunk_size=chunk_size)
+        _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)
     elif suffix == ".csv":
-        _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size)
+        _write_delimited(
+            df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size, index=index, compression=compression
+        )
     elif suffix in _TXT_DEFAULT_SEP:
         _write_delimited(
             df, dest,
@@ -5350,32 +6282,87 @@ def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, enc
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
             progress=progress,
             chunk_size=chunk_size,
+            index=index,
+            compression=compression,
         )
+    elif suffix in (".jsonl", ".ndjson"):
+        _write_jsonl(df, dest, progress=progress, chunk_size=chunk_size, compression=compression)
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
 
 
-def _write_delimited(df: pd.DataFrame, dest: Path, *, sep: str, encoding: str | None, progress: bool,
-                     chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+def _write_delimited(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    sep: str,
+    encoding: str | None,
+    progress: bool,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    index: bool = False,
+    compression: str | None = None,
+) -> None:
     total = len(df)
     if not progress or total == 0:
-        df.to_csv(dest, sep=sep, encoding=encoding, index=False)
+        df.to_csv(dest, sep=sep, encoding=encoding, index=index, compression=compression)
         return
     done = 0
     for start in range(0, total, chunk_size):
         chunk = df.iloc[start:start + chunk_size]
-        chunk.to_csv(dest, sep=sep, encoding=encoding, index=False, mode="w" if start == 0 else "a", header=(start == 0))
+        chunk.to_csv(
+            dest,
+            sep=sep,
+            encoding=encoding,
+            index=index,
+            mode="w" if start == 0 else "a",
+            header=(start == 0),
+            compression=compression,
+        )
         done += len(chunk)
         _print_progress(done, total, "writing")
     print()
 
 
-def _write_parquet(df: pd.DataFrame, dest: Path, *, progress: bool, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
-    if not progress or len(df) == 0:
-        df.to_parquet(dest, index=False)
+def _write_jsonl(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    progress: bool,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    compression: str | None = None,
+) -> None:
+    total = len(df)
+    if not progress or total == 0:
+        df.to_json(dest, orient="records", lines=True, compression=compression)
         return
-    table = pa.Table.from_pandas(df, preserve_index=False)
+    done = 0
+    for start in range(0, total, chunk_size):
+        chunk = df.iloc[start:start + chunk_size]
+        chunk.to_json(
+            dest,
+            orient="records",
+            lines=True,
+            mode="w" if start == 0 else "a",
+            compression=compression,
+        )
+        done += len(chunk)
+        _print_progress(done, total, "writing")
+    print()
+
+
+def _write_parquet(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    progress: bool,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    index: bool = False,
+) -> None:
+    if not progress or len(df) == 0:
+        df.to_parquet(dest, index=index)
+        return
+    table = pa.Table.from_pandas(df, preserve_index=index)
     total = table.num_rows
     done = 0
     with pa_parquet.ParquetWriter(dest, table.schema) as writer:
@@ -5385,11 +6372,9 @@ def _write_parquet(df: pd.DataFrame, dest: Path, *, progress: bool, chunk_size: 
             _print_progress(done, total, "writing")
     print()
 
-
 ################################################################################
 # FILE: src/pytae/select.py
 ################################################################################
-
 from __future__ import annotations
 
 import difflib
@@ -5565,12 +6550,9 @@ def select(
         ordered_cols.extend([col for col in regex_cols if col not in ordered_cols])
 
     return df[ordered_cols]
-
-
 ################################################################################
 # FILE: src/pytae/shape.py
 ################################################################################
-
 from __future__ import annotations
 
 import pandas as pd
@@ -5630,12 +6612,9 @@ def wide(
     return wide_df
 
 
-
-
 ################################################################################
 # FILE: src/pytae/sql.py
 ################################################################################
-
 """SQL over DataFrames via duckdb. Optional extra: pip install 'pytae[sql]'."""
 
 from __future__ import annotations
@@ -5756,24 +6735,13 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
     finally:
         con.close()
 
-
-
-================================================================================
-11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
-================================================================================
-
-
 ################################################################################
 # FILE: tests/__init__.py
 ################################################################################
-
 # Makes `from tests.cli_helpers import ...` work when pytest's rootdir is the repo.
-
-
 ################################################################################
 # FILE: tests/cli_helpers.py
 ################################################################################
-
 """Shared fixtures for CLI tests."""
 from __future__ import annotations
 
@@ -5827,12 +6795,9 @@ def _write_three_id_csvs(tmp_path):
     pd.DataFrame({"id": [1, 2, 4], "y": ["p", "q", "r"]}).to_csv(b, index=False)
     pd.DataFrame({"id": [1, 2], "z": ["m", "n"]}).to_csv(c, index=False)
     return str(a), str(b), str(c)
-
-
 ################################################################################
 # FILE: tests/conftest.py
 ################################################################################
-
 import os
 import sys
 
@@ -5862,12 +6827,9 @@ def sample_parquet(tmp_path):
         pytae.sample_data[name].to_parquet(path)
         return str(path)
     return _write
-
-
 ################################################################################
 # FILE: tests/test_accessor.py
 ################################################################################
-
 import os
 import sys
 
@@ -5900,12 +6862,9 @@ def test_pt_select_then_pandas_head():
     out = penguins.pt.select("species", "body_mass_g").head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
-
-
 ################################################################################
 # FILE: tests/test_agg_df.py
 ################################################################################
-
 
 import os
 import sys
@@ -6013,12 +6972,9 @@ def test_agg_df_rejects_dictionary():
 
 if __name__ == '__main__':
     pytest.main()
-
-
 ################################################################################
 # FILE: tests/test_cli_agg.py
 ################################################################################
-
 import os
 import sys
 
@@ -6237,12 +7193,9 @@ def test_agg_df_python_literal_is_rejected(tmp_path):
     with pytest.raises(SystemExit, match="use a name"):
         cli.main([path, "-agg_df", "{'val': 'sum'}"])
 
-
-
 ################################################################################
 # FILE: tests/test_cli_clean.py
 ################################################################################
-
 import os
 import sys
 
@@ -6463,12 +7416,9 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
 
-
-
 ################################################################################
 # FILE: tests/test_cli_drop.py
 ################################################################################
-
 import os
 import sys
 
@@ -6625,12 +7575,9 @@ def test_qry_then_drop_filter_column(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]
 
-
-
 ################################################################################
 # FILE: tests/test_cli_filter.py
 ################################################################################
-
 import os
 import sys
 
@@ -6773,12 +7720,9 @@ def test_qry_equals_separator(tmp_path, capsys):
     exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
-
-
 ################################################################################
 # FILE: tests/test_cli_inspect.py
 ################################################################################
-
 import os
 import sys
 
@@ -7238,12 +8182,450 @@ def test_cli_removed_flags_migration_errors(tmp_path):
     assert exc_info.value.code == 2
 
 
+def test_cli_multiple_positional_files_batch_convert(tmp_path, capsys):
+    f1 = tmp_path / "data1.parquet"
+    f2 = tmp_path / "data2.parquet"
+    pd.DataFrame({"x": [1, 2]}).to_parquet(f1, index=False)
+    pd.DataFrame({"y": [3, 4]}).to_parquet(f2, index=False)
+
+    exit_code = cli.main([str(f1), str(f2), "-o", "csv"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert (tmp_path / "data1.csv").exists()
+    assert (tmp_path / "data2.csv").exists()
+    assert f"== {f1} ==" in out
+    assert f"== {f2} ==" in out
+    assert "Wrote 2 rows" in out
+
+
+def test_cli_multiple_positional_files_inspect(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"col": [10, 20]}).to_csv(f1, index=False)
+    pd.DataFrame({"col": [30, 40]}).to_csv(f2, index=False)
+
+    exit_code = cli.main([str(f1), str(f2), "-head", "1"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert f"== {f1} ==" in out
+    assert f"== {f2} ==" in out
+    assert "10" in out
+    assert "30" in out
+
+
+def test_cli_multiple_files_single_destination_errors(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"col": [1]}).to_csv(f1, index=False)
+    pd.DataFrame({"col": [2]}).to_csv(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", str(tmp_path / "out.parquet")])
+    assert exc_info.value.code == 2
+    assert "requires a format" in capsys.readouterr().err
+
+
+def test_cli_multiple_files_clip_errors(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"col": [1]}).to_csv(f1, index=False)
+    pd.DataFrame({"col": [2]}).to_csv(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", "clip"])
+    assert exc_info.value.code == 2
+    assert "-o clip cannot be used with multiple matched files" in capsys.readouterr().err
+
+
+def test_cli_no_path_errors(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([])
+    assert exc_info.value.code == 2
+    assert "the following arguments are required: path" in capsys.readouterr().err
+
+
+def test_cli_positional_with_file_errors(tmp_path, capsys):
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    pd.DataFrame({"id": [1]}).to_csv(f1, index=False)
+    pd.DataFrame({"id": [2]}).to_csv(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["-file", f"{f1}=a", str(f2), "-merge", "how=inner"])
+    assert exc_info.value.code == 2
+    assert "can't be combined with a positional path" in capsys.readouterr().err
+
+
+def test_cli_progress_custom_chunk_size(tmp_path, capsys):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": list(range(25))}).to_parquet(src, index=False)
+    dest = tmp_path / "data.csv"
+
+    exit_code = cli.main([str(src), "-o", str(dest), "-progress", "10"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert dest.exists()
+    assert "reading... 10/25 rows (40%)" in out
+    assert "writing... 10/25 rows (40%)" in out
+    assert "Wrote 25 rows" in out
+
+
+def test_cli_progress_bare_flag(tmp_path, capsys):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1, 2]}).to_parquet(src, index=False)
+    dest = tmp_path / "data.csv"
+
+    exit_code = cli.main([str(src), "-o", str(dest), "-progress"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert dest.exists()
+    assert "reading... 2/2 rows (100%)" in out
+    assert "writing... 2/2 rows (100%)" in out
+    assert "Wrote 2 rows" in out
+
+
+def test_cli_invalid_progress_chunk_size_errors(tmp_path):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(src, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-progress", "0"])
+    assert exc_info.value.code == 2
+
+
+def test_describe_and_crosstab_export_preserves_index(tmp_path):
+    src = tmp_path / "data.parquet"
+    df = pd.DataFrame({"sp": ["A", "B", "A"], "val": [10, 20, 30]})
+    df.to_parquet(src, index=False)
+
+    desc_csv = tmp_path / "desc.csv"
+    assert cli.main([str(src), "-describe", "-o", str(desc_csv)]) == 0
+    read_desc_csv = pd.read_csv(desc_csv, index_col=0)
+    assert list(read_desc_csv.index) == ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
+
+    desc_pq = tmp_path / "desc.parquet"
+    assert cli.main([str(src), "-describe", "-o", str(desc_pq)]) == 0
+    read_desc_pq = pd.read_parquet(desc_pq)
+    assert list(read_desc_pq.index) == ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
+
+    ct_csv = tmp_path / "ct.csv"
+    assert cli.main([str(src), "-crosstab", "index=sp,columns=sp", "-o", str(ct_csv)]) == 0
+    read_ct_csv = pd.read_csv(ct_csv, index_col=0)
+    assert list(read_ct_csv.index) == ["A", "B"]
+
+    reg_csv = tmp_path / "reg.csv"
+    assert cli.main([str(src), "-head", "2", "-o", str(reg_csv)]) == 0
+    read_reg = pd.read_csv(reg_csv)
+    assert list(read_reg.columns) == ["sp", "val"]
+
+
+def test_batch_export_colliding_stems_error(tmp_path, capsys):
+    f1 = tmp_path / "stem.parquet"
+    f2 = tmp_path / "stem.pq"
+    pd.DataFrame({"x": [1]}).to_parquet(f1, index=False)
+    pd.DataFrame({"y": [2]}).to_parquet(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", "csv"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "multiple input files resolve to the same destination path" in err
+
+
+def test_cli_progress_preceding_path(tmp_path):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1, 2]}).to_parquet(src, index=False)
+    dest1 = tmp_path / "out1.csv"
+    dest2 = tmp_path / "out2.csv"
+    dest3 = tmp_path / "out3.csv"
+
+    assert cli.main(["-progress", str(src), "-o", str(dest1)]) == 0
+    assert dest1.exists()
+
+    assert cli.main(["-o", str(dest2), "-progress", str(src)]) == 0
+    assert dest2.exists()
+
+    assert cli.main(["-progress", "1000", str(src), "-o", str(dest3)]) == 0
+    assert dest3.exists()
+
+
+def test_cli_intermixed_positional_args(tmp_path):
+    f1 = tmp_path / "a.parquet"
+    f2 = tmp_path / "b.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(f1, index=False)
+    pd.DataFrame({"b": [2]}).to_parquet(f2, index=False)
+
+    exit_code = cli.main([str(f1), "-o", "csv", str(f2)])
+    assert exit_code == 0
+    assert (tmp_path / "a.csv").exists()
+    assert (tmp_path / "b.csv").exists()
+
+
+def test_in_place_overwrite_error_message(tmp_path, capsys):
+    src = tmp_path / "file.csv"
+    src.write_text("a,b\n1,2\n")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-o", "csv"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "refusing to overwrite the source file" in err
+    assert "specify a different format or an explicit path with -o/--output" in err
+
+
+def test_non_df_terminal_op_error_message(tmp_path, capsys):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(src, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-shape", "-head", "5"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-shape does not return a DataFrame/Series, so no flag may follow it (except '-o clip'" in err
+
+
+def test_cli_out_dir_single_and_batch(tmp_path):
+    df1 = pd.DataFrame({"col1": [1, 2], "col2": ["x", "y"]})
+    df2 = pd.DataFrame({"col1": [3, 4], "col2": ["z", "w"]})
+    f1 = tmp_path / "file1.csv"
+    f2 = tmp_path / "file2.csv"
+    df1.to_csv(f1, index=False)
+    df2.to_csv(f2, index=False)
+
+    out_directory = tmp_path / "exported"
+    # Single file
+    exit_code = cli.main([str(f1), "-o", "parquet", "-out_dir", str(out_directory)])
+    assert exit_code == 0
+    assert (out_directory / "file1.parquet").exists()
+
+    # Batch files with -od alias
+    exit_code2 = cli.main([str(f1), str(f2), "-o", "parquet", "-od", str(out_directory)])
+    assert exit_code2 == 0
+    assert (out_directory / "file1.parquet").exists()
+    assert (out_directory / "file2.parquet").exists()
+
+
+def test_cli_out_dir_validations(tmp_path, capsys):
+    f = tmp_path / "data.csv"
+    f.write_text("a,b\n1,2\n")
+    out_directory = tmp_path / "exported"
+
+    # Fails without -o
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f), "-out_dir", str(out_directory)])
+    assert exc_info.value.code == 2
+    assert "-out_dir requires -o/--output" in capsys.readouterr().err
+
+    # Fails with -o clip
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f), "-o", "clip", "-out_dir", str(out_directory)])
+    assert exc_info.value.code == 2
+    assert "-out_dir cannot be used with '-o clip'" in capsys.readouterr().err
+
+
+def test_cli_batch_out_dir_collision(tmp_path, capsys):
+    sub1 = tmp_path / "sub1"
+    sub2 = tmp_path / "sub2"
+    sub1.mkdir()
+    sub2.mkdir()
+    f1 = sub1 / "data.csv"
+    f2 = sub2 / "data.csv"
+    f1.write_text("a,b\n1,2\n")
+    f2.write_text("a,b\n3,4\n")
+
+    out_directory = tmp_path / "exported"
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", "parquet", "-out_dir", str(out_directory)])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "multiple input files resolve to the same destination path" in err
+
+
+def test_cli_meta_parquet(tmp_path, capsys):
+    p = tmp_path / "sample.parquet"
+    pd.DataFrame({"id": range(10), "score": [float(i) * 1.5 for i in range(10)]}).to_parquet(p, index=False)
+
+    exit_code = cli.main([str(p), "-meta"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Format: Parquet" in out
+    assert "Rows: 10" in out
+    assert "Columns: 2" in out
+    assert "Row groups: 1" in out
+    assert "Schema:" in out
+    assert "id" in out
+    assert "score" in out
+
+
+def test_cli_meta_restrictions(tmp_path, capsys):
+    p = tmp_path / "sample.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(p, index=False)
+
+    # -meta cannot be chained before another flag
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(p), "-meta", "-head", "5"])
+    assert exc_info.value.code == 2
+    assert "-meta does not return a DataFrame/Series, so no flag may follow it" in capsys.readouterr().err
+
+    # -meta cannot export to file
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(p), "-meta", "-o", "out.parquet"])
+    assert exc_info.value.code == 2
+    assert "-meta does not produce a tabular DataFrame, so it cannot be exported to a file" in capsys.readouterr().err
+
+
+def test_cli_meta_clip(tmp_path, monkeypatch):
+    p = tmp_path / "sample.parquet"
+    pd.DataFrame({"a": [1, 2]}).to_parquet(p, index=False)
+
+    copied = []
+    monkeypatch.setattr(cli, "_process_path", cli._process_path)
+    import pytae.cli_run as cli_run
+    monkeypatch.setattr(cli_run, "_copy_to_clipboard", lambda text: copied.append(text))
+
+    exit_code = cli.main([str(p), "-meta", "-o", "clip"])
+    assert exit_code == 0
+    assert len(copied) == 1
+    assert "Format: Parquet" in copied[0]
+
+
+def test_cli_diff_identical(tmp_path, capsys):
+    df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    f1 = tmp_path / "f1.csv"
+    f2 = tmp_path / "f2.csv"
+    df.to_csv(f1, index=False)
+    df.to_csv(f2, index=False)
+
+    exit_code = cli.main([str(f1), "-diff", str(f2)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Comparing:" in out
+    assert "Rows: 3 vs 3" in out
+    assert "Cols: 2 vs 2" in out
+    assert "Identical: all cell values match exactly." in out
+
+
+def test_cli_diff_mismatches_and_drift(tmp_path, capsys):
+    df1 = pd.DataFrame({"a": [1, 2, 3], "b": ["x", None, "z"], "c": [10, 20, 30]})
+    df2 = pd.DataFrame({"a": [1, 2, 4], "b": ["x", "y", "z"], "d": [1.0, 2.0, 3.0]})
+    f1 = tmp_path / "left.csv"
+    f2 = tmp_path / "right.csv"
+    df1.to_csv(f1, index=False)
+    df2.to_csv(f2, index=False)
+
+    exit_code = cli.main([str(f1), "-diff", str(f2)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "+ Added in left (1):   c" in out
+    assert "- Removed in left (1): d" in out
+    assert "Null Counts:" in out
+    assert "Mismatches found" in out
+
+
+def test_cli_diff_clip(tmp_path, monkeypatch):
+    df = pd.DataFrame({"a": [1, 2]})
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    df.to_csv(f1, index=False)
+    df.to_csv(f2, index=False)
+
+    copied = []
+    import pytae.cli_run as cli_run
+    monkeypatch.setattr(cli_run, "_copy_to_clipboard", lambda text: copied.append(text))
+
+    exit_code = cli.main([str(f1), "-diff", str(f2), "-o", "clip"])
+    assert exit_code == 0
+    assert len(copied) == 1
+    assert "Comparing:" in copied[0]
+
+
+def test_cli_diff_restrictions(tmp_path, capsys):
+    f = tmp_path / "a.csv"
+    f.write_text("a\n1\n")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f), "-diff", str(f), "-o", "out.csv"])
+    assert exc_info.value.code == 2
+    assert "-diff does not produce a tabular DataFrame, so it cannot be exported to a file" in capsys.readouterr().err
+
+
+def test_cli_jsonl_inspect_and_conversion(tmp_path, capsys):
+    df = pd.DataFrame({"id": [1, 2, 3], "city": ["NYC", "SFO", "LON"]})
+    jpath = tmp_path / "data.jsonl"
+    df.to_json(jpath, orient="records", lines=True)
+
+    # Inspect
+    exit_code = cli.main([str(jpath), "-shape"])
+    assert exit_code == 0
+    assert "(3, 2)" in capsys.readouterr().out
+
+    exit_code = cli.main([str(jpath), "-cols"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "id" in out
+    assert "city" in out
+
+    # Convert to Parquet
+    exit_code2 = cli.main([str(jpath), "-o", "parquet"])
+    assert exit_code2 == 0
+    pq_path = tmp_path / "data.parquet"
+    assert pq_path.exists()
+    assert len(pd.read_parquet(pq_path)) == 3
+
+    # Convert Parquet to ndjson
+    exit_code3 = cli.main([str(pq_path), "-o", "ndjson"])
+    assert exit_code3 == 0
+    assert (tmp_path / "data.ndjson").exists()
+
+
+def test_cli_transparent_compression(tmp_path):
+    df = pd.DataFrame({"a": [1, 2, 3, 4], "b": ["p", "q", "r", "s"]})
+    csv_path = tmp_path / "data.csv"
+    df.to_csv(csv_path, index=False)
+
+    # Convert csv to csv.gz
+    exit_code = cli.main([str(csv_path), "-o", "csv.gz"])
+    assert exit_code == 0
+    gz_path = tmp_path / "data.csv.gz"
+    assert gz_path.exists()
+
+    # Convert csv.gz to parquet
+    exit_code2 = cli.main([str(gz_path), "-o", "parquet"])
+    assert exit_code2 == 0
+    pq_path = tmp_path / "data.parquet"
+    assert pq_path.exists()
+    pd.testing.assert_frame_equal(pd.read_parquet(pq_path), df)
+
+    # Convert parquet to jsonl.gz
+    exit_code3 = cli.main([str(pq_path), "-o", "jsonl.gz"])
+    assert exit_code3 == 0
+    j_gz = tmp_path / "data.jsonl.gz"
+    assert j_gz.exists()
+    pd.testing.assert_frame_equal(pd.read_json(j_gz, lines=True), df)
+
+
+def test_cli_pager(tmp_path, monkeypatch):
+    df = pd.DataFrame({"col": range(5)})
+    p = tmp_path / "data.csv"
+    df.to_csv(p, index=False)
+
+    paged = []
+    import pydoc
+    monkeypatch.setattr(pydoc, "pager", lambda text: paged.append(text))
+
+    exit_code = cli.main([str(p), "-head", "3", "-pager"])
+    assert exit_code == 0
+    assert len(paged) == 1
+    assert "col" in paged[0]
+
+
+
+
 
 
 ################################################################################
 # FILE: tests/test_cli_merge.py
 ################################################################################
-
 import os
 import sys
 
@@ -7541,12 +8923,9 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
 
 
 
-
-
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
-
 import os
 import sys
 
@@ -7664,12 +9043,9 @@ def test_mutate_colon_raises_cli_error(tmp_path, capsys):
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "use '='" in err
-
-
 ################################################################################
 # FILE: tests/test_cli_parse.py
 ################################################################################
-
 import os
 import sys
 
@@ -7685,11 +9061,29 @@ def test_parse_sort_by_trailing_direction():
     assert parse_sort_by("bill length mm desc") == (["bill length mm"], "desc")
 
 
+def test_expand_paths_single_and_list(tmp_path):
+    import pytest
+
+    from pytae.cli_parsing import expand_paths
+
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    f1.write_text("a,b\n1,2\n")
+    f2.write_text("a,b\n3,4\n")
+
+    assert expand_paths(str(f1)) == [f1]
+    assert expand_paths([str(f1), str(f2)]) == [f1, f2]
+    assert expand_paths(str(tmp_path / "*.csv")) == [f1, f2]
+    assert expand_paths([str(f1), str(f1), str(f2)]) == [f1, f2]
+
+    with pytest.raises(SystemExit) as exc_info:
+        expand_paths(str(tmp_path / "*.parquet"))
+    assert "no files matched pattern" in str(exc_info.value)
+
 
 ################################################################################
 # FILE: tests/test_cli_reshape.py
 ################################################################################
-
 import os
 import sys
 
@@ -7856,18 +9250,15 @@ def test_wide_and_group_x_reject_dropna_kwarg(tmp_path):
     with pytest.raises(SystemExit, match="unknown key 'dropna'"):
         cli.main([path2, "-wide", "dropna=false"])
 
-
-
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
-
 """Integration tests against pytae's bundled real datasets (pytae.sample_data).
 
 Unlike the tiny hand-crafted frames in test_cli_order.py (kept deliberately
 minimal for exact, easy-to-verify assertions), these exercise the CLI against
 real, messier data: multiple categories, real NaNs, larger row counts. This is
-also where docs/CLI.md's "Sample datasets" section examples are regression
+also where docs/cli.md's "Sample datasets" section examples are regression
 tested, so a broken documented command fails CI instead of only being caught
 by manually re-running the docs.
 """
@@ -7894,7 +9285,7 @@ def sample_dataset_dir(tmp_path_factory):
     return directory
 
 
-# Mirrors docs/CLI.md's "Sample datasets" section — keep in sync with those examples.
+# Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
     ("penguins.parquet", ["-qry", "species = 'Adelie'", "-agg_df", "mean"]),
     ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
@@ -8006,12 +9397,9 @@ def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines() == ["age     0", "deck    0"]
-
-
 ################################################################################
 # FILE: tests/test_cli_select.py
 ################################################################################
-
 import os
 import sys
 
@@ -8233,12 +9621,9 @@ def test_select_runs_after_merge(tmp_path, capsys):
 
     assert capsys.readouterr().out.strip() == "(2, 2)"
 
-
-
 ################################################################################
 # FILE: tests/test_cli_sql.py
 ################################################################################
-
 import os
 import sys
 
@@ -8427,12 +9812,9 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
 
 
 
-
-
 ################################################################################
 # FILE: tests/test_import.py
 ################################################################################
-
 import os
 import subprocess
 import sys
@@ -8570,12 +9952,9 @@ else:
     assert result.returncode == 0, result.stderr
     assert "pytae[sql]" in result.stderr
 
-
-
 ################################################################################
 # FILE: tests/test_mutate.py
 ################################################################################
-
 import os
 import sys
 
@@ -8835,12 +10214,9 @@ def test_mutate_unquoted_string_literal_hint():
     df = _df()
     with pytest.raises(KeyError, match="if you intended a string literal, quote it like 'heavy'"):
         pt.mutate(df, status="if_else(body_mass_g > 3500, heavy, light)")
-
-
 ################################################################################
 # FILE: tests/test_plotter.py
 ################################################################################
-
 import os
 import sys
 
@@ -8967,10 +10343,11 @@ def test_hist_missing_required_kwarg_raises():
         Plotter().data(df).plot(kind="hist")
 
 
-def test_scatter_warns_on_unsupported_by_kwarg():
+def test_scatter_groups_by_category_with_labels():
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "cat": ["x", "y"]})
-    with pytest.warns(UserWarning, match="'by' argument will be ignored"):
-        Plotter().data(df).plot(kind="scatter", x="a", y="b", by="cat")
+    plotter = Plotter().data(df).plot(kind="scatter", x="a", y="b", by="cat")
+    handles, labels = plotter.ax.get_legend_handles_labels()
+    assert set(labels) == {"x", "y"}
 
 
 def test_hist_warns_on_unsupported_aggfunc_kwarg():
@@ -8981,12 +10358,14 @@ def test_hist_warns_on_unsupported_aggfunc_kwarg():
 
 def test_supported_kwargs_lists_unsupported_and_controls():
     info = Plotter.supported_kwargs("scatter")
-    assert set(info["unsupported"]) == {"aggfunc", "by", "dropna"}
+    assert set(info["unsupported"]) == {"aggfunc", "dropna"}
     assert "on" in info["pytae_controls"]
+    assert "palette" in info["pytae_controls"]
 
 
 def test_supported_kwargs_kde_alias_matches_density():
     assert Plotter.supported_kwargs("kde") == Plotter.supported_kwargs("density")
+
 
 
 def test_save_writes_figure(tmp_path):
@@ -9018,10 +10397,339 @@ def test_finalize_style_true_hides_blank_axis_ticks():
     assert unused_ax.xaxis.get_tick_params()["length"] == 0
 
 
+def test_plotter_init_with_dataframe():
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    p1 = Plotter(df)
+    assert p1.df is df
+    assert "A" in p1.axd
+
+    p2 = Plotter(df, mosaic="AB")
+    assert p2.df is df
+    assert "B" in p2.axd
+
+
+def test_df_pt_plot_accessor():
+    import pytae  # noqa: F401 registers df.pt
+    df = pd.DataFrame({"x": ["a", "b", "c"], "y": [10, 20, 30]})
+    p = df.pt.plot(kind="bar", x="x", y="y", aggfunc="mean").finalize()
+    assert isinstance(p, Plotter)
+    assert p.ax is not None
+
+
+def test_box_plot_distribution_not_aggregated():
+    df = pd.DataFrame({
+        "group": ["A", "A", "A", "B", "B", "B"],
+        "val": [1, 2, 9, 10, 11, 20],
+    })
+    p = Plotter(df).plot(kind="box", x="group", y="val")
+    box_data = p.get_data("A")
+    assert set(box_data.columns) == {"A", "B"}
+    assert len(box_data["A"].dropna()) == 3
+    assert len(box_data["B"].dropna()) == 3
+
+
+def test_kde_hist_accepts_x_as_column_alias():
+    df = pd.DataFrame({"val": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    # hist with x= instead of column=
+    p_hist = Plotter(df).plot(kind="hist", x="val")
+    assert p_hist.ax is not None
+
+    # kde with x= instead of column=
+    p_kde = Plotter(df).plot(kind="kde", x="val")
+    assert p_kde.ax is not None
+
+
+def test_palette_and_axis_labels():
+    df = pd.DataFrame({"cat": ["x", "y"], "v1": [1, 2], "v2": [3, 4]})
+    p = Plotter(df).plot(kind="bar", x="cat", y="v1", palette="tab10", xlabel="Category", ylabel="Value")
+    assert p.ax.get_xlabel() == "Category"
+    assert p.ax.get_ylabel() == "Value"
+
+
+def test_heatmap_rendering():
+    df = pd.DataFrame({"x": ["A", "A", "B", "B"], "y": ["C", "D", "C", "D"], "v": [1, 2, 3, 4]})
+    p = Plotter(df).plot(kind="heatmap", x="x", y="v", by="y", aggfunc="mean", annot=True)
+    assert p.ax is not None
+    table = p.get_data("A")
+    assert table.shape == (2, 2)
+
+
+def test_repr_png_returns_bytes():
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    p = Plotter(df).plot(kind="scatter", x="a", y="b").finalize()
+    png_bytes = p._repr_png_()
+    assert isinstance(png_bytes, bytes)
+    assert png_bytes.startswith(b"\x89PNG")
+
+
+def test_facet_sharex_sharey():
+    df = pd.DataFrame({"group": ["g1", "g2"], "x": [1, 2], "y": [3, 4]})
+    p = Plotter.facet(df, by="group", x="x", y="y", kind="line", sharex=True, sharey=True)
+    assert len(p.axd) == 2
+
+
+def test_pt_plot_top_level_function():
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
+    p = pt.plot(df, kind="bar", x="day", y="bill", aggfunc="mean").finalize()
+    assert isinstance(p, Plotter)
+    assert p.ax is not None
+
+
+def test_plotter_nrows_ncols_without_mosaic():
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    p = Plotter(df, nrows=1, ncols=2)
+    assert set(p.axd.keys()) == {"A", "B"}
+    p.plot(on="A", kind="scatter", x="x", y="y")
+    p.plot(on="B", kind="line", x="x", y="y")
+    p.finalize()
+    assert len(p.axd) == 2
+
+
+def test_scatter_continuous_c_preserves_numeric_ticks():
+    df = pd.DataFrame({
+        "x": list(range(50)),
+        "y": list(range(50)),
+        "val": [float(i * 1.5) for i in range(50)],
+    })
+    p = Plotter(df).plot(kind="scatter", x="x", y="y", c="val", cmap="viridis").finalize()
+    # Colorbar axis should have normal small number of ticks, not 50 category ticks
+    cb_axes = [ax for ax in p.fig.axes if ax != p.axd["A"]]
+    assert len(cb_axes) == 1
+    assert len(cb_axes[0].get_yticks()) < 15
+
+
+def test_pt_finalize_function_explicit_and_implicit():
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
+
+    # 1. Explicit plotter passed
+    p1 = pt.plot(df, kind="bar", x="day", y="bill", aggfunc="mean")
+    res1 = pt.finalize(p1)
+    assert res1 is p1
+    assert not p1.ax.spines["top"].get_visible()
+
+    # 2. Implicit active plotter (zero args)
+    p2 = pt.plot(df, kind="bar", x="day", y="bill", aggfunc="mean")
+    res2 = pt.finalize()
+    assert res2 is p2
+    assert not p2.ax.spines["top"].get_visible()
+
+    # 3. Type error when invalid object passed
+    with pytest.raises(TypeError, match="Expected a Plotter instance"):
+        pt.finalize("not a plotter")
+
+    # 4. Error when no active plotter exists
+    Plotter._last_active = None
+    with pytest.raises(ValueError, match="No active pytae Plotter"):
+        pt.finalize()
+
+
+def test_plotter_pt_namespace_chaining():
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
+
+    # Fluent .pt namespace throughout the entire pipeline
+    p = df.pt.plot(kind="bar", x="day", y="bill", aggfunc="mean").pt.finalize()
+    assert isinstance(p, pt.Plotter)
+    assert not p.ax.spines["top"].get_visible()
+
+
+def test_control_kwargs_secondary_y_and_print_clip(capsys):
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20], "tip": [2, 4]})
+
+    # secondary_y=True should automatically route to A^
+    p = (
+        pt.Plotter(df, figsize=(8, 4))
+        .plot(on="A", kind="bar", x="day", y="bill", aggfunc="mean")
+        .plot(kind="line", x="day", y="tip", aggfunc="mean", secondary_y=True, print_data=True, clip_data=True)
+        .finalize()
+    )
+    assert "A^" in p.axd
+    captured = capsys.readouterr()
+    assert "tip" in captured.out
+
+
+def test_auto_facet_by_and_ncols():
+    import pytae as pt
+    df = pd.DataFrame({
+        "grp": ["g1", "g1", "g2", "g2", "g3", "g3"],
+        "x": [1, 2, 1, 2, 1, 2],
+        "y": [10, 20, 15, 25, 12, 22],
+    })
+
+    # 1. Top-level pt.plot with by and ncols auto-facets
+    p1 = pt.plot(df, by="grp", ncols=3, kind="scatter", x="x", y="y", title="Facet Title").finalize()
+    assert set(p1.axd.keys()) == {"g1", "g2", "g3"}
+    assert p1.fig._suptitle.get_text() == "Facet Title"
+
+    # 2. DataFrame accessor df.pt.plot with by and ncols auto-facets
+    p2 = df.pt.plot(by="grp", ncols=3, kind="scatter", x="x", y="y").pt.finalize()
+    assert set(p2.axd.keys()) == {"g1", "g2", "g3"}
+
+    # 3. Class constructor Plotter(df, by=..., ncols=...) auto-facets
+    p3 = pt.Plotter(df, by="grp", ncols=3, kind="scatter", x="x", y="y").finalize()
+    assert set(p3.axd.keys()) == {"g1", "g2", "g3"}
+
+    # 4. col="grp" alias auto-facets
+    p4 = pt.plot(df, col="grp", ncols=3, kind="scatter", x="x", y="y").finalize()
+    assert set(p4.axd.keys()) == {"g1", "g2", "g3"}
+
+    # 5. Non-faceted subplots (no by) still creates standard panels A, B
+    p5 = pt.Plotter(df, nrows=1, ncols=2)
+    assert set(p5.axd.keys()) == {"A", "B"}
+
+
+def test_plot_line_color_string_and_list():
+    import matplotlib.colors as mcolors
+
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri", "Sat"], "bill": [10, 20, 30], "tip": [2, 4, 6]})
+
+    # String color
+    p = pt.Plotter(df).plot(kind="line", x="day", y="bill", color="crimson").finalize()
+    line_color = p.axd["A"].get_lines()[0].get_color()
+    assert mcolors.to_hex(line_color) == mcolors.to_hex("crimson")
+
+    # List of colors for multiple lines
+    df_multi = pd.DataFrame({"day": ["Thur", "Fri"], "A": [1, 2], "B": [3, 4]})
+    p2 = pt.Plotter(df_multi).plot(kind="line", x="day", y=["A", "B"], color=["crimson", "navy"]).finalize()
+    lines = p2.axd["A"].get_lines()
+    assert mcolors.to_hex(lines[0].get_color()) == mcolors.to_hex("crimson")
+    assert mcolors.to_hex(lines[1].get_color()) == mcolors.to_hex("navy")
+
+
+def test_plot_scatter_by_title_labels_kwargs():
+    import pytae as pt
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
+        "bill_len": [39.1, 46.5, 40.3, 48.0],
+        "bill_dep": [18.7, 14.5, 18.0, 15.0],
+        "size_col": [20, 40, 25, 45],
+    })
+
+    p = (
+        pt.Plotter(df)
+        .plot(
+            kind="scatter",
+            x="bill_len",
+            y="bill_dep",
+            by="species",
+            title="Penguin Bill Dimensions",
+            s=df["size_col"],
+            edgecolors="black",
+        )
+        .finalize()
+    )
+    ax = p.axd["A"]
+    assert ax.get_title() == "Penguin Bill Dimensions"
+    assert ax.get_xlabel() == "bill_len"
+    assert ax.get_ylabel() == "bill_dep"
+    # Check collections have edgecolors set
+    for coll in ax.collections:
+        assert len(coll.get_edgecolors()) > 0
+
+
+def test_heatmap_title_vmin_vmax_and_contrast():
+    import pytae as pt
+    df = pd.DataFrame({
+        "A": [1.0, 0.0, -1.0],
+        "B": [0.0, 1.0, 0.5],
+        "C": [-1.0, 0.5, 1.0],
+    })
+    p = pt.Plotter(df).plot(
+        kind="heatmap",
+        annot=True,
+        fmt=".2f",
+        cmap="coolwarm",
+        title="Correlation Heatmap",
+        vmin=-1,
+        vmax=1,
+    ).finalize()
+    ax = p.axd["A"]
+    assert ax.get_title() == "Correlation Heatmap"
+    images = ax.get_images()
+    assert len(images) == 1
+    assert images[0].get_clim() == (-1.0, 1.0)
+    # Check text contrast: text annotations exist and contain black or white
+    texts = ax.texts
+    assert len(texts) == 9
+    colors = {t.get_color() for t in texts}
+    assert "white" in colors or "black" in colors
+
+
+def test_unknown_palette_warning():
+    import pytest
+
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
+    with pytest.warns(UserWarning, match="Unknown palette 'non_existent_palette'"):
+        pt.Plotter(df).plot(kind="bar", x="day", y="bill", palette="non_existent_palette").finalize()
+
+
+def test_facet_layout_kwargs_conflict_error():
+    import pytest
+
+    import pytae as pt
+    df = pd.DataFrame({"grp": ["g1", "g2"], "x": [1, 2], "y": [3, 4]})
+
+    with pytest.raises(ValueError, match="Cannot combine 'mosaic' with faceting"):
+        pt.Plotter(df, mosaic="AB", ncols=2, by="grp", kind="line", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'nrows' with faceting"):
+        df.pt.plot(nrows=1, ncols=2, by="grp", kind="bar", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'mosaic' with faceting"):
+        pt.Plotter(df, "AB", by="grp", ncols=2, kind="scatter", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'mosaic' with faceting"):
+        pt.Plotter.facet(df, by="grp", ncols=2, mosaic="AB", kind="line", x="x", y="y")
+
+    with pytest.raises(ValueError, match="Cannot combine 'nrows' with faceting"):
+        pt.Plotter.facet(df, by="grp", ncols=2, nrows=1, kind="line", x="x", y="y")
+
+
+def test_plotter_init_immediate_plot_and_unexpected_kwargs():
+    import pytest
+
+    import pytae as pt
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
+
+    # Passing plot kwargs to Plotter constructor draws immediately
+    p = pt.Plotter(df, kind="bar", x="day", y="bill", aggfunc="mean")
+    assert p.axd["A"].has_data()
+
+    # Unexpected kwargs raise TypeError
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        pt.Plotter(df, nonexistent_kwarg="invalid")
+
+
+def test_box_palette_colors():
+    import pytae as pt
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
+        "body_mass": [3000, 4500, 3200, 4700],
+    })
+    p = pt.Plotter(df).plot(kind="box", x="species", y="body_mass", palette="Set1").finalize()
+    ax = p.axd["A"]
+    assert len(ax.patches) == 2
+    # Verify patches have facecolors assigned from palette
+    c0 = ax.patches[0].get_facecolor()
+    c1 = ax.patches[1].get_facecolor()
+    assert c0 != c1
+
+
+
+
+
+
+
+
+
 ################################################################################
 # FILE: tests/test_qry.py
 ################################################################################
-
 import os
 import sys
 
@@ -9244,12 +10952,9 @@ def test_parse_qry_cli():
     assert res2 == {"body_mass_g": (">", 100000)}
     assert res3 == {"body_mass_g": (">", 100000)}
     assert res4 == {"body_mass_g": 74125}
-
-
 ################################################################################
 # FILE: tests/test_readers.py
 ################################################################################
-
 import os
 import sys
 from pathlib import Path
@@ -9460,10 +11165,87 @@ def test_get_reader_missing_suffix(tmp_path):
         get_reader(path)
 
 
+def test_jsonl_reader_and_writer(tmp_path):
+    df = _frame()
+    jsonl_path = tmp_path / "test.jsonl"
+    write_dataframe(df, jsonl_path)
+    assert jsonl_path.exists()
+
+    reader = get_reader(jsonl_path)
+    assert reader.shape() == (3, 2)
+    assert reader.columns() == ["a", "b"]
+    assert len(reader.dtypes()) == 2
+    pd.testing.assert_frame_equal(reader.head(2), df.head(2))
+    pd.testing.assert_frame_equal(reader.tail(1).reset_index(drop=True), df.tail(1).reset_index(drop=True))
+    pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+    pd.testing.assert_frame_equal(reader.to_dataframe(columns=["a"]), df[["a"]])
+
+    # Test ndjson alias
+    ndjson_path = tmp_path / "test.ndjson"
+    write_dataframe(df, ndjson_path)
+    nd_reader = get_reader(ndjson_path)
+    assert nd_reader.shape() == (3, 2)
+    pd.testing.assert_frame_equal(nd_reader.to_dataframe(), df)
+
+
+def test_jsonl_reader_empty_error(tmp_path):
+    empty_file = tmp_path / "empty.jsonl"
+    empty_file.write_text("")
+    reader = get_reader(empty_file)
+    with pytest.raises(ValueError, match="is empty or not a valid JSON Lines file"):
+        reader.columns()
+
+
+def test_jsonl_chunked_progress(tmp_path):
+    df = pd.DataFrame({"x": range(15), "y": [f"val_{i}" for i in range(15)]})
+    path = tmp_path / "chunked.jsonl"
+    write_dataframe(df, path, progress=True, chunk_size=5)
+
+    reader = get_reader(path, chunk_size=5)
+    read_df = reader.to_dataframe(progress=True, chunk_size=5)
+    pd.testing.assert_frame_equal(read_df, df)
+
+
+def test_compressed_csv_and_jsonl(tmp_path):
+    df = _frame()
+    csv_gz = tmp_path / "data.csv.gz"
+    write_dataframe(df, csv_gz, progress=True, chunk_size=2)
+    assert csv_gz.exists()
+
+    reader = get_reader(csv_gz)
+    assert reader.shape() == (3, 2)
+    assert reader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+
+    jsonl_gz = tmp_path / "data.jsonl.gz"
+    write_dataframe(df, jsonl_gz, progress=True, chunk_size=2)
+    assert jsonl_gz.exists()
+
+    jreader = get_reader(jsonl_gz)
+    assert jreader.shape() == (3, 2)
+    assert jreader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(jreader.to_dataframe(), df)
+
+
+def test_compressed_txt_and_dat(tmp_path):
+    df = _frame()
+    txt_gz = tmp_path / "data.txt.gz"
+    write_dataframe(df, txt_gz)
+    assert txt_gz.exists()
+    reader = get_reader(txt_gz)
+    assert reader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+
+    dat_gz = tmp_path / "data.dat.gz"
+    write_dataframe(df, dat_gz)
+    assert dat_gz.exists()
+    dreader = get_reader(dat_gz)
+    assert dreader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
+
 ################################################################################
 # FILE: tests/test_select.py
 ################################################################################
-
 import os
 import sys
 
@@ -9604,12 +11386,9 @@ def test_select_everything():
 
     df = _wide()
     assert list(pt.select(df, "species", everything()).columns) == list(df.columns)
-
-
 ################################################################################
 # FILE: tests/test_shape.py
 ################################################################################
-
 import os
 import sys
 
@@ -9701,12 +11480,9 @@ def test_long_raises_when_no_numeric_columns():
 
 if __name__ == '__main__':
     pytest.main()
-
-
 ################################################################################
 # FILE: tests/test_sql.py
 ################################################################################
-
 import os
 import sys
 
@@ -9776,12 +11552,9 @@ def test_sql_bracketed_identifiers():
     assert list(out["col a"]) == [1, 2]
     assert list(out["col b"]) == [10, 20]
 
-
-
 ################################################################################
 # FILE: tests/test_utilities.py
 ################################################################################
-
 import os
 import sys
 from typing import Any
@@ -9943,8 +11716,3 @@ def test_group_x_raises_on_all_numeric_frame():
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
     with pytest.raises(ValueError, match="no non-numeric columns to group by"):
         pt.group_x(df)
-
-
-================================================================================
-END OF ALL CODE AND REFERENCE DOCUMENTATION
-================================================================================

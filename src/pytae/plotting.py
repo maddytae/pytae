@@ -121,14 +121,18 @@ class Plotter:
             and has_facet_trigger
             and is_plot_call
         ):
+            if "mosaic" in kwargs or (len(args) > 1 and args[1] is not None):
+                raise ValueError("Cannot combine 'mosaic' with faceting ('by' with 'ncols'/'facet'/'col').")
+            if "nrows" in kwargs:
+                raise ValueError("Cannot combine 'nrows' with faceting ('by' with 'ncols'/'facet'/'col'). Use 'ncols' to control grid columns.")
+
             facet_kwargs = dict(kwargs)
             facet_kwargs.pop("df", None)
             facet_kwargs.pop("by", None)
             facet_kwargs.pop("col", None)
             facet_kwargs.pop("facet", None)
             ncols = facet_kwargs.pop("ncols", None)
-            remaining_args = args[1:] if args else ()
-            return cls.facet(df, by=by_col, ncols=ncols, *remaining_args, **facet_kwargs)
+            return cls.facet(df, by=by_col, ncols=ncols, **facet_kwargs)
 
         return super().__new__(cls)
 
@@ -173,6 +177,15 @@ class Plotter:
         if df is not None:
             self.data(df)
         plt.close()
+
+        plot_keys = {"kind", "x", "y", "column"}
+        plot_kwargs = {k: v for k, v in kwargs.items() if k != "_is_facet_grid"}
+        if plot_keys.intersection(plot_kwargs.keys()):
+            if self.df is not None:
+                self.plot(**plot_kwargs)
+        elif plot_kwargs:
+            unexpected = ", ".join(repr(k) for k in plot_kwargs.keys())
+            raise TypeError(f"Plotter.__init__() got unexpected keyword argument(s): {unexpected}")
 
     def _repr_png_(self):
         """Render figure as PNG bytes for automatic display in Jupyter notebooks."""
@@ -256,6 +269,13 @@ class Plotter:
         grid = [cells[i:i + ncols] for i in range(0, len(cells), ncols)]
 
         plot_kwargs = dict(plot_kwargs)
+        if "mosaic" in plot_kwargs:
+            raise ValueError("Cannot combine 'mosaic' with faceting. Faceting generates its own layout grid.")
+        if "nrows" in plot_kwargs:
+            raise ValueError("Cannot combine 'nrows' with faceting. Use 'ncols' to control grid columns.")
+        plot_kwargs.pop('mosaic', None)
+        plot_kwargs.pop('nrows', None)
+        plot_kwargs.pop('on', None)
         suptitle = plot_kwargs.pop('suptitle', None) or plot_kwargs.pop('title', None)
         plotter = cls(mosaic=grid, figsize=figsize, aggregate=aggregate, sharex=sharex, sharey=sharey, _is_facet_grid=True)
         for group, key in zip(groups, keys):
@@ -392,6 +412,7 @@ class Plotter:
         try:
             cmap = plt.get_cmap(palette)
         except (ValueError, AttributeError):
+            warnings.warn(f"Unknown palette '{palette}', falling back to 'tab10'.")
             cmap = plt.get_cmap("tab10")
 
         n = len(categories)
@@ -419,23 +440,47 @@ class Plotter:
             color_arg = self.last_kwargs.get('color')
             color_map = self._get_palette_colors(groups, palette=palette_name, explicit_colors=color_arg)
 
-            s = plot_dict.get('s', 20)
-            marker = plot_dict.get('marker', 'o')
-            alpha = plot_dict.get('alpha', 0.8)
+            scatter_kwargs = dict(plot_dict)
+            for non_scatter in ['x', 'y', 'by', 'kind', 'title', 'color', 'c', 'legend', 'grid', 'logx', 'logy', 'rot', 'fontsize', 'colormap', 'colorbar']:
+                scatter_kwargs.pop(non_scatter, None)
+
+            s_arg = scatter_kwargs.pop('s', 20)
+            marker = scatter_kwargs.pop('marker', 'o')
+            alpha = scatter_kwargs.pop('alpha', 0.8)
 
             for group in groups:
-                grp_df = k[k[self.by] == group]
+                grp_mask = (k[self.by] == group)
+                grp_df = k[grp_mask]
                 grp_color = color_map.get(group) if isinstance(color_map, dict) else None
+                if hasattr(s_arg, '__len__') and not isinstance(s_arg, (str, bytes)):
+                    import numpy as np
+                    grp_s = np.asarray(s_arg)[grp_mask.to_numpy()]
+                else:
+                    grp_s = s_arg
+
                 ax.scatter(
                     grp_df[self.x],
                     grp_df[self.y],
                     label=str(group),
                     color=grp_color,
-                    s=s,
+                    s=grp_s,
                     marker=marker,
                     alpha=alpha,
+                    **scatter_kwargs,
                 )
+            if plot_dict.get('grid'):
+                ax.grid(True)
+            if plot_dict.get('logx'):
+                ax.set_xscale('log')
+            if plot_dict.get('logy'):
+                ax.set_yscale('log')
             self.ax = ax
+            if self.last_kwargs.get('title'):
+                ax.set_title(self.last_kwargs['title'])
+            if self.last_kwargs.get('xlabel') is None and self.x:
+                ax.set_xlabel(str(self.x))
+            if self.last_kwargs.get('ylabel') is None and self.y:
+                ax.set_ylabel(str(self.y))
             self._apply_axis_labels(ax)
             self._handle_data_output(k, ax)
             return
@@ -487,6 +532,8 @@ class Plotter:
         elif palette:
             colors = self._get_palette_colors(data_cols, palette=palette)
             plot_dict['color'] = [colors.get(c) for c in data_cols]
+        elif color_map is not None:
+            plot_dict['color'] = color_map
 
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
         if style:
@@ -516,7 +563,20 @@ class Plotter:
         else:
             box_df = self.df[[val_col]]
 
+        palette = self.last_kwargs.get('palette')
+        color_arg = self.last_kwargs.get('color')
+        if palette or color_arg:
+            plot_dict['patch_artist'] = True
+
         self.ax = box_df.plot(ax=ax, **plot_dict)
+
+        if palette or color_arg:
+            colors = self._get_palette_colors(list(box_df.columns), palette=palette, explicit_colors=color_arg)
+            new_patches = ax.patches[-len(box_df.columns):]
+            for patch, col in zip(new_patches, box_df.columns):
+                if col in colors:
+                    patch.set_facecolor(colors[col])
+
         self._apply_axis_labels(ax)
         self._handle_data_output(box_df, ax)
 
@@ -528,6 +588,11 @@ class Plotter:
         annot = self.last_kwargs.get('annot', False)
         fmt = self.last_kwargs.get('fmt', '.2f')
 
+        imshow_kwargs = {}
+        for key in ['vmin', 'vmax', 'interpolation', 'origin', 'norm', 'alpha']:
+            if key in self.last_kwargs:
+                imshow_kwargs[key] = self.last_kwargs[key]
+
         if self.x and self.by and self.y:
             matrix = self.get_pivot_data().set_index(self.x)
         elif self.x and self.y:
@@ -535,7 +600,7 @@ class Plotter:
         else:
             matrix = self.df.select_dtypes(include='number')
 
-        im = ax.imshow(matrix.values, cmap=cmap, aspect='auto')
+        im = ax.imshow(matrix.values, cmap=cmap, aspect='auto', **imshow_kwargs)
         ax.set_xticks(range(len(matrix.columns)))
         ax.set_xticklabels([str(c) for c in matrix.columns], rotation=45, ha='right')
         ax.set_yticks(range(len(matrix.index)))
@@ -546,9 +611,17 @@ class Plotter:
                 for j in range(len(matrix.columns)):
                     val = matrix.iloc[i, j]
                     text_str = format(val, fmt) if isinstance(val, (int, float)) else str(val)
-                    ax.text(j, i, text_str, ha='center', va='center', color='white')
+                    if isinstance(val, (int, float)) and not math.isnan(val):
+                        rgba = im.cmap(im.norm(val))
+                        luminance = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
+                        text_color = "white" if luminance < 0.5 else "black"
+                    else:
+                        text_color = "white"
+                    ax.text(j, i, text_str, ha='center', va='center', color=text_color)
 
         self.fig.colorbar(im, ax=ax)
+        if self.last_kwargs.get('title'):
+            ax.set_title(self.last_kwargs['title'])
         self._apply_axis_labels(ax)
         self.ax = ax
         self._handle_data_output(matrix, ax)

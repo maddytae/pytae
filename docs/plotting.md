@@ -52,9 +52,11 @@ pip install "pytae[plot]"
 Specify `by=` and `aggfunc=` to group and aggregate data automatically without manual `groupby()` or `pivot_table()` preprocessing. You can chain directly from `df.pt.plot(...)`:
 
 ```python
+import pandas as pd
 import pytae as pt
 
 tips = pt.sample("tips")
+penguins = pt.sample("penguins")
 
 # Direct accessor one-liner:
 tips.pt.plot(kind="bar", x="day", y="total_bill", by="sex", aggfunc="mean",
@@ -251,7 +253,7 @@ pt.Plotter(penguins).plot(kind="box", x="species", y="body_mass_g").finalize()
 
 # 3. Correlation heatmap with annot=True and fmt='.2f'
 corr = penguins.select_dtypes("number").corr()
-pt.Plotter(corr).plot(kind="heatmap", annot=True, fmt=".2f", cmap="mako").finalize()
+pt.Plotter(corr).plot(kind="heatmap", annot=True, fmt=".2f", cmap="coolwarm").finalize()
 
 # 4. Wide-format plotting without pre-aggregation (aggregate=False)
 pre_agg = pd.DataFrame({"quarter": ["Q1", "Q2"], "rev": [100, 200]})
