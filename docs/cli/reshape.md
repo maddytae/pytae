@@ -1,5 +1,7 @@
 # CLI Feature Guide: Reshaping & Cross-Tabulation
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Pivot, unpivot, compute frequency counts, sort, and cross-tabulate multidimensional data using `-long`, `-wide`, `-crosstab`, `-value_counts`, and `-sort_by`.
 
 ---

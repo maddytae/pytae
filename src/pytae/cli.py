@@ -318,7 +318,7 @@ def main(argv: list[str] | None = None) -> int:
                 # shell into separate argv tokens -- the whole spec needs one pair of quotes
                 msg += (
                     "\nIf this is part of a value with a space (e.g. a column name), wrap the "
-                    'whole spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.'
+                    'whole spec in quotes, e.g. -select "col a,col b" -- see docs/cli.md#quoting.'
                 )
             parser.error(msg)
 

@@ -1,5 +1,7 @@
 # CLI Feature Guide: Inspection & Metadata
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Inspect file dimensions, structure, sample rows, statistical distributions, and low-level storage metadata without writing boilerplate Python code.
 
 ---

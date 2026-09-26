@@ -1,5 +1,7 @@
 # CLI Feature Guide: Row Filtering
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Filter rows using pytae's ergonomic filter expressions (`-qry`) or standard Pandas query syntax (`-query`).
 
 ---

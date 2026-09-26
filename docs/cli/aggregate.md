@@ -1,5 +1,7 @@
 # CLI Feature Guide: Aggregations & Grouping
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Group, aggregate, and broadcast statistics using pytae's auto-grouping (`-agg_df`), explicit aggregations (`-group_by` + `-agg`), and broadcast transforms (`-group_x`).
 
 ---

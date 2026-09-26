@@ -1,5 +1,7 @@
 # CLI Feature Guide: File I/O, Export, & Compression
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Export pipeline results, batch-convert datasets, route outputs to dedicated directories (`-out_dir`), stream large files with progress bars (`-progress`), and read/write gzip-compressed and JSON Lines formats.
 
 ---

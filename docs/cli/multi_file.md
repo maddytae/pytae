@@ -1,5 +1,7 @@
 # CLI Feature Guide: Multi-File Pipelines
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Load, join, stack, and query multiple disparate datasets in a unified pipeline using `-file`, `-merge`, `-concat`, and cross-file `-sql`.
 
 ---
@@ -146,3 +148,7 @@ pytae -file "a.parquet=a; b.csv=b" \
   -merge "left=a,right=b,on=id" \
   -o merged_output.parquet
 ```
+
+> [!NOTE]
+> - Exporting from a multi-file pipeline requires an explicit target file name (e.g. `-o out.parquet`). In-place format conversion (`-o csv`) cannot infer an output name without a single positional source file.
+> - Glob-pattern batch conversion (`pytae 'data/*.parquet' -o csv`) is a separate single-file batch operation and cannot be combined with `-file`.

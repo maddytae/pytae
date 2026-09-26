@@ -1,5 +1,7 @@
 # CLI Feature Guide: Data Cleaning & Value Replacement
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Standardize messy column headers (`-clean_columns`), replace cell values (`-replace_values`), impute missing data (`-handle_missing`), and rename columns (`-rename`).
 
 ---

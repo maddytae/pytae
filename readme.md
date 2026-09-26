@@ -24,7 +24,7 @@ pytae data.parquet -sql "select species, avg(body_mass_g) from data group by spe
 pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
 ```
 
-See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full CLI reference and flag guide, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
+See [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md) for the full CLI reference and flag guide, and [docs/cli/multi_file.md](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) for `-file`/`-merge`/`-concat`.
 
 ## Plotting
 
@@ -38,7 +38,7 @@ Plotter().data(penguins).plot(
 ).finalize()
 ```
 
-See [docs/PLOTTING.md](https://github.com/maddytae/pytae/blob/master/docs/PLOTTING.md) for more examples with sample data.
+See [docs/plotting.md](https://github.com/maddytae/pytae/blob/master/docs/plotting.md) for more examples with sample data.
 
 ## Library
 
@@ -62,7 +62,7 @@ pt.select(penguins, "species", contains="bill")
 - **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
 - **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `data`
 
-See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
+See [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) for examples of each.
 
 ## Key Conventions & Syntax Cheat Sheet
 

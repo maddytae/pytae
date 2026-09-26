@@ -1,5 +1,7 @@
 # CLI Feature Guide: SQL Engine
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Execute full analytical SQL queries directly against tabular files and in-memory pipeline views via DuckDB using `-sql`.
 
 ---

@@ -1,5 +1,7 @@
 # CLI Feature Guide: Column Selection & Dropping
 
+[← Back to CLI Reference Hub](../cli.md)
+
 Select, filter, reorder, and subtract columns using names, ranges, pattern matching, or data types with `-select` and `-drop`.
 
 ---
