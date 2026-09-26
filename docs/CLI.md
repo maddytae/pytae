@@ -939,6 +939,7 @@ pytae penguins.parquet -sample 10 -seed 42       # reproducible: same rows every
 pytae penguins.parquet -sample -frac 0.1         # 10% of rows instead of a fixed count
 pytae penguins.parquet -head -o clip             # copy; no stdout
 pytae huge.csv -o huge.parquet -progress
+pytae huge.csv -o huge.parquet -chunk_size 50000     # chunked progress in 50k row steps
 ```
 
 `-o clip` copies **only the last** clipboard-able op (`-head 5 -tail 5 -o clip` copies the tail). Non-DataFrame terminal inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`) copy their text output to clipboard via `-o clip`, but cannot be exported to table files (`-o out.csv`).
@@ -1027,6 +1028,7 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 | `-pretty` | Markdown table |
 | `-round N` | Round numeric print/copy |
 | `-progress` | Progress for large file exports |
+| `-chunk_size, --chunk_size N` | Row chunk size for progress streaming and chunked I/O (default: 200000) |
 
 ---
 

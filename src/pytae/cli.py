@@ -213,6 +213,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"frames='df1,df2,df3'\"")
     parser.add_argument("-progress", "--progress", action="store_true",
                          help="show row-count progress while converting large files")
+    parser.add_argument("-chunk_size", "--chunk_size", "-chunksize", "--chunksize",
+                         dest="chunk_size", type=parse_positive_int, default=None, metavar="N",
+                         help="chunk size (row count) for streaming progress and chunked I/O (default: 200000)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
                          help="render tables as a bordered markdown table instead of plain pandas text")
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
@@ -238,6 +241,9 @@ def main(argv: list[str] | None = None) -> int:
                 'whole spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.'
             )
         parser.error(msg)
+
+    if args.chunk_size is not None:
+        args.progress = True
 
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
@@ -323,11 +329,11 @@ def main(argv: list[str] | None = None) -> int:
             if not entry_path.exists():
                 parser.error(f"-file: file not found: {entry_path}")
             try:
-                reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"])
+                reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000)
             except ValueError as exc:
                 parser.error(f"-file: {exc}")
             try:
-                frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress)
+                frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,

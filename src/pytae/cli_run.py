@@ -99,6 +99,7 @@ def cmd_convert(
     encoding: str | None = None,
     progress: bool = False,
     announce: bool = True,
+    chunk_size: int = 200_000,
 ) -> None:
     if rename:
         df = df.rename(columns=rename)
@@ -106,7 +107,7 @@ def cmd_convert(
     if dest.resolve() == source.resolve():
         raise SystemExit(f"refusing to overwrite the source file '{source}'; pass -o/--output to choose a different path")
     try:
-        write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress)
+        write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if announce:
@@ -171,13 +172,14 @@ def _process_path(
         if path is None or not path.exists():
             return _fail(parser, batch, f"file not found: {path}")
 
+        chunk_size = getattr(args, "chunk_size", None) or 200_000
         try:
-            reader = get_reader(path, sep=args.dlim, encoding=args.encoding)
+            reader = get_reader(path, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
         except (ValueError,ImportError) as exc:
             return _fail(parser, batch, str(exc))
 
         pipeline = _Pipeline(
-            reader, nrows=args.nrows, progress=args.progress,
+            reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
         )
     else:
         pipeline = _Pipeline(frames=frames)
@@ -553,6 +555,7 @@ def _process_path(
                 encoding=args.encoding,
                 progress=args.progress,
                 announce=True,
+                chunk_size=getattr(args, "chunk_size", None) or 200_000,
             )
         except SystemExit as exc:
             return _fail(parser, batch, str(exc))

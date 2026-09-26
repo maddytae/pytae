@@ -48,10 +48,11 @@ class _Pipeline:
     nothing may follow them except -o clip.
     """
 
-    def __init__(self, reader=None, *, nrows=None, progress=False, frames=None) -> None:
+    def __init__(self, reader=None, *, nrows=None, progress=False, frames=None, chunk_size: int = 200_000) -> None:
         self._reader = reader
         self._nrows = nrows
         self._progress = progress
+        self._chunk_size = chunk_size
         self._df: pd.DataFrame | None = None
         self._pending_exact: list[str] | None = None
         self._frames: dict[str, pd.DataFrame] = frames or {}
@@ -254,6 +255,7 @@ class _Pipeline:
         if self._df is None:
             df = self._reader.to_dataframe(
                 columns=self._pending_exact, nrows=self._nrows, progress=self._progress,
+                chunk_size=self._chunk_size,
             )
             self._df = df
         return self._df

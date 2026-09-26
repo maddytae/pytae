@@ -16,7 +16,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pa_parquet
 
-CHUNK_SIZE = 200_000
+DEFAULT_CHUNK_SIZE = 200_000
+CHUNK_SIZE = DEFAULT_CHUNK_SIZE
 DTYPE_SAMPLE_ROWS = 10_000
 
 
@@ -35,8 +36,9 @@ def _print_progress(done: int, total: int | None, label: str) -> None:
 
 
 class ParquetReader:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
         self.path = path
+        self.chunk_size = chunk_size
         self._pf = pa_parquet.ParquetFile(path)
 
     def shape(self) -> tuple[int, int]:
@@ -74,13 +76,15 @@ class ParquetReader:
         df = pd.concat(parts, ignore_index=True) if parts else self._empty()
         return df.tail(n)
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None) -> pd.DataFrame:
+    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
+                     chunk_size: int | None = None) -> pd.DataFrame:
         if not progress and nrows is None:
             return pd.read_parquet(self.path, columns=columns)
         total = self._pf.metadata.num_rows
         limit = total if nrows is None else min(nrows, total)
+        csize = chunk_size or self.chunk_size
         parts, done = [], 0
-        for batch in self._pf.iter_batches(batch_size=CHUNK_SIZE, columns=columns):
+        for batch in self._pf.iter_batches(batch_size=csize, columns=columns):
             remaining = limit - done
             if remaining <= 0:
                 break
@@ -98,16 +102,17 @@ class ParquetReader:
 
 
 class CsvReader:
-    def __init__(self, path: Path, sep: str = ",", encoding: str | None = None) -> None:
+    def __init__(self, path: Path, sep: str = ",", encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
         self.path = path
         self.sep = sep
         self.encoding = encoding
+        self.chunk_size = chunk_size
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
         total = 0
         for chunk in pd.read_csv(
-            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=CHUNK_SIZE, low_memory=False
+            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=self.chunk_size, low_memory=False
         ):
             total += len(chunk)
         return (total, n_cols)
@@ -129,14 +134,16 @@ class CsvReader:
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
         return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None) -> pd.DataFrame:
+    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
+                     chunk_size: int | None = None) -> pd.DataFrame:
         if not progress:
             return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
                                low_memory=False)
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
+        csize = chunk_size or self.chunk_size
         reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                      chunksize=CHUNK_SIZE, nrows=nrows, low_memory=False)
+                      chunksize=csize, nrows=nrows, low_memory=False)
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
@@ -148,16 +155,17 @@ class CsvReader:
 class TxtReader:
     """Reads delimited .txt/.dat files (tab-delimited for .txt, pipe-delimited for .dat by default)."""
 
-    def __init__(self, path: Path, sep: str = "\t", encoding: str | None = None) -> None:
+    def __init__(self, path: Path, sep: str = "\t", encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
         self.path = path
         self.sep = sep
         self.encoding = encoding
+        self.chunk_size = chunk_size
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
         total = 0
         for chunk in pd.read_csv(
-            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=CHUNK_SIZE, low_memory=False
+            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=self.chunk_size, low_memory=False
         ):
             total += len(chunk)
         return (total, n_cols)
@@ -179,14 +187,16 @@ class TxtReader:
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
         return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None) -> pd.DataFrame:
+    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
+                     chunk_size: int | None = None) -> pd.DataFrame:
         if not progress:
             return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
                                low_memory=False)
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
+        csize = chunk_size or self.chunk_size
         reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                      chunksize=CHUNK_SIZE, nrows=nrows, low_memory=False)
+                      chunksize=csize, nrows=nrows, low_memory=False)
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
@@ -199,9 +209,10 @@ class SasReader:
     """Reads .sas7bdat files. Row count/columns come from the file header,
     so shape/columns are cheap; dtype inspection reads a small sample."""
 
-    def __init__(self, path: Path, encoding: str | None = None) -> None:
+    def __init__(self, path: Path, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
         self.path = path
         self.encoding = "utf-8" if encoding is None else encoding
+        self.chunk_size = chunk_size
 
     def _open(self):
         return pd.read_sas(self.path, format="sas7bdat", encoding=self.encoding, iterator=True)
@@ -231,15 +242,17 @@ class SasReader:
                 reader.read(skip)  # advance past rows we don't need
             return reader.read(min(n, total))
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None) -> pd.DataFrame:
+    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
+                     chunk_size: int | None = None) -> pd.DataFrame:
         if not progress and nrows is None:
             df = pd.read_sas(self.path, format="sas7bdat", encoding=self.encoding)
             return df[columns] if columns else df
         with self._open() as reader:
             total = reader.row_count if nrows is None else min(nrows, reader.row_count)
             chunks, done = [], 0
+            csize = chunk_size or self.chunk_size
             while done < total:
-                chunk = reader.read(min(CHUNK_SIZE, total - done))
+                chunk = reader.read(min(csize, total - done))
                 if chunk is None or len(chunk) == 0:
                     break
                 chunks.append(chunk)
@@ -274,7 +287,7 @@ _TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
 _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
-def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None):
+def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE):
     suffix = path.suffix.lower()
     if suffix in _YAML_SUFFIXES:
         global _EXTERNAL_CONNECTIONS_MODULE
@@ -305,16 +318,17 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
         supported = ", ".join(sorted((*_READERS, *_YAML_SUFFIXES)))
         raise ValueError(f"unsupported file type '{path.suffix or path.name}'; supported: {supported}") from None
     if cls is CsvReader:
-        return CsvReader(path, sep=sep or ",", encoding=encoding)
+        return CsvReader(path, sep=sep or ",", encoding=encoding, chunk_size=chunk_size)
     if cls is TxtReader:
         return TxtReader(
             path,
             sep=sep or _TXT_DEFAULT_SEP[suffix],
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
+            chunk_size=chunk_size,
         )
     if cls is SasReader:
-        return SasReader(path, encoding=encoding)
-    return cls(path)
+        return SasReader(path, encoding=encoding, chunk_size=chunk_size)
+    return cls(path, chunk_size=chunk_size)
 
 
 # .sas7bdat is intentionally excluded: pandas has no writer for that format.
@@ -322,39 +336,41 @@ _WRITABLE_SUFFIXES = (".parquet", ".pq", ".csv", ".txt", ".dat")
 
 
 def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, encoding: str | None = None,
-                     progress: bool = False) -> None:
+                     progress: bool = False, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
     suffix = dest.suffix.lower()
     if suffix in (".parquet", ".pq"):
-        _write_parquet(df, dest, progress=progress)
+        _write_parquet(df, dest, progress=progress, chunk_size=chunk_size)
     elif suffix == ".csv":
-        _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress)
+        _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size)
     elif suffix in _TXT_DEFAULT_SEP:
         _write_delimited(
             df, dest,
             sep=sep or _TXT_DEFAULT_SEP[suffix],
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
             progress=progress,
+            chunk_size=chunk_size,
         )
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
 
 
-def _write_delimited(df: pd.DataFrame, dest: Path, *, sep: str, encoding: str | None, progress: bool) -> None:
+def _write_delimited(df: pd.DataFrame, dest: Path, *, sep: str, encoding: str | None, progress: bool,
+                     chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
     total = len(df)
     if not progress or total == 0:
         df.to_csv(dest, sep=sep, encoding=encoding, index=False)
         return
     done = 0
-    for start in range(0, total, CHUNK_SIZE):
-        chunk = df.iloc[start:start + CHUNK_SIZE]
+    for start in range(0, total, chunk_size):
+        chunk = df.iloc[start:start + chunk_size]
         chunk.to_csv(dest, sep=sep, encoding=encoding, index=False, mode="w" if start == 0 else "a", header=(start == 0))
         done += len(chunk)
         _print_progress(done, total, "writing")
     print()
 
 
-def _write_parquet(df: pd.DataFrame, dest: Path, *, progress: bool) -> None:
+def _write_parquet(df: pd.DataFrame, dest: Path, *, progress: bool, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
     if not progress or len(df) == 0:
         df.to_parquet(dest, index=False)
         return
@@ -362,7 +378,7 @@ def _write_parquet(df: pd.DataFrame, dest: Path, *, progress: bool) -> None:
     total = table.num_rows
     done = 0
     with pa_parquet.ParquetWriter(dest, table.schema) as writer:
-        for batch in table.to_batches(max_chunksize=CHUNK_SIZE):
+        for batch in table.to_batches(max_chunksize=chunk_size):
             writer.write_batch(batch)
             done += batch.num_rows
             _print_progress(done, total, "writing")

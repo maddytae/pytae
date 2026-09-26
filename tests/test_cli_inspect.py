@@ -531,4 +531,28 @@ def test_cli_positional_with_file_errors(tmp_path, capsys):
     assert "can't be combined with a positional path" in capsys.readouterr().err
 
 
+def test_cli_chunk_size_option(tmp_path, capsys):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": list(range(25))}).to_parquet(src, index=False)
+    dest = tmp_path / "data.csv"
+
+    exit_code = cli.main([str(src), "-o", str(dest), "-chunk_size", "10"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert dest.exists()
+    assert "reading... 10/25 rows (40%)" in out
+    assert "writing... 10/25 rows (40%)" in out
+    assert "Wrote 25 rows" in out
+
+
+def test_cli_invalid_chunk_size_errors(tmp_path):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(src, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-chunk_size", "0"])
+    assert exc_info.value.code == 2
+
+
+
 
