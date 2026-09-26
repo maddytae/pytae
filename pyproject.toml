@@ -39,6 +39,9 @@ pytae = "pytae.cli:main"
 "CLI Docs" = "https://github.com/maddytae/pytae/blob/master/docs/CLI.md"
 "Library Docs" = "https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md"
 
+[tool.hatch.build.targets.wheel.force-include]
+"reference" = "pytae/reference"
+
 [tool.ruff]
 target-version = "py310"
 line-length = 120

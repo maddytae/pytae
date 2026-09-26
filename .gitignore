@@ -64,7 +64,3 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
-
-# Agent directory
-agent/
-
