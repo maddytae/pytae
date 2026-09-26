@@ -4,6 +4,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
 
 ## Contents
 
+- [Detailed feature guides](#feature-guides)
 - [Getting started](#getting-started)
   - [Basics](#basics)
   - [Sample datasets](#sample-datasets)
@@ -28,6 +29,7 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Aggregation (explicit group columns) — `-group_by` + `-agg`](#group-by-agg)
   - [Value counts — `-value_counts`](#value-counts)
   - [Inspect & display — `-head`/`-tail`/`-sample`/`-shape`/`-cols`/`-dtype`/`-nulls`/`-describe`/`-info`](#listing)
+  - [Dataset & schema comparison — `-diff`](#diff)
   - [Sorting rows — `-sort_by`](#sort-by)
   - [Cross-tabulation — `-crosstab`](#crosstab)
 - [Conventions & reference](#conventions-reference)
@@ -42,6 +44,27 @@ Inspect and convert tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bda
   - [Decision table](#decision-table)
   - [Polarity chaining: `-select` vs `-drop`](#polarity-chaining)
   - [Standard parameter keys: `c=`, `v=`, `a=`](#pytae-kwargs)
+
+---
+
+<a id="feature-guides"></a>
+## Detailed Feature Guides
+
+For in-depth guides with complete command syntax, parameters, edge cases, and real terminal outputs, see each dedicated feature guide:
+
+| Feature Area | Documentation Guide | Key Flags & Capabilities |
+|---|---|---|
+| **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-meta`, `-pager` |
+| **Column Selection** | [Column Selection & Dropping Guide](cli/select_drop.md) | `-select`, `-drop`, slices `a:b`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
+| **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-query`, `-dropna`, intervals `[min, max]`, set membership, comparisons |
+| **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt` |
+| **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql` |
+| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
+| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-agg_df` (auto-detect group cols), `-group_by` + `-agg`, `-group_x` (broadcast transforms) |
+| **Reshaping & Matrices** | [Reshaping & Cross-Tabulation Guide](cli/reshape.md) | `-long` (melt), `-wide` (pivot), `-crosstab` (contingency matrix), `-value_counts`, `-unique`, `-sort_by` |
+| **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
+| **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, `.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.csv.gz`, `.jsonl.gz`, `-progress` |
+| **Multi-File Pipelines** | [Multi-File Pipelines Guide](cli/multi_file.md) | `-file`, `-merge` (joins), `-concat` (stacking), cross-file `-sql` |
 
 ---
 
