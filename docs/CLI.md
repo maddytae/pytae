@@ -542,23 +542,27 @@ pytae penguins.parquet -rename "island:location" -o renamed.parquet
 
 <a id="output"></a>
 <a id="convert"></a>
-### Output routing & file I/O — `-o`
+### Output routing & file I/O — `-o`, `-out_dir`
 
 `-o` specifies the destination for the pipeline result: an explicit output file path, a format for in-place or batch conversion, or `clip` to copy to the clipboard. Omitting `-o` prints to stdout. Cannot write `.sas7bdat`.
 
+`-out_dir` (or `-od` / `--out-dir`) directs all exported files into a target directory (auto-created if it does not exist). Requires `-o/--output`.
+
 | Target | Description | Example |
 |---|---|---|
-| `<filename>.<ext>` | Write directly to specified path | `pytae penguins.parquet -o clean.csv` |
-| `csv` / `parquet` / `txt` / `dat` | In-place or batch conversion alongside source file | `pytae penguins.parquet -o csv`<br>`pytae data/*.parquet -o csv`<br>`pytae 'data/*.parquet' -o csv` |
+| `<filename>.<ext>` | Write directly to specified path | `pytae penguins.parquet -o clean.csv`<br>`pytae penguins.csv -o data.parquet` |
+| `csv` / `parquet` / `txt` / `dat` / `jsonl` / `csv.gz` / `jsonl.gz` | In-place or batch conversion alongside source file or into `-out_dir` | `pytae penguins.parquet -o csv`<br>`pytae data/*.parquet -o csv -out_dir exports/`<br>`pytae 'data/*.parquet' -o jsonl.gz` |
 | `clip` / `clipboard` | Copy result to system clipboard (suppresses stdout) | `pytae penguins.parquet -head 5 -o clip` |
 
-| Format | Read | Write |
-|---|---|---|
-| `.parquet` / `.pq` | ✓ | ✓ |
-| `.csv` | ✓ | ✓ |
-| `.txt` | ✓ | ✓ |
-| `.dat` | ✓ | ✓ |
-| `.sas7bdat` | ✓ | — |
+| Format | Read | Write | Notes |
+|---|---|---|---|
+| `.parquet` / `.pq` | ✓ | ✓ | Fast columnar storage with embedded schema |
+| `.csv` | ✓ | ✓ | Standard comma-delimited text |
+| `.txt` | ✓ | ✓ | Tab-delimited (default) or custom delimiter |
+| `.dat` | ✓ | ✓ | Pipe-delimited `\|` and latin-1 encoded by default |
+| `.jsonl` / `.ndjson` | ✓ | ✓ | Line-delimited JSON records (chunked streaming) |
+| `.csv.gz` / `.txt.gz` / `.dat.gz` / `.jsonl.gz` | ✓ | ✓ | Transparent gzip compression & decompression |
+| `.sas7bdat` | ✓ | — | SAS binary dataset (read-only) |
 
 ```bash
 # Save to an explicit destination file
@@ -569,8 +573,17 @@ pytae data.sas7bdat -o data.parquet          # character columns decoded as utf-
 pytae data.sas7bdat -encoding latin-1 -o data.parquet
 pytae data.dat -o data.csv                   # .dat defaults to '|' delimiter, latin-1 encoding
 
+# Export to JSON Lines or compressed gzip
+pytae penguins.parquet -o penguins.jsonl
+pytae penguins.csv -o penguins.csv.gz
+pytae penguins.parquet -o penguins.jsonl.gz
+
 # In-place conversion (saves data.csv next to data.parquet)
 pytae penguins.parquet -o csv
+
+# Output directory: write converted files to a specific target folder (created automatically)
+pytae penguins.parquet -o csv -out_dir exports/
+pytae data/*.parquet -o csv.gz -od compressed_data/
 
 # Batch conversion (converts all matched files; works with unquoted shell glob or quoted pattern)
 pytae data/*.parquet -o csv
@@ -668,7 +681,7 @@ pytae penguins.parquet -select "species" -value_counts -sort_by "count desc"
 ---
 
 <a id="listing"></a>
-### Inspect & display — `-head` / `-tail` / `-sample` / `-shape` / `-cols` / `-dtype` / `-nulls` / `-describe` / `-info`
+### Inspect & display — `-head` / `-tail` / `-sample` / `-shape` / `-cols` / `-dtype` / `-nulls` / `-describe` / `-info` / `-meta`
 
 ```bash
 pytae penguins.parquet -head
@@ -680,18 +693,34 @@ pytae penguins.parquet -dtype
 pytae penguins.parquet -nulls
 pytae penguins.parquet -describe
 pytae penguins.parquet -info
+pytae penguins.parquet -meta
 ```
 
-`-shape` / `-cols` / `-dtype` / `-nulls` / `-info` mirror pandas attributes/methods that
-don't return a DataFrame (`df.shape`, `df.columns`, `df.dtypes`, `df.info()` — `-nulls` is
-`df.isna().sum()`). Like real method chaining, nothing may follow them except `-o clip`;
+`-shape` / `-cols` / `-dtype` / `-nulls` / `-info` / `-meta` / `-diff` mirror inspection operations that
+don't return a DataFrame (`df.shape`, `df.columns`, `df.dtypes`, `df.info()`, zero-scan Parquet metadata, or text diffs). Like real method chaining, nothing may follow them except `-o clip`;
 put them last. `-describe` is the exception — `df.describe()` returns a DataFrame, so it
 can still be chained into further flags (e.g. `-describe -shape`, `-describe -round 2`).
 
 ```bash
 pytae penguins.parquet -shape -o clip     # ok: -o clip is the only thing allowed after -shape
+pytae penguins.parquet -meta -o clip      # ok: copy Parquet metadata report to clipboard
 pytae penguins.parquet -shape -head 3      # error: -shape isn't a DataFrame, can't chain -head off it
 pytae penguins.parquet -describe -shape    # ok: describe() returns a DataFrame
+```
+
+**Zero-scan Parquet metadata (`-meta`):**
+Reads file header and footer metadata without scanning table rows. Instantly displays file size, Parquet format version, row groups count, column compression codecs, compression ratios, and full Arrow/Pandas schema.
+
+```bash
+pytae huge_dataset.parquet -meta
+```
+
+**Terminal Pager (`-pager`):**
+Pipe long table views, `-describe`, or inspection reports through the system pager (`$PAGER` or `less`):
+
+```bash
+pytae wide_dataset.parquet -describe -pager
+pytae data.parquet -head 100 -pager
 ```
 
 `-cols` / `-dtype` / `-nulls` list in file (or `-select`) order by default. Optional `asc` / `desc` sorts **names**, not rows. That is not `-sort_by`.
@@ -704,6 +733,31 @@ pytae penguins.parquet -nulls asc
 ```
 
 CSV/TXT `-dtype` infers types from the first 10,000 rows, not the whole file.
+
+---
+
+<a id="diff"></a>
+### Dataset & schema diffing — `-diff`
+
+Compare the current pipeline result against another dataset file:
+
+```bash
+# Compare two files directly
+pytae file_v1.parquet -diff file_v2.parquet
+
+# Filter or transform before comparing against baseline
+pytae updated.csv -query "status == 'active'" -diff baseline.parquet
+
+# Copy diff report to clipboard
+pytae file_v1.csv -diff file_v2.csv -o clip
+```
+
+The diff report provides a comprehensive summary:
+1. **Shapes:** Row and column counts with exact delta (`+` / `-`).
+2. **Column changes:** Added columns, removed columns, and common columns.
+3. **Schema drift:** Data type differences across common columns.
+4. **Null counts:** Changes in null / NaN values per column.
+5. **Values:** Detects whether common cell values match identically or reports the number of cell mismatches.
 
 ---
 
@@ -977,6 +1031,8 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 | `-nulls [asc\|desc]` | Null counts |
 | `-describe` | pandas `describe()` summary (becomes the working frame) |
 | `-info` | pandas `info()` (columns, non-nulls, dtypes, memory) |
+| `-meta` | Parquet file metadata (row groups, compression, schema) without loading data |
+| `-diff PATH` | Compare schema and contents against another dataset file |
 | `-value_counts` | Counts across current working columns |
 | `-unique` | Drop duplicate rows |
 
@@ -1020,12 +1076,14 @@ pytae penguins.parquet -qry "island='Dream'" -select "species,island,body_mass_g
 
 | Flag | Description |
 |---|---|
-| `-o, --output TARGET` | Output destination: `<path>.<ext>`, format (`csv`, `parquet`), or `clip`/`clipboard` |
+| `-o, --output TARGET` | Output destination: `<path>.<ext>`, format (`csv`, `parquet`, `jsonl`, `csv.gz`, `jsonl.gz`), or `clip`/`clipboard` |
+| `-out_dir, -od DIR` | Target directory for exported files (created if missing; requires `-o`) |
 | `-nrows N` | Cap rows loaded |
 | `-dlim CHAR` | Delimiter for csv/txt/dat (not sas7bdat) |
 | `-encoding ENC` | Text encoding (SAS default: utf-8; dat default: latin-1; csv/txt: pandas infer) |
 | `-rename OLD:NEW,...` | Rename columns anywhere in pipeline or during export |
 | `-pretty` | Markdown table |
+| `-pager` | Pipe table or inspect outputs through system pager (`$PAGER` or `less`) |
 | `-round N` | Round numeric print/copy |
 | `-progress [N]` | Row progress for large file exports (default: 200000 rows; optional N sets chunk size) |
 
@@ -1062,7 +1120,11 @@ Use this quick-decision guide to find the right flag for your task. Each flag li
 | **Frequency counts** | [`-value_counts`](#value-counts) | Counts unique combinations across current working columns (pair with [`-select`](#select)) |
 | **Peek at rows** | [`-head`](#listing) / [`-tail`](#listing) / [`-sample`](#listing) | View first, last, or random sampled rows (default 5 rows; supports `-seed` and `-frac`) |
 | **Schema & summary** | [`-shape`](#listing) / [`-cols`](#listing) / [`-dtype`](#listing) / [`-nulls`](#listing) / [`-info`](#listing) / [`-describe`](#listing) | Terminal inspection flags (cannot be followed except by [`-o clip`](#output)) |
+| **Parquet metadata** | [`-meta`](#listing) | Zero-scan Parquet file metadata (row groups, compression, schema) |
+| **Compare datasets** | [`-diff`](#diff) | Compares shape, columns, schema drift, null count diffs, and values against another file |
 | **Output / convert format** | [`-o`](#output) | Export to file (`-o out.parquet`), in-place/batch convert (`-o csv`), or clipboard (`-o clip`) |
+| **Direct output folder** | [`-out_dir`](#output) | Target directory for file exports (auto-created; supports `-od`) |
+| **Page long outputs** | [`-pager`](#listing) | Pipes table or report through system `$PAGER` / `less` |
 | **Combine multiple files** | [`-file`](#merge) + [`-merge`](#merge) / [`-concat`](#merge) / [`-sql`](#sql) | Multi-file mode replacing positional path; see [CLI_MULTI_FILE.md](CLI_MULTI_FILE.md) |
 
 <a id="polarity-chaining"></a>

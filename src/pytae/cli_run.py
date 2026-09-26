@@ -25,7 +25,7 @@ from pytae.cli_parsing import (
 )
 from pytae.cli_pipeline import _Pipeline
 from pytae.other_utilities import clean_columns, group_x, handle_missing
-from pytae.readers import get_reader, write_dataframe
+from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
 
 
 def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
@@ -63,10 +63,168 @@ def _copy_to_clipboard(text: str) -> None:
         print("pytae: unable to copy to clipboard (no clipboard utility found)", file=sys.stderr)
 
 
+def _output_text(text: str, args: argparse.Namespace) -> None:
+    """Output text to stdout, piping through pydoc.pager if -pager is requested."""
+    if getattr(args, "pager", False):
+        import pydoc
+
+        pydoc.pager(text)
+    else:
+        print(text)
+
+
+def _format_bytes(num: int | float) -> str:
+    """Format byte counts into human-readable strings (e.g. 1.2 KB, 3.4 MB)."""
+    val = float(num)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(val) < 1024.0:
+            return f"{val:3.1f} {unit}" if unit != "B" else f"{int(val)} B"
+        val /= 1024.0
+    return f"{val:.1f} PB"
+
+
+def _extract_metadata(path: Path) -> str:
+    """Extract file metadata without scanning full row data (fastest on Parquet)."""
+    if not path.exists():
+        return f"File not found: {path}"
+    suffix, compression = _split_path_suffixes(path)
+    file_bytes = path.stat().st_size
+    lines: list[str] = [f"File: {path.name}", f"File size: {_format_bytes(file_bytes)}"]
+    if suffix in (".parquet", ".pq"):
+        try:
+            import pyarrow.parquet as pa_parquet
+
+            pf = pa_parquet.ParquetFile(path)
+            md = pf.metadata
+            lines.append(f"Format: Parquet (version {md.format_version})")
+            lines.append(f"Rows: {md.num_rows:,}")
+            lines.append(f"Columns: {md.num_columns}")
+            lines.append(f"Row groups: {md.num_row_groups}")
+            codecs: set[str] = set()
+            total_uncompressed = 0
+            for j in range(md.num_row_groups):
+                rg = md.row_group(j)
+                total_uncompressed += rg.total_byte_size
+                for i in range(md.num_columns):
+                    codecs.add(str(rg.column(i).compression))
+            codec_str = ", ".join(sorted(codecs)) if codecs else "None"
+            lines.append(f"Compression: {codec_str}")
+            lines.append(f"Uncompressed data size: {_format_bytes(total_uncompressed)}")
+            ratio = (file_bytes / total_uncompressed * 100) if total_uncompressed else 100
+            lines.append(f"Space saving: {100 - ratio:.1f}%")
+            lines.append("")
+            lines.append("Schema:")
+            schema = pf.schema_arrow
+            max_name_len = max(len(name) for name in schema.names) if schema.names else 10
+            lines.append(f"  {'#':<4} {'Column':<{max_name_len}}  {'Type'}")
+            lines.append(f"  {'-'*4} {'-'*max_name_len}  {'-'*20}")
+            for idx, field in enumerate(schema):
+                lines.append(f"  {idx:<4} {field.name:<{max_name_len}}  {field.type}")
+        except Exception as exc:
+            lines.append(f"Error reading Parquet metadata: {exc}")
+    else:
+        fmt_name = "CSV" if suffix == ".csv" else ("JSON Lines" if suffix in (".jsonl", ".ndjson") else suffix.lstrip(".").upper())
+        comp_str = f" ({compression})" if compression else ""
+        lines.append(f"Format: {fmt_name}{comp_str}")
+        try:
+            reader = get_reader(path)
+            cols = reader.columns()
+            lines.append(f"Columns: {len(cols)}")
+            lines.append(f"Column names: {', '.join(cols[:15])}{'...' if len(cols) > 15 else ''}")
+        except Exception:
+            pass
+    return "\n".join(lines)
+
+
+def _compute_diff(left_df: pd.DataFrame, right_path: Path, left_name: str) -> str:
+    """Compare the current pipeline result against another tabular file."""
+    if not right_path.exists():
+        return f"Diff target not found: {right_path}"
+    try:
+        reader = get_reader(right_path)
+        right_df = reader.to_dataframe()
+    except Exception as exc:
+        return f"Cannot read diff target '{right_path}': {exc}"
+
+    r1, c1 = left_df.shape
+    r2, c2 = right_df.shape
+    cols1 = list(left_df.columns)
+    cols2 = list(right_df.columns)
+
+    lines: list[str] = [
+        "Comparing:",
+        f"  Left (source):  {left_name} ({r1:,} rows, {c1} cols)",
+        f"  Right (target): {right_path.name} ({r2:,} rows, {c2} cols)",
+        "",
+        "Shape:",
+        f"  Rows: {r1:,} vs {r2:,} ({'+' if r1 >= r2 else ''}{r1 - r2:,})",
+        f"  Cols: {c1} vs {c2} ({'+' if c1 >= c2 else ''}{c1 - c2})",
+    ]
+
+    added_cols = [c for c in cols1 if c not in cols2]
+    removed_cols = [c for c in cols2 if c not in cols1]
+    common_cols = [c for c in cols1 if c in cols2]
+
+    lines.append("")
+    lines.append("Columns:")
+    if added_cols:
+        lines.append(f"  + Added in left ({len(added_cols)}):   {', '.join(added_cols)}")
+    if removed_cols:
+        lines.append(f"  - Removed in left ({len(removed_cols)}): {', '.join(removed_cols)}")
+    lines.append(f"  Common ({len(common_cols)}):        {', '.join(common_cols)}")
+
+    dtype_diffs: list[str] = []
+    for c in common_cols:
+        d1 = str(left_df[c].dtype)
+        d2 = str(right_df[c].dtype)
+        if d1 != d2:
+            dtype_diffs.append(f"  * {c}: {d2} (right) -> {d1} (left)")
+
+    lines.append("")
+    lines.append("Schema Drift:")
+    if dtype_diffs:
+        lines.extend(dtype_diffs)
+    else:
+        lines.append("  None (all common columns have matching dtypes)")
+
+    null_diffs: list[str] = []
+    for c in common_cols:
+        n1 = int(left_df[c].isna().sum())
+        n2 = int(right_df[c].isna().sum())
+        if n1 != n2:
+            null_diffs.append(f"  * {c}: {n1:,} vs {n2:,} nulls ({'+' if n1 >= n2 else ''}{n1 - n2:,})")
+
+    if null_diffs:
+        lines.append("")
+        lines.append("Null Counts:")
+        lines.extend(null_diffs)
+
+    if r1 == r2 and common_cols:
+        try:
+            mismatches = 0
+            for c in common_cols:
+                s1 = left_df[c]
+                s2 = right_df[c]
+                diff = ~((s1 == s2) | (s1.isna() & s2.isna()))
+                mismatches += int(diff.sum())
+            lines.append("")
+            lines.append("Values:")
+            if mismatches == 0 and cols1 == cols2:
+                lines.append("  Identical: all cell values match exactly.")
+            elif mismatches == 0:
+                lines.append("  Matching: all cell values in common columns match.")
+            else:
+                lines.append(f"  Mismatches found in {mismatches:,} cells across common columns.")
+        except Exception:
+            pass
+
+    return "\n".join(lines)
+
+
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
-# dtype -> Series, nulls -> Series, info() -> None). Like real method chaining, nothing can
-# follow them except -o clip. -describe is excluded: df.describe() returns a DataFrame.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info"})
+# dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
+# chaining, nothing can follow them except -o clip.
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff"})
 
 
 def _list_order_names(names, order):
@@ -326,47 +484,59 @@ def _process_path(
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
-                print(shape_str)
+                _output_text(shape_str, args)
             if is_clip:
                 clip_action = lambda s=shape_str: _copy_to_clipboard(s)
         elif op == "cols":
             names = _list_order_names(pipeline.columns(), args.cols)
             if should_print(idx):
-                for name in names:
-                    print(name)
+                _output_text("\n".join(names), args)
             if is_clip:
                 clip_action = lambda n=names: pd.Series(n).to_clipboard(index=False, header=False)
         elif op == "dtype":
             dtypes = _list_order_index(pipeline.dtypes(), args.dtype)
             if should_print(idx):
-                print(dtypes.to_string())
+                _output_text(dtypes.to_string(), args)
             if is_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
             nulls = _list_order_index(pipeline.dataframe().isna().sum(), args.nulls)
             if should_print(idx):
-                print(nulls.to_string())
+                _output_text(nulls.to_string(), args)
             if is_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
             described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
             pipeline._df = described
             if should_print(idx):
-                print(_format_table(described, index=True, pretty=args.pretty))
+                _output_text(_format_table(described, index=True, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=described: d.to_clipboard(index=True)
         elif op == "info":
             info_str = _dataframe_info(pipeline.dataframe())
             if should_print(idx):
-                print(info_str)
+                _output_text(info_str, args)
             if is_clip:
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
+        elif op == "meta":
+            meta_str = _extract_metadata(path if path is not None else Path("<merged>"))
+            if should_print(idx):
+                _output_text(meta_str, args)
+            if is_clip:
+                clip_action = lambda s=meta_str: _copy_to_clipboard(s)
+        elif op == "diff":
+            diff_path = Path(args.diff)
+            diff_str = _compute_diff(pipeline.dataframe(), diff_path, path.name if path is not None else "<pipeline>")
+            if should_print(idx):
+                _output_text(diff_str, args)
+            if is_clip:
+                clip_action = lambda s=diff_str: _copy_to_clipboard(s)
         elif op == "value_counts":
             source_df = pipeline.dataframe()
             value_count_cols = list(source_df.columns)
@@ -380,33 +550,33 @@ def _process_path(
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "unique":
             unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
             pipeline._df = unique_df
             if should_print(idx):
-                print(_format_table(unique_df, pretty=args.pretty))
+                _output_text(_format_table(unique_df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=unique_df: d.to_clipboard(index=False)
         elif op == "head":
             df = _apply_round(pipeline.head(args.head), args.round_ndigits)
             if should_print(idx):
-                print(_format_table(df, pretty=args.pretty))
+                _output_text(_format_table(df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "tail":
             df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
             if should_print(idx):
-                print(_format_table(df, pretty=args.pretty))
+                _output_text(_format_table(df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=df: d.to_clipboard(index=False)
         elif op == "sample":
             sampled = _apply_round(pipeline.sample(args.sample, seed=args.seed, frac=args.frac), args.round_ndigits)
             n = len(sampled)
             if should_print(idx):
-                print(_format_table(sampled, pretty=args.pretty) if n else "(no rows)")
+                _output_text(_format_table(sampled, pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
                 clip_action = lambda d=sampled: d.to_clipboard(index=False)
         elif op == "sort_by":
@@ -418,7 +588,7 @@ def _process_path(
             sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
             pipeline._df = sorted_df
             if should_print(idx):
-                print(_format_table(sorted_df, pretty=args.pretty))
+                _output_text(_format_table(sorted_df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
         elif op == "agg_df":
@@ -429,7 +599,7 @@ def _process_path(
                 result = _apply_round(agg_df(pipeline.dataframe(), aggfunc, dropna=args.dropna), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "agg":
@@ -449,7 +619,7 @@ def _process_path(
             result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "group_x":
@@ -467,14 +637,14 @@ def _process_path(
             result = _apply_round(group_x(source_df, **gx), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "handle_missing":
             result = _apply_round(handle_missing(pipeline.dataframe(), fillna=args.handle_missing), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "clean_columns":
@@ -482,7 +652,7 @@ def _process_path(
             result = _apply_round(clean_columns(pipeline.dataframe(), **opts), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "long":
@@ -490,7 +660,7 @@ def _process_path(
             result = _apply_round(long_fn(pipeline.dataframe(), **parse_long_arg(args.long)), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "wide":
@@ -505,7 +675,7 @@ def _process_path(
             result = _apply_round(wide_fn(source_df, **wide_kwargs), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                _output_text(_format_table(result, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=False)
         elif op == "crosstab":
@@ -532,7 +702,7 @@ def _process_path(
             )
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, index=True, pretty=args.pretty))
+                _output_text(_format_table(result, index=True, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=True)
 
@@ -541,13 +711,22 @@ def _process_path(
     elif is_file:
         assert out_target is not None
         fmt = out_target.lower()
-        if fmt in ("csv", "parquet", "pq", "txt", "dat"):
+        out_dir: Path | None = getattr(args, "out_dir", None)
+        valid_formats = (
+            "csv", "parquet", "pq", "txt", "dat", "jsonl", "ndjson",
+            "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
+        )
+        if fmt in valid_formats:
             if path is None:
                 return _fail(parser, batch, f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
             ext = ".parquet" if fmt == "pq" else f".{fmt}"
-            dest = path.with_suffix(ext)
+            clean_name = path.name[:-3] if path.name.lower().endswith(".gz") else path.name
+            dest_name = f"{Path(clean_name).stem}{ext}"
+            dest = (out_dir / dest_name) if out_dir is not None else path.with_name(dest_name)
         else:
             dest = Path(out_target)
+            if out_dir is not None and not dest.is_absolute():
+                dest = out_dir / dest
 
         df_to_write = _apply_round(pipeline.dataframe(), args.round_ndigits)
         try:

@@ -45,7 +45,11 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
-_DATA_SUFFIXES = frozenset((".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".yaml", ".yml"))
+_DATA_SUFFIXES = frozenset((".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".jsonl", ".ndjson", ".gz", ".yaml", ".yml"))
+_FORMAT_SHORTHANDS = frozenset((
+    "csv", "parquet", "pq", "txt", "dat", "jsonl", "ndjson",
+    "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
+))
 
 
 def _is_path_like(token: str) -> bool:
@@ -134,6 +138,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="print pandas describe() summary (count/mean/std/min/quartiles/max)")
     parser.add_argument("-info", "--info", dest="info", action=_OrderedFlag,
                          help="print pandas info() (columns, non-null counts, dtypes, memory)")
+    parser.add_argument("-meta", "--meta", dest="meta", action=_OrderedFlag,
+                         help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data")
+    parser.add_argument("-diff", "--diff", dest="diff", default=None, metavar="PATH", action=_OrderedStore,
+                         help="compare schema and contents against another dataset file")
     parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
                          help="show pandas value_counts across current working columns (use -select to choose columns)")
     parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
@@ -210,8 +218,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "include NA keys when false; accepts true or false (default: true)")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
-                              "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat'), "
+                              "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
                               "or 'clip'/'clipboard' to copy to system clipboard")
+    parser.add_argument("-out_dir", "--out_dir", "-od", "--out-dir", dest="out_dir", type=Path, default=None, metavar="DIR",
+                         help="target directory for exported files (created if it does not exist); requires -o/--output")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
                               "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
@@ -275,6 +285,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
                          help="render tables as a bordered markdown table instead of plain pandas text")
+    parser.add_argument("-pager", "--pager", action="store_true",
+                         help="pipe long table or inspect outputs through system pager ($PAGER or less)")
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
@@ -330,6 +342,13 @@ def main(argv: list[str] | None = None) -> int:
     is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
     is_file = out_target is not None and not is_clip
 
+    if args.out_dir is not None:
+        if args.output is None:
+            parser.error("-out_dir requires -o/--output")
+        if is_clip:
+            parser.error("-out_dir cannot be used with '-o clip'")
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+
     if is_file and any(op in NON_DF_TERMINAL_OPS for op in op_order):
         bad_op = next(op for op in op_order if op in NON_DF_TERMINAL_OPS)
         parser.error(
@@ -339,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
 
     raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
 
+    if args.meta and args.file is not None:
+        parser.error("-meta cannot be used with -file")
     if args.merge and args.file is None:
         parser.error("-merge requires -file")
     if args.concat and args.file is None:
@@ -348,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
         if not op_order or op_order[0] not in ("merge", "sql", "concat"):
             parser.error("-file requires -merge, -concat, or -sql as its first operation")
-        if is_file and out_target is not None and out_target.lower() in ("csv", "parquet", "pq", "txt", "dat"):
+        if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
             parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
     elif not raw_paths:
         parser.error("the following arguments are required: path")
@@ -360,7 +381,8 @@ def main(argv: list[str] | None = None) -> int:
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
-                         args.rename, args.clean_columns is not None, args.merge, args.concat])
+                         args.rename, args.clean_columns is not None, args.merge, args.concat,
+                         args.meta, args.diff is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
@@ -421,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     if batch and args.output is not None:
         if is_clip:
             parser.error("-o clip cannot be used with multiple matched files")
-        if out_target is not None and out_target.lower() not in ("csv", "parquet", "pq", "txt", "dat"):
+        if out_target is not None and out_target.lower() not in _FORMAT_SHORTHANDS:
             parser.error(
                 "-o/--output with multiple matched files requires a format (e.g. '-o csv' or '-o parquet'), "
                 "not a single file path"
@@ -431,7 +453,9 @@ def main(argv: list[str] | None = None) -> int:
         ext = ".parquet" if fmt == "pq" else f".{fmt}"
         dest_map: dict[Path, Path] = {}
         for p in paths:
-            dest = p.with_suffix(ext).resolve()
+            clean_name = p.name[:-3] if p.name.lower().endswith(".gz") else p.name
+            dest_name = f"{Path(clean_name).stem}{ext}"
+            dest = (args.out_dir / dest_name).resolve() if args.out_dir is not None else p.with_name(dest_name).resolve()
             if dest in dest_map:
                 parser.error(
                     f"-o {out_target}: multiple input files resolve to the same destination path '{dest}': "

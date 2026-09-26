@@ -659,6 +659,242 @@ def test_non_df_terminal_op_error_message(tmp_path, capsys):
     assert "-shape does not return a DataFrame/Series, so no flag may follow it (except '-o clip'" in err
 
 
+def test_cli_out_dir_single_and_batch(tmp_path):
+    df1 = pd.DataFrame({"col1": [1, 2], "col2": ["x", "y"]})
+    df2 = pd.DataFrame({"col1": [3, 4], "col2": ["z", "w"]})
+    f1 = tmp_path / "file1.csv"
+    f2 = tmp_path / "file2.csv"
+    df1.to_csv(f1, index=False)
+    df2.to_csv(f2, index=False)
+
+    out_directory = tmp_path / "exported"
+    # Single file
+    exit_code = cli.main([str(f1), "-o", "parquet", "-out_dir", str(out_directory)])
+    assert exit_code == 0
+    assert (out_directory / "file1.parquet").exists()
+
+    # Batch files with -od alias
+    exit_code2 = cli.main([str(f1), str(f2), "-o", "parquet", "-od", str(out_directory)])
+    assert exit_code2 == 0
+    assert (out_directory / "file1.parquet").exists()
+    assert (out_directory / "file2.parquet").exists()
+
+
+def test_cli_out_dir_validations(tmp_path, capsys):
+    f = tmp_path / "data.csv"
+    f.write_text("a,b\n1,2\n")
+    out_directory = tmp_path / "exported"
+
+    # Fails without -o
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f), "-out_dir", str(out_directory)])
+    assert exc_info.value.code == 2
+    assert "-out_dir requires -o/--output" in capsys.readouterr().err
+
+    # Fails with -o clip
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f), "-o", "clip", "-out_dir", str(out_directory)])
+    assert exc_info.value.code == 2
+    assert "-out_dir cannot be used with '-o clip'" in capsys.readouterr().err
+
+
+def test_cli_batch_out_dir_collision(tmp_path, capsys):
+    sub1 = tmp_path / "sub1"
+    sub2 = tmp_path / "sub2"
+    sub1.mkdir()
+    sub2.mkdir()
+    f1 = sub1 / "data.csv"
+    f2 = sub2 / "data.csv"
+    f1.write_text("a,b\n1,2\n")
+    f2.write_text("a,b\n3,4\n")
+
+    out_directory = tmp_path / "exported"
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", "parquet", "-out_dir", str(out_directory)])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "multiple input files resolve to the same destination path" in err
+
+
+def test_cli_meta_parquet(tmp_path, capsys):
+    p = tmp_path / "sample.parquet"
+    pd.DataFrame({"id": range(10), "score": [float(i) * 1.5 for i in range(10)]}).to_parquet(p, index=False)
+
+    exit_code = cli.main([str(p), "-meta"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Format: Parquet" in out
+    assert "Rows: 10" in out
+    assert "Columns: 2" in out
+    assert "Row groups: 1" in out
+    assert "Schema:" in out
+    assert "id" in out
+    assert "score" in out
+
+
+def test_cli_meta_restrictions(tmp_path, capsys):
+    p = tmp_path / "sample.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(p, index=False)
+
+    # -meta cannot be chained before another flag
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(p), "-meta", "-head", "5"])
+    assert exc_info.value.code == 2
+    assert "-meta does not return a DataFrame/Series, so no flag may follow it" in capsys.readouterr().err
+
+    # -meta cannot export to file
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(p), "-meta", "-o", "out.parquet"])
+    assert exc_info.value.code == 2
+    assert "-meta does not produce a tabular DataFrame, so it cannot be exported to a file" in capsys.readouterr().err
+
+
+def test_cli_meta_clip(tmp_path, monkeypatch):
+    p = tmp_path / "sample.parquet"
+    pd.DataFrame({"a": [1, 2]}).to_parquet(p, index=False)
+
+    copied = []
+    monkeypatch.setattr(cli, "_process_path", cli._process_path)
+    import pytae.cli_run as cli_run
+    monkeypatch.setattr(cli_run, "_copy_to_clipboard", lambda text: copied.append(text))
+
+    exit_code = cli.main([str(p), "-meta", "-o", "clip"])
+    assert exit_code == 0
+    assert len(copied) == 1
+    assert "Format: Parquet" in copied[0]
+
+
+def test_cli_diff_identical(tmp_path, capsys):
+    df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    f1 = tmp_path / "f1.csv"
+    f2 = tmp_path / "f2.csv"
+    df.to_csv(f1, index=False)
+    df.to_csv(f2, index=False)
+
+    exit_code = cli.main([str(f1), "-diff", str(f2)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Comparing:" in out
+    assert "Rows: 3 vs 3" in out
+    assert "Cols: 2 vs 2" in out
+    assert "Identical: all cell values match exactly." in out
+
+
+def test_cli_diff_mismatches_and_drift(tmp_path, capsys):
+    df1 = pd.DataFrame({"a": [1, 2, 3], "b": ["x", None, "z"], "c": [10, 20, 30]})
+    df2 = pd.DataFrame({"a": [1, 2, 4], "b": ["x", "y", "z"], "d": [1.0, 2.0, 3.0]})
+    f1 = tmp_path / "left.csv"
+    f2 = tmp_path / "right.csv"
+    df1.to_csv(f1, index=False)
+    df2.to_csv(f2, index=False)
+
+    exit_code = cli.main([str(f1), "-diff", str(f2)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "+ Added in left (1):   c" in out
+    assert "- Removed in left (1): d" in out
+    assert "Null Counts:" in out
+    assert "Mismatches found" in out
+
+
+def test_cli_diff_clip(tmp_path, monkeypatch):
+    df = pd.DataFrame({"a": [1, 2]})
+    f1 = tmp_path / "a.csv"
+    f2 = tmp_path / "b.csv"
+    df.to_csv(f1, index=False)
+    df.to_csv(f2, index=False)
+
+    copied = []
+    import pytae.cli_run as cli_run
+    monkeypatch.setattr(cli_run, "_copy_to_clipboard", lambda text: copied.append(text))
+
+    exit_code = cli.main([str(f1), "-diff", str(f2), "-o", "clip"])
+    assert exit_code == 0
+    assert len(copied) == 1
+    assert "Comparing:" in copied[0]
+
+
+def test_cli_diff_restrictions(tmp_path, capsys):
+    f = tmp_path / "a.csv"
+    f.write_text("a\n1\n")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f), "-diff", str(f), "-o", "out.csv"])
+    assert exc_info.value.code == 2
+    assert "-diff does not produce a tabular DataFrame, so it cannot be exported to a file" in capsys.readouterr().err
+
+
+def test_cli_jsonl_inspect_and_conversion(tmp_path, capsys):
+    df = pd.DataFrame({"id": [1, 2, 3], "city": ["NYC", "SFO", "LON"]})
+    jpath = tmp_path / "data.jsonl"
+    df.to_json(jpath, orient="records", lines=True)
+
+    # Inspect
+    exit_code = cli.main([str(jpath), "-shape"])
+    assert exit_code == 0
+    assert "(3, 2)" in capsys.readouterr().out
+
+    exit_code = cli.main([str(jpath), "-cols"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "id" in out
+    assert "city" in out
+
+    # Convert to Parquet
+    exit_code2 = cli.main([str(jpath), "-o", "parquet"])
+    assert exit_code2 == 0
+    pq_path = tmp_path / "data.parquet"
+    assert pq_path.exists()
+    assert len(pd.read_parquet(pq_path)) == 3
+
+    # Convert Parquet to ndjson
+    exit_code3 = cli.main([str(pq_path), "-o", "ndjson"])
+    assert exit_code3 == 0
+    assert (tmp_path / "data.ndjson").exists()
+
+
+def test_cli_transparent_compression(tmp_path):
+    df = pd.DataFrame({"a": [1, 2, 3, 4], "b": ["p", "q", "r", "s"]})
+    csv_path = tmp_path / "data.csv"
+    df.to_csv(csv_path, index=False)
+
+    # Convert csv to csv.gz
+    exit_code = cli.main([str(csv_path), "-o", "csv.gz"])
+    assert exit_code == 0
+    gz_path = tmp_path / "data.csv.gz"
+    assert gz_path.exists()
+
+    # Convert csv.gz to parquet
+    exit_code2 = cli.main([str(gz_path), "-o", "parquet"])
+    assert exit_code2 == 0
+    pq_path = tmp_path / "data.parquet"
+    assert pq_path.exists()
+    pd.testing.assert_frame_equal(pd.read_parquet(pq_path), df)
+
+    # Convert parquet to jsonl.gz
+    exit_code3 = cli.main([str(pq_path), "-o", "jsonl.gz"])
+    assert exit_code3 == 0
+    j_gz = tmp_path / "data.jsonl.gz"
+    assert j_gz.exists()
+    pd.testing.assert_frame_equal(pd.read_json(j_gz, lines=True), df)
+
+
+def test_cli_pager(tmp_path, monkeypatch):
+    df = pd.DataFrame({"col": range(5)})
+    p = tmp_path / "data.csv"
+    df.to_csv(p, index=False)
+
+    paged = []
+    import pydoc
+    monkeypatch.setattr(pydoc, "pager", lambda text: paged.append(text))
+
+    exit_code = cli.main([str(p), "-head", "3", "-pager"])
+    assert exit_code == 0
+    assert len(paged) == 1
+    assert "col" in paged[0]
+
+
+
 
 
 

@@ -499,8 +499,14 @@ Pipeline Rules:
 
 5.2. File Formats & Zero-Cost Metadata Inspection
 --------------------------------------------------------------------------------
-Supported input file types:
-  .parquet, .csv, .txt (delimited), .dat (latin-1 fixed/delimited), .sas7bdat
+Supported input & output file types:
+  - .parquet, .pq (columnar storage)
+  - .csv (comma-delimited text)
+  - .txt (tab-delimited text or custom delimiter)
+  - .dat (pipe-delimited text, latin-1 encoding)
+  - .jsonl, .ndjson (line-delimited JSON records)
+  - .csv.gz, .txt.gz, .dat.gz, .jsonl.gz (transparent gzip compression & decompression)
+  - .sas7bdat (SAS binary dataset, read-only)
 
 Fast Zero-Cost Inspection (Metadata-Only):
   For Parquet and SAS7BDAT, the following flags inspect metadata without reading 
@@ -509,19 +515,24 @@ Fast Zero-Cost Inspection (Metadata-Only):
   - `-cols`: Prints column names in order
   - `-dtype`: Shows data types
   - `-head [N]`: Reads only the first N rows from the file stream
+  - `-meta`: Displays complete zero-scan Parquet metadata (row groups count, 
+    column compression codecs, compression ratio, Arrow & Pandas schema) 
+    without loading table records.
 
 
 5.3. All CLI Flags & Syntax Rules
 --------------------------------------------------------------------------------
-Inspection Flags:
-  -head [N]             Print first N rows (default 10)
-  -tail [N]             Print last N rows (default 10)
+Inspection & Comparison Flags:
+  -head [N]             Print first N rows (default 5)
+  -tail [N]             Print last N rows (default 5)
   -shape                Print row and column counts
   -cols [ORDER]         Print column names (ORDER: asc, desc, none)
   -dtype [ORDER]        Print column data types
   -nulls [ORDER]        Print null value counts per column
   -describe             Descriptive statistics for numeric columns
   -info                 DataFrame summary (dtypes, non-null counts, memory)
+  -meta                 Display zero-scan Parquet metadata (row groups, schema, compression)
+  -diff PATH            Compare schema, shape, null counts, and cell values against another file
   -value_counts         Value counts for categorical/string columns
   -unique               Count of unique values per column
   -sample [N]           Random sample of N rows
@@ -558,14 +569,16 @@ SQL & Multi-File Flags:
   -concat SPECS         Stack files: "frames='df1,df2'"
 
 Output & Formatting Flags:
-  -o TARGET             Output destination: file path (.csv, .parquet, etc.), format
-                        for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat'),
-                        or 'clip'/'clipboard' to copy to system clipboard
+  -o TARGET             Output destination: file path (.csv, .parquet, .jsonl, .csv.gz, etc.),
+                        format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat',
+                        'jsonl', 'csv.gz', 'jsonl.gz'), or 'clip'/'clipboard'
+  -out_dir, -od DIR     Target directory for exported files (created if missing; requires -o)
   -dlim CHAR            Delimiter character for input/output text files
   -encoding ENC         File encoding (e.g. utf-8, latin-1)
-  -pretty               Pretty-print tables with borders
+  -pretty               Pretty-print tables with bordered markdown formatting
+  -pager                Pipe table or inspect outputs through system pager ($PAGER or less)
   -round N              Round numeric output columns to N decimal places
-  -progress             Show row-reading progress bar
+  -progress [N]         Show row-reading/writing progress (default: 200,000 rows per chunk)
 
 
 5.4. Quoting & Delimiter Standards (: vs =)

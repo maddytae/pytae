@@ -21,9 +21,20 @@ CHUNK_SIZE = DEFAULT_CHUNK_SIZE
 DTYPE_SAMPLE_ROWS = 10_000
 
 
-def _delimited_dtypes(path: Path, *, sep: str, encoding: str | None) -> pd.Series:
+def _split_path_suffixes(path: Path) -> tuple[str, str | None]:
+    """Return (base_suffix, compression) e.g. ('.csv', 'gzip') or ('.parquet', None)."""
+    suffixes = [s.lower() for s in path.suffixes]
+    if not suffixes:
+        return ("", None)
+    if suffixes[-1] == ".gz":
+        base = suffixes[-2] if len(suffixes) >= 2 else ""
+        return (base, "gzip")
+    return (suffixes[-1], None)
+
+
+def _delimited_dtypes(path: Path, *, sep: str, encoding: str | None, compression: str | None = None) -> pd.Series:
     return pd.read_csv(
-        path, sep=sep, encoding=encoding, nrows=DTYPE_SAMPLE_ROWS, low_memory=False
+        path, sep=sep, encoding=encoding, nrows=DTYPE_SAMPLE_ROWS, low_memory=False, compression=compression
     ).dtypes
 
 
@@ -102,48 +113,103 @@ class ParquetReader:
 
 
 class CsvReader:
-    def __init__(self, path: Path, sep: str = ",", encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+    def __init__(
+        self,
+        path: Path,
+        sep: str = ",",
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        compression: str | None = None,
+    ) -> None:
         self.path = path
         self.sep = sep
         self.encoding = encoding
         self.chunk_size = chunk_size
+        self.compression = compression
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
         total = 0
         for chunk in pd.read_csv(
-            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=self.chunk_size, low_memory=False
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=[0],
+            chunksize=self.chunk_size,
+            low_memory=False,
+            compression=self.compression,
         ):
             total += len(chunk)
         return (total, n_cols)
 
     def columns(self) -> list[str]:
         try:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                nrows=0,
+                low_memory=False,
+                compression=self.compression,
+            ).columns.tolist()
         except pd.errors.EmptyDataError as exc:
             raise ValueError(f"'{self.path.name}' is empty or not a valid CSV file") from exc
 
     def dtypes(self) -> pd.Series:
-        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
+        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
 
     def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            nrows=n,
+            low_memory=False,
+            compression=self.compression,
+        )
 
     def tail(self, n: int) -> pd.DataFrame:
         total = self.shape()[0]
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            skiprows=skip,
+            low_memory=False,
+            compression=self.compression,
+        )
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
-                     chunk_size: int | None = None) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
         if not progress:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
-                               low_memory=False)
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                usecols=columns,
+                nrows=nrows,
+                low_memory=False,
+                compression=self.compression,
+            )
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
         csize = chunk_size or self.chunk_size
-        reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                      chunksize=csize, nrows=nrows, low_memory=False)
+        reader = pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=columns,
+            chunksize=csize,
+            nrows=nrows,
+            low_memory=False,
+            compression=self.compression,
+        )
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
@@ -155,48 +221,103 @@ class CsvReader:
 class TxtReader:
     """Reads delimited .txt/.dat files (tab-delimited for .txt, pipe-delimited for .dat by default)."""
 
-    def __init__(self, path: Path, sep: str = "\t", encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+    def __init__(
+        self,
+        path: Path,
+        sep: str = "\t",
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        compression: str | None = None,
+    ) -> None:
         self.path = path
         self.sep = sep
         self.encoding = encoding
         self.chunk_size = chunk_size
+        self.compression = compression
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
         total = 0
         for chunk in pd.read_csv(
-            self.path, sep=self.sep, encoding=self.encoding, usecols=[0], chunksize=self.chunk_size, low_memory=False
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=[0],
+            chunksize=self.chunk_size,
+            low_memory=False,
+            compression=self.compression,
         ):
             total += len(chunk)
         return (total, n_cols)
 
     def columns(self) -> list[str]:
         try:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=0, low_memory=False).columns.tolist()
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                nrows=0,
+                low_memory=False,
+                compression=self.compression,
+            ).columns.tolist()
         except pd.errors.EmptyDataError as exc:
             raise ValueError(f"'{self.path.name}' is empty or not a valid delimited file") from exc
 
     def dtypes(self) -> pd.Series:
-        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding)
+        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
 
     def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, nrows=n, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            nrows=n,
+            low_memory=False,
+            compression=self.compression,
+        )
 
     def tail(self, n: int) -> pd.DataFrame:
         total = self.shape()[0]
         skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, skiprows=skip, low_memory=False)
+        return pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            skiprows=skip,
+            low_memory=False,
+            compression=self.compression,
+        )
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
-                     chunk_size: int | None = None) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
         if not progress:
-            return pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns, nrows=nrows,
-                               low_memory=False)
+            return pd.read_csv(
+                self.path,
+                sep=self.sep,
+                encoding=self.encoding,
+                usecols=columns,
+                nrows=nrows,
+                low_memory=False,
+                compression=self.compression,
+            )
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
         csize = chunk_size or self.chunk_size
-        reader = pd.read_csv(self.path, sep=self.sep, encoding=self.encoding, usecols=columns,
-                      chunksize=csize, nrows=nrows, low_memory=False)
+        reader = pd.read_csv(
+            self.path,
+            sep=self.sep,
+            encoding=self.encoding,
+            usecols=columns,
+            chunksize=csize,
+            nrows=nrows,
+            low_memory=False,
+            compression=self.compression,
+        )
         for chunk in reader:
             chunks.append(chunk)
             done += len(chunk)
@@ -265,6 +386,102 @@ class SasReader:
         return df[columns] if columns else df
 
 
+class JsonlReader:
+    """Reads line-delimited JSON (.jsonl / .ndjson) files."""
+
+    def __init__(
+        self,
+        path: Path,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        compression: str | None = None,
+    ) -> None:
+        self.path = path
+        self.chunk_size = chunk_size
+        self.compression = compression
+
+    def shape(self) -> tuple[int, int]:
+        n_cols = len(self.columns())
+        total = 0
+        for chunk in pd.read_json(
+            self.path,
+            lines=True,
+            chunksize=self.chunk_size,
+            compression=self.compression,
+        ):
+            total += len(chunk)
+        return (total, n_cols)
+
+    def columns(self) -> list[str]:
+        try:
+            cols = pd.read_json(
+                self.path,
+                lines=True,
+                nrows=1,
+                compression=self.compression,
+            ).columns.tolist()
+            if not cols:
+                raise ValueError(f"'{self.path.name}' is empty or not a valid JSON Lines file")
+            return cols
+        except Exception as exc:
+            if isinstance(exc, ValueError) and "is empty or not a valid JSON Lines file" in str(exc):
+                raise
+            raise ValueError(f"'{self.path.name}' is empty or not a valid JSON Lines file") from exc
+
+    def dtypes(self) -> pd.Series:
+        return pd.read_json(
+            self.path,
+            lines=True,
+            nrows=DTYPE_SAMPLE_ROWS,
+            compression=self.compression,
+        ).dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        if n <= 0:
+            return pd.DataFrame(columns=self.columns())
+        return pd.read_json(
+            self.path,
+            lines=True,
+            nrows=n,
+            compression=self.compression,
+        )
+
+    def tail(self, n: int) -> pd.DataFrame:
+        df = self.to_dataframe()
+        return df.tail(n)
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        if not progress:
+            df = pd.read_json(
+                self.path,
+                lines=True,
+                nrows=nrows,
+                compression=self.compression,
+            )
+            return df[columns] if columns else df
+        total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
+        chunks, done = [], 0
+        csize = chunk_size or self.chunk_size
+        for chunk in pd.read_json(
+            self.path,
+            lines=True,
+            chunksize=csize,
+            nrows=nrows,
+            compression=self.compression,
+        ):
+            chunks.append(chunk)
+            done += len(chunk)
+            _print_progress(done, total, "reading")
+        print()
+        df = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+        return df[columns] if columns else df
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
@@ -272,6 +489,8 @@ _READERS = {
     ".txt": TxtReader,
     ".dat": TxtReader,
     ".sas7bdat": SasReader,
+    ".jsonl": JsonlReader,
+    ".ndjson": JsonlReader,
 }
 
 # YAML connection configs (Databricks / SSH) are handled by the isolated pytae.connections
@@ -288,7 +507,7 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
 def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE):
-    suffix = path.suffix.lower()
+    suffix, compression = _split_path_suffixes(path)
     if suffix in _YAML_SUFFIXES:
         global _EXTERNAL_CONNECTIONS_MODULE
         if _EXTERNAL_CONNECTIONS_MODULE is None:
@@ -315,24 +534,40 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
     try:
         cls = _READERS[suffix]
     except KeyError:
-        supported = ", ".join(sorted((*_READERS, *_YAML_SUFFIXES)))
+        supported = ", ".join(sorted((*_READERS, *_YAML_SUFFIXES, ".csv.gz", ".txt.gz", ".dat.gz", ".jsonl.gz", ".ndjson.gz")))
         raise ValueError(f"unsupported file type '{path.suffix or path.name}'; supported: {supported}") from None
     if cls is CsvReader:
-        return CsvReader(path, sep=sep or ",", encoding=encoding, chunk_size=chunk_size)
+        return CsvReader(path, sep=sep or ",", encoding=encoding, chunk_size=chunk_size, compression=compression)
     if cls is TxtReader:
         return TxtReader(
             path,
             sep=sep or _TXT_DEFAULT_SEP[suffix],
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
             chunk_size=chunk_size,
+            compression=compression,
         )
+    if cls is JsonlReader:
+        return JsonlReader(path, chunk_size=chunk_size, compression=compression)
     if cls is SasReader:
         return SasReader(path, encoding=encoding, chunk_size=chunk_size)
     return cls(path, chunk_size=chunk_size)
 
 
 # .sas7bdat is intentionally excluded: pandas has no writer for that format.
-_WRITABLE_SUFFIXES = (".parquet", ".pq", ".csv", ".txt", ".dat")
+_WRITABLE_SUFFIXES = (
+    ".parquet",
+    ".pq",
+    ".csv",
+    ".txt",
+    ".dat",
+    ".jsonl",
+    ".ndjson",
+    ".csv.gz",
+    ".txt.gz",
+    ".dat.gz",
+    ".jsonl.gz",
+    ".ndjson.gz",
+)
 
 
 def write_dataframe(
@@ -347,11 +582,13 @@ def write_dataframe(
 ) -> None:
     if index is None:
         index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
-    suffix = dest.suffix.lower()
+    suffix, compression = _split_path_suffixes(dest)
     if suffix in (".parquet", ".pq"):
         _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)
     elif suffix == ".csv":
-        _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size, index=index)
+        _write_delimited(
+            df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size, index=index, compression=compression
+        )
     elif suffix in _TXT_DEFAULT_SEP:
         _write_delimited(
             df, dest,
@@ -360,7 +597,10 @@ def write_dataframe(
             progress=progress,
             chunk_size=chunk_size,
             index=index,
+            compression=compression,
         )
+    elif suffix in (".jsonl", ".ndjson"):
+        _write_jsonl(df, dest, progress=progress, chunk_size=chunk_size, compression=compression)
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
@@ -375,15 +615,51 @@ def _write_delimited(
     progress: bool,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool = False,
+    compression: str | None = None,
 ) -> None:
     total = len(df)
     if not progress or total == 0:
-        df.to_csv(dest, sep=sep, encoding=encoding, index=index)
+        df.to_csv(dest, sep=sep, encoding=encoding, index=index, compression=compression)
         return
     done = 0
     for start in range(0, total, chunk_size):
         chunk = df.iloc[start:start + chunk_size]
-        chunk.to_csv(dest, sep=sep, encoding=encoding, index=index, mode="w" if start == 0 else "a", header=(start == 0))
+        chunk.to_csv(
+            dest,
+            sep=sep,
+            encoding=encoding,
+            index=index,
+            mode="w" if start == 0 else "a",
+            header=(start == 0),
+            compression=compression,
+        )
+        done += len(chunk)
+        _print_progress(done, total, "writing")
+    print()
+
+
+def _write_jsonl(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    progress: bool,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    compression: str | None = None,
+) -> None:
+    total = len(df)
+    if not progress or total == 0:
+        df.to_json(dest, orient="records", lines=True, compression=compression)
+        return
+    done = 0
+    for start in range(0, total, chunk_size):
+        chunk = df.iloc[start:start + chunk_size]
+        chunk.to_json(
+            dest,
+            orient="records",
+            lines=True,
+            mode="w" if start == 0 else "a",
+            compression=compression,
+        )
         done += len(chunk)
         _print_progress(done, total, "writing")
     print()
