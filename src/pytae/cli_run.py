@@ -100,14 +100,18 @@ def cmd_convert(
     progress: bool = False,
     announce: bool = True,
     chunk_size: int = 200_000,
+    index: bool | None = None,
 ) -> None:
     if rename:
         df = df.rename(columns=rename)
     dest = output if output is not None else source.with_suffix(".csv")
     if dest.resolve() == source.resolve():
-        raise SystemExit(f"refusing to overwrite the source file '{source}'; pass -o/--output to choose a different path")
+        raise SystemExit(
+            f"refusing to overwrite the source file '{source}'; "
+            f"specify a different format or an explicit path with -o/--output"
+        )
     try:
-        write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size)
+        write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size, index=index)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if announce:

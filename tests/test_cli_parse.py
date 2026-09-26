@@ -23,19 +23,11 @@ def test_expand_paths_single_and_list(tmp_path):
     f1.write_text("a,b\n1,2\n")
     f2.write_text("a,b\n3,4\n")
 
-    # Single string
     assert expand_paths(str(f1)) == [f1]
-
-    # List of strings (simulating shell expansion)
     assert expand_paths([str(f1), str(f2)]) == [f1, f2]
-
-    # Quoted glob string
     assert expand_paths(str(tmp_path / "*.csv")) == [f1, f2]
-
-    # Deduplication
     assert expand_paths([str(f1), str(f1), str(f2)]) == [f1, f2]
 
-    # No match error
     with pytest.raises(SystemExit) as exc_info:
         expand_paths(str(tmp_path / "*.parquet"))
     assert "no files matched pattern" in str(exc_info.value)

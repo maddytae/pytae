@@ -311,6 +311,7 @@ class _Pipeline:
         else:
             n = min(n, len(df))
             sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
+        sampled = sampled.reset_index(drop=True)
         self._df = sampled
         return sampled
 

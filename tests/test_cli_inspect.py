@@ -568,5 +568,97 @@ def test_cli_invalid_progress_chunk_size_errors(tmp_path):
     assert exc_info.value.code == 2
 
 
+def test_describe_and_crosstab_export_preserves_index(tmp_path):
+    src = tmp_path / "data.parquet"
+    df = pd.DataFrame({"sp": ["A", "B", "A"], "val": [10, 20, 30]})
+    df.to_parquet(src, index=False)
+
+    desc_csv = tmp_path / "desc.csv"
+    assert cli.main([str(src), "-describe", "-o", str(desc_csv)]) == 0
+    read_desc_csv = pd.read_csv(desc_csv, index_col=0)
+    assert list(read_desc_csv.index) == ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
+
+    desc_pq = tmp_path / "desc.parquet"
+    assert cli.main([str(src), "-describe", "-o", str(desc_pq)]) == 0
+    read_desc_pq = pd.read_parquet(desc_pq)
+    assert list(read_desc_pq.index) == ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
+
+    ct_csv = tmp_path / "ct.csv"
+    assert cli.main([str(src), "-crosstab", "index=sp,columns=sp", "-o", str(ct_csv)]) == 0
+    read_ct_csv = pd.read_csv(ct_csv, index_col=0)
+    assert list(read_ct_csv.index) == ["A", "B"]
+
+    reg_csv = tmp_path / "reg.csv"
+    assert cli.main([str(src), "-head", "2", "-o", str(reg_csv)]) == 0
+    read_reg = pd.read_csv(reg_csv)
+    assert list(read_reg.columns) == ["sp", "val"]
+
+
+def test_batch_export_colliding_stems_error(tmp_path, capsys):
+    f1 = tmp_path / "stem.parquet"
+    f2 = tmp_path / "stem.pq"
+    pd.DataFrame({"x": [1]}).to_parquet(f1, index=False)
+    pd.DataFrame({"y": [2]}).to_parquet(f2, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", "csv"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "multiple input files resolve to the same destination path" in err
+
+
+def test_cli_progress_preceding_path(tmp_path):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1, 2]}).to_parquet(src, index=False)
+    dest1 = tmp_path / "out1.csv"
+    dest2 = tmp_path / "out2.csv"
+    dest3 = tmp_path / "out3.csv"
+
+    assert cli.main(["-progress", str(src), "-o", str(dest1)]) == 0
+    assert dest1.exists()
+
+    assert cli.main(["-o", str(dest2), "-progress", str(src)]) == 0
+    assert dest2.exists()
+
+    assert cli.main(["-progress", "1000", str(src), "-o", str(dest3)]) == 0
+    assert dest3.exists()
+
+
+def test_cli_intermixed_positional_args(tmp_path):
+    f1 = tmp_path / "a.parquet"
+    f2 = tmp_path / "b.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(f1, index=False)
+    pd.DataFrame({"b": [2]}).to_parquet(f2, index=False)
+
+    exit_code = cli.main([str(f1), "-o", "csv", str(f2)])
+    assert exit_code == 0
+    assert (tmp_path / "a.csv").exists()
+    assert (tmp_path / "b.csv").exists()
+
+
+def test_in_place_overwrite_error_message(tmp_path, capsys):
+    src = tmp_path / "file.csv"
+    src.write_text("a,b\n1,2\n")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-o", "csv"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "refusing to overwrite the source file" in err
+    assert "specify a different format or an explicit path with -o/--output" in err
+
+
+def test_non_df_terminal_op_error_message(tmp_path, capsys):
+    src = tmp_path / "data.parquet"
+    pd.DataFrame({"a": [1]}).to_parquet(src, index=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(src), "-shape", "-head", "5"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-shape does not return a DataFrame/Series, so no flag may follow it (except '-o clip'" in err
+
+
+
 
 

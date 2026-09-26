@@ -335,13 +335,23 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
 _WRITABLE_SUFFIXES = (".parquet", ".pq", ".csv", ".txt", ".dat")
 
 
-def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, encoding: str | None = None,
-                     progress: bool = False, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+def write_dataframe(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    sep: str | None = None,
+    encoding: str | None = None,
+    progress: bool = False,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    index: bool | None = None,
+) -> None:
+    if index is None:
+        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
     suffix = dest.suffix.lower()
     if suffix in (".parquet", ".pq"):
-        _write_parquet(df, dest, progress=progress, chunk_size=chunk_size)
+        _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)
     elif suffix == ".csv":
-        _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size)
+        _write_delimited(df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size, index=index)
     elif suffix in _TXT_DEFAULT_SEP:
         _write_delimited(
             df, dest,
@@ -349,32 +359,48 @@ def write_dataframe(df: pd.DataFrame, dest: Path, *, sep: str | None = None, enc
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
             progress=progress,
             chunk_size=chunk_size,
+            index=index,
         )
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
 
 
-def _write_delimited(df: pd.DataFrame, dest: Path, *, sep: str, encoding: str | None, progress: bool,
-                     chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+def _write_delimited(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    sep: str,
+    encoding: str | None,
+    progress: bool,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    index: bool = False,
+) -> None:
     total = len(df)
     if not progress or total == 0:
-        df.to_csv(dest, sep=sep, encoding=encoding, index=False)
+        df.to_csv(dest, sep=sep, encoding=encoding, index=index)
         return
     done = 0
     for start in range(0, total, chunk_size):
         chunk = df.iloc[start:start + chunk_size]
-        chunk.to_csv(dest, sep=sep, encoding=encoding, index=False, mode="w" if start == 0 else "a", header=(start == 0))
+        chunk.to_csv(dest, sep=sep, encoding=encoding, index=index, mode="w" if start == 0 else "a", header=(start == 0))
         done += len(chunk)
         _print_progress(done, total, "writing")
     print()
 
 
-def _write_parquet(df: pd.DataFrame, dest: Path, *, progress: bool, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+def _write_parquet(
+    df: pd.DataFrame,
+    dest: Path,
+    *,
+    progress: bool,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    index: bool = False,
+) -> None:
     if not progress or len(df) == 0:
-        df.to_parquet(dest, index=False)
+        df.to_parquet(dest, index=index)
         return
-    table = pa.Table.from_pandas(df, preserve_index=False)
+    table = pa.Table.from_pandas(df, preserve_index=index)
     total = table.num_rows
     done = 0
     with pa_parquet.ParquetWriter(dest, table.schema) as writer:

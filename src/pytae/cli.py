@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -44,9 +45,67 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
+_DATA_SUFFIXES = frozenset((".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".yaml", ".yml"))
+
+
+def _is_path_like(token: str) -> bool:
+    if token.startswith("-"):
+        return False
+    if any(ch in token for ch in "*?[]"):
+        return True
+    if "/" in token or "\\" in token:
+        return True
+    p = Path(token)
+    if p.exists():
+        return True
+    if p.suffix.lower() in _DATA_SUFFIXES:
+        return True
+    return False
+
+
+def _normalize_progress_args(argv: list[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-progress", "--progress"):
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                try:
+                    int(nxt)
+                    out.append(arg)
+                    out.append(nxt)
+                    i += 2
+                    continue
+                except ValueError:
+                    out.append("--progress=200000")
+                    i += 1
+                    continue
+            else:
+                out.append("--progress=200000")
+                i += 1
+                continue
+        out.append(arg)
+        i += 1
+    return out
+
+
+class PytaeParser(argparse.ArgumentParser):
+    """Custom parser that normalizes optional-value flags such as -progress."""
+
+    def parse_known_args(  # type: ignore[override]
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        if args is None:
+            args = sys.argv[1:]
+        normalized = _normalize_progress_args(list(args))
+        return super().parse_known_args(normalized, namespace)
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = PytaeParser(
         prog="pytae",
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
@@ -230,15 +289,26 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
         if any(e in ("-convert", "--convert") for e in extras):
             parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
-        msg = f"unrecognized arguments: {' '.join(extras)}"
-        if extras and all(not e.startswith("-") for e in extras):
-            # likely an unquoted value with a space (e.g. a column name) split by the
-            # shell into separate argv tokens -- the whole spec needs one pair of quotes
-            msg += (
-                "\nIf this is part of a value with a space (e.g. a column name), wrap the "
-                'whole spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.'
-            )
-        parser.error(msg)
+        if args.file is None:
+            path_extras = [e for e in extras if _is_path_like(e)]
+            if path_extras:
+                if args.path is None:
+                    args.path = []
+                elif not isinstance(args.path, list):
+                    args.path = [args.path]
+                args.path.extend(path_extras)
+                extras = [e for e in extras if not _is_path_like(e)]
+
+        if extras:
+            msg = f"unrecognized arguments: {' '.join(extras)}"
+            if extras and all(not e.startswith("-") for e in extras):
+                # likely an unquoted value with a space (e.g. a column name) split by the
+                # shell into separate argv tokens -- the whole spec needs one pair of quotes
+                msg += (
+                    "\nIf this is part of a value with a space (e.g. a column name), wrap the "
+                    'whole spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.'
+                )
+            parser.error(msg)
 
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000
@@ -251,7 +321,7 @@ def main(argv: list[str] | None = None) -> int:
         if op in NON_DF_TERMINAL_OPS and idx != last_idx:
             parser.error(
                 f"-{op} does not return a DataFrame/Series, so no flag may follow it "
-                f"(matches pandas: you can't chain another call off "
+                f"(except '-o clip'; matches pandas: you can't chain another call off "
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
 
@@ -356,6 +426,18 @@ def main(argv: list[str] | None = None) -> int:
                 "-o/--output with multiple matched files requires a format (e.g. '-o csv' or '-o parquet'), "
                 "not a single file path"
             )
+        assert out_target is not None
+        fmt = out_target.lower()
+        ext = ".parquet" if fmt == "pq" else f".{fmt}"
+        dest_map: dict[Path, Path] = {}
+        for p in paths:
+            dest = p.with_suffix(ext).resolve()
+            if dest in dest_map:
+                parser.error(
+                    f"-o {out_target}: multiple input files resolve to the same destination path '{dest}': "
+                    f"'{dest_map[dest]}' and '{p}'"
+                )
+            dest_map[dest] = p
 
     exit_code = 0
 
