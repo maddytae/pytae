@@ -211,11 +211,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
                               "current result so far), quoted since it has internal commas, e.g. "
                               "\"frames='df1,df2,df3'\"")
-    parser.add_argument("-progress", "--progress", action="store_true",
-                         help="show row-count progress while converting large files")
-    parser.add_argument("-chunk_size", "--chunk_size", "-chunksize", "--chunksize",
-                         dest="chunk_size", type=parse_positive_int, default=None, metavar="N",
-                         help="chunk size (row count) for streaming progress and chunked I/O (default: 200000)")
+    parser.add_argument("-progress", "--progress", nargs="?", const=200_000, type=parse_positive_int,
+                         default=None, metavar="N",
+                         help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
                          help="render tables as a bordered markdown table instead of plain pandas text")
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
@@ -242,8 +240,10 @@ def main(argv: list[str] | None = None) -> int:
             )
         parser.error(msg)
 
-    if args.chunk_size is not None:
-        args.progress = True
+    has_progress = args.progress is not None
+    chunk_size = args.progress or 200_000
+    args.progress = has_progress
+    args.chunk_size = chunk_size
 
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
