@@ -65,7 +65,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, pivot back to wide tables with standard `c=`, `v=`, `a=` keys | [library/shape.ipynb](library/shape.ipynb) |
 | **Aggregation** | `pt.agg_df()`, `df.pt.agg_df()` | Summary statistics auto-grouped by all non-numeric columns (`n` for row counts) | [library/agg_df.ipynb](library/agg_df.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
-| **Plotting** | `pt.Plotter`, `Plotter.facet()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [docs/plotting.md](plotting.md)<br>• [plotting/plotter.ipynb](plotting/plotter.ipynb)<br>• [plotting/more_plots.ipynb](plotting/more_plots.ipynb) |
+| **Plotting** | `pt.Plotter`, `Plotter.facet()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [docs/plotting.md](plotting.md)<br>• [plotting/plotter.ipynb](plotting/plotter.ipynb) |
 | **Utilities** | `clean_columns`, `replace_values`, `handle_missing`, `group_x`, `cols`, `to_clip` | Header normalization, scoped cell value replacement, NA imputation, broadcast transforms, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
 
 ---
@@ -176,27 +176,31 @@ pt.sql(orders, """
 
 ---
 
-### 7. Plotting — `Plotter`
+### 7. Plotting — `Plotter` & `df.pt.plot()`
 
-Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, and grid faceting:
+Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, small-multiples grid faceting, and direct accessor chaining via `df.pt.plot()`:
 
 ```python
-from pytae.plotting import Plotter
-
-# Fluent plotting pipeline
-k = Plotter(figsize=(8, 5))
+# Direct accessor chaining
 (
-    k
-    .data(penguins)
-    .plot(kind="scatter", x="bill_length_mm", y="bill_depth_mm", c="species", cmap="viridis")
+    penguins
+    .pt.select("species", "bill_length_mm", "bill_depth_mm")
+    .pt.plot(kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species", palette="tab10")
     .finalize()
 )
+
+# Multi-panel mosaic dashboard
+p = pt.Plotter(penguins, mosaic="AB", figsize=(10, 4))
+p.plot(on="A", kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species")
+p.plot(on="B", kind="box", x="species", y="bill_length_mm")
+p.finalize(consolidate_legends=True)
 ```
 
 👉 **Dedicated Guides:**
 - [Plotting Architecture & Capabilities Guide](plotting.md)
-- [Interactive Plotter Guide](plotting/plotter.ipynb)
-- [Advanced Dashboards & Recipes](plotting/more_plots.ipynb)
+- [Interactive Plotter Guide (Progressive Walkthrough)](plotting/plotter.ipynb)
+
+
 
 ---
 

@@ -69,14 +69,19 @@ def _bind_shape():
 
 
 def __getattr__(name):
-    if name == "Plotter":
+    if name in ("Plotter", "plot", "finalize"):
         try:
-            from .plotting import Plotter
+            from .plotting import Plotter, finalize, plot
         except ImportError as exc:
             raise ImportError(
-                "Plotter requires matplotlib. Install with: pip install 'pytae[plot]'"
+                f"{name} requires matplotlib. Install with: pip install 'pytae[plot]'"
             ) from exc
-        return Plotter
+        if name == "Plotter":
+            return Plotter
+        elif name == "plot":
+            return plot
+        else:
+            return finalize
     if name in ("long", "wide"):
         _bind_shape()
         return globals()[name]
@@ -87,10 +92,13 @@ __all__ = [
     "sample_data",
     "sample",
     "Plotter",
+    "plot",
+    "finalize",
     "select",
     "qry",
     "mutate",
     "agg_df",
+
     "long",
     "wide",
     "group_x",
