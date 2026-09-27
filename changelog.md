@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.6.0] - Unreleased
+## [3.6.0] - 2026-09-27
 
 ### Breaking Changes
 - **Grouped Mutations (`group_x` removed)**:
