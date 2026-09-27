@@ -138,7 +138,7 @@ def test_drop_after_agg_df_sees_agg_columns(tmp_path, capsys):
     )
 
     exit_code = cli.main(
-        [path, "-agg_df", "val = sum, n = n", "-drop", "val", "-cols"]
+        [path, "-by", "grp", "-agg", "val = sum, n = n", "-drop", "val", "-cols"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]

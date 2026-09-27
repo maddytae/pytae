@@ -140,9 +140,9 @@ def test_select_after_agg_df_sees_agg_columns(tmp_path, capsys):
         pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
     )
 
-    # n is created by agg_df; a starting-view -select would reject it
+    # n is created by agg; a starting-view -select would reject it
     exit_code = cli.main(
-        [path, "-agg_df", "val = sum, n = n", "-select", "grp,n", "-cols"]
+        [path, "-by", "grp", "-agg", "val = sum, n = n", "-select", "grp,n", "-cols"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
@@ -155,7 +155,7 @@ def test_select_agg_df_select_shape_chains(tmp_path, capsys):
 
     # starting-view chaining would collapse to val-only before agg → (1, 1)
     exit_code = cli.main(
-        [path, "-select", "grp,val", "-agg_df", "sum", "-select", "val", "-shape"]
+        [path, "-select", "grp,val", "-by", "grp", "-agg", "sum", "-select", "val", "-shape"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"

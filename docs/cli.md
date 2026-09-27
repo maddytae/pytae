@@ -72,7 +72,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
-| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-agg_df` (auto-detect group cols), `-group_by` + `-agg`, `-group_x` (broadcast transforms) |
+| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-group_x` (broadcast transforms) |
 | **Reshaping & Matrices** | [Reshaping & Cross-Tabulation Guide](cli/reshape.md) | `-long` (melt), `-wide` (pivot), `-crosstab` (contingency matrix), `-value_counts`, `-unique`, `-sort_by` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, `.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.csv.gz`, `.jsonl.gz`, `-progress` |
@@ -203,11 +203,12 @@ pytae data.parquet -rename "old_col:new_col"
 
 Perform automated or explicit group summaries, or append group-level statistics to every individual row without collapsing the table.
 
-- **Primary flags**: `-agg_df` (auto-detects non-numeric group keys), `-group_by` + `-agg` (explicit named aggregation), `-group_x` (broadcast transform)
+- **Primary flags**: `-by` (group columns), `-agg` (aggregation functions / mappings), `-group_x` (broadcast transform)
 
 ```bash
-pytae data.parquet -select "species,body_mass_g" -agg_df mean
-pytae data.parquet -group_by species -agg "column=body_mass_g,aggfunc=mean,as=avg_mass"
+pytae data.parquet -by species -agg mean
+pytae data.parquet -by species -agg "avg_mass = body_mass_g:mean"
+pytae data.parquet -agg mean  # Whole-table grand summary
 pytae data.parquet -group_x "group=species,v=body_mass_g,a=mean"  # Broadcast transform
 ```
 
@@ -320,9 +321,8 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-replace_values SPEC` | Clean | Replace cell values (`v=mapping`, `c=cols`, `exact=bool`) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-handle_missing [FILL]` | Clean | Fill NAs (`.` for object, `0` for numeric, or custom fill) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-rename OLD:NEW,...` | Clean | Rename columns anywhere in pipeline or during export | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-agg_df [SPEC]` | Aggregate | Auto-group by non-numeric columns and aggregate numerics | [cli/aggregate.md](cli/aggregate.md) |
-| `-group_by COLS` | Aggregate | Specify explicit group columns for `-agg` | [cli/aggregate.md](cli/aggregate.md) |
-| `-agg SPEC` | Aggregate | Named aggregations with `-group_by` (`column=`, `aggfunc=`, `as=`) | [cli/aggregate.md](cli/aggregate.md) |
+| `-by COLS` | Aggregate | Grouping columns for `-agg` and `-group_x` | [cli/aggregate.md](cli/aggregate.md) |
+| `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
 | `-group_x SPEC` | Aggregate | Broadcast group aggregate column to all rows (`group=`, `v=`, `a=`) | [cli/aggregate.md](cli/aggregate.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pivot long table to wide format (`c=`, `v=`, `a=`) | [cli/reshape.md](cli/reshape.md) |
@@ -358,8 +358,8 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Run SQL queries** | `-sql` | [DuckDB SQL Engine](cli/sql.md) |
 | **Replace cell values** | `-replace_values` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Impute missing values (NA)** | `-handle_missing` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
-| **Quick summary (auto group)** | `-agg_df` | [Aggregations & Grouping](cli/aggregate.md) |
-| **Custom aggregation (explicit groups)** | `-group_by` + `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
+| **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
+| **Whole-table summary** | `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
 | **Append group statistic to rows** | `-group_x` | [Aggregations & Grouping](cli/aggregate.md) |
 | **Unpivot / melt (wide → long)** | `-long` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
 | **Pivot table (long → wide)** | `-wide` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
@@ -424,8 +424,8 @@ python -c "import pytae; pytae.sample_data['flights'].to_parquet('flights.parque
 ### Quick Commands with Sample Datasets
 
 ```bash
-# Filter and auto-aggregate
-pytae penguins.parquet -qry "species = 'Adelie'" -agg_df mean
+# Filter and aggregate
+pytae penguins.parquet -qry "species = 'Adelie'" -by species -agg mean
 
 # Two-way cross-tabulation
 pytae penguins.parquet -crosstab "index=species,columns=island"
@@ -437,11 +437,11 @@ pytae tips.parquet -select "day,total_bill,tip" -group_x "group=day,v=tip,a=mean
 pytae titanic.parquet -crosstab "index=pclass,columns=survived,margins=true"
 
 # Aggregate numeric metrics per cut
-pytae diamonds.parquet -select "cut,price" -agg_df mean
+pytae diamonds.parquet -select "cut,price" -by cut -agg mean
 
 # Sort by numeric column descending
 pytae mpg.parquet -select "origin,mpg" -sort_by "mpg desc" -head 5
 
 # Explicit grouping with custom aggregation
-pytae flights.parquet -group_by year -agg "column=passengers,aggfunc=sum"
+pytae flights.parquet -by year -agg "passengers = sum"
 ```

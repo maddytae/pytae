@@ -157,30 +157,26 @@ def build_parser() -> argparse.ArgumentParser:
                          action=_OrderedStore,
                          help="sort rows by a comma-separated column list, optionally ending with "
                               "asc or desc (default: asc), e.g. species,body_mass_g desc")
-    parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
-                         help="explicit group-by columns for -agg (comma-separated); also used by -group_x "
-                              "if group= is omitted")
+    parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
+                         help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
+                              "Used by -agg and -group_x.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
                               "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
                               "regex, exclude_dtype); repeat to filter remaining columns, including after "
-                              '-agg_df/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
+                              '-agg/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
     parser.add_argument("--drop", "-drop", dest="drop", action=_OrderedAppend, default=None, metavar="COLUMNS",
                          help="drop columns by exact name at this point in the pipeline (comma-separated names "
                               "only; use -select for dtype=/contains=/regex=/slices); remaining columns keep "
                               'their order, e.g. -drop "sex,island"')
-    parser.add_argument("-agg_df", "--agg_df", dest="agg_df", nargs="?", const="sum", default=None,
+    parser.add_argument("-agg", "--agg", "-agg_df", "--agg_df", dest="agg", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
-                         help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
-                              "defaults to sum when no value given; "
-                              "accepts a name (mean), a comma list (mean,sum), or a mapping "
-                              "(body_mass_g: mean, n: n)")
-    parser.add_argument("-agg", "--agg", dest="agg", metavar="KEY=VALUE,...", action=_OrderedStore,
-                         help="aggregate using explicit -group_by columns; key=value specs "
-                              "(column=, aggfunc=, optional as=), e.g. "
-                              "column=value,aggfunc=sum,as=v; several specs separated by ';'; requires -group_by")
+                         help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
+                              "without -by, computes a whole-table summary (grand total). "
+                              "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
+                              "(v1 = sum, total = v1:sum, count = n). Defaults to sum.")
     parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
@@ -377,7 +373,7 @@ def main(argv: list[str] | None = None) -> int:
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.agg_df is not None, args.agg is not None,
+                         args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
@@ -387,19 +383,17 @@ def main(argv: list[str] | None = None) -> int:
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg_df is not None, args.agg is not None,
+                     args.agg is not None,
                      args.group_x is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
                      args.clean_columns is not None, args.merge, args.concat])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
+                     "-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
                      "run -shape separately")
-    if args.agg_df is not None and args.agg is not None:
-        parser.error("-agg_df and -agg can't be combined; choose one")
-    if args.group_by is not None and args.agg is None and args.group_x is None:
-        parser.error("-group_by requires -agg or -group_x")
+    if args.by is not None and args.agg is None and args.group_x is None:
+        parser.error("-by requires -agg or -group_x")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 

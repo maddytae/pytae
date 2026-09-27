@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from .accessor import PtAccessor  # noqa: F401  — registers df.pt
-from .agg_df import agg_df
+from .agg_df import agg, agg_df
 from .mutate import mutate
 from .other_utilities import (
     clean_columns,
@@ -97,6 +97,7 @@ __all__ = [
     "select",
     "qry",
     "mutate",
+    "agg",
     "agg_df",
 
     "long",

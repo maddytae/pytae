@@ -244,19 +244,19 @@ def parse_qry(raw: str) -> dict:
 
 
 def parse_agg(raw: str):
-    """Parse -agg_df: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
-    mapping (body_mass_g = mean, n = n). Quote a mapping key only to protect a comma."""
+    """Parse -agg: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
+    mapping (val = sum, n = n, total = v1:sum). Quote a mapping key only to protect a comma."""
     raw = (raw or "").strip()
     if not raw:
         return "sum"
     if raw[0] in "{[":
         raise SystemExit(
-            "-agg_df: use a name (mean), a comma list (mean,sum), or a mapping "
-            "(col: mean, n: n)"
+            "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
+            "(col = mean, n = n)"
         )
     entries = [e for e in _tokenize(raw, ",", keep_quotes=True) if e]
     if not entries:
-        raise SystemExit("-agg_df: expected a name, a comma list, or a mapping")
+        raise SystemExit("-agg: expected a name, a comma list, or a mapping")
 
     def _is_mapping(entry: str) -> bool:
         return len(_tokenize(entry, "=", keep_quotes=True)) >= 2 or len(_tokenize(entry, ":", keep_quotes=True)) >= 2
@@ -269,17 +269,22 @@ def parse_agg(raw: str):
                 parts = _tokenize(entry, "=", keep_quotes=True)
                 key = _unquote_name(parts[0])
                 value = _unquote_name("=".join(parts[1:]))
+                if key in ("column", "aggfunc"):
+                    raise SystemExit(
+                        "-agg: the old 'column=...,aggfunc=...' syntax is retired. "
+                        "Use '-by <cols> -agg \"col = aggfunc\"' or '-agg \"total = col:aggfunc\"' instead."
+                    )
             elif ":" in entry:
-                raise SystemExit(f"-agg_df: invalid mapping entry '{entry}'; use '=' (e.g. -agg_df 'col = mean'). Colon ':' is not supported.")
+                raise SystemExit(f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported.")
             else:
-                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
+                raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             if not key or not value:
-                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
+                raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             out[key] = value
         return out
     if any(mapped):
         raise SystemExit(
-            "-agg_df: mix of names and col=aggfunc mappings; use one or the other"
+            "-agg: mix of names and col=aggfunc mappings; use one or the other"
         )
     names = [_unquote_name(e) for e in entries]
     return names[0] if len(names) == 1 else names

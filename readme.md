@@ -49,8 +49,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 pt.select(penguins, "species", contains="bill")
 (penguins
- .pt.select("species", "island", "bill_length_mm", "body_mass_g")
- .pt.agg_df(a=["mean", "n"])
+ .pt.agg_df(["species", "island"], a=["mean", "n"])
 )
 ```
 
@@ -58,7 +57,7 @@ pt.select(penguins, "species", contains="bill")
 - **Selection** — `pt.select()`: columns by name, regex, dtype, or name pattern
 - **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, `if_else()`, `case_when()`, `map()`
 - **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns
-- **Aggregation** — `pt.agg_df()`: auto-detects group columns and aggregates the rest
+- **Aggregation** — `pt.agg_df()`: groups by explicit `by=` column(s) (or `None` for whole-table summary) and aggregates numeric columns
 - **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
 - **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `data`
 
@@ -73,7 +72,7 @@ See [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library
 | **Spaced Columns (Filter)** | String expressions handle spaces directly | `df.pt.qry("bill length mm > 40")` |
 | **Spaced Columns (Create)** | Unpack dictionary with `**` | `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})` |
 | **Spaced Columns (Expr)** | Reference via brackets `[col]` or backticks `` `col` `` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
-| **Selective Grouping** | `agg_df` groups by all non-numeric cols; select first | `df.pt.select("species", "body_mass_g").pt.agg_df("mean")` |
+| **Selective Grouping** | `agg_df` groups by explicit `by=` column(s) | `df.pt.agg_df("species", "mean")` |
 
 ## License
 

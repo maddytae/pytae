@@ -16,7 +16,6 @@ from pytae.cli_parsing import (
     parse_clean_columns_arg,
     parse_columns,
     parse_crosstab_arg,
-    parse_group_agg,
     parse_group_x_arg,
     parse_long_arg,
     parse_sort_by,
@@ -591,32 +590,19 @@ def _process_path(
                 _output_text(_format_table(sorted_df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
-        elif op == "agg_df":
-            aggfunc = parse_agg(args.agg_df)
-            if isinstance(aggfunc, dict):
-                result = _apply_round(agg_df(pipeline.dataframe(), dropna=args.dropna, **aggfunc), args.round_ndigits)
-            else:
-                result = _apply_round(agg_df(pipeline.dataframe(), aggfunc, dropna=args.dropna), args.round_ndigits)
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
-        elif op == "agg":
-            if not args.group_by:
-                return _fail(parser, batch, "-agg requires -group_by")
-            source_df = pipeline.dataframe()
-            group_cols = parse_columns(args.group_by)
-            if any(c not in source_df.columns for c in group_cols):
-                return _fail(parser, batch, unknown_columns_message("-group_by", group_cols, list(source_df.columns)))
-            agg_spec = parse_group_agg(args.agg)
-            named_agg = {}
-            for col, out_name, aggfunc in agg_spec:
-                if col not in source_df.columns:
-                    return _fail(parser, batch, unknown_columns_message("-agg", [col], list(source_df.columns)))
-                named_agg[out_name] = pd.NamedAgg(column=col, aggfunc=aggfunc)
-            result = source_df.groupby(group_cols, dropna=args.dropna, observed=True, as_index=False).agg(**named_agg)
-            result = _apply_round(result, args.round_ndigits)
+        elif op in ("agg", "agg_df"):
+            aggfunc = parse_agg(args.agg)
+            df_cur = pipeline.dataframe()
+            by_cols: list[str] | None = parse_columns(args.by) if args.by else None
+            if by_cols and any(c not in df_cur.columns for c in by_cols):
+                return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            try:
+                if isinstance(aggfunc, dict):
+                    result = _apply_round(agg_df(df_cur, by_cols, dropna=args.dropna, **aggfunc), args.round_ndigits)
+                else:
+                    result = _apply_round(agg_df(df_cur, by_cols, aggfunc, dropna=args.dropna), args.round_ndigits)
+            except Exception as e:
+                return _fail(parser, batch, str(e))
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(result, pretty=args.pretty), args)
@@ -625,8 +611,8 @@ def _process_path(
         elif op == "group_x":
             source_df = pipeline.dataframe()
             gx = parse_group_x_arg(args.group_x)
-            if "group" not in gx and args.group_by:
-                gx["group"] = parse_columns(args.group_by)
+            if "group" not in gx and args.by:
+                gx["group"] = parse_columns(args.by)
             gx["dropna"] = args.dropna
             group_cols = gx.get("group") or []
             if group_cols and any(c not in source_df.columns for c in group_cols):

@@ -32,13 +32,13 @@ def sample_dataset_dir(tmp_path_factory):
 
 # Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
-    ("penguins.parquet", ["-qry", "species = 'Adelie'", "-agg_df", "mean"]),
+    ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
     ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
     ("tips.parquet", ["-select", "day,total_bill,tip", "-group_x", "group=day,v=tip,a=mean"]),
     ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),
-    ("diamonds.parquet", ["-select", "cut,price", "-agg_df", "mean"]),
+    ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
     ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
-    ("flights.parquet", ["-group_by", "year", "-agg", "column=passengers,aggfunc=sum"]),
+    ("flights.parquet", ["-by", "year", "-agg", "passengers = sum"]),
 ]
 
 
@@ -110,10 +110,10 @@ def test_crosstab_margins_match_known_titanic_totals(sample_parquet, capsys):
     assert last_line == ["All", "549", "342", "891"]
 
 
-def test_agg_df_groups_by_diamonds_cut_categories(sample_parquet, capsys):
+def test_agg_groups_by_diamonds_cut_categories(sample_parquet, capsys):
     path = sample_parquet("diamonds")
 
-    exit_code = cli.main([path, "-select", "cut,price", "-agg_df", "mean", "-shape"])
+    exit_code = cli.main([path, "-select", "cut,price", "-by", "cut", "-agg", "mean", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -124,7 +124,7 @@ def test_group_by_agg_sum_matches_known_flights_totals(sample_parquet, capsys):
     path = sample_parquet("flights")
 
     exit_code = cli.main([
-        path, "-group_by", "year", "-agg", "column=passengers,aggfunc=sum", "-head", "3",
+        path, "-by", "year", "-agg", "passengers = sum", "-head", "3",
     ])
 
     out = capsys.readouterr().out

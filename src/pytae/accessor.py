@@ -13,6 +13,7 @@ from typing import Any
 
 import pandas as pd
 
+from .agg_df import _UNSET
 from .agg_df import agg_df as _agg_df
 from .mutate import mutate as _mutate
 from .other_utilities import (
@@ -52,8 +53,21 @@ class PtAccessor:
     def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
         return _sql(self._obj, query, **frames)
 
-    def agg_df(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        return _agg_df(self._obj, *args, **kwargs)
+    def agg_df(
+        self,
+        by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
+        *args: Any,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        return _agg_df(self._obj, by, *args, **kwargs)
+
+    def agg(
+        self,
+        by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
+        *args: Any,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        return _agg_df(self._obj, by, *args, **kwargs)
 
     def long(self, c: str = "variable", v: str = "value") -> pd.DataFrame:
         from .shape import long as _long

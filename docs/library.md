@@ -42,12 +42,12 @@ penguins = pt.sample("penguins")
     .pt.qry("body_mass_g > 3000, species == 'Gentoo'")
     .pt.select("species", "island", "bill_length_mm", "body_mass_g")
     .pt.mutate(mass_kg="body_mass_g / 1000")
-    .pt.agg_df(a=["mean", "n"])
+    .pt.agg_df(["species", "island"], a=["mean", "n"])
 )
 
 # 2. Function style: standalone calls
 subset = pt.select(penguins, "species", contains="bill")
-summary = pt.agg_df(subset, "mean")
+summary = pt.agg_df(subset, "species", "mean")
 ```
 
 ---
@@ -63,7 +63,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, pivot back to wide tables with standard `c=`, `v=`, `a=` keys | [library/shape.ipynb](library/shape.ipynb) |
-| **Aggregation** | `pt.agg_df()`, `df.pt.agg_df()` | Summary statistics auto-grouped by all non-numeric columns (`n` for row counts) | [library/agg_df.ipynb](library/agg_df.ipynb) |
+| **Aggregation** | `pt.agg_df()`, `df.pt.agg_df()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg_df.ipynb](library/agg_df.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `Plotter.facet()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [docs/plotting.md](plotting.md)<br>• [plotting/plotter.ipynb](plotting/plotter.ipynb) |
 | **Utilities** | `clean_columns`, `replace_values`, `handle_missing`, `group_x`, `cols`, `to_clip` | Header normalization, scoped cell value replacement, NA imputation, broadcast transforms, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
@@ -144,12 +144,13 @@ wide = pt.wide(tall, c="feature", v="reading", a="mean")
 
 ### 5. Aggregation — `agg_df()`
 
-Automatically groups by all non-numeric columns and aggregates numeric columns, with `n` aliasing row counts:
+Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts:
 
 ```python
-pt.agg_df(penguins, "mean")                           # Mean of all numeric columns
-pt.agg_df(penguins, ["mean", "sum", "n"])             # Multiple summary statistics
-pt.agg_df(penguins, body_mass_g="mean", count="n")    # Column-specific aggregations
+pt.agg_df(penguins, "species", "mean")                           # Mean of all numeric columns per species
+pt.agg_df(penguins, ["species", "island"], ["mean", "sum", "n"]) # Multi-column grouping
+pt.agg_df(penguins, "species", body_mass_g="mean", count="n")    # Column-specific aggregations
+pt.agg_df(penguins, None, a=["mean", "n"])                       # Whole-table summary (no grouping)
 ```
 
 👉 **Interactive Walkthrough:** [library/agg_df.ipynb](library/agg_df.ipynb)
