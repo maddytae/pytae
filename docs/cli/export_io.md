@@ -15,6 +15,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
   - [In-Place Format Shorthands](#in-place-format-shorthands)
   - [System Clipboard (`clip`)](#system-clipboard-clip)
 - [Target Output Directory (`-out_dir` / `-od`)](#target-output-directory--out_dir---od)
+  - [Benefits of `-od` over Explicit Paths](#benefits-of--od-over-explicit-paths)
 - [Transparent Compression (`.gz`)](#transparent-compression-gz)
 - [JSON Lines Format (`.jsonl`, `.ndjson`)](#json-lines-format-jsonl-ndjson)
 - [Delimiters & Encodings (`-dlim`, `-encoding`)](#delimiters--encodings--dlim--encoding)
@@ -110,6 +111,44 @@ Wrote 344 rows to processed/penguins.csv
 
 > [!NOTE]
 > When running batch exports into `-out_dir`, pytae validates and prevents destination filename collisions across different source folders.
+
+### Benefits of `-od` over Explicit Paths
+
+While providing a full target path directly in `-o` (e.g., `pytae raw.csv -o parquet_lake/raw.parquet`) works well for single files, pairing a format shorthand with `-od` (e.g., `pytae raw.csv -o parquet -od parquet_lake/`) provides substantial advantages:
+
+1. **Mandatory for Batch Conversions & Globs**:
+   When converting multiple files at once, specifying an explicit filename in `-o` fails because all incoming datasets would attempt to overwrite the exact same destination file. Using `-od` automatically preserves each file's stem name across the batch:
+   ```bash
+   # Converts raw/jan.csv -> parquet_lake/jan.parquet, raw/feb.csv -> parquet_lake/feb.parquet, etc.
+   pytae "raw/*.csv" -o parquet -od parquet_lake/
+   ```
+
+2. **Eliminates Shell Boilerplate in Pipelines**:
+   In automated scripts or CI/CD pipelines where input filenames are dynamic variables (`$INPUT_FILE`), you do not need shell manipulation (`basename`, parameter expansion `${f%.*}`) to compute the new path:
+   ```bash
+   # Without -od: verbose and fragile shell manipulation
+   pytae "$INPUT_FILE" -o "parquet_lake/$(basename "${INPUT_FILE%.*}").parquet"
+
+   # With -od: clean and declarative
+   pytae "$INPUT_FILE" -o parquet -od parquet_lake/
+   ```
+
+3. **Compound Extension & Compression Awareness**:
+   Pytae understands multi-part extensions like `.csv.gz` or `.jsonl.gz`. Using `-o parquet -od parquet_lake/` cleanly strips both the `.gz` and `.csv` extensions, generating `parquet_lake/data.parquet` rather than `parquet_lake/data.csv.parquet`.
+
+4. **Automatic Directory Creation & Collision Guarding**:
+   Target directories specified in `-od` are automatically created (`mkdir -p`) if they do not already exist. Pytae also verifies that batch inputs from different source directories sharing the same filename do not silently overwrite one another.
+
+#### Summary Comparison
+
+| Capability | Explicit Path (`-o path/name.ext`) | Directory Routing (`-o <format> -od <dir>`) |
+|---|---|---|
+| **Single known destination** | `pytae raw.csv -o lake/clean.parquet` | `pytae raw.csv -o parquet -od lake/` |
+| **Batch / Glob conversions** | ❌ Fails (destination collision error) | `pytae "raw/*.csv" -o parquet -od lake/` |
+| **Shell scripts & variables** | Requires `basename` / `${f%.*}` manipulation | Declarative: `pytae "$FILE" -o parquet -od lake/` |
+| **Compressed source (`.csv.gz`)** | Manual stem cleanup required | Auto-strips compound extension to `.parquet` |
+| **Destination directory** | Auto-creates parent folder | Auto-creates directory tree (`mkdir -p`) |
+
 
 ---
 
