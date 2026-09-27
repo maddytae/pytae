@@ -247,6 +247,20 @@ Injected Helper Functions in Expressions:
     Method chains on Series work seamlessly:
     df.pt.mutate(initial="species.str[0]", rounded="bill_length_mm.round()")
 
+Grouped Window Operations (by=..., dropna=..., observed=...):
+  Evaluates window calculations and group summaries broadcast back to every row (N -> N):
+  - Injected Aggregations: mean(x), sum(x), median(x), min(x), max(x), std(x), var(x), n (or n())
+  - Sequential Derivation:
+    df.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, sz = n", by="day")
+  - Multi-Column Grouping:
+    df.pt.mutate("avg = mean(val)", by=["species", "island"])
+  - Handling Missing Group Keys (dropna):
+    - dropna=True (default): Rows with NA in grouping columns receive NaN in new columns;
+      row count and alignment are strictly preserved.
+    - dropna=False: Rows with NA in grouping columns form their own group and compute
+      group metrics across all NA rows together:
+      df.pt.mutate("avg = mean(val)", by="grp", dropna=False)
+
 External Spec File Format (@file.txt):
   Lines in `@specs.txt` are evaluated sequentially. Supports `#` comments and empty lines:
   # Feature engineering specs
@@ -4602,6 +4616,15 @@ def mutate(
     >>> # Grouped mutation: compute group mean and deviation without collapsing rows
     >>> tips = pt.sample("tips")
     >>> tips.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n", by="day").head(3)
+
+    >>> # Handling missing groups: dropna=True (default) sets NaN; dropna=False computes on NA group
+    >>> sample = pd.DataFrame({'grp': ['A', 'A', None, None], 'val': [10.0, 20.0, 30.0, 50.0]})
+    >>> sample.pt.mutate("avg = mean(val)", by="grp", dropna=False)
+       grp   val   avg
+    0    A  10.0  15.0
+    1    A  20.0  15.0
+    2  NaN  30.0  40.0
+    3  NaN  50.0  40.0
     """
     _here = inspect.currentframe()
     caller_frame = None if _here is None else _here.f_back

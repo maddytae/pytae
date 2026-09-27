@@ -467,6 +467,15 @@ def mutate(
     >>> # Grouped mutation: compute group mean and deviation without collapsing rows
     >>> tips = pt.sample("tips")
     >>> tips.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n", by="day").head(3)
+
+    >>> # Handling missing groups: dropna=True (default) sets NaN; dropna=False computes on NA group
+    >>> sample = pd.DataFrame({'grp': ['A', 'A', None, None], 'val': [10.0, 20.0, 30.0, 50.0]})
+    >>> sample.pt.mutate("avg = mean(val)", by="grp", dropna=False)
+       grp   val   avg
+    0    A  10.0  15.0
+    1    A  20.0  15.0
+    2  NaN  30.0  40.0
+    3  NaN  50.0  40.0
     """
     _here = inspect.currentframe()
     caller_frame = None if _here is None else _here.f_back

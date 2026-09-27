@@ -126,6 +126,9 @@ pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')"
 
 # Grouped window calculations without collapsing rows
 pt.mutate(penguins, avg_mass="mean(body_mass_g)", diff="body_mass_g - avg_mass", n="n", by="species")
+
+# Control NA grouping with dropna (dropna=True fills NaN for NA groups; dropna=False calculates on NA group)
+pt.mutate(df, avg_val="mean(val)", by="group", dropna=False)
 ```
 
 👉 **Interactive Walkthrough:** [library/mutate.ipynb](library/mutate.ipynb)
