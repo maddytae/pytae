@@ -341,8 +341,8 @@ def parse_group_x_arg(raw: str | None) -> dict:
 
 
 
-_LONG_KEYS = ("c", "v")
-_WIDE_KEYS = ("c", "v", "a")
+_LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
+_WIDE_KEYS = ("c", "v", "a", "index", "by")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:

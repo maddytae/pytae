@@ -69,15 +69,28 @@ class PtAccessor:
     ) -> pd.DataFrame:
         return _agg_df(self._obj, by, *args, **kwargs)
 
-    def long(self, c: str = "variable", v: str = "value") -> pd.DataFrame:
+    def long(
+        self,
+        cols: str | Sequence[str] | None = None,
+        id_vars: str | Sequence[str] | None = None,
+        c: str = "variable",
+        v: str = "value",
+        **kwargs: Any,
+    ) -> pd.DataFrame:
         from .shape import long as _long
-        return _long(self._obj, c=c, v=v)
+        return _long(self._obj, cols=cols, id_vars=id_vars, c=c, v=v, **kwargs)
 
     def wide(
-        self, c: str = "variable", v: str = "value", a: str | None = None, dropna: bool = True
+        self,
+        c: str = "variable",
+        v: str = "value",
+        a: str | None = None,
+        dropna: bool = True,
+        index: str | Sequence[str] | None = None,
+        **kwargs: Any,
     ) -> pd.DataFrame:
         from .shape import wide as _wide
-        return _wide(self._obj, c=c, v=v, a=a, dropna=dropna)
+        return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
 
     def group_x(
         self,
