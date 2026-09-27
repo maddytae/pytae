@@ -68,7 +68,7 @@ def parse_mutate_spec(raw: str) -> dict[str, str]:
             raise ValueError(f"invalid mutate spec: '{key}' has no expression")
         expressions[key] = expr
     if not expressions:
-        raise ValueError('mutate expects entries like "col: expr"')
+        raise ValueError('mutate expects entries like "col = expr"')
     return expressions
 
 
@@ -379,19 +379,22 @@ def mutate(
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
-    Create or overwrite columns using keyword arguments (`col="expr"` or `col=callable`),
-    each evaluated in order via pandas eval() — no lambda needed for plain
-    arithmetic/boolean column assignments.
+    Create or overwrite columns using string expressions (`"col = expr"` or `col="expr"`),
+    callables (`col=callable`), or dictionaries. Each evaluated in order via pandas eval() —
+    no lambda needed for plain arithmetic/boolean column assignments.
 
     Parameters:
     -----------
     df : pd.DataFrame
         The DataFrame to mutate columns on.
-    *args : Any
-        Positional arguments are not supported, except for a single file path
-        prefixed with '@' (e.g. "@transforms.txt").
+    *args : str or dict
+        Positional expressions:
+        - String expression(s), e.g. "bmi = body_mass_g / bill_length_mm ** 2".
+        - File path prefixed with '@' (e.g. "@transforms.txt").
+        - Dictionary of column expressions, e.g. {"bmi": "body_mass_g / 1000"}.
     params : dict, optional
         Explicit dictionary of parameters/variables to make available for `@name` references.
+        Can also be passed via `_params=`.
     **kwargs : Any
         Column expressions or callables passed as keyword arguments,
         e.g. `df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", rank=1)`.
@@ -450,26 +453,38 @@ def mutate(
     global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
 
-    params = kwargs.pop("params", None)
+    params = kwargs.pop("_params", None)
+    if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
+        params = kwargs.pop("params")
+
     if params is not None:
         local_dict.update(params)
 
     expressions: dict[str, Any] = {}
-    if args:
-        if len(args) == 1 and isinstance(args[0], str) and args[0].strip().startswith("@"):
-            expressions.update(parse_mutate_spec(args[0]))
-        else:
-            first_arg = args[0]
+    for arg in args:
+        if isinstance(arg, str):
+            expressions.update(parse_mutate_spec(arg))
+        elif isinstance(arg, dict):
+            expressions.update(arg)
+        elif callable(arg):
             raise TypeError(
-                "mutate() expects expressions as keyword arguments, e.g. df.pt.mutate(col='expr', new_col=func). "
-                f"Positional {type(first_arg).__name__} is not supported (use '@filename.txt' to load from a file)."
+                "mutate() expects callables as keyword arguments with the column name, "
+                "e.g. df.pt.mutate(new_col=lambda d: d['x'] * 2)"
+            )
+        else:
+            raise TypeError(
+                f"mutate() received unexpected positional argument of type {type(arg).__name__}. "
+                "Pass string expressions (e.g. 'col = expr'), a dict, or keyword arguments."
             )
 
     if kwargs:
         expressions.update(kwargs)
 
     if not expressions:
-        raise ValueError("mutate() expects at least one keyword argument (e.g. df.pt.mutate(col='expr'))")
+        raise ValueError(
+            "mutate() expects at least one expression, e.g. df.pt.mutate('col = expr') "
+            "or df.pt.mutate(col='expr')"
+        )
 
     out = df.copy()
     for col, expr in expressions.items():

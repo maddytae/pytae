@@ -63,7 +63,7 @@ def test_mutate_quoting_column_reference_breaks_arithmetic():
 
 
 def test_mutate_empty_spec_errors():
-    with pytest.raises(ValueError, match="mutate\\(\\) expects at least one keyword argument"):
+    with pytest.raises(ValueError, match="mutate\\(\\) expects at least one"):
         pt.mutate(_df())
 
 
@@ -170,12 +170,14 @@ def test_mutate_kwargs():
     assert list(res["mass_kg"]) == [3.0, 4.0]
 
 
-def test_mutate_rejects_dict_and_string():
+def test_mutate_rejects_unsupported_positional_types():
     df = _df()
-    with pytest.raises(TypeError, match="mutate\\(\\) expects expressions as keyword arguments"):
-        df.pt.mutate({"bmi": "body_mass_g / bill_length_mm ** 2"})
-    with pytest.raises(TypeError, match="mutate\\(\\) expects expressions as keyword arguments"):
-        df.pt.mutate("bmi = body_mass_g / bill_length_mm ** 2")
+    with pytest.raises(TypeError, match="unexpected positional argument"):
+        df.pt.mutate(123)
+    with pytest.raises(TypeError, match="unexpected positional argument"):
+        df.pt.mutate([1, 2, 3])
+    with pytest.raises(TypeError, match="callables as keyword arguments"):
+        df.pt.mutate(lambda d: d)
 
 
 def test_mutate_callable_lambda():
@@ -257,3 +259,41 @@ def test_mutate_unquoted_string_literal_hint():
     df = _df()
     with pytest.raises(KeyError, match="if you intended a string literal, quote it like 'heavy'"):
         pt.mutate(df, status="if_else(body_mass_g > 3500, heavy, light)")
+
+
+def test_mutate_positional_string_expr():
+    df = _df()
+    res = df.pt.mutate("mass_kg = body_mass_g / 1000")
+    assert "mass_kg" in res.columns
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+
+    # Multiple positional expressions
+    res2 = df.pt.mutate("mass_kg = body_mass_g / 1000", "mass_lb = mass_kg * 2.2")
+    assert "mass_kg" in res2.columns
+    assert "mass_lb" in res2.columns
+
+
+def test_mutate_positional_dict():
+    df = _df()
+    res = df.pt.mutate({"mass_kg": "body_mass_g / 1000"})
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+
+
+def test_mutate_params_column_creation():
+    df = _df()
+    # Integer literal assigned to column named 'params'
+    res1 = df.pt.mutate(params=10)
+    assert "params" in res1.columns
+    assert list(res1["params"]) == [10, 10]
+
+    # String expression assigned to column named 'params'
+    res2 = df.pt.mutate(params="body_mass_g / 1000")
+    assert "params" in res2.columns
+    assert list(res2["params"]) == [3.0, 4.0]
+
+
+def test_mutate_explicit_underscore_params():
+    df = _df()
+    res = df.pt.mutate(flag="body_mass_g >= @thresh", _params={"thresh": 3500.0})
+    assert list(res["flag"]) == [False, True]
+
