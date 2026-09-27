@@ -148,6 +148,7 @@ wide = pt.wide(tall, c="feature", v="reading", a="mean")
 
 ---
 
+<a id="5-aggregation--agg_df"></a>
 ### 5. Aggregation — `agg()` (`agg_df()`)
 
 Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts. Supports string mapping specifications with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, and whole-frame functions:
@@ -156,7 +157,7 @@ Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and agg
 pt.agg(penguins, "species", "mean")                           # Mean of all numeric columns per species
 pt.agg(penguins, ["species", "island"], ["mean", "sum", "n"]) # Multi-column grouping
 pt.agg(penguins, "species", body_mass_g="mean", count="n")    # Column-specific aggregations
-pt.agg(tips, "smoker", "tip = mean, [total bill] = mean, n = n") # String spec with bracketed spaced columns
+pt.agg(tips.rename(columns={"total_bill": "total bill"}), "smoker", "tip = mean, [total bill] = mean, n = n") # String spec with bracketed spaced columns
 pt.agg(penguins, "species", total="body_mass_g:sum")          # Named aggregation
 pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summary (no grouping)
 ```
@@ -185,6 +186,7 @@ pt.sql(orders, """
 
 ---
 
+<a id="7-plotting--plotter"></a>
 ### 7. Plotting — `Plotter` & `df.pt.plot()`
 
 Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, small-multiples grid faceting, and direct accessor chaining via `df.pt.plot()`:

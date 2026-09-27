@@ -109,6 +109,7 @@ pytae dataset.csv -mutate "[total weight] = [body mass g] + [extra weight]"
 
 ---
 
+<a id="grouped-mutations--by--mutate"></a>
 ## Grouped Mutations (`-by` + `-mutate`)
 
 Compute window transforms and group-level statistics (mean, sum, min, max, median, std, var, row count) broadcast back to every row without collapsing the dataset.

@@ -91,6 +91,7 @@ k = pt.Plotter(figsize=(8, 5))
 
 ---
 
+<a id="mosaic-dashboards"></a>
 ### 3. Subplots & Multi-Panel Dashboards
 
 #### Subplots Without Mosaic (`nrows`, `ncols`)

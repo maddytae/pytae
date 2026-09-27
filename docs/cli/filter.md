@@ -51,6 +51,7 @@ species island  bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g   
  Gentoo Biscoe            48.7           14.1              210.0       4450.0 Female
 ```
 
+<a id="comparisons"></a>
 ### Comparisons (`>`, `<`, `>=`, `<=`, `!=`)
 
 ```bash

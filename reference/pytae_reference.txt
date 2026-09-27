@@ -1084,7 +1084,6 @@ __all__ = [
     "everything",
     "PtAccessor",
 ]
-
 ################################################################################
 # FILE: src/pytae/__main__.py
 ################################################################################
@@ -1098,7 +1097,6 @@ from pytae.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())
-
 ################################################################################
 # FILE: src/pytae/_text.py
 ################################################################################
@@ -1179,8 +1177,6 @@ def unquote_name(raw: str) -> str:
             raw = raw[1:-1].strip()
             changed = True
     return raw
-
-
 ################################################################################
 # FILE: src/pytae/accessor.py
 ################################################################################
@@ -1221,13 +1217,38 @@ from .sql import sql as _sql
 
 @pd.api.extensions.register_dataframe_accessor("pt")
 class PtAccessor:
+    """Pandas DataFrame accessor (`df.pt`) providing ergonomic tabular verbs:
+    - select: Column selection, slicing, negative exclusion, and type filtering.
+    - qry: Row filtering via string expressions, dicts, intervals, and kwargs.
+    - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
+    - agg_df / agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
+    - long / wide: Reshaping (melting to rows and pivoting to columns).
+    - sql: DuckDB SQL queries over the DataFrame (as table `data`).
+    - clean_columns: Standardizing and normalizing column header names.
+    - replace_values: Cell value replacement (exact or substring).
+    - handle_missing: Missing value imputation with type-safe defaults.
+    - cols: Column names sorted alphabetically or preserved in order.
+    - plot: Method-chainable visualization engine with faceting and mosaics.
+    """
+
     def __init__(self, pandas_obj: pd.DataFrame):
         self._obj = pandas_obj
 
     def select(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Select, reorder, or exclude columns by name, pattern, slice, or dtype.
+
+        Supports exact names, negative prefixes ('-col', '~col'), negative slices
+        ('-start:end'), regex, dtype filters ('dtype=numeric'), and 'exclude=' kwargs.
+        """
         return _select(self._obj, *args, **kwargs)
 
     def qry(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Filter rows using human-readable conditions, dicts, or kwargs.
+
+        Supports comparisons ('>', '<=', '=='), intervals ('[min, max]'), set
+        membership (['a', 'b']), string operations ('startswith', 'contains'),
+        and safe handling of column names with spaces.
+        """
         return _qry(self._obj, *args, **kwargs)
 
     def mutate(
@@ -1238,9 +1259,20 @@ class PtAccessor:
         observed: bool = True,
         **kwargs: Any,
     ) -> pd.DataFrame:
+        """Create or overwrite columns using formulas, callables, or grouped window transforms.
+
+        Expressions evaluate sequentially via pandas eval() with automatic fallback.
+        When `by=` is given, aggregations (mean, sum, n, etc.) evaluate per group and broadcast
+        back to each row without collapsing the dataset.
+        """
         return _mutate(self._obj, *args, by=by, dropna=dropna, observed=observed, **kwargs)
 
     def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
+        """Run DuckDB SQL queries over this DataFrame (registered as table `data`).
+
+        Additional DataFrames can be registered as keyword arguments. Spaced column
+        names can use brackets `[col]`, double quotes `"col"`, or backticks.
+        """
         return _sql(self._obj, query, **frames)
 
     def agg_df(
@@ -1249,6 +1281,12 @@ class PtAccessor:
         *args: Any,
         **kwargs: Any,
     ) -> pd.DataFrame:
+        """Aggregate numeric columns grouped by explicit `by` column(s).
+
+        Pass `by=None` for a whole-table summary (1 row). Supports whole-frame
+        functions ('mean', ['mean', 'n']), column mapping strings with brackets
+        ('tip = mean, [total bill] = mean, n = n'), and keyword arguments.
+        """
         return _agg_df(self._obj, by, *args, **kwargs)
 
     def agg(
@@ -1257,6 +1295,7 @@ class PtAccessor:
         *args: Any,
         **kwargs: Any,
     ) -> pd.DataFrame:
+        """Alias for `df.pt.agg_df()`: aggregate numeric columns grouped by `by` column(s)."""
         return _agg_df(self._obj, by, *args, **kwargs)
 
     def long(
@@ -1267,6 +1306,11 @@ class PtAccessor:
         v: str = "value",
         **kwargs: Any,
     ) -> pd.DataFrame:
+        """Melt columns to rows (unpivot wide format into long format).
+
+        Default melts all numeric columns, storing variable names in `c` (default 'variable')
+        and values in `v` (default 'value').
+        """
         from .shape import long as _long
         return _long(self._obj, cols=cols, id_vars=id_vars, c=c, v=v, **kwargs)
 
@@ -1279,6 +1323,11 @@ class PtAccessor:
         index: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
+        """Pivot long-form records back to wide format (columns).
+
+        Headers are created from `c` (default 'variable'), cells from `v` (default 'value'),
+        with optional aggregation function `a` (e.g. 'mean', 'sum', 'n') if duplicates exist.
+        """
         from .shape import wide as _wide
         return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
 
@@ -1289,6 +1338,7 @@ class PtAccessor:
         cols: Sequence[str] | None = None,
         preserve_categories: bool = True,
     ) -> pd.DataFrame:
+        """Fill missing values with type-appropriate defaults across columns."""
         return _handle_missing(
             self._obj,
             fillna=fillna,
@@ -1298,14 +1348,17 @@ class PtAccessor:
         )
 
     def cols(self, ascending: bool | None = True) -> list:
+        """Return the column names sorted alphabetically (True/False) or in original order (None)."""
         return _cols(self._obj, ascending=ascending)
 
     def clean_columns(self, **kwargs: Any) -> pd.DataFrame:
+        """Clean and standardize column header names (strip, squeeze, fill, case, dedupe)."""
         return _clean_columns(self._obj, **kwargs)
 
     def replace_values(
         self, v: dict[Any, Any], c: str | Sequence[str] | None = None, exact: bool = True
     ) -> pd.DataFrame:
+        """Replace cell values via `{old: new}` mapping, optionally scoped to columns `c`."""
         return _replace_values(self._obj, v, c=c, exact=exact)
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
@@ -1366,8 +1419,6 @@ class PtAccessor:
         if plot_kwargs:
             plotter.plot(**plot_kwargs)
         return plotter
-
-
 ################################################################################
 # FILE: src/pytae/agg_df.py
 ################################################################################
@@ -1788,7 +1839,6 @@ def agg_df(
 
 # Alias: agg is identical to agg_df
 agg = agg_df
-
 ################################################################################
 # FILE: src/pytae/cli.py
 ################################################################################
@@ -2282,7 +2332,6 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
 ################################################################################
 # FILE: src/pytae/cli_parsing.py
 ################################################################################
@@ -2919,7 +2968,6 @@ def parse_concat_arg(raw: str) -> dict:
     if len(names) < 2:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
-
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -3259,7 +3307,6 @@ class _OrderedAppend(argparse.Action):
         items.append(values)
         setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
-
 ################################################################################
 # FILE: src/pytae/cli_run.py
 ################################################################################
@@ -3974,9 +4021,6 @@ def _process_path(
             return _fail(parser, batch, str(exc))
 
     return False
-
-
-
 ################################################################################
 # FILE: src/pytae/mutate.py
 ################################################################################
@@ -4024,8 +4068,8 @@ def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
 
 
 def parse_mutate_spec(raw: str) -> dict[str, str]:
-    """Parse a mutate spec string like "bmi: body_mass_g / bill_length_mm ** 2,
-    mass_kg: body_mass_g / 1000" into an ordered {new_col: expression} dict.
+    """Parse a mutate spec string like "bmi = body_mass_g / bill_length_mm ** 2,
+    mass_kg = body_mass_g / 1000" into an ordered {new_col: expression} dict.
     If raw starts with '@', it reads the spec from the specified file path.
     Quoting the key is optional (matches qry()); the expression is kept as raw
     text — column names inside it must stay unquoted, since eval() treats a
@@ -4539,10 +4583,11 @@ def mutate(
             )
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
-
 ################################################################################
 # FILE: src/pytae/other_utilities.py
 ################################################################################
+"""General tabular utilities: clipboard export, missing-value handling, column sorting, header cleaning, and value replacement."""
+
 from __future__ import annotations
 
 import re
@@ -4770,7 +4815,6 @@ def replace_values(
     else:
         df = df.replace(to_replace, regex=not exact)
     return df
-
 ################################################################################
 # FILE: src/pytae/plotting.py
 ################################################################################
@@ -5722,9 +5766,6 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
     elif not isinstance(plotter, Plotter):
         raise TypeError(f"Expected a Plotter instance, got {type(plotter).__name__}")
     return plotter.finalize(**kwargs)
-
-
-
 ################################################################################
 # FILE: src/pytae/qry.py
 ################################################################################
@@ -6009,7 +6050,6 @@ def qry(
             out = out.loc[out[col] == cond]
 
     return out
-
 ################################################################################
 # FILE: src/pytae/readers.py
 ################################################################################
@@ -6700,7 +6740,6 @@ def _write_parquet(
             done += batch.num_rows
             _print_progress(done, total, "writing")
     print()
-
 ################################################################################
 # FILE: src/pytae/select.py
 ################################################################################
@@ -7009,7 +7048,6 @@ def select(
 
     final_cols = [col for col in ordered_cols if col not in excluded_cols]
     return df[final_cols]
-
 ################################################################################
 # FILE: src/pytae/shape.py
 ################################################################################
@@ -7172,7 +7210,6 @@ def wide(
 
     wide_df.columns.name = None
     return wide_df
-
 ################################################################################
 # FILE: src/pytae/sql.py
 ################################################################################
@@ -7300,9 +7337,6 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
             raise ValueError(f"sql: {exc}") from exc
     finally:
         con.close()
-
-
-
 ================================================================================
 11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
@@ -7311,7 +7345,6 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
 # FILE: tests/__init__.py
 ################################################################################
 # Makes `from tests.cli_helpers import ...` work when pytest's rootdir is the repo.
-
 ################################################################################
 # FILE: tests/cli_helpers.py
 ################################################################################
@@ -7368,7 +7401,6 @@ def _write_three_id_csvs(tmp_path):
     pd.DataFrame({"id": [1, 2, 4], "y": ["p", "q", "r"]}).to_csv(b, index=False)
     pd.DataFrame({"id": [1, 2], "z": ["m", "n"]}).to_csv(c, index=False)
     return str(a), str(b), str(c)
-
 ################################################################################
 # FILE: tests/conftest.py
 ################################################################################
@@ -7401,7 +7433,6 @@ def sample_parquet(tmp_path):
         pytae.sample_data[name].to_parquet(path)
         return str(path)
     return _write
-
 ################################################################################
 # FILE: tests/test_accessor.py
 ################################################################################
@@ -7436,7 +7467,6 @@ def test_pt_select_then_pandas_head():
     out = penguins.pt.select("species", "body_mass_g").head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
-
 ################################################################################
 # FILE: tests/test_agg_df.py
 ################################################################################
@@ -7666,8 +7696,6 @@ def test_agg_df_string_spec_errors():
 
 if __name__ == "__main__":
     pytest.main()
-
-
 ################################################################################
 # FILE: tests/test_cli_agg.py
 ################################################################################
@@ -7858,7 +7886,6 @@ def test_agg_python_literal_is_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "val": [1]}))
     with pytest.raises(SystemExit, match="use a name"):
         cli.main([path, "-agg", "{'val': 'sum'}"])
-
 ################################################################################
 # FILE: tests/test_cli_clean.py
 ################################################################################
@@ -8081,8 +8108,6 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
 
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
-
-
 ################################################################################
 # FILE: tests/test_cli_filter.py
 ################################################################################
@@ -8228,7 +8253,6 @@ def test_qry_equals_separator(tmp_path, capsys):
     exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
-
 ################################################################################
 # FILE: tests/test_cli_inspect.py
 ################################################################################
@@ -9126,13 +9150,6 @@ def test_cli_pager(tmp_path, monkeypatch):
     assert exit_code == 0
     assert len(paged) == 1
     assert "col" in paged[0]
-
-
-
-
-
-
-
 ################################################################################
 # FILE: tests/test_cli_merge.py
 ################################################################################
@@ -9430,10 +9447,6 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
     ])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 4)"
-
-
-
-
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
@@ -9596,8 +9609,6 @@ def test_mutate_by_unknown_column_cli(tmp_path, capsys):
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "-by: unknown column" in err
-
-
 ################################################################################
 # FILE: tests/test_cli_parse.py
 ################################################################################
@@ -9634,9 +9645,6 @@ def test_expand_paths_single_and_list(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         expand_paths(str(tmp_path / "*.parquet"))
     assert "no files matched pattern" in str(exc_info.value)
-
-
-
 ################################################################################
 # FILE: tests/test_cli_reshape.py
 ################################################################################
@@ -9802,9 +9810,6 @@ def test_wide_rejects_dropna_kwarg(tmp_path):
     )
     with pytest.raises(SystemExit, match="unknown key 'dropna'"):
         cli.main([path, "-wide", "dropna=false"])
-
-
-
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
@@ -9952,7 +9957,6 @@ def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines() == ["age     0", "deck    0"]
-
 ################################################################################
 # FILE: tests/test_cli_select.py
 ################################################################################
@@ -10288,11 +10292,6 @@ def test_select_cli_bracketed_columns(tmp_path, capsys):
     exit_code3 = cli.main([path, "-select", "-[island name]", "-cols"])
     assert exit_code3 == 0
     assert capsys.readouterr().out.strip().splitlines() == ["species", "bill length mm"]
-
-
-
-
-
 ################################################################################
 # FILE: tests/test_cli_sql.py
 ################################################################################
@@ -10481,10 +10480,6 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     exit_code = cli.main([str(path), "-sql", "select [col a], `col b` from data", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 2)"
-
-
-
-
 ################################################################################
 # FILE: tests/test_import.py
 ################################################################################
@@ -10624,8 +10619,6 @@ else:
     )
     assert result.returncode == 0, result.stderr
     assert "pytae[sql]" in result.stderr
-
-
 ################################################################################
 # FILE: tests/test_mutate.py
 ################################################################################
@@ -11008,10 +11001,6 @@ def test_mutate_grouped_unknown_col():
     df = pd.DataFrame({"grp": ["a", "b"], "val": [1, 2]})
     with pytest.raises(KeyError, match="grouping column 'grp_typo' not found"):
         df.pt.mutate("m = mean(val)", by="grp_typo")
-
-
-
-
 ################################################################################
 # FILE: tests/test_plotter.py
 ################################################################################
@@ -11516,16 +11505,6 @@ def test_box_palette_colors():
     c0 = ax.patches[0].get_facecolor()
     c1 = ax.patches[1].get_facecolor()
     assert c0 != c1
-
-
-
-
-
-
-
-
-
-
 ################################################################################
 # FILE: tests/test_qry.py
 ################################################################################
@@ -11769,8 +11748,6 @@ def test_qry_bracketed_columns():
 
     parsed = parse_qry("[body mass g] > 4000, [species] = 'Gentoo'")
     assert parsed == {"body mass g": (">", 4000), "species": "Gentoo"}
-
-
 ################################################################################
 # FILE: tests/test_readers.py
 ################################################################################
@@ -12061,8 +12038,6 @@ def test_compressed_txt_and_dat(tmp_path):
     dreader = get_reader(dat_gz)
     assert dreader.columns() == ["a", "b"]
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
-
-
 ################################################################################
 # FILE: tests/test_select.py
 ################################################################################
@@ -12290,9 +12265,6 @@ def test_select_bracketed_names_and_slices():
     assert list(pt.select(df, "[island name]:[body mass g]").columns) == ["island name", "bill length mm", "body mass g"]
     # Bracketed negation
     assert list(pt.select(df, "-[island name]").columns) == ["species", "bill length mm", "body mass g"]
-
-
-
 ################################################################################
 # FILE: tests/test_shape.py
 ################################################################################
@@ -12430,7 +12402,6 @@ def test_wide_with_explicit_index():
 
 if __name__ == '__main__':
     pytest.main()
-
 ################################################################################
 # FILE: tests/test_sql.py
 ################################################################################
@@ -12517,9 +12488,6 @@ def test_sql_preserves_duckdb_lists_and_indexing():
     # String list literal
     out3 = pt.sql(df, "select ['x', 'y'] as pair from data where a = 1")
     assert list(out3["pair"][0]) == ["x", "y"]
-
-
-
 ################################################################################
 # FILE: tests/test_utilities.py
 ################################################################################
@@ -12683,4 +12651,3 @@ def test_clean_columns_dedupe_avoids_new_collisions():
     result = clean_column_names(["revenue", "revenue", "revenue_1"], dedupe=True)
     assert result == ["revenue", "revenue_2", "revenue_1"]
     assert len(set(result)) == len(result)
-

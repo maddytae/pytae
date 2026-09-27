@@ -30,6 +30,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
 
 ---
 
+<a id="group-aggregations--by--agg"></a>
 ## Group Aggregations (`-by` + `-agg`)
 
 Specify grouping column(s) with `-by` (or `--by`), and aggregation function(s) with `-agg` (or `--agg`). Defaults to `sum` if `-agg` is given without an argument.
@@ -144,6 +145,7 @@ pytae penguins.parquet -agg mean -round 1
 
 ---
 
+<a id="grouped-transforms--by--mutate"></a>
 ## Grouped Transforms (`-by` + `-mutate`)
 
 Appends group statistics and window calculations back to every individual row without collapsing the dataset (equivalent to Pandas `transform` or SQL `OVER (PARTITION BY ...)`).

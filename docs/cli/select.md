@@ -58,6 +58,7 @@ pytae penguins.parquet -select "body_mass_g,species" -head 3
 
 ---
 
+<a id="negative-selection--exclusion"></a>
 ## Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)
 
 You can exclude specific columns, combinations, or slices directly within `-select`. Remaining columns preserve their original relative order.

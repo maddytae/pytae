@@ -42,8 +42,8 @@ def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
 
 
 def parse_mutate_spec(raw: str) -> dict[str, str]:
-    """Parse a mutate spec string like "bmi: body_mass_g / bill_length_mm ** 2,
-    mass_kg: body_mass_g / 1000" into an ordered {new_col: expression} dict.
+    """Parse a mutate spec string like "bmi = body_mass_g / bill_length_mm ** 2,
+    mass_kg = body_mass_g / 1000" into an ordered {new_col: expression} dict.
     If raw starts with '@', it reads the spec from the specified file path.
     Quoting the key is optional (matches qry()); the expression is kept as raw
     text — column names inside it must stay unquoted, since eval() treats a

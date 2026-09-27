@@ -34,6 +34,8 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
 
 ## Header Standardization (`-clean_columns`)
 
+### Supported Pipeline Steps
+
 Clean messy column names automatically. Options execute in this order:
 1. `strip`: Remove leading and trailing whitespace.
 2. `strip_special`: Remove non-alphanumeric punctuation (except `_`).
@@ -85,6 +87,7 @@ pytae dataset.parquet -replace_values "v='draft_stage:in_review,bad_val:good_val
          NaN     30.2 in_review
 ```
 
+<a id="restricting-to-columns-c"></a>
 ### Restricting to Specific Columns (`c=`)
 
 Apply replacements only to selected columns:

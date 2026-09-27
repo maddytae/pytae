@@ -1,3 +1,5 @@
+"""General tabular utilities: clipboard export, missing-value handling, column sorting, header cleaning, and value replacement."""
+
 from __future__ import annotations
 
 import re
