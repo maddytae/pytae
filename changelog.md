@@ -2,16 +2,76 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.5.3] - Unreleased
+## [3.6.0] - Unreleased
 
 ### Breaking Changes
+- **Grouped Mutations (`group_x` removed)**:
+  - Folded grouped window mutations directly into `pt.mutate(df, by=...)` / `df.pt.mutate(by=...)`.
+  - `group_x` is completely eliminated from the package namespace, DataFrame accessor, and CLI flags.
+- **CLI `-drop` flag retired**:
+  - Retired `-drop` in favor of unified negative column selection on `-select` (e.g. `-select -col1,-col2` or `-select exclude=col1,col2`).
 - **CLI output routing unified under `-o, --output`**:
   - Removed redundant `-convert` and `-to_clip` flags.
-  - `-o <filename>.<ext>`: exports to explicit file path (format inferred from extension).
-  - `-o <format>`: in-place conversion adjacent to source file (`csv`, `parquet`, `txt`, `dat`), or batch conversion for glob matches (e.g. `pytae 'data/*.parquet' -o csv`).
+  - `-o <filename>.<ext>`: exports to explicit file path (format inferred from extension: `csv`, `tsv`, `parquet`, `json`, `jsonl`, `xlsx`).
+  - `-o <format>`: in-place conversion adjacent to source file (`csv`, `parquet`, `json`, `jsonl`, etc.) or batch conversion for glob matches (e.g. `pytae 'data/*.parquet' -o csv`).
   - `-o clip` / `-o clipboard`: copies result to clipboard while suppressing stdout.
-  - Informative migration errors guide users if legacy `-convert` or `-to_clip` flags are invoked.
   - Terminal non-DataFrame inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`) are barred from tabular file export but support clipboard copy via `-o clip`.
+- **Aggregation syntax standardized**:
+  - Unified on `by=` parameter across library (`pt.agg(df, by="category", ...)`) and CLI (`-by category -agg ...`), deprecating auto-grouping and legacy pandas agg syntax.
+- **Python Library Crosstab**:
+  - Removed `pt.crosstab` from the Python library API in favor of pandas native `pd.crosstab` while keeping and expanding `-crosstab` in the CLI.
+
+### Added
+- **Library Verbs**:
+  - `pt.mutate()` / `df.pt.mutate()`:
+    - Added `by=` parameter for grouped window mutations.
+    - Added `dropna=` keyword argument for grouped mutations to cleanly align output lengths with missing groups.
+    - Accepted positional string expressions (`pt.mutate(df, "rev = price * qty")`) and plain dictionaries (`pt.mutate(df, {"rev": "price * qty"})`) alongside `**kwargs`.
+  - `pt.select()` / `df.pt.select()`:
+    - Support for negative column selection (e.g. `pt.select(df, "-col1", "-col2")`).
+    - Added `exclude=` keyword argument for column exclusion.
+    - Support `pt.everything` / `everything()` as either class or callable instance.
+  - `pt.handle_missing()` / `df.pt.handle_missing()`:
+    - Preserves categorical dtypes.
+    - Added `numeric_fill` parameter for custom numeric placeholder replacement.
+    - Added `cols=` parameter to target missing value imputation on specific subsets of columns.
+  - `pt.shape` (`long()` / `wide()`):
+    - `long()` supports melting non-numeric columns via explicit `cols` and `id_vars`.
+    - `wide()` supports explicit index specification.
+  - `safe_reset_index()` utility:
+    - Automatically detects index-column name collisions on `reset_index()`, suffixing conflicting columns (e.g. `col_1`) to keep columns 1D Series.
+  - Standardized bracket syntax (`[Column Name]`) across all verbs and queries for columns with spaces and special characters.
+  - Type checking: Added `py.typed` marker (PEP 561 compliance) for strict type checker integration.
+- **CLI Features**:
+  - Output directory `-od <DIR>`: directs outputs to a target directory with automatic stem collision avoidance.
+  - Transparent gzip compression when output extension ends in `.gz` (e.g. `-o data.csv.gz`).
+  - Dataset diffing via `-diff <other_file>` to compare schema and data between two datasets.
+  - Streaming & chunked IO via `-chunk_size <N>` and `-progress [N]` progress bars.
+  - Parquet metadata inspection via `-meta` without reading the entire dataset.
+  - Built-in terminal pager `-p` for long and wide tabular outputs.
+  - Unquoted wildcards and multiple positional files support for multi-file operations.
+  - Enhanced `-crosstab`: added percentage calculations, margins, formatting, and row index preservation for downstream chaining (`-sort_by`, `-qry`, `-select`, `-head`).
+- **Plotting Subsystem**:
+  - Auto-faceting support for wrapped subplots and grid layouts.
+  - Standalone `pt.finalize(**kwargs)` function for post-processing matplotlib figures.
+  - Support for dictionary-based line styling and width mapping with integer/non-string series keys (`style={0: '--'}`).
+- **Documentation & Testing**:
+  - Modularized CLI guides into dedicated feature guides in `docs/cli/`.
+  - Normalized all documentation filenames to lowercase (`readme.md`, `changelog.md`, `contributing.md`, `library.md`, `plotting.md`).
+  - Added automated notebook runner `scripts/run_notebooks.py` covering all 8 tutorials across `docs/library/` and `docs/plotting/`.
+  - Added full reference manual in `reference/pytae_reference.txt`.
+
+### Fixed
+- Fixed scalar conditions in `if_else` and `case_when` returning 0-d numpy arrays that boxed into length-1 Series, causing NaNs on remaining rows.
+- Fixed duplicate column collisions on `_write_jsonl` and `sample` when exporting crosstab DataFrames.
+- Fixed duplicate `is_clip` check in CLI `-crosstab` that overwrote rounded clipboard copies with raw unrounded values.
+- Fixed clipboard export in `-head` and `-tail` to include row labels when working with indexed tables.
+- Fixed `finalize()` font size reset on tick parameters to apply across both x and y axes after spine displacement.
+- Fixed `qry()` handling for multiple conditions on the same column without overwriting previous conditions.
+- Fixed delimited file readers scanning entire files for shape/dtype discovery when quoted newlines were present.
+- Fixed heatmap numeric cell annotation contrast and luminance thresholding.
+- Fixed duplicate row index collisions in grouped histogram and density plots.
+
 
 ## [3.5.2] - 2026-09-24
 

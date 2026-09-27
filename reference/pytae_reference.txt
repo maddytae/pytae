@@ -64,7 +64,7 @@ Key principles:
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
 Installation (PyPI: https://pypi.org/project/pytae/):
-  pip install pytae            # latest release: 3.5.2
+  pip install pytae            # latest release: 3.6.0
   pip install 'pytae[plot]'    # includes matplotlib, scipy
   pip install 'pytae[sql]'     # includes duckdb
 
@@ -907,7 +907,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.5.2"
+version = "3.6.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
