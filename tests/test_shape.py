@@ -158,5 +158,16 @@ def test_safe_reset_index_name_collision():
     assert "Q1" in res.columns
 
 
+def test_safe_reset_index_disambiguates_collision():
+    # Lib Issue 2 (Review 2ec5bbba): when pivoted column name matches index name,
+    # safe_reset_index disambiguates so headers remain unique and index column access stays a Series
+    df = pd.DataFrame({"id": [1, 1, 2], "k": ["a", "id", "a"], "v": [10, 20, 30]})
+    r = df.pt.wide(index="id", c="k", v="v", a="sum")
+    assert "id" in r.columns
+    assert "id_1" in r.columns
+    assert isinstance(r["id"], pd.Series)
+    assert r.pt.qry("id == 1").shape[0] == 1
+
+
 if __name__ == '__main__':
     pytest.main()

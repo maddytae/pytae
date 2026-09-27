@@ -433,4 +433,18 @@ def test_mutate_grouped_callable_sees_original_index():
     assert list(res.index) == [10, 20, 30]
 
 
+def test_mutate_scalar_if_else_and_case_when():
+    # Lib Issue 1 (Review 2ec5bbba): scalar condition in if_else and case_when broadcasts across rows and groups
+    df = pd.DataFrame({"val": [10, 20, 30]})
+    assert df.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+    assert df.pt.mutate(y="case_when((n > 1, 'big'), 'small')")["y"].tolist() == ["big", "big", "big"]
+
+    df2 = pd.DataFrame({"val": [10, 20, 30]}, index=[5, 6, 7])
+    assert df2.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+
+    df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
+    assert df3.pt.mutate(y="if_else(n > 1, 1, 0)", by="g")["y"].tolist() == [1, 1, 0]
+
+
+
 

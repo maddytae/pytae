@@ -568,16 +568,20 @@ class Plotter:
 
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
         if style is not None and isinstance(style, dict):
+            style_lookup = {str(k): v for k, v in style.items()}
+            style_lookup.update(style)
             for line in self.ax.get_lines():
                 lbl = line.get_label()
-                if lbl in style:
-                    line.set_linestyle(style[lbl])
+                if lbl in style_lookup:
+                    line.set_linestyle(style_lookup[lbl])
         if width is not None:
             if isinstance(width, dict):
+                width_lookup = {str(k): v for k, v in width.items()}
+                width_lookup.update(width)
                 for line in self.ax.get_lines():
                     lbl = line.get_label()
-                    if lbl in width:
-                        line.set_linewidth(width[lbl])
+                    if lbl in width_lookup:
+                        line.set_linewidth(width_lookup[lbl])
             else:
                 for line in self.ax.get_lines():
                     line.set_linewidth(width)
@@ -833,13 +837,10 @@ class Plotter:
                 elif rot is None and kind == 'barh':
                     rot = 0
                 target_axis = 'y' if kind == 'barh' else 'x'
-                tick_kw = {}
-                if rot is not None:
-                    tick_kw['labelrotation'] = rot
                 if fontsize is not None:
-                    tick_kw['labelsize'] = fontsize
-                if tick_kw:
-                    ax.tick_params(axis=target_axis, **tick_kw)
+                    ax.tick_params(axis='both', labelsize=fontsize)
+                if rot is not None:
+                    ax.tick_params(axis=target_axis, labelrotation=rot)
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
                             legend_loc=legend_loc, legend_frameon=legend_frameon)
         

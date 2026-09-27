@@ -636,3 +636,32 @@ def test_plotter_hist_and_kde_with_by_on_duplicate_index():
     # kde with duplicate index
     p_kde = pt.Plotter(df).plot(kind="kde", column="v", by="g")
     assert p_kde.axd["A"].has_data()
+
+
+def test_plotter_finalize_fontsize_both_axes_and_rot():
+    # Plot Issue 1 (Review 2ec5bbba): fontsize applies to both axes, rot to category axis
+    df = pd.DataFrame({"day": ["Thursday", "Friday", "Saturday"], "bill": [10, 20, 30]})
+    p = pt.Plotter(df).plot(kind="bar", x="day", y="bill", rot=45, fontsize=8).finalize()
+    ax = p.axd["A"]
+    yticks = ax.yaxis.get_major_ticks()
+    if yticks:
+        assert yticks[0].label1.get_size() == 8
+    xticks = ax.xaxis.get_major_ticks()
+    if xticks:
+        assert xticks[0].label1.get_size() == 8
+        assert xticks[0].label1.get_rotation() == 45
+
+
+def test_plotter_line_style_width_integer_keys():
+    # Plot Issue 2 (Review 2ec5bbba): style and width dicts with integer keys match stringified line labels
+    df = pd.DataFrame({"x": [1, 2], 1: [10, 20], 2: [30, 40]})
+    p = pt.Plotter(df).plot(kind="line", x="x", y=[1, 2], style={2: ":", 1: "-."}, width={2: 5, 1: 1})
+    lines = p.axd["A"].get_lines()
+    for line in lines:
+        if line.get_label() == "1":
+            assert line.get_linestyle() == "-."
+            assert line.get_linewidth() == 1
+        elif line.get_label() == "2":
+            assert line.get_linestyle() == ":"
+            assert line.get_linewidth() == 5
+

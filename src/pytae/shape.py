@@ -8,6 +8,9 @@ import pandas as pd
 
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
+from pytae.other_utilities import safe_reset_index
+
+_safe_reset_index = safe_reset_index
 
 
 def long(
@@ -154,19 +157,6 @@ def wide(
                 raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
     else:
         index_cols = [col for col in df.columns if col not in [c, v]]
-
-    def _safe_reset_index(pivoted: pd.DataFrame) -> pd.DataFrame:
-        idx_names = list(pivoted.index.names)
-        col_names = set(pivoted.columns)
-        has_collision = any(name is not None and name in col_names for name in idx_names)
-        if has_collision:
-            new_names = [f"__pt_idx_{i}_{name}" if name in col_names else name for i, name in enumerate(idx_names)]
-            pivoted.index.names = new_names
-            res = pivoted.reset_index()
-            rename_map = {f"__pt_idx_{i}_{name}": name for i, name in enumerate(idx_names) if name in col_names}
-            res.columns = [rename_map.get(col, col) for col in res.columns]
-            return res
-        return pivoted.reset_index()
 
     aggfunc = "size" if a == "n" else a
 

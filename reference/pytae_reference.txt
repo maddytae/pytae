@@ -1872,6 +1872,7 @@ def agg_df(
 
 # Alias: agg is identical to agg_df
 agg = agg_df
+
 ################################################################################
 # FILE: src/pytae/cli.py
 ################################################################################
@@ -2365,6 +2366,7 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
 ################################################################################
 # FILE: src/pytae/cli_parsing.py
 ################################################################################
@@ -3034,7 +3036,7 @@ import pandas as pd
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
 from pytae.mutate import mutate
-from pytae.other_utilities import replace_values
+from pytae.other_utilities import replace_values, safe_reset_index
 from pytae.qry import qry
 from pytae.select import select
 
@@ -3316,7 +3318,7 @@ class _Pipeline:
     def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
         df = self.dataframe()
         if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
-            df = df.reset_index()
+            df = safe_reset_index(df)
         if frac is not None:
             sampled = df.sample(frac=frac, random_state=seed)
         else:
@@ -3403,7 +3405,7 @@ from pytae.cli_parsing import (
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
-from pytae.other_utilities import clean_columns, handle_missing
+from pytae.other_utilities import clean_columns, handle_missing, safe_reset_index
 from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
 
 
@@ -3953,9 +3955,7 @@ def _process_path(
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "unique":
-            source_df = pipeline.dataframe()
-            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
-                source_df = source_df.reset_index()
+            source_df = safe_reset_index(pipeline.dataframe())
             unique_df = source_df.drop_duplicates().reset_index(drop=True)
             pipeline._df = unique_df
             if should_print(idx):
@@ -3968,14 +3968,16 @@ def _process_path(
             if should_print(idx):
                 _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+                clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
             tail_val = _next_op_val("tail", args.tail)
             df = pipeline.tail(tail_val)
             if should_print(idx):
                 _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+                clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "sample":
             sample_val = _next_op_val("sample", args.sample)
             sampled = pipeline.sample(sample_val, seed=args.seed, frac=args.frac)
@@ -3985,14 +3987,13 @@ def _process_path(
             if is_clip and n:
                 clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "sort_by":
-            source_df = pipeline.dataframe()
+            source_df = safe_reset_index(pipeline.dataframe())
+            pipeline._df = source_df
             sort_by_arg = _next_op_val("sort_by", args.sort_by)
             sort_cols, order = parse_sort_by(sort_by_arg)
             if any(c not in source_df.columns for c in sort_cols):
                 return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
             ascending = order != "desc"
-            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
-                source_df = source_df.reset_index()
             sorted_df = source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True)
             pipeline._df = sorted_df
             if should_print(idx):
@@ -4095,13 +4096,11 @@ def _process_path(
                 ct_kwargs["values"] = source_df[ct["values"]]
                 ct_kwargs["aggfunc"] = ct["aggfunc"]
             result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
-            pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
-            if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=True)
+            pipeline._df = safe_reset_index(result)
 
     if is_clip and clip_action is not None:
         clip_action()
@@ -4272,6 +4271,8 @@ def _if_else(condition, true_value, false_value):
             np.asarray(true_value, dtype=object),
             np.asarray(false_value, dtype=object),
         )
+    if getattr(result, "ndim", None) == 0:
+        return result.item()
     return pd.Series(result, index=_result_index(condition, true_value, false_value))
 
 
@@ -4321,6 +4322,8 @@ def _case_when(*entries, default=None):
         object_choices = [np.asarray(choice, dtype=object) for choice in choices]
         object_default = default if default is None else np.asarray(default, dtype=object)
         result = np.select(clean_conditions, object_choices, default=object_default)  # type: ignore[arg-type]
+    if getattr(result, "ndim", None) == 0:
+        return result.item()
     return pd.Series(result, index=_result_index(*conditions, *choices))
 
 
@@ -4758,6 +4761,38 @@ pd.DataFrame.to_clip = to_clip
 pd.Series.to_clip = to_clip
 
 
+def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Reset index safely ensuring that any index name colliding with an existing column
+    causes the colliding column to be disambiguated, so headers remain unique and the
+    index levels retain their intended names."""
+    if isinstance(df.index, pd.RangeIndex) and df.index.name is None:
+        return df
+    idx_names = list(df.index.names)
+    col_names = [str(col) for col in df.columns]
+    colliding = set()
+    used_names = set(col_names)
+    for i, name in enumerate(idx_names):
+        target_name = str(name) if name is not None else ("index" if len(idx_names) == 1 else f"level_{i}")
+        if target_name in used_names:
+            colliding.add(target_name)
+    if colliding:
+        new_columns = []
+        for col in col_names:
+            if col in colliding:
+                cand_idx = 1
+                cand = f"{col}_{cand_idx}"
+                while cand in used_names or cand in [str(n) for n in idx_names]:
+                    cand_idx += 1
+                    cand = f"{col}_{cand_idx}"
+                used_names.add(cand)
+                new_columns.append(cand)
+            else:
+                new_columns.append(col)
+        df = df.copy(deep=False)
+        df.columns = new_columns
+    return df.reset_index()
+
+
 def handle_missing(
     df: pd.DataFrame,
     fillna: str = ".",
@@ -4969,6 +5004,7 @@ def replace_values(
     else:
         df = df.replace(to_replace, regex=not exact)
     return df
+
 ################################################################################
 # FILE: src/pytae/plotting.py
 ################################################################################
@@ -5542,16 +5578,20 @@ class Plotter:
 
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
         if style is not None and isinstance(style, dict):
+            style_lookup = {str(k): v for k, v in style.items()}
+            style_lookup.update(style)
             for line in self.ax.get_lines():
                 lbl = line.get_label()
-                if lbl in style:
-                    line.set_linestyle(style[lbl])
+                if lbl in style_lookup:
+                    line.set_linestyle(style_lookup[lbl])
         if width is not None:
             if isinstance(width, dict):
+                width_lookup = {str(k): v for k, v in width.items()}
+                width_lookup.update(width)
                 for line in self.ax.get_lines():
                     lbl = line.get_label()
-                    if lbl in width:
-                        line.set_linewidth(width[lbl])
+                    if lbl in width_lookup:
+                        line.set_linewidth(width_lookup[lbl])
             else:
                 for line in self.ax.get_lines():
                     line.set_linewidth(width)
@@ -5807,13 +5847,10 @@ class Plotter:
                 elif rot is None and kind == 'barh':
                     rot = 0
                 target_axis = 'y' if kind == 'barh' else 'x'
-                tick_kw = {}
-                if rot is not None:
-                    tick_kw['labelrotation'] = rot
                 if fontsize is not None:
-                    tick_kw['labelsize'] = fontsize
-                if tick_kw:
-                    ax.tick_params(axis=target_axis, **tick_kw)
+                    ax.tick_params(axis='both', labelsize=fontsize)
+                if rot is not None:
+                    ax.tick_params(axis=target_axis, labelrotation=rot)
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
                             legend_loc=legend_loc, legend_frameon=legend_frameon)
         
@@ -6339,6 +6376,7 @@ def qry(
             out = out.loc[out[col] == cond]
 
     return out
+
 ################################################################################
 # FILE: src/pytae/readers.py
 ################################################################################
@@ -6359,6 +6397,8 @@ from pathlib import Path
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pa_parquet
+
+from pytae.other_utilities import safe_reset_index
 
 DEFAULT_CHUNK_SIZE = 200_000
 CHUNK_SIZE = DEFAULT_CHUNK_SIZE
@@ -6990,8 +7030,7 @@ def _write_jsonl(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     compression: str | None = None,
 ) -> None:
-    if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
-        df = df.reset_index()
+    df = safe_reset_index(df)
     total = len(df)
     if not progress or total == 0:
         df.to_json(dest, orient="records", lines=True, compression=compression)
@@ -7031,6 +7070,7 @@ def _write_parquet(
             done += batch.num_rows
             _print_progress(done, total, "writing")
     print()
+
 ################################################################################
 # FILE: src/pytae/select.py
 ################################################################################
@@ -7368,6 +7408,9 @@ import pandas as pd
 
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
+from pytae.other_utilities import safe_reset_index
+
+_safe_reset_index = safe_reset_index
 
 
 def long(
@@ -7514,19 +7557,6 @@ def wide(
                 raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
     else:
         index_cols = [col for col in df.columns if col not in [c, v]]
-
-    def _safe_reset_index(pivoted: pd.DataFrame) -> pd.DataFrame:
-        idx_names = list(pivoted.index.names)
-        col_names = set(pivoted.columns)
-        has_collision = any(name is not None and name in col_names for name in idx_names)
-        if has_collision:
-            new_names = [f"__pt_idx_{i}_{name}" if name in col_names else name for i, name in enumerate(idx_names)]
-            pivoted.index.names = new_names
-            res = pivoted.reset_index()
-            rename_map = {f"__pt_idx_{i}_{name}": name for i, name in enumerate(idx_names) if name in col_names}
-            res.columns = [rename_map.get(col, col) for col in res.columns]
-            return res
-        return pivoted.reset_index()
 
     aggfunc = "size" if a == "n" else a
 
@@ -7675,6 +7705,7 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
             raise ValueError(f"sql: {exc}") from exc
     finally:
         con.close()
+
 
 ================================================================================
 11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
@@ -10277,6 +10308,72 @@ def test_long_unknown_column_validation(tmp_path):
     assert exc_info.value.code == 2
 
 
+def test_crosstab_collision_sort_and_jsonl_export(tmp_path):
+    # CLI Issue 1 (Review 2ec5bbba): index name colliding with category or margins column
+    df = pd.DataFrame({"question": ["question", "other", "question"], "answer": ["question", "yes", "no"]})
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-crosstab", "index=question,columns=answer", "-sort_by", "yes"])
+    assert exit_code == 0
+
+    df2 = pd.DataFrame({"species": ["A", "B"], "island": ["X", "Y"]})
+    p2 = _write_csv(tmp_path, df2)
+    out_jsonl = tmp_path / "ct.jsonl"
+    exit_code2 = cli.main([p2, "-crosstab", "index=species,columns=island,margins=true,margins_name=species", "-o", str(out_jsonl)])
+    assert exit_code2 == 0
+    res = pd.read_json(out_jsonl, lines=True)
+    assert "species" in res.columns
+    assert "species_1" in res.columns
+
+
+def test_crosstab_round_clip(tmp_path, monkeypatch):
+    # CLI Issue 2 (Review 2ec5bbba): -crosstab -round -o clip copies rounded values
+    df = pd.DataFrame({"species": ["A", "A"], "sex": ["M", "M"], "body_mass_g": [1.26, 1.26]})
+    p = _write_csv(tmp_path, df)
+    copied = []
+    monkeypatch.setattr(pd.DataFrame, "to_clipboard", lambda self, *a, **kw: copied.append((self.copy(), kw)))
+    exit_code = cli.main([p, "-crosstab", "index=species,columns=sex,values=body_mass_g,aggfunc=mean", "-round", "1", "-o", "clip"])
+    assert exit_code == 0
+    assert len(copied) == 1
+    clip_df, clip_kwargs = copied[0]
+    assert clip_df.iloc[0, 0] == 1.3
+    assert clip_kwargs.get("index") is True
+
+
+def test_crosstab_follow_on_ops_on_row_index(tmp_path, capsys):
+    # CLI Issue 3 (Review 2ec5bbba): -sort_by, -qry, and -select can reference crosstab row key
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
+    p = _write_csv(tmp_path, df)
+    exit_sort = cli.main([p, "-crosstab", "index=species,columns=island", "-sort_by", "species"])
+    assert exit_sort == 0
+    out_sort = capsys.readouterr().out
+    assert "species" in out_sort
+
+    exit_qry = cli.main([p, "-crosstab", "index=species,columns=island", "-qry", "species = 'Adelie'"])
+    assert exit_qry == 0
+    out_qry = capsys.readouterr().out
+    assert "Adelie" in out_qry
+    assert "Gentoo" not in out_qry
+
+    exit_sel = cli.main([p, "-crosstab", "index=species,columns=island", "-select", "species,Biscoe"])
+    assert exit_sel == 0
+    out_sel = capsys.readouterr().out
+    assert "species" in out_sel
+
+
+def test_crosstab_head_clip_includes_row_key(tmp_path, monkeypatch):
+    # CLI Issue 4 (Review 2ec5bbba): -head -o clip after crosstab preserves row key
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
+    p = _write_csv(tmp_path, df)
+    copied = []
+    monkeypatch.setattr(pd.DataFrame, "to_clipboard", lambda self, *a, **kw: copied.append((self.copy(), kw)))
+    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-head", "1", "-o", "clip"])
+    assert exit_code == 0
+    assert len(copied) == 1
+    clip_df, _ = copied[0]
+    assert "species" in clip_df.columns or clip_df.index.name == "species"
+
+
+
 
 
 ################################################################################
@@ -11538,6 +11635,20 @@ def test_mutate_grouped_callable_sees_original_index():
     assert list(res.index) == [10, 20, 30]
 
 
+def test_mutate_scalar_if_else_and_case_when():
+    # Lib Issue 1 (Review 2ec5bbba): scalar condition in if_else and case_when broadcasts across rows and groups
+    df = pd.DataFrame({"val": [10, 20, 30]})
+    assert df.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+    assert df.pt.mutate(y="case_when((n > 1, 'big'), 'small')")["y"].tolist() == ["big", "big", "big"]
+
+    df2 = pd.DataFrame({"val": [10, 20, 30]}, index=[5, 6, 7])
+    assert df2.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+
+    df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
+    assert df3.pt.mutate(y="if_else(n > 1, 1, 0)", by="g")["y"].tolist() == [1, 1, 0]
+
+
+
 
 
 ################################################################################
@@ -12181,6 +12292,35 @@ def test_plotter_hist_and_kde_with_by_on_duplicate_index():
     # kde with duplicate index
     p_kde = pt.Plotter(df).plot(kind="kde", column="v", by="g")
     assert p_kde.axd["A"].has_data()
+
+
+def test_plotter_finalize_fontsize_both_axes_and_rot():
+    # Plot Issue 1 (Review 2ec5bbba): fontsize applies to both axes, rot to category axis
+    df = pd.DataFrame({"day": ["Thursday", "Friday", "Saturday"], "bill": [10, 20, 30]})
+    p = pt.Plotter(df).plot(kind="bar", x="day", y="bill", rot=45, fontsize=8).finalize()
+    ax = p.axd["A"]
+    yticks = ax.yaxis.get_major_ticks()
+    if yticks:
+        assert yticks[0].label1.get_size() == 8
+    xticks = ax.xaxis.get_major_ticks()
+    if xticks:
+        assert xticks[0].label1.get_size() == 8
+        assert xticks[0].label1.get_rotation() == 45
+
+
+def test_plotter_line_style_width_integer_keys():
+    # Plot Issue 2 (Review 2ec5bbba): style and width dicts with integer keys match stringified line labels
+    df = pd.DataFrame({"x": [1, 2], 1: [10, 20], 2: [30, 40]})
+    p = pt.Plotter(df).plot(kind="line", x="x", y=[1, 2], style={2: ":", 1: "-."}, width={2: 5, 1: 1})
+    lines = p.axd["A"].get_lines()
+    for line in lines:
+        if line.get_label() == "1":
+            assert line.get_linestyle() == "-."
+            assert line.get_linewidth() == 1
+        elif line.get_label() == "2":
+            assert line.get_linestyle() == ":"
+            assert line.get_linewidth() == 5
+
 
 ################################################################################
 # FILE: tests/test_qry.py
@@ -13185,6 +13325,17 @@ def test_safe_reset_index_name_collision():
     res = df.pt.wide(index="region", c="c", v="v", a="sum")
     assert "region" in res.columns
     assert "Q1" in res.columns
+
+
+def test_safe_reset_index_disambiguates_collision():
+    # Lib Issue 2 (Review 2ec5bbba): when pivoted column name matches index name,
+    # safe_reset_index disambiguates so headers remain unique and index column access stays a Series
+    df = pd.DataFrame({"id": [1, 1, 2], "k": ["a", "id", "a"], "v": [10, 20, 30]})
+    r = df.pt.wide(index="id", c="k", v="v", a="sum")
+    assert "id" in r.columns
+    assert "id_1" in r.columns
+    assert isinstance(r["id"], pd.Series)
+    assert r.pt.qry("id == 1").shape[0] == 1
 
 
 if __name__ == '__main__':

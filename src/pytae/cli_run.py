@@ -23,7 +23,7 @@ from pytae.cli_parsing import (
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
-from pytae.other_utilities import clean_columns, handle_missing
+from pytae.other_utilities import clean_columns, handle_missing, safe_reset_index
 from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
 
 
@@ -573,9 +573,7 @@ def _process_path(
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "unique":
-            source_df = pipeline.dataframe()
-            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
-                source_df = source_df.reset_index()
+            source_df = safe_reset_index(pipeline.dataframe())
             unique_df = source_df.drop_duplicates().reset_index(drop=True)
             pipeline._df = unique_df
             if should_print(idx):
@@ -588,14 +586,16 @@ def _process_path(
             if should_print(idx):
                 _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+                clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
             tail_val = _next_op_val("tail", args.tail)
             df = pipeline.tail(tail_val)
             if should_print(idx):
                 _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+                clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "sample":
             sample_val = _next_op_val("sample", args.sample)
             sampled = pipeline.sample(sample_val, seed=args.seed, frac=args.frac)
@@ -605,14 +605,13 @@ def _process_path(
             if is_clip and n:
                 clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "sort_by":
-            source_df = pipeline.dataframe()
+            source_df = safe_reset_index(pipeline.dataframe())
+            pipeline._df = source_df
             sort_by_arg = _next_op_val("sort_by", args.sort_by)
             sort_cols, order = parse_sort_by(sort_by_arg)
             if any(c not in source_df.columns for c in sort_cols):
                 return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
             ascending = order != "desc"
-            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
-                source_df = source_df.reset_index()
             sorted_df = source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True)
             pipeline._df = sorted_df
             if should_print(idx):
@@ -715,13 +714,11 @@ def _process_path(
                 ct_kwargs["values"] = source_df[ct["values"]]
                 ct_kwargs["aggfunc"] = ct["aggfunc"]
             result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
-            pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
-            if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=True)
+            pipeline._df = safe_reset_index(result)
 
     if is_clip and clip_action is not None:
         clip_action()

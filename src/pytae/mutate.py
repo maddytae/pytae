@@ -123,6 +123,8 @@ def _if_else(condition, true_value, false_value):
             np.asarray(true_value, dtype=object),
             np.asarray(false_value, dtype=object),
         )
+    if getattr(result, "ndim", None) == 0:
+        return result.item()
     return pd.Series(result, index=_result_index(condition, true_value, false_value))
 
 
@@ -172,6 +174,8 @@ def _case_when(*entries, default=None):
         object_choices = [np.asarray(choice, dtype=object) for choice in choices]
         object_default = default if default is None else np.asarray(default, dtype=object)
         result = np.select(clean_conditions, object_choices, default=object_default)  # type: ignore[arg-type]
+    if getattr(result, "ndim", None) == 0:
+        return result.item()
     return pd.Series(result, index=_result_index(*conditions, *choices))
 
 

@@ -16,6 +16,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pa_parquet
 
+from pytae.other_utilities import safe_reset_index
+
 DEFAULT_CHUNK_SIZE = 200_000
 CHUNK_SIZE = DEFAULT_CHUNK_SIZE
 DTYPE_SAMPLE_ROWS = 10_000
@@ -646,8 +648,7 @@ def _write_jsonl(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     compression: str | None = None,
 ) -> None:
-    if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
-        df = df.reset_index()
+    df = safe_reset_index(df)
     total = len(df)
     if not progress or total == 0:
         df.to_json(dest, orient="records", lines=True, compression=compression)
