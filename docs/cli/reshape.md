@@ -73,9 +73,17 @@ pytae long_data.parquet -wide "c=metric,v=measurement,a=mean"
 
 ## Contingency Tables & Proportions (`-crosstab`)
 
-Computes a frequency matrix of two categorical factors via Pandas `pd.crosstab()`.
+Computes a frequency or aggregation matrix across categorical factors via Pandas `pd.crosstab()`.
 
-### Counts Matrix
+Key parameters:
+- `index=`: One or more comma-separated columns for rows (e.g. `index=species` or multi-level `index='species,island'`).
+- `columns=`: Column for columns (e.g. `columns=island`).
+- `values=` & `aggfunc=`: Aggregate a numeric column (e.g. `values=body_mass_g,aggfunc=mean`).
+- `normalize=`: Normalize proportions (`index` for row %, `columns` for col %, `all` for total %).
+- `margins=true`: Include row and column subtotals/totals.
+- `margins_name=`: Custom label for margins (default: `All`).
+
+### 1. Basic Counts Matrix
 
 ```bash
 pytae penguins.parquet -crosstab "index=species,columns=island"
@@ -90,10 +98,29 @@ Chinstrap       0     68          0
 Gentoo        124      0          0
 ```
 
-### Percentages & Normalization (`normalize=`)
+### 2. Marginal Totals & Custom Names (`margins=true`, `margins_name=`)
+
+Add row and column totals with a custom label:
+
+```bash
+pytae penguins.parquet -crosstab "index=species,columns=island,margins=true,margins_name=Total"
+```
+
+**Output:**
+```text
+island     Biscoe  Dream  Torgersen  Total
+species                                   
+Adelie         44     56         52    152
+Chinstrap       0     68          0     68
+Gentoo        124      0          0    124
+Total         168    124         52    344
+```
+
+### 3. Percentages & Normalization (`normalize=`)
 
 Display row proportions (`normalize=index`), column proportions (`normalize=columns`), or total proportions (`normalize=all`):
 
+**Row Proportions (`normalize=index`):**
 ```bash
 pytae penguins.parquet \
   -crosstab "index=species,columns=sex,normalize=index" \
@@ -109,12 +136,97 @@ Chinstrap    0.50  0.50
 Gentoo       0.49  0.51
 ```
 
-### Marginal Totals (`margins=true`)
+**Total Table Proportions (`normalize=all`):**
+```bash
+pytae penguins.parquet \
+  -crosstab "index=species,columns=island,normalize=all" \
+  -round 3
+```
 
-Add row and column totals:
+**Output:**
+```text
+island     Biscoe  Dream  Torgersen
+species                            
+Adelie      0.128  0.163      0.151
+Chinstrap   0.000  0.198      0.000
+Gentoo      0.360  0.000      0.000
+```
+
+### 4. Numeric Values & Aggregation Function (`values=`, `aggfunc=`)
+
+Compute summary statistics (like `mean`, `sum`, `median`, `min`, `max`) of a numeric column across categories instead of raw counts:
 
 ```bash
-pytae penguins.parquet -crosstab "index=species,columns=island,margins=true"
+pytae penguins.parquet \
+  -crosstab "index=species,columns=sex,values=body_mass_g,aggfunc=mean" \
+  -round 1
+```
+
+**Output:**
+```text
+sex        Female    Male
+species                  
+Adelie     3368.8  4043.5
+Chinstrap  3527.2  3939.0
+Gentoo     4679.7  5484.8
+```
+
+### 5. Multi-Column Index (3-Way Cross-Tabulation)
+
+Pass multiple comma-separated columns to `index=` to cross-tabulate across 3 dimensions:
+
+```bash
+pytae penguins.parquet -crosstab "index='species,island',columns=sex"
+```
+
+**Output:**
+```text
+sex                  Female  Male
+species   island                 
+Adelie    Biscoe         22    22
+          Dream          27    28
+          Torgersen      24    23
+Chinstrap Dream          34    34
+Gentoo    Biscoe         58    61
+```
+
+### 6. Columns with Spaces (`[col]`)
+
+Enclose column names with spaces in square brackets `[col]`:
+
+```bash
+pytae tips.parquet \
+  -rename "total_bill:[total bill],smoker:[smoker status]" \
+  -crosstab "index=[smoker status],columns=day,values=[total bill],aggfunc=mean" \
+  -round 2
+```
+
+**Output:**
+```text
+day             Thur    Fri    Sat    Sun
+smoker status                            
+Yes            19.19  16.81  21.28  24.12
+No             17.11  18.42  19.66  20.51
+```
+
+### 7. Pipeline Chaining (`-qry` → `-crosstab`)
+
+Filter data upstream in the CLI pipeline before generating the contingency matrix:
+
+```bash
+pytae titanic.parquet \
+  -qry "age < 18" \
+  -crosstab "index=pclass,columns=survived,margins=true,margins_name=Total"
+```
+
+**Output:**
+```text
+survived   0   1  Total
+pclass                 
+1          1  11     12
+2          2  21     23
+3         49  29     78
+Total     52  61    113
 ```
 
 ---

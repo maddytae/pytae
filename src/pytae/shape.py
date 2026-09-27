@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
+
 
 def long(
     df: pd.DataFrame,
@@ -157,3 +159,98 @@ def wide(
 
     wide_df.columns.name = None
     return wide_df
+
+
+def crosstab(
+    df: pd.DataFrame,
+    index: str | Sequence[str],
+    columns: str | Sequence[str],
+    values: str | None = None,
+    aggfunc: Any = None,
+    normalize: bool | str = False,
+    margins: bool = False,
+    margins_name: str = "All",
+    dropna: bool = True,
+    **kwargs: Any,
+) -> pd.DataFrame:
+    """Compute a contingency table / frequency cross-tabulation of two or more factors.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame to cross-tabulate.
+    index : str or sequence of str
+        Column(s) to group by in the rows. Supports bracketed names `[col]`.
+    columns : str or sequence of str
+        Column(s) to group by in the columns. Supports bracketed names `[col]`.
+    values : str, optional
+        Column of values to aggregate according to the factors. Supports bracketed names `[col]`.
+    aggfunc : str or callable, optional
+        Aggregation function if `values` is specified (e.g. 'mean', 'sum', 'median', np.mean).
+    normalize : bool or {'all', 'index', 'columns'}, default False
+        Normalize by dividing all values by that sum:
+        - 'all': normalize over all values.
+        - 'index': normalize over each row.
+        - 'columns': normalize over each column.
+    margins : bool, default False
+        Add row and column margins (subtotals).
+    margins_name : str, default 'All'
+        Name of the row/column that will contain the totals when margins is True.
+    dropna : bool, default True
+        Do not include columns whose entries are all NaN.
+
+    Returns:
+    --------
+    pd.DataFrame
+        Cross-tabulation matrix.
+    """
+    all_cols = list(df.columns)
+
+    if isinstance(index, str):
+        index_cols = [_unquote_name(c.strip()) for c in index.split(",") if c.strip()]
+    elif isinstance(index, (list, tuple, set)):
+        index_cols = [_unquote_name(c) for c in index]
+    else:
+        raise TypeError(f"crosstab(): index must be a column name or sequence of names, got {type(index).__name__}")
+
+    if isinstance(columns, str):
+        col_cols = [_unquote_name(c.strip()) for c in columns.split(",") if c.strip()]
+    elif isinstance(columns, (list, tuple, set)):
+        col_cols = [_unquote_name(c) for c in columns]
+    else:
+        raise TypeError(f"crosstab(): columns must be a column name or sequence of names, got {type(columns).__name__}")
+
+    val_col = _unquote_name(values) if values is not None else None
+
+    # Check for missing columns with helpful suggestions
+    needed = index_cols + col_cols + ([val_col] if val_col is not None else [])
+    for col in needed:
+        if col not in df.columns:
+            close = difflib.get_close_matches(str(col), [str(c) for c in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"crosstab(): column '{col}' not found in DataFrame{hint}")
+
+    ct_kwargs: dict[str, Any] = {
+        "rownames": index_cols,
+        "colnames": col_cols,
+        "margins": margins,
+        "margins_name": margins_name,
+        "dropna": dropna,
+        "normalize": normalize,
+    }
+    if val_col is not None:
+        if aggfunc is None:
+            raise ValueError("crosstab(): 'values' and 'aggfunc' must be specified together")
+        ct_kwargs["values"] = df[val_col]
+        ct_kwargs["aggfunc"] = aggfunc
+    elif aggfunc is not None:
+        raise ValueError("crosstab(): 'values' and 'aggfunc' must be specified together")
+
+    idx_series = [df[c] for c in index_cols]
+    col_series = [df[c] for c in col_cols]
+    return pd.crosstab(
+        idx_series if len(idx_series) > 1 else idx_series[0],
+        col_series if len(col_series) > 1 else col_series[0],
+        **ct_kwargs,
+    )
+

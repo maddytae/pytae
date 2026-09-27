@@ -92,6 +92,32 @@ class PtAccessor:
         from .shape import wide as _wide
         return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
 
+    def crosstab(
+        self,
+        index: str | Sequence[str],
+        columns: str | Sequence[str],
+        values: str | None = None,
+        aggfunc: Any = None,
+        normalize: bool | str = False,
+        margins: bool = False,
+        margins_name: str = "All",
+        dropna: bool = True,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        from .shape import crosstab as _crosstab
+        return _crosstab(
+            self._obj,
+            index=index,
+            columns=columns,
+            values=values,
+            aggfunc=aggfunc,
+            normalize=normalize,
+            margins=margins,
+            margins_name=margins_name,
+            dropna=dropna,
+            **kwargs,
+        )
+
     def group_x(
         self,
         by: str | Sequence[str] | None = None,

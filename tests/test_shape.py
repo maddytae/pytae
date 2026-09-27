@@ -130,5 +130,93 @@ def test_wide_with_explicit_index():
     assert "Q2" in res.columns
 
 
+def test_crosstab_basic():
+    df = pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Gentoo"],
+        "island": ["Biscoe", "Dream", "Biscoe"],
+    })
+    res = df.pt.crosstab("species", "island")
+    assert res.loc["Adelie", "Biscoe"] == 1
+    assert res.loc["Adelie", "Dream"] == 1
+    assert res.loc["Gentoo", "Biscoe"] == 1
+
+
+def test_crosstab_margins():
+    df = pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Gentoo"],
+        "island": ["Biscoe", "Dream", "Biscoe"],
+    })
+    res = df.pt.crosstab("species", "island", margins=True, margins_name="Total")
+    assert "Total" in res.index
+    assert "Total" in res.columns
+    assert res.loc["Total", "Total"] == 3
+
+
+def test_crosstab_normalize():
+    df = pd.DataFrame({
+        "a": ["x", "x", "y"],
+        "b": ["1", "2", "1"],
+    })
+    res_idx = df.pt.crosstab("a", "b", normalize="index")
+    assert res_idx.loc["x"].sum() == pytest.approx(1.0)
+    assert res_idx.loc["y"].sum() == pytest.approx(1.0)
+
+    res_all = df.pt.crosstab("a", "b", normalize="all")
+    assert res_all.values.sum() == pytest.approx(1.0)
+
+
+def test_crosstab_values_and_aggfunc():
+    df = pd.DataFrame({
+        "group": ["A", "A", "B"],
+        "category": ["X", "X", "Y"],
+        "val": [10.0, 20.0, 30.0],
+    })
+    res = df.pt.crosstab("group", "category", values="val", aggfunc="mean")
+    assert res.loc["A", "X"] == 15.0
+    assert res.loc["B", "Y"] == 30.0
+
+
+def test_crosstab_with_bracketed_spaced_cols():
+    df = pd.DataFrame({
+        "smoker status": ["Yes", "Yes", "No"],
+        "day of week": ["Sat", "Sun", "Sat"],
+        "total bill": [10.0, 20.0, 30.0],
+    })
+    res = df.pt.crosstab(
+        "[smoker status]",
+        "[day of week]",
+        values="[total bill]",
+        aggfunc="mean",
+        margins=True,
+    )
+    assert res.loc["Yes", "Sat"] == 10.0
+    assert res.loc["Yes", "Sun"] == 20.0
+    assert res.loc["No", "Sat"] == 30.0
+    assert "All" in res.columns
+    assert "All" in res.index
+
+
+def test_crosstab_multi_index():
+    df = pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Gentoo"],
+        "island": ["Biscoe", "Dream", "Biscoe"],
+        "sex": ["M", "F", "M"],
+    })
+    res = df.pt.crosstab(["species", "island"], "sex")
+    assert ("Adelie", "Biscoe") in res.index
+    assert res.loc[("Adelie", "Biscoe"), "M"] == 1
+
+
+def test_crosstab_errors():
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "v": [5, 6]})
+    with pytest.raises(KeyError, match=r"crosstab\(\): column 'nope' not found"):
+        df.pt.crosstab("a", "nope")
+    with pytest.raises(ValueError, match="values' and 'aggfunc' must be specified together"):
+        df.pt.crosstab("a", "b", values="v")
+    with pytest.raises(ValueError, match="values' and 'aggfunc' must be specified together"):
+        df.pt.crosstab("a", "b", aggfunc="mean")
+
+
 if __name__ == '__main__':
     pytest.main()
+
