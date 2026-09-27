@@ -802,7 +802,7 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
 │   │   └── sql.md
 │   ├── cli.md
 │   ├── library
-│   │   ├── agg_df.ipynb
+│   │   ├── agg.ipynb
 │   │   ├── mutate.ipynb
 │   │   ├── other_utilities.ipynb
 │   │   ├── qry.ipynb
