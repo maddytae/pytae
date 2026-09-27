@@ -16,30 +16,72 @@ pd.DataFrame.to_clip = to_clip
 pd.Series.to_clip = to_clip
 
 
-def handle_missing(df: pd.DataFrame, fillna: str = ".") -> pd.DataFrame:
+def handle_missing(
+    df: pd.DataFrame,
+    fillna: str = ".",
+    numeric_fill: Any = 0,
+    cols: Sequence[str] | None = None,
+    preserve_categories: bool = True,
+) -> pd.DataFrame:
+    """Fill missing values across columns with type-appropriate defaults.
+
+    - String/object columns: filled with `fillna` (default '.') and stripped.
+    - Categorical columns: category preserved (adds `fillna` category if needed) and filled.
+    - Numeric columns: filled with `numeric_fill` (default 0). Can also be "mean", "median", or None.
+    - Bool/datetime columns: left untouched by default to avoid corruption.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame to process.
+    fillna : str, default '.'
+        Fill value for string, object, and categorical columns.
+    numeric_fill : number, "mean", "median", or None, default 0
+        Fill value for numeric columns. If None, numeric columns are not filled.
+    cols : sequence of str, optional
+        Specific columns to handle. If None, all applicable columns are processed.
+    preserve_categories : bool, default True
+        If True, categorical columns keep their categorical dtype instead of being
+        converted to object.
+    """
     df = df.copy()
+    target_cols = set(cols) if cols is not None else set(df.columns)
 
-    df_cat_cols = df.columns[df.dtypes == 'category'].tolist()
-    for c in df_cat_cols:
-        df[c] = df[c].astype("object")
+    # Categorical columns
+    cat_cols = [c for c in df.columns if c in target_cols and isinstance(df[c].dtype, pd.CategoricalDtype)]
+    for c in cat_cols:
+        if preserve_categories:
+            if fillna not in df[c].cat.categories:
+                df[c] = df[c].cat.add_categories([fillna])
+            df[c] = df[c].fillna(fillna)
+        else:
+            df[c] = df[c].astype("object").fillna(fillna).str.strip()
 
-    # Only treat columns actually holding strings as text. pandas' own dedicated
-    # string dtype (e.g. pandas >= 3.0's default "str" columns) is homogeneous by
-    # construction; legacy object-dtype columns need a value-level check since
-    # object can also hold bools/mixed Python objects, which .str.strip() would corrupt.
-    def _is_string_col(s):
+    # String / object columns (excluding categorical)
+    def _is_string_col(s: pd.Series) -> bool:
+        if isinstance(s.dtype, pd.CategoricalDtype):
+            return False
         if s.dtype == object:
-            return s.dropna().map(type).eq(str).all()
+            non_na = s.dropna()
+            return len(non_na) > 0 and non_na.map(type).eq(str).all()
         return pd.api.types.is_string_dtype(s)
 
-    df_str_cols = [c for c in df.columns if _is_string_col(df[c])]
-    df[df_str_cols] = df[df_str_cols].fillna(fillna)
-    df[df_str_cols] = df[df_str_cols].apply(lambda x: x.str.strip())
+    str_cols = [c for c in df.columns if c in target_cols and _is_string_col(df[c])]
+    for c in str_cols:
+        df[c] = df[c].fillna(fillna)
+        if hasattr(df[c], "str") and callable(getattr(df[c].str, "strip", None)):
+            df[c] = df[c].str.strip()
 
-    # fillna(0) should only touch numeric columns — filling datetime/bool/other
-    # non-numeric columns with the literal int 0 silently corrupts them.
-    numeric_cols = df.select_dtypes(include="number").columns
-    df[numeric_cols] = df[numeric_cols].fillna(0)
+    # Numeric columns
+    if numeric_fill is not None:
+        num_cols = [c for c in df.select_dtypes(include="number").columns if c in target_cols]
+        for c in num_cols:
+            if numeric_fill == "mean":
+                df[c] = df[c].fillna(df[c].mean())
+            elif numeric_fill == "median":
+                df[c] = df[c].fillna(df[c].median())
+            else:
+                df[c] = df[c].fillna(numeric_fill)
 
     return df
 

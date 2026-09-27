@@ -102,8 +102,20 @@ class PtAccessor:
     ) -> pd.DataFrame:
         return _group_x(self._obj, group=group, dropna=dropna, observed=observed, a=a, v=v)
 
-    def handle_missing(self, fillna: str = ".") -> pd.DataFrame:
-        return _handle_missing(self._obj, fillna=fillna)
+    def handle_missing(
+        self,
+        fillna: str = ".",
+        numeric_fill: Any = 0,
+        cols: Sequence[str] | None = None,
+        preserve_categories: bool = True,
+    ) -> pd.DataFrame:
+        return _handle_missing(
+            self._obj,
+            fillna=fillna,
+            numeric_fill=numeric_fill,
+            cols=cols,
+            preserve_categories=preserve_categories,
+        )
 
     def cols(self, ascending: bool | None = True) -> list:
         return _cols(self._obj, ascending=ascending)

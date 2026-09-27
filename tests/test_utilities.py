@@ -49,6 +49,30 @@ def test_handle_missing_fills_object_and_numeric():
     assert df["grp"].isna().any()
 
 
+def test_handle_missing_preserves_categorical():
+    s = pd.Series(pd.Categorical(["A", None, "B"]))
+    df = pd.DataFrame({"cat": s, "val": [1.0, None, 3.0]})
+    result = pt.handle_missing(df, fillna="Missing")
+    assert isinstance(result["cat"].dtype, pd.CategoricalDtype)
+    assert result["cat"].tolist() == ["A", "Missing", "B"]
+    assert "Missing" in result["cat"].cat.categories
+
+
+def test_handle_missing_custom_numeric_fill_and_cols():
+    df = pd.DataFrame({"a": [10.0, None], "b": [100.0, None], "txt": ["hello", None]})
+    # Only fill 'a' with mean, leave 'b' and 'txt' untouched
+    result = pt.handle_missing(df, numeric_fill="mean", cols=["a"])
+    assert result["a"].tolist() == [10.0, 10.0]
+    assert pd.isna(result["b"].iloc[1])
+    assert pd.isna(result["txt"].iloc[1])
+
+    # numeric_fill=None leaves numerics alone
+    result2 = pt.handle_missing(df, fillna="N/A", numeric_fill=None)
+    assert pd.isna(result2["a"].iloc[1])
+    assert result2["txt"].tolist() == ["hello", "N/A"]
+
+
+
 def test_cols_sort_orders():
     df = pd.DataFrame({"c": [1], "a": [2], "b": [3]})
     assert pt.cols(df) == ["a", "b", "c"]
