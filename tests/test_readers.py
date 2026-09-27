@@ -206,3 +206,83 @@ def test_get_reader_missing_suffix(tmp_path):
     path.write_text("a,b\n1,2\n")
     with pytest.raises(ValueError, match="unsupported"):
         get_reader(path)
+
+
+def test_jsonl_reader_and_writer(tmp_path):
+    df = _frame()
+    jsonl_path = tmp_path / "test.jsonl"
+    write_dataframe(df, jsonl_path)
+    assert jsonl_path.exists()
+
+    reader = get_reader(jsonl_path)
+    assert reader.shape() == (3, 2)
+    assert reader.columns() == ["a", "b"]
+    assert len(reader.dtypes()) == 2
+    pd.testing.assert_frame_equal(reader.head(2), df.head(2))
+    pd.testing.assert_frame_equal(reader.tail(1).reset_index(drop=True), df.tail(1).reset_index(drop=True))
+    pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+    pd.testing.assert_frame_equal(reader.to_dataframe(columns=["a"]), df[["a"]])
+
+    # Test ndjson alias
+    ndjson_path = tmp_path / "test.ndjson"
+    write_dataframe(df, ndjson_path)
+    nd_reader = get_reader(ndjson_path)
+    assert nd_reader.shape() == (3, 2)
+    pd.testing.assert_frame_equal(nd_reader.to_dataframe(), df)
+
+
+def test_jsonl_reader_empty_error(tmp_path):
+    empty_file = tmp_path / "empty.jsonl"
+    empty_file.write_text("")
+    reader = get_reader(empty_file)
+    with pytest.raises(ValueError, match="is empty or not a valid JSON Lines file"):
+        reader.columns()
+
+
+def test_jsonl_chunked_progress(tmp_path):
+    df = pd.DataFrame({"x": range(15), "y": [f"val_{i}" for i in range(15)]})
+    path = tmp_path / "chunked.jsonl"
+    write_dataframe(df, path, progress=True, chunk_size=5)
+
+    reader = get_reader(path, chunk_size=5)
+    read_df = reader.to_dataframe(progress=True, chunk_size=5)
+    pd.testing.assert_frame_equal(read_df, df)
+
+
+def test_compressed_csv_and_jsonl(tmp_path):
+    df = _frame()
+    csv_gz = tmp_path / "data.csv.gz"
+    write_dataframe(df, csv_gz, progress=True, chunk_size=2)
+    assert csv_gz.exists()
+
+    reader = get_reader(csv_gz)
+    assert reader.shape() == (3, 2)
+    assert reader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+
+    jsonl_gz = tmp_path / "data.jsonl.gz"
+    write_dataframe(df, jsonl_gz, progress=True, chunk_size=2)
+    assert jsonl_gz.exists()
+
+    jreader = get_reader(jsonl_gz)
+    assert jreader.shape() == (3, 2)
+    assert jreader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(jreader.to_dataframe(), df)
+
+
+def test_compressed_txt_and_dat(tmp_path):
+    df = _frame()
+    txt_gz = tmp_path / "data.txt.gz"
+    write_dataframe(df, txt_gz)
+    assert txt_gz.exists()
+    reader = get_reader(txt_gz)
+    assert reader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+
+    dat_gz = tmp_path / "data.dat.gz"
+    write_dataframe(df, dat_gz)
+    assert dat_gz.exists()
+    dreader = get_reader(dat_gz)
+    assert dreader.columns() == ["a", "b"]
+    pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
+

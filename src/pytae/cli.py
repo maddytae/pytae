@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -14,7 +15,6 @@ from pytae.cli_parsing import (
     expand_paths,
     parse_bool_text,
     parse_concat_arg,
-    parse_drop_spec,
     parse_file_arg,
     parse_fraction,
     parse_list_order,
@@ -44,18 +44,105 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
+_DATA_SUFFIXES = frozenset((".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".jsonl", ".ndjson", ".gz", ".yaml", ".yml"))
+_FORMAT_SHORTHANDS = frozenset((
+    "csv", "parquet", "pq", "txt", "dat", "jsonl", "ndjson",
+    "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
+))
+
+
+def _is_path_like(token: str) -> bool:
+    if token.startswith("-"):
+        return False
+    if any(ch in token for ch in "*?[]"):
+        return True
+    if "/" in token or "\\" in token:
+        return True
+    p = Path(token)
+    if p.exists():
+        return True
+    if p.suffix.lower() in _DATA_SUFFIXES:
+        return True
+    return False
+
+
+_CLI_FLAGS = {
+    "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
+    "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
+    "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
+    "-unique", "--unique", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
+    "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
+    "-limit", "--limit", "-select", "--select", "-agg", "--agg",
+    "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
+    "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide",
+    "-crosstab", "--crosstab", "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
+    "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
+    "-file", "--file", "-query", "--query", "-qry", "--qry", "-mutate", "--mutate",
+    "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
+    "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
+    "-pager", "--pager", "-round", "--round", "-h", "--help",
+}
+
+
+def _normalize_cli_args(argv: list[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-progress", "--progress"):
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                try:
+                    int(nxt)
+                    out.append(arg)
+                    out.append(nxt)
+                    i += 2
+                    continue
+                except ValueError:
+                    out.append("--progress=200000")
+                    i += 1
+                    continue
+            else:
+                out.append("--progress=200000")
+                i += 1
+                continue
+        elif arg in ("-select", "--select") and "=" not in arg:
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                if nxt.startswith("-") and nxt not in _CLI_FLAGS:
+                    out.append(f"--select={nxt}")
+                    i += 2
+                    continue
+        out.append(arg)
+        i += 1
+    return out
+
+
+class PytaeParser(argparse.ArgumentParser):
+    """Custom parser that normalizes optional-value flags such as -progress and negative -select specs."""
+
+    def parse_known_args(  # type: ignore[override]
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        if args is None:
+            args = sys.argv[1:]
+        normalized = _normalize_cli_args(list(args))
+        return super().parse_known_args(normalized, namespace)
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = PytaeParser(
         prog="pytae",
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
     )
-    parser.add_argument("path", nargs="?", default=None,
+    parser.add_argument("path", nargs="*", default=None,
                          help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
-                                      "a .yaml/.yml connection config (Databricks table or remote SSH file), "
-                                      "or a glob pattern like 'data/*.parquet' for batch conversion; "
-                                      "omit when using -file with -merge/-concat/-sql")
+                              "a .yaml/.yml connection config (Databricks table or remote SSH file), "
+                              "or glob patterns/multiple files for batch operations; "
+                              "omit when using -file with -merge/-concat/-sql")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the first N rows (default 5)")
@@ -75,6 +162,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="print pandas describe() summary (count/mean/std/min/quartiles/max)")
     parser.add_argument("-info", "--info", dest="info", action=_OrderedFlag,
                          help="print pandas info() (columns, non-null counts, dtypes, memory)")
+    parser.add_argument("-meta", "--meta", dest="meta", action=_OrderedFlag,
+                         help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data")
+    parser.add_argument("-diff", "--diff", dest="diff", default=None, metavar="PATH", action=_OrderedStore,
+                         help="compare schema and contents against another dataset file")
     parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
                          help="show pandas value_counts across current working columns (use -select to choose columns)")
     parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
@@ -90,38 +181,22 @@ def build_parser() -> argparse.ArgumentParser:
                          action=_OrderedStore,
                          help="sort rows by a comma-separated column list, optionally ending with "
                               "asc or desc (default: asc), e.g. species,body_mass_g desc")
-    parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
-                         help="explicit group-by columns for -agg (comma-separated); also used by -group_x "
-                              "if group= is omitted")
+    parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
+                         help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
+                              "Used by -agg and -mutate.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
-                              "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
-                              "regex, exclude_dtype); repeat to filter remaining columns, including after "
-                              '-agg_df/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
-    parser.add_argument("--drop", "-drop", dest="drop", action=_OrderedAppend, default=None, metavar="COLUMNS",
-                         help="drop columns by exact name at this point in the pipeline (comma-separated names "
-                              "only; use -select for dtype=/contains=/regex=/slices); remaining columns keep "
-                              'their order, e.g. -drop "sex,island"')
-    parser.add_argument("-convert", "--convert", dest="convert",
-                         action=_OrderedFlag,
-                         help="convert to another format (.parquet/.csv/.txt/.dat, inferred from -o's extension, "
-                              "defaults to .csv); use -select to restrict columns")
-    parser.add_argument("-agg_df", "--agg_df", dest="agg_df", nargs="?", const="sum", default=None,
+                              "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
+                              "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
+                              'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"')
+    parser.add_argument("-agg", "--agg", "-agg_df", "--agg_df", dest="agg", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
-                         help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
-                              "defaults to sum when no value given; "
-                              "accepts a name (mean), a comma list (mean,sum), or a mapping "
-                              "(body_mass_g: mean, n: n)")
-    parser.add_argument("-agg", "--agg", dest="agg", metavar="KEY=VALUE,...", action=_OrderedStore,
-                         help="aggregate using explicit -group_by columns; key=value specs "
-                              "(column=, aggfunc=, optional as=), e.g. "
-                              "column=value,aggfunc=sum,as=v; several specs separated by ';'; requires -group_by")
-    parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
-                         metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
-                              "size n on non-numeric columns; e.g. group=species,v=body_mass_g,a=max")
+                         help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
+                              "without -by, computes a whole-table summary (grand total). "
+                              "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
+                              "(v1 = sum, total = v1:sum, count = n). Defaults to sum.")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
@@ -151,10 +226,14 @@ def build_parser() -> argparse.ArgumentParser:
                               "requires margins=true); honors -dropna")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
-                         help="for -agg_df, -agg, -group_x, -wide, -value_counts, and -crosstab: "
+                         help="for -agg_df, -agg, -mutate, -wide, -value_counts, and -crosstab: "
                               "include NA keys when false; accepts true or false (default: true)")
-    parser.add_argument("-o", "--output", type=Path, default=None,
-                         help="output path; its extension picks the format (default: .csv alongside the source file)")
+    parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
+                         help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
+                              "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
+                              "or 'clip'/'clipboard' to copy to system clipboard")
+    parser.add_argument("-out_dir", "--out_dir", "-od", "--out-dir", dest="out_dir", type=Path, default=None, metavar="DIR",
+                         help="target directory for exported files (created if it does not exist); requires -o/--output")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
                               "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
@@ -213,101 +292,127 @@ def build_parser() -> argparse.ArgumentParser:
                               "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
                               "current result so far), quoted since it has internal commas, e.g. "
                               "\"frames='df1,df2,df3'\"")
-    parser.add_argument("-progress", "--progress", action="store_true",
-                         help="show row-count progress while converting large files")
+    parser.add_argument("-progress", "--progress", nargs="?", const=200_000, type=parse_positive_int,
+                         default=None, metavar="N",
+                         help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
                          help="render tables as a bordered markdown table instead of plain pandas text")
+    parser.add_argument("-pager", "--pager", action="store_true",
+                         help="pipe long table or inspect outputs through system pager ($PAGER or less)")
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
-    parser.add_argument("-to_clip", "--to_clip", action="store_true",
-                         help="also copy the result to the system clipboard: real tab-separated data "
-                              "for DataFrame/Series output (-head/-tail/-nulls/-cols/etc.), plain text for -shape "
-                              "(cannot combine -shape with a DataFrame-producing flag)")
     return parser
-
-
-def _normalize_op_order(op_order: list[str]) -> list[str]:
-    """If -convert appears before -rename in op_order (e.g. pytae ... -convert -rename ...),
-    ensure renames apply before the conversion writes to disk."""
-    if "convert" not in op_order or "rename" not in op_order:
-        return op_order
-    convert_idx = op_order.index("convert")
-    before = op_order[:convert_idx]
-    after = op_order[convert_idx:]
-    renames_after = [op for op in after if op == "rename"]
-    non_renames_after = [op for op in after if op != "rename"]
-    return before + renames_after + non_renames_after
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
-        msg = f"unrecognized arguments: {' '.join(extras)}"
-        if extras and all(not e.startswith("-") for e in extras):
-            # likely an unquoted value with a space (e.g. a column name) split by the
-            # shell into separate argv tokens -- the whole spec needs one pair of quotes
-            msg += (
-                "\nIf this is part of a value with a space (e.g. a column name), wrap the "
-                'whole spec in quotes, e.g. -select "col a,col b" -- see docs/CLI.md#quoting.'
-            )
-        parser.error(msg)
+        if any(e in ("-to_clip", "--to_clip") for e in extras):
+            parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
+        if any(e in ("-convert", "--convert") for e in extras):
+            parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
+        if args.file is None:
+            path_extras = [e for e in extras if _is_path_like(e)]
+            if path_extras:
+                if args.path is None:
+                    args.path = []
+                elif not isinstance(args.path, list):
+                    args.path = [args.path]
+                args.path.extend(path_extras)
+                extras = [e for e in extras if not _is_path_like(e)]
 
-    op_order = _normalize_op_order(getattr(args, "op_order", []))
-    setattr(args, "op_order", op_order)
+        if extras:
+            msg = f"unrecognized arguments: {' '.join(extras)}"
+            if extras and all(not e.startswith("-") for e in extras):
+                # likely an unquoted value with a space (e.g. a column name) split by the
+                # shell into separate argv tokens -- the whole spec needs one pair of quotes
+                msg += (
+                    "\nIf this is part of a value with a space (e.g. a column name), wrap the "
+                    'whole spec in quotes, e.g. -select "col a,col b" -- see docs/cli.md#quoting.'
+                )
+            parser.error(msg)
+
+    has_progress = args.progress is not None
+    chunk_size = args.progress or 200_000
+    args.progress = has_progress
+    args.chunk_size = chunk_size
+
+    op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
     for idx, op in enumerate(op_order):
         if op in NON_DF_TERMINAL_OPS and idx != last_idx:
             parser.error(
                 f"-{op} does not return a DataFrame/Series, so no flag may follow it "
-                f"except -to_clip (matches pandas: you can't chain another call off "
+                f"(except '-o clip'; matches pandas: you can't chain another call off "
                 f"df.shape/df.columns/df.dtypes/df.info())"
             )
 
+    out_target = str(args.output).strip() if args.output is not None else None
+    args.output = out_target
+    is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
+    is_file = out_target is not None and not is_clip
+
+    if args.out_dir is not None:
+        if args.output is None:
+            parser.error("-out_dir requires -o/--output")
+        if is_clip:
+            parser.error("-out_dir cannot be used with '-o clip'")
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+
+    if is_file and any(op in NON_DF_TERMINAL_OPS for op in op_order):
+        bad_op = next(op for op in op_order if op in NON_DF_TERMINAL_OPS)
+        parser.error(
+            f"-{bad_op} does not produce a tabular DataFrame, so it cannot be exported to a file; "
+            f"use '-o clip' or view in terminal"
+        )
+
+    raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
+
+    if args.meta and args.file is not None:
+        parser.error("-meta cannot be used with -file")
     if args.merge and args.file is None:
         parser.error("-merge requires -file")
     if args.concat and args.file is None:
         parser.error("-concat requires -file")
     if args.file is not None:
-        if args.path is not None:
+        if raw_paths:
             parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
         if not op_order or op_order[0] not in ("merge", "sql", "concat"):
             parser.error("-file requires -merge, -concat, or -sql as its first operation")
-    elif args.path is None:
+        if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
+            parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
+    elif not raw_paths:
         parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.convert, args.agg_df is not None, args.agg is not None,
-                         args.group_x is not None, args.handle_missing is not None,
+                         args.agg is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
-                         args.rename, args.clean_columns is not None, args.merge, args.concat])
+                         args.select, args.qry, args.query, args.sql, args.replace_values,
+                         args.rename, args.clean_columns is not None, args.merge, args.concat,
+                         args.meta, args.diff is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg_df is not None, args.agg is not None,
-                     args.group_x is not None, args.handle_missing is not None,
+                     args.agg is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
                      args.clean_columns is not None, args.merge, args.concat])
-    if args.to_clip and args.shape and wants_df:
-        parser.error("-to_clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
+    if is_clip and args.shape and wants_df:
+        parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
+                     "-agg/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
                      "run -shape separately")
-    if args.agg_df is not None and args.agg is not None:
-        parser.error("-agg_df and -agg can't be combined; choose one")
-    if args.group_by is not None and args.agg is None and args.group_x is None:
-        parser.error("-group_by requires -agg or -group_x")
+    if args.by is not None and args.agg is None and not args.mutate:
+        parser.error("-by requires -agg or -mutate")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
     rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-    drop_specs = [parse_drop_spec(raw) for raw in (args.drop or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     mutate_specs = list(args.mutate or [])
     query_specs = list(args.query or [])
@@ -323,27 +428,47 @@ def main(argv: list[str] | None = None) -> int:
             if not entry_path.exists():
                 parser.error(f"-file: file not found: {entry_path}")
             try:
-                reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"])
+                reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000)
             except ValueError as exc:
                 parser.error(f"-file: {exc}")
             try:
-                frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress)
+                frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                drop_specs=drop_specs,
                                 qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
 
-    if args.path is None:
+    if not raw_paths:
         parser.error("the following arguments are required: path")
-    paths = expand_paths(args.path)
-    if len(paths) > 1 and args.output is not None:
-        parser.error("-o/--output cannot be used with multiple matched files; each output path is derived automatically")
-
+    paths = expand_paths(raw_paths)
     batch = len(paths) > 1
+
+    if batch and args.output is not None:
+        if is_clip:
+            parser.error("-o clip cannot be used with multiple matched files")
+        if out_target is not None and out_target.lower() not in _FORMAT_SHORTHANDS:
+            parser.error(
+                "-o/--output with multiple matched files requires a format (e.g. '-o csv' or '-o parquet'), "
+                "not a single file path"
+            )
+        assert out_target is not None
+        fmt = out_target.lower()
+        ext = ".parquet" if fmt == "pq" else f".{fmt}"
+        dest_map: dict[Path, Path] = {}
+        for p in paths:
+            clean_name = p.name[:-3] if p.name.lower().endswith(".gz") else p.name
+            dest_name = f"{Path(clean_name).stem}{ext}"
+            dest = (args.out_dir / dest_name).resolve() if args.out_dir is not None else p.with_name(dest_name).resolve()
+            if dest in dest_map:
+                parser.error(
+                    f"-o {out_target}: multiple input files resolve to the same destination path '{dest}': "
+                    f"'{dest_map[dest]}' and '{p}'"
+                )
+            dest_map[dest] = p
+
     exit_code = 0
 
     for path in paths:
@@ -351,7 +476,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    drop_specs=drop_specs,
                                     qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs)
         except UnicodeError as exc:

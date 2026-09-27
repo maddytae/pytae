@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.5.2"
+version = "3.6.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
-readme = "README.md"
+readme = "readme.md"
 requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0",
@@ -36,8 +36,11 @@ pytae = "pytae.cli:main"
 [project.urls]
 "Homepage" = "https://github.com/maddytae/pytae"
 "Bug Tracker" = "https://github.com/maddytae/pytae/issues"
-"CLI Docs" = "https://github.com/maddytae/pytae/blob/master/docs/CLI.md"
-"Library Docs" = "https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md"
+"CLI Docs" = "https://github.com/maddytae/pytae/blob/master/docs/cli.md"
+"Library Docs" = "https://github.com/maddytae/pytae/blob/master/docs/library.md"
+
+[tool.hatch.build.targets.wheel.force-include]
+"reference" = "pytae/reference"
 
 [tool.ruff]
 target-version = "py310"
@@ -56,7 +59,8 @@ ignore = [
 "tests/*" = ["E402"]  # sys.path insert before pytae import
 "tests/test_mutate.py" = ["E402", "F841"]  # @locals are used via pandas eval
 "src/pytae/plotting.py" = ["E741", "F841"]
-"notebooks/*" = ["E402", "F401"]
+"docs/library/*" = ["E402", "F401", "E401", "E701", "I001"]
+"docs/plotting/*" = ["E402", "F401", "E401", "E701", "I001"]
 
 [tool.mypy]
 python_version = "3.12"

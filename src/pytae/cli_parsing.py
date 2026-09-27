@@ -8,22 +8,28 @@ import difflib
 import glob
 import re
 from pathlib import Path
+from typing import Any
 
+from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
-SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
+SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex", "exclude")
 
 
 def parse_columns(raw: str) -> list[str]:
-    """Parse a column list like "'col a','col b'" or "col_a,col_b" into a list of names."""
+    """Parse a column list like "'col a','col b'" or "col_a,col_b" or "[col a], [col b]" into a list of names."""
     raw = raw.strip()
+    if _is_enclosed_pair(raw, "[", "]") and "," in raw:
+        raw = raw[1:-1].strip()
     try:
         parsed = ast.literal_eval(f"[{raw}]")
         cols = list(parsed) if isinstance(parsed, (list, tuple)) else [parsed]
-        return [str(c).strip() for c in cols]
+        return [_unquote_name(str(c).strip()) for c in cols]
     except (ValueError, SyntaxError):
-        return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
+        tokens = _tokenize(raw, ",", track_brackets=True)
+        return [_unquote_name(c.strip()) for c in tokens if c.strip()]
+
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
@@ -43,33 +49,13 @@ def parse_sort_by(raw: str) -> tuple[list[str], str]:
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
-    """Split on sep, respecting single or double quotes."""
-    return [t for t in _tokenize(raw, sep) if t]
+    """Split on sep, respecting quotes and brackets."""
+    return [t for t in _tokenize(raw, sep, track_brackets=True) if t]
 
 
 def _split_groups(raw: str, sep: str = ";") -> list[str]:
     """Split on sep but keep quote characters so inner comma-split still sees them."""
     return [t for t in _tokenize(raw, sep, keep_quotes=True) if t]
-
-
-def parse_drop_spec(raw: str) -> list[str]:
-    """Parse -drop into exact column names.
-
-    Names only: comma-separated, same quoting as -select names (a space is not
-    a separator). key=value tokens and select matchers (dtype=/contains=/regex=/
-    slices) are rejected — those stay on -select.
-    """
-    tokens = _split_tokens(raw)
-    if not tokens:
-        raise SystemExit("-drop: expected column names")
-    names: list[str] = []
-    for token in tokens:
-        if "=" in token:
-            raise SystemExit(
-                "-drop: only column names; use -select for dtype=/contains=/regex=/exclude_dtype="
-            )
-        names.append(token)
-    return names
 
 
 def parse_select_spec(raw: str) -> tuple[list[str], dict]:
@@ -79,7 +65,11 @@ def parse_select_spec(raw: str) -> tuple[list[str], dict]:
     dtype=numeric / contains=bill / regex=^flip become kwargs. Repeated keys
     become a list. Union of all tokens, matching pt.select().
     """
+    raw = raw.strip()
+    if _is_enclosed_pair(raw, "[", "]") and "," in raw:
+        raw = raw[1:-1].strip()
     tokens = _split_tokens(raw)
+
     names: list[str] = []
     kwargs: dict = {}
     for token in tokens:
@@ -108,15 +98,31 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
     """Exact-name tokens (and slice endpoints) that are not in the file."""
     unknown: list[str] = []
     for token in tokens:
-        if ":" in token:
+        clean = _unquote_name(token)
+        if clean in available:
+            continue
+        if token.startswith(("-", "~")):
+            raw = _unquote_name(token[1:].strip())
+            if raw in available:
+                continue
+            if ":" in raw:
+                start, end = raw.split(":", 1)
+                start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
+                if start and start not in available:
+                    unknown.append(start)
+                if end and end not in available:
+                    unknown.append(end)
+            else:
+                unknown.append(raw)
+        elif ":" in token:
             start, end = token.split(":", 1)
-            start, end = start.strip(), end.strip()
+            start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
             if start and start not in available:
                 unknown.append(start)
             if end and end not in available:
                 unknown.append(end)
-        elif token not in available:
-            unknown.append(token)
+        else:
+            unknown.append(clean)
     return unknown
 
 
@@ -149,14 +155,30 @@ def parse_rename(raw: str) -> dict[str, str]:
     return mapping
 
 
-def expand_paths(pattern: str) -> list[Path]:
-    """Expand a glob pattern (e.g. "data/*.parquet") into matching paths, or wrap a plain path as-is."""
-    if any(ch in pattern for ch in "*?["):
-        matches = sorted(Path(p) for p in glob.glob(pattern))
-        if not matches:
-            raise SystemExit(f"no files matched pattern: {pattern}")
-        return matches
-    return [Path(pattern)]
+def expand_paths(patterns: str | list[str]) -> list[Path]:
+    """Expand glob pattern(s) into matching paths, or wrap plain paths as-is."""
+    items = [patterns] if isinstance(patterns, str) else list(patterns)
+    results: list[Path] = []
+    seen: set[Path] = set()
+    for item in items:
+        p_literal = Path(item)
+        if p_literal.exists():
+            if p_literal not in seen:
+                results.append(p_literal)
+                seen.add(p_literal)
+        elif any(ch in item for ch in "*?["):
+            matches = sorted(Path(p) for p in glob.glob(item))
+            if not matches:
+                raise SystemExit(f"no files matched pattern: {item}")
+            for m in matches:
+                if m not in seen:
+                    results.append(m)
+                    seen.add(m)
+        else:
+            if p_literal not in seen:
+                results.append(p_literal)
+                seen.add(p_literal)
+    return results
 
 
 def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
@@ -174,7 +196,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             col = m_cmp.group(1).strip()
             op = m_cmp.group(2).strip()
             val = m_cmp.group(3).strip()
-            entries.append((col, f"('{op}', {val})"))
+            entries.append((col, f"{op} {val}"))
             continue
         # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
         m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
@@ -191,7 +213,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
     return entries
 
 
-def parse_qry(raw: str) -> dict:
+def parse_qry(raw: str) -> list[tuple[str, Any]]:
     """Parse -qry conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
     "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") and bare string
@@ -199,15 +221,26 @@ def parse_qry(raw: str) -> dict:
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
-    conditions: dict = {}
+    conditions: list[tuple[str, Any]] = []
     for key_raw, value_raw in _split_qry_entries(stripped):
         key = _unquote_name(key_raw)
         if not key:
             raise SystemExit("invalid --qry conditions: empty column name")
-        if not value_raw:
+        val_strip = value_raw.strip()
+        if not val_strip:
             raise SystemExit(f"invalid --qry conditions: '{key}' has no value")
-        
-        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", value_raw)
+
+        # Check interval syntax: e.g. [3000, 4500], (3000, 4500), [a, c), (a, c]
+        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
+        if m_int:
+            left, b1, b2, right = m_int.groups()
+            b1_is_quoted = (b1.startswith("'") and b1.endswith("'")) or (b1.startswith('"') and b1.endswith('"'))
+            b2_is_quoted = (b2.startswith("'") and b2.endswith("'")) or (b2.startswith('"') and b2.endswith('"'))
+            if not (b1_is_quoted and b2_is_quoted and left == "[" and right == "]"):
+                conditions.append((key, val_strip))
+                continue
+
+        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
@@ -215,59 +248,67 @@ def parse_qry(raw: str) -> dict:
                 sub_val = ast.literal_eval(sub_raw)
             except (ValueError, SyntaxError):
                 sub_val = _unquote_name(sub_raw)
-            conditions[key] = (op, sub_val)
+            conditions.append((key, (op, sub_val)))
             continue
 
         try:
-            value = ast.literal_eval(value_raw)
+            value = ast.literal_eval(val_strip)
         except (ValueError, SyntaxError) as exc:
             raise SystemExit(
-                f"invalid --qry conditions: value for '{key}' ('{value_raw}') must be quoted "
+                f"invalid --qry conditions: value for '{key}' ('{val_strip}') must be quoted "
                 "(e.g. 'Male') or a valid literal (number/tuple/list)"
             ) from exc
-        conditions[key] = value
+        conditions.append((key, value))
     if not conditions:
         raise SystemExit("-qry expects keyword entries, e.g. \"col = ('>', 5)\" or \"col > 5\" (quotes around column name optional)")
     return conditions
 
 
 def parse_agg(raw: str):
-    """Parse -agg_df: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
-    mapping (body_mass_g = mean, n = n). Quote a mapping key only to protect a comma."""
+    """Parse -agg: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
+    mapping (val = sum, n = n, total = v1:sum). Quote a mapping key only to protect a comma."""
     raw = (raw or "").strip()
     if not raw:
         return "sum"
-    if raw[0] in "{[":
+    if raw.startswith("{") or (raw.startswith("[") and "=" not in raw):
         raise SystemExit(
-            "-agg_df: use a name (mean), a comma list (mean,sum), or a mapping "
-            "(col: mean, n: n)"
+            "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
+            "(col = mean, n = n)"
         )
-    entries = [e for e in _tokenize(raw, ",", keep_quotes=True) if e]
+    entries = [e for e in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if e]
     if not entries:
-        raise SystemExit("-agg_df: expected a name, a comma list, or a mapping")
+        raise SystemExit("-agg: expected a name, a comma list, or a mapping")
 
     def _is_mapping(entry: str) -> bool:
-        return len(_tokenize(entry, "=", keep_quotes=True)) >= 2 or len(_tokenize(entry, ":", keep_quotes=True)) >= 2
+        return (
+            len(_tokenize(entry, "=", keep_quotes=True, track_brackets=True)) >= 2
+            or len(_tokenize(entry, ":", keep_quotes=True, track_brackets=True)) >= 2
+        )
 
     mapped = [_is_mapping(e) for e in entries]
     if all(mapped):
         out: dict[str, str] = {}
         for entry in entries:
             if "=" in entry:
-                parts = _tokenize(entry, "=", keep_quotes=True)
+                parts = _tokenize(entry, "=", keep_quotes=True, track_brackets=True)
                 key = _unquote_name(parts[0])
                 value = _unquote_name("=".join(parts[1:]))
+                if key in ("column", "aggfunc"):
+                    raise SystemExit(
+                        "-agg: the old 'column=...,aggfunc=...' syntax is retired. "
+                        "Use '-by <cols> -agg \"col = aggfunc\"' or '-agg \"total = col:aggfunc\"' instead."
+                    )
             elif ":" in entry:
-                raise SystemExit(f"-agg_df: invalid mapping entry '{entry}'; use '=' (e.g. -agg_df 'col = mean'). Colon ':' is not supported.")
+                raise SystemExit(f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported.")
             else:
-                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
+                raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             if not key or not value:
-                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
+                raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             out[key] = value
         return out
     if any(mapped):
         raise SystemExit(
-            "-agg_df: mix of names and col=aggfunc mappings; use one or the other"
+            "-agg: mix of names and col=aggfunc mappings; use one or the other"
         )
     names = [_unquote_name(e) for e in entries]
     return names[0] if len(names) == 1 else names
@@ -311,25 +352,12 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_GROUP_X_KEYS = ("group", "v", "a")
-
-
-def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. group=species,v=body_mass_g,a=max."""
-    kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
-    if "group" in kwargs and isinstance(kwargs["group"], str):
-        kwargs["group"] = parse_columns(kwargs["group"])
-    return kwargs
-
-
-
-
-_LONG_KEYS = ("c", "v")
-_WIDE_KEYS = ("c", "v", "a")
+_LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
+_WIDE_KEYS = ("c", "v", "a", "index", "by")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide/-group_x as key=value tokens, e.g. c=metric,v=reading,a=mean.
+    """Parse -long/-wide as key=value tokens, e.g. c=metric,v=reading,a=mean.
     Comma-separated lists like frames=a,b,c or on=id:id,code:code work with or without quotes."""
     raw = (raw or "").strip()
     if not raw:

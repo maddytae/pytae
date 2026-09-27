@@ -92,7 +92,7 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-qry", "month = 202607", "-to_clip"])
+    exit_code = cli.main([path, "-qry", "month = 202607", "-o", "clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -140,3 +140,12 @@ def test_qry_equals_separator(tmp_path, capsys):
     exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
+
+
+def test_qry_cli_bracket_interval(tmp_path, capsys):
+    # CLI Issue 3: -qry "body_mass_g = [3000, 3200]" treats as interval
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 3100, 3200, 4000]}))
+    exit_code = cli.main([path, "-qry", "body_mass_g = [3000, 3200]", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 1)"
+

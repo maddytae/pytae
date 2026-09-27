@@ -49,6 +49,30 @@ def test_handle_missing_fills_object_and_numeric():
     assert df["grp"].isna().any()
 
 
+def test_handle_missing_preserves_categorical():
+    s = pd.Series(pd.Categorical(["A", None, "B"]))
+    df = pd.DataFrame({"cat": s, "val": [1.0, None, 3.0]})
+    result = pt.handle_missing(df, fillna="Missing")
+    assert isinstance(result["cat"].dtype, pd.CategoricalDtype)
+    assert result["cat"].tolist() == ["A", "Missing", "B"]
+    assert "Missing" in result["cat"].cat.categories
+
+
+def test_handle_missing_custom_numeric_fill_and_cols():
+    df = pd.DataFrame({"a": [10.0, None], "b": [100.0, None], "txt": ["hello", None]})
+    # Only fill 'a' with mean, leave 'b' and 'txt' untouched
+    result = pt.handle_missing(df, numeric_fill="mean", cols=["a"])
+    assert result["a"].tolist() == [10.0, 10.0]
+    assert pd.isna(result["b"].iloc[1])
+    assert pd.isna(result["txt"].iloc[1])
+
+    # numeric_fill=None leaves numerics alone
+    result2 = pt.handle_missing(df, fillna="N/A", numeric_fill=None)
+    assert pd.isna(result2["a"].iloc[1])
+    assert result2["txt"].tolist() == ["hello", "N/A"]
+
+
+
 def test_cols_sort_orders():
     df = pd.DataFrame({"c": [1], "a": [2], "b": [3]})
     assert pt.cols(df) == ["a", "b", "c"]
@@ -57,13 +81,6 @@ def test_cols_sort_orders():
     with pytest.raises(ValueError, match="Invalid ascending"):
         pt.cols(df, ascending="nope")
 
-
-def test_group_x_count_and_value():
-    df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3]})
-    counted = pt.group_x(df)
-    assert counted["n"].tolist() == [2, 2, 1]
-    averaged = pt.group_x(df, group=["grp"], a="mean", v="val")
-    assert averaged["x"].tolist() == [1.5, 1.5, 3.0]
 
 
 def test_clean_columns_strip_fill_case():
@@ -143,19 +160,9 @@ def test_clean_columns_dedupe_avoids_new_collisions():
     assert len(set(result)) == len(result)
 
 
-def test_group_x_raises_if_n_column_already_exists():
-    df = pd.DataFrame({"grp": ["x", "x", "y"], "n": [10, 20, 30]})
-    with pytest.raises(ValueError, match="column 'n' already exists"):
-        pt.group_x(df)
+def test_handle_missing_all_null_object_column():
+    # Lib Issue 15: all-null object column is filled by handle_missing
+    df = pd.DataFrame({"a": [None, None]}, dtype=object)
+    result = pt.handle_missing(df)
+    assert list(result["a"]) == [".", "."]
 
-
-def test_group_x_raises_if_x_column_already_exists():
-    df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "x": [1, 1, 1]})
-    with pytest.raises(ValueError, match="column 'x' already exists"):
-        pt.group_x(df, group=["grp"], a="mean", v="val")
-
-
-def test_group_x_raises_on_all_numeric_frame():
-    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-    with pytest.raises(ValueError, match="no non-numeric columns to group by"):
-        pt.group_x(df)

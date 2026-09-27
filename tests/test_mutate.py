@@ -63,7 +63,7 @@ def test_mutate_quoting_column_reference_breaks_arithmetic():
 
 
 def test_mutate_empty_spec_errors():
-    with pytest.raises(ValueError, match="mutate\\(\\) expects at least one keyword argument"):
+    with pytest.raises(ValueError, match="mutate\\(\\) expects at least one"):
         pt.mutate(_df())
 
 
@@ -170,12 +170,14 @@ def test_mutate_kwargs():
     assert list(res["mass_kg"]) == [3.0, 4.0]
 
 
-def test_mutate_rejects_dict_and_string():
+def test_mutate_rejects_unsupported_positional_types():
     df = _df()
-    with pytest.raises(TypeError, match="mutate\\(\\) expects expressions as keyword arguments"):
-        df.pt.mutate({"bmi": "body_mass_g / bill_length_mm ** 2"})
-    with pytest.raises(TypeError, match="mutate\\(\\) expects expressions as keyword arguments"):
-        df.pt.mutate("bmi = body_mass_g / bill_length_mm ** 2")
+    with pytest.raises(TypeError, match="unexpected positional argument"):
+        df.pt.mutate(123)
+    with pytest.raises(TypeError, match="unexpected positional argument"):
+        df.pt.mutate([1, 2, 3])
+    with pytest.raises(TypeError, match="callables as keyword arguments"):
+        df.pt.mutate(lambda d: d)
 
 
 def test_mutate_callable_lambda():
@@ -257,3 +259,192 @@ def test_mutate_unquoted_string_literal_hint():
     df = _df()
     with pytest.raises(KeyError, match="if you intended a string literal, quote it like 'heavy'"):
         pt.mutate(df, status="if_else(body_mass_g > 3500, heavy, light)")
+
+
+def test_mutate_positional_string_expr():
+    df = _df()
+    res = df.pt.mutate("mass_kg = body_mass_g / 1000")
+    assert "mass_kg" in res.columns
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+
+    # Multiple positional expressions
+    res2 = df.pt.mutate("mass_kg = body_mass_g / 1000", "mass_lb = mass_kg * 2.2")
+    assert "mass_kg" in res2.columns
+    assert "mass_lb" in res2.columns
+
+
+def test_mutate_positional_dict():
+    df = _df()
+    res = df.pt.mutate({"mass_kg": "body_mass_g / 1000"})
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+
+
+def test_mutate_params_column_creation():
+    df = _df()
+    # Integer literal assigned to column named 'params'
+    res1 = df.pt.mutate(params=10)
+    assert "params" in res1.columns
+    assert list(res1["params"]) == [10, 10]
+
+    # String expression assigned to column named 'params'
+    res2 = df.pt.mutate(params="body_mass_g / 1000")
+    assert "params" in res2.columns
+    assert list(res2["params"]) == [3.0, 4.0]
+
+
+def test_mutate_explicit_underscore_params():
+    df = _df()
+    res = df.pt.mutate(flag="body_mass_g >= @thresh", _params={"thresh": 3500.0})
+    assert list(res["flag"]) == [False, True]
+
+
+def test_mutate_bracketed_columns():
+    df = pd.DataFrame({"body mass g": [3000.0, 4000.0], "height": [1.5, 2.0]})
+    # Target column has brackets, source has brackets
+    res1 = df.pt.mutate("[mass kg] = [body mass g] / 1000")
+    assert "mass kg" in res1.columns
+    assert list(res1["mass kg"]) == [3.0, 4.0]
+
+    # Mixed source columns (one with space, one without)
+    res2 = df.pt.mutate("[bmi score] = [body mass g] / (height ** 2)")
+    assert "bmi score" in res2.columns
+
+
+def test_mutate_grouped_single_col():
+    df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
+    res = df.pt.mutate(
+        "avg = mean(val), diff = val - avg, total = sum(val), cnt = n, cnt2 = n()",
+        by="grp",
+    )
+    assert list(res["avg"]) == [15.0, 15.0, 60.0]
+    assert list(res["diff"]) == [-5.0, 5.0, 0.0]
+    assert list(res["total"]) == [30.0, 30.0, 60.0]
+    assert list(res["cnt"]) == [2, 2, 1]
+    assert list(res["cnt2"]) == [2, 2, 1]
+
+
+def test_mutate_grouped_multi_col():
+    df = pd.DataFrame({
+        "g1": ["a", "a", "a", "b"],
+        "g2": ["x", "x", "y", "x"],
+        "val": [10.0, 30.0, 5.0, 100.0],
+    })
+    res1 = df.pt.mutate("m = mean(val), cnt = n", by=["g1", "g2"])
+    assert list(res1["m"]) == [20.0, 20.0, 5.0, 100.0]
+    assert list(res1["cnt"]) == [2, 2, 1, 1]
+
+    # Comma-separated string by="g1, g2"
+    res2 = df.pt.mutate("m = mean(val)", by="g1, g2")
+    assert list(res2["m"]) == [20.0, 20.0, 5.0, 100.0]
+
+
+def test_mutate_grouped_spaced_brackets():
+    df = pd.DataFrame({"group code": ["a", "a", "b"], "total bill": [10.0, 30.0, 50.0]})
+    res = df.pt.mutate("[diff bill] = [total bill] - mean([total bill])", by="group code")
+    assert list(res["diff bill"]) == [-10.0, 10.0, 0.0]
+
+
+def test_mutate_grouped_dropna_observed():
+    df = pd.DataFrame({"grp": ["a", None, "a"], "val": [10.0, 50.0, 30.0]})
+    res_dropna = df.pt.mutate("m = mean(val)", by="grp", dropna=True)
+    assert pd.isna(res_dropna["m"].iloc[1])
+    assert res_dropna["m"].iloc[0] == 20.0
+    assert res_dropna["m"].iloc[2] == 20.0
+
+    res_keepna = df.pt.mutate("m = mean(val)", by="grp", dropna=False)
+    assert res_keepna["m"].iloc[1] == 50.0
+
+
+def test_mutate_grouped_duplicate_index():
+    df = pd.DataFrame({"grp": ["a", "b", "a"], "val": [10.0, 50.0, 30.0]}, index=[0, 1, 0])
+    res = df.pt.mutate("m = mean(val)", by="grp")
+    assert list(res["m"]) == [20.0, 50.0, 20.0]
+    assert list(res.index) == [0, 1, 0]
+
+
+def test_mutate_grouped_functional_and_callable():
+    df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
+    # Functional pt.mutate
+    res1 = pt.mutate(df, "avg = mean(val)", by="grp")
+    assert list(res1["avg"]) == [15.0, 15.0, 60.0]
+
+    # Callable inside grouped mutate
+    res2 = df.pt.mutate(half_mean=lambda g: g["val"].mean() / 2, by="grp")
+    assert list(res2["half_mean"]) == [7.5, 7.5, 30.0]
+
+
+def test_mutate_grouped_unknown_col():
+    df = pd.DataFrame({"grp": ["a", "b"], "val": [1, 2]})
+    with pytest.raises(KeyError, match="grouping column 'grp_typo' not found"):
+        df.pt.mutate("m = mean(val)", by="grp_typo")
+
+
+def test_mutate_coalesce_scalar_broadcast():
+    # Lib Issue 5
+    df = pd.DataFrame({"a": [None, 2.0, None]}, index=[5, 6, 7])
+    res1 = pt.mutate(df, c="coalesce(0, a)")
+    assert list(res1["c"]) == [0.0, 0.0, 0.0]
+
+    res2 = pt.mutate(df, c="coalesce(1, 2)")
+    assert list(res2["c"]) == [1, 1, 1]
+
+
+def test_mutate_column_named_sum_overrides_helper():
+    # Lib Issue 7
+    df = pd.DataFrame({"sum": [1, 2], "x": [10, 20]})
+    res = df.pt.mutate(y="if_else(x > 15, sum, 0)")
+    assert list(res["y"]) == [0, 2]
+
+
+def test_mutate_map_preserves_explicit_null():
+    # Lib Issue 11
+    df = pd.DataFrame({"a": ["x", "y", "z"]})
+    res = pt.mutate(df, b="map(a, {'x': 1, 'y': None}, -1)")
+    assert res["b"].iloc[0] == 1.0
+    assert pd.isna(res["b"].iloc[1])
+    assert res["b"].iloc[2] == -1.0
+
+
+def test_mutate_if_else_and_case_when_nullable_boolean():
+    # Lib Issue 12
+    df = pd.DataFrame({"a": pd.Series([1, pd.NA, 3], dtype="Int64")})
+    res_if = pt.mutate(df, b="if_else(a > 2, 'y', 'n')")
+    assert list(res_if["b"]) == ["n", "n", "y"]
+
+    res_cw = pt.mutate(df, b="case_when((a > 2, 'y'), 'n')")
+    assert list(res_cw["b"]) == ["n", "n", "y"]
+
+
+def test_mutate_n_row_count_vs_col_and_helper():
+    # Lib Issue 16: caller local 'n' does not shadow row count 'n' unless referenced as '@n'
+    n = 999  # noqa: F841
+    df = pd.DataFrame({"val": [10, 20, 30]})
+    res = df.pt.mutate("cnt = n, caller_n = @n")
+    assert list(res["cnt"]) == [3, 3, 3]
+    assert list(res["caller_n"]) == [999, 999, 999]
+
+
+def test_mutate_grouped_callable_sees_original_index():
+    # Lib Issue 17: callable sees original index in grouped mutate
+    s = pd.Series([100, 200, 300], index=[10, 20, 30])
+    df = pd.DataFrame({"g": ["a", "b", "a"], "x": [1, 2, 3]}, index=[10, 20, 30])
+    res = df.pt.mutate(y=lambda d: d["x"] + s.reindex(d.index), by="g")
+    assert list(res["y"]) == [101, 202, 303]
+    assert list(res.index) == [10, 20, 30]
+
+
+def test_mutate_scalar_if_else_and_case_when():
+    # Lib Issue 1 (Review 2ec5bbba): scalar condition in if_else and case_when broadcasts across rows and groups
+    df = pd.DataFrame({"val": [10, 20, 30]})
+    assert df.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+    assert df.pt.mutate(y="case_when((n > 1, 'big'), 'small')")["y"].tolist() == ["big", "big", "big"]
+
+    df2 = pd.DataFrame({"val": [10, 20, 30]}, index=[5, 6, 7])
+    assert df2.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+
+    df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
+    assert df3.pt.mutate(y="if_else(n > 1, 1, 0)", by="g")["y"].tolist() == [1, 1, 0]
+
+
+
+

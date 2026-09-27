@@ -4,6 +4,7 @@ import ast
 import difflib
 import inspect
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -41,8 +42,8 @@ def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
 
 
 def parse_mutate_spec(raw: str) -> dict[str, str]:
-    """Parse a mutate spec string like "bmi: body_mass_g / bill_length_mm ** 2,
-    mass_kg: body_mass_g / 1000" into an ordered {new_col: expression} dict.
+    """Parse a mutate spec string like "bmi = body_mass_g / bill_length_mm ** 2,
+    mass_kg = body_mass_g / 1000" into an ordered {new_col: expression} dict.
     If raw starts with '@', it reads the spec from the specified file path.
     Quoting the key is optional (matches qry()); the expression is kept as raw
     text — column names inside it must stay unquoted, since eval() treats a
@@ -68,7 +69,7 @@ def parse_mutate_spec(raw: str) -> dict[str, str]:
             raise ValueError(f"invalid mutate spec: '{key}' has no expression")
         expressions[key] = expr
     if not expressions:
-        raise ValueError('mutate expects entries like "col: expr"')
+        raise ValueError('mutate expects entries like "col = expr"')
     return expressions
 
 
@@ -80,9 +81,12 @@ def _map_values(series, mapping, default=_NO_MAP_DEFAULT):
     namespace: recode a column's values through a lookup (dict or Series), like
     pandas Series.map(). Keys with no match become `default` if given, else
     NaN."""
-    result = pd.Series(series).map(mapping)
+    s = pd.Series(series)
+    result = s.map(mapping)
     if default is not _NO_MAP_DEFAULT:
-        result = result.where(result.notna(), default)
+        keys = set(mapping.keys()) if hasattr(mapping, "keys") else (set(mapping.index) if hasattr(mapping, "index") else set(mapping))
+        is_missing_key = ~s.isin(keys)
+        result = result.mask(is_missing_key, default)
     return result
 
 
@@ -96,20 +100,31 @@ def _result_index(*candidates):
     return None
 
 
+def _clean_condition(cond):
+    if isinstance(cond, pd.Series):
+        return cond.fillna(False).to_numpy(dtype=bool)
+    if isinstance(cond, (list, tuple)):
+        return pd.Series(cond).fillna(False).to_numpy(dtype=bool)
+    return cond
+
+
 def _if_else(condition, true_value, false_value):
     """if_else(condition, true_value, false_value) helper injected into the
     fallback eval namespace -> np.where(...), returned as a Series so it chains
     and composes like any pandas Series."""
+    clean_cond = _clean_condition(condition)
     try:
-        result = np.where(condition, true_value, false_value)
+        result = np.where(clean_cond, true_value, false_value)
     except TypeError:
         # incompatible dtypes across branches have no common numpy dtype --
         # object arrays accept anything
         result = np.where(
-            condition,
+            clean_cond,
             np.asarray(true_value, dtype=object),
             np.asarray(false_value, dtype=object),
         )
+    if getattr(result, "ndim", None) == 0:
+        return result.item()
     return pd.Series(result, index=_result_index(condition, true_value, false_value))
 
 
@@ -151,13 +166,16 @@ def _case_when(*entries, default=None):
                 raise ValueError("case_when default (a non-tuple) must be the last argument")
     if not conditions:
         raise ValueError("case_when needs at least one (condition, value) pair")
+    clean_conditions = [_clean_condition(c) for c in conditions]
     try:
-        result = np.select(conditions, choices, default=default)
+        result = np.select(clean_conditions, choices, default=default)
     except TypeError:
         # incompatible dtypes across choices/default -- object arrays accept anything
         object_choices = [np.asarray(choice, dtype=object) for choice in choices]
         object_default = default if default is None else np.asarray(default, dtype=object)
-        result = np.select(conditions, object_choices, default=object_default)  # type: ignore[arg-type]
+        result = np.select(clean_conditions, object_choices, default=object_default)  # type: ignore[arg-type]
+    if getattr(result, "ndim", None) == 0:
+        return result.item()
     return pd.Series(result, index=_result_index(*conditions, *choices))
 
 
@@ -166,15 +184,22 @@ def _coalesce(*candidates):
     returns the first non-null value for each row, like SQL COALESCE() or dplyr::coalesce()."""
     if not candidates:
         raise ValueError("coalesce expects at least one argument")
+    series_candidates = [c for c in candidates if isinstance(c, pd.Series)]
+    if not series_candidates:
+        for c in candidates:
+            if c is not None and not (isinstance(c, float) and np.isnan(c)) and not pd.isna(c):
+                return c
+        return None
+
+    target_index = series_candidates[0].index
     res = None
     for cand in candidates:
         if isinstance(cand, pd.Series):
-            res = cand.copy() if res is None else res.combine_first(cand)
+            s = cand if cand.index.equals(target_index) else cand.reindex(target_index)
+            res = s.copy() if res is None else res.combine_first(s)
         else:
-            res = res.fillna(cand) if res is not None else pd.Series(cand)
-    idx = _result_index(*candidates)
-    if res is not None and idx is not None:
-        res.index = idx
+            s = pd.Series(cand, index=target_index)
+            res = s if res is None else res.fillna(cand)
     return res
 
 
@@ -333,6 +358,13 @@ def _compile_fallback(expr: str):
     return compile(tree, "<pytae-mutate>", "eval")
 
 
+class _RowCount(int):
+    """Integer that can also be called as a function n() to match dplyr/polars conventions."""
+
+    def __call__(self) -> int:
+        return int(self)
+
+
 def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     """out.eval(expr), resolving @local_var references against the scope that
     called mutate() rather than mutate()'s own frame — mutate() sits between
@@ -342,8 +374,8 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     pandas' eval() can't parse some Python constructs (notably dict literals,
     e.g. `species.map({'a': 1})`, string slicing like `col.str[:8]`, and custom
     helpers like `if_else`, `case_when`, `coalesce`); when it rejects one
-    (NotImplementedError, ValueError, or SyntaxError) we fall back to a plain
-    Python eval() with each column exposed as a Series plus the caller's scope,
+    (NotImplementedError, ValueError, SyntaxError, or UndefinedVariableError) we fall back
+    to a plain Python eval() with each column exposed as a Series plus the caller's scope,
     so natural pandas method chains work. Bracketed `[col]` and backtick `col`
     names are safely mapped to valid identifiers in fallback mode. `@name` refs
     are rewritten to the caller-scope value, and `and`/`or`/`not` are rewritten
@@ -352,17 +384,26 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     normalized = _normalize_col_brackets(expr, known_cols)
     try:
         return out.eval(normalized, local_dict=local_dict, global_dict=global_dict)
-    except (NotImplementedError, ValueError, SyntaxError):
+    except (NotImplementedError, ValueError, SyntaxError, UndefinedVariableError):
         safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
         rewritten, at_names = _strip_at_refs(safe_expr)
         namespace = {**global_dict, **local_dict}
-        namespace.update({col: out[col] for col in out.columns if col.isidentifier()})
-        for alias, orig_col in col_map.items():
-            namespace[alias] = out[orig_col]
         namespace["map"] = _map_values  # prefix map(col, {...}[, default]) form
         namespace["if_else"] = _if_else
         namespace["case_when"] = _case_when
         namespace["coalesce"] = _coalesce
+        namespace["mean"] = lambda s: s.mean() if hasattr(s, "mean") else np.mean(s)
+        namespace["sum"] = lambda s: s.sum() if hasattr(s, "sum") else np.sum(s)
+        namespace["median"] = lambda s: s.median() if hasattr(s, "median") else np.median(s)
+        namespace["min"] = lambda s: s.min() if hasattr(s, "min") else np.min(s)
+        namespace["max"] = lambda s: s.max() if hasattr(s, "max") else np.max(s)
+        namespace["std"] = lambda s: s.std() if hasattr(s, "std") else np.std(s)
+        namespace["var"] = lambda s: s.var() if hasattr(s, "var") else np.var(s)
+        if "n" not in out.columns:
+            namespace["n"] = _RowCount(len(out))
+        namespace.update({col: out[col] for col in out.columns if col.isidentifier()})
+        for alias, orig_col in col_map.items():
+            namespace[alias] = out[orig_col]
         for name in at_names:  # @-refs mean caller-scope vars, so they win over columns
             if name in local_dict:
                 namespace[name] = local_dict[name]
@@ -376,22 +417,37 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
 def mutate(
     df: pd.DataFrame,
     *args: Any,
+    by: str | Sequence[str] | None = None,
+    dropna: bool = True,
+    observed: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
-    Create or overwrite columns using keyword arguments (`col="expr"` or `col=callable`),
-    each evaluated in order via pandas eval() — no lambda needed for plain
-    arithmetic/boolean column assignments.
+    Create or overwrite columns using string expressions (`"col = expr"` or `col="expr"`),
+    callables (`col=callable`), or dictionaries. Each evaluated in order via pandas eval() —
+    no lambda needed for plain arithmetic/boolean column assignments.
 
     Parameters:
     -----------
     df : pd.DataFrame
         The DataFrame to mutate columns on.
-    *args : Any
-        Positional arguments are not supported, except for a single file path
-        prefixed with '@' (e.g. "@transforms.txt").
+    *args : str or dict
+        Positional expressions:
+        - String expression(s), e.g. "bmi = body_mass_g / bill_length_mm ** 2".
+        - File path prefixed with '@' (e.g. "@transforms.txt").
+        - Dictionary of column expressions, e.g. {"bmi": "body_mass_g / 1000"}.
+    by : str or sequence of str, optional
+        Grouping column(s) across which to evaluate the mutations (like dplyr's `.by` or
+        pandas transform/window operations). When specified, aggregations (e.g. `mean(x)`,
+        `sum(x)`, `n`) and window expressions (e.g. `x - mean(x)`) are evaluated per group
+        and broadcast back to each row without collapsing the DataFrame.
+    dropna : bool, default True
+        Whether to drop NA groups when grouping with `by=`.
+    observed : bool, default True
+        Whether to observe categorical levels when grouping with `by=`.
     params : dict, optional
         Explicit dictionary of parameters/variables to make available for `@name` references.
+        Can also be passed via `_params=`.
     **kwargs : Any
         Column expressions or callables passed as keyword arguments,
         e.g. `df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", rank=1)`.
@@ -412,30 +468,18 @@ def mutate(
     0       3000.0            30.0  3.333333
     1       4000.0            40.0  2.500000
 
-    >>> # later entries can reference columns derived earlier in the same call
-    >>> df.pt.mutate(mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
-       body_mass_g  bill_length_mm  mass_kg  mass_lb
-    0       3000.0            30.0      3.0  6.61386
-    1       4000.0            40.0      4.0  8.81848
+    >>> # Grouped mutation: compute group mean and deviation without collapsing rows
+    >>> tips = pt.sample("tips")
+    >>> tips.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n", by="day").head(3)
 
-    >>> # dplyr-style if_else()/case_when() for conditional/string outcomes
-    >>> df.pt.mutate(result="if_else(body_mass_g >= 3500, 'heavy', 'light')")
-       body_mass_g  bill_length_mm result
-    0       3000.0            30.0  light
-    1       4000.0            40.0  heavy
-
-    >>> df.pt.mutate(grade="case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')")
-       body_mass_g  bill_length_mm grade
-    0       3000.0            30.0     C
-    1       4000.0            40.0     A
-
-    >>> # natural pandas method chains work (dict literals + Series.map(), etc.)
-    >>> s = pd.DataFrame({'species': ['Adelie', 'Gentoo', 'Chinstrap']})
-    >>> s.pt.mutate(code="species.map({'Adelie': 'A', 'Gentoo': 'G'}).fillna('X')")
-         species code
-    0     Adelie    A
-    1     Gentoo    G
-    2  Chinstrap    X
+    >>> # Handling missing groups: dropna=True (default) sets NaN; dropna=False computes on NA group
+    >>> sample = pd.DataFrame({'grp': ['A', 'A', None, None], 'val': [10.0, 20.0, 30.0, 50.0]})
+    >>> sample.pt.mutate("avg = mean(val)", by="grp", dropna=False)
+       grp   val   avg
+    0    A  10.0  15.0
+    1    A  20.0  15.0
+    2  NaN  30.0  40.0
+    3  NaN  50.0  40.0
     """
     _here = inspect.currentframe()
     caller_frame = None if _here is None else _here.f_back
@@ -450,36 +494,90 @@ def mutate(
     global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
 
-    params = kwargs.pop("params", None)
+    by = kwargs.pop("by", by)
+    dropna = kwargs.pop("dropna", dropna)
+    observed = kwargs.pop("observed", observed)
+
+    by_cols: list[str] | None = None
+    if by is not None:
+        if isinstance(by, str):
+            by_cols = [_unquote_name(c.strip()) for c in by.split(",") if c.strip()]
+        elif isinstance(by, (list, tuple, set)):
+            by_cols = [_unquote_name(c) for c in by]
+        else:
+            raise TypeError(f"mutate(): by must be a column name or sequence of names, got {type(by).__name__}")
+        all_cols = list(df.columns)
+        for col in by_cols:
+            if col not in df.columns:
+                close = difflib.get_close_matches(str(col), [str(c) for c in all_cols], n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"mutate: grouping column '{col}' not found in DataFrame{hint}")
+
+    params = kwargs.pop("_params", None)
+    if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
+        params = kwargs.pop("params")
+
     if params is not None:
         local_dict.update(params)
 
     expressions: dict[str, Any] = {}
-    if args:
-        if len(args) == 1 and isinstance(args[0], str) and args[0].strip().startswith("@"):
-            expressions.update(parse_mutate_spec(args[0]))
-        else:
-            first_arg = args[0]
+    for arg in args:
+        if isinstance(arg, str):
+            expressions.update(parse_mutate_spec(arg))
+        elif isinstance(arg, dict):
+            expressions.update(arg)
+        elif callable(arg):
             raise TypeError(
-                "mutate() expects expressions as keyword arguments, e.g. df.pt.mutate(col='expr', new_col=func). "
-                f"Positional {type(first_arg).__name__} is not supported (use '@filename.txt' to load from a file)."
+                "mutate() expects callables as keyword arguments with the column name, "
+                "e.g. df.pt.mutate(new_col=lambda d: d['x'] * 2)"
+            )
+        else:
+            raise TypeError(
+                f"mutate() received unexpected positional argument of type {type(arg).__name__}. "
+                "Pass string expressions (e.g. 'col = expr'), a dict, or keyword arguments."
             )
 
     if kwargs:
         expressions.update(kwargs)
 
     if not expressions:
-        raise ValueError("mutate() expects at least one keyword argument (e.g. df.pt.mutate(col='expr'))")
+        raise ValueError(
+            "mutate() expects at least one expression, e.g. df.pt.mutate('col = expr') "
+            "or df.pt.mutate(col='expr')"
+        )
 
     out = df.copy()
     for col, expr in expressions.items():
         try:
-            if callable(expr):
-                out[col] = expr(out)
-            elif isinstance(expr, str):
-                out[col] = _eval(out, expr, local_dict, global_dict)
+            if by_cols is None:
+                if callable(expr):
+                    out[col] = expr(out)
+                elif isinstance(expr, str):
+                    out[col] = _eval(out, expr, local_dict, global_dict)
+                else:
+                    out[col] = expr
             else:
-                out[col] = expr
+                work_df = out.copy(deep=False)
+                work_df["__pt_pos__"] = np.arange(len(out))
+                pieces = []
+                for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
+                    pos = group_df["__pt_pos__"].to_numpy()
+                    clean_group = group_df.drop(columns=["__pt_pos__"])
+                    if callable(expr):
+                        val = expr(clean_group)
+                    elif isinstance(expr, str):
+                        val = _eval(clean_group, expr, local_dict, global_dict)
+                    else:
+                        val = expr
+                    if isinstance(val, pd.Series):
+                        pieces.append(pd.Series(val.to_numpy(), index=pos))
+                    else:
+                        pieces.append(pd.Series(val, index=pos))
+                if pieces:
+                    combined = pd.concat(pieces).sort_index().reindex(np.arange(len(out)))
+                    out[col] = combined.array
+                else:
+                    out[col] = pd.Series(index=out.index, dtype=float)
         except NameError as exc:  # UndefinedVariableError (pandas) and plain NameError (fallback)
             parts = str(exc).split("'")
             missing = parts[1] if len(parts) > 1 else ""

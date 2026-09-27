@@ -19,12 +19,12 @@ pip install "pytae[sql]"       # Adds SQL engine (duckdb)
 
 ```bash
 pytae data.parquet -head
-pytae data.parquet -qry "species='Adelie'" -select "species,body_mass_g" -convert -o subset.csv
+pytae data.parquet -qry "species='Adelie'" -select "species,body_mass_g" -o subset.csv
 pytae data.parquet -sql "select species, avg(body_mass_g) from data group by species"
 pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
 ```
 
-See [docs/CLI.md](https://github.com/maddytae/pytae/blob/master/docs/CLI.md) for the full CLI reference and flag guide, and [docs/CLI_MULTI_FILE.md](https://github.com/maddytae/pytae/blob/master/docs/CLI_MULTI_FILE.md) for `-file`/`-merge`/`-concat`.
+See [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md) for the full CLI reference and flag guide, and [docs/cli/multi_file.md](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) for `-file`/`-merge`/`-concat`.
 
 ## Plotting
 
@@ -38,7 +38,7 @@ Plotter().data(penguins).plot(
 ).finalize()
 ```
 
-See [docs/PLOTTING.md](https://github.com/maddytae/pytae/blob/master/docs/PLOTTING.md) for more examples with sample data.
+See [docs/plotting.md](https://github.com/maddytae/pytae/blob/master/docs/plotting.md) for more examples with sample data.
 
 ## Library
 
@@ -49,31 +49,32 @@ import pytae as pt
 penguins = pt.sample("penguins")
 pt.select(penguins, "species", contains="bill")
 (penguins
- .pt.select("species", "island", "bill_length_mm", "body_mass_g")
- .pt.agg_df(a=["mean", "n"])
+ .pt.agg_df(["species", "island"], a=["mean", "n"])
 )
 ```
 
 - **Filtering** — `pt.qry()` / `df.pt.qry()`: string expressions, dicts, or keyword filters (equality, lists, `in`/`not in`, comparisons, intervals)
 - **Selection** — `pt.select()`: columns by name, regex, dtype, or name pattern
-- **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, `if_else()`, `case_when()`, `map()`
+- **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, grouped window transforms `by=`, `if_else()`, `case_when()`, `map()`
 - **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns
-- **Aggregation** — `pt.agg_df()`: auto-detects group columns and aggregates the rest
-- **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
+- **Aggregation** — `pt.agg_df()`: groups by explicit `by=` column(s) (or `None` for whole-table summary) and aggregates numeric columns
+- **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.clean_columns()`, `pt.replace_values()`
 - **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `data`
 
-See [docs/LIBRARY.md](https://github.com/maddytae/pytae/blob/master/docs/LIBRARY.md) for examples of each.
+See [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) for examples of each.
 
 ## Key Conventions & Syntax Cheat Sheet
 
 | Task | Syntax | Example |
 |---|---|---|
-| **Copy to Clipboard** | `df.to_clip()` in Python; `-to_clip` in CLI | `df.head().to_clip()` vs. `pytae data.parquet -head -to_clip` |
+| **Copy to Clipboard** | `df.to_clip()` in Python; `-o clip` in CLI | `df.head().to_clip()` vs. `pytae data.parquet -head -o clip` |
 | **Mapping vs. Assignment** | `:` maps old to new; `=` assigns values | `-rename "old:new"` vs. `-mutate "col = expr"` |
-| **Spaced Columns (Filter)** | String expressions handle spaces directly | `df.pt.qry("bill length mm > 40")` |
-| **Spaced Columns (Create)** | Unpack dictionary with `**` | `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})` |
+| **Spaced Columns (Filter)** | Enclose in brackets `[col]` | `df.pt.qry("[bill length mm] > 40")` |
+| **Spaced Columns (Select)** | Enclose in brackets `[col]` | `df.pt.select("species", "[body mass g]")` |
+| **Spaced Columns (Create)** | String assignment `[col] = ...` (or `**{...}`) | `df.pt.mutate("[body mass kg] = body_mass_g / 1000")` |
+| **Spaced Columns (Agg)** | String mapping `"[col] = func, n = n"` | `df.pt.agg("smoker", "tip = mean, [total bill] = mean, n = n")` |
 | **Spaced Columns (Expr)** | Reference via brackets `[col]` or backticks `` `col` `` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
-| **Selective Grouping** | `agg_df` groups by all non-numeric cols; select first | `df.pt.select("species", "body_mass_g").pt.agg_df("mean")` |
+| **Selective Grouping** | `agg_df` groups by explicit `by=` column(s) | `df.pt.agg_df("species", "mean")` |
 
 ## License
 

@@ -137,4 +137,108 @@ def test_select_everything():
     from pytae.select import everything
 
     df = _wide()
+    # Both everything() instance and everything class
     assert list(pt.select(df, "species", everything()).columns) == list(df.columns)
+    assert list(pt.select(df, "species", everything).columns) == list(df.columns)
+    assert list(pt.select(df, "species", pt.everything).columns) == list(df.columns)
+
+
+def test_select_negative_column_syntax():
+    df = _wide()
+    # Single negative column
+    assert list(pt.select(df, "-species").columns) == [
+        "island",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    # Tilde syntax
+    assert list(pt.select(df, "~island").columns) == [
+        "species",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    # Multiple negative columns
+    assert list(pt.select(df, "-species", "-island").columns) == [
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    # Negative column slice
+    assert list(pt.select(df, "-bill_length_mm:body_mass_g").columns) == [
+        "species",
+        "island",
+    ]
+
+
+def test_select_exclude_kwarg():
+    df = _wide()
+    assert list(pt.select(df, exclude="species").columns) == [
+        "island",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    assert list(pt.select(df, exclude=["species", "island"]).columns) == [
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+
+
+def test_select_positive_and_negative_combination():
+    df = _wide()
+    # Positive slice minus one column
+    res = pt.select(df, "species:body_mass_g", "-island")
+    assert list(res.columns) == [
+        "species",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+
+
+def test_select_negative_typo_raises_hint():
+    df = _wide()
+    with pytest.raises(KeyError, match=r"Column to exclude not found: 'speceis' \(did you mean 'species'\?\)"):
+        pt.select(df, "-speceis")
+
+
+def test_select_bracketed_names_and_slices():
+    df = pd.DataFrame({
+        "species": [1],
+        "island name": [2],
+        "bill length mm": [3],
+        "body mass g": [4],
+    })
+    # Single bracketed name
+    assert list(pt.select(df, "[island name]").columns) == ["island name"]
+    # Multiple bracketed names
+    assert list(pt.select(df, "[island name]", "[body mass g]").columns) == ["island name", "body mass g"]
+    # Comma-separated bracketed string
+    assert list(pt.select(df, "species, [bill length mm]").columns) == ["species", "bill length mm"]
+    # Bracketed slice
+    assert list(pt.select(df, "[island name]:[body mass g]").columns) == ["island name", "bill length mm", "body mass g"]
+    # Bracketed negation
+    assert list(pt.select(df, "-[island name]").columns) == ["species", "bill length mm", "body mass g"]
+
+
+def test_select_contains_startswith_endswith_tuples():
+    # Lib Issue 14: contains, startswith, endswith accept tuples
+    df = pd.DataFrame({"bill_length_mm": [1], "bill_depth_mm": [2], "body_mass_g": [3]})
+    res_c = pt.select(df, contains=("bill", "body"))
+    assert list(res_c.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+    res_sw = pt.select(df, startswith=("bill", "body"))
+    assert list(res_sw.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+    res_ew = pt.select(df, endswith=("mm", "g"))
+    assert list(res_ew.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+
+def test_select_exclude_bracketed_string():
+    # Issue 8: exclude with bracketed names
+    df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
+    res = pt.select(df, exclude="[col a, col b]")
+    assert list(res.columns) == ["keep"]

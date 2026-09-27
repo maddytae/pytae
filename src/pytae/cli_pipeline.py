@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import re
+from typing import Any
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
 from pytae.mutate import mutate
-from pytae.other_utilities import replace_values
+from pytae.other_utilities import replace_values, safe_reset_index
 from pytae.qry import qry
 from pytae.select import select
 
@@ -40,18 +42,19 @@ def _mask_quoted(spec: str) -> str:
 
 
 class _Pipeline:
-    """Flag order is the method chain. Each -select/-drop/-qry/-query/-head/… call
+    """Flag order is the method chain. Each -select/-qry/-query/-head/… call
     runs on the current view, same as pt.select(df, …) then pt.qry(df, …) then head.
     Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
     don't return a DataFrame/Series in pandas either, so (like main()'s validation)
-    nothing may follow them except -to_clip.
+    nothing may follow them except -o clip.
     """
 
-    def __init__(self, reader=None, *, nrows=None, progress=False, frames=None) -> None:
+    def __init__(self, reader=None, *, nrows=None, progress=False, frames=None, chunk_size: int = 200_000) -> None:
         self._reader = reader
         self._nrows = nrows
         self._progress = progress
+        self._chunk_size = chunk_size
         self._df: pd.DataFrame | None = None
         self._pending_exact: list[str] | None = None
         self._frames: dict[str, pd.DataFrame] = frames or {}
@@ -74,9 +77,10 @@ class _Pipeline:
             self._df is not None
             or bool(kwargs)
             or any(":" in token for token in names)
+            or any(token.startswith(("-", "~")) for token in names)
         )
         if not needs_frame:
-            self._pending_exact = list(names)
+            self._pending_exact = [_unquote_name(n) for n in names]
             return None
 
         df = self._df if self._df is not None else self.dataframe()
@@ -84,28 +88,6 @@ class _Pipeline:
             self._df = select(df, *names, **kwargs)
         except (ValueError, KeyError) as exc:
             return f"-select: {exc}"
-        return None
-
-    def apply_drop(self, names: list[str]) -> str | None:
-        """Apply one -drop spec (exact column names) to the current view.
-
-        Remaining columns keep their existing order. Returns an error message or None.
-        """
-        available = self._available_columns()
-        unknown = [c for c in names if c not in available]
-        if unknown:
-            msg = unknown_columns_message("-drop", unknown, available)
-            if any(":" in c for c in unknown):
-                msg += " (-drop does not accept slices; use -select)"
-            return msg
-        drop_set = set(names)
-        remaining = [c for c in available if c not in drop_set]
-        if not remaining:
-            return "-drop: no columns left"
-        if self._df is not None:
-            self._df = self._df.drop(columns=list(dict.fromkeys(names)))
-        else:
-            self._pending_exact = remaining
         return None
 
     def apply_rename(self, mapping: dict[str, str]) -> str | None:
@@ -118,16 +100,21 @@ class _Pipeline:
         self._df = df.rename(columns=mapping)
         return None
 
-    def apply_qry(self, conditions: dict) -> str | None:
+    def apply_qry(self, conditions: list[tuple[str, Any]] | dict) -> str | None:
         """Apply one -qry spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         try:
-            self._df = qry(df, **conditions)
+            if isinstance(conditions, list):
+                self._df = qry(df, conditions)
+            else:
+                self._df = qry(df, **conditions)
         except Exception as exc:
             return f"-qry: {exc}"
         return None
 
-    def apply_mutate(self, spec: str) -> str | None:
+    def apply_mutate(
+        self, spec: str, by: list[str] | None = None, dropna: bool = True
+    ) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()
         if (raw_spec.startswith("'") and raw_spec.endswith("'")) or (raw_spec.startswith('"') and raw_spec.endswith('"')):
@@ -150,7 +137,7 @@ class _Pipeline:
         try:
             from pytae.mutate import parse_mutate_spec
             parsed = parse_mutate_spec(raw_spec)
-            self._df = mutate(df, **parsed)
+            self._df = mutate(df, parsed, by=by, dropna=dropna)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None
@@ -254,6 +241,7 @@ class _Pipeline:
         if self._df is None:
             df = self._reader.to_dataframe(
                 columns=self._pending_exact, nrows=self._nrows, progress=self._progress,
+                chunk_size=self._chunk_size,
             )
             self._df = df
         return self._df
@@ -304,11 +292,14 @@ class _Pipeline:
 
     def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
         df = self.dataframe()
+        if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+            df = safe_reset_index(df)
         if frac is not None:
             sampled = df.sample(frac=frac, random_state=seed)
         else:
             n = min(n, len(df))
             sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
+        sampled = sampled.reset_index(drop=True)
         self._df = sampled
         return sampled
 
@@ -328,8 +319,14 @@ class _OrderedValue(argparse.Action):
     """Optional-value flag (nargs='?') that also records its dest in namespace.op_order, in CLI order."""
 
     def __call__(self, parser, namespace, values, option_string=None) -> None:
-        setattr(namespace, self.dest, self.const if values is None else values)
+        val = self.const if values is None else values
+        setattr(namespace, self.dest, val)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        op_values = getattr(namespace, "_op_values", None)
+        if op_values is None:
+            op_values = {}
+            setattr(namespace, "_op_values", op_values)
+        op_values.setdefault(self.dest, []).append(val)
 
 
 class _OrderedStore(argparse.Action):
@@ -338,6 +335,11 @@ class _OrderedStore(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None) -> None:
         setattr(namespace, self.dest, values)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        op_values = getattr(namespace, "_op_values", None)
+        if op_values is None:
+            op_values = {}
+            setattr(namespace, "_op_values", op_values)
+        op_values.setdefault(self.dest, []).append(values)
 
 
 class _OrderedAppend(argparse.Action):

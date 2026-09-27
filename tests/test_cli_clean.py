@@ -94,8 +94,8 @@ def test_rename_quoting_is_optional(tmp_path):
     out1 = tmp_path / "out1.csv"
     out2 = tmp_path / "out2.csv"
 
-    cli.main([path, "-convert", "-rename", "old col:new col", "-o", str(out1)])
-    cli.main([path, "-convert", "-rename", "'old col':'new col'", "-o", str(out2)])
+    cli.main([path, "-rename", "old col:new col", "-o", str(out1)])
+    cli.main([path, "-rename", "'old col':'new col'", "-o", str(out2)])
 
     assert list(pd.read_csv(out1).columns) == ["new col", "b"]
     assert list(pd.read_csv(out2).columns) == ["new col", "b"]
@@ -110,13 +110,13 @@ def test_rename_multiple_pairs(tmp_path):
     out1 = tmp_path / "out1.csv"
     out2 = tmp_path / "out2.csv"
 
-    cli.main([path, "-convert", "-rename", "old col:new col,b:beta", "-o", str(out1)])
-    cli.main([path, "-convert", "-rename", "'old col':'new col','b':'beta'", "-o", str(out2)])
+    cli.main([path, "-rename", "old col:new col,b:beta", "-o", str(out1)])
+    cli.main([path, "-rename", "'old col':'new col','b':'beta'", "-o", str(out2)])
 
     assert list(pd.read_csv(out1).columns) == ["new col", "beta"]
     assert list(pd.read_csv(out2).columns) == ["new col", "beta"]
 
-def test_rename_pipeline_head_without_convert(tmp_path, capsys):
+def test_rename_pipeline_head(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"island": ["Torgersen"], "species": ["Adelie"]}))
     cli.main([path, "-rename", "island:kailand", "-head"])
     out = capsys.readouterr().out
