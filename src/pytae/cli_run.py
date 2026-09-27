@@ -604,12 +604,12 @@ def _process_path(
         elif op == "group_x":
             source_df = pipeline.dataframe()
             gx = parse_group_x_arg(args.group_x)
-            if "group" not in gx and args.by:
-                gx["group"] = parse_columns(args.by)
+            if "by" not in gx and args.by:
+                gx["by"] = parse_columns(args.by)
             gx["dropna"] = args.dropna
-            group_cols = gx.get("group") or []
-            if group_cols and any(c not in source_df.columns for c in group_cols):
-                return _fail(parser, batch, unknown_columns_message("-group_x", group_cols, list(source_df.columns)))
+            by_cols = gx.get("by") or []
+            if by_cols and any(c not in source_df.columns for c in by_cols):
+                return _fail(parser, batch, unknown_columns_message("-group_x", by_cols, list(source_df.columns)))
             value_col = gx.get("v")
             if value_col and value_col not in source_df.columns:
                 return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))

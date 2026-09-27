@@ -129,7 +129,7 @@ pytae penguins.parquet -agg mean -round 1
 Appends group statistics back to every individual row without collapsing the dataset (equivalent to Pandas `transform` or SQL `OVER (PARTITION BY ...)`):
 
 Parameters:
-- `group=`: Grouping columns (can also be passed via `-by`).
+- `-by <cols>` or `by=`: Grouping columns.
 - `v=`: Target value column to aggregate.
 - `a=`: Aggregate function (default: `n` for group size).
 
@@ -137,7 +137,7 @@ Parameters:
 # Calculate maximum species mass and broadcast as column 'x'
 pytae penguins.parquet \
   -select "species,sex,body_mass_g" \
-  -group_x "group=species,v=body_mass_g,a=max" \
+  -by species -group_x "v=body_mass_g,a=max" \
   -head 4
 ```
 

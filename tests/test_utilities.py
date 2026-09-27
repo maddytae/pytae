@@ -86,8 +86,11 @@ def test_group_x_count_and_value():
     df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3]})
     counted = pt.group_x(df)
     assert counted["n"].tolist() == [2, 2, 1]
-    averaged = pt.group_x(df, group=["grp"], a="mean", v="val")
+    averaged = pt.group_x(df, by=["grp"], a="mean", v="val")
     assert averaged["x"].tolist() == [1.5, 1.5, 3.0]
+    # group= alias still works
+    aliased = pt.group_x(df, group=["grp"], a="mean", v="val")
+    assert aliased["x"].tolist() == [1.5, 1.5, 3.0]
 
 
 def test_clean_columns_strip_fill_case():

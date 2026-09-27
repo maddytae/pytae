@@ -144,11 +144,16 @@ def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_x", "group=grp,v=val,a=mean"])
-
+    exit_code = cli.main([path, "-group_x", "by=grp,v=val,a=mean"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "1.5" in out and "3.5" in out
+
+    # also accepts group= as alias
+    exit_code2 = cli.main([path, "-group_x", "group=grp,v=val,a=mean"])
+    out2 = capsys.readouterr().out
+    assert exit_code2 == 0
+    assert "1.5" in out2 and "3.5" in out2
 
 
 def test_group_x_still_accepts_by_flag(tmp_path, capsys):

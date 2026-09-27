@@ -82,7 +82,7 @@ Top-Level Functions exported by `pytae`:
   - pt.long(df, c="variable", v="value")
   - pt.wide(df, c="variable", v="value", a=None, dropna=True)
   - pt.sql(df, query, **frames)
-  - pt.group_x(df, group=None, dropna=True, observed=True, a="n", v=None)
+  - pt.group_x(df, by=None, *, group=None, dropna=True, observed=True, a="n", v=None)
   - pt.handle_missing(df, fillna=".")
   - pt.cols(df, ascending=True)
   - pt.clean_columns(df, **kwargs)
@@ -409,11 +409,11 @@ Rules & Features:
   ascending=False -> Alphabetical Z-A
   ascending=None  -> Original DataFrame file order
 
-- pt.group_x(df, group=None, dropna=True, observed=True, a="n", v=None):
+- pt.group_x(df, by=None, *, group=None, dropna=True, observed=True, a="n", v=None):
   Broadcasts a group aggregate to every row as a new column (like pandas transform).
   Default a="n" adds group size in column `n`.
   Pass v="col" and a="mean" to add group mean in column `x`.
-  If group is None, all non-numeric columns are used as group keys.
+  If by is None, all non-numeric columns are used as group keys.
 
 - pt.handle_missing(df, fillna="."):
   Sanitizes missing values:
@@ -569,7 +569,7 @@ Aggregation & Reshaping Flags:
   -agg_df [AGGFUNC]     Auto-aggregate by non-numeric cols (e.g. mean, sum, "mean,n")
   -agg KEY=VALUE,...    Aggregate specific cols (e.g. "body_mass_g=mean, count=n")
   -group_by COLUMNS     Set explicit group-by columns
-  -group_x [SPECS]      Broadcast group transform column (e.g. "a=n" or "v=col,a=mean")
+  -group_x [SPECS]      Broadcast group transform column (e.g. "-by grp -group_x v=col,a=mean" or "by=grp,v=col,a=mean")
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pivot long columns into headers: "c=variable, v=value, a=mean"
   -crosstab SPECS       Frequency crosstabulation: "index=species, columns=sex"
@@ -798,7 +798,7 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
 │   │   ├── multi_file.md
 │   │   ├── mutate.md
 │   │   ├── reshape.md
-│   │   ├── select_drop.md
+│   │   ├── select.md
 │   │   └── sql.md
 │   ├── cli.md
 │   ├── library
@@ -869,7 +869,6 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
 │   ├── test_agg_df.py
 │   ├── test_cli_agg.py
 │   ├── test_cli_clean.py
-│   ├── test_cli_drop.py
 │   ├── test_cli_filter.py
 │   ├── test_cli_inspect.py
 │   ├── test_cli_merge.py
@@ -980,7 +979,6 @@ ignore_errors = true
 10. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
 ================================================================================
 
-
 ################################################################################
 # FILE: src/pytae/__init__.py
 ################################################################################
@@ -994,7 +992,7 @@ from pathlib import Path
 import pandas as pd
 
 from .accessor import PtAccessor  # noqa: F401  — registers df.pt
-from .agg_df import agg_df
+from .agg_df import agg, agg_df
 from .mutate import mutate
 from .other_utilities import (
     clean_columns,
@@ -1083,6 +1081,7 @@ __all__ = [
     "select",
     "qry",
     "mutate",
+    "agg",
     "agg_df",
 
     "long",
@@ -1096,6 +1095,21 @@ __all__ = [
     "everything",
     "PtAccessor",
 ]
+
+################################################################################
+# FILE: src/pytae/__main__.py
+################################################################################
+"""Executable module entrypoint for pytae: python -m pytae ..."""
+
+from __future__ import annotations
+
+import sys
+
+from pytae.cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())
+
 ################################################################################
 # FILE: src/pytae/_text.py
 ################################################################################
@@ -1150,6 +1164,7 @@ def unquote_name(raw: str) -> str:
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
         return raw[1:-1]
     return raw
+
 ################################################################################
 # FILE: src/pytae/accessor.py
 ################################################################################
@@ -1168,6 +1183,7 @@ from typing import Any
 
 import pandas as pd
 
+from .agg_df import _UNSET
 from .agg_df import agg_df as _agg_df
 from .mutate import mutate as _mutate
 from .other_utilities import (
@@ -1207,31 +1223,71 @@ class PtAccessor:
     def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
         return _sql(self._obj, query, **frames)
 
-    def agg_df(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        return _agg_df(self._obj, *args, **kwargs)
+    def agg_df(
+        self,
+        by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
+        *args: Any,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        return _agg_df(self._obj, by, *args, **kwargs)
 
-    def long(self, c: str = "variable", v: str = "value") -> pd.DataFrame:
+    def agg(
+        self,
+        by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
+        *args: Any,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        return _agg_df(self._obj, by, *args, **kwargs)
+
+    def long(
+        self,
+        cols: str | Sequence[str] | None = None,
+        id_vars: str | Sequence[str] | None = None,
+        c: str = "variable",
+        v: str = "value",
+        **kwargs: Any,
+    ) -> pd.DataFrame:
         from .shape import long as _long
-        return _long(self._obj, c=c, v=v)
+        return _long(self._obj, cols=cols, id_vars=id_vars, c=c, v=v, **kwargs)
 
     def wide(
-        self, c: str = "variable", v: str = "value", a: str | None = None, dropna: bool = True
+        self,
+        c: str = "variable",
+        v: str = "value",
+        a: str | None = None,
+        dropna: bool = True,
+        index: str | Sequence[str] | None = None,
+        **kwargs: Any,
     ) -> pd.DataFrame:
         from .shape import wide as _wide
-        return _wide(self._obj, c=c, v=v, a=a, dropna=dropna)
+        return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
 
     def group_x(
         self,
+        by: str | Sequence[str] | None = None,
+        *,
         group: str | Sequence[str] | None = None,
         dropna: bool = True,
         observed: bool = True,
         a: str = "n",
         v: str | None = None,
     ) -> pd.DataFrame:
-        return _group_x(self._obj, group=group, dropna=dropna, observed=observed, a=a, v=v)
+        return _group_x(self._obj, by=by, group=group, dropna=dropna, observed=observed, a=a, v=v)
 
-    def handle_missing(self, fillna: str = ".") -> pd.DataFrame:
-        return _handle_missing(self._obj, fillna=fillna)
+    def handle_missing(
+        self,
+        fillna: str = ".",
+        numeric_fill: Any = 0,
+        cols: Sequence[str] | None = None,
+        preserve_categories: bool = True,
+    ) -> pd.DataFrame:
+        return _handle_missing(
+            self._obj,
+            fillna=fillna,
+            numeric_fill=numeric_fill,
+            cols=cols,
+            preserve_categories=preserve_categories,
+        )
 
     def cols(self, ascending: bool | None = True) -> list:
         return _cols(self._obj, ascending=ascending)
@@ -1308,189 +1364,322 @@ class PtAccessor:
 ################################################################################
 from __future__ import annotations
 
+import difflib
+from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
 
+_UNSET = object()
+_KNOWN_AGGS = {
+    "mean",
+    "sum",
+    "std",
+    "var",
+    "min",
+    "max",
+    "count",
+    "size",
+    "median",
+    "first",
+    "last",
+    "n",
+    "prod",
+    "sem",
+    "skew",
+    "kurt",
+}
 
-def _agg_df_list(df: pd.DataFrame, agg_types: str | list[str], dropna: bool, observed: bool) -> pd.DataFrame:
+
+def _agg_df_list(
+    df: pd.DataFrame,
+    group_cols: list[str],
+    agg_types: str | list[str],
+    dropna: bool,
+    observed: bool,
+) -> pd.DataFrame:
+    """Helper function to handle string/list aggfunc for agg_df.
+
+    Applies aggregations to all numeric columns (excluding group_cols).
     """
-    Helper function to handle string/list aggfunc for agg_df.
-    Applies aggregations to all numeric columns.
-    """
-    # Convert aggfunc to list if string
-    agg_types = [agg_types] if isinstance(agg_types, str) else agg_types
+    agg_types = [agg_types] if isinstance(agg_types, str) else list(agg_types)
     unique_agg_types = list(dict.fromkeys(agg_types))  # Remove duplicates, preserve order
-    remaining_agg_types = [agg for agg in unique_agg_types if agg != 'n']
+    remaining_agg_types = [agg for agg in unique_agg_types if agg != "n"]
+    has_n = "n" in unique_agg_types
 
-    # Group by all non-numeric columns
-    group_cols = df.select_dtypes(exclude=['number']).columns.tolist()
-    if not group_cols:
-        raise ValueError("No non-numeric columns to group by")
+    numeric_cols = [col for col in df.select_dtypes(include=["number"]).columns if col not in group_cols]
 
-    # Get numeric columns
-    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-
-    # A real numeric column named 'n' would collide with the count alias once
-    # aggregation results are flattened back onto their bare column names below.
-    if 'n' in unique_agg_types and 'n' in numeric_cols:
+    if has_n and "n" in numeric_cols:
         raise ValueError(
             "agg_df: cannot compute 'n' (row count) because the input already has a "
-            "numeric column named 'n'; rename that column first, or use the dict form "
-            "(e.g. {'n': 'sum', 'count': 'n'}) to pick a different count-column name."
+            "numeric column named 'n'; rename that column first, or use the kwargs form "
+            "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
         )
 
-    # Check for no numeric columns and only 'n' requested
-    if unique_agg_types == ['n'] and not numeric_cols:
-        grouped_df = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')
-        return grouped_df
-
-    # Check for no numeric columns and no 'n'
-    if not numeric_cols and 'n' not in unique_agg_types:
+    if not numeric_cols and not has_n:
         raise ValueError("No numeric columns to aggregate and 'n' not specified")
 
-    # Define aggregation operations for numeric columns excluding 'n'
-    agg_operations = {col: [agg for agg in unique_agg_types if agg != 'n'] for col in numeric_cols}
+    if group_cols:
+        if has_n and not numeric_cols:
+            grouped_df = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name="n")
+            return grouped_df
 
-    # Perform aggregation
-    grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+        agg_operations = {col: remaining_agg_types for col in numeric_cols}
+        grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
 
-    # Flatten MultiIndex in columns
-    if len(remaining_agg_types) > 1:
-        grouped_df.columns = ['_'.join(col).strip('_') for col in grouped_df.columns.values]
-    else:
-        grouped_df.columns = [col[0] for col in grouped_df.columns.values]
-
-    # Handle counting ('n') if specified
-    if 'n' in unique_agg_types:
-        grouped_df['n'] = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')['n']
-
-    # Reorder columns: group_cols + 'n' (if specified) + other aggregated columns
-    g_cols = group_cols + (['n'] if 'n' in unique_agg_types else [])
-    grouped_df = grouped_df.reindex(columns=g_cols + [col for col in grouped_df.columns if col not in g_cols])
-
-    return grouped_df
-
-def _agg_df_dict(df: pd.DataFrame, agg_types: dict[str, Any], dropna: bool, observed: bool) -> pd.DataFrame:
-    """
-    Helper function to handle dictionary aggfunc for agg_df.
-    Applies aggregations to specified columns, with 'n' keys used for count column names.
-    Output columns follow the order of dictionary keys after group columns.
-    """
-    # Group by all non-numeric columns
-    group_cols = df.select_dtypes(exclude=['number']).columns.tolist()
-    if not group_cols:
-        raise ValueError("No non-numeric columns to group by")
-
-    # Get numeric columns
-    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-
-    # Track output columns in dictionary order
-    output_cols = []
-    agg_operations = {}
-    count_cols = []
-    
-    # Process dictionary keys in order
-    for col, aggs in agg_types.items():
-        aggs_list = [aggs] if isinstance(aggs, str) else aggs
-        aggs_list = list(dict.fromkeys(aggs_list))  # Remove duplicates, preserve order
-        if 'n' in aggs_list and (isinstance(aggs, str) or len(aggs_list) == 1):
-            count_cols.append(col)
-            output_cols.append(col)  # Count column appears as specified in dict
-            continue
-        if 'n' in aggs_list:
-            raise ValueError(f"'n' cannot be used as an aggregation function for column '{col}' in a dictionary aggfunc")
-        if col not in numeric_cols:
-            raise ValueError(f"Column '{col}' is not numeric or does not exist")
-        agg_tests = [agg for agg in aggs_list if agg != 'n']
-        if not agg_tests:
-            raise ValueError(f"No valid aggregation functions specified for column '{col}'")
-        agg_operations[col] = agg_tests
-        # Add output column names based on aggregations
-        if len(agg_operations[col]) > 1:
-            output_cols.extend([f"{col}_{agg}" for agg in agg_operations[col]])
+        # Flatten MultiIndex in columns
+        if len(remaining_agg_types) > 1:
+            grouped_df.columns = ["_".join(col).strip("_") for col in grouped_df.columns.values]
         else:
-            output_cols.extend([col] * len(agg_operations[col]))
+            grouped_df.columns = [col[0] for col in grouped_df.columns.values]
 
-    # Check if only 'n' is requested and no numeric columns are specified
-    if not agg_operations and count_cols:
-        grouped_df = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')
-        result = grouped_df[group_cols]
-        for count_col in count_cols:
-            result[count_col] = grouped_df['n']
-        return result.reindex(columns=group_cols + count_cols)
+        if has_n:
+            grouped_df["n"] = df.groupby(group_cols, dropna=dropna, observed=observed).size().values
 
-    # Perform numeric aggregation
-    if not agg_operations:
-        raise ValueError("No valid numeric aggregations specified")
-    grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+        g_cols = group_cols + (["n"] if has_n else [])
+        remaining_cols = [col for col in grouped_df.columns if col not in g_cols]
+        return grouped_df.reindex(columns=g_cols + remaining_cols)
+    else:
+        # Whole-table summary (1 row, no groups)
+        if has_n and not numeric_cols:
+            return pd.DataFrame({"n": [len(df)]})
 
-    # Flatten MultiIndex in columns
-    grouped_df.columns = [
-        f"{col[0]}_{col[1]}" if len(agg_operations.get(col[0], [])) > 1 else col[0]
-        for col in grouped_df.columns.values
-    ]
+        row_dict: dict[str, list[Any]] = {}
+        if has_n:
+            row_dict["n"] = [len(df)]
 
-    # Handle count columns
-    for count_col in count_cols:
-        grouped_df[count_col] = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name='n')['n']
+        for col in numeric_cols:
+            for agg in remaining_agg_types:
+                col_name = f"{col}_{agg}" if len(remaining_agg_types) > 1 else col
+                s = df[col]
+                val = getattr(s, agg)() if hasattr(s, agg) and callable(getattr(s, agg)) else s.agg(agg)
+                row_dict[col_name] = [val]
 
-    # Reorder columns: group_cols + output_cols (in dictionary key order)
-    final_cols = group_cols + output_cols
-    grouped_df = grouped_df.reindex(columns=final_cols)
+        return pd.DataFrame(row_dict)
 
-    return grouped_df
 
-def agg_df(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame:
+def _agg_df_dict(
+    df: pd.DataFrame,
+    group_cols: list[str],
+    agg_types: dict[str, Any],
+    dropna: bool,
+    observed: bool,
+) -> pd.DataFrame:
+    """Helper function to handle keyword/dictionary aggfunc for agg_df.
+
+    Applies aggregations to specified columns, with 'n' keys used for count column names.
+    Supports named aggregations like total='v1:sum' or total=('v1', 'sum').
+    Output columns follow dictionary order after group columns.
     """
-    Aggregate the DataFrame based on specified aggregation types, ensuring that aggregated
-    column names, including 'n' for counts, follow the specified order in the 'a' parameter.
+    output_cols = []
+    named_aggs: dict[str, tuple[str, str]] = {}
+    count_cols = []
+
+    for out_name, spec in agg_types.items():
+        if spec == "n" or spec == ["n"] or spec == ("n",):
+            count_cols.append(out_name)
+            output_cols.append(out_name)
+            continue
+
+        if isinstance(spec, str) and ":" in spec:
+            src_col, aggfunc = spec.split(":", 1)
+            src_col, aggfunc = src_col.strip(), aggfunc.strip()
+            aggs_list = [aggfunc]
+        elif isinstance(spec, tuple) and len(spec) == 2 and spec[0] in df.columns:
+            src_col, aggfunc = spec
+            aggs_list = [aggfunc] if isinstance(aggfunc, str) else list(aggfunc)
+        else:
+            src_col = out_name
+            aggs_list = [spec] if isinstance(spec, str) else list(spec)
+
+        aggs_list = list(dict.fromkeys(aggs_list))  # preserve order
+        if "n" in aggs_list:
+            raise ValueError(f"'n' cannot be used as an aggregation function for column '{out_name}' in a dictionary aggfunc")
+        if src_col not in df.columns:
+            raise KeyError(f"Column '{src_col}' does not exist in DataFrame")
+        if src_col in group_cols:
+            raise ValueError(f"Column '{src_col}' is already a grouping column in 'by'")
+        if not pd.api.types.is_numeric_dtype(df[src_col]):
+            raise ValueError(f"Column '{src_col}' is not numeric")
+
+        if not aggs_list:
+            raise ValueError(f"No valid aggregation functions specified for column '{src_col}'")
+
+        if src_col == out_name:
+            if len(aggs_list) > 1:
+                for agg_fn in aggs_list:
+                    final_name = f"{src_col}_{agg_fn}"
+                    output_cols.append(final_name)
+                    named_aggs[final_name] = (src_col, agg_fn)
+            else:
+                output_cols.append(src_col)
+                named_aggs[src_col] = (src_col, aggs_list[0])
+        else:
+            if len(aggs_list) > 1:
+                for agg_fn in aggs_list:
+                    final_name = f"{out_name}_{agg_fn}"
+                    output_cols.append(final_name)
+                    named_aggs[final_name] = (src_col, agg_fn)
+            else:
+                output_cols.append(out_name)
+                named_aggs[out_name] = (src_col, aggs_list[0])
+
+    if group_cols:
+        if not named_aggs and count_cols:
+            grouped_df = df.groupby(group_cols, dropna=dropna, observed=observed).size().reset_index(name="n")
+            result = grouped_df[group_cols].copy()
+            for count_col in count_cols:
+                result[count_col] = grouped_df["n"]
+            return result.reindex(columns=group_cols + count_cols)
+
+        if not named_aggs:
+            raise ValueError("No valid numeric aggregations specified")
+
+        grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(**named_aggs)
+
+        if count_cols:
+            counts = df.groupby(group_cols, dropna=dropna, observed=observed).size().values
+            for count_col in count_cols:
+                grouped_df[count_col] = counts
+
+        final_cols = group_cols + output_cols
+        return grouped_df.reindex(columns=final_cols)
+    else:
+        # Whole-table summary (1 row, no groups)
+        if not named_aggs and not count_cols:
+            raise ValueError("No aggregations specified")
+
+        row_dict: dict[str, list[Any]] = {}
+        for count_col in count_cols:
+            row_dict[count_col] = [len(df)]
+
+        for out_name, (src_col, agg_fn) in named_aggs.items():
+            s = df[src_col]
+            val = getattr(s, agg_fn)() if hasattr(s, agg_fn) and callable(getattr(s, agg_fn)) else s.agg(agg_fn)
+            row_dict[out_name] = [val]
+
+        df_out = pd.DataFrame(row_dict)
+        return df_out.reindex(columns=output_cols)
+
+
+def agg_df(
+    df: pd.DataFrame,
+    by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
+    *args: Any,
+    **kwargs: Any,
+) -> pd.DataFrame:
+    """Aggregate a DataFrame grouped by explicit `by` column(s).
 
     Parameters:
-    - df (DataFrame): The pandas DataFrame to be aggregated.
-    - *args: Whole-frame aggregation functions:
-        - If str (e.g., 'sum'): Apply the aggregation to all numeric columns.
-        - If list (e.g., ['sum', 'mean', 'n']): Apply the listed aggregations to all numeric columns.
-    - **kwargs:
-        - Column aggregations passed as keyword arguments (e.g. df.pt.agg_df(body_mass_g='mean', count='n')).
-          Keys with value 'n' specify the output column name for group counts, not an input column.
-        - a (str or list, optional): Whole-frame aggregation function(s) when passed as a keyword.
+    -----------
+    df : pd.DataFrame
+        The pandas DataFrame to aggregate.
+    by : str, Sequence[str], or None
+        Grouping column name(s). Pass None to perform a whole-table summary (grand total, 1 row).
+        Can be passed positionally as the first argument or via keyword `by=` / `group_by=`.
+    *args : str or list of str
+        Whole-frame aggregation function(s) applied to all numeric columns:
+        - If str (e.g., 'mean'): Apply to all numeric columns.
+        - If list (e.g., ['mean', 'n']): Apply listed aggregations. 'n' computes group row counts.
+    **kwargs :
+        - Column aggregations passed as keyword arguments (e.g. df.pt.agg('species', body_mass_g='mean', count='n')).
+          Keys with value 'n' specify the output column name for group row counts.
+          Supports named aggregations like total='v1:sum'.
+        - a (str or list, optional): Whole-frame aggregation function(s) when passed as keyword `a=`.
         - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
         - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
 
     Returns:
-    - DataFrame: The aggregated DataFrame with specified aggregations applied. Column names
-                 for aggregated values include the aggregation type only if multiple aggregations
-                 are specified for a column. For dict a, columns follow dictionary key order
-                 after group columns. If only 'n' is specified and no numeric columns exist, returns
-                 group counts.
+    --------
+    pd.DataFrame
+        Aggregated DataFrame with group columns, count 'n' (if requested), and aggregated metrics.
     """
+    if "group_by" in kwargs:
+        if "by" in kwargs or by is not _UNSET:
+            raise TypeError("agg() got multiple values for argument 'by'/'group_by'")
+        by = kwargs.pop("group_by")
+    elif "by" in kwargs:
+        if by is not _UNSET:
+            raise TypeError("agg() got multiple values for argument 'by'")
+        by = kwargs.pop("by")
 
+    if by is _UNSET:
+        raise TypeError(
+            "agg() missing required argument: 'by'. "
+            "Specify grouping column(s) as first argument (e.g. df.pt.agg('species', 'mean')), "
+            "or None for whole-table summary (e.g. df.pt.agg(None, 'mean'))."
+        )
+
+    if isinstance(by, dict):
+        raise TypeError(
+            "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+            "df.pt.agg('by_col', body_mass_g='mean', count='n')."
+        )
+
+    # Check if user mistakenly passed an aggregation name as 'by'
+    if isinstance(by, str) and by not in df.columns:
+        if by.lower() in _KNOWN_AGGS:
+            raise ValueError(
+                f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
+                "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
+                f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
+            )
+        close = difflib.get_close_matches(by, df.columns, n=1)
+        hint = f" (did you mean '{close[0]}'?)" if close else ""
+        raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
+
+    if isinstance(by, (list, tuple)):
+        if by and all(isinstance(x, str) and x.lower() in _KNOWN_AGGS for x in by) and not any(x in df.columns for x in by):
+            raise ValueError(
+                f"agg(): {list(by)!r} looks like an aggregation list, but the first argument to agg() must be 'by' "
+                "(group column(s), or None for whole-table summary). "
+                f"Did you mean: df.pt.agg(None, {list(by)!r}) or df.pt.agg(by='col', a={list(by)!r})?"
+            )
+        for col in by:
+            if col not in df.columns:
+                close = difflib.get_close_matches(col, df.columns, n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"agg(): group column '{col}' not found in DataFrame{hint}")
+
+    if by is None:
+        group_cols: list[str] = []
+    elif isinstance(by, str):
+        group_cols = [by]
+    elif isinstance(by, (list, tuple)):
+        group_cols = list(by)
+    else:
+        raise TypeError(f"'by' must be a column name (str), list of column names, or None, got {type(by).__name__}")
+
+    # Extract aggregation spec
     if args:
         if isinstance(args[0], dict):
             raise TypeError(
-                "agg_df() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
-                "df.pt.agg_df(body_mass_g='mean', count='n')."
+                "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "df.pt.agg('by_col', body_mass_g='mean', count='n')."
             )
         agg_types = args[0]
     elif "a" in kwargs:
         if isinstance(kwargs["a"], dict):
             raise TypeError(
-                "agg_df() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
-                "df.pt.agg_df(body_mass_g='mean', count='n')."
+                "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "df.pt.agg('by_col', body_mass_g='mean', count='n')."
             )
-        agg_types = kwargs["a"]
+        agg_types = kwargs.pop("a")
     else:
         col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed")}
         agg_types = col_kwargs if col_kwargs else ["sum"]
-    dropna = kwargs.get('dropna', True)
-    observed = kwargs.get('observed', True)
 
-    # Dispatch to appropriate helper function
+    dropna = kwargs.get("dropna", True)
+    observed = kwargs.get("observed", True)
+
     if isinstance(agg_types, dict):
-        return _agg_df_dict(df, agg_types, dropna, observed)
+        return _agg_df_dict(df, group_cols, agg_types, dropna, observed)
     else:
-        return _agg_df_list(df, agg_types, dropna, observed)
+        return _agg_df_list(df, group_cols, agg_types, dropna, observed)
+
+
+# Alias: agg is identical to agg_df
+agg = agg_df
 
 ################################################################################
 # FILE: src/pytae/cli.py
@@ -1512,7 +1701,6 @@ from pytae.cli_parsing import (
     expand_paths,
     parse_bool_text,
     parse_concat_arg,
-    parse_drop_spec,
     parse_file_arg,
     parse_fraction,
     parse_list_order,
@@ -1564,7 +1752,25 @@ def _is_path_like(token: str) -> bool:
     return False
 
 
-def _normalize_progress_args(argv: list[str]) -> list[str]:
+_CLI_FLAGS = {
+    "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
+    "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
+    "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
+    "-unique", "--unique", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
+    "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
+    "-limit", "--limit", "-select", "--select", "-agg", "--agg",
+    "-agg_df", "--agg_df", "-group_x", "--group_x", "-handle_missing", "--handle_missing",
+    "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide",
+    "-crosstab", "--crosstab", "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
+    "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
+    "-file", "--file", "-query", "--query", "-qry", "--qry", "-mutate", "--mutate",
+    "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
+    "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
+    "-pager", "--pager", "-round", "--round", "-h", "--help",
+}
+
+
+def _normalize_cli_args(argv: list[str]) -> list[str]:
     out: list[str] = []
     i = 0
     while i < len(argv):
@@ -1586,13 +1792,20 @@ def _normalize_progress_args(argv: list[str]) -> list[str]:
                 out.append("--progress=200000")
                 i += 1
                 continue
+        elif arg in ("-select", "--select") and "=" not in arg:
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                if nxt.startswith("-") and nxt not in _CLI_FLAGS:
+                    out.append(f"--select={nxt}")
+                    i += 2
+                    continue
         out.append(arg)
         i += 1
     return out
 
 
 class PytaeParser(argparse.ArgumentParser):
-    """Custom parser that normalizes optional-value flags such as -progress."""
+    """Custom parser that normalizes optional-value flags such as -progress and negative -select specs."""
 
     def parse_known_args(  # type: ignore[override]
         self,
@@ -1601,7 +1814,7 @@ class PytaeParser(argparse.ArgumentParser):
     ) -> tuple[argparse.Namespace, list[str]]:
         if args is None:
             args = sys.argv[1:]
-        normalized = _normalize_progress_args(list(args))
+        normalized = _normalize_cli_args(list(args))
         return super().parse_known_args(normalized, namespace)
 
 
@@ -1654,34 +1867,26 @@ def build_parser() -> argparse.ArgumentParser:
                          action=_OrderedStore,
                          help="sort rows by a comma-separated column list, optionally ending with "
                               "asc or desc (default: asc), e.g. species,body_mass_g desc")
-    parser.add_argument("-group_by", "--group_by", dest="group_by", default=None, metavar="COLUMNS",
-                         help="explicit group-by columns for -agg (comma-separated); also used by -group_x "
-                              "if group= is omitted")
+    parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
+                         help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
+                              "Used by -agg and -group_x.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
-                              "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
-                              "regex, exclude_dtype); repeat to filter remaining columns, including after "
-                              '-agg_df/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
-    parser.add_argument("--drop", "-drop", dest="drop", action=_OrderedAppend, default=None, metavar="COLUMNS",
-                         help="drop columns by exact name at this point in the pipeline (comma-separated names "
-                              "only; use -select for dtype=/contains=/regex=/slices); remaining columns keep "
-                              'their order, e.g. -drop "sex,island"')
-    parser.add_argument("-agg_df", "--agg_df", dest="agg_df", nargs="?", const="sum", default=None,
+                              "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
+                              "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
+                              'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"')
+    parser.add_argument("-agg", "--agg", "-agg_df", "--agg_df", dest="agg", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
-                         help="aggregate using pytae agg_df; auto-detects group columns (non-numeric); "
-                              "defaults to sum when no value given; "
-                              "accepts a name (mean), a comma list (mean,sum), or a mapping "
-                              "(body_mass_g: mean, n: n)")
-    parser.add_argument("-agg", "--agg", dest="agg", metavar="KEY=VALUE,...", action=_OrderedStore,
-                         help="aggregate using explicit -group_by columns; key=value specs "
-                              "(column=, aggfunc=, optional as=), e.g. "
-                              "column=value,aggfunc=sum,as=v; several specs separated by ';'; requires -group_by")
+                         help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
+                              "without -by, computes a whole-table summary (grand total). "
+                              "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
+                              "(v1 = sum, total = v1:sum, count = n). Defaults to sum.")
     parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
-                              "size n on non-numeric columns; e.g. group=species,v=body_mass_g,a=max")
+                              "size n on non-numeric columns; e.g. -by species -group_x 'v=body_mass_g,a=max' or by=species,v=body_mass_g,a=max")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
@@ -1874,35 +2079,32 @@ def main(argv: list[str] | None = None) -> int:
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.agg_df is not None, args.agg is not None,
+                         args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
+                         args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
                          args.meta, args.diff is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg_df is not None, args.agg is not None,
+                     args.agg is not None,
                      args.group_x is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
                      args.clean_columns is not None, args.merge, args.concat])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg_df/-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
+                     "-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
                      "run -shape separately")
-    if args.agg_df is not None and args.agg is not None:
-        parser.error("-agg_df and -agg can't be combined; choose one")
-    if args.group_by is not None and args.agg is None and args.group_x is None:
-        parser.error("-group_by requires -agg or -group_x")
+    if args.by is not None and args.agg is None and args.group_x is None:
+        parser.error("-by requires -agg or -group_x")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
     rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-    drop_specs = [parse_drop_spec(raw) for raw in (args.drop or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     mutate_specs = list(args.mutate or [])
     query_specs = list(args.query or [])
@@ -1926,7 +2128,6 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                drop_specs=drop_specs,
                                 qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
@@ -1967,7 +2168,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    drop_specs=drop_specs,
                                     qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs)
         except UnicodeError as exc:
@@ -1998,7 +2198,7 @@ from pathlib import Path
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
-SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
+SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex", "exclude")
 
 
 def parse_columns(raw: str) -> list[str]:
@@ -2038,26 +2238,6 @@ def _split_groups(raw: str, sep: str = ";") -> list[str]:
     return [t for t in _tokenize(raw, sep, keep_quotes=True) if t]
 
 
-def parse_drop_spec(raw: str) -> list[str]:
-    """Parse -drop into exact column names.
-
-    Names only: comma-separated, same quoting as -select names (a space is not
-    a separator). key=value tokens and select matchers (dtype=/contains=/regex=/
-    slices) are rejected — those stay on -select.
-    """
-    tokens = _split_tokens(raw)
-    if not tokens:
-        raise SystemExit("-drop: expected column names")
-    names: list[str] = []
-    for token in tokens:
-        if "=" in token:
-            raise SystemExit(
-                "-drop: only column names; use -select for dtype=/contains=/regex=/exclude_dtype="
-            )
-        names.append(token)
-    return names
-
-
 def parse_select_spec(raw: str) -> tuple[list[str], dict]:
     """Parse -select into positional names/slices and select() kwargs.
 
@@ -2094,15 +2274,31 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
     """Exact-name tokens (and slice endpoints) that are not in the file."""
     unknown: list[str] = []
     for token in tokens:
-        if ":" in token:
+        clean = _unquote_name(token)
+        if clean in available:
+            continue
+        if token.startswith(("-", "~")):
+            raw = _unquote_name(token[1:].strip())
+            if raw in available:
+                continue
+            if ":" in raw:
+                start, end = raw.split(":", 1)
+                start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
+                if start and start not in available:
+                    unknown.append(start)
+                if end and end not in available:
+                    unknown.append(end)
+            else:
+                unknown.append(raw)
+        elif ":" in token:
             start, end = token.split(":", 1)
-            start, end = start.strip(), end.strip()
+            start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
             if start and start not in available:
                 unknown.append(start)
             if end and end not in available:
                 unknown.append(end)
-        elif token not in available:
-            unknown.append(token)
+        else:
+            unknown.append(clean)
     return unknown
 
 
@@ -2230,19 +2426,19 @@ def parse_qry(raw: str) -> dict:
 
 
 def parse_agg(raw: str):
-    """Parse -agg_df: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
-    mapping (body_mass_g = mean, n = n). Quote a mapping key only to protect a comma."""
+    """Parse -agg: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
+    mapping (val = sum, n = n, total = v1:sum). Quote a mapping key only to protect a comma."""
     raw = (raw or "").strip()
     if not raw:
         return "sum"
     if raw[0] in "{[":
         raise SystemExit(
-            "-agg_df: use a name (mean), a comma list (mean,sum), or a mapping "
-            "(col: mean, n: n)"
+            "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
+            "(col = mean, n = n)"
         )
     entries = [e for e in _tokenize(raw, ",", keep_quotes=True) if e]
     if not entries:
-        raise SystemExit("-agg_df: expected a name, a comma list, or a mapping")
+        raise SystemExit("-agg: expected a name, a comma list, or a mapping")
 
     def _is_mapping(entry: str) -> bool:
         return len(_tokenize(entry, "=", keep_quotes=True)) >= 2 or len(_tokenize(entry, ":", keep_quotes=True)) >= 2
@@ -2255,17 +2451,22 @@ def parse_agg(raw: str):
                 parts = _tokenize(entry, "=", keep_quotes=True)
                 key = _unquote_name(parts[0])
                 value = _unquote_name("=".join(parts[1:]))
+                if key in ("column", "aggfunc"):
+                    raise SystemExit(
+                        "-agg: the old 'column=...,aggfunc=...' syntax is retired. "
+                        "Use '-by <cols> -agg \"col = aggfunc\"' or '-agg \"total = col:aggfunc\"' instead."
+                    )
             elif ":" in entry:
-                raise SystemExit(f"-agg_df: invalid mapping entry '{entry}'; use '=' (e.g. -agg_df 'col = mean'). Colon ':' is not supported.")
+                raise SystemExit(f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported.")
             else:
-                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
+                raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             if not key or not value:
-                raise SystemExit(f"-agg_df: invalid mapping entry {entry!r}")
+                raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             out[key] = value
         return out
     if any(mapped):
         raise SystemExit(
-            "-agg_df: mix of names and col=aggfunc mappings; use one or the other"
+            "-agg: mix of names and col=aggfunc mappings; use one or the other"
         )
     names = [_unquote_name(e) for e in entries]
     return names[0] if len(names) == 1 else names
@@ -2309,21 +2510,25 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_GROUP_X_KEYS = ("group", "v", "a")
+_GROUP_X_KEYS = ("by", "group", "v", "a")
 
 
 def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. group=species,v=body_mass_g,a=max."""
+    """Parse -group_x as key=value tokens, e.g. by=species,v=body_mass_g,a=max."""
     kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
-    if "group" in kwargs and isinstance(kwargs["group"], str):
-        kwargs["group"] = parse_columns(kwargs["group"])
+    if "group" in kwargs and "by" not in kwargs:
+        kwargs["by"] = kwargs.pop("group")
+    elif "group" in kwargs and "by" in kwargs:
+        kwargs.pop("group")
+    if "by" in kwargs and isinstance(kwargs["by"], str):
+        kwargs["by"] = parse_columns(kwargs["by"])
     return kwargs
 
 
 
 
-_LONG_KEYS = ("c", "v")
-_WIDE_KEYS = ("c", "v", "a")
+_LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
+_WIDE_KEYS = ("c", "v", "a", "index", "by")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
@@ -2617,6 +2822,7 @@ def parse_concat_arg(raw: str) -> dict:
     if len(names) < 2:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
+
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -2662,7 +2868,7 @@ def _mask_quoted(spec: str) -> str:
 
 
 class _Pipeline:
-    """Flag order is the method chain. Each -select/-drop/-qry/-query/-head/… call
+    """Flag order is the method chain. Each -select/-qry/-query/-head/… call
     runs on the current view, same as pt.select(df, …) then pt.qry(df, …) then head.
     Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
@@ -2697,6 +2903,7 @@ class _Pipeline:
             self._df is not None
             or bool(kwargs)
             or any(":" in token for token in names)
+            or any(token.startswith(("-", "~")) for token in names)
         )
         if not needs_frame:
             self._pending_exact = list(names)
@@ -2707,28 +2914,6 @@ class _Pipeline:
             self._df = select(df, *names, **kwargs)
         except (ValueError, KeyError) as exc:
             return f"-select: {exc}"
-        return None
-
-    def apply_drop(self, names: list[str]) -> str | None:
-        """Apply one -drop spec (exact column names) to the current view.
-
-        Remaining columns keep their existing order. Returns an error message or None.
-        """
-        available = self._available_columns()
-        unknown = [c for c in names if c not in available]
-        if unknown:
-            msg = unknown_columns_message("-drop", unknown, available)
-            if any(":" in c for c in unknown):
-                msg += " (-drop does not accept slices; use -select)"
-            return msg
-        drop_set = set(names)
-        remaining = [c for c in available if c not in drop_set]
-        if not remaining:
-            return "-drop: no columns left"
-        if self._df is not None:
-            self._df = self._df.drop(columns=list(dict.fromkeys(names)))
-        else:
-            self._pending_exact = remaining
         return None
 
     def apply_rename(self, mapping: dict[str, str]) -> str | None:
@@ -2974,6 +3159,7 @@ class _OrderedAppend(argparse.Action):
         items.append(values)
         setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+
 ################################################################################
 # FILE: src/pytae/cli_run.py
 ################################################################################
@@ -2995,7 +3181,6 @@ from pytae.cli_parsing import (
     parse_clean_columns_arg,
     parse_columns,
     parse_crosstab_arg,
-    parse_group_agg,
     parse_group_x_arg,
     parse_long_arg,
     parse_sort_by,
@@ -3293,7 +3478,6 @@ def _process_path(
     *,
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
-    drop_specs: list[list[str]],
     qry_specs: list[dict],
     mutate_specs: list[str],
     query_specs: list[str],
@@ -3341,7 +3525,6 @@ def _process_path(
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
     select_iter = iter(select_specs)
-    drop_iter = iter(drop_specs)
     qry_iter = iter(qry_specs)
     mutate_iter = iter(mutate_specs)
     query_iter = iter(query_specs)
@@ -3368,11 +3551,6 @@ def _process_path(
         if op == "select":
             names, kwargs = next(select_iter)
             err = pipeline.apply_select(names, kwargs)
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "drop":
-            err = pipeline.apply_drop(next(drop_iter))
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -3570,32 +3748,19 @@ def _process_path(
                 _output_text(_format_table(sorted_df, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
-        elif op == "agg_df":
-            aggfunc = parse_agg(args.agg_df)
-            if isinstance(aggfunc, dict):
-                result = _apply_round(agg_df(pipeline.dataframe(), dropna=args.dropna, **aggfunc), args.round_ndigits)
-            else:
-                result = _apply_round(agg_df(pipeline.dataframe(), aggfunc, dropna=args.dropna), args.round_ndigits)
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
-        elif op == "agg":
-            if not args.group_by:
-                return _fail(parser, batch, "-agg requires -group_by")
-            source_df = pipeline.dataframe()
-            group_cols = parse_columns(args.group_by)
-            if any(c not in source_df.columns for c in group_cols):
-                return _fail(parser, batch, unknown_columns_message("-group_by", group_cols, list(source_df.columns)))
-            agg_spec = parse_group_agg(args.agg)
-            named_agg = {}
-            for col, out_name, aggfunc in agg_spec:
-                if col not in source_df.columns:
-                    return _fail(parser, batch, unknown_columns_message("-agg", [col], list(source_df.columns)))
-                named_agg[out_name] = pd.NamedAgg(column=col, aggfunc=aggfunc)
-            result = source_df.groupby(group_cols, dropna=args.dropna, observed=True, as_index=False).agg(**named_agg)
-            result = _apply_round(result, args.round_ndigits)
+        elif op in ("agg", "agg_df"):
+            aggfunc = parse_agg(args.agg)
+            df_cur = pipeline.dataframe()
+            by_cols: list[str] | None = parse_columns(args.by) if args.by else None
+            if by_cols and any(c not in df_cur.columns for c in by_cols):
+                return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            try:
+                if isinstance(aggfunc, dict):
+                    result = _apply_round(agg_df(df_cur, by_cols, dropna=args.dropna, **aggfunc), args.round_ndigits)
+                else:
+                    result = _apply_round(agg_df(df_cur, by_cols, aggfunc, dropna=args.dropna), args.round_ndigits)
+            except Exception as e:
+                return _fail(parser, batch, str(e))
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(result, pretty=args.pretty), args)
@@ -3604,12 +3769,12 @@ def _process_path(
         elif op == "group_x":
             source_df = pipeline.dataframe()
             gx = parse_group_x_arg(args.group_x)
-            if "group" not in gx and args.group_by:
-                gx["group"] = parse_columns(args.group_by)
+            if "by" not in gx and args.by:
+                gx["by"] = parse_columns(args.by)
             gx["dropna"] = args.dropna
-            group_cols = gx.get("group") or []
-            if group_cols and any(c not in source_df.columns for c in group_cols):
-                return _fail(parser, batch, unknown_columns_message("-group_x", group_cols, list(source_df.columns)))
+            by_cols = gx.get("by") or []
+            if by_cols and any(c not in source_df.columns for c in by_cols):
+                return _fail(parser, batch, unknown_columns_message("-group_x", by_cols, list(source_df.columns)))
             value_col = gx.get("v")
             if value_col and value_col not in source_df.columns:
                 return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))
@@ -3724,7 +3889,6 @@ def _process_path(
 
     return False
 
-
 ################################################################################
 # FILE: src/pytae/mutate.py
 ################################################################################
@@ -3798,7 +3962,7 @@ def parse_mutate_spec(raw: str) -> dict[str, str]:
             raise ValueError(f"invalid mutate spec: '{key}' has no expression")
         expressions[key] = expr
     if not expressions:
-        raise ValueError('mutate expects entries like "col: expr"')
+        raise ValueError('mutate expects entries like "col = expr"')
     return expressions
 
 
@@ -4109,19 +4273,22 @@ def mutate(
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
-    Create or overwrite columns using keyword arguments (`col="expr"` or `col=callable`),
-    each evaluated in order via pandas eval() — no lambda needed for plain
-    arithmetic/boolean column assignments.
+    Create or overwrite columns using string expressions (`"col = expr"` or `col="expr"`),
+    callables (`col=callable`), or dictionaries. Each evaluated in order via pandas eval() —
+    no lambda needed for plain arithmetic/boolean column assignments.
 
     Parameters:
     -----------
     df : pd.DataFrame
         The DataFrame to mutate columns on.
-    *args : Any
-        Positional arguments are not supported, except for a single file path
-        prefixed with '@' (e.g. "@transforms.txt").
+    *args : str or dict
+        Positional expressions:
+        - String expression(s), e.g. "bmi = body_mass_g / bill_length_mm ** 2".
+        - File path prefixed with '@' (e.g. "@transforms.txt").
+        - Dictionary of column expressions, e.g. {"bmi": "body_mass_g / 1000"}.
     params : dict, optional
         Explicit dictionary of parameters/variables to make available for `@name` references.
+        Can also be passed via `_params=`.
     **kwargs : Any
         Column expressions or callables passed as keyword arguments,
         e.g. `df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", rank=1)`.
@@ -4180,26 +4347,38 @@ def mutate(
     global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
 
-    params = kwargs.pop("params", None)
+    params = kwargs.pop("_params", None)
+    if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
+        params = kwargs.pop("params")
+
     if params is not None:
         local_dict.update(params)
 
     expressions: dict[str, Any] = {}
-    if args:
-        if len(args) == 1 and isinstance(args[0], str) and args[0].strip().startswith("@"):
-            expressions.update(parse_mutate_spec(args[0]))
-        else:
-            first_arg = args[0]
+    for arg in args:
+        if isinstance(arg, str):
+            expressions.update(parse_mutate_spec(arg))
+        elif isinstance(arg, dict):
+            expressions.update(arg)
+        elif callable(arg):
             raise TypeError(
-                "mutate() expects expressions as keyword arguments, e.g. df.pt.mutate(col='expr', new_col=func). "
-                f"Positional {type(first_arg).__name__} is not supported (use '@filename.txt' to load from a file)."
+                "mutate() expects callables as keyword arguments with the column name, "
+                "e.g. df.pt.mutate(new_col=lambda d: d['x'] * 2)"
+            )
+        else:
+            raise TypeError(
+                f"mutate() received unexpected positional argument of type {type(arg).__name__}. "
+                "Pass string expressions (e.g. 'col = expr'), a dict, or keyword arguments."
             )
 
     if kwargs:
         expressions.update(kwargs)
 
     if not expressions:
-        raise ValueError("mutate() expects at least one keyword argument (e.g. df.pt.mutate(col='expr'))")
+        raise ValueError(
+            "mutate() expects at least one expression, e.g. df.pt.mutate('col = expr') "
+            "or df.pt.mutate(col='expr')"
+        )
 
     out = df.copy()
     for col, expr in expressions.items():
@@ -4221,6 +4400,7 @@ def mutate(
             )
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
+
 ################################################################################
 # FILE: src/pytae/other_utilities.py
 ################################################################################
@@ -4242,30 +4422,72 @@ pd.DataFrame.to_clip = to_clip
 pd.Series.to_clip = to_clip
 
 
-def handle_missing(df: pd.DataFrame, fillna: str = ".") -> pd.DataFrame:
+def handle_missing(
+    df: pd.DataFrame,
+    fillna: str = ".",
+    numeric_fill: Any = 0,
+    cols: Sequence[str] | None = None,
+    preserve_categories: bool = True,
+) -> pd.DataFrame:
+    """Fill missing values across columns with type-appropriate defaults.
+
+    - String/object columns: filled with `fillna` (default '.') and stripped.
+    - Categorical columns: category preserved (adds `fillna` category if needed) and filled.
+    - Numeric columns: filled with `numeric_fill` (default 0). Can also be "mean", "median", or None.
+    - Bool/datetime columns: left untouched by default to avoid corruption.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame to process.
+    fillna : str, default '.'
+        Fill value for string, object, and categorical columns.
+    numeric_fill : number, "mean", "median", or None, default 0
+        Fill value for numeric columns. If None, numeric columns are not filled.
+    cols : sequence of str, optional
+        Specific columns to handle. If None, all applicable columns are processed.
+    preserve_categories : bool, default True
+        If True, categorical columns keep their categorical dtype instead of being
+        converted to object.
+    """
     df = df.copy()
+    target_cols = set(cols) if cols is not None else set(df.columns)
 
-    df_cat_cols = df.columns[df.dtypes == 'category'].tolist()
-    for c in df_cat_cols:
-        df[c] = df[c].astype("object")
+    # Categorical columns
+    cat_cols = [c for c in df.columns if c in target_cols and isinstance(df[c].dtype, pd.CategoricalDtype)]
+    for c in cat_cols:
+        if preserve_categories:
+            if fillna not in df[c].cat.categories:
+                df[c] = df[c].cat.add_categories([fillna])
+            df[c] = df[c].fillna(fillna)
+        else:
+            df[c] = df[c].astype("object").fillna(fillna).str.strip()
 
-    # Only treat columns actually holding strings as text. pandas' own dedicated
-    # string dtype (e.g. pandas >= 3.0's default "str" columns) is homogeneous by
-    # construction; legacy object-dtype columns need a value-level check since
-    # object can also hold bools/mixed Python objects, which .str.strip() would corrupt.
-    def _is_string_col(s):
+    # String / object columns (excluding categorical)
+    def _is_string_col(s: pd.Series) -> bool:
+        if isinstance(s.dtype, pd.CategoricalDtype):
+            return False
         if s.dtype == object:
-            return s.dropna().map(type).eq(str).all()
+            non_na = s.dropna()
+            return len(non_na) > 0 and non_na.map(type).eq(str).all()
         return pd.api.types.is_string_dtype(s)
 
-    df_str_cols = [c for c in df.columns if _is_string_col(df[c])]
-    df[df_str_cols] = df[df_str_cols].fillna(fillna)
-    df[df_str_cols] = df[df_str_cols].apply(lambda x: x.str.strip())
+    str_cols = [c for c in df.columns if c in target_cols and _is_string_col(df[c])]
+    for c in str_cols:
+        df[c] = df[c].fillna(fillna)
+        if hasattr(df[c], "str") and callable(getattr(df[c].str, "strip", None)):
+            df[c] = df[c].str.strip()
 
-    # fillna(0) should only touch numeric columns — filling datetime/bool/other
-    # non-numeric columns with the literal int 0 silently corrupts them.
-    numeric_cols = df.select_dtypes(include="number").columns
-    df[numeric_cols] = df[numeric_cols].fillna(0)
+    # Numeric columns
+    if numeric_fill is not None:
+        num_cols = [c for c in df.select_dtypes(include="number").columns if c in target_cols]
+        for c in num_cols:
+            if numeric_fill == "mean":
+                df[c] = df[c].fillna(df[c].mean())
+            elif numeric_fill == "median":
+                df[c] = df[c].fillna(df[c].median())
+            else:
+                df[c] = df[c].fillna(numeric_fill)
 
     return df
 
@@ -4301,6 +4523,8 @@ def cols(df: pd.DataFrame, ascending: bool | None = True) -> list:
 
 def group_x(
     df: pd.DataFrame,
+    by: str | Sequence[str] | None = None,
+    *,
     group: str | Sequence[str] | None = None,
     dropna: bool = True,
     observed: bool = True,
@@ -4310,25 +4534,28 @@ def group_x(
     """Broadcast a group aggregate to every row (pandas transform).
 
     Default a='n' is group size. Pass v= and a= for another aggregate.
-    If group is omitted, non-numeric columns are used.
+    If by is omitted, non-numeric columns are used.
     """
     df = df.copy()
 
-    if group is None:
-        group = df.select_dtypes(exclude=["number"]).columns.tolist()
-        if not group:
-            raise ValueError("group_x: no non-numeric columns to group by; pass group= explicitly")
-    elif isinstance(group, str):
-        group = [group]
+    by_cols = by if by is not None else group
+    if by_cols is None:
+        by_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
+        if not by_cols:
+            raise ValueError("group_x: no non-numeric columns to group by; pass by= explicitly")
+    elif isinstance(by_cols, str):
+        by_cols = [by_cols]
+    else:
+        by_cols = list(by_cols)
 
     if a == "n" or v is None:
         if "n" in df.columns:
             raise ValueError("group_x: column 'n' already exists; rename it first or pass a=/v= for a different aggregate.")
-        df["n"] = df.groupby(group, dropna=dropna, observed=observed).transform("size")
+        df["n"] = df.groupby(by_cols, dropna=dropna, observed=observed).transform("size")
     else:
         if "x" in df.columns:
             raise ValueError("group_x: column 'x' already exists; rename it first.")
-        df["x"] = df.groupby(group, dropna=dropna, observed=observed)[v].transform(a)
+        df["x"] = df.groupby(by_cols, dropna=dropna, observed=observed)[v].transform(a)
 
     return df
 
@@ -5396,7 +5623,6 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
         raise TypeError(f"Expected a Plotter instance, got {type(plotter).__name__}")
     return plotter.finalize(**kwargs)
 
-
 ################################################################################
 # FILE: src/pytae/qry.py
 ################################################################################
@@ -6385,13 +6611,31 @@ from typing import Any
 import pandas as pd
 
 
-# Define the sentinel class
-class everything:
-    pass
+class _EverythingMeta(type):
+    def __repr__(cls) -> str:
+        return "everything"
+
+
+class everything(metaclass=_EverythingMeta):
+    """Sentinel class/instance representing all remaining unselected columns in pt.select().
+
+    Can be passed either as the class `pt.everything` or called as `pt.everything()`.
+    """
+    _instance: everything | None = None
+
+    def __new__(cls) -> everything:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "everything()"
+
 
 def select(
     df: pd.DataFrame,
     *args: Any,
+    exclude: str | Sequence[str] | None = None,
     dtype: str | type | Sequence[str | type] | None = None,
     exclude_dtype: str | type | Sequence[str | type] | None = None,
     contains: str | Sequence[str] | None = None,
@@ -6399,20 +6643,27 @@ def select(
     endswith: str | Sequence[str] | None = None,
     regex: str | Sequence[str] | None = None,
 ) -> pd.DataFrame:
-    '''
-    Select columns from a DataFrame based on names, regex patterns, slices, data types, or string matching.
-    
+    """
+    Select columns from a DataFrame based on names, regex patterns, slices, data types,
+    string matching, or exclusions.
+
     Parameters:
     -----------
     df : pd.DataFrame
         The DataFrame from which to select columns.
     *args : variable-length arguments
-        Can be: list of column names, string (exact name or slice like 'start:end'), everything(), or callable.
-        Regex is the regex= keyword, not a positional string.
+        Can be:
+        - Exact column name(s) or slice (e.g. 'species', 'bill_length_mm:body_mass_g').
+        - Negative column names to exclude (e.g. '-species', '~island', '-start:end').
+        - `everything` or `everything()` to capture all remaining columns.
+        - List of column names.
+        - Callable `f(col_name) -> bool`.
+    exclude : str or list of str, optional
+        Column name(s) or slice to exclude from the selection.
     dtype : str, type, or list, optional
         Data type(s) to select (e.g., 'numeric', 'datetime').
     exclude_dtype : str, type, or list, optional
-        Data type(s) to exclude.
+        Data type(s) to exclude by dtype.
     contains : str or list of str, optional
         Substring(s) to match in column names.
     startswith : str or list of str, optional
@@ -6421,28 +6672,27 @@ def select(
         Suffix(es) to match in column names.
     regex : str or list of str, optional
         Regular expression(s) to match in column names.
-    
+
     Returns:
     --------
     pd.DataFrame
-        Selected columns, with explicit/regex/slice selections first, followed by everything() if specified.
-    '''
-    if exclude_dtype is not None and (args or dtype or contains or startswith or endswith or regex):
+        Selected columns, with explicit/regex/slice selections first, followed by everything()
+        if specified, with any excluded columns removed.
+    """
+    if exclude_dtype is not None and (args or exclude or dtype or contains or startswith or endswith or regex):
         raise ValueError("exclude_dtype cannot be combined with other selection criteria.")
-    
-    selected_cols = set()
-    ordered_cols = []
+
     all_cols = df.columns.tolist()  # List of all columns for slice positioning
-    
+
     if exclude_dtype is not None:
         _shorthands = {
-            'numeric': ['number'],
-            'datetime': ['datetime', 'datetimetz'],
-            'category': ['category'],
-            'bool': ['bool'],
+            "numeric": ["number"],
+            "datetime": ["datetime", "datetimetz"],
+            "category": ["category"],
+            "bool": ["bool"],
         }
-        if exclude_dtype == 'non_numeric':
-            exclude_cols = df.select_dtypes(include='number').columns.tolist()
+        if exclude_dtype == "non_numeric":
+            exclude_cols = df.select_dtypes(include="number").columns.tolist()
         elif isinstance(exclude_dtype, str) and exclude_dtype in _shorthands:
             exclude_cols = df.select_dtypes(exclude=_shorthands[exclude_dtype]).columns.tolist()
         elif isinstance(exclude_dtype, (str, type)):
@@ -6452,41 +6702,89 @@ def select(
         else:
             raise TypeError("exclude_dtype must be a string, type, or list of strings/types")
         return df[exclude_cols]
-    
+
+    selected_cols: set[Any] = set()
+    ordered_cols: list[Any] = []
+    excluded_cols: set[Any] = set()
+    everything_requested = False
+
+    def _resolve_negation(neg_spec: str) -> list[str]:
+        raw = neg_spec.strip()
+        if raw in all_cols:
+            return [raw]
+        elif ":" in raw:
+            start_raw, end_raw = raw.split(":", 1)
+            start: str | None = start_raw.strip() or None
+            end: str | None = end_raw.strip() or None
+            if start and start not in all_cols:
+                raise KeyError(f"Start column '{start}' not found")
+            if end and end not in all_cols:
+                raise KeyError(f"End column '{end}' not found")
+            start_idx = all_cols.index(start) if start in all_cols else 0
+            end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
+            return all_cols[start_idx : end_idx + 1]
+        else:
+            close = difflib.get_close_matches(raw, [str(c) for c in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"Column to exclude not found: '{raw}'{hint}")
+
+    if exclude is not None:
+        if isinstance(exclude, str):
+            for token in exclude.split(","):
+                token = token.strip()
+                if token:
+                    excluded_cols.update(_resolve_negation(token))
+        elif isinstance(exclude, (list, tuple, set)):
+            for item in exclude:
+                if isinstance(item, str):
+                    excluded_cols.update(_resolve_negation(item))
+                elif item in df.columns:
+                    excluded_cols.add(item)
+                else:
+                    raise KeyError(f"Column to exclude not found: '{item}'")
+        else:
+            raise TypeError(f"exclude must be a string or sequence of strings, got {type(exclude)}")
+
     for arg in args:
-        if isinstance(arg, list):
-            missing_cols = [col for col in arg if col not in df.columns]
-            if missing_cols:
-                raise KeyError(f"Columns not found: {missing_cols}")
-            selected_cols.update(arg)
-            ordered_cols.extend([col for col in arg if col not in ordered_cols])
+        if arg is everything or isinstance(arg, everything):
+            everything_requested = True
+        elif isinstance(arg, list):
+            for col in arg:
+                if col in df.columns:
+                    selected_cols.add(col)
+                    if col not in ordered_cols:
+                        ordered_cols.append(col)
+                elif isinstance(col, str) and col.startswith(("-", "~")):
+                    excluded_cols.update(_resolve_negation(col[1:]))
+                else:
+                    close = difflib.get_close_matches(str(col), [str(c) for c in all_cols], n=1)
+                    hint = f" (did you mean '{close[0]}'?)" if close else ""
+                    raise KeyError(f"Column not found: '{col}'{hint}")
         elif isinstance(arg, str):
-            if arg in df.columns:  # Exact match first — a literal ':' in a real column name wins
+            if arg in df.columns:  # Exact match first — a literal ':' or '-' in a real column name wins
                 selected_cols.add(arg)
                 if arg not in ordered_cols:
                     ordered_cols.append(arg)
-            elif ':' in arg:  # Handle slice notation
-                start_raw, end_raw = arg.split(':', 1)
-                start: str | None = start_raw.strip() or None  # Empty start means from beginning
-                end: str | None = end_raw.strip() or None     # Empty end means to end
+            elif arg.startswith(("-", "~")):
+                excluded_cols.update(_resolve_negation(arg[1:]))
+            elif ":" in arg:  # Handle slice notation
+                start_raw, end_raw = arg.split(":", 1)
+                start = start_raw.strip() or None  # Empty start means from beginning
+                end = end_raw.strip() or None     # Empty end means to end
                 start_idx = all_cols.index(start) if start in all_cols else 0
                 end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
                 if start and start not in all_cols:
                     raise KeyError(f"Start column '{start}' not found")
                 if end and end not in all_cols:
                     raise KeyError(f"End column '{end}' not found")
-                slice_cols = all_cols[start_idx:end_idx + 1]
+                slice_cols = all_cols[start_idx : end_idx + 1]
                 selected_cols.update(slice_cols)
                 ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
             else:
-                close = difflib.get_close_matches(arg, all_cols, n=1)
+                close = difflib.get_close_matches(arg, [str(c) for c in all_cols], n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
                 regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?[]()") else ""
                 raise KeyError(f"Column not found: '{arg}'{hint}{regex_hint}")
-        elif isinstance(arg, everything):
-            remaining_cols = [col for col in df.columns if col not in selected_cols]
-            selected_cols.update(remaining_cols)
-            ordered_cols.extend([col for col in remaining_cols if col not in ordered_cols])
         elif callable(arg):
             func_cols = [col for col in df.columns if arg(col)]
             selected_cols.update(func_cols)
@@ -6496,16 +6794,16 @@ def select(
 
     if dtype is not None:
         if isinstance(dtype, str):
-            if dtype == 'numeric':
-                dtype_cols = df.select_dtypes(include='number').columns.tolist()
-            elif dtype == 'non_numeric':
-                dtype_cols = df.select_dtypes(exclude='number').columns.tolist()
-            elif dtype == 'datetime':
-                dtype_cols = df.select_dtypes(include=['datetime', 'datetimetz']).columns.tolist()
-            elif dtype == 'category':
-                dtype_cols = df.select_dtypes(include=['category']).columns.tolist()
-            elif dtype == 'bool':
-                dtype_cols = df.select_dtypes(include=['bool']).columns.tolist()
+            if dtype == "numeric":
+                dtype_cols = df.select_dtypes(include="number").columns.tolist()
+            elif dtype == "non_numeric":
+                dtype_cols = df.select_dtypes(exclude="number").columns.tolist()
+            elif dtype == "datetime":
+                dtype_cols = df.select_dtypes(include=["datetime", "datetimetz"]).columns.tolist()
+            elif dtype == "category":
+                dtype_cols = df.select_dtypes(include=["category"]).columns.tolist()
+            elif dtype == "bool":
+                dtype_cols = df.select_dtypes(include=["bool"]).columns.tolist()
             else:
                 dtype_cols = df.select_dtypes(include=[dtype]).columns.tolist()
         elif isinstance(dtype, (type, list, tuple)):
@@ -6549,29 +6847,117 @@ def select(
         selected_cols.update(regex_cols)
         ordered_cols.extend([col for col in regex_cols if col not in ordered_cols])
 
-    return df[ordered_cols]
+    # Final assembly:
+    if not ordered_cols:
+        if everything_requested or excluded_cols:
+            final_cols = [col for col in all_cols if col not in excluded_cols]
+            return df[final_cols]
+        return df[[]]
+
+    if everything_requested:
+        remaining_cols = [col for col in all_cols if col not in selected_cols and col not in excluded_cols]
+        ordered_cols.extend(remaining_cols)
+
+    final_cols = [col for col in ordered_cols if col not in excluded_cols]
+    return df[final_cols]
+
 ################################################################################
 # FILE: src/pytae/shape.py
 ################################################################################
 from __future__ import annotations
 
+import difflib
+from collections.abc import Sequence
+from typing import Any
+
 import pandas as pd
 
 
-def long(df: pd.DataFrame, c: str = "variable", v: str = "value") -> pd.DataFrame:
-    """Melt all numeric columns to rows.
+def long(
+    df: pd.DataFrame,
+    cols: str | Sequence[str] | None = None,
+    id_vars: str | Sequence[str] | None = None,
+    c: str = "variable",
+    v: str = "value",
+    **kwargs: Any,
+) -> pd.DataFrame:
+    """Melt columns to rows (unpivot from wide to long format).
 
     Parameters:
-    - c: name for the melted-name column (default 'variable')
-    - v: name for the melted-value column (default 'value')
+    -----------
+    df : pd.DataFrame
+        The DataFrame to melt.
+    cols : str or sequence of str, optional
+        Columns to unpivot into rows. Aliases: `values`, `value_vars`.
+        If not specified and `id_vars` is provided, all remaining columns are melted.
+        If neither `cols` nor `id_vars` is provided, all numeric columns are melted.
+    id_vars : str or sequence of str, optional
+        Identifier columns to keep fixed. Aliases: `by`, `id`.
+        If not specified, all columns not in `cols` are kept as identifier variables.
+    c : str, default 'variable'
+        Name for the melted-variable column. Alias: `var_name`.
+    v : str, default 'value'
+        Name for the melted-value column. Alias: `value_name`.
+
+    Returns:
+    --------
+    pd.DataFrame
+        Unpivoted long DataFrame.
     """
-    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    if not numeric_cols:
-        raise ValueError("long(): no numeric columns to melt")
+    # Keyword argument aliases
+    if cols is None:
+        cols = kwargs.pop("values", kwargs.pop("value_vars", None))
+    if id_vars is None:
+        id_vars = kwargs.pop("by", kwargs.pop("id", None))
+    if c == "variable":
+        c = kwargs.pop("var_name", c)
+    if v == "value":
+        v = kwargs.pop("value_name", v)
+
+    all_cols = list(df.columns)
+
+    def _normalize_col_spec(spec: str | Sequence[str] | None, param_name: str) -> list[str] | None:
+        if spec is None:
+            return None
+        if isinstance(spec, str):
+            items = [item.strip() for item in spec.split(",") if item.strip()]
+        elif isinstance(spec, (list, tuple, set)):
+            items = list(spec)
+        else:
+            raise TypeError(f"{param_name} must be a column name or sequence of names, got {type(spec).__name__}")
+        for item in items:
+            if item not in df.columns:
+                close = difflib.get_close_matches(str(item), [str(col) for col in all_cols], n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"long(): {param_name} column '{item}' not found in DataFrame{hint}")
+        return items
+
+    melt_cols = _normalize_col_spec(cols, "cols")
+    keep_ids = _normalize_col_spec(id_vars, "id_vars")
+
+    if melt_cols is not None:
+        if keep_ids is None:
+            keep_ids = [col for col in all_cols if col not in melt_cols]
+    elif keep_ids is not None:
+        melt_cols = [col for col in all_cols if col not in keep_ids]
+        if not melt_cols:
+            raise ValueError("long(): no columns left to melt after keeping id_vars")
+    else:
+        # Default: auto-detect numeric columns
+        numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+        if not numeric_cols:
+            raise ValueError(
+                "long(): no numeric columns to melt. "
+                "Specify columns to melt via cols= (e.g. df.pt.long(cols=['q1', 'q2'])) "
+                "or id_vars= (e.g. df.pt.long(id_vars=['id']))."
+            )
+        melt_cols = numeric_cols
+        keep_ids = [col for col in all_cols if col not in melt_cols]
+
     return pd.melt(
         df,
-        id_vars=[col for col in df.columns if col not in numeric_cols],
-        value_vars=numeric_cols,
+        id_vars=keep_ids,
+        value_vars=melt_cols,
         var_name=c,
         value_name=v,
     )
@@ -6583,34 +6969,60 @@ def wide(
     v: str = "value",
     a: str | None = None,
     dropna: bool = True,
+    index: str | Sequence[str] | None = None,
+    **kwargs: Any,
 ) -> pd.DataFrame:
     """Pivot a long column into headers.
 
     Parameters:
-    - c: column whose values become headers (default 'variable')
-    - v: values column (default 'value')
-    - a: if set, use pivot_table with this aggfunc; else pivot, falling back to sum.
-      'n' is accepted as an alias for pandas' 'size' (group row count), matching agg_df's convention.
-    - dropna: pivot_table only; drop all-NA columns (default True)
+    -----------
+    df : pd.DataFrame
+        The DataFrame to pivot.
+    c : str, default 'variable'
+        Column whose values become headers (columns).
+    v : str, default 'value'
+        Values column to populate table cells.
+    a : str, optional
+        Aggregation function if duplicate index/column pairs exist.
+        If set, uses `pivot_table` with this aggfunc; else uses `pivot`, falling back to `sum`.
+        'n' is accepted as an alias for pandas 'size' (group row count).
+    dropna : bool, default True
+        Whether to drop all-NA columns in pivot_table.
+    index : str or sequence of str, optional
+        Explicit index column(s) to use. If omitted, all columns other than `c` and `v` are used.
+
+    Returns:
+    --------
+    pd.DataFrame
+        Pivoted wide DataFrame.
     """
-    index_cols = [col for col in df.columns if col not in [c, v]]
+    if index is None:
+        index = kwargs.pop("by", kwargs.pop("id_vars", None))
+
+    if index is not None:
+        if isinstance(index, str):
+            index_cols = [col.strip() for col in index.split(",") if col.strip()]
+        else:
+            index_cols = list(index)
+    else:
+        index_cols = [col for col in df.columns if col not in [c, v]]
+
     aggfunc = "size" if a == "n" else a
 
     if aggfunc is None:
         try:
-            wide_df = df.pivot(index=index_cols, columns=c, values=v).reset_index()
+            wide_df = df.pivot(index=index_cols if index_cols else None, columns=c, values=v).reset_index()
         except ValueError:
             wide_df = df.pivot_table(
-                index=index_cols, columns=c, values=v, aggfunc="sum", dropna=dropna
+                index=index_cols if index_cols else None, columns=c, values=v, aggfunc="sum", dropna=dropna
             ).reset_index()
     else:
         wide_df = df.pivot_table(
-            index=index_cols, columns=c, values=v, aggfunc=aggfunc, dropna=dropna
+            index=index_cols if index_cols else None, columns=c, values=v, aggfunc=aggfunc, dropna=dropna
         ).reset_index()
 
     wide_df.columns.name = None
     return wide_df
-
 
 ################################################################################
 # FILE: src/pytae/sql.py
@@ -6735,10 +7147,15 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
     finally:
         con.close()
 
+================================================================================
+11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
+================================================================================
+
 ################################################################################
 # FILE: tests/__init__.py
 ################################################################################
 # Makes `from tests.cli_helpers import ...` work when pytest's rootdir is the repo.
+
 ################################################################################
 # FILE: tests/cli_helpers.py
 ################################################################################
@@ -6795,6 +7212,7 @@ def _write_three_id_csvs(tmp_path):
     pd.DataFrame({"id": [1, 2, 4], "y": ["p", "q", "r"]}).to_csv(b, index=False)
     pd.DataFrame({"id": [1, 2], "z": ["m", "n"]}).to_csv(c, index=False)
     return str(a), str(b), str(c)
+
 ################################################################################
 # FILE: tests/conftest.py
 ################################################################################
@@ -6827,6 +7245,7 @@ def sample_parquet(tmp_path):
         pytae.sample_data[name].to_parquet(path)
         return str(path)
     return _write
+
 ################################################################################
 # FILE: tests/test_accessor.py
 ################################################################################
@@ -6844,15 +7263,14 @@ def test_pt_accessor_select_then_agg_df():
     penguins = pt.sample("penguins")
     out = (
         penguins
-        .pt.select("species", "island", "bill_length_mm", "body_mass_g")
-        .pt.agg_df(a=["mean", "n"])
+        .pt.agg_df(["species", "island"], a=["mean", "n"])
     )
     assert list(out.columns)[:3] == ["species", "island", "n"]
 
 
 def test_pandas_rename_then_pt_agg_df():
     df = pd.DataFrame({"g": ["a", "a", "b"], "v": [1, 2, 3]})
-    out = df.rename(columns={"g": "grp", "v": "val"}).pt.agg_df(a=["sum", "n"])
+    out = df.rename(columns={"g": "grp", "v": "val"}).pt.agg_df("grp", a=["sum", "n"])
     assert list(out.columns) == ["grp", "n", "val"]
     assert out.loc[out["grp"] == "a", "val"].iloc[0] == 3
 
@@ -6862,10 +7280,10 @@ def test_pt_select_then_pandas_head():
     out = penguins.pt.select("species", "body_mass_g").head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
+
 ################################################################################
 # FILE: tests/test_agg_df.py
 ################################################################################
-
 import os
 import sys
 
@@ -6873,89 +7291,82 @@ import numpy as np
 import pandas as pd
 import pytest
 
-# Assuming the current working directory is where the project root is
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import pytae as pt
 
 
 def test_agg_df_sum():
-    # Arrange: Create a sample DataFrame
     data = {
-        'category': ['A', 'A', 'B', 'B', 'C'],
-        'value': [10, 20, 30, 40, 50]
+        "category": ["A", "A", "B", "B", "C"],
+        "value": [10, 20, 30, 40, 50],
     }
     df = pd.DataFrame(data)
-    
-    # Act: Call the agg_df method with sum aggregation
-    result = pt.agg_df(df, a=['sum'])
-    
-    # Assert: Check if the result is as expected
-    expected_df =  pd.DataFrame(data).groupby('category').sum().reset_index()
+
+    result = pt.agg_df(df, "category", a=["sum"])
+    expected_df = pd.DataFrame(data).groupby("category").sum().reset_index()
     pd.testing.assert_frame_equal(result, expected_df)
 
 
 def test_all_agg():
-    df=pd.DataFrame({'id':['a','b','c','d','e','','f','f'],
-                  'balance':[10,20,0,21,15,10,20,25],
-                  'country':['sg','cn','ca','np','in','in','in','in']})
-    
-    df['id'] = df['id'].replace('', np.nan)
-    result=pt.agg_df(df, a=['sum','min','mean','min','max','n'])
+    df = pd.DataFrame({
+        "id": ["a", "b", "c", "d", "e", "", "f", "f"],
+        "balance": [10, 20, 0, 21, 15, 10, 20, 25],
+        "country": ["sg", "cn", "ca", "np", "in", "in", "in", "in"],
+    })
+    df["id"] = df["id"].replace("", np.nan)
 
-    # Group by 'id' and 'country', then aggregate
-    expected_df = df.groupby(['id', 'country']).agg(
-                                                        n=('id', 'size'),
-                                                        balance_sum=('balance', 'sum'),
-                                                        balance_min=('balance', 'min'),
-                                                        balance_mean=('balance', 'mean'),
-                                                        balance_max=('balance', 'max')
-                                                    ).reset_index()
-    
-    # Adjust the column order to match the desired output
-    expected_df = expected_df[['id', 'country', 'n', 'balance_sum', 'balance_min', 'balance_mean', 'balance_max']]
+    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"])
 
-
-    
+    expected_df = (
+        df.groupby(["id", "country"])
+        .agg(
+            n=("id", "size"),
+            balance_sum=("balance", "sum"),
+            balance_min=("balance", "min"),
+            balance_mean=("balance", "mean"),
+            balance_max=("balance", "max"),
+        )
+        .reset_index()
+    )
+    expected_df = expected_df[["id", "country", "n", "balance_sum", "balance_min", "balance_mean", "balance_max"]]
     pd.testing.assert_frame_equal(result, expected_df)
-    
 
 
 def test_all_agg_drop_na():
-    df=pd.DataFrame({'id':['a','b','c','d','e','','f','f'],
-                  'balance':[10,20,0,21,15,10,20,25],
-                  'country':['sg','cn','ca','np','in','in','in','in']})
-    
-    df['id'] = df['id'].replace('', np.nan)
-    
-    result=pt.agg_df(df, a=['sum','min','mean','min','max','n'],dropna=False)
+    df = pd.DataFrame({
+        "id": ["a", "b", "c", "d", "e", "", "f", "f"],
+        "balance": [10, 20, 0, 21, 15, 10, 20, 25],
+        "country": ["sg", "cn", "ca", "np", "in", "in", "in", "in"],
+    })
+    df["id"] = df["id"].replace("", np.nan)
 
-    # Group by 'id' and 'country', then aggregate
-    expected_df = df.groupby(['id', 'country'],dropna=False).agg(
-                                                        n=('id', 'size'),
-                                                        balance_sum=('balance', 'sum'),
-                                                        balance_min=('balance', 'min'),
-                                                        balance_mean=('balance', 'mean'),
-                                                        balance_max=('balance', 'max')
-                                                    ).reset_index()
-    
-    # Adjust the column order to match the desired output
-    expected_df = expected_df[['id', 'country', 'n', 'balance_sum', 'balance_min', 'balance_mean', 'balance_max']]
-    
+    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"], dropna=False)
 
-
+    expected_df = (
+        df.groupby(["id", "country"], dropna=False)
+        .agg(
+            n=("id", "size"),
+            balance_sum=("balance", "sum"),
+            balance_min=("balance", "min"),
+            balance_mean=("balance", "mean"),
+            balance_max=("balance", "max"),
+        )
+        .reset_index()
+    )
+    expected_df = expected_df[["id", "country", "n", "balance_sum", "balance_min", "balance_mean", "balance_max"]]
     pd.testing.assert_frame_equal(result, expected_df)
 
 
 def test_agg_df_raises_when_n_collides_with_real_column():
     df = pd.DataFrame({"g": ["x", "x", "y"], "n": [1, 2, 3], "v": [10, 20, 30]})
     with pytest.raises(ValueError, match="already has a numeric column named 'n'"):
-        pt.agg_df(df, ["sum", "n"])
+        pt.agg_df(df, "g", ["sum", "n"])
 
 
 def test_agg_df_column_kwargs():
     df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30], "v2": [1, 2, 3]})
-    res = df.pt.agg_df(v1="mean", v2="max", count="n")
+    res = df.pt.agg_df("grp", v1="mean", v2="max", count="n")
     assert list(res.columns) == ["grp", "v1", "v2", "count"]
     assert list(res["v1"]) == [15.0, 30.0]
     assert list(res["v2"]) == [2, 3]
@@ -6964,14 +7375,76 @@ def test_agg_df_column_kwargs():
 
 def test_agg_df_rejects_dictionary():
     df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30]})
-    with pytest.raises(TypeError, match="agg_df\\(\\) no longer accepts dictionaries"):
-        pt.agg_df(df, {"v1": "mean"})
-    with pytest.raises(TypeError, match="agg_df\\(\\) no longer accepts dictionaries"):
-        df.pt.agg_df(a={"v1": "mean"})
+    with pytest.raises(TypeError, match=r"agg\(\) no longer accepts dictionaries"):
+        pt.agg_df(df, "grp", {"v1": "mean"})
+    with pytest.raises(TypeError, match=r"agg\(\) no longer accepts dictionaries"):
+        df.pt.agg_df("grp", a={"v1": "mean"})
+    with pytest.raises(TypeError, match=r"agg\(\) no longer accepts dictionaries"):
+        pt.agg_df(df, {"grp": "mean"})
 
 
-if __name__ == '__main__':
+def test_agg_df_missing_by_raises():
+    df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30]})
+    with pytest.raises(TypeError, match="missing required argument: 'by'"):
+        df.pt.agg_df()
+
+
+def test_agg_df_aggfunc_as_by_raises_helpful_error():
+    df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30]})
+    with pytest.raises(ValueError, match="is a known aggregation function"):
+        df.pt.agg_df("mean")
+    with pytest.raises(ValueError, match="looks like an aggregation list"):
+        df.pt.agg_df(["mean", "n"])
+
+
+def test_agg_df_unknown_group_column_raises():
+    df = pd.DataFrame({"species": ["A", "B"], "val": [1, 2]})
+    with pytest.raises(KeyError, match=r"group column 'speceis' not found in DataFrame \(did you mean 'species'\?\)"):
+        df.pt.agg_df("speceis", "mean")
+
+
+def test_agg_df_numeric_group_by():
+    df = pd.DataFrame({
+        "year": [2023, 2023, 2024],
+        "sales": [100.0, 200.0, 300.0],
+        "units": [10, 20, 30],
+    })
+    res = df.pt.agg_df("year", a=["sum", "n"])
+    assert list(res.columns) == ["year", "n", "sales", "units"]
+    assert list(res["year"]) == [2023, 2024]
+    assert list(res["sales"]) == [300.0, 300.0]
+    assert list(res["units"]) == [30, 30]
+    assert list(res["n"]) == [2, 1]
+
+
+def test_agg_df_whole_table_summary():
+    df = pd.DataFrame({
+        "sales": [100.0, 200.0, 300.0],
+        "units": [10, 20, 30],
+    })
+    res = df.pt.agg_df(None, a=["sum", "mean", "n"])
+    assert len(res) == 1
+    assert list(res.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
+    assert res["n"].iloc[0] == 3
+    assert res["sales_sum"].iloc[0] == 600.0
+    assert res["sales_mean"].iloc[0] == 200.0
+
+
+def test_agg_df_whole_table_kwargs():
+    df = pd.DataFrame({
+        "sales": [100.0, 200.0, 300.0],
+        "units": [10, 20, 30],
+    })
+    res = df.pt.agg_df(None, sales="sum", orders="n")
+    assert len(res) == 1
+    assert list(res.columns) == ["sales", "orders"]
+    assert res["sales"].iloc[0] == 600.0
+    assert res["orders"].iloc[0] == 3
+
+
+if __name__ == "__main__":
     pytest.main()
+
 ################################################################################
 # FILE: tests/test_cli_agg.py
 ################################################################################
@@ -6997,12 +7470,18 @@ def test_order_agg_then_shape_uses_aggregated_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-agg_df", "-shape"])
-
+    # With -by: groups by grp, v1/v2 summed -> 2 rows x 3 cols
+    exit_code = cli.main([path, "-by", "grp", "-agg", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    # grp is the grouping key, and v1/v2 are summed -> 2 rows x 3 cols.
     assert "(2, 3)" in out
+
+    # Without -by: whole-table summary across numeric columns -> 1 row x 2 cols
+    exit_code = cli.main([path, "-agg", "-shape"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "(1, 2)" in out
+
 
 def test_order_agg_dropna_false_keeps_na_group(tmp_path, capsys):
     df = pd.DataFrame(
@@ -7013,12 +7492,13 @@ def test_order_agg_dropna_false_keeps_na_group(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-agg_df", "sum", "-dropna", "false", "-shape"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-dropna", "false", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     # dropna=false keeps the NA grouping key, so both groups remain.
     assert "(2, 2)" in out
+
 
 def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
     df = pd.DataFrame(
@@ -7030,13 +7510,14 @@ def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column=v1,aggfunc=sum; column=v2,aggfunc=mean"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "v1 = sum, v2 = mean"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "v1" in out and "v2" in out
     assert "3" in out and "15.0" in out
     assert "7" in out and "35.0" in out
+
 
 def test_group_by_agg_named_output(tmp_path, capsys):
     df = pd.DataFrame(
@@ -7047,30 +7528,32 @@ def test_group_by_agg_named_output(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column=v1,aggfunc=sum,as=total"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "total = v1:sum"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "total" in out
     assert "v1" not in out.split("\n")[0]  # header uses the custom output name, not the source column
 
+
 def test_agg_same_func_on_multiple_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["x", "x"], "v1": [1, 2], "v2": [10, 20]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-agg", "column='v1,v2',aggfunc=sum"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "v1" in out and "v2" in out
     assert "3" in out and "30" in out
 
+
 def test_agg_named_output_with_spaced_group(tmp_path, capsys):
     df = pd.DataFrame({"Scenario Name": ["A", "A", "B"], "value": [1, 2, 3]})
     path = _write_csv(tmp_path, df)
 
     exit_code = cli.main(
-        [path, "-group_by", "Scenario Name", "-agg", "column=value,aggfunc=sum,as=v"]
+        [path, "-by", "Scenario Name", "-agg", "v = value:sum"]
     )
 
     out = capsys.readouterr().out
@@ -7079,43 +7562,28 @@ def test_agg_named_output_with_spaced_group(tmp_path, capsys):
     assert "v" in header and "value" not in header
     assert "3" in out
 
+
 def test_agg_rejects_dict_literal(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
-    with pytest.raises(SystemExit, match="key=value"):
-        cli.main([path, "-group_by", "grp", "-agg", "{'v1':'sum'}"])
+    with pytest.raises(SystemExit, match="use a name"):
+        cli.main([path, "-by", "grp", "-agg", "{'v1':'sum'}"])
 
-def test_agg_requires_group_by(tmp_path, capsys):
+
+def test_agg_retired_syntax_raises_helpful_error(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
+
+    with pytest.raises(SystemExit, match="syntax is retired"):
+        cli.main([path, "-by", "grp", "-agg", "column=v1,aggfunc=sum"])
+
+
+def test_by_requires_agg_or_group_x(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-agg", "column=v1,aggfunc=sum"])
+        cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
 
-def test_agg_df_and_agg_cannot_combine(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-agg_df", "-group_by", "grp", "-agg", "column=v1,aggfunc=sum"])
-    assert exc_info.value.code == 2
-
-def test_group_x_default_counts_auto_detected_group(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "grp": ["x", "x", "y"],
-            "val": [1, 2, 3],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-group_x"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    lines = out.strip().split("\n")
-    assert "n" in lines[0]
-    # both 'x' rows see group size 2, the 'y' row sees group size 1.
-    assert "2" in lines[1] and "2" in lines[2] and "1" in lines[3]
 
 def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
     df = pd.DataFrame(
@@ -7126,28 +7594,28 @@ def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_x", "group=grp,v=val,a=mean"])
-
+    exit_code = cli.main([path, "-group_x", "by=grp,v=val,a=mean"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "1.5" in out and "3.5" in out
 
-def test_group_x_still_accepts_group_by_flag(tmp_path, capsys):
+    # also accepts group= as alias
+    exit_code2 = cli.main([path, "-group_x", "group=grp,v=val,a=mean"])
+    out2 = capsys.readouterr().out
+    assert exit_code2 == 0
+    assert "1.5" in out2 and "3.5" in out2
+
+
+def test_group_x_still_accepts_by_flag(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [1, 2, 3, 4]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-group_by", "grp", "-group_x", "v=val,a=mean"])
+    exit_code = cli.main([path, "-by", "grp", "-group_x", "v=val,a=mean"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "1.5" in out and "3.5" in out
 
-def test_group_by_requires_agg_or_group_x(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-group_by", "grp"])
-    assert exc_info.value.code == 2
 
 def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
     df = pd.DataFrame(
@@ -7158,12 +7626,13 @@ def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-agg_df", "sum", "-sort_by", "grp"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-sort_by", "grp"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     # Header should appear once: only final sorted aggregated table is printed.
     assert out.count("grp") == 1
+
 
 def test_parse_agg_name_list_and_mapping():
     from pytae.cli_parsing import parse_agg
@@ -7171,6 +7640,9 @@ def test_parse_agg_name_list_and_mapping():
     assert parse_agg("mean,sum,n") == ["mean", "sum", "n"]
     assert parse_agg("val = sum, n = n") == {"val": "sum", "n": "n"}
     assert parse_agg("'body mass' = mean") == {"body mass": "mean"}
+    assert parse_agg("total = v1:sum") == {"total": "v1:sum"}
+    with pytest.raises(SystemExit, match="syntax is retired"):
+        parse_agg("column=v1,aggfunc=sum")
     with pytest.raises(SystemExit, match="use '='"):
         parse_agg("val: sum, n: n")
     with pytest.raises(SystemExit, match="use a name"):
@@ -7178,20 +7650,22 @@ def test_parse_agg_name_list_and_mapping():
     with pytest.raises(SystemExit, match="mix of names"):
         parse_agg("mean, val = sum")
 
-def test_agg_df_comma_list(tmp_path, capsys):
+
+def test_agg_comma_list(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3]}),
     )
 
-    exit_code = cli.main([path, "-agg_df", "sum,n", "-cols"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum,n", "-cols"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n", "val"]
 
-def test_agg_df_python_literal_is_rejected(tmp_path):
+
+def test_agg_python_literal_is_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "val": [1]}))
     with pytest.raises(SystemExit, match="use a name"):
-        cli.main([path, "-agg_df", "{'val': 'sum'}"])
+        cli.main([path, "-agg", "{'val': 'sum'}"])
 
 ################################################################################
 # FILE: tests/test_cli_clean.py
@@ -7417,165 +7891,6 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
     assert header == "co-ops-data"
 
 ################################################################################
-# FILE: tests/test_cli_drop.py
-################################################################################
-import os
-import sys
-
-import pandas as pd
-import pytest
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-
-from pytae import cli
-from tests.cli_helpers import _write_csv
-
-
-def test_parse_drop_spec_names_and_quoted():
-    assert cli.parse_drop_spec("sex,year") == ["sex", "year"]
-    assert cli.parse_drop_spec("'bill length mm',body_mass_g") == ["bill length mm", "body_mass_g"]
-    assert cli.parse_drop_spec("a:b") == ["a:b"]  # exact name, not a slice
-
-def test_parse_drop_spec_rejects_select_kwargs_and_empty():
-    with pytest.raises(SystemExit, match="only column names"):
-        cli.parse_drop_spec("dtype=numeric")
-    with pytest.raises(SystemExit, match="only column names"):
-        cli.parse_drop_spec("sex,contains=bill")
-    with pytest.raises(SystemExit, match="expected column names"):
-        cli.parse_drop_spec("")
-
-def test_drop_does_not_collide_with_dropna():
-    parser = cli.build_parser()
-    args, extras = parser.parse_known_args(["file.csv", "-drop", "sex", "-dropna", "false"])
-    assert extras == []
-    assert args.drop == ["sex"]
-    assert args.dropna is False
-
-def test_drop_removes_names_and_keeps_order(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "c": [2], "b": [3], "d": [4]}))
-
-    exit_code = cli.main([path, "-drop", "c,d", "-cols"])
-
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip().splitlines() == ["a", "b"]
-
-def test_drop_quoted_name_with_space(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"bill length mm": [1], "body mass g": [2], "keep": [3]}))
-
-    exit_code = cli.main([path, "-drop", "bill length mm", "-cols"])
-
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip().splitlines() == ["body mass g", "keep"]
-
-def test_drop_after_select_subtracts_from_kept(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
-
-    exit_code = cli.main([path, "-select", "a,b,c", "-drop", "b", "-cols"])
-
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]
-
-def test_drop_rejects_name_not_kept_by_select(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-select", "a,b", "-drop", "c", "-cols"])
-    assert exc_info.value.code == 2
-    err = capsys.readouterr().err
-    assert "unknown column" in err
-    assert "'c'" in err
-
-def test_select_then_drop_from_dtype_union(tmp_path, capsys):
-    path = _write_csv(
-        tmp_path,
-        pd.DataFrame({"species": ["A"], "n": [1], "x": [2.0], "label": ["z"]}),
-    )
-
-    exit_code = cli.main([path, "-select", "dtype=numeric,species", "-drop", "x", "-cols"])
-
-    assert exit_code == 0
-    # -select puts explicit names first, then dtype matches; -drop leaves that order
-    assert capsys.readouterr().out.strip().splitlines() == ["species", "n"]
-
-def test_drop_unknown_name_errors_with_typo_hint(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"species": [1], "island": [2]}))
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-drop", "speces", "-cols"])
-    assert exc_info.value.code == 2
-    err = capsys.readouterr().err
-    assert "unknown column" in err
-    assert "'speces'" in err
-    assert "species" in err
-
-def test_drop_slice_token_is_not_a_slice(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-drop", "a:c", "-cols"])
-    assert exc_info.value.code == 2
-    err = capsys.readouterr().err
-    assert "unknown column" in err
-    assert "does not accept slices" in err
-
-def test_drop_colon_column_name_is_exact(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a:b": [1], "c": [2]}))
-
-    exit_code = cli.main([path, "-drop", "a:b", "-cols"])
-
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip().splitlines() == ["c"]
-
-def test_drop_rejects_select_kwargs(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
-
-    with pytest.raises(SystemExit, match="only column names"):
-        cli.main([path, "-drop", "dtype=numeric", "-cols"])
-    with pytest.raises(SystemExit, match="only column names"):
-        cli.main([path, "-drop", "contains=a", "-cols"])
-
-def test_drop_all_columns_errors(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-drop", "a,b", "-cols"])
-    assert exc_info.value.code == 2
-    assert "no columns left" in capsys.readouterr().err
-
-def test_drop_only_prints_remaining_table(tmp_path, capsys):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
-
-    exit_code = cli.main([path, "-drop", "c"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "a" in out and "b" in out
-    assert "c" not in out.split()
-
-def test_drop_after_agg_df_sees_agg_columns(tmp_path, capsys):
-    path = _write_csv(
-        tmp_path,
-        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
-    )
-
-    exit_code = cli.main(
-        [path, "-agg_df", "val = sum, n = n", "-drop", "val", "-cols"]
-    )
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
-
-def test_qry_then_drop_filter_column(tmp_path, capsys):
-    path = _write_csv(
-        tmp_path,
-        pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
-    )
-
-    exit_code = cli.main([path, "-qry", "flt = 'A'", "-drop", "flt", "-cols"])
-
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]
-
-################################################################################
 # FILE: tests/test_cli_filter.py
 ################################################################################
 import os
@@ -7720,6 +8035,7 @@ def test_qry_equals_separator(tmp_path, capsys):
     exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
+
 ################################################################################
 # FILE: tests/test_cli_inspect.py
 ################################################################################
@@ -8061,10 +8377,10 @@ def test_cols_rejects_invalid_order(tmp_path):
         cli.main([path, "-cols", "foo"])
     assert exc_info.value.code == 2
 
-def test_repeated_drop_subtracts_sequentially(tmp_path, capsys):
+def test_repeated_select_negative_subtracts_sequentially(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
 
-    exit_code = cli.main([path, "-drop", "b", "-drop", "d", "-cols"])
+    exit_code = cli.main([path, "-select", "-b", "-select", "-d", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]
@@ -8618,11 +8934,6 @@ def test_cli_pager(tmp_path, monkeypatch):
     assert len(paged) == 1
     assert "col" in paged[0]
 
-
-
-
-
-
 ################################################################################
 # FILE: tests/test_cli_merge.py
 ################################################################################
@@ -8921,8 +9232,6 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 4)"
 
-
-
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
@@ -9043,6 +9352,7 @@ def test_mutate_colon_raises_cli_error(tmp_path, capsys):
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "use '='" in err
+
 ################################################################################
 # FILE: tests/test_cli_parse.py
 ################################################################################
@@ -9079,7 +9389,6 @@ def test_expand_paths_single_and_list(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         expand_paths(str(tmp_path / "*.parquet"))
     assert "no files matched pattern" in str(exc_info.value)
-
 
 ################################################################################
 # FILE: tests/test_cli_reshape.py
@@ -9242,7 +9551,7 @@ def test_wide_unknown_column_errors(tmp_path):
 def test_wide_and_group_x_reject_dropna_kwarg(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "val": [1]}))
     with pytest.raises(SystemExit, match="unknown key 'dropna'"):
-        cli.main([path, "-group_x", "group=grp,dropna=false"])
+        cli.main([path, "-group_x", "by=grp,dropna=false"])
     path2 = _write_csv(
         tmp_path,
         pd.DataFrame({"country": ["a"], "variable": ["x"], "value": [1]}),
@@ -9287,13 +9596,13 @@ def sample_dataset_dir(tmp_path_factory):
 
 # Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
-    ("penguins.parquet", ["-qry", "species = 'Adelie'", "-agg_df", "mean"]),
+    ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
     ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
-    ("tips.parquet", ["-select", "day,total_bill,tip", "-group_x", "group=day,v=tip,a=mean"]),
+    ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-group_x", "v=tip,a=mean"]),
     ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),
-    ("diamonds.parquet", ["-select", "cut,price", "-agg_df", "mean"]),
+    ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
     ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
-    ("flights.parquet", ["-group_by", "year", "-agg", "column=passengers,aggfunc=sum"]),
+    ("flights.parquet", ["-by", "year", "-agg", "passengers = sum"]),
 ]
 
 
@@ -9365,10 +9674,10 @@ def test_crosstab_margins_match_known_titanic_totals(sample_parquet, capsys):
     assert last_line == ["All", "549", "342", "891"]
 
 
-def test_agg_df_groups_by_diamonds_cut_categories(sample_parquet, capsys):
+def test_agg_groups_by_diamonds_cut_categories(sample_parquet, capsys):
     path = sample_parquet("diamonds")
 
-    exit_code = cli.main([path, "-select", "cut,price", "-agg_df", "mean", "-shape"])
+    exit_code = cli.main([path, "-select", "cut,price", "-by", "cut", "-agg", "mean", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -9379,7 +9688,7 @@ def test_group_by_agg_sum_matches_known_flights_totals(sample_parquet, capsys):
     path = sample_parquet("flights")
 
     exit_code = cli.main([
-        path, "-group_by", "year", "-agg", "column=passengers,aggfunc=sum", "-head", "3",
+        path, "-by", "year", "-agg", "passengers = sum", "-head", "3",
     ])
 
     out = capsys.readouterr().out
@@ -9397,6 +9706,7 @@ def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines() == ["age     0", "deck    0"]
+
 ################################################################################
 # FILE: tests/test_cli_select.py
 ################################################################################
@@ -9542,9 +9852,9 @@ def test_select_after_agg_df_sees_agg_columns(tmp_path, capsys):
         pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
     )
 
-    # n is created by agg_df; a starting-view -select would reject it
+    # n is created by agg; a starting-view -select would reject it
     exit_code = cli.main(
-        [path, "-agg_df", "val = sum, n = n", "-select", "grp,n", "-cols"]
+        [path, "-by", "grp", "-agg", "val = sum, n = n", "-select", "grp,n", "-cols"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
@@ -9557,7 +9867,7 @@ def test_select_agg_df_select_shape_chains(tmp_path, capsys):
 
     # starting-view chaining would collapse to val-only before agg → (1, 1)
     exit_code = cli.main(
-        [path, "-select", "grp,val", "-agg_df", "sum", "-select", "val", "-shape"]
+        [path, "-select", "grp,val", "-by", "grp", "-agg", "sum", "-select", "val", "-shape"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
@@ -9620,6 +9930,99 @@ def test_select_runs_after_merge(tmp_path, capsys):
     ])
 
     assert capsys.readouterr().out.strip() == "(2, 2)"
+
+
+def test_select_cli_negative_column_syntax(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"species": ["A"], "island": ["B"], "val": [1]}),
+    )
+
+    exit_code = cli.main([path, "-select", "-species", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["island", "val"]
+
+    exit_code2 = cli.main([path, "-select", "~island", "-cols"])
+    assert exit_code2 == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["species", "val"]
+
+
+def test_select_cli_exclude_kwarg(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"species": ["A"], "island": ["B"], "val": [1]}),
+    )
+
+    exit_code = cli.main([path, "-select", "exclude=species", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["island", "val"]
+
+
+def test_select_cli_multiple_negative_columns(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "c": [2], "b": [3], "d": [4]}))
+
+    exit_code = cli.main([path, "-select", "-c,-d", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "b"]
+
+
+def test_select_cli_negative_slice(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
+
+    exit_code = cli.main([path, "-select", "-b:c", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "d"]
+
+
+def test_select_cli_negative_quoted_name_with_space(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"bill length mm": [1], "body mass g": [2], "keep": [3]}))
+
+    exit_code = cli.main([path, "-select", "-'bill length mm'", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["body mass g", "keep"]
+
+
+def test_select_cli_chained_negative(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
+
+    exit_code = cli.main([path, "-select", "a,b,c", "-select", "-b", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]
+
+
+def test_select_cli_negative_after_agg(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
+    )
+
+    exit_code = cli.main(
+        [path, "-by", "grp", "-agg", "val = sum, n = n", "-select", "-val", "-cols"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
+
+
+def test_select_cli_negative_after_qry(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
+    )
+
+    exit_code = cli.main([path, "-qry", "flt = 'A'", "-select", "-flt", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]
+
+
+def test_select_cli_negative_unknown_name_hint(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"species": [1], "island": [2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "-speces", "-cols"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "unknown column" in err
+    assert "species" in err
 
 ################################################################################
 # FILE: tests/test_cli_sql.py
@@ -9809,8 +10212,6 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     exit_code = cli.main([str(path), "-sql", "select [col a], `col b` from data", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 2)"
-
-
 
 ################################################################################
 # FILE: tests/test_import.py
@@ -10020,7 +10421,7 @@ def test_mutate_quoting_column_reference_breaks_arithmetic():
 
 
 def test_mutate_empty_spec_errors():
-    with pytest.raises(ValueError, match="mutate\\(\\) expects at least one keyword argument"):
+    with pytest.raises(ValueError, match="mutate\\(\\) expects at least one"):
         pt.mutate(_df())
 
 
@@ -10127,12 +10528,14 @@ def test_mutate_kwargs():
     assert list(res["mass_kg"]) == [3.0, 4.0]
 
 
-def test_mutate_rejects_dict_and_string():
+def test_mutate_rejects_unsupported_positional_types():
     df = _df()
-    with pytest.raises(TypeError, match="mutate\\(\\) expects expressions as keyword arguments"):
-        df.pt.mutate({"bmi": "body_mass_g / bill_length_mm ** 2"})
-    with pytest.raises(TypeError, match="mutate\\(\\) expects expressions as keyword arguments"):
-        df.pt.mutate("bmi = body_mass_g / bill_length_mm ** 2")
+    with pytest.raises(TypeError, match="unexpected positional argument"):
+        df.pt.mutate(123)
+    with pytest.raises(TypeError, match="unexpected positional argument"):
+        df.pt.mutate([1, 2, 3])
+    with pytest.raises(TypeError, match="callables as keyword arguments"):
+        df.pt.mutate(lambda d: d)
 
 
 def test_mutate_callable_lambda():
@@ -10214,6 +10617,44 @@ def test_mutate_unquoted_string_literal_hint():
     df = _df()
     with pytest.raises(KeyError, match="if you intended a string literal, quote it like 'heavy'"):
         pt.mutate(df, status="if_else(body_mass_g > 3500, heavy, light)")
+
+
+def test_mutate_positional_string_expr():
+    df = _df()
+    res = df.pt.mutate("mass_kg = body_mass_g / 1000")
+    assert "mass_kg" in res.columns
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+
+    # Multiple positional expressions
+    res2 = df.pt.mutate("mass_kg = body_mass_g / 1000", "mass_lb = mass_kg * 2.2")
+    assert "mass_kg" in res2.columns
+    assert "mass_lb" in res2.columns
+
+
+def test_mutate_positional_dict():
+    df = _df()
+    res = df.pt.mutate({"mass_kg": "body_mass_g / 1000"})
+    assert list(res["mass_kg"]) == [3.0, 4.0]
+
+
+def test_mutate_params_column_creation():
+    df = _df()
+    # Integer literal assigned to column named 'params'
+    res1 = df.pt.mutate(params=10)
+    assert "params" in res1.columns
+    assert list(res1["params"]) == [10, 10]
+
+    # String expression assigned to column named 'params'
+    res2 = df.pt.mutate(params="body_mass_g / 1000")
+    assert "params" in res2.columns
+    assert list(res2["params"]) == [3.0, 4.0]
+
+
+def test_mutate_explicit_underscore_params():
+    df = _df()
+    res = df.pt.mutate(flag="body_mass_g >= @thresh", _params={"thresh": 3500.0})
+    assert list(res["flag"]) == [False, True]
+
 ################################################################################
 # FILE: tests/test_plotter.py
 ################################################################################
@@ -10719,14 +11160,6 @@ def test_box_palette_colors():
     c1 = ax.patches[1].get_facecolor()
     assert c0 != c1
 
-
-
-
-
-
-
-
-
 ################################################################################
 # FILE: tests/test_qry.py
 ################################################################################
@@ -10952,6 +11385,7 @@ def test_parse_qry_cli():
     assert res2 == {"body_mass_g": (">", 100000)}
     assert res3 == {"body_mass_g": (">", 100000)}
     assert res4 == {"body_mass_g": 74125}
+
 ################################################################################
 # FILE: tests/test_readers.py
 ################################################################################
@@ -11385,7 +11819,73 @@ def test_select_everything():
     from pytae.select import everything
 
     df = _wide()
+    # Both everything() instance and everything class
     assert list(pt.select(df, "species", everything()).columns) == list(df.columns)
+    assert list(pt.select(df, "species", everything).columns) == list(df.columns)
+    assert list(pt.select(df, "species", pt.everything).columns) == list(df.columns)
+
+
+def test_select_negative_column_syntax():
+    df = _wide()
+    # Single negative column
+    assert list(pt.select(df, "-species").columns) == [
+        "island",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    # Tilde syntax
+    assert list(pt.select(df, "~island").columns) == [
+        "species",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    # Multiple negative columns
+    assert list(pt.select(df, "-species", "-island").columns) == [
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    # Negative column slice
+    assert list(pt.select(df, "-bill_length_mm:body_mass_g").columns) == [
+        "species",
+        "island",
+    ]
+
+
+def test_select_exclude_kwarg():
+    df = _wide()
+    assert list(pt.select(df, exclude="species").columns) == [
+        "island",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+    assert list(pt.select(df, exclude=["species", "island"]).columns) == [
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+
+
+def test_select_positive_and_negative_combination():
+    df = _wide()
+    # Positive slice minus one column
+    res = pt.select(df, "species:body_mass_g", "-island")
+    assert list(res.columns) == [
+        "species",
+        "bill_length_mm",
+        "bill_depth_mm",
+        "body_mass_g",
+    ]
+
+
+def test_select_negative_typo_raises_hint():
+    df = _wide()
+    with pytest.raises(KeyError, match=r"Column to exclude not found: 'speceis' \(did you mean 'species'\?\)"):
+        pt.select(df, "-speceis")
+
 ################################################################################
 # FILE: tests/test_shape.py
 ################################################################################
@@ -11478,8 +11978,52 @@ def test_long_raises_when_no_numeric_columns():
         pt.long(df)
 
 
+def test_long_with_non_numeric_cols():
+    df = pd.DataFrame({
+        "id": ["1", "2"],
+        "phone_home": ["123", "456"],
+        "phone_work": ["789", "012"],
+    })
+    res = df.pt.long(cols=["phone_home", "phone_work"], c="phone_type", v="number")
+    assert list(res.columns) == ["id", "phone_type", "number"]
+    assert len(res) == 4
+    assert set(res["phone_type"]) == {"phone_home", "phone_work"}
+
+
+def test_long_with_id_vars():
+    df = pd.DataFrame({
+        "user": ["alice", "bob"],
+        "color": ["red", "blue"],
+        "size": ["M", "L"],
+    })
+    res = df.pt.long(id_vars=["user"])
+    assert list(res.columns) == ["user", "variable", "value"]
+    assert len(res) == 4
+    assert set(res["variable"]) == {"color", "size"}
+
+
+def test_long_unknown_col_raises_helpful_error():
+    df = pd.DataFrame({"a": [1], "b": [2]})
+    with pytest.raises(KeyError, match=r"long\(\): cols column 'c' not found in DataFrame"):
+        pt.long(df, cols=["c"])
+
+
+def test_wide_with_explicit_index():
+    df = pd.DataFrame({
+        "region": ["East", "East", "West"],
+        "rep": ["Alice", "Bob", "Charlie"],
+        "quarter": ["Q1", "Q2", "Q1"],
+        "sales": [100, 200, 300],
+    })
+    res = df.pt.wide(index="region", c="quarter", v="sales", a="sum")
+    assert "region" in res.columns
+    assert "Q1" in res.columns
+    assert "Q2" in res.columns
+
+
 if __name__ == '__main__':
     pytest.main()
+
 ################################################################################
 # FILE: tests/test_sql.py
 ################################################################################
@@ -11606,6 +12150,30 @@ def test_handle_missing_fills_object_and_numeric():
     assert df["grp"].isna().any()
 
 
+def test_handle_missing_preserves_categorical():
+    s = pd.Series(pd.Categorical(["A", None, "B"]))
+    df = pd.DataFrame({"cat": s, "val": [1.0, None, 3.0]})
+    result = pt.handle_missing(df, fillna="Missing")
+    assert isinstance(result["cat"].dtype, pd.CategoricalDtype)
+    assert result["cat"].tolist() == ["A", "Missing", "B"]
+    assert "Missing" in result["cat"].cat.categories
+
+
+def test_handle_missing_custom_numeric_fill_and_cols():
+    df = pd.DataFrame({"a": [10.0, None], "b": [100.0, None], "txt": ["hello", None]})
+    # Only fill 'a' with mean, leave 'b' and 'txt' untouched
+    result = pt.handle_missing(df, numeric_fill="mean", cols=["a"])
+    assert result["a"].tolist() == [10.0, 10.0]
+    assert pd.isna(result["b"].iloc[1])
+    assert pd.isna(result["txt"].iloc[1])
+
+    # numeric_fill=None leaves numerics alone
+    result2 = pt.handle_missing(df, fillna="N/A", numeric_fill=None)
+    assert pd.isna(result2["a"].iloc[1])
+    assert result2["txt"].tolist() == ["hello", "N/A"]
+
+
+
 def test_cols_sort_orders():
     df = pd.DataFrame({"c": [1], "a": [2], "b": [3]})
     assert pt.cols(df) == ["a", "b", "c"]
@@ -11619,8 +12187,11 @@ def test_group_x_count_and_value():
     df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3]})
     counted = pt.group_x(df)
     assert counted["n"].tolist() == [2, 2, 1]
-    averaged = pt.group_x(df, group=["grp"], a="mean", v="val")
+    averaged = pt.group_x(df, by=["grp"], a="mean", v="val")
     assert averaged["x"].tolist() == [1.5, 1.5, 3.0]
+    # group= alias still works
+    aliased = pt.group_x(df, group=["grp"], a="mean", v="val")
+    assert aliased["x"].tolist() == [1.5, 1.5, 3.0]
 
 
 def test_clean_columns_strip_fill_case():

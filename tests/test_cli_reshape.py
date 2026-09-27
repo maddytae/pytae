@@ -156,7 +156,7 @@ def test_wide_unknown_column_errors(tmp_path):
 def test_wide_and_group_x_reject_dropna_kwarg(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "val": [1]}))
     with pytest.raises(SystemExit, match="unknown key 'dropna'"):
-        cli.main([path, "-group_x", "group=grp,dropna=false"])
+        cli.main([path, "-group_x", "by=grp,dropna=false"])
     path2 = _write_csv(
         tmp_path,
         pd.DataFrame({"country": ["a"], "variable": ["x"], "value": [1]}),

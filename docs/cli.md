@@ -211,7 +211,7 @@ Perform automated or explicit group summaries, or append group-level statistics 
 pytae data.parquet -by species -agg mean
 pytae data.parquet -by species -agg "avg_mass = body_mass_g:mean"
 pytae data.parquet -agg mean  # Whole-table grand summary
-pytae data.parquet -group_x "group=species,v=body_mass_g,a=mean"  # Broadcast transform
+pytae data.parquet -by species -group_x "v=body_mass_g,a=mean"  # Broadcast transform
 ```
 
 👉 See the complete guide: **[Aggregations & Grouping Guide](cli/aggregate.md)**
@@ -324,7 +324,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-rename OLD:NEW,...` | Clean | Rename columns anywhere in pipeline or during export | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-by COLS` | Aggregate | Grouping columns for `-agg` and `-group_x` | [cli/aggregate.md](cli/aggregate.md) |
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
-| `-group_x SPEC` | Aggregate | Broadcast group aggregate column to all rows (`group=`, `v=`, `a=`) | [cli/aggregate.md](cli/aggregate.md) |
+| `-group_x SPEC` | Aggregate | Broadcast group aggregate column to all rows (`-by` / `by=`, `v=`, `a=`) | [cli/aggregate.md](cli/aggregate.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pivot long table to wide format (`c=`, `v=`, `a=`) | [cli/reshape.md](cli/reshape.md) |
 | `-crosstab SPEC` | Reshape | Two-way cross-tabulation matrix (`index=`, `columns=`) | [cli/reshape.md](cli/reshape.md) |
@@ -431,7 +431,7 @@ pytae penguins.parquet -qry "species = 'Adelie'" -by species -agg mean
 pytae penguins.parquet -crosstab "index=species,columns=island"
 
 # Broadcast group mean without collapsing rows
-pytae tips.parquet -select "day,total_bill,tip" -group_x "group=day,v=tip,a=mean"
+pytae tips.parquet -select "day,total_bill,tip" -by day -group_x "v=tip,a=mean"
 
 # Contingency table with grand totals
 pytae titanic.parquet -crosstab "index=pclass,columns=survived,margins=true"

@@ -117,6 +117,8 @@ def cols(df: pd.DataFrame, ascending: bool | None = True) -> list:
 
 def group_x(
     df: pd.DataFrame,
+    by: str | Sequence[str] | None = None,
+    *,
     group: str | Sequence[str] | None = None,
     dropna: bool = True,
     observed: bool = True,
@@ -126,25 +128,28 @@ def group_x(
     """Broadcast a group aggregate to every row (pandas transform).
 
     Default a='n' is group size. Pass v= and a= for another aggregate.
-    If group is omitted, non-numeric columns are used.
+    If by is omitted, non-numeric columns are used.
     """
     df = df.copy()
 
-    if group is None:
-        group = df.select_dtypes(exclude=["number"]).columns.tolist()
-        if not group:
-            raise ValueError("group_x: no non-numeric columns to group by; pass group= explicitly")
-    elif isinstance(group, str):
-        group = [group]
+    by_cols = by if by is not None else group
+    if by_cols is None:
+        by_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
+        if not by_cols:
+            raise ValueError("group_x: no non-numeric columns to group by; pass by= explicitly")
+    elif isinstance(by_cols, str):
+        by_cols = [by_cols]
+    else:
+        by_cols = list(by_cols)
 
     if a == "n" or v is None:
         if "n" in df.columns:
             raise ValueError("group_x: column 'n' already exists; rename it first or pass a=/v= for a different aggregate.")
-        df["n"] = df.groupby(group, dropna=dropna, observed=observed).transform("size")
+        df["n"] = df.groupby(by_cols, dropna=dropna, observed=observed).transform("size")
     else:
         if "x" in df.columns:
             raise ValueError("group_x: column 'x' already exists; rename it first.")
-        df["x"] = df.groupby(group, dropna=dropna, observed=observed)[v].transform(a)
+        df["x"] = df.groupby(by_cols, dropna=dropna, observed=observed)[v].transform(a)
 
     return df
 

@@ -94,13 +94,15 @@ class PtAccessor:
 
     def group_x(
         self,
+        by: str | Sequence[str] | None = None,
+        *,
         group: str | Sequence[str] | None = None,
         dropna: bool = True,
         observed: bool = True,
         a: str = "n",
         v: str | None = None,
     ) -> pd.DataFrame:
-        return _group_x(self._obj, group=group, dropna=dropna, observed=observed, a=a, v=v)
+        return _group_x(self._obj, by=by, group=group, dropna=dropna, observed=observed, a=a, v=v)
 
     def handle_missing(
         self,

@@ -34,7 +34,7 @@ def sample_dataset_dir(tmp_path_factory):
 _DOC_EXAMPLES = [
     ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
     ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
-    ("tips.parquet", ["-select", "day,total_bill,tip", "-group_x", "group=day,v=tip,a=mean"]),
+    ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-group_x", "v=tip,a=mean"]),
     ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),
     ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
     ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),

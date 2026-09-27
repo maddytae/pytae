@@ -324,14 +324,18 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_GROUP_X_KEYS = ("group", "v", "a")
+_GROUP_X_KEYS = ("by", "group", "v", "a")
 
 
 def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. group=species,v=body_mass_g,a=max."""
+    """Parse -group_x as key=value tokens, e.g. by=species,v=body_mass_g,a=max."""
     kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
-    if "group" in kwargs and isinstance(kwargs["group"], str):
-        kwargs["group"] = parse_columns(kwargs["group"])
+    if "group" in kwargs and "by" not in kwargs:
+        kwargs["by"] = kwargs.pop("group")
+    elif "group" in kwargs and "by" in kwargs:
+        kwargs.pop("group")
+    if "by" in kwargs and isinstance(kwargs["by"], str):
+        kwargs["by"] = parse_columns(kwargs["by"])
     return kwargs
 
 

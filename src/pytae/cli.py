@@ -200,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
-                              "size n on non-numeric columns; e.g. group=species,v=body_mass_g,a=max")
+                              "size n on non-numeric columns; e.g. -by species -group_x 'v=body_mass_g,a=max' or by=species,v=body_mass_g,a=max")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
