@@ -62,11 +62,10 @@ sample_data = _SampleData()
 
 
 def _bind_shape():
-    from .shape import crosstab, long, wide
+    from .shape import long, wide
     globals()["long"] = long
     globals()["wide"] = wide
-    globals()["crosstab"] = crosstab
-    return long, wide, crosstab
+    return long, wide
 
 
 def __getattr__(name):
@@ -83,7 +82,7 @@ def __getattr__(name):
             return plot
         else:
             return finalize
-    if name in ("long", "wide", "crosstab"):
+    if name in ("long", "wide"):
         _bind_shape()
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -103,7 +102,6 @@ __all__ = [
 
     "long",
     "wide",
-    "crosstab",
     "group_x",
     "handle_missing",
     "cols",

@@ -12,7 +12,7 @@ TABLE OF CONTENTS
     4.2.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.3.  pt.select() / df.pt.select() — Column Selection & Reordering
     4.4.  pt.agg_df() / df.pt.agg_df() — Grouped Aggregation
-    4.5.  pt.long() / pt.wide() / pt.crosstab() / df.pt.crosstab() — Reshaping
+    4.5.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping
     4.6.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
     4.7.  Other Utilities:
           - pt.cols() / df.pt.cols()
@@ -358,9 +358,9 @@ Calling Styles:
     the frequency counts of the groups.
 
 
-4.5. pt.long() / pt.wide() / pt.crosstab() / df.pt.crosstab() — Reshaping
+4.5. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping
 --------------------------------------------------------------------------------
-Tools for pivoting, melting, and cross-tabulating data.
+Tools for pivoting and melting data.
 
 pt.long(df, c="variable", v="value"):
   Melts all numeric columns to rows, keeping non-numeric columns as ID variables.
@@ -380,30 +380,6 @@ pt.wide(df, c="variable", v="value", a=None, dropna=True):
     dropna: drop all-NA columns (default: True)
   Example:
     wide = tall.pt.wide(c="metric", v="measurement", a="mean")
-
-pt.crosstab(df, index, columns, values=None, aggfunc=None, normalize=False, margins=False, margins_name='All', dropna=True) / df.pt.crosstab(...):
-  Computes a frequency table or aggregation cross-tabulation between categorical factors.
-  Seamlessly supports bracketed column names `[col]` for columns containing spaces.
-  Parameters:
-    index: column name or list of column names for row groupings (e.g. 'species', ['species', 'sex'], or '[smoker status]')
-    columns: single column name for column groupings (e.g. 'island', '[day of week]')
-    values: optional numeric column to aggregate instead of counting (must be paired with aggfunc)
-    aggfunc: aggregation function when values is provided (e.g. 'mean', 'sum', 'median', 'std', 'count')
-    normalize: normalize values to proportions; True or 'all' (divide by grand total), 'index' (divide by row sums), 'columns' (divide by col sums)
-    margins: add row and column marginal totals (default: False)
-    margins_name: name of the row/column margin labels (default: 'All')
-    dropna: whether to drop columns or rows whose entries are all NaN (default: True)
-  Examples:
-    # Basic counts
-    df.pt.crosstab('smoker', 'day')
-    # Row and column totals
-    df.pt.crosstab('smoker', 'day', margins=True, margins_name='Total')
-    # Row proportions
-    df.pt.crosstab('smoker', 'day', normalize='index')
-    # Aggregation of numeric values
-    df.pt.crosstab('smoker', 'day', values='total_bill', aggfunc='mean')
-    # Bracketed spaced columns
-    df.pt.crosstab('[smoker status]', '[day of week]', values='[total bill]', aggfunc='mean')
 
 
 4.6. pt.sql() / df.pt.sql() — DuckDB SQL Engine
@@ -1071,12 +1047,10 @@ sample_data = _SampleData()
 
 
 def _bind_shape():
-    from .shape import crosstab, long, wide
-
-    globals()["crosstab"] = crosstab
+    from .shape import long, wide
     globals()["long"] = long
     globals()["wide"] = wide
-    return crosstab, long, wide
+    return long, wide
 
 
 def __getattr__(name):
@@ -1093,7 +1067,7 @@ def __getattr__(name):
             return plot
         else:
             return finalize
-    if name in ("long", "wide", "crosstab"):
+    if name in ("long", "wide"):
         _bind_shape()
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -1110,7 +1084,7 @@ __all__ = [
     "mutate",
     "agg",
     "agg_df",
-    "crosstab",
+
     "long",
     "wide",
     "group_x",
@@ -1318,32 +1292,6 @@ class PtAccessor:
     ) -> pd.DataFrame:
         from .shape import wide as _wide
         return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
-
-    def crosstab(
-        self,
-        index: str | Sequence[str],
-        columns: str | Sequence[str],
-        values: str | None = None,
-        aggfunc: Any = None,
-        normalize: bool | str = False,
-        margins: bool = False,
-        margins_name: str = "All",
-        dropna: bool = True,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        from .shape import crosstab as _crosstab
-        return _crosstab(
-            self._obj,
-            index=index,
-            columns=columns,
-            values=values,
-            aggfunc=aggfunc,
-            normalize=normalize,
-            margins=margins,
-            margins_name=margins_name,
-            dropna=dropna,
-            **kwargs,
-        )
 
     def group_x(
         self,
@@ -7193,100 +7141,6 @@ def wide(
     return wide_df
 
 
-def crosstab(
-    df: pd.DataFrame,
-    index: str | Sequence[str],
-    columns: str | Sequence[str],
-    values: str | None = None,
-    aggfunc: Any = None,
-    normalize: bool | str = False,
-    margins: bool = False,
-    margins_name: str = "All",
-    dropna: bool = True,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Compute a contingency table / frequency cross-tabulation of two or more factors.
-
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        The DataFrame to cross-tabulate.
-    index : str or sequence of str
-        Column(s) to group by in the rows. Supports bracketed names `[col]`.
-    columns : str or sequence of str
-        Column(s) to group by in the columns. Supports bracketed names `[col]`.
-    values : str, optional
-        Column of values to aggregate according to the factors. Supports bracketed names `[col]`.
-    aggfunc : str or callable, optional
-        Aggregation function if `values` is specified (e.g. 'mean', 'sum', 'median', np.mean).
-    normalize : bool or {'all', 'index', 'columns'}, default False
-        Normalize by dividing all values by that sum:
-        - 'all': normalize over all values.
-        - 'index': normalize over each row.
-        - 'columns': normalize over each column.
-    margins : bool, default False
-        Add row and column margins (subtotals).
-    margins_name : str, default 'All'
-        Name of the row/column that will contain the totals when margins is True.
-    dropna : bool, default True
-        Do not include columns whose entries are all NaN.
-
-    Returns:
-    --------
-    pd.DataFrame
-        Cross-tabulation matrix.
-    """
-    all_cols = list(df.columns)
-
-    if isinstance(index, str):
-        index_cols = [_unquote_name(c.strip()) for c in index.split(",") if c.strip()]
-    elif isinstance(index, (list, tuple, set)):
-        index_cols = [_unquote_name(c) for c in index]
-    else:
-        raise TypeError(f"crosstab(): index must be a column name or sequence of names, got {type(index).__name__}")
-
-    if isinstance(columns, str):
-        col_cols = [_unquote_name(c.strip()) for c in columns.split(",") if c.strip()]
-    elif isinstance(columns, (list, tuple, set)):
-        col_cols = [_unquote_name(c) for c in columns]
-    else:
-        raise TypeError(f"crosstab(): columns must be a column name or sequence of names, got {type(columns).__name__}")
-
-    val_col = _unquote_name(values) if values is not None else None
-
-    # Check for missing columns with helpful suggestions
-    needed = index_cols + col_cols + ([val_col] if val_col is not None else [])
-    for col in needed:
-        if col not in df.columns:
-            close = difflib.get_close_matches(str(col), [str(c) for c in all_cols], n=1)
-            hint = f" (did you mean '{close[0]}'?)" if close else ""
-            raise KeyError(f"crosstab(): column '{col}' not found in DataFrame{hint}")
-
-    ct_kwargs: dict[str, Any] = {
-        "rownames": index_cols,
-        "colnames": col_cols,
-        "margins": margins,
-        "margins_name": margins_name,
-        "dropna": dropna,
-        "normalize": normalize,
-    }
-    if val_col is not None:
-        if aggfunc is None:
-            raise ValueError("crosstab(): 'values' and 'aggfunc' must be specified together")
-        ct_kwargs["values"] = df[val_col]
-        ct_kwargs["aggfunc"] = aggfunc
-    elif aggfunc is not None:
-        raise ValueError("crosstab(): 'values' and 'aggfunc' must be specified together")
-
-    idx_series = [df[c] for c in index_cols]
-    col_series = [df[c] for c in col_cols]
-    return pd.crosstab(
-        idx_series if len(idx_series) > 1 else idx_series[0],
-        col_series if len(col_series) > 1 else col_series[0],
-        **ct_kwargs,
-    )
-
-
 ################################################################################
 # FILE: src/pytae/sql.py
 ################################################################################
@@ -12414,94 +12268,6 @@ def test_wide_with_explicit_index():
     assert "region" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
-
-
-def test_crosstab_basic():
-    df = pd.DataFrame({
-        "species": ["Adelie", "Adelie", "Gentoo", "Gentoo", "Gentoo"],
-        "island": ["Biscoe", "Dream", "Biscoe", "Biscoe", "Dream"],
-    })
-    res = df.pt.crosstab("species", "island")
-    assert res.loc["Adelie", "Biscoe"] == 1
-    assert res.loc["Adelie", "Dream"] == 1
-    assert res.loc["Gentoo", "Biscoe"] == 2
-    assert res.loc["Gentoo", "Dream"] == 1
-
-
-def test_crosstab_margins():
-    df = pd.DataFrame({
-        "a": ["x", "x", "y"],
-        "b": ["1", "2", "1"],
-    })
-    res = df.pt.crosstab("a", "b", margins=True, margins_name="Total")
-    assert "Total" in res.index
-    assert "Total" in res.columns
-    assert res.loc["Total", "Total"] == 3
-
-
-def test_crosstab_normalize():
-    df = pd.DataFrame({
-        "a": ["x", "x", "y"],
-        "b": ["1", "2", "1"],
-    })
-    res_idx = df.pt.crosstab("a", "b", normalize="index")
-    assert res_idx.loc["x"].sum() == pytest.approx(1.0)
-    assert res_idx.loc["y"].sum() == pytest.approx(1.0)
-
-    res_all = df.pt.crosstab("a", "b", normalize="all")
-    assert res_all.values.sum() == pytest.approx(1.0)
-
-
-def test_crosstab_values_and_aggfunc():
-    df = pd.DataFrame({
-        "group": ["A", "A", "B"],
-        "category": ["X", "X", "Y"],
-        "val": [10.0, 20.0, 30.0],
-    })
-    res = df.pt.crosstab("group", "category", values="val", aggfunc="mean")
-    assert res.loc["A", "X"] == 15.0
-    assert res.loc["B", "Y"] == 30.0
-
-
-def test_crosstab_with_bracketed_spaced_cols():
-    df = pd.DataFrame({
-        "smoker status": ["Yes", "Yes", "No"],
-        "day of week": ["Sat", "Sun", "Sat"],
-        "total bill": [10.0, 20.0, 30.0],
-    })
-    res = df.pt.crosstab(
-        "[smoker status]",
-        "[day of week]",
-        values="[total bill]",
-        aggfunc="mean",
-        margins=True,
-    )
-    assert res.loc["Yes", "Sat"] == 10.0
-    assert res.loc["Yes", "Sun"] == 20.0
-    assert res.loc["No", "Sat"] == 30.0
-    assert "All" in res.columns
-    assert "All" in res.index
-
-
-def test_crosstab_multi_index():
-    df = pd.DataFrame({
-        "species": ["Adelie", "Adelie", "Gentoo"],
-        "island": ["Biscoe", "Dream", "Biscoe"],
-        "sex": ["M", "F", "M"],
-    })
-    res = df.pt.crosstab(["species", "island"], "sex")
-    assert ("Adelie", "Biscoe") in res.index
-    assert res.loc[("Adelie", "Biscoe"), "M"] == 1
-
-
-def test_crosstab_errors():
-    df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "v": [5, 6]})
-    with pytest.raises(KeyError, match=r"crosstab\(\): column 'nope' not found"):
-        df.pt.crosstab("a", "nope")
-    with pytest.raises(ValueError, match="values' and 'aggfunc' must be specified together"):
-        df.pt.crosstab("a", "b", values="v")
-    with pytest.raises(ValueError, match="values' and 'aggfunc' must be specified together"):
-        df.pt.crosstab("a", "b", aggfunc="mean")
 
 
 if __name__ == '__main__':

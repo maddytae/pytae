@@ -12,7 +12,7 @@
   - [1. Row Filtering (`qry`)](#1-row-filtering--qry)
   - [2. Column Selection (`select`)](#2-column-selection--select)
   - [3. Feature Engineering (`mutate`)](#3-feature-engineering--mutate)
-  - [4. Reshaping (`long`, `wide`, `crosstab`)](#4-reshaping--long-wide-crosstab)
+  - [4. Reshaping (`long`, `wide`)](#4-reshaping--long-wide)
   - [5. Aggregation (`agg_df`)](#5-aggregation--agg_df)
   - [6. DuckDB SQL Engine (`sql`)](#6-duckdb-sql-engine--sql)
   - [7. Plotting (`Plotter`)](#7-plotting--plotter)
@@ -62,7 +62,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
-| **Reshaping** | `pt.long()`, `pt.wide()`, `pt.crosstab()` | Melt numeric columns to long rows, pivot wide, or compute frequency cross-tabulations | [library/shape.ipynb](library/shape.ipynb) |
+| **Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, pivot back to wide tables with standard `c=`, `v=`, `a=` keys | [library/shape.ipynb](library/shape.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `Plotter.facet()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [docs/plotting.md](plotting.md)<br>• [plotting/plotter.ipynb](plotting/plotter.ipynb) |
@@ -129,9 +129,9 @@ pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')"
 
 ---
 
-### 4. Reshaping — `long()`, `wide()`, `crosstab()`
+### 4. Reshaping — `long()`, `wide()`
 
-Reshape between long and wide formats using consistent `c=` (column dimension), `v=` (value column), and `a=` (aggregation function) parameter roles, or compute multi-way frequency cross-tabulations and contingency tables with `crosstab()`:
+Reshape between long and wide formats using consistent `c=` (column dimension), `v=` (value column), and `a=` (aggregation function) parameter roles:
 
 ```python
 # Melt numeric columns into (feature, value) rows
@@ -139,19 +139,6 @@ tall = pt.long(penguins, c="feature", v="reading")
 
 # Pivot long-form records back to columns
 wide = pt.wide(tall, c="feature", v="reading", a="mean")
-
-# Cross-tabulate categorical factors into frequency matrices
-tips.pt.crosstab("smoker", "day")
-tips.pt.crosstab("smoker", "day", margins=True, margins_name="Total")
-
-# Normalized proportions (by row, column, or grand total)
-tips.pt.crosstab("smoker", "day", normalize="index")
-
-# Aggregate numeric values with a custom function
-tips.pt.crosstab("smoker", "day", values="total_bill", aggfunc="mean")
-
-# Columns with spaces using bracket notation
-tips_spaced.pt.crosstab("[smoker status]", "[day of week]", values="[total bill]", aggfunc="mean")
 ```
 
 👉 **Interactive Walkthrough:** [library/shape.ipynb](library/shape.ipynb)
@@ -269,5 +256,4 @@ flights  = pt.sample("flights")
 | **Spaced Columns (Create)** | String assignment `[col] = ...` (or `**{...}`) | `df.pt.mutate("[body mass kg] = body_mass_g / 1000")` |
 | **Spaced Columns (Agg)** | String mapping `"[col] = func, n = n"` | `df.pt.agg("smoker", "tip = mean, [total bill] = mean, n = n")` |
 | **Spaced Columns (Expr)** | Reference via brackets `[col]` or backticks `` `col` `` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
-| **Spaced Columns (Crosstab)** | Enclose in brackets `[col]` | `df.pt.crosstab('[smoker status]', '[day of week]')` |
 | **Standard Reshape Keys** | `c=` (column), `v=` (value), `a=` (aggregation) | `pt.wide(df, c="metric", v="value", a="mean")` |
