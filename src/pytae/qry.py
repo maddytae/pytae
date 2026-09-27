@@ -193,6 +193,7 @@ def qry(
 
     normalized_conditions: list[tuple[str, Any]] = []
     for col, cond in cond_pairs:
+        clean_col = _unquote_name(col)
         if isinstance(cond, str):
             op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", cond.strip())
             if op_match:
@@ -202,9 +203,9 @@ def qry(
                     val = ast.literal_eval(val_str)
                 except (ValueError, SyntaxError):
                     val = val_str.strip("'\"")
-                normalized_conditions.append((col, (op, val)))
+                normalized_conditions.append((clean_col, (op, val)))
                 continue
-        normalized_conditions.append((col, cond))
+        normalized_conditions.append((clean_col, cond))
 
     out = df
     available = list(df.columns)

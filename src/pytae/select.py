@@ -7,6 +7,9 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import tokenize as _tokenize
+from pytae._text import unquote_name as _unquote_name
+
 
 class _EverythingMeta(type):
     def __repr__(cls) -> str:
@@ -106,13 +109,13 @@ def select(
     everything_requested = False
 
     def _resolve_negation(neg_spec: str) -> list[str]:
-        raw = neg_spec.strip()
+        raw = _unquote_name(neg_spec.strip())
         if raw in all_cols:
             return [raw]
         elif ":" in raw:
             start_raw, end_raw = raw.split(":", 1)
-            start: str | None = start_raw.strip() or None
-            end: str | None = end_raw.strip() or None
+            start: str | None = _unquote_name(start_raw.strip()) or None
+            end: str | None = _unquote_name(end_raw.strip()) or None
             if start and start not in all_cols:
                 raise KeyError(f"Start column '{start}' not found")
             if end and end not in all_cols:
@@ -147,27 +150,37 @@ def select(
             everything_requested = True
         elif isinstance(arg, list):
             for col in arg:
+                clean_col = _unquote_name(col) if isinstance(col, str) else col
                 if col in df.columns:
                     selected_cols.add(col)
                     if col not in ordered_cols:
                         ordered_cols.append(col)
+                elif isinstance(clean_col, str) and clean_col in df.columns:
+                    selected_cols.add(clean_col)
+                    if clean_col not in ordered_cols:
+                        ordered_cols.append(clean_col)
                 elif isinstance(col, str) and col.startswith(("-", "~")):
                     excluded_cols.update(_resolve_negation(col[1:]))
                 else:
-                    close = difflib.get_close_matches(str(col), [str(c) for c in all_cols], n=1)
+                    close = difflib.get_close_matches(str(clean_col), [str(c) for c in all_cols], n=1)
                     hint = f" (did you mean '{close[0]}'?)" if close else ""
                     raise KeyError(f"Column not found: '{col}'{hint}")
         elif isinstance(arg, str):
+            clean_arg = _unquote_name(arg)
             if arg in df.columns:  # Exact match first — a literal ':' or '-' in a real column name wins
                 selected_cols.add(arg)
                 if arg not in ordered_cols:
                     ordered_cols.append(arg)
+            elif clean_arg in df.columns:
+                selected_cols.add(clean_arg)
+                if clean_arg not in ordered_cols:
+                    ordered_cols.append(clean_arg)
             elif arg.startswith(("-", "~")):
                 excluded_cols.update(_resolve_negation(arg[1:]))
             elif ":" in arg:  # Handle slice notation
                 start_raw, end_raw = arg.split(":", 1)
-                start = start_raw.strip() or None  # Empty start means from beginning
-                end = end_raw.strip() or None     # Empty end means to end
+                start = _unquote_name(start_raw.strip()) or None  # Empty start means from beginning
+                end = _unquote_name(end_raw.strip()) or None     # Empty end means to end
                 start_idx = all_cols.index(start) if start in all_cols else 0
                 end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
                 if start and start not in all_cols:
@@ -177,11 +190,44 @@ def select(
                 slice_cols = all_cols[start_idx : end_idx + 1]
                 selected_cols.update(slice_cols)
                 ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
+            elif "," in arg:
+                for sub_token in _tokenize(arg, ",", track_brackets=True):
+                    if not sub_token:
+                        continue
+                    clean_sub = _unquote_name(sub_token)
+                    if sub_token in df.columns:
+                        selected_cols.add(sub_token)
+                        if sub_token not in ordered_cols:
+                            ordered_cols.append(sub_token)
+                    elif clean_sub in df.columns:
+                        selected_cols.add(clean_sub)
+                        if clean_sub not in ordered_cols:
+                            ordered_cols.append(clean_sub)
+                    elif sub_token.startswith(("-", "~")):
+                        excluded_cols.update(_resolve_negation(sub_token[1:]))
+                    elif ":" in sub_token:
+                        s_raw, e_raw = sub_token.split(":", 1)
+                        s = _unquote_name(s_raw.strip()) or None
+                        e = _unquote_name(e_raw.strip()) or None
+                        s_idx = all_cols.index(s) if s in all_cols else 0
+                        e_idx = all_cols.index(e) if e in all_cols else len(all_cols) - 1
+                        if s and s not in all_cols:
+                            raise KeyError(f"Start column '{s}' not found")
+                        if e and e not in all_cols:
+                            raise KeyError(f"End column '{e}' not found")
+                        slice_cols = all_cols[s_idx : e_idx + 1]
+                        selected_cols.update(slice_cols)
+                        ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
+                    else:
+                        close = difflib.get_close_matches(clean_sub, [str(c) for c in all_cols], n=1)
+                        hint = f" (did you mean '{close[0]}'?)" if close else ""
+                        raise KeyError(f"Column not found: '{sub_token}'{hint}")
             else:
-                close = difflib.get_close_matches(arg, [str(c) for c in all_cols], n=1)
+                close = difflib.get_close_matches(clean_arg, [str(c) for c in all_cols], n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
-                regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?[]()") else ""
+                regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?()") else ""
                 raise KeyError(f"Column not found: '{arg}'{hint}{regex_hint}")
+
         elif callable(arg):
             func_cols = [col for col in df.columns if arg(col)]
             selected_cols.update(func_cols)

@@ -1096,6 +1096,7 @@ __all__ = [
     "PtAccessor",
 ]
 
+
 ################################################################################
 # FILE: src/pytae/__main__.py
 ################################################################################
@@ -1109,6 +1110,7 @@ from pytae.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
 ################################################################################
 # FILE: src/pytae/_text.py
@@ -1159,11 +1161,39 @@ def tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: 
     return segments
 
 
+def _is_enclosed_pair(raw: str, open_ch: str, close_ch: str) -> bool:
+    if len(raw) < 2 or raw[0] != open_ch or raw[-1] != close_ch:
+        return False
+    if open_ch == close_ch:
+        for idx in range(1, len(raw)):
+            if raw[idx] == open_ch:
+                return idx == len(raw) - 1
+        return False
+    depth = 0
+    for idx, ch in enumerate(raw):
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return idx == len(raw) - 1
+    return False
+
+
 def unquote_name(raw: str) -> str:
     raw = raw.strip()
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
-        return raw[1:-1]
+    changed = True
+    while changed and len(raw) >= 2:
+        changed = False
+        if raw[0] in "'\"" and _is_enclosed_pair(raw, raw[0], raw[0]):
+            raw = raw[1:-1].strip()
+            changed = True
+        elif raw[0] == "[" and _is_enclosed_pair(raw, "[", "]"):
+            raw = raw[1:-1].strip()
+            changed = True
     return raw
+
+
 
 ################################################################################
 # FILE: src/pytae/accessor.py
@@ -1359,6 +1389,8 @@ class PtAccessor:
             plotter.plot(**plot_kwargs)
         return plotter
 
+
+
 ################################################################################
 # FILE: src/pytae/agg_df.py
 ################################################################################
@@ -1369,6 +1401,8 @@ from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
+
+from pytae._text import unquote_name as _unquote_name
 
 _UNSET = object()
 _KNOWN_AGGS = {
@@ -1476,25 +1510,27 @@ def _agg_df_dict(
     count_cols = []
 
     for out_name, spec in agg_types.items():
+        clean_out_name = _unquote_name(out_name)
         if spec == "n" or spec == ["n"] or spec == ("n",):
-            count_cols.append(out_name)
-            output_cols.append(out_name)
+            count_cols.append(clean_out_name)
+            output_cols.append(clean_out_name)
             continue
 
         if isinstance(spec, str) and ":" in spec:
             src_col, aggfunc = spec.split(":", 1)
-            src_col, aggfunc = src_col.strip(), aggfunc.strip()
+            src_col, aggfunc = _unquote_name(src_col.strip()), aggfunc.strip()
             aggs_list = [aggfunc]
-        elif isinstance(spec, tuple) and len(spec) == 2 and spec[0] in df.columns:
-            src_col, aggfunc = spec
+        elif isinstance(spec, tuple) and len(spec) == 2 and _unquote_name(spec[0]) in df.columns:
+            src_col = _unquote_name(spec[0])
+            aggfunc = spec[1]
             aggs_list = [aggfunc] if isinstance(aggfunc, str) else list(aggfunc)
         else:
-            src_col = out_name
+            src_col = clean_out_name
             aggs_list = [spec] if isinstance(spec, str) else list(spec)
 
         aggs_list = list(dict.fromkeys(aggs_list))  # preserve order
         if "n" in aggs_list:
-            raise ValueError(f"'n' cannot be used as an aggregation function for column '{out_name}' in a dictionary aggfunc")
+            raise ValueError(f"'n' cannot be used as an aggregation function for column '{clean_out_name}' in a dictionary aggfunc")
         if src_col not in df.columns:
             raise KeyError(f"Column '{src_col}' does not exist in DataFrame")
         if src_col in group_cols:
@@ -1505,7 +1541,7 @@ def _agg_df_dict(
         if not aggs_list:
             raise ValueError(f"No valid aggregation functions specified for column '{src_col}'")
 
-        if src_col == out_name:
+        if src_col == clean_out_name:
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
                     final_name = f"{src_col}_{agg_fn}"
@@ -1517,12 +1553,13 @@ def _agg_df_dict(
         else:
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
-                    final_name = f"{out_name}_{agg_fn}"
+                    final_name = f"{clean_out_name}_{agg_fn}"
                     output_cols.append(final_name)
                     named_aggs[final_name] = (src_col, agg_fn)
             else:
-                output_cols.append(out_name)
-                named_aggs[out_name] = (src_col, aggs_list[0])
+                output_cols.append(clean_out_name)
+                named_aggs[clean_out_name] = (src_col, aggs_list[0])
+
 
     if group_cols:
         if not named_aggs and count_cols:
@@ -1617,18 +1654,23 @@ def agg_df(
         )
 
     # Check if user mistakenly passed an aggregation name as 'by'
-    if isinstance(by, str) and by not in df.columns:
-        if by.lower() in _KNOWN_AGGS:
-            raise ValueError(
-                f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
-                "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
-                f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
-            )
-        close = difflib.get_close_matches(by, df.columns, n=1)
-        hint = f" (did you mean '{close[0]}'?)" if close else ""
-        raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
+    if isinstance(by, str):
+        clean_by = _unquote_name(by)
+        if clean_by in df.columns:
+            by = clean_by
+        elif by not in df.columns:
+            if by.lower() in _KNOWN_AGGS:
+                raise ValueError(
+                    f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
+                    "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
+                    f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
+                )
+            close = difflib.get_close_matches(clean_by, df.columns, n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
 
     if isinstance(by, (list, tuple)):
+        by = [_unquote_name(x) if isinstance(x, str) else x for x in by]
         if by and all(isinstance(x, str) and x.lower() in _KNOWN_AGGS for x in by) and not any(x in df.columns for x in by):
             raise ValueError(
                 f"agg(): {list(by)!r} looks like an aggregation list, but the first argument to agg() must be 'by' "
@@ -1637,9 +1679,10 @@ def agg_df(
             )
         for col in by:
             if col not in df.columns:
-                close = difflib.get_close_matches(col, df.columns, n=1)
+                close = difflib.get_close_matches(str(col), df.columns, n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
                 raise KeyError(f"agg(): group column '{col}' not found in DataFrame{hint}")
+
 
     if by is None:
         group_cols: list[str] = []
@@ -2195,6 +2238,7 @@ import glob
 import re
 from pathlib import Path
 
+from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
@@ -2202,14 +2246,18 @@ SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "
 
 
 def parse_columns(raw: str) -> list[str]:
-    """Parse a column list like "'col a','col b'" or "col_a,col_b" into a list of names."""
+    """Parse a column list like "'col a','col b'" or "col_a,col_b" or "[col a], [col b]" into a list of names."""
     raw = raw.strip()
+    if _is_enclosed_pair(raw, "[", "]") and "," in raw:
+        raw = raw[1:-1].strip()
     try:
         parsed = ast.literal_eval(f"[{raw}]")
         cols = list(parsed) if isinstance(parsed, (list, tuple)) else [parsed]
-        return [str(c).strip() for c in cols]
+        return [_unquote_name(str(c).strip()) for c in cols]
     except (ValueError, SyntaxError):
-        return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
+        tokens = _tokenize(raw, ",", track_brackets=True)
+        return [_unquote_name(c.strip()) for c in tokens if c.strip()]
+
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
@@ -2229,8 +2277,8 @@ def parse_sort_by(raw: str) -> tuple[list[str], str]:
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
-    """Split on sep, respecting single or double quotes."""
-    return [t for t in _tokenize(raw, sep) if t]
+    """Split on sep, respecting quotes and brackets."""
+    return [t for t in _tokenize(raw, sep, track_brackets=True) if t]
 
 
 def _split_groups(raw: str, sep: str = ";") -> list[str]:
@@ -2245,7 +2293,11 @@ def parse_select_spec(raw: str) -> tuple[list[str], dict]:
     dtype=numeric / contains=bill / regex=^flip become kwargs. Repeated keys
     become a list. Union of all tokens, matching pt.select().
     """
+    raw = raw.strip()
+    if _is_enclosed_pair(raw, "[", "]") and "," in raw:
+        raw = raw[1:-1].strip()
     tokens = _split_tokens(raw)
+
     names: list[str] = []
     kwargs: dict = {}
     for token in tokens:
@@ -2431,7 +2483,7 @@ def parse_agg(raw: str):
     raw = (raw or "").strip()
     if not raw:
         return "sum"
-    if raw[0] in "{[":
+    if raw.startswith("{") or (raw.startswith("[") and "=" not in raw):
         raise SystemExit(
             "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
             "(col = mean, n = n)"
@@ -2823,6 +2875,7 @@ def parse_concat_arg(raw: str) -> dict:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
 
+
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -2835,6 +2888,7 @@ import re
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
 from pytae.mutate import mutate
 from pytae.other_utilities import replace_values
@@ -2906,7 +2960,7 @@ class _Pipeline:
             or any(token.startswith(("-", "~")) for token in names)
         )
         if not needs_frame:
-            self._pending_exact = list(names)
+            self._pending_exact = [_unquote_name(n) for n in names]
             return None
 
         df = self._df if self._df is not None else self.dataframe()
@@ -3159,6 +3213,7 @@ class _OrderedAppend(argparse.Action):
         items.append(values)
         setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+
 
 ################################################################################
 # FILE: src/pytae/cli_run.py
@@ -3889,6 +3944,9 @@ def _process_path(
 
     return False
 
+
+
+
 ################################################################################
 # FILE: src/pytae/mutate.py
 ################################################################################
@@ -4401,6 +4459,7 @@ def mutate(
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
 
+
 ################################################################################
 # FILE: src/pytae/other_utilities.py
 ################################################################################
@@ -4411,6 +4470,8 @@ from collections.abc import Hashable, Sequence
 from typing import Any
 
 import pandas as pd
+
+from pytae._text import unquote_name as _unquote_name
 
 
 def to_clip(df: pd.DataFrame | pd.Series) -> None:
@@ -4544,9 +4605,12 @@ def group_x(
         if not by_cols:
             raise ValueError("group_x: no non-numeric columns to group by; pass by= explicitly")
     elif isinstance(by_cols, str):
-        by_cols = [by_cols]
+        by_cols = [_unquote_name(by_cols)]
     else:
-        by_cols = list(by_cols)
+        by_cols = [_unquote_name(c) for c in by_cols]
+
+    if v is not None:
+        v = _unquote_name(v)
 
     if a == "n" or v is None:
         if "n" in df.columns:
@@ -5623,6 +5687,9 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
         raise TypeError(f"Expected a Plotter instance, got {type(plotter).__name__}")
     return plotter.finalize(**kwargs)
 
+
+
+
 ################################################################################
 # FILE: src/pytae/qry.py
 ################################################################################
@@ -5821,6 +5888,7 @@ def qry(
 
     normalized_conditions: list[tuple[str, Any]] = []
     for col, cond in cond_pairs:
+        clean_col = _unquote_name(col)
         if isinstance(cond, str):
             op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", cond.strip())
             if op_match:
@@ -5830,9 +5898,9 @@ def qry(
                     val = ast.literal_eval(val_str)
                 except (ValueError, SyntaxError):
                     val = val_str.strip("'\"")
-                normalized_conditions.append((col, (op, val)))
+                normalized_conditions.append((clean_col, (op, val)))
                 continue
-        normalized_conditions.append((col, cond))
+        normalized_conditions.append((clean_col, cond))
 
     out = df
     available = list(df.columns)
@@ -6610,6 +6678,9 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import tokenize as _tokenize
+from pytae._text import unquote_name as _unquote_name
+
 
 class _EverythingMeta(type):
     def __repr__(cls) -> str:
@@ -6709,13 +6780,13 @@ def select(
     everything_requested = False
 
     def _resolve_negation(neg_spec: str) -> list[str]:
-        raw = neg_spec.strip()
+        raw = _unquote_name(neg_spec.strip())
         if raw in all_cols:
             return [raw]
         elif ":" in raw:
             start_raw, end_raw = raw.split(":", 1)
-            start: str | None = start_raw.strip() or None
-            end: str | None = end_raw.strip() or None
+            start: str | None = _unquote_name(start_raw.strip()) or None
+            end: str | None = _unquote_name(end_raw.strip()) or None
             if start and start not in all_cols:
                 raise KeyError(f"Start column '{start}' not found")
             if end and end not in all_cols:
@@ -6750,27 +6821,37 @@ def select(
             everything_requested = True
         elif isinstance(arg, list):
             for col in arg:
+                clean_col = _unquote_name(col) if isinstance(col, str) else col
                 if col in df.columns:
                     selected_cols.add(col)
                     if col not in ordered_cols:
                         ordered_cols.append(col)
+                elif isinstance(clean_col, str) and clean_col in df.columns:
+                    selected_cols.add(clean_col)
+                    if clean_col not in ordered_cols:
+                        ordered_cols.append(clean_col)
                 elif isinstance(col, str) and col.startswith(("-", "~")):
                     excluded_cols.update(_resolve_negation(col[1:]))
                 else:
-                    close = difflib.get_close_matches(str(col), [str(c) for c in all_cols], n=1)
+                    close = difflib.get_close_matches(str(clean_col), [str(c) for c in all_cols], n=1)
                     hint = f" (did you mean '{close[0]}'?)" if close else ""
                     raise KeyError(f"Column not found: '{col}'{hint}")
         elif isinstance(arg, str):
+            clean_arg = _unquote_name(arg)
             if arg in df.columns:  # Exact match first — a literal ':' or '-' in a real column name wins
                 selected_cols.add(arg)
                 if arg not in ordered_cols:
                     ordered_cols.append(arg)
+            elif clean_arg in df.columns:
+                selected_cols.add(clean_arg)
+                if clean_arg not in ordered_cols:
+                    ordered_cols.append(clean_arg)
             elif arg.startswith(("-", "~")):
                 excluded_cols.update(_resolve_negation(arg[1:]))
             elif ":" in arg:  # Handle slice notation
                 start_raw, end_raw = arg.split(":", 1)
-                start = start_raw.strip() or None  # Empty start means from beginning
-                end = end_raw.strip() or None     # Empty end means to end
+                start = _unquote_name(start_raw.strip()) or None  # Empty start means from beginning
+                end = _unquote_name(end_raw.strip()) or None     # Empty end means to end
                 start_idx = all_cols.index(start) if start in all_cols else 0
                 end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
                 if start and start not in all_cols:
@@ -6780,11 +6861,44 @@ def select(
                 slice_cols = all_cols[start_idx : end_idx + 1]
                 selected_cols.update(slice_cols)
                 ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
+            elif "," in arg:
+                for sub_token in _tokenize(arg, ",", track_brackets=True):
+                    if not sub_token:
+                        continue
+                    clean_sub = _unquote_name(sub_token)
+                    if sub_token in df.columns:
+                        selected_cols.add(sub_token)
+                        if sub_token not in ordered_cols:
+                            ordered_cols.append(sub_token)
+                    elif clean_sub in df.columns:
+                        selected_cols.add(clean_sub)
+                        if clean_sub not in ordered_cols:
+                            ordered_cols.append(clean_sub)
+                    elif sub_token.startswith(("-", "~")):
+                        excluded_cols.update(_resolve_negation(sub_token[1:]))
+                    elif ":" in sub_token:
+                        s_raw, e_raw = sub_token.split(":", 1)
+                        s = _unquote_name(s_raw.strip()) or None
+                        e = _unquote_name(e_raw.strip()) or None
+                        s_idx = all_cols.index(s) if s in all_cols else 0
+                        e_idx = all_cols.index(e) if e in all_cols else len(all_cols) - 1
+                        if s and s not in all_cols:
+                            raise KeyError(f"Start column '{s}' not found")
+                        if e and e not in all_cols:
+                            raise KeyError(f"End column '{e}' not found")
+                        slice_cols = all_cols[s_idx : e_idx + 1]
+                        selected_cols.update(slice_cols)
+                        ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
+                    else:
+                        close = difflib.get_close_matches(clean_sub, [str(c) for c in all_cols], n=1)
+                        hint = f" (did you mean '{close[0]}'?)" if close else ""
+                        raise KeyError(f"Column not found: '{sub_token}'{hint}")
             else:
-                close = difflib.get_close_matches(arg, [str(c) for c in all_cols], n=1)
+                close = difflib.get_close_matches(clean_arg, [str(c) for c in all_cols], n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
-                regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?[]()") else ""
+                regex_hint = "; for a regex use select(regex=...)" if any(ch in arg for ch in "^$|*+?()") else ""
                 raise KeyError(f"Column not found: '{arg}'{hint}{regex_hint}")
+
         elif callable(arg):
             func_cols = [col for col in df.columns if arg(col)]
             selected_cols.update(func_cols)
@@ -6860,6 +6974,7 @@ def select(
 
     final_cols = [col for col in ordered_cols if col not in excluded_cols]
     return df[final_cols]
+
 
 ################################################################################
 # FILE: src/pytae/shape.py
@@ -7024,6 +7139,7 @@ def wide(
     wide_df.columns.name = None
     return wide_df
 
+
 ################################################################################
 # FILE: src/pytae/sql.py
 ################################################################################
@@ -7089,10 +7205,15 @@ def _normalize_sql(query: str) -> str:
             j = q.find("]", i + 1)
             if j != -1:
                 inner = q[i + 1 : j]
-                if any(c.isalpha() or c in " _-" for c in inner):
+                is_index = i > 0 and (q[i - 1].isalnum() or q[i - 1] in "_)]")
+                is_list_literal = "," in inner or "'" in inner or '"' in inner
+                has_ident = any(c.isalpha() or c == "_" for c in inner)
+                all_valid = all(c.isalnum() or c in " _-" for c in inner)
+                if not is_index and not is_list_literal and has_ident and all_valid:
                     out_chars.append(f'"{inner}"')
                     i = j + 1
                     continue
+
         out_chars.append(ch)
         i += 1
     return "".join(out_chars)
@@ -7147,6 +7268,7 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
     finally:
         con.close()
 
+
 ================================================================================
 11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
@@ -7155,6 +7277,7 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
 # FILE: tests/__init__.py
 ################################################################################
 # Makes `from tests.cli_helpers import ...` work when pytest's rootdir is the repo.
+
 
 ################################################################################
 # FILE: tests/cli_helpers.py
@@ -7213,6 +7336,7 @@ def _write_three_id_csvs(tmp_path):
     pd.DataFrame({"id": [1, 2], "z": ["m", "n"]}).to_csv(c, index=False)
     return str(a), str(b), str(c)
 
+
 ################################################################################
 # FILE: tests/conftest.py
 ################################################################################
@@ -7245,6 +7369,7 @@ def sample_parquet(tmp_path):
         pytae.sample_data[name].to_parquet(path)
         return str(path)
     return _write
+
 
 ################################################################################
 # FILE: tests/test_accessor.py
@@ -7280,6 +7405,7 @@ def test_pt_select_then_pandas_head():
     out = penguins.pt.select("species", "body_mass_g").head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
+
 
 ################################################################################
 # FILE: tests/test_agg_df.py
@@ -7444,6 +7570,7 @@ def test_agg_df_whole_table_kwargs():
 
 if __name__ == "__main__":
     pytest.main()
+
 
 ################################################################################
 # FILE: tests/test_cli_agg.py
@@ -7666,6 +7793,7 @@ def test_agg_python_literal_is_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "val": [1]}))
     with pytest.raises(SystemExit, match="use a name"):
         cli.main([path, "-agg", "{'val': 'sum'}"])
+
 
 ################################################################################
 # FILE: tests/test_cli_clean.py
@@ -7890,6 +8018,8 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
 
+
+
 ################################################################################
 # FILE: tests/test_cli_filter.py
 ################################################################################
@@ -8035,6 +8165,7 @@ def test_qry_equals_separator(tmp_path, capsys):
     exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
+
 
 ################################################################################
 # FILE: tests/test_cli_inspect.py
@@ -8934,6 +9065,13 @@ def test_cli_pager(tmp_path, monkeypatch):
     assert len(paged) == 1
     assert "col" in paged[0]
 
+
+
+
+
+
+
+
 ################################################################################
 # FILE: tests/test_cli_merge.py
 ################################################################################
@@ -9232,6 +9370,10 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 4)"
 
+
+
+
+
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
@@ -9353,6 +9495,7 @@ def test_mutate_colon_raises_cli_error(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "use '='" in err
 
+
 ################################################################################
 # FILE: tests/test_cli_parse.py
 ################################################################################
@@ -9389,6 +9532,9 @@ def test_expand_paths_single_and_list(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         expand_paths(str(tmp_path / "*.parquet"))
     assert "no files matched pattern" in str(exc_info.value)
+
+
+
 
 ################################################################################
 # FILE: tests/test_cli_reshape.py
@@ -9559,6 +9705,8 @@ def test_wide_and_group_x_reject_dropna_kwarg(tmp_path):
     with pytest.raises(SystemExit, match="unknown key 'dropna'"):
         cli.main([path2, "-wide", "dropna=false"])
 
+
+
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
@@ -9706,6 +9854,7 @@ def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines() == ["age     0", "deck    0"]
+
 
 ################################################################################
 # FILE: tests/test_cli_select.py
@@ -10024,6 +10173,30 @@ def test_select_cli_negative_unknown_name_hint(tmp_path, capsys):
     assert "unknown column" in err
     assert "species" in err
 
+
+def test_select_cli_bracketed_columns(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"species": ["A"], "island name": ["B"], "bill length mm": [1.0]}),
+    )
+
+    exit_code = cli.main([path, "-select", "[island name], [bill length mm]", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["island name", "bill length mm"]
+
+    exit_code2 = cli.main([path, "-select", "species, [bill length mm]", "-cols"])
+    assert exit_code2 == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["species", "bill length mm"]
+
+    exit_code3 = cli.main([path, "-select", "-[island name]", "-cols"])
+    assert exit_code3 == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["species", "bill length mm"]
+
+
+
+
+
+
 ################################################################################
 # FILE: tests/test_cli_sql.py
 ################################################################################
@@ -10213,6 +10386,10 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 2)"
 
+
+
+
+
 ################################################################################
 # FILE: tests/test_import.py
 ################################################################################
@@ -10352,6 +10529,8 @@ else:
     )
     assert result.returncode == 0, result.stderr
     assert "pytae[sql]" in result.stderr
+
+
 
 ################################################################################
 # FILE: tests/test_mutate.py
@@ -10654,6 +10833,21 @@ def test_mutate_explicit_underscore_params():
     df = _df()
     res = df.pt.mutate(flag="body_mass_g >= @thresh", _params={"thresh": 3500.0})
     assert list(res["flag"]) == [False, True]
+
+
+def test_mutate_bracketed_columns():
+    df = pd.DataFrame({"body mass g": [3000.0, 4000.0], "height": [1.5, 2.0]})
+    # Target column has brackets, source has brackets
+    res1 = df.pt.mutate("[mass kg] = [body mass g] / 1000")
+    assert "mass kg" in res1.columns
+    assert list(res1["mass kg"]) == [3.0, 4.0]
+
+    # Mixed source columns (one with space, one without)
+    res2 = df.pt.mutate("[bmi score] = [body mass g] / (height ** 2)")
+    assert "bmi score" in res2.columns
+
+
+
 
 ################################################################################
 # FILE: tests/test_plotter.py
@@ -11160,6 +11354,16 @@ def test_box_palette_colors():
     c1 = ax.patches[1].get_facecolor()
     assert c0 != c1
 
+
+
+
+
+
+
+
+
+
+
 ################################################################################
 # FILE: tests/test_qry.py
 ################################################################################
@@ -11385,6 +11589,26 @@ def test_parse_qry_cli():
     assert res2 == {"body_mass_g": (">", 100000)}
     assert res3 == {"body_mass_g": (">", 100000)}
     assert res4 == {"body_mass_g": 74125}
+
+
+def test_qry_bracketed_columns():
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo"],
+        "body mass g": [3500, 5000],
+    })
+    res1 = df.pt.qry("[body mass g] > 4000")
+    assert list(res1["species"]) == ["Gentoo"]
+
+    res2 = df.pt.qry("[species] == 'Adelie'")
+    assert list(res2["species"]) == ["Adelie"]
+
+    res3 = df.pt.qry({"[body mass g]": "> 4000"})
+    assert list(res3["species"]) == ["Gentoo"]
+
+    parsed = parse_qry("[body mass g] > 4000, [species] = 'Gentoo'")
+    assert parsed == {"body mass g": (">", 4000), "species": "Gentoo"}
+
+
 
 ################################################################################
 # FILE: tests/test_readers.py
@@ -11677,6 +11901,8 @@ def test_compressed_txt_and_dat(tmp_path):
     assert dreader.columns() == ["a", "b"]
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
 
+
+
 ################################################################################
 # FILE: tests/test_select.py
 ################################################################################
@@ -11886,6 +12112,28 @@ def test_select_negative_typo_raises_hint():
     with pytest.raises(KeyError, match=r"Column to exclude not found: 'speceis' \(did you mean 'species'\?\)"):
         pt.select(df, "-speceis")
 
+
+def test_select_bracketed_names_and_slices():
+    df = pd.DataFrame({
+        "species": [1],
+        "island name": [2],
+        "bill length mm": [3],
+        "body mass g": [4],
+    })
+    # Single bracketed name
+    assert list(pt.select(df, "[island name]").columns) == ["island name"]
+    # Multiple bracketed names
+    assert list(pt.select(df, "[island name]", "[body mass g]").columns) == ["island name", "body mass g"]
+    # Comma-separated bracketed string
+    assert list(pt.select(df, "species, [bill length mm]").columns) == ["species", "bill length mm"]
+    # Bracketed slice
+    assert list(pt.select(df, "[island name]:[body mass g]").columns) == ["island name", "bill length mm", "body mass g"]
+    # Bracketed negation
+    assert list(pt.select(df, "-[island name]").columns) == ["species", "bill length mm", "body mass g"]
+
+
+
+
 ################################################################################
 # FILE: tests/test_shape.py
 ################################################################################
@@ -12024,6 +12272,7 @@ def test_wide_with_explicit_index():
 if __name__ == '__main__':
     pytest.main()
 
+
 ################################################################################
 # FILE: tests/test_sql.py
 ################################################################################
@@ -12095,6 +12344,24 @@ def test_sql_bracketed_identifiers():
     out = pt.sql(df, "select [col a], `col b` from data")
     assert list(out["col a"]) == [1, 2]
     assert list(out["col b"]) == [10, 20]
+
+
+def test_sql_preserves_duckdb_lists_and_indexing():
+    df = pd.DataFrame({"a": [1, 2, 3], "col a": [10, 20, 30], "arr": [[100, 200], [300, 400], [500, 600]]})
+    # List literal in WHERE clause with spaces
+    out1 = pt.sql(df, "select [col a] from data where a in [1, 2]")
+    assert list(out1["col a"]) == [10, 20]
+
+    # Array indexing arr[1]
+    out2 = pt.sql(df, "select arr[1] as first_elem from data where a = 1")
+    assert list(out2["first_elem"]) == [100]
+
+    # String list literal
+    out3 = pt.sql(df, "select ['x', 'y'] as pair from data where a = 1")
+    assert list(out3["pair"][0]) == ["x", "y"]
+
+
+
 
 ################################################################################
 # FILE: tests/test_utilities.py
@@ -12287,3 +12554,4 @@ def test_group_x_raises_on_all_numeric_frame():
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
     with pytest.raises(ValueError, match="no non-numeric columns to group by"):
         pt.group_x(df)
+

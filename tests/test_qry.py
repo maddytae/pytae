@@ -220,3 +220,22 @@ def test_parse_qry_cli():
     assert res2 == {"body_mass_g": (">", 100000)}
     assert res3 == {"body_mass_g": (">", 100000)}
     assert res4 == {"body_mass_g": 74125}
+
+
+def test_qry_bracketed_columns():
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo"],
+        "body mass g": [3500, 5000],
+    })
+    res1 = df.pt.qry("[body mass g] > 4000")
+    assert list(res1["species"]) == ["Gentoo"]
+
+    res2 = df.pt.qry("[species] == 'Adelie'")
+    assert list(res2["species"]) == ["Adelie"]
+
+    res3 = df.pt.qry({"[body mass g]": "> 4000"})
+    assert list(res3["species"]) == ["Gentoo"]
+
+    parsed = parse_qry("[body mass g] > 4000, [species] = 'Gentoo'")
+    assert parsed == {"body mass g": (">", 4000), "species": "Gentoo"}
+

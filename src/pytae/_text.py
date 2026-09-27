@@ -44,8 +44,35 @@ def tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: 
     return segments
 
 
+def _is_enclosed_pair(raw: str, open_ch: str, close_ch: str) -> bool:
+    if len(raw) < 2 or raw[0] != open_ch or raw[-1] != close_ch:
+        return False
+    if open_ch == close_ch:
+        for idx in range(1, len(raw)):
+            if raw[idx] == open_ch:
+                return idx == len(raw) - 1
+        return False
+    depth = 0
+    for idx, ch in enumerate(raw):
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return idx == len(raw) - 1
+    return False
+
+
 def unquote_name(raw: str) -> str:
     raw = raw.strip()
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
-        return raw[1:-1]
+    changed = True
+    while changed and len(raw) >= 2:
+        changed = False
+        if raw[0] in "'\"" and _is_enclosed_pair(raw, raw[0], raw[0]):
+            raw = raw[1:-1].strip()
+            changed = True
+        elif raw[0] == "[" and _is_enclosed_pair(raw, "[", "]"):
+            raw = raw[1:-1].strip()
+            changed = True
     return raw
+

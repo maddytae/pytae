@@ -9,6 +9,7 @@ import glob
 import re
 from pathlib import Path
 
+from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
@@ -16,14 +17,18 @@ SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "
 
 
 def parse_columns(raw: str) -> list[str]:
-    """Parse a column list like "'col a','col b'" or "col_a,col_b" into a list of names."""
+    """Parse a column list like "'col a','col b'" or "col_a,col_b" or "[col a], [col b]" into a list of names."""
     raw = raw.strip()
+    if _is_enclosed_pair(raw, "[", "]") and "," in raw:
+        raw = raw[1:-1].strip()
     try:
         parsed = ast.literal_eval(f"[{raw}]")
         cols = list(parsed) if isinstance(parsed, (list, tuple)) else [parsed]
-        return [str(c).strip() for c in cols]
+        return [_unquote_name(str(c).strip()) for c in cols]
     except (ValueError, SyntaxError):
-        return [c.strip().strip("'\"") for c in raw.split(",") if c.strip()]
+        tokens = _tokenize(raw, ",", track_brackets=True)
+        return [_unquote_name(c.strip()) for c in tokens if c.strip()]
+
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
@@ -43,8 +48,8 @@ def parse_sort_by(raw: str) -> tuple[list[str], str]:
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
-    """Split on sep, respecting single or double quotes."""
-    return [t for t in _tokenize(raw, sep) if t]
+    """Split on sep, respecting quotes and brackets."""
+    return [t for t in _tokenize(raw, sep, track_brackets=True) if t]
 
 
 def _split_groups(raw: str, sep: str = ";") -> list[str]:
@@ -59,7 +64,11 @@ def parse_select_spec(raw: str) -> tuple[list[str], dict]:
     dtype=numeric / contains=bill / regex=^flip become kwargs. Repeated keys
     become a list. Union of all tokens, matching pt.select().
     """
+    raw = raw.strip()
+    if _is_enclosed_pair(raw, "[", "]") and "," in raw:
+        raw = raw[1:-1].strip()
     tokens = _split_tokens(raw)
+
     names: list[str] = []
     kwargs: dict = {}
     for token in tokens:
@@ -245,7 +254,7 @@ def parse_agg(raw: str):
     raw = (raw or "").strip()
     if not raw:
         return "sum"
-    if raw[0] in "{[":
+    if raw.startswith("{") or (raw.startswith("[") and "=" not in raw):
         raise SystemExit(
             "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
             "(col = mean, n = n)"

@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
+
 
 def to_clip(df: pd.DataFrame | pd.Series) -> None:
     """Copy the DataFrame or Series to the system clipboard (tab-separated, no index)."""
@@ -138,9 +140,12 @@ def group_x(
         if not by_cols:
             raise ValueError("group_x: no non-numeric columns to group by; pass by= explicitly")
     elif isinstance(by_cols, str):
-        by_cols = [by_cols]
+        by_cols = [_unquote_name(by_cols)]
     else:
-        by_cols = list(by_cols)
+        by_cols = [_unquote_name(c) for c in by_cols]
+
+    if v is not None:
+        v = _unquote_name(v)
 
     if a == "n" or v is None:
         if "n" in df.columns:

@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
+
 _UNSET = object()
 _KNOWN_AGGS = {
     "mean",
@@ -112,25 +114,27 @@ def _agg_df_dict(
     count_cols = []
 
     for out_name, spec in agg_types.items():
+        clean_out_name = _unquote_name(out_name)
         if spec == "n" or spec == ["n"] or spec == ("n",):
-            count_cols.append(out_name)
-            output_cols.append(out_name)
+            count_cols.append(clean_out_name)
+            output_cols.append(clean_out_name)
             continue
 
         if isinstance(spec, str) and ":" in spec:
             src_col, aggfunc = spec.split(":", 1)
-            src_col, aggfunc = src_col.strip(), aggfunc.strip()
+            src_col, aggfunc = _unquote_name(src_col.strip()), aggfunc.strip()
             aggs_list = [aggfunc]
-        elif isinstance(spec, tuple) and len(spec) == 2 and spec[0] in df.columns:
-            src_col, aggfunc = spec
+        elif isinstance(spec, tuple) and len(spec) == 2 and _unquote_name(spec[0]) in df.columns:
+            src_col = _unquote_name(spec[0])
+            aggfunc = spec[1]
             aggs_list = [aggfunc] if isinstance(aggfunc, str) else list(aggfunc)
         else:
-            src_col = out_name
+            src_col = clean_out_name
             aggs_list = [spec] if isinstance(spec, str) else list(spec)
 
         aggs_list = list(dict.fromkeys(aggs_list))  # preserve order
         if "n" in aggs_list:
-            raise ValueError(f"'n' cannot be used as an aggregation function for column '{out_name}' in a dictionary aggfunc")
+            raise ValueError(f"'n' cannot be used as an aggregation function for column '{clean_out_name}' in a dictionary aggfunc")
         if src_col not in df.columns:
             raise KeyError(f"Column '{src_col}' does not exist in DataFrame")
         if src_col in group_cols:
@@ -141,7 +145,7 @@ def _agg_df_dict(
         if not aggs_list:
             raise ValueError(f"No valid aggregation functions specified for column '{src_col}'")
 
-        if src_col == out_name:
+        if src_col == clean_out_name:
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
                     final_name = f"{src_col}_{agg_fn}"
@@ -153,12 +157,13 @@ def _agg_df_dict(
         else:
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
-                    final_name = f"{out_name}_{agg_fn}"
+                    final_name = f"{clean_out_name}_{agg_fn}"
                     output_cols.append(final_name)
                     named_aggs[final_name] = (src_col, agg_fn)
             else:
-                output_cols.append(out_name)
-                named_aggs[out_name] = (src_col, aggs_list[0])
+                output_cols.append(clean_out_name)
+                named_aggs[clean_out_name] = (src_col, aggs_list[0])
+
 
     if group_cols:
         if not named_aggs and count_cols:
@@ -253,18 +258,23 @@ def agg_df(
         )
 
     # Check if user mistakenly passed an aggregation name as 'by'
-    if isinstance(by, str) and by not in df.columns:
-        if by.lower() in _KNOWN_AGGS:
-            raise ValueError(
-                f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
-                "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
-                f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
-            )
-        close = difflib.get_close_matches(by, df.columns, n=1)
-        hint = f" (did you mean '{close[0]}'?)" if close else ""
-        raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
+    if isinstance(by, str):
+        clean_by = _unquote_name(by)
+        if clean_by in df.columns:
+            by = clean_by
+        elif by not in df.columns:
+            if by.lower() in _KNOWN_AGGS:
+                raise ValueError(
+                    f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
+                    "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
+                    f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
+                )
+            close = difflib.get_close_matches(clean_by, df.columns, n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
 
     if isinstance(by, (list, tuple)):
+        by = [_unquote_name(x) if isinstance(x, str) else x for x in by]
         if by and all(isinstance(x, str) and x.lower() in _KNOWN_AGGS for x in by) and not any(x in df.columns for x in by):
             raise ValueError(
                 f"agg(): {list(by)!r} looks like an aggregation list, but the first argument to agg() must be 'by' "
@@ -273,9 +283,10 @@ def agg_df(
             )
         for col in by:
             if col not in df.columns:
-                close = difflib.get_close_matches(col, df.columns, n=1)
+                close = difflib.get_close_matches(str(col), df.columns, n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
                 raise KeyError(f"agg(): group column '{col}' not found in DataFrame{hint}")
+
 
     if by is None:
         group_cols: list[str] = []

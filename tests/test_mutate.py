@@ -297,3 +297,16 @@ def test_mutate_explicit_underscore_params():
     res = df.pt.mutate(flag="body_mass_g >= @thresh", _params={"thresh": 3500.0})
     assert list(res["flag"]) == [False, True]
 
+
+def test_mutate_bracketed_columns():
+    df = pd.DataFrame({"body mass g": [3000.0, 4000.0], "height": [1.5, 2.0]})
+    # Target column has brackets, source has brackets
+    res1 = df.pt.mutate("[mass kg] = [body mass g] / 1000")
+    assert "mass kg" in res1.columns
+    assert list(res1["mass kg"]) == [3.0, 4.0]
+
+    # Mixed source columns (one with space, one without)
+    res2 = df.pt.mutate("[bmi score] = [body mass g] / (height ** 2)")
+    assert "bmi score" in res2.columns
+
+

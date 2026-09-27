@@ -7,6 +7,7 @@ import re
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
 from pytae.mutate import mutate
 from pytae.other_utilities import replace_values
@@ -78,7 +79,7 @@ class _Pipeline:
             or any(token.startswith(("-", "~")) for token in names)
         )
         if not needs_frame:
-            self._pending_exact = list(names)
+            self._pending_exact = [_unquote_name(n) for n in names]
             return None
 
         df = self._df if self._df is not None else self.dataframe()

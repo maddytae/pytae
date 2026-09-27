@@ -60,10 +60,15 @@ def _normalize_sql(query: str) -> str:
             j = q.find("]", i + 1)
             if j != -1:
                 inner = q[i + 1 : j]
-                if any(c.isalpha() or c in " _-" for c in inner):
+                is_index = i > 0 and (q[i - 1].isalnum() or q[i - 1] in "_)]")
+                is_list_literal = "," in inner or "'" in inner or '"' in inner
+                has_ident = any(c.isalpha() or c == "_" for c in inner)
+                all_valid = all(c.isalnum() or c in " _-" for c in inner)
+                if not is_index and not is_list_literal and has_ident and all_valid:
                     out_chars.append(f'"{inner}"')
                     i = j + 1
                     continue
+
         out_chars.append(ch)
         i += 1
     return "".join(out_chars)

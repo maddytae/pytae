@@ -67,3 +67,19 @@ def test_sql_bracketed_identifiers():
     assert list(out["col a"]) == [1, 2]
     assert list(out["col b"]) == [10, 20]
 
+
+def test_sql_preserves_duckdb_lists_and_indexing():
+    df = pd.DataFrame({"a": [1, 2, 3], "col a": [10, 20, 30], "arr": [[100, 200], [300, 400], [500, 600]]})
+    # List literal in WHERE clause with spaces
+    out1 = pt.sql(df, "select [col a] from data where a in [1, 2]")
+    assert list(out1["col a"]) == [10, 20]
+
+    # Array indexing arr[1]
+    out2 = pt.sql(df, "select arr[1] as first_elem from data where a = 1")
+    assert list(out2["first_elem"]) == [100]
+
+    # String list literal
+    out3 = pt.sql(df, "select ['x', 'y'] as pair from data where a = 1")
+    assert list(out3["pair"][0]) == ["x", "y"]
+
+

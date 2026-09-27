@@ -313,4 +313,24 @@ def test_select_cli_negative_unknown_name_hint(tmp_path, capsys):
     assert "species" in err
 
 
+def test_select_cli_bracketed_columns(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"species": ["A"], "island name": ["B"], "bill length mm": [1.0]}),
+    )
+
+    exit_code = cli.main([path, "-select", "[island name], [bill length mm]", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["island name", "bill length mm"]
+
+    exit_code2 = cli.main([path, "-select", "species, [bill length mm]", "-cols"])
+    assert exit_code2 == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["species", "bill length mm"]
+
+    exit_code3 = cli.main([path, "-select", "-[island name]", "-cols"])
+    assert exit_code3 == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["species", "bill length mm"]
+
+
+
 
