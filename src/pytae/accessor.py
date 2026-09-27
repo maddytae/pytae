@@ -23,9 +23,6 @@ from .other_utilities import (
     cols as _cols,
 )
 from .other_utilities import (
-    group_x as _group_x,
-)
-from .other_utilities import (
     handle_missing as _handle_missing,
 )
 from .other_utilities import (
@@ -47,8 +44,15 @@ class PtAccessor:
     def qry(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
         return _qry(self._obj, *args, **kwargs)
 
-    def mutate(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        return _mutate(self._obj, *args, **kwargs)
+    def mutate(
+        self,
+        *args: Any,
+        by: str | Sequence[str] | None = None,
+        dropna: bool = True,
+        observed: bool = True,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        return _mutate(self._obj, *args, by=by, dropna=dropna, observed=observed, **kwargs)
 
     def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
         return _sql(self._obj, query, **frames)
@@ -91,18 +95,6 @@ class PtAccessor:
     ) -> pd.DataFrame:
         from .shape import wide as _wide
         return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
-
-    def group_x(
-        self,
-        by: str | Sequence[str] | None = None,
-        *,
-        group: str | Sequence[str] | None = None,
-        dropna: bool = True,
-        observed: bool = True,
-        a: str = "n",
-        v: str | None = None,
-    ) -> pd.DataFrame:
-        return _group_x(self._obj, by=by, group=group, dropna=dropna, observed=observed, a=a, v=v)
 
     def handle_missing(
         self,

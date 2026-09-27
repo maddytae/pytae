@@ -108,7 +108,9 @@ class _Pipeline:
             return f"-qry: {exc}"
         return None
 
-    def apply_mutate(self, spec: str) -> str | None:
+    def apply_mutate(
+        self, spec: str, by: list[str] | None = None, dropna: bool = True
+    ) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()
         if (raw_spec.startswith("'") and raw_spec.endswith("'")) or (raw_spec.startswith('"') and raw_spec.endswith('"')):
@@ -131,7 +133,7 @@ class _Pipeline:
         try:
             from pytae.mutate import parse_mutate_spec
             parsed = parse_mutate_spec(raw_spec)
-            self._df = mutate(df, **parsed)
+            self._df = mutate(df, parsed, by=by, dropna=dropna)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None

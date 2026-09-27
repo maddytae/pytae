@@ -16,14 +16,13 @@ from pytae.cli_parsing import (
     parse_clean_columns_arg,
     parse_columns,
     parse_crosstab_arg,
-    parse_group_x_arg,
     parse_long_arg,
     parse_sort_by,
     parse_wide_arg,
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
-from pytae.other_utilities import clean_columns, group_x, handle_missing
+from pytae.other_utilities import clean_columns, handle_missing
 from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
 
 
@@ -400,7 +399,12 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "mutate":
-            err = pipeline.apply_mutate(next(mutate_iter))
+            by_cols = parse_columns(args.by) if args.by else None
+            if by_cols:
+                df_cur = pipeline.dataframe()
+                if any(c not in df_cur.columns for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=args.dropna)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -586,7 +590,7 @@ def _process_path(
         elif op in ("agg", "agg_df"):
             aggfunc = parse_agg(args.agg)
             df_cur = pipeline.dataframe()
-            by_cols: list[str] | None = parse_columns(args.by) if args.by else None
+            by_cols = parse_columns(args.by) if args.by else None
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
@@ -596,24 +600,6 @@ def _process_path(
                     result = _apply_round(agg_df(df_cur, by_cols, aggfunc, dropna=args.dropna), args.round_ndigits)
             except Exception as e:
                 return _fail(parser, batch, str(e))
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
-        elif op == "group_x":
-            source_df = pipeline.dataframe()
-            gx = parse_group_x_arg(args.group_x)
-            if "by" not in gx and args.by:
-                gx["by"] = parse_columns(args.by)
-            gx["dropna"] = args.dropna
-            by_cols = gx.get("by") or []
-            if by_cols and any(c not in source_df.columns for c in by_cols):
-                return _fail(parser, batch, unknown_columns_message("-group_x", by_cols, list(source_df.columns)))
-            value_col = gx.get("v")
-            if value_col and value_col not in source_df.columns:
-                return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))
-            result = _apply_round(group_x(source_df, **gx), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(result, pretty=args.pretty), args)

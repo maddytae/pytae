@@ -310,3 +310,73 @@ def test_mutate_bracketed_columns():
     assert "bmi score" in res2.columns
 
 
+def test_mutate_grouped_single_col():
+    df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
+    res = df.pt.mutate(
+        "avg = mean(val), diff = val - avg, total = sum(val), cnt = n, cnt2 = n()",
+        by="grp",
+    )
+    assert list(res["avg"]) == [15.0, 15.0, 60.0]
+    assert list(res["diff"]) == [-5.0, 5.0, 0.0]
+    assert list(res["total"]) == [30.0, 30.0, 60.0]
+    assert list(res["cnt"]) == [2, 2, 1]
+    assert list(res["cnt2"]) == [2, 2, 1]
+
+
+def test_mutate_grouped_multi_col():
+    df = pd.DataFrame({
+        "g1": ["a", "a", "a", "b"],
+        "g2": ["x", "x", "y", "x"],
+        "val": [10.0, 30.0, 5.0, 100.0],
+    })
+    res1 = df.pt.mutate("m = mean(val), cnt = n", by=["g1", "g2"])
+    assert list(res1["m"]) == [20.0, 20.0, 5.0, 100.0]
+    assert list(res1["cnt"]) == [2, 2, 1, 1]
+
+    # Comma-separated string by="g1, g2"
+    res2 = df.pt.mutate("m = mean(val)", by="g1, g2")
+    assert list(res2["m"]) == [20.0, 20.0, 5.0, 100.0]
+
+
+def test_mutate_grouped_spaced_brackets():
+    df = pd.DataFrame({"group code": ["a", "a", "b"], "total bill": [10.0, 30.0, 50.0]})
+    res = df.pt.mutate("[diff bill] = [total bill] - mean([total bill])", by="group code")
+    assert list(res["diff bill"]) == [-10.0, 10.0, 0.0]
+
+
+def test_mutate_grouped_dropna_observed():
+    df = pd.DataFrame({"grp": ["a", None, "a"], "val": [10.0, 50.0, 30.0]})
+    res_dropna = df.pt.mutate("m = mean(val)", by="grp", dropna=True)
+    assert pd.isna(res_dropna["m"].iloc[1])
+    assert res_dropna["m"].iloc[0] == 20.0
+    assert res_dropna["m"].iloc[2] == 20.0
+
+    res_keepna = df.pt.mutate("m = mean(val)", by="grp", dropna=False)
+    assert res_keepna["m"].iloc[1] == 50.0
+
+
+def test_mutate_grouped_duplicate_index():
+    df = pd.DataFrame({"grp": ["a", "b", "a"], "val": [10.0, 50.0, 30.0]}, index=[0, 1, 0])
+    res = df.pt.mutate("m = mean(val)", by="grp")
+    assert list(res["m"]) == [20.0, 50.0, 20.0]
+    assert list(res.index) == [0, 1, 0]
+
+
+def test_mutate_grouped_functional_and_callable():
+    df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
+    # Functional pt.mutate
+    res1 = pt.mutate(df, "avg = mean(val)", by="grp")
+    assert list(res1["avg"]) == [15.0, 15.0, 60.0]
+
+    # Callable inside grouped mutate
+    res2 = df.pt.mutate(half_mean=lambda g: g["val"].mean() / 2, by="grp")
+    assert list(res2["half_mean"]) == [7.5, 7.5, 30.0]
+
+
+def test_mutate_grouped_unknown_col():
+    df = pd.DataFrame({"grp": ["a", "b"], "val": [1, 2]})
+    with pytest.raises(KeyError, match="grouping column 'grp_typo' not found"):
+        df.pt.mutate("m = mean(val)", by="grp_typo")
+
+
+

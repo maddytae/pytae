@@ -13,7 +13,6 @@ from .mutate import mutate
 from .other_utilities import (
     clean_columns,
     cols,
-    group_x,
     handle_missing,
     replace_values,
 )
@@ -102,7 +101,6 @@ __all__ = [
 
     "long",
     "wide",
-    "group_x",
     "handle_missing",
     "cols",
     "clean_columns",

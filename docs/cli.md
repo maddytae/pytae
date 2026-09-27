@@ -1,6 +1,6 @@
 # pytae — CLI Reference & Architecture Hub
 
-The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.qry()`, `pt.mutate()`, `pt.agg()`, `pt.group_x()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
+The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.qry()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
 
 ---
 
@@ -69,10 +69,10 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-meta`, `-pager` |
 | **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
 | **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-query`, `-dropna`, intervals `[min, max]`, set membership, comparisons |
-| **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers |
+| **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
-| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-group_x` (broadcast transforms) |
+| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
 | **Reshaping & Matrices** | [Reshaping & Cross-Tabulation Guide](cli/reshape.md) | `-long` (melt), `-wide` (pivot), `-crosstab` (contingency matrix), `-value_counts`, `-unique`, `-sort_by` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, `.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.csv.gz`, `.jsonl.gz`, `-progress` |
@@ -203,15 +203,15 @@ pytae data.parquet -rename "old_col:new_col"
 <a id="aggregations-group-operations"></a>
 ### 7. Aggregations & Group Operations
 
-Perform automated or explicit group summaries, or append group-level statistics to every individual row without collapsing the table.
+Perform automated or explicit group summaries, or append group-level statistics to every individual row without collapsing the table using grouped mutations.
 
-- **Primary flags**: `-by` (group columns), `-agg` (aggregation functions / mappings), `-group_x` (broadcast transform)
+- **Primary flags**: `-by` (group columns), `-agg` (aggregation functions / mappings), `-mutate` (grouped window transforms)
 
 ```bash
 pytae data.parquet -by species -agg mean
 pytae data.parquet -by species -agg "avg_mass = body_mass_g:mean"
 pytae data.parquet -agg mean  # Whole-table grand summary
-pytae data.parquet -by species -group_x "v=body_mass_g,a=mean"  # Broadcast transform
+pytae data.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass"  # Grouped transform
 ```
 
 👉 See the complete guide: **[Aggregations & Grouping Guide](cli/aggregate.md)**
@@ -322,9 +322,8 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-replace_values SPEC` | Clean | Replace cell values (`v=mapping`, `c=cols`, `exact=bool`) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-handle_missing [FILL]` | Clean | Fill NAs (`.` for object, `0` for numeric, or custom fill) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-rename OLD:NEW,...` | Clean | Rename columns anywhere in pipeline or during export | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-by COLS` | Aggregate | Grouping columns for `-agg` and `-group_x` | [cli/aggregate.md](cli/aggregate.md) |
+| `-by COLS` | Aggregate & Transform | Grouping columns for `-agg` and `-mutate` | [cli/aggregate.md](cli/aggregate.md) |
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
-| `-group_x SPEC` | Aggregate | Broadcast group aggregate column to all rows (`-by` / `by=`, `v=`, `a=`) | [cli/aggregate.md](cli/aggregate.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pivot long table to wide format (`c=`, `v=`, `a=`) | [cli/reshape.md](cli/reshape.md) |
 | `-crosstab SPEC` | Reshape | Two-way cross-tabulation matrix (`index=`, `columns=`) | [cli/reshape.md](cli/reshape.md) |
@@ -360,7 +359,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Impute missing values (NA)** | `-handle_missing` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
 | **Whole-table summary** | `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
-| **Append group statistic to rows** | `-group_x` | [Aggregations & Grouping](cli/aggregate.md) |
+| **Append group statistic to rows** | `-by` + `-mutate` | [Feature Engineering & Mutation](cli/mutate.md) |
 | **Unpivot / melt (wide → long)** | `-long` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
 | **Pivot table (long → wide)** | `-wide` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
 | **Contingency matrix / cross-tab** | `-crosstab` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
@@ -400,9 +399,9 @@ pytae data.parquet -sql "select [bill length mm] from data"
 
 <a id="pytae-kwargs"></a>
 ### 4. Standard Reshape Keys: `c=`, `v=`, `a=`
-Pytae standardizes parameter roles across `-long`, `-wide`, `-group_x`, and `-replace_values`:
+Pytae standardizes parameter roles across `-long`, `-wide`, and `-replace_values`:
 - `c=`: Column dimension role (e.g. `c=metric` in melt/pivot, or `c='col_a,col_b'` for replacement scope).
-- `v=`: Value column role (e.g. `v=reading` in melt/pivot, `v=body_mass_g` in broadcast, or `v='old:new'` in replace).
+- `v=`: Value column role (e.g. `v=reading` in melt/pivot, or `v='old:new'` in replace).
 - `a=`: Aggregation function (e.g. `a=mean`, `a=sum`, `a=n`).
 
 ---
@@ -430,8 +429,8 @@ pytae penguins.parquet -qry "species = 'Adelie'" -by species -agg mean
 # Two-way cross-tabulation
 pytae penguins.parquet -crosstab "index=species,columns=island"
 
-# Broadcast group mean without collapsing rows
-pytae tips.parquet -select "day,total_bill,tip" -by day -group_x "v=tip,a=mean"
+# Grouped mutation without collapsing rows
+pytae tips.parquet -select "day,total_bill,tip" -by day -mutate "avg_tip = mean(tip), diff = tip - avg_tip"
 
 # Contingency table with grand totals
 pytae titanic.parquet -crosstab "index=pclass,columns=survived,margins=true"

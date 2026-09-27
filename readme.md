@@ -55,10 +55,10 @@ pt.select(penguins, "species", contains="bill")
 
 - **Filtering** — `pt.qry()` / `df.pt.qry()`: string expressions, dicts, or keyword filters (equality, lists, `in`/`not in`, comparisons, intervals)
 - **Selection** — `pt.select()`: columns by name, regex, dtype, or name pattern
-- **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, `if_else()`, `case_when()`, `map()`
+- **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, grouped window transforms `by=`, `if_else()`, `case_when()`, `map()`
 - **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns
 - **Aggregation** — `pt.agg_df()`: groups by explicit `by=` column(s) (or `None` for whole-table summary) and aggregates numeric columns
-- **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.group_x()`, `pt.clean_columns()`, `pt.replace_values()`
+- **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.clean_columns()`, `pt.replace_values()`
 - **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `data`
 
 See [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) for examples of each.

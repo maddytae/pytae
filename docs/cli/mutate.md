@@ -13,6 +13,7 @@ Compute new columns or overwrite existing columns with mathematical formulas, ra
 - [Defining Multiple Columns](#defining-multiple-columns)
 - [Boolean Indicators & Flags](#boolean-indicators--flags)
 - [Handling Column Names With Spaces](#handling-column-names-with-spaces)
+- [Grouped Mutations (`-by` + `-mutate`)](#grouped-mutations--by--mutate)
 - [Loading Specs From a File (`@specs.txt`)](#loading-specs-from-a-file-specstxt)
 - [Quoting Syntax Rules](#quoting-syntax-rules)
 
@@ -104,6 +105,54 @@ If column names have spaces or hyphens, wrap them in square brackets:
 
 ```bash
 pytae dataset.csv -mutate "[total weight] = [body mass g] + [extra weight]"
+```
+
+---
+
+## Grouped Mutations (`-by` + `-mutate`)
+
+Compute window transforms and group-level statistics (mean, sum, min, max, median, std, var, row count) broadcast back to every row without collapsing the dataset.
+
+Combine `-by` with `-mutate`:
+
+```bash
+# Calculate average tip per day, difference from average, and group sample size
+pytae tips.parquet \
+  -select "day,total_bill,tip" \
+  -by day \
+  -mutate "avg_tip = mean(tip), diff = tip - avg_tip, cnt = n" \
+  -head 5 \
+  -round 2
+```
+
+**Output:**
+```text
+day  total_bill  tip  avg_tip  diff  cnt
+Sun       16.99 1.01     3.26 -2.25   76
+Sun       10.34 1.66     3.26 -1.60   76
+Sun       21.01 3.50     3.26  0.24   76
+Sun       23.68 3.31     3.26  0.05   76
+Sun       24.59 3.61     3.26  0.35   76
+```
+
+### Injected Aggregation Helpers
+
+Within grouped `-mutate` expressions, the following aggregations evaluate per group:
+- `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`
+- `n` or `n()`: Group row count (sample size)
+
+### Multi-Column Grouping and Spaced Columns
+
+Pass multiple grouping columns comma-separated, and use square brackets `[col]` for columns with spaces:
+
+```bash
+pytae tips.parquet \
+  -select "day,time,total_bill,tip" \
+  -rename "total_bill:[total bill]" \
+  -by "day,time" \
+  -mutate "[avg bill] = mean([total bill]), diff = [total bill] - [avg bill]" \
+  -head 5 \
+  -round 2
 ```
 
 ---

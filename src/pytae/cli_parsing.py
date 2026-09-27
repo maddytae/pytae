@@ -336,29 +336,12 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_GROUP_X_KEYS = ("by", "group", "v", "a")
-
-
-def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. by=species,v=body_mass_g,a=max."""
-    kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
-    if "group" in kwargs and "by" not in kwargs:
-        kwargs["by"] = kwargs.pop("group")
-    elif "group" in kwargs and "by" in kwargs:
-        kwargs.pop("group")
-    if "by" in kwargs and isinstance(kwargs["by"], str):
-        kwargs["by"] = parse_columns(kwargs["by"])
-    return kwargs
-
-
-
-
 _LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
 _WIDE_KEYS = ("c", "v", "a", "index", "by")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide/-group_x as key=value tokens, e.g. c=metric,v=reading,a=mean.
+    """Parse -long/-wide as key=value tokens, e.g. c=metric,v=reading,a=mean.
     Comma-separated lists like frames=a,b,c or on=id:id,code:code work with or without quotes."""
     raw = (raw or "").strip()
     if not raw:

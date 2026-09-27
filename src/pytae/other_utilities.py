@@ -6,8 +6,6 @@ from typing import Any
 
 import pandas as pd
 
-from pytae._text import unquote_name as _unquote_name
-
 
 def to_clip(df: pd.DataFrame | pd.Series) -> None:
     """Copy the DataFrame or Series to the system clipboard (tab-separated, no index)."""
@@ -115,48 +113,6 @@ def cols(df: pd.DataFrame, ascending: bool | None = True) -> list:
         return columns
     else:
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
-
-
-def group_x(
-    df: pd.DataFrame,
-    by: str | Sequence[str] | None = None,
-    *,
-    group: str | Sequence[str] | None = None,
-    dropna: bool = True,
-    observed: bool = True,
-    a: str = "n",
-    v: str | None = None,
-) -> pd.DataFrame:
-    """Broadcast a group aggregate to every row (pandas transform).
-
-    Default a='n' is group size. Pass v= and a= for another aggregate.
-    If by is omitted, non-numeric columns are used.
-    """
-    df = df.copy()
-
-    by_cols = by if by is not None else group
-    if by_cols is None:
-        by_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
-        if not by_cols:
-            raise ValueError("group_x: no non-numeric columns to group by; pass by= explicitly")
-    elif isinstance(by_cols, str):
-        by_cols = [_unquote_name(by_cols)]
-    else:
-        by_cols = [_unquote_name(c) for c in by_cols]
-
-    if v is not None:
-        v = _unquote_name(v)
-
-    if a == "n" or v is None:
-        if "n" in df.columns:
-            raise ValueError("group_x: column 'n' already exists; rename it first or pass a=/v= for a different aggregate.")
-        df["n"] = df.groupby(by_cols, dropna=dropna, observed=observed).transform("size")
-    else:
-        if "x" in df.columns:
-            raise ValueError("group_x: column 'x' already exists; rename it first.")
-        df["x"] = df.groupby(by_cols, dropna=dropna, observed=observed)[v].transform(a)
-
-    return df
 
 
 

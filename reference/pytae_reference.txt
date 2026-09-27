@@ -16,7 +16,6 @@ TABLE OF CONTENTS
     4.6.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
     4.7.  Other Utilities:
           - pt.cols() / df.pt.cols()
-          - pt.group_x() / df.pt.group_x()
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
           - pt.replace_values() / df.pt.replace_values()
@@ -82,7 +81,6 @@ Top-Level Functions exported by `pytae`:
   - pt.long(df, c="variable", v="value")
   - pt.wide(df, c="variable", v="value", a=None, dropna=True)
   - pt.sql(df, query, **frames)
-  - pt.group_x(df, by=None, *, group=None, dropna=True, observed=True, a="n", v=None)
   - pt.handle_missing(df, fillna=".")
   - pt.cols(df, ascending=True)
   - pt.clean_columns(df, **kwargs)
@@ -103,7 +101,6 @@ DataFrame Accessor:
     df.pt.long(...)
     df.pt.wide(...)
     df.pt.sql(...)
-    df.pt.group_x(...)
     df.pt.handle_missing(...)
     df.pt.cols(...)
     df.pt.clean_columns(...)
@@ -204,8 +201,8 @@ Creates or overwrites columns using expressions evaluated in order via pandas ev
 with automatic fallback to plain Python eval on Series objects.
 
 Signature:
-  pt.mutate(df: pd.DataFrame, *args: Any, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
-  df.pt.mutate(*args: Any, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
+  pt.mutate(df: pd.DataFrame, *args: Any, by: str | Sequence[str] | None = None, dropna: bool = True, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
+  df.pt.mutate(*args: Any, by: str | Sequence[str] | None = None, dropna: bool = True, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
 
 Calling Styles:
   1. Keyword Arguments:
@@ -410,12 +407,6 @@ Rules & Features:
   ascending=False -> Alphabetical Z-A
   ascending=None  -> Original DataFrame file order
 
-- pt.group_x(df, by=None, *, group=None, dropna=True, observed=True, a="n", v=None):
-  Broadcasts a group aggregate to every row as a new column (like pandas transform).
-  Default a="n" adds group size in column `n`.
-  Pass v="col" and a="mean" to add group mean in column `x`.
-  If by is None, all non-numeric columns are used as group keys.
-
 - pt.handle_missing(df, fillna="."):
   Sanitizes missing values:
   - Category columns are converted to object.
@@ -570,7 +561,7 @@ Aggregation & Reshaping Flags:
   -agg_df [AGGFUNC]     Auto-aggregate by non-numeric cols (e.g. mean, sum, "mean,n")
   -agg KEY=VALUE,...    Aggregate specific cols (e.g. "body_mass_g=mean, count=n")
   -group_by COLUMNS     Set explicit group-by columns
-  -group_x [SPECS]      Broadcast group transform column (e.g. "-by grp -group_x v=col,a=mean" or "by=grp,v=col,a=mean")
+  -by COLUMNS           Grouping columns for -agg and -mutate (e.g. -by species -mutate "avg = mean(mass)")
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pivot long columns into headers: "c=variable, v=value, a=mean"
   -crosstab SPECS       Frequency crosstabulation: "index=species, columns=sex"
@@ -676,7 +667,7 @@ Convert files between formats with zero python code via -o:
    - Always filter columns first if you only want to group by 1 or 2 columns:
      `df.pt.select("species", "body_mass_g").pt.agg_df("mean")`.
 4. The Count Column 'n':
-   - 'n' is a reserved aggregation token in `agg_df` and `group_x`.
+   - 'n' is a reserved aggregation token in `agg_df` and grouped `mutate(..., by=...)`.
    - If your input table already has a real numeric column named 'n', rename it first to avoid collision.
 5. In-Place Modification:
    - pytae NEVER modifies DataFrames in place. Always assign the returned DataFrame:
@@ -890,7 +881,6 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
 │   └── test_utilities.py
 └── uv.lock
 
-
 ================================================================================
 9. BUILD & CONFIGURATION (pyproject.toml)
 ================================================================================
@@ -958,8 +948,8 @@ ignore = [
 "tests/*" = ["E402"]  # sys.path insert before pytae import
 "tests/test_mutate.py" = ["E402", "F841"]  # @locals are used via pandas eval
 "src/pytae/plotting.py" = ["E741", "F841"]
-"docs/library/*" = ["E402", "F401"]
-"docs/plotting/*" = ["E402", "F401"]
+"docs/library/*" = ["E402", "F401", "E401", "E701", "I001"]
+"docs/plotting/*" = ["E402", "F401", "E401", "E701", "I001"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -998,7 +988,6 @@ from .mutate import mutate
 from .other_utilities import (
     clean_columns,
     cols,
-    group_x,
     handle_missing,
     replace_values,
 )
@@ -1087,7 +1076,6 @@ __all__ = [
 
     "long",
     "wide",
-    "group_x",
     "handle_missing",
     "cols",
     "clean_columns",
@@ -1096,7 +1084,6 @@ __all__ = [
     "everything",
     "PtAccessor",
 ]
-
 
 ################################################################################
 # FILE: src/pytae/__main__.py
@@ -1111,7 +1098,6 @@ from pytae.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
 ################################################################################
 # FILE: src/pytae/_text.py
@@ -1195,7 +1181,6 @@ def unquote_name(raw: str) -> str:
     return raw
 
 
-
 ################################################################################
 # FILE: src/pytae/accessor.py
 ################################################################################
@@ -1224,9 +1209,6 @@ from .other_utilities import (
     cols as _cols,
 )
 from .other_utilities import (
-    group_x as _group_x,
-)
-from .other_utilities import (
     handle_missing as _handle_missing,
 )
 from .other_utilities import (
@@ -1248,8 +1230,15 @@ class PtAccessor:
     def qry(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
         return _qry(self._obj, *args, **kwargs)
 
-    def mutate(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        return _mutate(self._obj, *args, **kwargs)
+    def mutate(
+        self,
+        *args: Any,
+        by: str | Sequence[str] | None = None,
+        dropna: bool = True,
+        observed: bool = True,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        return _mutate(self._obj, *args, by=by, dropna=dropna, observed=observed, **kwargs)
 
     def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
         return _sql(self._obj, query, **frames)
@@ -1292,18 +1281,6 @@ class PtAccessor:
     ) -> pd.DataFrame:
         from .shape import wide as _wide
         return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
-
-    def group_x(
-        self,
-        by: str | Sequence[str] | None = None,
-        *,
-        group: str | Sequence[str] | None = None,
-        dropna: bool = True,
-        observed: bool = True,
-        a: str = "n",
-        v: str | None = None,
-    ) -> pd.DataFrame:
-        return _group_x(self._obj, by=by, group=group, dropna=dropna, observed=observed, a=a, v=v)
 
     def handle_missing(
         self,
@@ -1391,7 +1368,6 @@ class PtAccessor:
         return plotter
 
 
-
 ################################################################################
 # FILE: src/pytae/agg_df.py
 ################################################################################
@@ -1404,8 +1380,19 @@ from typing import Any
 import pandas as pd
 
 from pytae._text import unquote_name as _unquote_name
+from pytae.cli_parsing import parse_agg as _parse_agg
 
 _UNSET = object()
+
+
+def _safe_parse_agg(raw: str) -> Any:
+    try:
+        return _parse_agg(raw)
+    except SystemExit as exc:
+        msg = str(exc)
+        if msg.startswith("-agg: "):
+            msg = f"agg(): {msg[6:]}"
+        raise ValueError(msg) from exc
 _KNOWN_AGGS = {
     "mean",
     "sum",
@@ -1460,7 +1447,10 @@ def _agg_df_list(
             return grouped_df
 
         agg_operations = {col: remaining_agg_types for col in numeric_cols}
-        grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+        try:
+            grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+        except (AttributeError, ValueError) as exc:
+            raise ValueError(f"agg(): invalid aggregation function ({exc})") from exc
 
         # Flatten MultiIndex in columns
         if len(remaining_agg_types) > 1:
@@ -1487,7 +1477,10 @@ def _agg_df_list(
             for agg in remaining_agg_types:
                 col_name = f"{col}_{agg}" if len(remaining_agg_types) > 1 else col
                 s = df[col]
-                val = getattr(s, agg)() if hasattr(s, agg) and callable(getattr(s, agg)) else s.agg(agg)
+                try:
+                    val = getattr(s, agg)() if hasattr(s, agg) and callable(getattr(s, agg)) else s.agg(agg)
+                except Exception as exc:
+                    raise ValueError(f"agg(): invalid aggregation function {agg!r} ({exc})") from exc
                 row_dict[col_name] = [val]
 
         return pd.DataFrame(row_dict)
@@ -1520,14 +1513,27 @@ def _agg_df_dict(
         if isinstance(spec, str) and ":" in spec:
             src_col, aggfunc = spec.split(":", 1)
             src_col, aggfunc = _unquote_name(src_col.strip()), aggfunc.strip()
-            aggs_list = [aggfunc]
+            aggfunc_clean = _unquote_name(aggfunc)
+            if "," in aggfunc_clean:
+                aggs_list = [s.strip() for s in aggfunc_clean.split(",") if s.strip()]
+            else:
+                aggs_list = [aggfunc_clean]
         elif isinstance(spec, tuple) and len(spec) == 2 and _unquote_name(spec[0]) in df.columns:
             src_col = _unquote_name(spec[0])
             aggfunc = spec[1]
             aggs_list = [aggfunc] if isinstance(aggfunc, str) else list(aggfunc)
         else:
             src_col = clean_out_name
-            aggs_list = [spec] if isinstance(spec, str) else list(spec)
+            if isinstance(spec, str):
+                spec_clean = _unquote_name(spec)
+                if "," in spec_clean:
+                    aggs_list = [s.strip() for s in spec_clean.split(",") if s.strip()]
+                else:
+                    aggs_list = [spec]
+            elif isinstance(spec, (list, tuple, set)):
+                aggs_list = list(spec)
+            else:
+                aggs_list = [spec]
 
         aggs_list = list(dict.fromkeys(aggs_list))  # preserve order
         if "n" in aggs_list:
@@ -1616,14 +1622,17 @@ def agg_df(
         Grouping column name(s). Pass None to perform a whole-table summary (grand total, 1 row).
         Can be passed positionally as the first argument or via keyword `by=` / `group_by=`.
     *args : str or list of str
-        Whole-frame aggregation function(s) applied to all numeric columns:
-        - If str (e.g., 'mean'): Apply to all numeric columns.
-        - If list (e.g., ['mean', 'n']): Apply listed aggregations. 'n' computes group row counts.
+        Aggregation specification(s):
+        - Column mapping string(s) (e.g., 'tip = mean, [total bill] = mean, n = n' or
+          'tip = mean', '[total bill] = mean', 'n = n'). Brackets [...] enclose columns with spaces.
+        - Whole-frame aggregation function(s) applied to all numeric columns:
+          - If str (e.g., 'mean', or 'mean, n'): Apply to all numeric columns.
+          - If list (e.g., ['mean', 'n']): Apply listed aggregations. 'n' computes group row counts.
     **kwargs :
         - Column aggregations passed as keyword arguments (e.g. df.pt.agg('species', body_mass_g='mean', count='n')).
           Keys with value 'n' specify the output column name for group row counts.
           Supports named aggregations like total='v1:sum'.
-        - a (str or list, optional): Whole-frame aggregation function(s) when passed as keyword `a=`.
+        - a (str or list, optional): Whole-frame or mapping aggregation function(s) when passed as keyword `a=`.
         - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
         - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
 
@@ -1650,7 +1659,8 @@ def agg_df(
 
     if isinstance(by, dict):
         raise TypeError(
-            "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+            "agg() no longer accepts dictionaries. Pass column aggregations as string mapping "
+            "(e.g. df.pt.agg('by_col', 'col = mean, n = n')) or keyword arguments: "
             "df.pt.agg('by_col', body_mass_g='mean', count='n')."
         )
 
@@ -1695,22 +1705,76 @@ def agg_df(
         raise TypeError(f"'by' must be a column name (str), list of column names, or None, got {type(by).__name__}")
 
     # Extract aggregation spec
+    col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed", "a")}
+    has_a = "a" in kwargs
+    a_arg = kwargs.pop("a", None)
+
+    if args and has_a:
+        raise TypeError("agg() got multiple values for aggregation spec ('a' and positional args)")
+
+    agg_types: Any
     if args:
         if isinstance(args[0], dict):
             raise TypeError(
-                "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "agg() no longer accepts dictionaries. Pass column aggregations as string mapping "
+                "(e.g. df.pt.agg('by_col', 'col = mean, n = n')) or keyword arguments: "
                 "df.pt.agg('by_col', body_mass_g='mean', count='n')."
             )
-        agg_types = args[0]
-    elif "a" in kwargs:
-        if isinstance(kwargs["a"], dict):
+        if all(isinstance(x, str) for x in args):
+            raw_spec = ", ".join(args)
+            parsed = _safe_parse_agg(raw_spec)
+            if isinstance(parsed, dict):
+                if col_kwargs:
+                    parsed.update(col_kwargs)
+                agg_types = parsed
+            else:
+                if col_kwargs:
+                    raise ValueError(
+                        "agg(): cannot mix whole-frame aggregation string with column keyword arguments; "
+                        "use one or the other"
+                    )
+                agg_types = parsed
+        elif len(args) == 1 and isinstance(args[0], (list, tuple)):
+            if col_kwargs:
+                raise ValueError(
+                    "agg(): cannot mix whole-frame aggregation list with column keyword arguments; "
+                    "use one or the other"
+                )
+            agg_types = list(args[0])
+        elif len(args) == 1:
+            agg_types = args[0]
+        else:
+            raise ValueError(f"agg(): unsupported positional arguments {args!r}")
+    elif has_a:
+        if isinstance(a_arg, dict):
             raise TypeError(
-                "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "agg() no longer accepts dictionaries. Pass column aggregations as string mapping "
+                "(e.g. df.pt.agg('by_col', 'col = mean, n = n')) or keyword arguments: "
                 "df.pt.agg('by_col', body_mass_g='mean', count='n')."
             )
-        agg_types = kwargs.pop("a")
+        if isinstance(a_arg, str):
+            parsed = _safe_parse_agg(a_arg)
+            if isinstance(parsed, dict):
+                if col_kwargs:
+                    parsed.update(col_kwargs)
+                agg_types = parsed
+            else:
+                if col_kwargs:
+                    raise ValueError(
+                        "agg(): cannot mix whole-frame aggregation string with column keyword arguments; "
+                        "use one or the other"
+                    )
+                agg_types = parsed
+        elif isinstance(a_arg, (list, tuple)):
+            if col_kwargs:
+                raise ValueError(
+                    "agg(): cannot mix whole-frame aggregation list with column keyword arguments; "
+                    "use one or the other"
+                )
+            agg_types = list(a_arg)
+        else:
+            agg_types = a_arg
     else:
-        col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed")}
         agg_types = col_kwargs if col_kwargs else ["sum"]
 
     dropna = kwargs.get("dropna", True)
@@ -1803,7 +1867,7 @@ _CLI_FLAGS = {
     "-unique", "--unique", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
     "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
-    "-agg_df", "--agg_df", "-group_x", "--group_x", "-handle_missing", "--handle_missing",
+    "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide",
     "-crosstab", "--crosstab", "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
@@ -1913,7 +1977,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "asc or desc (default: asc), e.g. species,body_mass_g desc")
     parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
-                              "Used by -agg and -group_x.")
+                              "Used by -agg and -mutate.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
@@ -1927,10 +1991,6 @@ def build_parser() -> argparse.ArgumentParser:
                               "without -by, computes a whole-table summary (grand total). "
                               "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
                               "(v1 = sum, total = v1:sum, count = n). Defaults to sum.")
-    parser.add_argument("-group_x", "--group_x", dest="group_x", nargs="?", const="", default=None,
-                         metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="broadcast a group aggregate back to every row (pytae group_x()); default is group "
-                              "size n on non-numeric columns; e.g. -by species -group_x 'v=body_mass_g,a=max' or by=species,v=body_mass_g,a=max")
     parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
@@ -1960,7 +2020,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "requires margins=true); honors -dropna")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
-                         help="for -agg_df, -agg, -group_x, -wide, -value_counts, and -crosstab: "
+                         help="for -agg_df, -agg, -mutate, -wide, -value_counts, and -crosstab: "
                               "include NA keys when false; accepts true or false (default: true)")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
@@ -2123,8 +2183,7 @@ def main(argv: list[str] | None = None) -> int:
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
                          args.value_counts, args.unique, args.head is not None,
                          args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.agg is not None,
-                         args.group_x is not None, args.handle_missing is not None,
+                         args.agg is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
@@ -2133,17 +2192,16 @@ def main(argv: list[str] | None = None) -> int:
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.head is not None,
                      args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg is not None,
-                     args.group_x is not None, args.handle_missing is not None,
+                     args.agg is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
                      args.clean_columns is not None, args.merge, args.concat])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg/-group_x/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
+                     "-agg/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
                      "run -shape separately")
-    if args.by is not None and args.agg is None and args.group_x is None:
-        parser.error("-by requires -agg or -group_x")
+    if args.by is not None and args.agg is None and not args.mutate:
+        parser.error("-by requires -agg or -mutate")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
@@ -2489,19 +2547,22 @@ def parse_agg(raw: str):
             "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
             "(col = mean, n = n)"
         )
-    entries = [e for e in _tokenize(raw, ",", keep_quotes=True) if e]
+    entries = [e for e in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if e]
     if not entries:
         raise SystemExit("-agg: expected a name, a comma list, or a mapping")
 
     def _is_mapping(entry: str) -> bool:
-        return len(_tokenize(entry, "=", keep_quotes=True)) >= 2 or len(_tokenize(entry, ":", keep_quotes=True)) >= 2
+        return (
+            len(_tokenize(entry, "=", keep_quotes=True, track_brackets=True)) >= 2
+            or len(_tokenize(entry, ":", keep_quotes=True, track_brackets=True)) >= 2
+        )
 
     mapped = [_is_mapping(e) for e in entries]
     if all(mapped):
         out: dict[str, str] = {}
         for entry in entries:
             if "=" in entry:
-                parts = _tokenize(entry, "=", keep_quotes=True)
+                parts = _tokenize(entry, "=", keep_quotes=True, track_brackets=True)
                 key = _unquote_name(parts[0])
                 value = _unquote_name("=".join(parts[1:]))
                 if key in ("column", "aggfunc"):
@@ -2563,29 +2624,12 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_GROUP_X_KEYS = ("by", "group", "v", "a")
-
-
-def parse_group_x_arg(raw: str | None) -> dict:
-    """Parse -group_x as key=value tokens, e.g. by=species,v=body_mass_g,a=max."""
-    kwargs = parse_reshape_kwargs(raw, keys=_GROUP_X_KEYS, flag="-group_x")
-    if "group" in kwargs and "by" not in kwargs:
-        kwargs["by"] = kwargs.pop("group")
-    elif "group" in kwargs and "by" in kwargs:
-        kwargs.pop("group")
-    if "by" in kwargs and isinstance(kwargs["by"], str):
-        kwargs["by"] = parse_columns(kwargs["by"])
-    return kwargs
-
-
-
-
 _LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
 _WIDE_KEYS = ("c", "v", "a", "index", "by")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide/-group_x as key=value tokens, e.g. c=metric,v=reading,a=mean.
+    """Parse -long/-wide as key=value tokens, e.g. c=metric,v=reading,a=mean.
     Comma-separated lists like frames=a,b,c or on=id:id,code:code work with or without quotes."""
     raw = (raw or "").strip()
     if not raw:
@@ -2876,7 +2920,6 @@ def parse_concat_arg(raw: str) -> dict:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
 
-
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -2990,7 +3033,9 @@ class _Pipeline:
             return f"-qry: {exc}"
         return None
 
-    def apply_mutate(self, spec: str) -> str | None:
+    def apply_mutate(
+        self, spec: str, by: list[str] | None = None, dropna: bool = True
+    ) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()
         if (raw_spec.startswith("'") and raw_spec.endswith("'")) or (raw_spec.startswith('"') and raw_spec.endswith('"')):
@@ -3013,7 +3058,7 @@ class _Pipeline:
         try:
             from pytae.mutate import parse_mutate_spec
             parsed = parse_mutate_spec(raw_spec)
-            self._df = mutate(df, **parsed)
+            self._df = mutate(df, parsed, by=by, dropna=dropna)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None
@@ -3215,7 +3260,6 @@ class _OrderedAppend(argparse.Action):
         setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
 
-
 ################################################################################
 # FILE: src/pytae/cli_run.py
 ################################################################################
@@ -3237,14 +3281,13 @@ from pytae.cli_parsing import (
     parse_clean_columns_arg,
     parse_columns,
     parse_crosstab_arg,
-    parse_group_x_arg,
     parse_long_arg,
     parse_sort_by,
     parse_wide_arg,
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
-from pytae.other_utilities import clean_columns, group_x, handle_missing
+from pytae.other_utilities import clean_columns, handle_missing
 from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
 
 
@@ -3621,7 +3664,12 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "mutate":
-            err = pipeline.apply_mutate(next(mutate_iter))
+            by_cols = parse_columns(args.by) if args.by else None
+            if by_cols:
+                df_cur = pipeline.dataframe()
+                if any(c not in df_cur.columns for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=args.dropna)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -3807,7 +3855,7 @@ def _process_path(
         elif op in ("agg", "agg_df"):
             aggfunc = parse_agg(args.agg)
             df_cur = pipeline.dataframe()
-            by_cols: list[str] | None = parse_columns(args.by) if args.by else None
+            by_cols = parse_columns(args.by) if args.by else None
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
@@ -3817,24 +3865,6 @@ def _process_path(
                     result = _apply_round(agg_df(df_cur, by_cols, aggfunc, dropna=args.dropna), args.round_ndigits)
             except Exception as e:
                 return _fail(parser, batch, str(e))
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
-        elif op == "group_x":
-            source_df = pipeline.dataframe()
-            gx = parse_group_x_arg(args.group_x)
-            if "by" not in gx and args.by:
-                gx["by"] = parse_columns(args.by)
-            gx["dropna"] = args.dropna
-            by_cols = gx.get("by") or []
-            if by_cols and any(c not in source_df.columns for c in by_cols):
-                return _fail(parser, batch, unknown_columns_message("-group_x", by_cols, list(source_df.columns)))
-            value_col = gx.get("v")
-            if value_col and value_col not in source_df.columns:
-                return _fail(parser, batch, unknown_columns_message("-group_x", [value_col], list(source_df.columns)))
-            result = _apply_round(group_x(source_df, **gx), args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(result, pretty=args.pretty), args)
@@ -3947,7 +3977,6 @@ def _process_path(
 
 
 
-
 ################################################################################
 # FILE: src/pytae/mutate.py
 ################################################################################
@@ -3957,6 +3986,7 @@ import ast
 import difflib
 import inspect
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -4286,6 +4316,13 @@ def _compile_fallback(expr: str):
     return compile(tree, "<pytae-mutate>", "eval")
 
 
+class _RowCount(int):
+    """Integer that can also be called as a function n() to match dplyr/polars conventions."""
+
+    def __call__(self) -> int:
+        return int(self)
+
+
 def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     """out.eval(expr), resolving @local_var references against the scope that
     called mutate() rather than mutate()'s own frame — mutate() sits between
@@ -4295,8 +4332,8 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     pandas' eval() can't parse some Python constructs (notably dict literals,
     e.g. `species.map({'a': 1})`, string slicing like `col.str[:8]`, and custom
     helpers like `if_else`, `case_when`, `coalesce`); when it rejects one
-    (NotImplementedError, ValueError, or SyntaxError) we fall back to a plain
-    Python eval() with each column exposed as a Series plus the caller's scope,
+    (NotImplementedError, ValueError, SyntaxError, or UndefinedVariableError) we fall back
+    to a plain Python eval() with each column exposed as a Series plus the caller's scope,
     so natural pandas method chains work. Bracketed `[col]` and backtick `col`
     names are safely mapped to valid identifiers in fallback mode. `@name` refs
     are rewritten to the caller-scope value, and `and`/`or`/`not` are rewritten
@@ -4305,7 +4342,7 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     normalized = _normalize_col_brackets(expr, known_cols)
     try:
         return out.eval(normalized, local_dict=local_dict, global_dict=global_dict)
-    except (NotImplementedError, ValueError, SyntaxError):
+    except (NotImplementedError, ValueError, SyntaxError, UndefinedVariableError):
         safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
         rewritten, at_names = _strip_at_refs(safe_expr)
         namespace = {**global_dict, **local_dict}
@@ -4316,6 +4353,15 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         namespace["if_else"] = _if_else
         namespace["case_when"] = _case_when
         namespace["coalesce"] = _coalesce
+        namespace["mean"] = lambda s: s.mean() if hasattr(s, "mean") else np.mean(s)
+        namespace["sum"] = lambda s: s.sum() if hasattr(s, "sum") else np.sum(s)
+        namespace["median"] = lambda s: s.median() if hasattr(s, "median") else np.median(s)
+        namespace["min"] = lambda s: s.min() if hasattr(s, "min") else np.min(s)
+        namespace["max"] = lambda s: s.max() if hasattr(s, "max") else np.max(s)
+        namespace["std"] = lambda s: s.std() if hasattr(s, "std") else np.std(s)
+        namespace["var"] = lambda s: s.var() if hasattr(s, "var") else np.var(s)
+        if "n" not in out.columns and "n" not in local_dict and "n" not in global_dict:
+            namespace["n"] = _RowCount(len(out))
         for name in at_names:  # @-refs mean caller-scope vars, so they win over columns
             if name in local_dict:
                 namespace[name] = local_dict[name]
@@ -4329,6 +4375,9 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
 def mutate(
     df: pd.DataFrame,
     *args: Any,
+    by: str | Sequence[str] | None = None,
+    dropna: bool = True,
+    observed: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
@@ -4345,6 +4394,15 @@ def mutate(
         - String expression(s), e.g. "bmi = body_mass_g / bill_length_mm ** 2".
         - File path prefixed with '@' (e.g. "@transforms.txt").
         - Dictionary of column expressions, e.g. {"bmi": "body_mass_g / 1000"}.
+    by : str or sequence of str, optional
+        Grouping column(s) across which to evaluate the mutations (like dplyr's `.by` or
+        pandas transform/window operations). When specified, aggregations (e.g. `mean(x)`,
+        `sum(x)`, `n`) and window expressions (e.g. `x - mean(x)`) are evaluated per group
+        and broadcast back to each row without collapsing the DataFrame.
+    dropna : bool, default True
+        Whether to drop NA groups when grouping with `by=`.
+    observed : bool, default True
+        Whether to observe categorical levels when grouping with `by=`.
     params : dict, optional
         Explicit dictionary of parameters/variables to make available for `@name` references.
         Can also be passed via `_params=`.
@@ -4368,30 +4426,9 @@ def mutate(
     0       3000.0            30.0  3.333333
     1       4000.0            40.0  2.500000
 
-    >>> # later entries can reference columns derived earlier in the same call
-    >>> df.pt.mutate(mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
-       body_mass_g  bill_length_mm  mass_kg  mass_lb
-    0       3000.0            30.0      3.0  6.61386
-    1       4000.0            40.0      4.0  8.81848
-
-    >>> # dplyr-style if_else()/case_when() for conditional/string outcomes
-    >>> df.pt.mutate(result="if_else(body_mass_g >= 3500, 'heavy', 'light')")
-       body_mass_g  bill_length_mm result
-    0       3000.0            30.0  light
-    1       4000.0            40.0  heavy
-
-    >>> df.pt.mutate(grade="case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')")
-       body_mass_g  bill_length_mm grade
-    0       3000.0            30.0     C
-    1       4000.0            40.0     A
-
-    >>> # natural pandas method chains work (dict literals + Series.map(), etc.)
-    >>> s = pd.DataFrame({'species': ['Adelie', 'Gentoo', 'Chinstrap']})
-    >>> s.pt.mutate(code="species.map({'Adelie': 'A', 'Gentoo': 'G'}).fillna('X')")
-         species code
-    0     Adelie    A
-    1     Gentoo    G
-    2  Chinstrap    X
+    >>> # Grouped mutation: compute group mean and deviation without collapsing rows
+    >>> tips = pt.sample("tips")
+    >>> tips.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n", by="day").head(3)
     """
     _here = inspect.currentframe()
     caller_frame = None if _here is None else _here.f_back
@@ -4405,6 +4442,25 @@ def mutate(
     local_dict = caller_frame.f_locals.copy() if caller_frame is not None else {}
     global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
+
+    by = kwargs.pop("by", by)
+    dropna = kwargs.pop("dropna", dropna)
+    observed = kwargs.pop("observed", observed)
+
+    by_cols: list[str] | None = None
+    if by is not None:
+        if isinstance(by, str):
+            by_cols = [_unquote_name(c.strip()) for c in by.split(",") if c.strip()]
+        elif isinstance(by, (list, tuple, set)):
+            by_cols = [_unquote_name(c) for c in by]
+        else:
+            raise TypeError(f"mutate(): by must be a column name or sequence of names, got {type(by).__name__}")
+        all_cols = list(df.columns)
+        for col in by_cols:
+            if col not in df.columns:
+                close = difflib.get_close_matches(str(col), [str(c) for c in all_cols], n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"mutate: grouping column '{col}' not found in DataFrame{hint}")
 
     params = kwargs.pop("_params", None)
     if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
@@ -4442,12 +4498,36 @@ def mutate(
     out = df.copy()
     for col, expr in expressions.items():
         try:
-            if callable(expr):
-                out[col] = expr(out)
-            elif isinstance(expr, str):
-                out[col] = _eval(out, expr, local_dict, global_dict)
+            if by_cols is None:
+                if callable(expr):
+                    out[col] = expr(out)
+                elif isinstance(expr, str):
+                    out[col] = _eval(out, expr, local_dict, global_dict)
+                else:
+                    out[col] = expr
             else:
-                out[col] = expr
+                work_df = out.copy(deep=False)
+                work_df.index = pd.RangeIndex(len(out))
+                pieces = []
+                for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
+                    if callable(expr):
+                        val = expr(group_df)
+                    elif isinstance(expr, str):
+                        val = _eval(group_df, expr, local_dict, global_dict)
+                    else:
+                        val = expr
+                    if isinstance(val, pd.Series):
+                        if len(val) == len(group_df):
+                            val = val.copy()
+                            val.index = group_df.index
+                        pieces.append(val)
+                    else:
+                        pieces.append(pd.Series(val, index=group_df.index))
+                if pieces:
+                    combined = pd.concat(pieces).reindex(work_df.index)
+                    out[col] = combined.array
+                else:
+                    out[col] = pd.Series(index=out.index, dtype=float)
         except NameError as exc:  # UndefinedVariableError (pandas) and plain NameError (fallback)
             parts = str(exc).split("'")
             missing = parts[1] if len(parts) > 1 else ""
@@ -4460,7 +4540,6 @@ def mutate(
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
 
-
 ################################################################################
 # FILE: src/pytae/other_utilities.py
 ################################################################################
@@ -4471,8 +4550,6 @@ from collections.abc import Hashable, Sequence
 from typing import Any
 
 import pandas as pd
-
-from pytae._text import unquote_name as _unquote_name
 
 
 def to_clip(df: pd.DataFrame | pd.Series) -> None:
@@ -4581,48 +4658,6 @@ def cols(df: pd.DataFrame, ascending: bool | None = True) -> list:
         return columns
     else:
         raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
-
-
-def group_x(
-    df: pd.DataFrame,
-    by: str | Sequence[str] | None = None,
-    *,
-    group: str | Sequence[str] | None = None,
-    dropna: bool = True,
-    observed: bool = True,
-    a: str = "n",
-    v: str | None = None,
-) -> pd.DataFrame:
-    """Broadcast a group aggregate to every row (pandas transform).
-
-    Default a='n' is group size. Pass v= and a= for another aggregate.
-    If by is omitted, non-numeric columns are used.
-    """
-    df = df.copy()
-
-    by_cols = by if by is not None else group
-    if by_cols is None:
-        by_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
-        if not by_cols:
-            raise ValueError("group_x: no non-numeric columns to group by; pass by= explicitly")
-    elif isinstance(by_cols, str):
-        by_cols = [_unquote_name(by_cols)]
-    else:
-        by_cols = [_unquote_name(c) for c in by_cols]
-
-    if v is not None:
-        v = _unquote_name(v)
-
-    if a == "n" or v is None:
-        if "n" in df.columns:
-            raise ValueError("group_x: column 'n' already exists; rename it first or pass a=/v= for a different aggregate.")
-        df["n"] = df.groupby(by_cols, dropna=dropna, observed=observed).transform("size")
-    else:
-        if "x" in df.columns:
-            raise ValueError("group_x: column 'x' already exists; rename it first.")
-        df["x"] = df.groupby(by_cols, dropna=dropna, observed=observed)[v].transform(a)
-
-    return df
 
 
 
@@ -5687,7 +5722,6 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
     elif not isinstance(plotter, Plotter):
         raise TypeError(f"Expected a Plotter instance, got {type(plotter).__name__}")
     return plotter.finalize(**kwargs)
-
 
 
 
@@ -6976,7 +7010,6 @@ def select(
     final_cols = [col for col in ordered_cols if col not in excluded_cols]
     return df[final_cols]
 
-
 ################################################################################
 # FILE: src/pytae/shape.py
 ################################################################################
@@ -7140,7 +7173,6 @@ def wide(
     wide_df.columns.name = None
     return wide_df
 
-
 ################################################################################
 # FILE: src/pytae/sql.py
 ################################################################################
@@ -7270,6 +7302,7 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
         con.close()
 
 
+
 ================================================================================
 11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
@@ -7278,7 +7311,6 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
 # FILE: tests/__init__.py
 ################################################################################
 # Makes `from tests.cli_helpers import ...` work when pytest's rootdir is the repo.
-
 
 ################################################################################
 # FILE: tests/cli_helpers.py
@@ -7337,7 +7369,6 @@ def _write_three_id_csvs(tmp_path):
     pd.DataFrame({"id": [1, 2], "z": ["m", "n"]}).to_csv(c, index=False)
     return str(a), str(b), str(c)
 
-
 ################################################################################
 # FILE: tests/conftest.py
 ################################################################################
@@ -7370,7 +7401,6 @@ def sample_parquet(tmp_path):
         pytae.sample_data[name].to_parquet(path)
         return str(path)
     return _write
-
 
 ################################################################################
 # FILE: tests/test_accessor.py
@@ -7406,7 +7436,6 @@ def test_pt_select_then_pandas_head():
     out = penguins.pt.select("species", "body_mass_g").head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
-
 
 ################################################################################
 # FILE: tests/test_agg_df.py
@@ -7557,16 +7586,82 @@ def test_agg_df_whole_table_summary():
     assert res["sales_mean"].iloc[0] == 200.0
 
 
-def test_agg_df_whole_table_kwargs():
+def test_agg_df_string_spec_with_brackets():
     df = pd.DataFrame({
-        "sales": [100.0, 200.0, 300.0],
-        "units": [10, 20, 30],
+        "smoker status": ["Yes", "Yes", "No"],
+        "tip amount": [2.0, 4.0, 3.0],
+        "total bill": [10.0, 20.0, 30.0],
     })
-    res = df.pt.agg_df(None, sales="sum", orders="n")
-    assert len(res) == 1
-    assert list(res.columns) == ["sales", "orders"]
-    assert res["sales"].iloc[0] == 600.0
-    assert res["orders"].iloc[0] == 3
+    # 1. Single string spec with brackets
+    res1 = df.pt.agg_df("[smoker status]", "[tip amount] = mean, [total bill] = mean, n = n")
+    assert list(res1.columns) == ["smoker status", "tip amount", "total bill", "n"]
+    assert list(res1["smoker status"]) == ["No", "Yes"]
+    assert list(res1["tip amount"]) == [3.0, 3.0]
+    assert list(res1["total bill"]) == [30.0, 15.0]
+    assert list(res1["n"]) == [1, 2]
+
+    # 2. Multiple positional string specs
+    res2 = df.pt.agg_df("[smoker status]", "[tip amount] = mean", "[total bill] = mean", "n = n")
+    pd.testing.assert_frame_equal(res1, res2)
+
+    # 3. Passed via keyword a=
+    res3 = df.pt.agg_df("[smoker status]", a="[tip amount] = mean, [total bill] = mean, n = n")
+    pd.testing.assert_frame_equal(res1, res3)
+
+    # 4. Mixed string spec and kwargs
+    res4 = df.pt.agg_df("[smoker status]", "[total bill] = mean", **{"tip amount": "mean", "n": "n"})
+    assert list(res4.columns) == ["smoker status", "total bill", "tip amount", "n"]
+    assert list(res4["total bill"]) == [30.0, 15.0]
+
+    # 5. Named aggregation with brackets in output and source
+    res5 = df.pt.agg_df("[smoker status]", "[avg bill] = [total bill]:mean, [bill sum] = [total bill]:sum, [count] = n")
+    assert list(res5.columns) == ["smoker status", "avg bill", "bill sum", "count"]
+    assert list(res5["avg bill"]) == [30.0, 15.0]
+    assert list(res5["bill sum"]) == [30.0, 30.0]
+    assert list(res5["count"]) == [1, 2]
+
+    # 6. Whole-table summary with string mapping
+    res6 = df.pt.agg_df(None, "[avg bill] = [total bill]:mean, [count] = n")
+    assert len(res6) == 1
+    assert list(res6.columns) == ["avg bill", "count"]
+    assert res6["avg bill"].iloc[0] == 20.0
+    assert res6["count"].iloc[0] == 3
+
+
+def test_agg_df_whole_frame_string_spec():
+    df = pd.DataFrame({"g": ["a", "a", "b"], "v1": [1.0, 3.0, 5.0], "v2": [2.0, 4.0, 6.0]})
+    res = df.pt.agg_df("g", "mean, n")
+    assert list(res.columns) == ["g", "n", "v1", "v2"]
+    assert list(res["n"]) == [2, 1]
+    assert list(res["v1"]) == [2.0, 5.0]
+
+    res_multi = df.pt.agg_df("g", "mean", "n")
+    pd.testing.assert_frame_equal(res, res_multi)
+
+
+def test_agg_df_user_pipeline_tips():
+    tips = pt.sample("tips")
+    res = (
+        tips
+        .pt.qry(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
+        .pt.select("smoker", "tip", "total_bill")
+        .rename(columns={"total_bill": "total bill"})
+        .pt.agg_df("smoker", "tip = mean, [total bill] = mean, n = n")
+    )
+    assert list(res.columns) == ["smoker", "tip", "total bill", "n"]
+    assert len(res) == 2
+    assert list(res["smoker"]) == ["Yes", "No"]
+    assert list(res["n"]) == [57, 97]
+
+
+def test_agg_df_string_spec_errors():
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
+    with pytest.raises(ValueError, match="agg\\(\\):"):
+        df.pt.agg_df("g", "invalid syntax without equals and not known agg")
+    with pytest.raises(ValueError, match="cannot mix whole-frame aggregation"):
+        df.pt.agg_df("g", "mean", v="sum")
+    with pytest.raises(TypeError, match="multiple values for aggregation spec"):
+        df.pt.agg_df("g", "mean", a="sum")
 
 
 if __name__ == "__main__":
@@ -7705,44 +7800,13 @@ def test_agg_retired_syntax_raises_helpful_error(tmp_path):
         cli.main([path, "-by", "grp", "-agg", "column=v1,aggfunc=sum"])
 
 
-def test_by_requires_agg_or_group_x(tmp_path, capsys):
+def test_by_requires_agg_or_mutate(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
-
-
-def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "grp": ["x", "x", "y", "y"],
-            "val": [1, 2, 3, 4],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-group_x", "by=grp,v=val,a=mean"])
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "1.5" in out and "3.5" in out
-
-    # also accepts group= as alias
-    exit_code2 = cli.main([path, "-group_x", "group=grp,v=val,a=mean"])
-    out2 = capsys.readouterr().out
-    assert exit_code2 == 0
-    assert "1.5" in out2 and "3.5" in out2
-
-
-def test_group_x_still_accepts_by_flag(tmp_path, capsys):
-    df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [1, 2, 3, 4]})
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-by", "grp", "-group_x", "v=val,a=mean"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "1.5" in out and "3.5" in out
+    assert "requires -agg or -mutate" in capsys.readouterr().err
 
 
 def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
@@ -7794,7 +7858,6 @@ def test_agg_python_literal_is_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "val": [1]}))
     with pytest.raises(SystemExit, match="use a name"):
         cli.main([path, "-agg", "{'val': 'sum'}"])
-
 
 ################################################################################
 # FILE: tests/test_cli_clean.py
@@ -8020,7 +8083,6 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
     assert header == "co-ops-data"
 
 
-
 ################################################################################
 # FILE: tests/test_cli_filter.py
 ################################################################################
@@ -8166,7 +8228,6 @@ def test_qry_equals_separator(tmp_path, capsys):
     exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
-
 
 ################################################################################
 # FILE: tests/test_cli_inspect.py
@@ -9072,7 +9133,6 @@ def test_cli_pager(tmp_path, monkeypatch):
 
 
 
-
 ################################################################################
 # FILE: tests/test_cli_merge.py
 ################################################################################
@@ -9374,7 +9434,6 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
 
 
 
-
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
@@ -9497,6 +9556,48 @@ def test_mutate_colon_raises_cli_error(tmp_path, capsys):
     assert "use '='" in err
 
 
+def test_mutate_grouped_cli(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [10.0, 20.0, 30.0, 40.0]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([
+        path, "-by", "grp",
+        "-mutate", "avg = mean(val), diff = val - avg, cnt = n",
+        "-select", "grp,val,avg,diff,cnt",
+        "-head",
+    ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "15.0" in out and "35.0" in out
+    assert "-5.0" in out and "5.0" in out
+
+
+def test_mutate_grouped_with_spaced_columns_cli(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["a", "a"], "total bill": [10.0, 30.0]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([
+        path, "-by", "grp",
+        "-mutate", "diff = [total bill] - mean([total bill])",
+        "-select", "diff",
+        "-head",
+    ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "-10.0" in out and "10.0" in out
+
+
+def test_mutate_by_unknown_column_cli(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["a"], "val": [1.0]})
+    path = _write_csv(tmp_path, df)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-by", "nonexistent", "-mutate", "x = mean(val)"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-by: unknown column" in err
+
+
 ################################################################################
 # FILE: tests/test_cli_parse.py
 ################################################################################
@@ -9533,7 +9634,6 @@ def test_expand_paths_single_and_list(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         expand_paths(str(tmp_path / "*.parquet"))
     assert "no files matched pattern" in str(exc_info.value)
-
 
 
 
@@ -9695,16 +9795,13 @@ def test_wide_unknown_column_errors(tmp_path):
         cli.main([path, "-wide", "c=country,v=balance"])
     assert exc_info.value.code == 2
 
-def test_wide_and_group_x_reject_dropna_kwarg(tmp_path):
-    path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "val": [1]}))
-    with pytest.raises(SystemExit, match="unknown key 'dropna'"):
-        cli.main([path, "-group_x", "by=grp,dropna=false"])
-    path2 = _write_csv(
+def test_wide_rejects_dropna_kwarg(tmp_path):
+    path = _write_csv(
         tmp_path,
         pd.DataFrame({"country": ["a"], "variable": ["x"], "value": [1]}),
     )
     with pytest.raises(SystemExit, match="unknown key 'dropna'"):
-        cli.main([path2, "-wide", "dropna=false"])
+        cli.main([path, "-wide", "dropna=false"])
 
 
 
@@ -9747,7 +9844,7 @@ def sample_dataset_dir(tmp_path_factory):
 _DOC_EXAMPLES = [
     ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
     ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
-    ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-group_x", "v=tip,a=mean"]),
+    ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
     ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),
     ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
     ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
@@ -9855,7 +9952,6 @@ def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines() == ["age     0", "deck    0"]
-
 
 ################################################################################
 # FILE: tests/test_cli_select.py
@@ -10197,7 +10293,6 @@ def test_select_cli_bracketed_columns(tmp_path, capsys):
 
 
 
-
 ################################################################################
 # FILE: tests/test_cli_sql.py
 ################################################################################
@@ -10390,7 +10485,6 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
 
 
 
-
 ################################################################################
 # FILE: tests/test_import.py
 ################################################################################
@@ -10530,7 +10624,6 @@ else:
     )
     assert result.returncode == 0, result.stderr
     assert "pytae[sql]" in result.stderr
-
 
 
 ################################################################################
@@ -10846,6 +10939,75 @@ def test_mutate_bracketed_columns():
     # Mixed source columns (one with space, one without)
     res2 = df.pt.mutate("[bmi score] = [body mass g] / (height ** 2)")
     assert "bmi score" in res2.columns
+
+
+def test_mutate_grouped_single_col():
+    df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
+    res = df.pt.mutate(
+        "avg = mean(val), diff = val - avg, total = sum(val), cnt = n, cnt2 = n()",
+        by="grp",
+    )
+    assert list(res["avg"]) == [15.0, 15.0, 60.0]
+    assert list(res["diff"]) == [-5.0, 5.0, 0.0]
+    assert list(res["total"]) == [30.0, 30.0, 60.0]
+    assert list(res["cnt"]) == [2, 2, 1]
+    assert list(res["cnt2"]) == [2, 2, 1]
+
+
+def test_mutate_grouped_multi_col():
+    df = pd.DataFrame({
+        "g1": ["a", "a", "a", "b"],
+        "g2": ["x", "x", "y", "x"],
+        "val": [10.0, 30.0, 5.0, 100.0],
+    })
+    res1 = df.pt.mutate("m = mean(val), cnt = n", by=["g1", "g2"])
+    assert list(res1["m"]) == [20.0, 20.0, 5.0, 100.0]
+    assert list(res1["cnt"]) == [2, 2, 1, 1]
+
+    # Comma-separated string by="g1, g2"
+    res2 = df.pt.mutate("m = mean(val)", by="g1, g2")
+    assert list(res2["m"]) == [20.0, 20.0, 5.0, 100.0]
+
+
+def test_mutate_grouped_spaced_brackets():
+    df = pd.DataFrame({"group code": ["a", "a", "b"], "total bill": [10.0, 30.0, 50.0]})
+    res = df.pt.mutate("[diff bill] = [total bill] - mean([total bill])", by="group code")
+    assert list(res["diff bill"]) == [-10.0, 10.0, 0.0]
+
+
+def test_mutate_grouped_dropna_observed():
+    df = pd.DataFrame({"grp": ["a", None, "a"], "val": [10.0, 50.0, 30.0]})
+    res_dropna = df.pt.mutate("m = mean(val)", by="grp", dropna=True)
+    assert pd.isna(res_dropna["m"].iloc[1])
+    assert res_dropna["m"].iloc[0] == 20.0
+    assert res_dropna["m"].iloc[2] == 20.0
+
+    res_keepna = df.pt.mutate("m = mean(val)", by="grp", dropna=False)
+    assert res_keepna["m"].iloc[1] == 50.0
+
+
+def test_mutate_grouped_duplicate_index():
+    df = pd.DataFrame({"grp": ["a", "b", "a"], "val": [10.0, 50.0, 30.0]}, index=[0, 1, 0])
+    res = df.pt.mutate("m = mean(val)", by="grp")
+    assert list(res["m"]) == [20.0, 50.0, 20.0]
+    assert list(res.index) == [0, 1, 0]
+
+
+def test_mutate_grouped_functional_and_callable():
+    df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
+    # Functional pt.mutate
+    res1 = pt.mutate(df, "avg = mean(val)", by="grp")
+    assert list(res1["avg"]) == [15.0, 15.0, 60.0]
+
+    # Callable inside grouped mutate
+    res2 = df.pt.mutate(half_mean=lambda g: g["val"].mean() / 2, by="grp")
+    assert list(res2["half_mean"]) == [7.5, 7.5, 30.0]
+
+
+def test_mutate_grouped_unknown_col():
+    df = pd.DataFrame({"grp": ["a", "b"], "val": [1, 2]})
+    with pytest.raises(KeyError, match="grouping column 'grp_typo' not found"):
+        df.pt.mutate("m = mean(val)", by="grp_typo")
 
 
 
@@ -11364,7 +11526,6 @@ def test_box_palette_colors():
 
 
 
-
 ################################################################################
 # FILE: tests/test_qry.py
 ################################################################################
@@ -11608,7 +11769,6 @@ def test_qry_bracketed_columns():
 
     parsed = parse_qry("[body mass g] > 4000, [species] = 'Gentoo'")
     assert parsed == {"body mass g": (">", 4000), "species": "Gentoo"}
-
 
 
 ################################################################################
@@ -11903,7 +12063,6 @@ def test_compressed_txt_and_dat(tmp_path):
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
 
 
-
 ################################################################################
 # FILE: tests/test_select.py
 ################################################################################
@@ -12134,7 +12293,6 @@ def test_select_bracketed_names_and_slices():
 
 
 
-
 ################################################################################
 # FILE: tests/test_shape.py
 ################################################################################
@@ -12273,7 +12431,6 @@ def test_wide_with_explicit_index():
 if __name__ == '__main__':
     pytest.main()
 
-
 ################################################################################
 # FILE: tests/test_sql.py
 ################################################################################
@@ -12360,7 +12517,6 @@ def test_sql_preserves_duckdb_lists_and_indexing():
     # String list literal
     out3 = pt.sql(df, "select ['x', 'y'] as pair from data where a = 1")
     assert list(out3["pair"][0]) == ["x", "y"]
-
 
 
 
@@ -12451,16 +12607,6 @@ def test_cols_sort_orders():
         pt.cols(df, ascending="nope")
 
 
-def test_group_x_count_and_value():
-    df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3]})
-    counted = pt.group_x(df)
-    assert counted["n"].tolist() == [2, 2, 1]
-    averaged = pt.group_x(df, by=["grp"], a="mean", v="val")
-    assert averaged["x"].tolist() == [1.5, 1.5, 3.0]
-    # group= alias still works
-    aliased = pt.group_x(df, group=["grp"], a="mean", v="val")
-    assert aliased["x"].tolist() == [1.5, 1.5, 3.0]
-
 
 def test_clean_columns_strip_fill_case():
     df = pd.DataFrame({"  Col A  ": [1], "col   b": [2]})
@@ -12537,22 +12683,4 @@ def test_clean_columns_dedupe_avoids_new_collisions():
     result = clean_column_names(["revenue", "revenue", "revenue_1"], dedupe=True)
     assert result == ["revenue", "revenue_2", "revenue_1"]
     assert len(set(result)) == len(result)
-
-
-def test_group_x_raises_if_n_column_already_exists():
-    df = pd.DataFrame({"grp": ["x", "x", "y"], "n": [10, 20, 30]})
-    with pytest.raises(ValueError, match="column 'n' already exists"):
-        pt.group_x(df)
-
-
-def test_group_x_raises_if_x_column_already_exists():
-    df = pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "x": [1, 1, 1]})
-    with pytest.raises(ValueError, match="column 'x' already exists"):
-        pt.group_x(df, group=["grp"], a="mean", v="val")
-
-
-def test_group_x_raises_on_all_numeric_frame():
-    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-    with pytest.raises(ValueError, match="no non-numeric columns to group by"):
-        pt.group_x(df)
 

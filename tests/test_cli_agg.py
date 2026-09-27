@@ -127,44 +127,13 @@ def test_agg_retired_syntax_raises_helpful_error(tmp_path):
         cli.main([path, "-by", "grp", "-agg", "column=v1,aggfunc=sum"])
 
 
-def test_by_requires_agg_or_group_x(tmp_path, capsys):
+def test_by_requires_agg_or_mutate(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "v1": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
-
-
-def test_group_x_with_explicit_group_by_and_value(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "grp": ["x", "x", "y", "y"],
-            "val": [1, 2, 3, 4],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-group_x", "by=grp,v=val,a=mean"])
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "1.5" in out and "3.5" in out
-
-    # also accepts group= as alias
-    exit_code2 = cli.main([path, "-group_x", "group=grp,v=val,a=mean"])
-    out2 = capsys.readouterr().out
-    assert exit_code2 == 0
-    assert "1.5" in out2 and "3.5" in out2
-
-
-def test_group_x_still_accepts_by_flag(tmp_path, capsys):
-    df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [1, 2, 3, 4]})
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-by", "grp", "-group_x", "v=val,a=mean"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "1.5" in out and "3.5" in out
+    assert "requires -agg or -mutate" in capsys.readouterr().err
 
 
 def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):

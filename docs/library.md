@@ -61,12 +61,12 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 |---|---|---|---|
 | **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
-| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
+| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, pivot back to wide tables with standard `c=`, `v=`, `a=` keys | [library/shape.ipynb](library/shape.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `Plotter.facet()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [docs/plotting.md](plotting.md)<br>• [plotting/plotter.ipynb](plotting/plotter.ipynb) |
-| **Utilities** | `clean_columns`, `replace_values`, `handle_missing`, `group_x`, `cols`, `to_clip` | Header normalization, scoped cell value replacement, NA imputation, broadcast transforms, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
+| **Utilities** | `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
 
 ---
 
@@ -123,6 +123,9 @@ pt.mutate(penguins, weight_class="if_else(body_mass_g > 4000, 'heavy', 'light')"
 pt.mutate(penguins, tier="case_when((body_mass_g >= 4500, 'large'), (body_mass_g >= 3500, 'medium'), default='small')")
 pt.mutate(df, contact="coalesce(mobile, home_phone, work_phone, 'N/A')")
 pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
+
+# Grouped window calculations without collapsing rows
+pt.mutate(penguins, avg_mass="mean(body_mass_g)", diff="body_mass_g - avg_mass", n="n", by="species")
 ```
 
 👉 **Interactive Walkthrough:** [library/mutate.ipynb](library/mutate.ipynb)
@@ -218,7 +221,6 @@ Essential tabular utilities for everyday manipulation:
 pt.clean_columns(df, strip=True, fill="_", case="lower", dedupe=True) # Normalize headers
 pt.replace_values(df, {"old": "new"}, c="col_a", exact=True)          # Replace cell values
 pt.handle_missing(df, fillna="NA")                                    # Impute missing values
-pt.group_x(df, group=["species"], v="body_mass_g", a="mean")           # Broadcast group mean
 penguins.to_clip()                                                    # Copy DataFrame to clipboard
 ```
 

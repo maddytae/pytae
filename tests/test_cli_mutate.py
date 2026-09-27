@@ -115,3 +115,46 @@ def test_mutate_colon_raises_cli_error(tmp_path, capsys):
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "use '='" in err
+
+
+def test_mutate_grouped_cli(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [10.0, 20.0, 30.0, 40.0]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([
+        path, "-by", "grp",
+        "-mutate", "avg = mean(val), diff = val - avg, cnt = n",
+        "-select", "grp,val,avg,diff,cnt",
+        "-head",
+    ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "15.0" in out and "35.0" in out
+    assert "-5.0" in out and "5.0" in out
+
+
+def test_mutate_grouped_with_spaced_columns_cli(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["a", "a"], "total bill": [10.0, 30.0]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([
+        path, "-by", "grp",
+        "-mutate", "diff = [total bill] - mean([total bill])",
+        "-select", "diff",
+        "-head",
+    ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "-10.0" in out and "10.0" in out
+
+
+def test_mutate_by_unknown_column_cli(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["a"], "val": [1.0]})
+    path = _write_csv(tmp_path, df)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-by", "nonexistent", "-mutate", "x = mean(val)"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "-by: unknown column" in err
+

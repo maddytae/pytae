@@ -2,7 +2,7 @@
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Group, aggregate, and broadcast statistics using pytae's unified `-by` + `-agg` framework and broadcast transforms (`-group_x`).
+Group, aggregate, and calculate window statistics using pytae's unified `-by` + `-agg` framework and grouped mutations (`-by` + `-mutate`).
 
 ---
 
@@ -15,7 +15,7 @@ Group, aggregate, and broadcast statistics using pytae's unified `-by` + `-agg` 
   - [Column-Specific Mapping](#column-specific-mapping)
   - [Named Outputs (`total = col:aggfunc`)](#named-outputs-total--colaggfunc)
 - [Whole-Table Summaries (Grand Totals)](#whole-table-summaries-grand-totals)
-- [Broadcast Group Transforms (`-group_x`)](#broadcast-group-transforms--group_x)
+- [Grouped Transforms (`-by` + `-mutate`)](#grouped-transforms--by--mutate)
 - [Handling Missing Group Keys (`-dropna`)](#handling-missing-group-keys--dropna)
 
 ---
@@ -26,7 +26,7 @@ Group, aggregate, and broadcast statistics using pytae's unified `-by` + `-agg` 
 |---|---|---|---|---|
 | `-by COLS -agg [SPEC]` | Declared via `-by` | Aggregated | **Yes** | Group summary ($N \to K$ rows) |
 | `-agg [SPEC]` (no `-by`) | None (whole table) | Aggregated | **Yes** | Grand total (1 row) |
-| `-group_x [SPEC]` | Explicit (`group=`) or `-by` | Target column (`v=`) | **No** | Appends column without collapsing ($N \to N$ rows) |
+| `-by COLS -mutate "..."` | Declared via `-by` | Evaluated per group | **No** | Window transform without collapsing ($N \to N$ rows) |
 
 ---
 
@@ -144,31 +144,35 @@ pytae penguins.parquet -agg mean -round 1
 
 ---
 
-## Broadcast Group Transforms (`-group_x`)
+## Grouped Transforms (`-by` + `-mutate`)
 
-Appends group statistics back to every individual row without collapsing the dataset (equivalent to Pandas `transform` or SQL `OVER (PARTITION BY ...)`):
+Appends group statistics and window calculations back to every individual row without collapsing the dataset (equivalent to Pandas `transform` or SQL `OVER (PARTITION BY ...)`).
 
-Parameters:
-- `-by <cols>` or `by=`: Grouping columns.
-- `v=`: Target value column to aggregate.
-- `a=`: Aggregate function (default: `n` for group size).
+Grouped mutations are evaluated per group by combining `-by` with `-mutate`:
+- Available aggregations in `-mutate`: `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`, `n` (or `n()`).
+- Multiple sequential calculations can be combined in one `-mutate` flag.
+- Custom target column names are supported freely.
 
 ```bash
-# Calculate maximum species mass and broadcast as column 'x'
+# Calculate maximum species mass and deviation from maximum without collapsing rows
 pytae penguins.parquet \
   -select "species,sex,body_mass_g" \
-  -by species -group_x "v=body_mass_g,a=max" \
+  -by species \
+  -mutate "max_mass = max(body_mass_g), diff = body_mass_g - max_mass" \
   -head 4
 ```
 
 **Output:**
 ```text
-species    sex  body_mass_g      x
- Adelie   Male       3750.0 4775.0
- Adelie Female       3800.0 4775.0
- Adelie Female       3250.0 4775.0
- Adelie    NaN          NaN 4775.0
+species    sex  body_mass_g  max_mass    diff
+ Adelie   Male       3750.0    4775.0 -1025.0
+ Adelie Female       3800.0    4775.0  -975.0
+ Adelie Female       3250.0    4775.0 -1525.0
+ Adelie    NaN          NaN    4775.0     NaN
 ```
+
+For more examples including group counts (`n`), multi-column grouping, and spaced column names, see the [Mutating & Computing Guide](mutate.md#grouped-mutations--by--mutate).
+
 
 ---
 
