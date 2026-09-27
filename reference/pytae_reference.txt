@@ -54,9 +54,9 @@ Key principles:
    (Parquet, SAS7BDAT), commands like `-shape`, `-cols`, `-dtype`, `-head` inspect 
    headers without parsing full table rows.
 4. Expressive & Human-Friendly: Minimizes boilerplate. Filtering supports 
-   intervals `[3000, 4000]`, string operations, and keyword arguments. Grouping 
-   aggregations automatically group by non-numeric columns and aggregate numeric 
-   columns without writing tedious `.groupby().agg()`.
+   intervals `[3000, 4000]`, string operations, and keyword arguments. Grouped 
+   aggregations express grouping via `by=` and concise aggregations (e.g. `tip=mean`, 
+   `n=n`) without tedious `.groupby().agg()` boilerplate.
 5. Non-Destructive: All library verbs return copies of DataFrames and never 
    mutate inputs in place. Original indices are preserved during filtering.
 
@@ -509,7 +509,7 @@ Pipeline Rules:
 1. Positional Path: The first unflagged argument is the input file path.
    (Except in `-file` multi-file mode, where `-file` replaces the positional path).
 2. Sequential Mutation: Each operation transforms the intermediate dataset in memory.
-   For example, `-qry` before `-drop` allows filtering on a column that is subsequently dropped.
+   For example, `-qry` before `-select -col` allows filtering on a column that is subsequently excluded.
 3. Final Operation Determines Output: Only the last operation in the chain prints or exports, 
    unless an intermediate operation explicitly writes to disk.
 4. Shell Quoting: Always quote multi-word arguments and expressions in your shell.
@@ -564,18 +564,15 @@ Row Filtering Flags:
   -dropna BOOL          Drop missing values (True/False)
 
 Column Transformation Flags:
-  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes)
-  -drop COLUMNS         Drop specified comma-separated columns
+  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', exclude=)
   -mutate SPEC          Create/overwrite columns ("new_col = expression")
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
   -replace_values SPEC  Replace values: "v='old:new', c='col', exact=True"
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower'"
 
 Aggregation & Reshaping Flags:
-  -agg_df [AGGFUNC]     Auto-aggregate by non-numeric cols (e.g. mean, sum, "mean,n")
-  -agg KEY=VALUE,...    Aggregate specific cols (e.g. "body_mass_g=mean, count=n")
-  -group_by COLUMNS     Set explicit group-by columns
-  -by COLUMNS           Grouping columns for -agg and -mutate (e.g. -by species -mutate "avg = mean(mass)")
+  -by, -group_by COLS   Grouping columns for -agg and -mutate (e.g. -by species -agg mean)
+  -agg, -agg_df SPECS   Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean)
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pivot long columns into headers: "c=variable, v=value, a=mean"
   -crosstab SPECS       Frequency crosstabulation: "index=species, columns=sex"
@@ -862,6 +859,7 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
 │       ├── mutate.py
 │       ├── other_utilities.py
 │       ├── plotting.py
+│       ├── py.typed
 │       ├── qry.py
 │       ├── readers.py
 │       ├── select.py
