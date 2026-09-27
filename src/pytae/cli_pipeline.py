@@ -40,7 +40,7 @@ def _mask_quoted(spec: str) -> str:
 
 
 class _Pipeline:
-    """Flag order is the method chain. Each -select/-drop/-qry/-query/-head/… call
+    """Flag order is the method chain. Each -select/-qry/-query/-head/… call
     runs on the current view, same as pt.select(df, …) then pt.qry(df, …) then head.
     Only the last flag prints. Schema-only ops (-cols/-dtype/-shape) avoid loading
     row data until something actually requires it. -shape/-cols/-dtype/-nulls/-info
@@ -86,28 +86,6 @@ class _Pipeline:
             self._df = select(df, *names, **kwargs)
         except (ValueError, KeyError) as exc:
             return f"-select: {exc}"
-        return None
-
-    def apply_drop(self, names: list[str]) -> str | None:
-        """Apply one -drop spec (exact column names) to the current view.
-
-        Remaining columns keep their existing order. Returns an error message or None.
-        """
-        available = self._available_columns()
-        unknown = [c for c in names if c not in available]
-        if unknown:
-            msg = unknown_columns_message("-drop", unknown, available)
-            if any(":" in c for c in unknown):
-                msg += " (-drop does not accept slices; use -select)"
-            return msg
-        drop_set = set(names)
-        remaining = [c for c in available if c not in drop_set]
-        if not remaining:
-            return "-drop: no columns left"
-        if self._df is not None:
-            self._df = self._df.drop(columns=list(dict.fromkeys(names)))
-        else:
-            self._pending_exact = remaining
         return None
 
     def apply_rename(self, mapping: dict[str, str]) -> str | None:

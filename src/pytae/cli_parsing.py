@@ -52,26 +52,6 @@ def _split_groups(raw: str, sep: str = ";") -> list[str]:
     return [t for t in _tokenize(raw, sep, keep_quotes=True) if t]
 
 
-def parse_drop_spec(raw: str) -> list[str]:
-    """Parse -drop into exact column names.
-
-    Names only: comma-separated, same quoting as -select names (a space is not
-    a separator). key=value tokens and select matchers (dtype=/contains=/regex=/
-    slices) are rejected — those stay on -select.
-    """
-    tokens = _split_tokens(raw)
-    if not tokens:
-        raise SystemExit("-drop: expected column names")
-    names: list[str] = []
-    for token in tokens:
-        if "=" in token:
-            raise SystemExit(
-                "-drop: only column names; use -select for dtype=/contains=/regex=/exclude_dtype="
-            )
-        names.append(token)
-    return names
-
-
 def parse_select_spec(raw: str) -> tuple[list[str], dict]:
     """Parse -select into positional names/slices and select() kwargs.
 
@@ -108,15 +88,16 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
     """Exact-name tokens (and slice endpoints) that are not in the file."""
     unknown: list[str] = []
     for token in tokens:
-        if token in available:
+        clean = _unquote_name(token)
+        if clean in available:
             continue
         if token.startswith(("-", "~")):
-            raw = token[1:].strip()
+            raw = _unquote_name(token[1:].strip())
             if raw in available:
                 continue
             if ":" in raw:
                 start, end = raw.split(":", 1)
-                start, end = start.strip(), end.strip()
+                start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
                 if start and start not in available:
                     unknown.append(start)
                 if end and end not in available:
@@ -125,13 +106,13 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
                 unknown.append(raw)
         elif ":" in token:
             start, end = token.split(":", 1)
-            start, end = start.strip(), end.strip()
+            start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
             if start and start not in available:
                 unknown.append(start)
             if end and end not in available:
                 unknown.append(end)
         else:
-            unknown.append(token)
+            unknown.append(clean)
     return unknown
 
 

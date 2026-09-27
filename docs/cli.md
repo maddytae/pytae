@@ -10,7 +10,7 @@ The `pytae` CLI provides high-performance command-line data processing for tabul
 - [Dedicated Feature Guides](#feature-guides)
 - [Functional Areas at a Glance](#functional-areas)
   - [1. Data Inspection & Metadata](#inspection-metadata)
-  - [2. Column Selection & Dropping](#column-selection-dropping)
+  - [2. Column Selection](#column-selection)
   - [3. Row Filtering](#row-filtering)
   - [4. Feature Engineering & Mutation](#feature-engineering-mutation)
   - [5. DuckDB SQL Engine](#duckdb-sql-engine)
@@ -67,7 +67,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | Feature Area | Documentation Guide | Key Flags & Capabilities |
 |---|---|---|
 | **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-meta`, `-pager` |
-| **Column Selection** | [Column Selection & Dropping Guide](cli/select_drop.md) | `-select`, `-drop`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
+| **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
 | **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-query`, `-dropna`, intervals `[min, max]`, set membership, comparisons |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
@@ -102,12 +102,12 @@ pytae data.parquet -describe -pager  # Paginated statistical summary
 
 ---
 
-<a id="column-selection-dropping"></a>
-### 2. Column Selection & Dropping
+<a id="column-selection"></a>
+### 2. Column Selection
 
-Narrow, reorder, or subtract columns using exact names, negative prefixes (`-col`, `~col`), positional slices, regex, pattern matching, or data type categories.
+Narrow, reorder, or exclude columns using exact names, negative prefixes (`-col`, `~col`), positional slices, regex, pattern matching, or data type categories.
 
-- **Primary flags**: `-select`, `-drop`
+- **Primary flags**: `-select`
 - **Pattern tokens**: `contains=`, `startswith=`, `endswith=`, `regex=`, `dtype=`, `exclude_dtype=`, `exclude=`
 - **Negative selection**: `-col`, `~col`, `-start:end`, `exclude=col`
 
@@ -116,10 +116,10 @@ pytae data.parquet -select "species,island,body_mass_g"           # Explicit col
 pytae data.parquet -select "-species"                             # Exclude column directly in -select
 pytae data.parquet -select "species:bill_length_mm"               # Contiguous column slice
 pytae data.parquet -select "contains=bill,dtype=numeric"          # Pattern union
-pytae data.parquet -drop "sex,island"                             # Drop specific columns
+pytae data.parquet -select "-sex,-island"                         # Exclude multiple columns
 ```
 
-👉 See the complete guide: **[Column Selection & Dropping Guide](cli/select_drop.md)**
+👉 See the complete guide: **[Column Selection Guide](cli/select.md)**
 
 ---
 
@@ -312,8 +312,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-pretty` | Inspect | Format output as bordered markdown table | [cli/inspect.md](cli/inspect.md) |
 | `-round N` | Inspect | Round floating-point numbers to N decimal places | [cli/inspect.md](cli/inspect.md) |
 | `-diff PATH` | Inspect | Compare current frame against another file | [cli/diff.md](cli/diff.md) |
-| `-select SPEC` | Select & Filter | Filter/reorder columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select_drop.md](cli/select_drop.md) |
-| `-drop COLS` | Select & Filter | Remove specific columns by exact name | [cli/select_drop.md](cli/select_drop.md) |
+| `-select SPEC` | Select & Filter | Filter, reorder, or exclude columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select.md](cli/select.md) |
 | `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
 | `-query EXPR` | Select & Filter | Filter rows using pandas `df.query()` expression | [cli/filter.md](cli/filter.md) |
 | `-dropna BOOL` | Select & Filter | Control whether NA keys are dropped in aggregations | [cli/filter.md](cli/filter.md) |
@@ -350,8 +349,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 
 | Goal / Task | Recommended Flag | Dedicated Guide |
 |---|---|---|
-| **Pick or reorder columns** | `-select` | [Column Selection & Dropping](cli/select_drop.md) |
-| **Drop specific columns** | `-drop` | [Column Selection & Dropping](cli/select_drop.md) |
+| **Pick, reorder, or exclude columns** | `-select` | [Column Selection](cli/select.md) |
 | **Rename columns** | `-rename` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Standardize messy headers** | `-clean_columns` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Filter rows using expressions** | `-qry` | [Row Filtering](cli/filter.md) |

@@ -1,31 +1,37 @@
-# CLI Feature Guide: Column Selection & Dropping
+# CLI Feature Guide: Column Selection
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Select, filter, reorder, and subtract columns using names, ranges, pattern matching, or data types with `-select` and `-drop`.
+Select, filter, reorder, and exclude columns using names, negative prefixes, ranges, pattern matching, or data types with `-select`.
 
 ---
 
 ## Contents
 
-- [Overview & Differences](#overview--differences)
+- [Overview](#overview)
 - [Selecting Explicit Columns](#selecting-explicit-columns)
 - [Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)](#negative-selection--exclusion)
 - [Slice Notation (`start:end`)](#slice-notation-startend)
 - [Pattern Matching (`contains=`, `startswith=`, `endswith=`, `regex=`)](#pattern-matching)
 - [Data Type Filtering (`dtype=`, `exclude_dtype=`)](#data-type-filtering)
-- [Dropping Columns (`-drop`)](#dropping-columns--drop)
-- [Polarity Chaining (`-select` vs `-drop`)](#polarity-chaining)
-- [Repeating `-select` in Pipelines](#repeating--select-in-pipelines)
+- [Chaining `-select` in Pipelines](#chaining--select-in-pipelines)
 
 ---
 
-## Overview & Differences
+## Overview
 
-| Flag | Description | Reorders Columns? | Accepts Patterns / Dtypes? |
-|---|---|---|---|
-| `-select SPEC` | Keeps specified columns or excludes negated ones (union/subtraction in SPEC) | **Yes** (matches order in SPEC) | **Yes** (`contains=`, `dtype=`, `exclude=`, negated names `-col`, `~col`, slices) |
-| `-drop COLUMNS` | Removes specified exact column names | **No** (preserves original file order) | **No** (exact comma-separated names only) |
+`-select` provides unified column management across the entire CLI pipeline, matching the Python library's `pt.select()` verb.
+
+| Capability | Syntax / Flag | Example |
+|---|---|---|
+| Explicit names | `col1,col2` | `-select "species,island,body_mass_g"` |
+| Negative selection | `-col` or `~col` | `-select "-species"` or `-select "~island"` |
+| Negative slices | `-start:end` | `-select "-bill_length_mm:flipper_length_mm"` |
+| Keyword exclusion | `exclude=col` | `-select "exclude=species"` |
+| Column slice | `start:end` | `-select "bill_length_mm:body_mass_g"` |
+| Substring / prefix / suffix | `contains=`, `startswith=`, `endswith=` | `-select "contains=bill"` |
+| Regular expression | `regex=PATTERN` | `-select "regex=^bill_.*mm$"` |
+| Data type filter | `dtype=numeric` / `exclude_dtype=category` | `-select "dtype=numeric"` |
 
 ---
 
@@ -54,7 +60,7 @@ pytae penguins.parquet -select "body_mass_g,species" -head 3
 
 ## Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)
 
-You can exclude specific columns or ranges directly within `-select` without needing a separate `-drop` step:
+You can exclude specific columns, combinations, or slices directly within `-select`. Remaining columns preserve their original relative order.
 
 ### Negated Column Names (`-col` or `~col`)
 
@@ -166,32 +172,13 @@ pytae penguins.parquet -select "dtype=numeric" -head 3
 
 ---
 
-## Dropping Columns (`-drop`)
+## Chaining `-select` in Pipelines
 
-Drop one or more columns by exact name. Remaining columns preserve their original relative order:
-
-```bash
-pytae penguins.parquet -drop "sex,island" -head 3
-```
-
-**Output:**
-```text
-species  bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g
- Adelie            39.1           18.7              181.0       3750.0
- Adelie            39.5           17.4              186.0       3800.0
- Adelie            40.3           18.0              195.0       3250.0
-```
-
----
-
-## Polarity Chaining
-
-Combine positive selection (`-select`) with negative subtraction (`-drop`) in a sequential pipeline:
+`-select` can be repeated across intermediate pipeline steps (e.g. after `-mutate` or `-agg`), or chained sequentially to filter then subtract:
 
 ```bash
-# 1. Select all numeric columns
-# 2. Subtract bill_depth_mm
-pytae penguins.parquet -select "dtype=numeric" -drop "bill_depth_mm" -head 3
+# Select numeric columns, then subtract bill_depth_mm
+pytae penguins.parquet -select "dtype=numeric" -select "-bill_depth_mm" -head 3
 ```
 
 **Output:**
@@ -202,13 +189,8 @@ pytae penguins.parquet -select "dtype=numeric" -drop "bill_depth_mm" -head 3
            40.3              195.0       3250.0
 ```
 
----
-
-## Repeating `-select` in Pipelines
-
-`-select` can be repeated across intermediate pipeline steps (e.g. after `-mutate` or `-agg`):
-
 ```bash
+# In an aggregation pipeline
 pytae penguins.parquet \
   -mutate "mass_kg = body_mass_g / 1000" \
   -select "species,mass_kg" \

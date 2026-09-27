@@ -15,7 +15,6 @@ from pytae.cli_parsing import (
     expand_paths,
     parse_bool_text,
     parse_concat_arg,
-    parse_drop_spec,
     parse_file_arg,
     parse_fraction,
     parse_list_order,
@@ -73,7 +72,7 @@ _CLI_FLAGS = {
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
     "-unique", "--unique", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
     "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
-    "-limit", "--limit", "-select", "--select", "-drop", "--drop", "-agg", "--agg",
+    "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-agg_df", "--agg_df", "-group_x", "--group_x", "-handle_missing", "--handle_missing",
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide",
     "-crosstab", "--crosstab", "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
@@ -192,10 +191,6 @@ def build_parser() -> argparse.ArgumentParser:
                               "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
                               "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
                               'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"')
-    parser.add_argument("--drop", "-drop", dest="drop", action=_OrderedAppend, default=None, metavar="COLUMNS",
-                         help="drop columns by exact name at this point in the pipeline (comma-separated names "
-                              "only; use -select for dtype=/contains=/regex=/slices); remaining columns keep "
-                              'their order, e.g. -drop "sex,island"')
     parser.add_argument("-agg", "--agg", "-agg_df", "--agg_df", dest="agg", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
                          help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
@@ -401,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.agg is not None,
                          args.group_x is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
-                         args.select, args.drop, args.qry, args.query, args.sql, args.replace_values,
+                         args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
                          args.meta, args.diff is not None])
 
@@ -424,7 +419,6 @@ def main(argv: list[str] | None = None) -> int:
 
     rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-    drop_specs = [parse_drop_spec(raw) for raw in (args.drop or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     mutate_specs = list(args.mutate or [])
     query_specs = list(args.query or [])
@@ -448,7 +442,6 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                drop_specs=drop_specs,
                                 qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
@@ -489,7 +482,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    drop_specs=drop_specs,
                                     qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs)
         except UnicodeError as exc:

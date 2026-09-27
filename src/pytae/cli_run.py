@@ -313,7 +313,6 @@ def _process_path(
     *,
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
-    drop_specs: list[list[str]],
     qry_specs: list[dict],
     mutate_specs: list[str],
     query_specs: list[str],
@@ -361,7 +360,6 @@ def _process_path(
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
     select_iter = iter(select_specs)
-    drop_iter = iter(drop_specs)
     qry_iter = iter(qry_specs)
     mutate_iter = iter(mutate_specs)
     query_iter = iter(query_specs)
@@ -388,11 +386,6 @@ def _process_path(
         if op == "select":
             names, kwargs = next(select_iter)
             err = pipeline.apply_select(names, kwargs)
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "drop":
-            err = pipeline.apply_drop(next(drop_iter))
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

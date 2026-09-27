@@ -336,10 +336,10 @@ def test_cols_rejects_invalid_order(tmp_path):
         cli.main([path, "-cols", "foo"])
     assert exc_info.value.code == 2
 
-def test_repeated_drop_subtracts_sequentially(tmp_path, capsys):
+def test_repeated_select_negative_subtracts_sequentially(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
 
-    exit_code = cli.main([path, "-drop", "b", "-drop", "d", "-cols"])
+    exit_code = cli.main([path, "-select", "-b", "-select", "-d", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]

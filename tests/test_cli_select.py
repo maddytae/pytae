@@ -246,3 +246,71 @@ def test_select_cli_exclude_kwarg(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["island", "val"]
 
 
+def test_select_cli_multiple_negative_columns(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "c": [2], "b": [3], "d": [4]}))
+
+    exit_code = cli.main([path, "-select", "-c,-d", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "b"]
+
+
+def test_select_cli_negative_slice(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
+
+    exit_code = cli.main([path, "-select", "-b:c", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "d"]
+
+
+def test_select_cli_negative_quoted_name_with_space(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"bill length mm": [1], "body mass g": [2], "keep": [3]}))
+
+    exit_code = cli.main([path, "-select", "-'bill length mm'", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["body mass g", "keep"]
+
+
+def test_select_cli_chained_negative(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
+
+    exit_code = cli.main([path, "-select", "a,b,c", "-select", "-b", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]
+
+
+def test_select_cli_negative_after_agg(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"grp": ["x", "x", "y"], "val": [1, 2, 3], "z": [9, 8, 7]}),
+    )
+
+    exit_code = cli.main(
+        [path, "-by", "grp", "-agg", "val = sum, n = n", "-select", "-val", "-cols"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
+
+
+def test_select_cli_negative_after_qry(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
+    )
+
+    exit_code = cli.main([path, "-qry", "flt = 'A'", "-select", "-flt", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]
+
+
+def test_select_cli_negative_unknown_name_hint(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"species": [1], "island": [2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "-speces", "-cols"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "unknown column" in err
+    assert "species" in err
+
+
+

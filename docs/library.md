@@ -94,10 +94,13 @@ pt.qry(penguins, body_mass_g="[3000, 4500]", species=("startswith", "Ad"))
 
 ### 2. Column Selection — `select()`
 
-Select, filter, and reorder columns using exact names, positional slices, regex patterns, or data type categories:
+Select, filter, reorder, or exclude columns using exact names, negative prefixes (`-col`, `~col`), negative slices (`-start:end`), keyword exclusion (`exclude=`), regex patterns, or data type categories:
 
 ```python
 pt.select(penguins, "species", "island")              # Exact column order
+pt.select(penguins, "-species")                       # Exclude column (negative selection)
+pt.select(penguins, "-bill_length_mm:body_mass_g")    # Negative slice
+pt.select(penguins, exclude=["species", "island"])    # Keyword exclusion
 pt.select(penguins, "species:bill_length_mm")          # Contiguous slice
 pt.select(penguins, contains="bill", dtype="numeric")  # Pattern union
 pt.select(penguins, exclude_dtype="numeric")          # Invert selection
