@@ -5,6 +5,7 @@ import math
 import warnings
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 # pytae's own control kwargs -- these drive Plotter's behavior directly and are
@@ -331,6 +332,7 @@ class Plotter:
         # Combine kwargs but exclude print_data and clip_data from last_kwargs
         combined_kwargs = {**self.last_kwargs, **kwargs}
         self.last_kwargs = {k: v for k, v in combined_kwargs.items() if k not in ['print_data', 'clip_data']}
+        self.last_kwargs['kind'] = new_kind
         
         self.x = combined_kwargs.get('x', None)
         self.y = combined_kwargs.get('y', None)
@@ -405,6 +407,8 @@ class Plotter:
         """Map category names to colors from an explicit dict, list, or named matplotlib colormap/palette."""
         if isinstance(explicit_colors, dict):
             return explicit_colors
+        if isinstance(explicit_colors, str):
+            return {cat: explicit_colors for cat in categories}
         if isinstance(explicit_colors, (list, tuple)):
             return {cat: explicit_colors[i % len(explicit_colors)] for i, cat in enumerate(categories)}
 
@@ -441,7 +445,7 @@ class Plotter:
             color_map = self._get_palette_colors(groups, palette=palette_name, explicit_colors=color_arg)
 
             scatter_kwargs = dict(plot_dict)
-            for non_scatter in ['x', 'y', 'by', 'kind', 'title', 'color', 'c', 'legend', 'grid', 'logx', 'logy', 'rot', 'fontsize', 'colormap', 'colorbar']:
+            for non_scatter in ['x', 'y', 'by', 'kind', 'title', 'color', 'c', 'legend', 'grid', 'logx', 'logy', 'rot', 'fontsize', 'colormap', 'colorbar', 'xlim', 'ylim']:
                 scatter_kwargs.pop(non_scatter, None)
 
             s_arg = scatter_kwargs.pop('s', 20)
@@ -452,8 +456,9 @@ class Plotter:
                 grp_mask = (k[self.by] == group)
                 grp_df = k[grp_mask]
                 grp_color = color_map.get(group) if isinstance(color_map, dict) else None
-                if hasattr(s_arg, '__len__') and not isinstance(s_arg, (str, bytes)):
-                    import numpy as np
+                if isinstance(s_arg, str) and s_arg in k.columns:
+                    grp_s = k.loc[grp_mask, s_arg].to_numpy()
+                elif hasattr(s_arg, '__len__') and not isinstance(s_arg, (str, bytes)):
                     grp_s = np.asarray(s_arg)[grp_mask.to_numpy()]
                 else:
                     grp_s = s_arg
@@ -474,6 +479,19 @@ class Plotter:
                 ax.set_xscale('log')
             if plot_dict.get('logy'):
                 ax.set_yscale('log')
+            if 'xlim' in plot_dict:
+                ax.set_xlim(plot_dict['xlim'])
+            if 'ylim' in plot_dict:
+                ax.set_ylim(plot_dict['ylim'])
+            rot = plot_dict.get('rot')
+            fontsize = plot_dict.get('fontsize')
+            if rot is not None or fontsize is not None:
+                tick_kw = {}
+                if rot is not None:
+                    tick_kw['labelrotation'] = rot
+                if fontsize is not None:
+                    tick_kw['labelsize'] = fontsize
+                ax.tick_params(axis='x', **tick_kw)
             self.ax = ax
             if self.last_kwargs.get('title'):
                 ax.set_title(self.last_kwargs['title'])
@@ -486,8 +504,13 @@ class Plotter:
             return
 
         c = plot_dict.get('c', None)
-        if c and not pd.api.types.is_numeric_dtype(k[c]):
-            k[c] = k[c].astype('category')
+        if c is not None:
+            try:
+                is_in_cols = (c in k.columns)
+            except TypeError:
+                is_in_cols = False
+            if is_in_cols and not pd.api.types.is_numeric_dtype(k[c]):
+                k[c] = k[c].astype('category')
         self.ax = k.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(k, ax)
@@ -498,8 +521,11 @@ class Plotter:
         self._store_plot_kwargs(ax, plot_dict)
         pie_df = self.df[[self.by, self.y]].groupby(self.by, observed=True, dropna=self.dropna).agg({self.y: self.aggfunc})
         if 'colors' in self.last_kwargs:
-            color_dict = self.last_kwargs['colors']
-            plot_dict['colors'] = [color_dict.get(category, 'grey') for category in pie_df.index]
+            color_arg = self.last_kwargs['colors']
+            if isinstance(color_arg, (list, tuple)):
+                plot_dict['colors'] = color_arg
+            elif isinstance(color_arg, dict):
+                plot_dict['colors'] = [color_arg.get(category, 'grey') for category in pie_df.index]
         elif 'palette' in self.last_kwargs:
             colors = self._get_palette_colors(list(pie_df.index), palette=self.last_kwargs['palette'])
             plot_dict['colors'] = [colors.get(category, 'grey') for category in pie_df.index]
@@ -535,13 +561,26 @@ class Plotter:
         elif color_map is not None:
             plot_dict['color'] = color_map
 
+        if style is not None and not isinstance(style, dict):
+            plot_dict['style'] = style
+        if width is not None and not isinstance(width, dict):
+            plot_dict['linewidth'] = width
+
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
-        if style:
-            for line, (name, style_value) in zip(self.ax.get_lines(), style.items()):
-                line.set_linestyle(style_value)
-        if width:
-            for line, (name, width_value) in zip(self.ax.get_lines(), width.items()):
-                line.set_linewidth(width_value)
+        if style is not None and isinstance(style, dict):
+            for line in self.ax.get_lines():
+                lbl = line.get_label()
+                if lbl in style:
+                    line.set_linestyle(style[lbl])
+        if width is not None:
+            if isinstance(width, dict):
+                for line in self.ax.get_lines():
+                    lbl = line.get_label()
+                    if lbl in width:
+                        line.set_linewidth(width[lbl])
+            else:
+                for line in self.ax.get_lines():
+                    line.set_linewidth(width)
         self._apply_axis_labels(ax)
         self._handle_data_output(pivot_data, ax)
 
@@ -567,6 +606,7 @@ class Plotter:
         color_arg = self.last_kwargs.get('color')
         if palette or color_arg:
             plot_dict['patch_artist'] = True
+            plot_dict.pop('color', None)
 
         self.ax = box_df.plot(ax=ax, **plot_dict)
 
@@ -610,8 +650,10 @@ class Plotter:
             for i in range(len(matrix.index)):
                 for j in range(len(matrix.columns)):
                     val = matrix.iloc[i, j]
-                    text_str = format(val, fmt) if isinstance(val, (int, float)) else str(val)
-                    if isinstance(val, (int, float)) and not math.isnan(val):
+                    is_num = isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, (bool, np.bool_))
+                    text_str = format(val, fmt) if is_num else str(val)
+                    is_nan = is_num and (np.isnan(val) if isinstance(val, (float, np.floating)) else False)
+                    if is_num and not is_nan:
                         rgba = im.cmap(im.norm(val))
                         luminance = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
                         text_color = "white" if luminance < 0.5 else "black"
@@ -646,7 +688,11 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
         if self.by:
-            k = self.df.pivot(columns=self.by, values=self.column)
+            sub = self.df[[self.by, self.column]].copy()
+            sub["__row__"] = sub.groupby(self.by).cumcount()
+            k = sub.pivot(index="__row__", columns=self.by, values=self.column)
+            k.index.name = None
+            k.columns.name = None
         else:
             k = self.df[[self.column]]
         palette = self.last_kwargs.get('palette')
@@ -662,12 +708,14 @@ class Plotter:
         """Plot a histogram."""
         plot_dict = self._prepare_plot_kwargs('hist')
         self._store_plot_kwargs(ax, plot_dict)
-        k = self.df.copy()
         if self.by:
-            k = k[[self.by, self.column]]
-            k = k.pivot(columns=self.by, values=self.column)
+            sub = self.df[[self.by, self.column]].copy()
+            sub["__row__"] = sub.groupby(self.by).cumcount()
+            k = sub.pivot(index="__row__", columns=self.by, values=self.column)
+            k.index.name = None
+            k.columns.name = None
         else:
-            k = k[[self.column]]
+            k = self.df[[self.column]]
         palette = self.last_kwargs.get('palette')
         if palette and 'color' not in plot_dict:
             colors = self._get_palette_colors(list(k.columns), palette=palette)
@@ -693,11 +741,20 @@ class Plotter:
                     raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
                 pivot_table = self.df.pivot(index=self.x, columns=self.by, values=self.y).reset_index()
             else:
-                pivot_table = self.df[[self.x, self.y]].copy()
+                y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
+                cols = ([self.x] if self.x is not None else []) + [c for c in y_cols if c != self.x]
+                pivot_table = self.df[cols].copy()
         else:
             pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
                                             aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
-        pivot_table[self.x] = pivot_table[self.x].astype('object') if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]) else pivot_table[self.x]
+            if self.by is None and isinstance(self.y, (list, tuple)):
+                desired_order = ([self.x] if self.x is not None and self.x in pivot_table.columns else []) + [c for c in self.y if c in pivot_table.columns]
+                other_cols = [c for c in pivot_table.columns if c not in desired_order]
+                pivot_table = pivot_table[desired_order + other_cols]
+
+        if self.x and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
+            if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]):
+                pivot_table[self.x] = pivot_table[self.x].astype('object')
         pivot_table.columns.name = None  # ensure col names are not corrupt with multi index names post pivot
         return pivot_table
 
@@ -745,7 +802,9 @@ class Plotter:
 
     def _store_plot_kwargs(self, ax, plot_dict):
         """Store plot kwargs for the given axis."""
-        self.plot_kwargs_store[ax.get_label()] = plot_dict
+        d = dict(plot_dict)
+        d['kind'] = self.kind
+        self.plot_kwargs_store[ax.get_label()] = d
 
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10, hide_secondary_y=False, 
                  legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False,
@@ -761,6 +820,26 @@ class Plotter:
         if style:
             self._hide_spines()
             self._adjust_ticks_and_spines()
+            for ax in self.fig.axes:
+                ax_label = ax.get_label()
+                if '<colorbar>' in ax_label or ax_label == '':
+                    continue
+                stored = self.plot_kwargs_store.get(ax_label, {})
+                kind = stored.get('kind', '')
+                rot = stored.get('rot')
+                fontsize = stored.get('fontsize')
+                if rot is None and kind == 'bar':
+                    rot = 90
+                elif rot is None and kind == 'barh':
+                    rot = 0
+                target_axis = 'y' if kind == 'barh' else 'x'
+                tick_kw = {}
+                if rot is not None:
+                    tick_kw['labelrotation'] = rot
+                if fontsize is not None:
+                    tick_kw['labelsize'] = fontsize
+                if tick_kw:
+                    ax.tick_params(axis=target_axis, **tick_kw)
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
                             legend_loc=legend_loc, legend_frameon=legend_frameon)
         
@@ -867,8 +946,9 @@ class Plotter:
             handles, labels = ax.get_legend_handles_labels()
             labels = [label.replace(" (right)", "") for label in labels]
             
+            stored_legend = self.plot_kwargs_store.get(ax_label, {}).get('legend', True)
             should_display_legend = False
-            if legend:
+            if legend and stored_legend:
                 if is_secondary and legend_secondary:
                     should_display_legend = True
                 elif not is_secondary and legend_primary:
@@ -881,7 +961,7 @@ class Plotter:
                 ax.get_legend().remove()
             
             if not self.consolidate_legends and ax.get_label() in self.plot_kwargs_store:
-                if self.plot_kwargs_store[ax.get_label()]['kind'] == 'pie':
+                if self.plot_kwargs_store[ax.get_label()].get('kind') == 'pie':
                     if ax.get_legend():
                         ax.get_legend().remove()
 

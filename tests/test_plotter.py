@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
+import pytae as pt
 from pytae.plotting import Plotter
 
 
@@ -501,10 +502,137 @@ def test_box_palette_colors():
     assert c0 != c1
 
 
+def test_plotter_finalize_reapplies_rot_and_fontsize():
+    df = pd.DataFrame({"day": ["Thursday", "Friday", "Saturday"], "bill": [10, 20, 30]})
+    p = pt.Plotter(df).plot(kind="bar", x="day", y="bill", rot=45, fontsize=8).finalize()
+    ax = p.axd["A"]
+    labels = ax.get_xticklabels()
+    assert labels[0].get_rotation() == 45
+    assert labels[0].get_fontsize() == 8
 
 
+def test_plotter_manage_legend_respects_legend_false():
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20], "sex": ["M", "F"]})
+    p = pt.Plotter(df).plot(kind="bar", x="day", y="bill", by="sex", legend=False).finalize()
+    ax = p.axd["A"]
+    assert ax.get_legend() is None
 
 
+def test_plotter_default_kind_finalize_does_not_raise_keyerror():
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [3, 1, 2]})
+    p = pt.Plotter(df).plot(x="a", y="b").finalize()
+    assert p.axd["A"].has_data()
+
+    df_facet = pd.DataFrame({"g": ["x", "y"], "x": [1, 2], "y": [3, 4]})
+    pf = pt.Plotter.facet(df_facet, by="g", x="x", y="y").finalize()
+    assert len(pf.axd) == 2
 
 
+def test_plotter_numeric_x_dtype_preserved_for_line_and_area():
+    df = pd.DataFrame({"x": [1, 2, 10], "y": [1, 4, 2]})
+    p_line = pt.Plotter(df).plot(kind="line", x="x", y="y")
+    data_line = p_line.get_data("A")
+    assert pd.api.types.is_numeric_dtype(data_line["x"])
 
+    p_area = pt.Plotter(df).plot(kind="area", x="x", y="y")
+    data_area = p_area.get_data("A")
+    assert pd.api.types.is_numeric_dtype(data_area["x"])
+
+
+def test_plotter_line_style_and_width_handling():
+    df = pd.DataFrame({"x": [1, 2], "A": [10, 20], "B": [30, 40]})
+    # String style and int width
+    p1 = pt.Plotter(df).plot(kind="line", x="x", y=["A", "B"], style="--", width=3)
+    lines1 = p1.axd["A"].get_lines()
+    for line_item in lines1:
+        assert line_item.get_linestyle() == "--"
+        assert line_item.get_linewidth() == 3
+
+    # Dict style and dict width mapped by label
+    p2 = pt.Plotter(df).plot(kind="line", x="x", y=["A", "B"], style={"B": ":", "A": "-."}, width={"B": 5, "A": 1})
+    lines2 = p2.axd["A"].get_lines()
+    for line_item in lines2:
+        if line_item.get_label() == "A":
+            assert line_item.get_linestyle() == "-."
+            assert line_item.get_linewidth() == 1
+        elif line_item.get_label() == "B":
+            assert line_item.get_linestyle() == ":"
+            assert line_item.get_linewidth() == 5
+
+
+def test_plotter_grouped_scatter_xlim_ylim_rot_fontsize_s_col():
+    df = pd.DataFrame({
+        "x": [1, 2, 3, 4],
+        "y": [10, 20, 30, 40],
+        "g": ["a", "a", "b", "b"],
+        "sz": [15, 25, 35, 45],
+    })
+    p = pt.Plotter(df).plot(kind="scatter", x="x", y="y", by="g", s="sz", xlim=(0, 10), ylim=(0, 50), rot=45, fontsize=9)
+    ax = p.axd["A"]
+    assert ax.get_xlim() == (0, 10)
+    assert ax.get_ylim() == (0, 50)
+    assert len(ax.collections) == 2
+
+
+def test_plotter_color_string_and_box_color_list():
+    df = pd.DataFrame({
+        "g": ["a", "b", "a", "b"],
+        "v": [10, 20, 30, 40],
+    })
+    # Grouped scatter with color="crimson" string
+    p1 = pt.Plotter(df).plot(kind="scatter", x="v", y="v", by="g", color="crimson")
+    assert len(p1.axd["A"].collections) == 2
+
+    # Box plot with color list
+    p2 = pt.Plotter(df).plot(kind="box", x="g", y="v", color=["crimson", "navy"])
+    assert len(p2.axd["A"].patches) == 2
+
+
+def test_plotter_heatmap_numpy_int_annotation_formatting():
+    import numpy as np
+    df = pd.DataFrame({"a": [np.int64(0), np.int64(100)], "b": [np.int64(100), np.int64(0)]})
+    p = pt.Plotter(df).plot(kind="heatmap", annot=True, fmt=".2f", cmap="viridis")
+    texts = [t.get_text() for t in p.axd["A"].texts]
+    assert "100.00" in texts
+    assert "0.00" in texts
+
+
+def test_plotter_ungrouped_scatter_color_and_array_c():
+    import numpy as np
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    # c is string color name not in columns
+    p1 = pt.Plotter(df).plot(kind="scatter", x="x", y="y", c="red")
+    assert p1.axd["A"].has_data()
+
+    # c is numpy array
+    c_arr = np.array([0.1, 0.5, 0.9])
+    p2 = pt.Plotter(df).plot(kind="scatter", x="x", y="y", c=c_arr)
+    assert p2.axd["A"].has_data()
+
+
+def test_plotter_pie_colors_list():
+    df = pd.DataFrame({"cat": ["a", "a", "b"], "val": [1, 2, 3]})
+    p = pt.Plotter(df).plot(kind="pie", by="cat", y="val", colors=["red", "blue"])
+    assert p.axd["A"].has_data()
+
+
+def test_plotter_get_pivot_data_list_y_order_and_aggregate_false():
+    df = pd.DataFrame({"q": ["Q1", "Q2"], "rev": [100, 200], "cost": [40, 80]})
+    # aggregate=False with list y
+    p1 = pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"], aggregate=False)
+    assert list(p1.get_data("A").columns) == ["q", "rev", "cost"]
+
+    # aggregate=True preserves requested y order
+    p2 = pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"], aggregate=True)
+    assert list(p2.get_data("A").columns) == ["q", "rev", "cost"]
+
+
+def test_plotter_hist_and_kde_with_by_on_duplicate_index():
+    df = pd.DataFrame({"g": ["a", "a", "b", "b"], "v": [1.0, 2.0, 3.0, 4.0]}, index=[0, 0, 1, 1])
+    # hist with duplicate index
+    p_hist = pt.Plotter(df).plot(kind="hist", column="v", by="g")
+    assert p_hist.axd["A"].has_data()
+
+    # kde with duplicate index
+    p_kde = pt.Plotter(df).plot(kind="kde", column="v", by="g")
+    assert p_kde.axd["A"].has_data()

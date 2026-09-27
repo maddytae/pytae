@@ -224,3 +224,21 @@ def test_select_bracketed_names_and_slices():
     assert list(pt.select(df, "-[island name]").columns) == ["species", "bill length mm", "body mass g"]
 
 
+def test_select_contains_startswith_endswith_tuples():
+    # Lib Issue 14: contains, startswith, endswith accept tuples
+    df = pd.DataFrame({"bill_length_mm": [1], "bill_depth_mm": [2], "body_mass_g": [3]})
+    res_c = pt.select(df, contains=("bill", "body"))
+    assert list(res_c.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+    res_sw = pt.select(df, startswith=("bill", "body"))
+    assert list(res_sw.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+    res_ew = pt.select(df, endswith=("mm", "g"))
+    assert list(res_ew.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+
+def test_select_exclude_bracketed_string():
+    # Issue 8: exclude with bracketed names
+    df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
+    res = pt.select(df, exclude="[col a, col b]")
+    assert list(res.columns) == ["keep"]

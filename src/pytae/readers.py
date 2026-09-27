@@ -646,6 +646,8 @@ def _write_jsonl(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     compression: str | None = None,
 ) -> None:
+    if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+        df = df.reset_index()
     total = len(df)
     if not progress or total == 0:
         df.to_json(dest, orient="records", lines=True, compression=compression)

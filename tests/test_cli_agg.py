@@ -185,3 +185,14 @@ def test_agg_python_literal_is_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "val": [1]}))
     with pytest.raises(SystemExit, match="use a name"):
         cli.main([path, "-agg", "{'val': 'sum'}"])
+
+
+def test_agg_mapping_named_a_does_not_collide_with_kwargs(tmp_path, capsys):
+    # CLI Issue 2: -agg "a = sum" passed positionally to agg_df
+    df = pd.DataFrame({"grp": ["x", "x", "y"], "a": [1, 2, 3], "b": [10, 20, 30]})
+    path = _write_csv(tmp_path, df)
+    exit_code = cli.main([path, "-by", "grp", "-agg", "a = sum", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["grp", "a"]
+

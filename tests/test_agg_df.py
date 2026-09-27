@@ -222,6 +222,26 @@ def test_agg_df_string_spec_errors():
         df.pt.agg_df("g", "mean", a="sum")
 
 
+def test_agg_df_multi_agg_column_flattening_preserves_underscores():
+    # Lib Issue 1: multi-agg flattening preserves leading/trailing underscores
+    df = pd.DataFrame({"g": ["a", "b"], "_x": [1, 2], "y_": [3, 4]})
+    res = df.pt.agg_df("g", ["mean", "sum"])
+    assert "_x_mean" in res.columns
+    assert "_x_sum" in res.columns
+    assert "y__mean" in res.columns
+    assert "y__sum" in res.columns
+
+
+def test_agg_df_group_by_n_with_count_n_raises():
+    # Lib Issue 2: grouping by 'n' and requesting 'n' raises collision error
+    df = pd.DataFrame({"n": ["a", "a", "b"], "v": [1.0, 2.0, 4.0]})
+    with pytest.raises(ValueError, match="collides with group column 'n'|already has a group column named 'n'"):
+        df.pt.agg_df("n", ["mean", "n"])
+
+    with pytest.raises(ValueError, match="collides with group column 'n'|already has a group column named 'n'"):
+        df.pt.agg_df("n", v="mean", n="n")
+
+
 if __name__ == "__main__":
     pytest.main()
 

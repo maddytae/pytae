@@ -216,10 +216,10 @@ def test_parse_qry_cli():
     res2 = parse_qry("body_mass_g=>100000")
     res3 = parse_qry("body_mass_g = > 100000")
     res4 = parse_qry("body_mass_g = 74125")
-    assert res1 == {"body_mass_g": (">", 100000)}
-    assert res2 == {"body_mass_g": (">", 100000)}
-    assert res3 == {"body_mass_g": (">", 100000)}
-    assert res4 == {"body_mass_g": 74125}
+    assert res1 == [("body_mass_g", (">", 100000))]
+    assert res2 == [("body_mass_g", (">", 100000))]
+    assert res3 == [("body_mass_g", (">", 100000))]
+    assert res4 == [("body_mass_g", 74125)]
 
 
 def test_qry_bracketed_columns():
@@ -237,5 +237,62 @@ def test_qry_bracketed_columns():
     assert list(res3["species"]) == ["Gentoo"]
 
     parsed = parse_qry("[body mass g] > 4000, [species] = 'Gentoo'")
-    assert parsed == {"body mass g": (">", 4000), "species": "Gentoo"}
+    assert parsed == [("body mass g", (">", 4000)), ("species", "Gentoo")]
+
+
+def test_qry_interval_string_spec():
+    # Lib Issue 3
+    df = pd.DataFrame({"mass": [2000, 3500, 4000, 4500, 6000]})
+    res_bracket = df.pt.qry("mass = [3500, 4500]")
+    assert list(res_bracket["mass"]) == [3500, 4000, 4500]
+
+    res_paren = df.pt.qry("mass = (3500, 4500)")
+    assert list(res_paren["mass"]) == [4000]
+
+
+def test_qry_large_int_precision():
+    # Lib Issue 4: integers > 2**53 do not get collapsed by float cast
+    val = 2**53 + 1
+    df = pd.DataFrame({"id": [2**53, val, 2**53 + 2]})
+    res_eq = df.pt.qry(id=("==", val))
+    assert list(res_eq["id"]) == [val]
+
+    res_str = df.pt.qry(f"id == {val}")
+    assert list(res_str["id"]) == [val]
+
+    res_gt = df.pt.qry(id=(">", 2**53))
+    assert list(res_gt["id"]) == [2**53 + 1, 2**53 + 2]
+
+
+def test_qry_bare_string_comparison():
+    # Lib Issue 8
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo", "Chinstrap"]})
+    res = df.pt.qry("species == Adelie")
+    assert list(res["species"]) == ["Adelie"]
+
+
+def test_qry_string_interval_spaces():
+    # Lib Issue 9: spaces in interval bounds are stripped
+    df = pd.DataFrame({"name": ["a", "b", "c", "m", "aa"]})
+    res1 = df.pt.qry(name="[a, c)")
+    assert list(res1["name"]) == ["a", "b", "aa"]
+
+    res2 = df.pt.qry(name="(a, c]")
+    assert list(res2["name"]) == ["b", "c", "aa"]
+
+
+def test_qry_parenthesized_string_without_comma_is_equality():
+    # Lib Issue 10: parenthesized/bracketed string without comma falls through to equality
+    df = pd.DataFrame({"x": ["(abc)", "def", "[xyz]"]})
+    res1 = df.pt.qry("x = (abc)")
+    assert list(res1["x"]) == ["(abc)"]
+
+    res2 = df.pt.qry("x = [xyz]")
+    assert list(res2["x"]) == ["[xyz]"]
+
+
+def test_parse_qry_multiple_conditions_on_same_column():
+    # CLI Issue 1: multiple predicates on same column kept in order
+    conditions = parse_qry("body_mass_g >= 3000, body_mass_g <= 4500")
+    assert conditions == [("body_mass_g", (">=", 3000)), ("body_mass_g", ("<=", 4500))]
 

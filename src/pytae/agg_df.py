@@ -64,6 +64,12 @@ def _agg_df_list(
             "numeric column named 'n'; rename that column first, or use the kwargs form "
             "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
         )
+    if has_n and "n" in group_cols:
+        raise ValueError(
+            "agg_df: cannot compute 'n' (row count) because the input already has a "
+            "group column named 'n'; rename that column first, or use the kwargs form "
+            "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
+        )
 
     if not numeric_cols and not has_n:
         raise ValueError("No numeric columns to aggregate and 'n' not specified")
@@ -81,7 +87,10 @@ def _agg_df_list(
 
         # Flatten MultiIndex in columns
         if len(remaining_agg_types) > 1:
-            grouped_df.columns = ["_".join(col).strip("_") for col in grouped_df.columns.values]
+            grouped_df.columns = [
+                col[0] if (len(col) > 1 and not col[1]) else (f"{col[0]}_{col[1]}" if len(col) > 1 else str(col[0]))
+                for col in grouped_df.columns.values
+            ]
         else:
             grouped_df.columns = [col[0] for col in grouped_df.columns.values]
 
@@ -133,6 +142,10 @@ def _agg_df_dict(
     for out_name, spec in agg_types.items():
         clean_out_name = _unquote_name(out_name)
         if spec == "n" or spec == ["n"] or spec == ("n",):
+            if clean_out_name in group_cols:
+                raise ValueError(
+                    f"agg_df: count output name '{clean_out_name}' collides with group column '{clean_out_name}'"
+                )
             count_cols.append(clean_out_name)
             output_cols.append(clean_out_name)
             continue

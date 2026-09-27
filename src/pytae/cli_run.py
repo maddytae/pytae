@@ -7,6 +7,7 @@ import io
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -37,8 +38,10 @@ def _dataframe_info(df: pd.DataFrame) -> str:
     return buf.getvalue().rstrip()
 
 
-def _format_table(df: pd.DataFrame, *, index: bool = False, pretty: bool = False) -> str:
+def _format_table(df: pd.DataFrame, *, index: bool | None = None, pretty: bool = False) -> str:
     """Render a DataFrame as standard pandas text, or a markdown/bordered table when pretty=True."""
+    if index is None:
+        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
     if not pretty:
         return df.to_string(index=index)
     try:
@@ -81,7 +84,7 @@ def _format_bytes(num: int | float) -> str:
     return f"{val:.1f} PB"
 
 
-def _extract_metadata(path: Path) -> str:
+def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | None = None) -> str:
     """Extract file metadata without scanning full row data (fastest on Parquet)."""
     if not path.exists():
         return f"File not found: {path}"
@@ -125,22 +128,33 @@ def _extract_metadata(path: Path) -> str:
         comp_str = f" ({compression})" if compression else ""
         lines.append(f"Format: {fmt_name}{comp_str}")
         try:
-            reader = get_reader(path)
+            reader = get_reader(path, sep=sep, encoding=encoding)
             cols = reader.columns()
             lines.append(f"Columns: {len(cols)}")
             lines.append(f"Column names: {', '.join(cols[:15])}{'...' if len(cols) > 15 else ''}")
+        except UnicodeError as exc:
+            lines.append(f"Error reading encoding: {_encoding_error_message(path, encoding, exc)}")
         except Exception:
             pass
     return "\n".join(lines)
 
 
-def _compute_diff(left_df: pd.DataFrame, right_path: Path, left_name: str) -> str:
+def _compute_diff(
+    left_df: pd.DataFrame,
+    right_path: Path,
+    left_name: str,
+    *,
+    sep: str | None = None,
+    encoding: str | None = None,
+) -> str:
     """Compare the current pipeline result against another tabular file."""
     if not right_path.exists():
         return f"Diff target not found: {right_path}"
     try:
-        reader = get_reader(right_path)
+        reader = get_reader(right_path, sep=sep, encoding=encoding)
         right_df = reader.to_dataframe()
+    except UnicodeError as exc:
+        return _encoding_error_message(right_path, encoding, exc)
     except Exception as exc:
         return f"Cannot read diff target '{right_path}': {exc}"
 
@@ -312,7 +326,7 @@ def _process_path(
     *,
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
-    qry_specs: list[dict],
+    qry_specs: list[list[tuple[str, Any]]],
     mutate_specs: list[str],
     query_specs: list[str],
     sql_specs: list[str],
@@ -358,6 +372,18 @@ def _process_path(
 
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
+    op_values = getattr(args, "_op_values", {})
+    op_iters = {k: iter(v) for k, v in op_values.items()}
+
+    def _next_op_val(op_name: str, fallback: Any = None) -> Any:
+        it = op_iters.get(op_name)
+        if it is not None:
+            try:
+                return next(it)
+            except StopIteration:
+                pass
+        return fallback
+
     select_iter = iter(select_specs)
     qry_iter = iter(qry_specs)
     mutate_iter = iter(mutate_specs)
@@ -457,12 +483,11 @@ def _process_path(
                 result = pd.merge(left_df, right_df, **merge_kwargs)
             except Exception as exc:
                 return _fail(parser, batch, f"-merge: {exc}")
-            result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                print(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty))
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "concat":
             spec = next(concat_iter)
             if frames is None:
@@ -477,12 +502,11 @@ def _process_path(
                 result = pd.concat(dfs, ignore_index=True)
             except Exception as exc:
                 return _fail(parser, batch, f"-concat: {exc}")
-            result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
@@ -508,12 +532,12 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
-            described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
+            described = pipeline.dataframe().describe()
             pipeline._df = described
             if should_print(idx):
-                _output_text(_format_table(described, index=True, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(described, args.round_ndigits), index=True, pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=described: d.to_clipboard(index=True)
+                clip_action = lambda d=described: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
         elif op == "info":
             info_str = _dataframe_info(pipeline.dataframe())
             if should_print(idx):
@@ -521,14 +545,14 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
         elif op == "meta":
-            meta_str = _extract_metadata(path if path is not None else Path("<merged>"))
+            meta_str = _extract_metadata(path if path is not None else Path("<merged>"), sep=args.dlim, encoding=args.encoding)
             if should_print(idx):
                 _output_text(meta_str, args)
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
             diff_path = Path(args.diff)
-            diff_str = _compute_diff(pipeline.dataframe(), diff_path, path.name if path is not None else "<pipeline>")
+            diff_str = _compute_diff(pipeline.dataframe(), diff_path, path.name if path is not None else "<pipeline>", sep=args.dlim, encoding=args.encoding)
             if should_print(idx):
                 _output_text(diff_str, args)
             if is_clip:
@@ -543,109 +567,138 @@ def _process_path(
                 result.columns = [col, "count"]
             else:
                 result = source_df.value_counts(subset=value_count_cols, dropna=args.dropna).rename("count").reset_index()
-            result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "unique":
-            unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
+            source_df = pipeline.dataframe()
+            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
+                source_df = source_df.reset_index()
+            unique_df = source_df.drop_duplicates().reset_index(drop=True)
             pipeline._df = unique_df
             if should_print(idx):
-                _output_text(_format_table(unique_df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(unique_df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=unique_df: d.to_clipboard(index=False)
+                clip_action = lambda d=unique_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "head":
-            df = _apply_round(pipeline.head(args.head), args.round_ndigits)
+            head_val = _next_op_val("head", args.head)
+            df = pipeline.head(head_val)
             if should_print(idx):
-                _output_text(_format_table(df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: d.to_clipboard(index=False)
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "tail":
-            df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
+            tail_val = _next_op_val("tail", args.tail)
+            df = pipeline.tail(tail_val)
             if should_print(idx):
-                _output_text(_format_table(df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: d.to_clipboard(index=False)
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "sample":
-            sampled = _apply_round(pipeline.sample(args.sample, seed=args.seed, frac=args.frac), args.round_ndigits)
+            sample_val = _next_op_val("sample", args.sample)
+            sampled = pipeline.sample(sample_val, seed=args.seed, frac=args.frac)
             n = len(sampled)
             if should_print(idx):
-                _output_text(_format_table(sampled, pretty=args.pretty) if n else "(no rows)", args)
+                _output_text(_format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
-                clip_action = lambda d=sampled: d.to_clipboard(index=False)
+                clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "sort_by":
             source_df = pipeline.dataframe()
-            sort_cols, order = parse_sort_by(args.sort_by)
+            sort_by_arg = _next_op_val("sort_by", args.sort_by)
+            sort_cols, order = parse_sort_by(sort_by_arg)
             if any(c not in source_df.columns for c in sort_cols):
                 return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
             ascending = order != "desc"
-            sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
+            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
+                source_df = source_df.reset_index()
+            sorted_df = source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True)
             pipeline._df = sorted_df
             if should_print(idx):
-                _output_text(_format_table(sorted_df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(sorted_df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
+                clip_action = lambda d=sorted_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op in ("agg", "agg_df"):
-            aggfunc = parse_agg(args.agg)
+            agg_val = _next_op_val("agg", args.agg)
+            if isinstance(agg_val, str):
+                parse_agg(agg_val)
             df_cur = pipeline.dataframe()
             by_cols = parse_columns(args.by) if args.by else None
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                if isinstance(aggfunc, dict):
-                    result = _apply_round(agg_df(df_cur, by_cols, dropna=args.dropna, **aggfunc), args.round_ndigits)
-                else:
-                    result = _apply_round(agg_df(df_cur, by_cols, aggfunc, dropna=args.dropna), args.round_ndigits)
+                result = agg_df(df_cur, by_cols, agg_val, dropna=args.dropna)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "handle_missing":
-            result = _apply_round(handle_missing(pipeline.dataframe(), fillna=args.handle_missing), args.round_ndigits)
+            hm_val = _next_op_val("handle_missing", args.handle_missing)
+            result = handle_missing(pipeline.dataframe(), fillna=hm_val)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "clean_columns":
-            opts = parse_clean_columns_arg(args.clean_columns)
-            result = _apply_round(clean_columns(pipeline.dataframe(), **opts), args.round_ndigits)
+            cc_val = _next_op_val("clean_columns", args.clean_columns)
+            opts = parse_clean_columns_arg(cc_val)
+            result = clean_columns(pipeline.dataframe(), **opts)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "long":
             from pytae.shape import long as long_fn
-            result = _apply_round(long_fn(pipeline.dataframe(), **parse_long_arg(args.long)), args.round_ndigits)
+            source_df = pipeline.dataframe()
+            long_val = _next_op_val("long", args.long)
+            long_kwargs = parse_long_arg(long_val)
+            cols_arg = long_kwargs.get("cols")
+            if cols_arg:
+                cols_list = parse_columns(cols_arg) if isinstance(cols_arg, str) else list(cols_arg)
+                missing = [c for c in cols_list if c not in source_df.columns]
+                if missing:
+                    return _fail(parser, batch, unknown_columns_message("-long", missing, list(source_df.columns)))
+            try:
+                result = long_fn(source_df, **long_kwargs)
+            except (KeyError, ValueError) as exc:
+                return _fail(parser, batch, str(exc))
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "wide":
             from pytae.shape import wide as wide_fn
             source_df = pipeline.dataframe()
-            wide_kwargs = parse_wide_arg(args.wide)
+            wide_val = _next_op_val("wide", args.wide)
+            wide_kwargs = parse_wide_arg(wide_val)
             wide_kwargs["dropna"] = args.dropna
-            missing = [c for c in (wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value"))
-                       if c not in source_df.columns]
+            to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
+            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index")
+            if by_cols:
+                to_check.extend(parse_columns(by_cols) if isinstance(by_cols, str) else list(by_cols))
+            missing = [c for c in to_check if c not in source_df.columns]
             if missing:
                 return _fail(parser, batch, unknown_columns_message("-wide", missing, list(source_df.columns)))
-            result = _apply_round(wide_fn(source_df, **wide_kwargs), args.round_ndigits)
+            try:
+                result = wide_fn(source_df, **wide_kwargs)
+            except (KeyError, ValueError) as exc:
+                return _fail(parser, batch, str(exc))
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "crosstab":
             source_df = pipeline.dataframe()
-            ct = parse_crosstab_arg(args.crosstab)
+            ct_val = _next_op_val("crosstab", args.crosstab)
+            ct = parse_crosstab_arg(ct_val)
             index_cols = parse_columns(ct["index"])
             needed = index_cols + [ct["columns"]] + ([ct["values"]] if "values" in ct else [])
             missing = [c for c in needed if c not in source_df.columns]
@@ -661,13 +714,12 @@ def _process_path(
             if "values" in ct:
                 ct_kwargs["values"] = source_df[ct["values"]]
                 ct_kwargs["aggfunc"] = ct["aggfunc"]
-            result = _apply_round(
-                pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs),
-                args.round_ndigits,
-            )
+            result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, index=True, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=True)
 

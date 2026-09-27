@@ -6,6 +6,9 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import tokenize as _tokenize
+from pytae._text import unquote_name as _unquote_name
+
 
 def long(
     df: pd.DataFrame,
@@ -130,30 +133,57 @@ def wide(
     pd.DataFrame
         Pivoted wide DataFrame.
     """
+    c = _unquote_name(c)
+    if v is not None:
+        v = _unquote_name(v)
+    if c not in df.columns:
+        raise KeyError(f"wide(): columns 'c' column '{c}' not found in DataFrame")
+    if v is not None and v not in df.columns:
+        raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
+
     if index is None:
         index = kwargs.pop("by", kwargs.pop("id_vars", None))
 
     if index is not None:
         if isinstance(index, str):
-            index_cols = [col.strip() for col in index.split(",") if col.strip()]
+            index_cols = [_unquote_name(col.strip()) for col in _tokenize(index, ",", keep_quotes=True, track_brackets=True) if col.strip()]
         else:
-            index_cols = list(index)
+            index_cols = [_unquote_name(col) if isinstance(col, str) else col for col in index]
+        for col in index_cols:
+            if col not in df.columns:
+                raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
     else:
         index_cols = [col for col in df.columns if col not in [c, v]]
+
+    def _safe_reset_index(pivoted: pd.DataFrame) -> pd.DataFrame:
+        idx_names = list(pivoted.index.names)
+        col_names = set(pivoted.columns)
+        has_collision = any(name is not None and name in col_names for name in idx_names)
+        if has_collision:
+            new_names = [f"__pt_idx_{i}_{name}" if name in col_names else name for i, name in enumerate(idx_names)]
+            pivoted.index.names = new_names
+            res = pivoted.reset_index()
+            rename_map = {f"__pt_idx_{i}_{name}": name for i, name in enumerate(idx_names) if name in col_names}
+            res.columns = [rename_map.get(col, col) for col in res.columns]
+            return res
+        return pivoted.reset_index()
 
     aggfunc = "size" if a == "n" else a
 
     if aggfunc is None:
         try:
-            wide_df = df.pivot(index=index_cols if index_cols else None, columns=c, values=v).reset_index()
+            pivoted = df.pivot(index=index_cols if index_cols else None, columns=c, values=v)
+            wide_df = _safe_reset_index(pivoted)
         except ValueError:
-            wide_df = df.pivot_table(
+            pivoted = df.pivot_table(
                 index=index_cols if index_cols else None, columns=c, values=v, aggfunc="sum", dropna=dropna
-            ).reset_index()
+            )
+            wide_df = _safe_reset_index(pivoted)
     else:
-        wide_df = df.pivot_table(
+        pivoted = df.pivot_table(
             index=index_cols if index_cols else None, columns=c, values=v, aggfunc=aggfunc, dropna=dropna
-        ).reset_index()
+        )
+        wide_df = _safe_reset_index(pivoted)
 
     wide_df.columns.name = None
     return wide_df

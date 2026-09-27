@@ -1084,6 +1084,7 @@ __all__ = [
     "everything",
     "PtAccessor",
 ]
+
 ################################################################################
 # FILE: src/pytae/__main__.py
 ################################################################################
@@ -1097,6 +1098,7 @@ from pytae.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())
+
 ################################################################################
 # FILE: src/pytae/_text.py
 ################################################################################
@@ -1177,6 +1179,8 @@ def unquote_name(raw: str) -> str:
             raw = raw[1:-1].strip()
             changed = True
     return raw
+
+
 ################################################################################
 # FILE: src/pytae/accessor.py
 ################################################################################
@@ -1419,6 +1423,8 @@ class PtAccessor:
         if plot_kwargs:
             plotter.plot(**plot_kwargs)
         return plotter
+
+
 ################################################################################
 # FILE: src/pytae/agg_df.py
 ################################################################################
@@ -1488,6 +1494,12 @@ def _agg_df_list(
             "numeric column named 'n'; rename that column first, or use the kwargs form "
             "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
         )
+    if has_n and "n" in group_cols:
+        raise ValueError(
+            "agg_df: cannot compute 'n' (row count) because the input already has a "
+            "group column named 'n'; rename that column first, or use the kwargs form "
+            "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
+        )
 
     if not numeric_cols and not has_n:
         raise ValueError("No numeric columns to aggregate and 'n' not specified")
@@ -1505,7 +1517,10 @@ def _agg_df_list(
 
         # Flatten MultiIndex in columns
         if len(remaining_agg_types) > 1:
-            grouped_df.columns = ["_".join(col).strip("_") for col in grouped_df.columns.values]
+            grouped_df.columns = [
+                col[0] if (len(col) > 1 and not col[1]) else (f"{col[0]}_{col[1]}" if len(col) > 1 else str(col[0]))
+                for col in grouped_df.columns.values
+            ]
         else:
             grouped_df.columns = [col[0] for col in grouped_df.columns.values]
 
@@ -1557,6 +1572,10 @@ def _agg_df_dict(
     for out_name, spec in agg_types.items():
         clean_out_name = _unquote_name(out_name)
         if spec == "n" or spec == ["n"] or spec == ("n",):
+            if clean_out_name in group_cols:
+                raise ValueError(
+                    f"agg_df: count output name '{clean_out_name}' collides with group column '{clean_out_name}'"
+                )
             count_cols.append(clean_out_name)
             output_cols.append(clean_out_name)
             continue
@@ -2345,6 +2364,7 @@ import difflib
 import glob
 import re
 from pathlib import Path
+from typing import Any
 
 from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
@@ -2497,7 +2517,12 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
     results: list[Path] = []
     seen: set[Path] = set()
     for item in items:
-        if any(ch in item for ch in "*?["):
+        p_literal = Path(item)
+        if p_literal.exists():
+            if p_literal not in seen:
+                results.append(p_literal)
+                seen.add(p_literal)
+        elif any(ch in item for ch in "*?["):
             matches = sorted(Path(p) for p in glob.glob(item))
             if not matches:
                 raise SystemExit(f"no files matched pattern: {item}")
@@ -2506,10 +2531,9 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
                     results.append(m)
                     seen.add(m)
         else:
-            p = Path(item)
-            if p not in seen:
-                results.append(p)
-                seen.add(p)
+            if p_literal not in seen:
+                results.append(p_literal)
+                seen.add(p_literal)
     return results
 
 
@@ -2528,7 +2552,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             col = m_cmp.group(1).strip()
             op = m_cmp.group(2).strip()
             val = m_cmp.group(3).strip()
-            entries.append((col, f"('{op}', {val})"))
+            entries.append((col, f"{op} {val}"))
             continue
         # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
         m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
@@ -2545,7 +2569,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
     return entries
 
 
-def parse_qry(raw: str) -> dict:
+def parse_qry(raw: str) -> list[tuple[str, Any]]:
     """Parse -qry conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
     "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") and bare string
@@ -2553,15 +2577,26 @@ def parse_qry(raw: str) -> dict:
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
-    conditions: dict = {}
+    conditions: list[tuple[str, Any]] = []
     for key_raw, value_raw in _split_qry_entries(stripped):
         key = _unquote_name(key_raw)
         if not key:
             raise SystemExit("invalid --qry conditions: empty column name")
-        if not value_raw:
+        val_strip = value_raw.strip()
+        if not val_strip:
             raise SystemExit(f"invalid --qry conditions: '{key}' has no value")
-        
-        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", value_raw)
+
+        # Check interval syntax: e.g. [3000, 4500], (3000, 4500), [a, c), (a, c]
+        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
+        if m_int:
+            left, b1, b2, right = m_int.groups()
+            b1_is_quoted = (b1.startswith("'") and b1.endswith("'")) or (b1.startswith('"') and b1.endswith('"'))
+            b2_is_quoted = (b2.startswith("'") and b2.endswith("'")) or (b2.startswith('"') and b2.endswith('"'))
+            if not (b1_is_quoted and b2_is_quoted and left == "[" and right == "]"):
+                conditions.append((key, val_strip))
+                continue
+
+        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
@@ -2569,17 +2604,17 @@ def parse_qry(raw: str) -> dict:
                 sub_val = ast.literal_eval(sub_raw)
             except (ValueError, SyntaxError):
                 sub_val = _unquote_name(sub_raw)
-            conditions[key] = (op, sub_val)
+            conditions.append((key, (op, sub_val)))
             continue
 
         try:
-            value = ast.literal_eval(value_raw)
+            value = ast.literal_eval(val_strip)
         except (ValueError, SyntaxError) as exc:
             raise SystemExit(
-                f"invalid --qry conditions: value for '{key}' ('{value_raw}') must be quoted "
+                f"invalid --qry conditions: value for '{key}' ('{val_strip}') must be quoted "
                 "(e.g. 'Male') or a valid literal (number/tuple/list)"
             ) from exc
-        conditions[key] = value
+        conditions.append((key, value))
     if not conditions:
         raise SystemExit("-qry expects keyword entries, e.g. \"col = ('>', 5)\" or \"col > 5\" (quotes around column name optional)")
     return conditions
@@ -2968,6 +3003,7 @@ def parse_concat_arg(raw: str) -> dict:
     if len(names) < 2:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
+
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -2977,6 +3013,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from typing import Any
 
 import pandas as pd
 
@@ -3072,11 +3109,14 @@ class _Pipeline:
         self._df = df.rename(columns=mapping)
         return None
 
-    def apply_qry(self, conditions: dict) -> str | None:
+    def apply_qry(self, conditions: list[tuple[str, Any]] | dict) -> str | None:
         """Apply one -qry spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         try:
-            self._df = qry(df, **conditions)
+            if isinstance(conditions, list):
+                self._df = qry(df, conditions)
+            else:
+                self._df = qry(df, **conditions)
         except Exception as exc:
             return f"-qry: {exc}"
         return None
@@ -3261,6 +3301,8 @@ class _Pipeline:
 
     def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
         df = self.dataframe()
+        if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+            df = df.reset_index()
         if frac is not None:
             sampled = df.sample(frac=frac, random_state=seed)
         else:
@@ -3286,8 +3328,14 @@ class _OrderedValue(argparse.Action):
     """Optional-value flag (nargs='?') that also records its dest in namespace.op_order, in CLI order."""
 
     def __call__(self, parser, namespace, values, option_string=None) -> None:
-        setattr(namespace, self.dest, self.const if values is None else values)
+        val = self.const if values is None else values
+        setattr(namespace, self.dest, val)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        op_values = getattr(namespace, "_op_values", None)
+        if op_values is None:
+            op_values = {}
+            setattr(namespace, "_op_values", op_values)
+        op_values.setdefault(self.dest, []).append(val)
 
 
 class _OrderedStore(argparse.Action):
@@ -3296,6 +3344,11 @@ class _OrderedStore(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None) -> None:
         setattr(namespace, self.dest, values)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        op_values = getattr(namespace, "_op_values", None)
+        if op_values is None:
+            op_values = {}
+            setattr(namespace, "_op_values", op_values)
+        op_values.setdefault(self.dest, []).append(values)
 
 
 class _OrderedAppend(argparse.Action):
@@ -3307,6 +3360,7 @@ class _OrderedAppend(argparse.Action):
         items.append(values)
         setattr(namespace, self.dest, items)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+
 ################################################################################
 # FILE: src/pytae/cli_run.py
 ################################################################################
@@ -3319,6 +3373,7 @@ import io
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -3349,8 +3404,10 @@ def _dataframe_info(df: pd.DataFrame) -> str:
     return buf.getvalue().rstrip()
 
 
-def _format_table(df: pd.DataFrame, *, index: bool = False, pretty: bool = False) -> str:
+def _format_table(df: pd.DataFrame, *, index: bool | None = None, pretty: bool = False) -> str:
     """Render a DataFrame as standard pandas text, or a markdown/bordered table when pretty=True."""
+    if index is None:
+        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
     if not pretty:
         return df.to_string(index=index)
     try:
@@ -3393,7 +3450,7 @@ def _format_bytes(num: int | float) -> str:
     return f"{val:.1f} PB"
 
 
-def _extract_metadata(path: Path) -> str:
+def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | None = None) -> str:
     """Extract file metadata without scanning full row data (fastest on Parquet)."""
     if not path.exists():
         return f"File not found: {path}"
@@ -3437,22 +3494,33 @@ def _extract_metadata(path: Path) -> str:
         comp_str = f" ({compression})" if compression else ""
         lines.append(f"Format: {fmt_name}{comp_str}")
         try:
-            reader = get_reader(path)
+            reader = get_reader(path, sep=sep, encoding=encoding)
             cols = reader.columns()
             lines.append(f"Columns: {len(cols)}")
             lines.append(f"Column names: {', '.join(cols[:15])}{'...' if len(cols) > 15 else ''}")
+        except UnicodeError as exc:
+            lines.append(f"Error reading encoding: {_encoding_error_message(path, encoding, exc)}")
         except Exception:
             pass
     return "\n".join(lines)
 
 
-def _compute_diff(left_df: pd.DataFrame, right_path: Path, left_name: str) -> str:
+def _compute_diff(
+    left_df: pd.DataFrame,
+    right_path: Path,
+    left_name: str,
+    *,
+    sep: str | None = None,
+    encoding: str | None = None,
+) -> str:
     """Compare the current pipeline result against another tabular file."""
     if not right_path.exists():
         return f"Diff target not found: {right_path}"
     try:
-        reader = get_reader(right_path)
+        reader = get_reader(right_path, sep=sep, encoding=encoding)
         right_df = reader.to_dataframe()
+    except UnicodeError as exc:
+        return _encoding_error_message(right_path, encoding, exc)
     except Exception as exc:
         return f"Cannot read diff target '{right_path}': {exc}"
 
@@ -3624,7 +3692,7 @@ def _process_path(
     *,
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
-    qry_specs: list[dict],
+    qry_specs: list[list[tuple[str, Any]]],
     mutate_specs: list[str],
     query_specs: list[str],
     sql_specs: list[str],
@@ -3670,6 +3738,18 @@ def _process_path(
 
     op_order = getattr(args, "op_order", [])
     last_idx = len(op_order) - 1
+    op_values = getattr(args, "_op_values", {})
+    op_iters = {k: iter(v) for k, v in op_values.items()}
+
+    def _next_op_val(op_name: str, fallback: Any = None) -> Any:
+        it = op_iters.get(op_name)
+        if it is not None:
+            try:
+                return next(it)
+            except StopIteration:
+                pass
+        return fallback
+
     select_iter = iter(select_specs)
     qry_iter = iter(qry_specs)
     mutate_iter = iter(mutate_specs)
@@ -3769,12 +3849,11 @@ def _process_path(
                 result = pd.merge(left_df, right_df, **merge_kwargs)
             except Exception as exc:
                 return _fail(parser, batch, f"-merge: {exc}")
-            result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                print(_format_table(result, pretty=args.pretty))
+                print(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty))
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "concat":
             spec = next(concat_iter)
             if frames is None:
@@ -3789,12 +3868,11 @@ def _process_path(
                 result = pd.concat(dfs, ignore_index=True)
             except Exception as exc:
                 return _fail(parser, batch, f"-concat: {exc}")
-            result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
@@ -3820,12 +3898,12 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
         elif op == "describe":
-            described = _apply_round(pipeline.dataframe().describe(), args.round_ndigits)
+            described = pipeline.dataframe().describe()
             pipeline._df = described
             if should_print(idx):
-                _output_text(_format_table(described, index=True, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(described, args.round_ndigits), index=True, pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=described: d.to_clipboard(index=True)
+                clip_action = lambda d=described: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
         elif op == "info":
             info_str = _dataframe_info(pipeline.dataframe())
             if should_print(idx):
@@ -3833,14 +3911,14 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
         elif op == "meta":
-            meta_str = _extract_metadata(path if path is not None else Path("<merged>"))
+            meta_str = _extract_metadata(path if path is not None else Path("<merged>"), sep=args.dlim, encoding=args.encoding)
             if should_print(idx):
                 _output_text(meta_str, args)
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
             diff_path = Path(args.diff)
-            diff_str = _compute_diff(pipeline.dataframe(), diff_path, path.name if path is not None else "<pipeline>")
+            diff_str = _compute_diff(pipeline.dataframe(), diff_path, path.name if path is not None else "<pipeline>", sep=args.dlim, encoding=args.encoding)
             if should_print(idx):
                 _output_text(diff_str, args)
             if is_clip:
@@ -3855,109 +3933,138 @@ def _process_path(
                 result.columns = [col, "count"]
             else:
                 result = source_df.value_counts(subset=value_count_cols, dropna=args.dropna).rename("count").reset_index()
-            result = _apply_round(result, args.round_ndigits)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "unique":
-            unique_df = _apply_round(pipeline.dataframe().drop_duplicates().reset_index(drop=True), args.round_ndigits)
+            source_df = pipeline.dataframe()
+            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
+                source_df = source_df.reset_index()
+            unique_df = source_df.drop_duplicates().reset_index(drop=True)
             pipeline._df = unique_df
             if should_print(idx):
-                _output_text(_format_table(unique_df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(unique_df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=unique_df: d.to_clipboard(index=False)
+                clip_action = lambda d=unique_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "head":
-            df = _apply_round(pipeline.head(args.head), args.round_ndigits)
+            head_val = _next_op_val("head", args.head)
+            df = pipeline.head(head_val)
             if should_print(idx):
-                _output_text(_format_table(df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: d.to_clipboard(index=False)
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "tail":
-            df = _apply_round(pipeline.tail(args.tail), args.round_ndigits)
+            tail_val = _next_op_val("tail", args.tail)
+            df = pipeline.tail(tail_val)
             if should_print(idx):
-                _output_text(_format_table(df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=df: d.to_clipboard(index=False)
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "sample":
-            sampled = _apply_round(pipeline.sample(args.sample, seed=args.seed, frac=args.frac), args.round_ndigits)
+            sample_val = _next_op_val("sample", args.sample)
+            sampled = pipeline.sample(sample_val, seed=args.seed, frac=args.frac)
             n = len(sampled)
             if should_print(idx):
-                _output_text(_format_table(sampled, pretty=args.pretty) if n else "(no rows)", args)
+                _output_text(_format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
-                clip_action = lambda d=sampled: d.to_clipboard(index=False)
+                clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "sort_by":
             source_df = pipeline.dataframe()
-            sort_cols, order = parse_sort_by(args.sort_by)
+            sort_by_arg = _next_op_val("sort_by", args.sort_by)
+            sort_cols, order = parse_sort_by(sort_by_arg)
             if any(c not in source_df.columns for c in sort_cols):
                 return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
             ascending = order != "desc"
-            sorted_df = _apply_round(source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True), args.round_ndigits)
+            if not (isinstance(source_df.index, pd.RangeIndex) and source_df.index.name is None):
+                source_df = source_df.reset_index()
+            sorted_df = source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True)
             pipeline._df = sorted_df
             if should_print(idx):
-                _output_text(_format_table(sorted_df, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(sorted_df, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=sorted_df: d.to_clipboard(index=False)
+                clip_action = lambda d=sorted_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op in ("agg", "agg_df"):
-            aggfunc = parse_agg(args.agg)
+            agg_val = _next_op_val("agg", args.agg)
+            if isinstance(agg_val, str):
+                parse_agg(agg_val)
             df_cur = pipeline.dataframe()
             by_cols = parse_columns(args.by) if args.by else None
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                if isinstance(aggfunc, dict):
-                    result = _apply_round(agg_df(df_cur, by_cols, dropna=args.dropna, **aggfunc), args.round_ndigits)
-                else:
-                    result = _apply_round(agg_df(df_cur, by_cols, aggfunc, dropna=args.dropna), args.round_ndigits)
+                result = agg_df(df_cur, by_cols, agg_val, dropna=args.dropna)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "handle_missing":
-            result = _apply_round(handle_missing(pipeline.dataframe(), fillna=args.handle_missing), args.round_ndigits)
+            hm_val = _next_op_val("handle_missing", args.handle_missing)
+            result = handle_missing(pipeline.dataframe(), fillna=hm_val)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "clean_columns":
-            opts = parse_clean_columns_arg(args.clean_columns)
-            result = _apply_round(clean_columns(pipeline.dataframe(), **opts), args.round_ndigits)
+            cc_val = _next_op_val("clean_columns", args.clean_columns)
+            opts = parse_clean_columns_arg(cc_val)
+            result = clean_columns(pipeline.dataframe(), **opts)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "long":
             from pytae.shape import long as long_fn
-            result = _apply_round(long_fn(pipeline.dataframe(), **parse_long_arg(args.long)), args.round_ndigits)
+            source_df = pipeline.dataframe()
+            long_val = _next_op_val("long", args.long)
+            long_kwargs = parse_long_arg(long_val)
+            cols_arg = long_kwargs.get("cols")
+            if cols_arg:
+                cols_list = parse_columns(cols_arg) if isinstance(cols_arg, str) else list(cols_arg)
+                missing = [c for c in cols_list if c not in source_df.columns]
+                if missing:
+                    return _fail(parser, batch, unknown_columns_message("-long", missing, list(source_df.columns)))
+            try:
+                result = long_fn(source_df, **long_kwargs)
+            except (KeyError, ValueError) as exc:
+                return _fail(parser, batch, str(exc))
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "wide":
             from pytae.shape import wide as wide_fn
             source_df = pipeline.dataframe()
-            wide_kwargs = parse_wide_arg(args.wide)
+            wide_val = _next_op_val("wide", args.wide)
+            wide_kwargs = parse_wide_arg(wide_val)
             wide_kwargs["dropna"] = args.dropna
-            missing = [c for c in (wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value"))
-                       if c not in source_df.columns]
+            to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
+            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index")
+            if by_cols:
+                to_check.extend(parse_columns(by_cols) if isinstance(by_cols, str) else list(by_cols))
+            missing = [c for c in to_check if c not in source_df.columns]
             if missing:
                 return _fail(parser, batch, unknown_columns_message("-wide", missing, list(source_df.columns)))
-            result = _apply_round(wide_fn(source_df, **wide_kwargs), args.round_ndigits)
+            try:
+                result = wide_fn(source_df, **wide_kwargs)
+            except (KeyError, ValueError) as exc:
+                return _fail(parser, batch, str(exc))
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: d.to_clipboard(index=False)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "crosstab":
             source_df = pipeline.dataframe()
-            ct = parse_crosstab_arg(args.crosstab)
+            ct_val = _next_op_val("crosstab", args.crosstab)
+            ct = parse_crosstab_arg(ct_val)
             index_cols = parse_columns(ct["index"])
             needed = index_cols + [ct["columns"]] + ([ct["values"]] if "values" in ct else [])
             missing = [c for c in needed if c not in source_df.columns]
@@ -3973,13 +4080,12 @@ def _process_path(
             if "values" in ct:
                 ct_kwargs["values"] = source_df[ct["values"]]
                 ct_kwargs["aggfunc"] = ct["aggfunc"]
-            result = _apply_round(
-                pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs),
-                args.round_ndigits,
-            )
+            result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
             pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(result, index=True, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
             if is_clip:
                 clip_action = lambda d=result: d.to_clipboard(index=True)
 
@@ -4021,6 +4127,9 @@ def _process_path(
             return _fail(parser, batch, str(exc))
 
     return False
+
+
+
 ################################################################################
 # FILE: src/pytae/mutate.py
 ################################################################################
@@ -4107,9 +4216,12 @@ def _map_values(series, mapping, default=_NO_MAP_DEFAULT):
     namespace: recode a column's values through a lookup (dict or Series), like
     pandas Series.map(). Keys with no match become `default` if given, else
     NaN."""
-    result = pd.Series(series).map(mapping)
+    s = pd.Series(series)
+    result = s.map(mapping)
     if default is not _NO_MAP_DEFAULT:
-        result = result.where(result.notna(), default)
+        keys = set(mapping.keys()) if hasattr(mapping, "keys") else (set(mapping.index) if hasattr(mapping, "index") else set(mapping))
+        is_missing_key = ~s.isin(keys)
+        result = result.mask(is_missing_key, default)
     return result
 
 
@@ -4123,17 +4235,26 @@ def _result_index(*candidates):
     return None
 
 
+def _clean_condition(cond):
+    if isinstance(cond, pd.Series):
+        return cond.fillna(False).to_numpy(dtype=bool)
+    if isinstance(cond, (list, tuple)):
+        return pd.Series(cond).fillna(False).to_numpy(dtype=bool)
+    return cond
+
+
 def _if_else(condition, true_value, false_value):
     """if_else(condition, true_value, false_value) helper injected into the
     fallback eval namespace -> np.where(...), returned as a Series so it chains
     and composes like any pandas Series."""
+    clean_cond = _clean_condition(condition)
     try:
-        result = np.where(condition, true_value, false_value)
+        result = np.where(clean_cond, true_value, false_value)
     except TypeError:
         # incompatible dtypes across branches have no common numpy dtype --
         # object arrays accept anything
         result = np.where(
-            condition,
+            clean_cond,
             np.asarray(true_value, dtype=object),
             np.asarray(false_value, dtype=object),
         )
@@ -4178,13 +4299,14 @@ def _case_when(*entries, default=None):
                 raise ValueError("case_when default (a non-tuple) must be the last argument")
     if not conditions:
         raise ValueError("case_when needs at least one (condition, value) pair")
+    clean_conditions = [_clean_condition(c) for c in conditions]
     try:
-        result = np.select(conditions, choices, default=default)
+        result = np.select(clean_conditions, choices, default=default)
     except TypeError:
         # incompatible dtypes across choices/default -- object arrays accept anything
         object_choices = [np.asarray(choice, dtype=object) for choice in choices]
         object_default = default if default is None else np.asarray(default, dtype=object)
-        result = np.select(conditions, object_choices, default=object_default)  # type: ignore[arg-type]
+        result = np.select(clean_conditions, object_choices, default=object_default)  # type: ignore[arg-type]
     return pd.Series(result, index=_result_index(*conditions, *choices))
 
 
@@ -4193,15 +4315,22 @@ def _coalesce(*candidates):
     returns the first non-null value for each row, like SQL COALESCE() or dplyr::coalesce()."""
     if not candidates:
         raise ValueError("coalesce expects at least one argument")
+    series_candidates = [c for c in candidates if isinstance(c, pd.Series)]
+    if not series_candidates:
+        for c in candidates:
+            if c is not None and not (isinstance(c, float) and np.isnan(c)) and not pd.isna(c):
+                return c
+        return None
+
+    target_index = series_candidates[0].index
     res = None
     for cand in candidates:
         if isinstance(cand, pd.Series):
-            res = cand.copy() if res is None else res.combine_first(cand)
+            s = cand if cand.index.equals(target_index) else cand.reindex(target_index)
+            res = s.copy() if res is None else res.combine_first(s)
         else:
-            res = res.fillna(cand) if res is not None else pd.Series(cand)
-    idx = _result_index(*candidates)
-    if res is not None and idx is not None:
-        res.index = idx
+            s = pd.Series(cand, index=target_index)
+            res = s if res is None else res.fillna(cand)
     return res
 
 
@@ -4390,9 +4519,6 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
         rewritten, at_names = _strip_at_refs(safe_expr)
         namespace = {**global_dict, **local_dict}
-        namespace.update({col: out[col] for col in out.columns if col.isidentifier()})
-        for alias, orig_col in col_map.items():
-            namespace[alias] = out[orig_col]
         namespace["map"] = _map_values  # prefix map(col, {...}[, default]) form
         namespace["if_else"] = _if_else
         namespace["case_when"] = _case_when
@@ -4404,8 +4530,11 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         namespace["max"] = lambda s: s.max() if hasattr(s, "max") else np.max(s)
         namespace["std"] = lambda s: s.std() if hasattr(s, "std") else np.std(s)
         namespace["var"] = lambda s: s.var() if hasattr(s, "var") else np.var(s)
-        if "n" not in out.columns and "n" not in local_dict and "n" not in global_dict:
+        if "n" not in out.columns:
             namespace["n"] = _RowCount(len(out))
+        namespace.update({col: out[col] for col in out.columns if col.isidentifier()})
+        for alias, orig_col in col_map.items():
+            namespace[alias] = out[orig_col]
         for name in at_names:  # @-refs mean caller-scope vars, so they win over columns
             if name in local_dict:
                 namespace[name] = local_dict[name]
@@ -4551,24 +4680,23 @@ def mutate(
                     out[col] = expr
             else:
                 work_df = out.copy(deep=False)
-                work_df.index = pd.RangeIndex(len(out))
+                work_df["__pt_pos__"] = np.arange(len(out))
                 pieces = []
                 for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
+                    pos = group_df["__pt_pos__"].to_numpy()
+                    clean_group = group_df.drop(columns=["__pt_pos__"])
                     if callable(expr):
-                        val = expr(group_df)
+                        val = expr(clean_group)
                     elif isinstance(expr, str):
-                        val = _eval(group_df, expr, local_dict, global_dict)
+                        val = _eval(clean_group, expr, local_dict, global_dict)
                     else:
                         val = expr
                     if isinstance(val, pd.Series):
-                        if len(val) == len(group_df):
-                            val = val.copy()
-                            val.index = group_df.index
-                        pieces.append(val)
+                        pieces.append(pd.Series(val.to_numpy(), index=pos))
                     else:
-                        pieces.append(pd.Series(val, index=group_df.index))
+                        pieces.append(pd.Series(val, index=pos))
                 if pieces:
-                    combined = pd.concat(pieces).reindex(work_df.index)
+                    combined = pd.concat(pieces).sort_index().reindex(np.arange(len(out)))
                     out[col] = combined.array
                 else:
                     out[col] = pd.Series(index=out.index, dtype=float)
@@ -4583,6 +4711,7 @@ def mutate(
             )
             raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
+
 ################################################################################
 # FILE: src/pytae/other_utilities.py
 ################################################################################
@@ -4653,7 +4782,9 @@ def handle_missing(
             return False
         if s.dtype == object:
             non_na = s.dropna()
-            return len(non_na) > 0 and non_na.map(type).eq(str).all()
+            if len(non_na) == 0:
+                return True
+            return non_na.map(type).eq(str).all()
         return pd.api.types.is_string_dtype(s)
 
     str_cols = [c for c in df.columns if c in target_cols and _is_string_col(df[c])]
@@ -4825,6 +4956,7 @@ import math
 import warnings
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 # pytae's own control kwargs -- these drive Plotter's behavior directly and are
@@ -5151,6 +5283,7 @@ class Plotter:
         # Combine kwargs but exclude print_data and clip_data from last_kwargs
         combined_kwargs = {**self.last_kwargs, **kwargs}
         self.last_kwargs = {k: v for k, v in combined_kwargs.items() if k not in ['print_data', 'clip_data']}
+        self.last_kwargs['kind'] = new_kind
         
         self.x = combined_kwargs.get('x', None)
         self.y = combined_kwargs.get('y', None)
@@ -5225,6 +5358,8 @@ class Plotter:
         """Map category names to colors from an explicit dict, list, or named matplotlib colormap/palette."""
         if isinstance(explicit_colors, dict):
             return explicit_colors
+        if isinstance(explicit_colors, str):
+            return {cat: explicit_colors for cat in categories}
         if isinstance(explicit_colors, (list, tuple)):
             return {cat: explicit_colors[i % len(explicit_colors)] for i, cat in enumerate(categories)}
 
@@ -5261,7 +5396,7 @@ class Plotter:
             color_map = self._get_palette_colors(groups, palette=palette_name, explicit_colors=color_arg)
 
             scatter_kwargs = dict(plot_dict)
-            for non_scatter in ['x', 'y', 'by', 'kind', 'title', 'color', 'c', 'legend', 'grid', 'logx', 'logy', 'rot', 'fontsize', 'colormap', 'colorbar']:
+            for non_scatter in ['x', 'y', 'by', 'kind', 'title', 'color', 'c', 'legend', 'grid', 'logx', 'logy', 'rot', 'fontsize', 'colormap', 'colorbar', 'xlim', 'ylim']:
                 scatter_kwargs.pop(non_scatter, None)
 
             s_arg = scatter_kwargs.pop('s', 20)
@@ -5272,8 +5407,9 @@ class Plotter:
                 grp_mask = (k[self.by] == group)
                 grp_df = k[grp_mask]
                 grp_color = color_map.get(group) if isinstance(color_map, dict) else None
-                if hasattr(s_arg, '__len__') and not isinstance(s_arg, (str, bytes)):
-                    import numpy as np
+                if isinstance(s_arg, str) and s_arg in k.columns:
+                    grp_s = k.loc[grp_mask, s_arg].to_numpy()
+                elif hasattr(s_arg, '__len__') and not isinstance(s_arg, (str, bytes)):
                     grp_s = np.asarray(s_arg)[grp_mask.to_numpy()]
                 else:
                     grp_s = s_arg
@@ -5294,6 +5430,19 @@ class Plotter:
                 ax.set_xscale('log')
             if plot_dict.get('logy'):
                 ax.set_yscale('log')
+            if 'xlim' in plot_dict:
+                ax.set_xlim(plot_dict['xlim'])
+            if 'ylim' in plot_dict:
+                ax.set_ylim(plot_dict['ylim'])
+            rot = plot_dict.get('rot')
+            fontsize = plot_dict.get('fontsize')
+            if rot is not None or fontsize is not None:
+                tick_kw = {}
+                if rot is not None:
+                    tick_kw['labelrotation'] = rot
+                if fontsize is not None:
+                    tick_kw['labelsize'] = fontsize
+                ax.tick_params(axis='x', **tick_kw)
             self.ax = ax
             if self.last_kwargs.get('title'):
                 ax.set_title(self.last_kwargs['title'])
@@ -5306,8 +5455,13 @@ class Plotter:
             return
 
         c = plot_dict.get('c', None)
-        if c and not pd.api.types.is_numeric_dtype(k[c]):
-            k[c] = k[c].astype('category')
+        if c is not None:
+            try:
+                is_in_cols = (c in k.columns)
+            except TypeError:
+                is_in_cols = False
+            if is_in_cols and not pd.api.types.is_numeric_dtype(k[c]):
+                k[c] = k[c].astype('category')
         self.ax = k.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(k, ax)
@@ -5318,8 +5472,11 @@ class Plotter:
         self._store_plot_kwargs(ax, plot_dict)
         pie_df = self.df[[self.by, self.y]].groupby(self.by, observed=True, dropna=self.dropna).agg({self.y: self.aggfunc})
         if 'colors' in self.last_kwargs:
-            color_dict = self.last_kwargs['colors']
-            plot_dict['colors'] = [color_dict.get(category, 'grey') for category in pie_df.index]
+            color_arg = self.last_kwargs['colors']
+            if isinstance(color_arg, (list, tuple)):
+                plot_dict['colors'] = color_arg
+            elif isinstance(color_arg, dict):
+                plot_dict['colors'] = [color_arg.get(category, 'grey') for category in pie_df.index]
         elif 'palette' in self.last_kwargs:
             colors = self._get_palette_colors(list(pie_df.index), palette=self.last_kwargs['palette'])
             plot_dict['colors'] = [colors.get(category, 'grey') for category in pie_df.index]
@@ -5355,13 +5512,26 @@ class Plotter:
         elif color_map is not None:
             plot_dict['color'] = color_map
 
+        if style is not None and not isinstance(style, dict):
+            plot_dict['style'] = style
+        if width is not None and not isinstance(width, dict):
+            plot_dict['linewidth'] = width
+
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
-        if style:
-            for line, (name, style_value) in zip(self.ax.get_lines(), style.items()):
-                line.set_linestyle(style_value)
-        if width:
-            for line, (name, width_value) in zip(self.ax.get_lines(), width.items()):
-                line.set_linewidth(width_value)
+        if style is not None and isinstance(style, dict):
+            for line in self.ax.get_lines():
+                lbl = line.get_label()
+                if lbl in style:
+                    line.set_linestyle(style[lbl])
+        if width is not None:
+            if isinstance(width, dict):
+                for line in self.ax.get_lines():
+                    lbl = line.get_label()
+                    if lbl in width:
+                        line.set_linewidth(width[lbl])
+            else:
+                for line in self.ax.get_lines():
+                    line.set_linewidth(width)
         self._apply_axis_labels(ax)
         self._handle_data_output(pivot_data, ax)
 
@@ -5387,6 +5557,7 @@ class Plotter:
         color_arg = self.last_kwargs.get('color')
         if palette or color_arg:
             plot_dict['patch_artist'] = True
+            plot_dict.pop('color', None)
 
         self.ax = box_df.plot(ax=ax, **plot_dict)
 
@@ -5430,8 +5601,10 @@ class Plotter:
             for i in range(len(matrix.index)):
                 for j in range(len(matrix.columns)):
                     val = matrix.iloc[i, j]
-                    text_str = format(val, fmt) if isinstance(val, (int, float)) else str(val)
-                    if isinstance(val, (int, float)) and not math.isnan(val):
+                    is_num = isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, (bool, np.bool_))
+                    text_str = format(val, fmt) if is_num else str(val)
+                    is_nan = is_num and (np.isnan(val) if isinstance(val, (float, np.floating)) else False)
+                    if is_num and not is_nan:
                         rgba = im.cmap(im.norm(val))
                         luminance = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
                         text_color = "white" if luminance < 0.5 else "black"
@@ -5466,7 +5639,11 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
         if self.by:
-            k = self.df.pivot(columns=self.by, values=self.column)
+            sub = self.df[[self.by, self.column]].copy()
+            sub["__row__"] = sub.groupby(self.by).cumcount()
+            k = sub.pivot(index="__row__", columns=self.by, values=self.column)
+            k.index.name = None
+            k.columns.name = None
         else:
             k = self.df[[self.column]]
         palette = self.last_kwargs.get('palette')
@@ -5482,12 +5659,14 @@ class Plotter:
         """Plot a histogram."""
         plot_dict = self._prepare_plot_kwargs('hist')
         self._store_plot_kwargs(ax, plot_dict)
-        k = self.df.copy()
         if self.by:
-            k = k[[self.by, self.column]]
-            k = k.pivot(columns=self.by, values=self.column)
+            sub = self.df[[self.by, self.column]].copy()
+            sub["__row__"] = sub.groupby(self.by).cumcount()
+            k = sub.pivot(index="__row__", columns=self.by, values=self.column)
+            k.index.name = None
+            k.columns.name = None
         else:
-            k = k[[self.column]]
+            k = self.df[[self.column]]
         palette = self.last_kwargs.get('palette')
         if palette and 'color' not in plot_dict:
             colors = self._get_palette_colors(list(k.columns), palette=palette)
@@ -5513,11 +5692,20 @@ class Plotter:
                     raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
                 pivot_table = self.df.pivot(index=self.x, columns=self.by, values=self.y).reset_index()
             else:
-                pivot_table = self.df[[self.x, self.y]].copy()
+                y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
+                cols = ([self.x] if self.x is not None else []) + [c for c in y_cols if c != self.x]
+                pivot_table = self.df[cols].copy()
         else:
             pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
                                             aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
-        pivot_table[self.x] = pivot_table[self.x].astype('object') if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]) else pivot_table[self.x]
+            if self.by is None and isinstance(self.y, (list, tuple)):
+                desired_order = ([self.x] if self.x is not None and self.x in pivot_table.columns else []) + [c for c in self.y if c in pivot_table.columns]
+                other_cols = [c for c in pivot_table.columns if c not in desired_order]
+                pivot_table = pivot_table[desired_order + other_cols]
+
+        if self.x and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
+            if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]):
+                pivot_table[self.x] = pivot_table[self.x].astype('object')
         pivot_table.columns.name = None  # ensure col names are not corrupt with multi index names post pivot
         return pivot_table
 
@@ -5565,7 +5753,9 @@ class Plotter:
 
     def _store_plot_kwargs(self, ax, plot_dict):
         """Store plot kwargs for the given axis."""
-        self.plot_kwargs_store[ax.get_label()] = plot_dict
+        d = dict(plot_dict)
+        d['kind'] = self.kind
+        self.plot_kwargs_store[ax.get_label()] = d
 
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10, hide_secondary_y=False, 
                  legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False,
@@ -5581,6 +5771,26 @@ class Plotter:
         if style:
             self._hide_spines()
             self._adjust_ticks_and_spines()
+            for ax in self.fig.axes:
+                ax_label = ax.get_label()
+                if '<colorbar>' in ax_label or ax_label == '':
+                    continue
+                stored = self.plot_kwargs_store.get(ax_label, {})
+                kind = stored.get('kind', '')
+                rot = stored.get('rot')
+                fontsize = stored.get('fontsize')
+                if rot is None and kind == 'bar':
+                    rot = 90
+                elif rot is None and kind == 'barh':
+                    rot = 0
+                target_axis = 'y' if kind == 'barh' else 'x'
+                tick_kw = {}
+                if rot is not None:
+                    tick_kw['labelrotation'] = rot
+                if fontsize is not None:
+                    tick_kw['labelsize'] = fontsize
+                if tick_kw:
+                    ax.tick_params(axis=target_axis, **tick_kw)
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
                             legend_loc=legend_loc, legend_frameon=legend_frameon)
         
@@ -5687,8 +5897,9 @@ class Plotter:
             handles, labels = ax.get_legend_handles_labels()
             labels = [label.replace(" (right)", "") for label in labels]
             
+            stored_legend = self.plot_kwargs_store.get(ax_label, {}).get('legend', True)
             should_display_legend = False
-            if legend:
+            if legend and stored_legend:
                 if is_secondary and legend_secondary:
                     should_display_legend = True
                 elif not is_secondary and legend_primary:
@@ -5701,7 +5912,7 @@ class Plotter:
                 ax.get_legend().remove()
             
             if not self.consolidate_legends and ax.get_label() in self.plot_kwargs_store:
-                if self.plot_kwargs_store[ax.get_label()]['kind'] == 'pie':
+                if self.plot_kwargs_store[ax.get_label()].get('kind') == 'pie':
                     if ax.get_legend():
                         ax.get_legend().remove()
 
@@ -5766,6 +5977,9 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
     elif not isinstance(plotter, Plotter):
         raise TypeError(f"Expected a Plotter instance, got {type(plotter).__name__}")
     return plotter.finalize(**kwargs)
+
+
+
 ################################################################################
 # FILE: src/pytae/qry.py
 ################################################################################
@@ -5819,20 +6033,36 @@ def _parse_qry_string(raw: str) -> list[tuple[str, Any]]:
             raise ValueError("invalid qry conditions: empty column name")
         if not value_raw:
             raise ValueError(f"invalid qry conditions: '{key}' has no value")
-        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", value_raw)
+        val_strip = value_raw.strip()
+        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
+        if m_int:
+            left, b1, b2, right = m_int.groups()
+            b1_is_quoted = (b1.startswith("'") and b1.endswith("'")) or (b1.startswith('"') and b1.endswith('"'))
+            b2_is_quoted = (b2.startswith("'") and b2.endswith("'")) or (b2.startswith('"') and b2.endswith('"'))
+            if not (b1_is_quoted and b2_is_quoted and left == "[" and right == "]"):
+                pairs.append((key, val_strip))
+                continue
+
+        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
             try:
                 sub_val = ast.literal_eval(sub_raw)
             except (ValueError, SyntaxError):
-                sub_val = _unquote_name(sub_raw)
+                if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
+                    sub_val = sub_raw[1:-1]
+                else:
+                    sub_val = sub_raw
             pairs.append((key, (op, sub_val)))
             continue
         try:
-            value = ast.literal_eval(value_raw)
+            value = ast.literal_eval(val_strip)
         except (ValueError, SyntaxError):
-            value = _unquote_name(value_raw)
+            if len(val_strip) >= 2 and val_strip[0] in "'\"" and val_strip[-1] == val_strip[0]:
+                value = val_strip[1:-1]
+            else:
+                value = val_strip
         pairs.append((key, value))
     if not pairs:
         raise ValueError("qry() expects at least one condition")
@@ -5952,6 +6182,14 @@ def qry(
         elif isinstance(arg, dict):
             for col, cond in arg.items():
                 cond_pairs.append((str(col), cond))
+        elif isinstance(arg, (list, tuple)):
+            for item in arg:
+                if isinstance(item, (tuple, list)) and len(item) == 2:
+                    cond_pairs.append((str(item[0]), item[1]))
+                else:
+                    raise TypeError(
+                        f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
+                    )
         else:
             raise TypeError(
                 f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
@@ -6017,22 +6255,48 @@ def qry(
                 except TypeError as exc:
                     raise ValueError(f"qry: '{op}' on '{col}': invalid value {value!r} ({exc})") from exc
             elif op in ops:
-                if is_numeric:
-                    value = float(value)  # Convert to float for numeric columns
+                if is_numeric and not isinstance(value, (int, float)):
+                    try:
+                        value = int(value)
+                    except (ValueError, TypeError):
+                        try:
+                            value = float(value)
+                        except (ValueError, TypeError):
+                            pass
                 out = out.loc[ops[op](out[col], value)]
             else:
                 raise ValueError(
                     f"Unsupported tuple operator '{op}' for '{col}'. "
                     f"Use 'in', 'not in', or one of {list(ops.keys()) + list(str_ops.keys())}."
                 )
-        elif isinstance(cond, str) and re.match(r'^[\[(].*[)\]]$', cond):
+        elif isinstance(cond, str) and re.match(r'^[\[(].*[\])]$', cond):
             # Handle interval conditions (e.g., '(a,b)', '[a,b]')
-            interval_pattern = re.compile(r'^([\[(])(.*),(.*)([\])])$')
+            interval_pattern = re.compile(r'^([\[(])([^,]+),([^,]+)([\])])$')
             match = interval_pattern.match(cond)
             if match:
-                left_bracket, lower, upper, right_bracket = match.groups()
-                lower = float(lower) if is_numeric else lower
-                upper = float(upper) if is_numeric else upper
+                left_bracket, lower_raw, upper_raw, right_bracket = match.groups()
+                lower_str = lower_raw.strip()
+                upper_str = upper_raw.strip()
+                lower: int | float | str
+                upper: int | float | str
+                if is_numeric:
+                    try:
+                        lower = int(lower_str)
+                    except ValueError:
+                        try:
+                            lower = float(lower_str)
+                        except ValueError:
+                            lower = lower_str
+                    try:
+                        upper = int(upper_str)
+                    except ValueError:
+                        try:
+                            upper = float(upper_str)
+                        except ValueError:
+                            upper = upper_str
+                else:
+                    lower = lower_str
+                    upper = upper_str
 
                 if left_bracket == '[':
                     lower_op = operator.ge
@@ -6045,6 +6309,8 @@ def qry(
                     upper_op = operator.lt
 
                 out = out.loc[lower_op(out[col], lower) & upper_op(out[col], upper)]
+            else:
+                out = out.loc[out[col] == cond]
         else:
             # Handle single value equality (e.g., 'Adelie')
             out = out.loc[out[col] == cond]
@@ -6701,6 +6967,8 @@ def _write_jsonl(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     compression: str | None = None,
 ) -> None:
+    if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+        df = df.reset_index()
     total = len(df)
     if not progress or total == 0:
         df.to_json(dest, orient="records", lines=True, compression=compression)
@@ -6875,14 +7143,23 @@ def select(
 
     if exclude is not None:
         if isinstance(exclude, str):
-            for token in exclude.split(","):
-                token = token.strip()
+            raw_exclude = exclude.strip()
+            if raw_exclude.startswith("[") and raw_exclude.endswith("]"):
+                raw_exclude = raw_exclude[1:-1].strip()
+            for token in _tokenize(raw_exclude, ",", keep_quotes=True, track_brackets=True):
+                token = _unquote_name(token.strip())
                 if token:
                     excluded_cols.update(_resolve_negation(token))
         elif isinstance(exclude, (list, tuple, set)):
             for item in exclude:
                 if isinstance(item, str):
-                    excluded_cols.update(_resolve_negation(item))
+                    clean_item = _unquote_name(item.strip())
+                    if clean_item.startswith("[") and clean_item.endswith("]"):
+                        clean_item = clean_item[1:-1].strip()
+                    for sub in _tokenize(clean_item, ",", keep_quotes=True, track_brackets=True):
+                        sub = _unquote_name(sub.strip())
+                        if sub:
+                            excluded_cols.update(_resolve_negation(sub))
                 elif item in df.columns:
                     excluded_cols.add(item)
                 else:
@@ -7004,24 +7281,30 @@ def select(
     if contains is not None:
         if isinstance(contains, str):
             contains_cols = [col for col in df.columns if contains in str(col)]
-        elif isinstance(contains, list):
+        elif isinstance(contains, (list, tuple, Sequence)):
             contains_cols = [col for col in df.columns if any(sub in str(col) for sub in contains)]
+        else:
+            raise TypeError(f"contains must be a string or sequence of strings, got {type(contains)}")
         selected_cols.update(contains_cols)
         ordered_cols.extend([col for col in contains_cols if col not in ordered_cols])
 
     if startswith is not None:
         if isinstance(startswith, str):
             startswith_cols = [col for col in df.columns if str(col).startswith(startswith)]
-        elif isinstance(startswith, list):
+        elif isinstance(startswith, (list, tuple, Sequence)):
             startswith_cols = [col for col in df.columns if any(str(col).startswith(sub) for sub in startswith)]
+        else:
+            raise TypeError(f"startswith must be a string or sequence of strings, got {type(startswith)}")
         selected_cols.update(startswith_cols)
         ordered_cols.extend([col for col in startswith_cols if col not in ordered_cols])
 
     if endswith is not None:
         if isinstance(endswith, str):
             endswith_cols = [col for col in df.columns if str(col).endswith(endswith)]
-        elif isinstance(endswith, list):
+        elif isinstance(endswith, (list, tuple, Sequence)):
             endswith_cols = [col for col in df.columns if any(str(col).endswith(sub) for sub in endswith)]
+        else:
+            raise TypeError(f"endswith must be a string or sequence of strings, got {type(endswith)}")
         selected_cols.update(endswith_cols)
         ordered_cols.extend([col for col in endswith_cols if col not in ordered_cols])
 
@@ -7048,6 +7331,7 @@ def select(
 
     final_cols = [col for col in ordered_cols if col not in excluded_cols]
     return df[final_cols]
+
 ################################################################################
 # FILE: src/pytae/shape.py
 ################################################################################
@@ -7058,6 +7342,9 @@ from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
+
+from pytae._text import tokenize as _tokenize
+from pytae._text import unquote_name as _unquote_name
 
 
 def long(
@@ -7183,33 +7470,61 @@ def wide(
     pd.DataFrame
         Pivoted wide DataFrame.
     """
+    c = _unquote_name(c)
+    if v is not None:
+        v = _unquote_name(v)
+    if c not in df.columns:
+        raise KeyError(f"wide(): columns 'c' column '{c}' not found in DataFrame")
+    if v is not None and v not in df.columns:
+        raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
+
     if index is None:
         index = kwargs.pop("by", kwargs.pop("id_vars", None))
 
     if index is not None:
         if isinstance(index, str):
-            index_cols = [col.strip() for col in index.split(",") if col.strip()]
+            index_cols = [_unquote_name(col.strip()) for col in _tokenize(index, ",", keep_quotes=True, track_brackets=True) if col.strip()]
         else:
-            index_cols = list(index)
+            index_cols = [_unquote_name(col) if isinstance(col, str) else col for col in index]
+        for col in index_cols:
+            if col not in df.columns:
+                raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
     else:
         index_cols = [col for col in df.columns if col not in [c, v]]
+
+    def _safe_reset_index(pivoted: pd.DataFrame) -> pd.DataFrame:
+        idx_names = list(pivoted.index.names)
+        col_names = set(pivoted.columns)
+        has_collision = any(name is not None and name in col_names for name in idx_names)
+        if has_collision:
+            new_names = [f"__pt_idx_{i}_{name}" if name in col_names else name for i, name in enumerate(idx_names)]
+            pivoted.index.names = new_names
+            res = pivoted.reset_index()
+            rename_map = {f"__pt_idx_{i}_{name}": name for i, name in enumerate(idx_names) if name in col_names}
+            res.columns = [rename_map.get(col, col) for col in res.columns]
+            return res
+        return pivoted.reset_index()
 
     aggfunc = "size" if a == "n" else a
 
     if aggfunc is None:
         try:
-            wide_df = df.pivot(index=index_cols if index_cols else None, columns=c, values=v).reset_index()
+            pivoted = df.pivot(index=index_cols if index_cols else None, columns=c, values=v)
+            wide_df = _safe_reset_index(pivoted)
         except ValueError:
-            wide_df = df.pivot_table(
+            pivoted = df.pivot_table(
                 index=index_cols if index_cols else None, columns=c, values=v, aggfunc="sum", dropna=dropna
-            ).reset_index()
+            )
+            wide_df = _safe_reset_index(pivoted)
     else:
-        wide_df = df.pivot_table(
+        pivoted = df.pivot_table(
             index=index_cols if index_cols else None, columns=c, values=v, aggfunc=aggfunc, dropna=dropna
-        ).reset_index()
+        )
+        wide_df = _safe_reset_index(pivoted)
 
     wide_df.columns.name = None
     return wide_df
+
 ################################################################################
 # FILE: src/pytae/sql.py
 ################################################################################
@@ -7337,6 +7652,7 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
             raise ValueError(f"sql: {exc}") from exc
     finally:
         con.close()
+
 ================================================================================
 11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
@@ -7345,6 +7661,7 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
 # FILE: tests/__init__.py
 ################################################################################
 # Makes `from tests.cli_helpers import ...` work when pytest's rootdir is the repo.
+
 ################################################################################
 # FILE: tests/cli_helpers.py
 ################################################################################
@@ -7401,6 +7718,7 @@ def _write_three_id_csvs(tmp_path):
     pd.DataFrame({"id": [1, 2, 4], "y": ["p", "q", "r"]}).to_csv(b, index=False)
     pd.DataFrame({"id": [1, 2], "z": ["m", "n"]}).to_csv(c, index=False)
     return str(a), str(b), str(c)
+
 ################################################################################
 # FILE: tests/conftest.py
 ################################################################################
@@ -7433,6 +7751,7 @@ def sample_parquet(tmp_path):
         pytae.sample_data[name].to_parquet(path)
         return str(path)
     return _write
+
 ################################################################################
 # FILE: tests/test_accessor.py
 ################################################################################
@@ -7467,6 +7786,7 @@ def test_pt_select_then_pandas_head():
     out = penguins.pt.select("species", "body_mass_g").head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
+
 ################################################################################
 # FILE: tests/test_agg_df.py
 ################################################################################
@@ -7694,8 +8014,30 @@ def test_agg_df_string_spec_errors():
         df.pt.agg_df("g", "mean", a="sum")
 
 
+def test_agg_df_multi_agg_column_flattening_preserves_underscores():
+    # Lib Issue 1: multi-agg flattening preserves leading/trailing underscores
+    df = pd.DataFrame({"g": ["a", "b"], "_x": [1, 2], "y_": [3, 4]})
+    res = df.pt.agg_df("g", ["mean", "sum"])
+    assert "_x_mean" in res.columns
+    assert "_x_sum" in res.columns
+    assert "y__mean" in res.columns
+    assert "y__sum" in res.columns
+
+
+def test_agg_df_group_by_n_with_count_n_raises():
+    # Lib Issue 2: grouping by 'n' and requesting 'n' raises collision error
+    df = pd.DataFrame({"n": ["a", "a", "b"], "v": [1.0, 2.0, 4.0]})
+    with pytest.raises(ValueError, match="collides with group column 'n'|already has a group column named 'n'"):
+        df.pt.agg_df("n", ["mean", "n"])
+
+    with pytest.raises(ValueError, match="collides with group column 'n'|already has a group column named 'n'"):
+        df.pt.agg_df("n", v="mean", n="n")
+
+
 if __name__ == "__main__":
     pytest.main()
+
+
 ################################################################################
 # FILE: tests/test_cli_agg.py
 ################################################################################
@@ -7886,6 +8228,18 @@ def test_agg_python_literal_is_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["x"], "val": [1]}))
     with pytest.raises(SystemExit, match="use a name"):
         cli.main([path, "-agg", "{'val': 'sum'}"])
+
+
+def test_agg_mapping_named_a_does_not_collide_with_kwargs(tmp_path, capsys):
+    # CLI Issue 2: -agg "a = sum" passed positionally to agg_df
+    df = pd.DataFrame({"grp": ["x", "x", "y"], "a": [1, 2, 3], "b": [10, 20, 30]})
+    path = _write_csv(tmp_path, df)
+    exit_code = cli.main([path, "-by", "grp", "-agg", "a = sum", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["grp", "a"]
+
+
 ################################################################################
 # FILE: tests/test_cli_clean.py
 ################################################################################
@@ -8108,6 +8462,8 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
 
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
+
+
 ################################################################################
 # FILE: tests/test_cli_filter.py
 ################################################################################
@@ -8253,6 +8609,16 @@ def test_qry_equals_separator(tmp_path, capsys):
     exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
+
+
+def test_qry_cli_bracket_interval(tmp_path, capsys):
+    # CLI Issue 3: -qry "body_mass_g = [3000, 3200]" treats as interval
+    path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 3100, 3200, 4000]}))
+    exit_code = cli.main([path, "-qry", "body_mass_g = [3000, 3200]", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 1)"
+
+
 ################################################################################
 # FILE: tests/test_cli_inspect.py
 ################################################################################
@@ -9150,6 +9516,42 @@ def test_cli_pager(tmp_path, monkeypatch):
     assert exit_code == 0
     assert len(paged) == 1
     assert "col" in paged[0]
+
+
+def test_cli_round_preserves_pipeline_precision(tmp_path, capsys):
+    # CLI Issue 4: intermediate sort does not corrupt full precision for later agg
+    df = pd.DataFrame({"g": ["x", "x"], "v": [0.4, 0.4]})
+    path = _write_csv(tmp_path, df)
+    exit_code = cli.main([path, "-round", "0", "-sort_by", "v", "-by", "g", "-agg", "sum"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "1" in out
+
+
+def test_cli_repeated_flags_run_with_respective_values(tmp_path, capsys):
+    # CLI Issue 7: -head 1 -head 3 runs head 1 then head 3 (result has 1 row)
+    df = pd.DataFrame({"a": range(10)})
+    path = _write_csv(tmp_path, df)
+    exit_code = cli.main([path, "-head", "1", "-head", "3", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 1)"
+
+
+def test_cli_expand_paths_literal_bracket_file(tmp_path, capsys):
+    # CLI Issue 9: data[1].csv read literally when file exists
+    p = tmp_path / "data[1].csv"
+    p.write_text("a,b\n1,2\n")
+    exit_code = cli.main([str(p), "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+
+
+
+
+
+
+
 ################################################################################
 # FILE: tests/test_cli_merge.py
 ################################################################################
@@ -9447,6 +9849,10 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
     ])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 4)"
+
+
+
+
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
@@ -9609,6 +10015,8 @@ def test_mutate_by_unknown_column_cli(tmp_path, capsys):
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "-by: unknown column" in err
+
+
 ################################################################################
 # FILE: tests/test_cli_parse.py
 ################################################################################
@@ -9645,6 +10053,9 @@ def test_expand_paths_single_and_list(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         expand_paths(str(tmp_path / "*.parquet"))
     assert "no files matched pattern" in str(exc_info.value)
+
+
+
 ################################################################################
 # FILE: tests/test_cli_reshape.py
 ################################################################################
@@ -9810,6 +10221,41 @@ def test_wide_rejects_dropna_kwarg(tmp_path):
     )
     with pytest.raises(SystemExit, match="unknown key 'dropna'"):
         cli.main([path, "-wide", "dropna=false"])
+
+
+def test_crosstab_sort_and_export_preserves_row_key(tmp_path):
+    # CLI Issue 5: -crosstab row index preserved across sort and file export
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
+    p = _write_csv(tmp_path, df)
+    out_csv = tmp_path / "out.csv"
+    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-sort_by", "Biscoe", "-o", str(out_csv)])
+    assert exit_code == 0
+    res = pd.read_csv(out_csv)
+    assert "species" in res.columns
+
+
+def test_crosstab_jsonl_export_preserves_row_index(tmp_path):
+    # CLI Issue 6: -crosstab -o ct.jsonl preserves row index
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
+    p = _write_csv(tmp_path, df)
+    out_jsonl = tmp_path / "ct.jsonl"
+    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-o", str(out_jsonl)])
+    assert exit_code == 0
+    res = pd.read_json(out_jsonl, lines=True)
+    assert "species" in res.columns
+
+
+def test_long_unknown_column_validation(tmp_path):
+    # CLI Issue 11: -long validates columns
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    p = _write_csv(tmp_path, df)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([p, "-long", "cols=nope"])
+    assert exc_info.value.code == 2
+
+
+
+
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
@@ -9957,6 +10403,7 @@ def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines() == ["age     0", "deck    0"]
+
 ################################################################################
 # FILE: tests/test_cli_select.py
 ################################################################################
@@ -10292,6 +10739,11 @@ def test_select_cli_bracketed_columns(tmp_path, capsys):
     exit_code3 = cli.main([path, "-select", "-[island name]", "-cols"])
     assert exit_code3 == 0
     assert capsys.readouterr().out.strip().splitlines() == ["species", "bill length mm"]
+
+
+
+
+
 ################################################################################
 # FILE: tests/test_cli_sql.py
 ################################################################################
@@ -10480,6 +10932,10 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     exit_code = cli.main([str(path), "-sql", "select [col a], `col b` from data", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 2)"
+
+
+
+
 ################################################################################
 # FILE: tests/test_import.py
 ################################################################################
@@ -10619,6 +11075,8 @@ else:
     )
     assert result.returncode == 0, result.stderr
     assert "pytae[sql]" in result.stderr
+
+
 ################################################################################
 # FILE: tests/test_mutate.py
 ################################################################################
@@ -11001,6 +11459,64 @@ def test_mutate_grouped_unknown_col():
     df = pd.DataFrame({"grp": ["a", "b"], "val": [1, 2]})
     with pytest.raises(KeyError, match="grouping column 'grp_typo' not found"):
         df.pt.mutate("m = mean(val)", by="grp_typo")
+
+
+def test_mutate_coalesce_scalar_broadcast():
+    # Lib Issue 5
+    df = pd.DataFrame({"a": [None, 2.0, None]}, index=[5, 6, 7])
+    res1 = pt.mutate(df, c="coalesce(0, a)")
+    assert list(res1["c"]) == [0.0, 0.0, 0.0]
+
+    res2 = pt.mutate(df, c="coalesce(1, 2)")
+    assert list(res2["c"]) == [1, 1, 1]
+
+
+def test_mutate_column_named_sum_overrides_helper():
+    # Lib Issue 7
+    df = pd.DataFrame({"sum": [1, 2], "x": [10, 20]})
+    res = df.pt.mutate(y="if_else(x > 15, sum, 0)")
+    assert list(res["y"]) == [0, 2]
+
+
+def test_mutate_map_preserves_explicit_null():
+    # Lib Issue 11
+    df = pd.DataFrame({"a": ["x", "y", "z"]})
+    res = pt.mutate(df, b="map(a, {'x': 1, 'y': None}, -1)")
+    assert res["b"].iloc[0] == 1.0
+    assert pd.isna(res["b"].iloc[1])
+    assert res["b"].iloc[2] == -1.0
+
+
+def test_mutate_if_else_and_case_when_nullable_boolean():
+    # Lib Issue 12
+    df = pd.DataFrame({"a": pd.Series([1, pd.NA, 3], dtype="Int64")})
+    res_if = pt.mutate(df, b="if_else(a > 2, 'y', 'n')")
+    assert list(res_if["b"]) == ["n", "n", "y"]
+
+    res_cw = pt.mutate(df, b="case_when((a > 2, 'y'), 'n')")
+    assert list(res_cw["b"]) == ["n", "n", "y"]
+
+
+def test_mutate_n_row_count_vs_col_and_helper():
+    # Lib Issue 16: caller local 'n' does not shadow row count 'n' unless referenced as '@n'
+    n = 999  # noqa: F841
+    df = pd.DataFrame({"val": [10, 20, 30]})
+    res = df.pt.mutate("cnt = n, caller_n = @n")
+    assert list(res["cnt"]) == [3, 3, 3]
+    assert list(res["caller_n"]) == [999, 999, 999]
+
+
+def test_mutate_grouped_callable_sees_original_index():
+    # Lib Issue 17: callable sees original index in grouped mutate
+    s = pd.Series([100, 200, 300], index=[10, 20, 30])
+    df = pd.DataFrame({"g": ["a", "b", "a"], "x": [1, 2, 3]}, index=[10, 20, 30])
+    res = df.pt.mutate(y=lambda d: d["x"] + s.reindex(d.index), by="g")
+    assert list(res["y"]) == [101, 202, 303]
+    assert list(res.index) == [10, 20, 30]
+
+
+
+
 ################################################################################
 # FILE: tests/test_plotter.py
 ################################################################################
@@ -11015,6 +11531,7 @@ matplotlib.use("Agg")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
+import pytae as pt
 from pytae.plotting import Plotter
 
 
@@ -11505,6 +12022,143 @@ def test_box_palette_colors():
     c0 = ax.patches[0].get_facecolor()
     c1 = ax.patches[1].get_facecolor()
     assert c0 != c1
+
+
+def test_plotter_finalize_reapplies_rot_and_fontsize():
+    df = pd.DataFrame({"day": ["Thursday", "Friday", "Saturday"], "bill": [10, 20, 30]})
+    p = pt.Plotter(df).plot(kind="bar", x="day", y="bill", rot=45, fontsize=8).finalize()
+    ax = p.axd["A"]
+    labels = ax.get_xticklabels()
+    assert labels[0].get_rotation() == 45
+    assert labels[0].get_fontsize() == 8
+
+
+def test_plotter_manage_legend_respects_legend_false():
+    df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20], "sex": ["M", "F"]})
+    p = pt.Plotter(df).plot(kind="bar", x="day", y="bill", by="sex", legend=False).finalize()
+    ax = p.axd["A"]
+    assert ax.get_legend() is None
+
+
+def test_plotter_default_kind_finalize_does_not_raise_keyerror():
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [3, 1, 2]})
+    p = pt.Plotter(df).plot(x="a", y="b").finalize()
+    assert p.axd["A"].has_data()
+
+    df_facet = pd.DataFrame({"g": ["x", "y"], "x": [1, 2], "y": [3, 4]})
+    pf = pt.Plotter.facet(df_facet, by="g", x="x", y="y").finalize()
+    assert len(pf.axd) == 2
+
+
+def test_plotter_numeric_x_dtype_preserved_for_line_and_area():
+    df = pd.DataFrame({"x": [1, 2, 10], "y": [1, 4, 2]})
+    p_line = pt.Plotter(df).plot(kind="line", x="x", y="y")
+    data_line = p_line.get_data("A")
+    assert pd.api.types.is_numeric_dtype(data_line["x"])
+
+    p_area = pt.Plotter(df).plot(kind="area", x="x", y="y")
+    data_area = p_area.get_data("A")
+    assert pd.api.types.is_numeric_dtype(data_area["x"])
+
+
+def test_plotter_line_style_and_width_handling():
+    df = pd.DataFrame({"x": [1, 2], "A": [10, 20], "B": [30, 40]})
+    # String style and int width
+    p1 = pt.Plotter(df).plot(kind="line", x="x", y=["A", "B"], style="--", width=3)
+    lines1 = p1.axd["A"].get_lines()
+    for line_item in lines1:
+        assert line_item.get_linestyle() == "--"
+        assert line_item.get_linewidth() == 3
+
+    # Dict style and dict width mapped by label
+    p2 = pt.Plotter(df).plot(kind="line", x="x", y=["A", "B"], style={"B": ":", "A": "-."}, width={"B": 5, "A": 1})
+    lines2 = p2.axd["A"].get_lines()
+    for line_item in lines2:
+        if line_item.get_label() == "A":
+            assert line_item.get_linestyle() == "-."
+            assert line_item.get_linewidth() == 1
+        elif line_item.get_label() == "B":
+            assert line_item.get_linestyle() == ":"
+            assert line_item.get_linewidth() == 5
+
+
+def test_plotter_grouped_scatter_xlim_ylim_rot_fontsize_s_col():
+    df = pd.DataFrame({
+        "x": [1, 2, 3, 4],
+        "y": [10, 20, 30, 40],
+        "g": ["a", "a", "b", "b"],
+        "sz": [15, 25, 35, 45],
+    })
+    p = pt.Plotter(df).plot(kind="scatter", x="x", y="y", by="g", s="sz", xlim=(0, 10), ylim=(0, 50), rot=45, fontsize=9)
+    ax = p.axd["A"]
+    assert ax.get_xlim() == (0, 10)
+    assert ax.get_ylim() == (0, 50)
+    assert len(ax.collections) == 2
+
+
+def test_plotter_color_string_and_box_color_list():
+    df = pd.DataFrame({
+        "g": ["a", "b", "a", "b"],
+        "v": [10, 20, 30, 40],
+    })
+    # Grouped scatter with color="crimson" string
+    p1 = pt.Plotter(df).plot(kind="scatter", x="v", y="v", by="g", color="crimson")
+    assert len(p1.axd["A"].collections) == 2
+
+    # Box plot with color list
+    p2 = pt.Plotter(df).plot(kind="box", x="g", y="v", color=["crimson", "navy"])
+    assert len(p2.axd["A"].patches) == 2
+
+
+def test_plotter_heatmap_numpy_int_annotation_formatting():
+    import numpy as np
+    df = pd.DataFrame({"a": [np.int64(0), np.int64(100)], "b": [np.int64(100), np.int64(0)]})
+    p = pt.Plotter(df).plot(kind="heatmap", annot=True, fmt=".2f", cmap="viridis")
+    texts = [t.get_text() for t in p.axd["A"].texts]
+    assert "100.00" in texts
+    assert "0.00" in texts
+
+
+def test_plotter_ungrouped_scatter_color_and_array_c():
+    import numpy as np
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    # c is string color name not in columns
+    p1 = pt.Plotter(df).plot(kind="scatter", x="x", y="y", c="red")
+    assert p1.axd["A"].has_data()
+
+    # c is numpy array
+    c_arr = np.array([0.1, 0.5, 0.9])
+    p2 = pt.Plotter(df).plot(kind="scatter", x="x", y="y", c=c_arr)
+    assert p2.axd["A"].has_data()
+
+
+def test_plotter_pie_colors_list():
+    df = pd.DataFrame({"cat": ["a", "a", "b"], "val": [1, 2, 3]})
+    p = pt.Plotter(df).plot(kind="pie", by="cat", y="val", colors=["red", "blue"])
+    assert p.axd["A"].has_data()
+
+
+def test_plotter_get_pivot_data_list_y_order_and_aggregate_false():
+    df = pd.DataFrame({"q": ["Q1", "Q2"], "rev": [100, 200], "cost": [40, 80]})
+    # aggregate=False with list y
+    p1 = pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"], aggregate=False)
+    assert list(p1.get_data("A").columns) == ["q", "rev", "cost"]
+
+    # aggregate=True preserves requested y order
+    p2 = pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"], aggregate=True)
+    assert list(p2.get_data("A").columns) == ["q", "rev", "cost"]
+
+
+def test_plotter_hist_and_kde_with_by_on_duplicate_index():
+    df = pd.DataFrame({"g": ["a", "a", "b", "b"], "v": [1.0, 2.0, 3.0, 4.0]}, index=[0, 0, 1, 1])
+    # hist with duplicate index
+    p_hist = pt.Plotter(df).plot(kind="hist", column="v", by="g")
+    assert p_hist.axd["A"].has_data()
+
+    # kde with duplicate index
+    p_kde = pt.Plotter(df).plot(kind="kde", column="v", by="g")
+    assert p_kde.axd["A"].has_data()
+
 ################################################################################
 # FILE: tests/test_qry.py
 ################################################################################
@@ -11726,10 +12380,10 @@ def test_parse_qry_cli():
     res2 = parse_qry("body_mass_g=>100000")
     res3 = parse_qry("body_mass_g = > 100000")
     res4 = parse_qry("body_mass_g = 74125")
-    assert res1 == {"body_mass_g": (">", 100000)}
-    assert res2 == {"body_mass_g": (">", 100000)}
-    assert res3 == {"body_mass_g": (">", 100000)}
-    assert res4 == {"body_mass_g": 74125}
+    assert res1 == [("body_mass_g", (">", 100000))]
+    assert res2 == [("body_mass_g", (">", 100000))]
+    assert res3 == [("body_mass_g", (">", 100000))]
+    assert res4 == [("body_mass_g", 74125)]
 
 
 def test_qry_bracketed_columns():
@@ -11747,7 +12401,66 @@ def test_qry_bracketed_columns():
     assert list(res3["species"]) == ["Gentoo"]
 
     parsed = parse_qry("[body mass g] > 4000, [species] = 'Gentoo'")
-    assert parsed == {"body mass g": (">", 4000), "species": "Gentoo"}
+    assert parsed == [("body mass g", (">", 4000)), ("species", "Gentoo")]
+
+
+def test_qry_interval_string_spec():
+    # Lib Issue 3
+    df = pd.DataFrame({"mass": [2000, 3500, 4000, 4500, 6000]})
+    res_bracket = df.pt.qry("mass = [3500, 4500]")
+    assert list(res_bracket["mass"]) == [3500, 4000, 4500]
+
+    res_paren = df.pt.qry("mass = (3500, 4500)")
+    assert list(res_paren["mass"]) == [4000]
+
+
+def test_qry_large_int_precision():
+    # Lib Issue 4: integers > 2**53 do not get collapsed by float cast
+    val = 2**53 + 1
+    df = pd.DataFrame({"id": [2**53, val, 2**53 + 2]})
+    res_eq = df.pt.qry(id=("==", val))
+    assert list(res_eq["id"]) == [val]
+
+    res_str = df.pt.qry(f"id == {val}")
+    assert list(res_str["id"]) == [val]
+
+    res_gt = df.pt.qry(id=(">", 2**53))
+    assert list(res_gt["id"]) == [2**53 + 1, 2**53 + 2]
+
+
+def test_qry_bare_string_comparison():
+    # Lib Issue 8
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo", "Chinstrap"]})
+    res = df.pt.qry("species == Adelie")
+    assert list(res["species"]) == ["Adelie"]
+
+
+def test_qry_string_interval_spaces():
+    # Lib Issue 9: spaces in interval bounds are stripped
+    df = pd.DataFrame({"name": ["a", "b", "c", "m", "aa"]})
+    res1 = df.pt.qry(name="[a, c)")
+    assert list(res1["name"]) == ["a", "b", "aa"]
+
+    res2 = df.pt.qry(name="(a, c]")
+    assert list(res2["name"]) == ["b", "c", "aa"]
+
+
+def test_qry_parenthesized_string_without_comma_is_equality():
+    # Lib Issue 10: parenthesized/bracketed string without comma falls through to equality
+    df = pd.DataFrame({"x": ["(abc)", "def", "[xyz]"]})
+    res1 = df.pt.qry("x = (abc)")
+    assert list(res1["x"]) == ["(abc)"]
+
+    res2 = df.pt.qry("x = [xyz]")
+    assert list(res2["x"]) == ["[xyz]"]
+
+
+def test_parse_qry_multiple_conditions_on_same_column():
+    # CLI Issue 1: multiple predicates on same column kept in order
+    conditions = parse_qry("body_mass_g >= 3000, body_mass_g <= 4500")
+    assert conditions == [("body_mass_g", (">=", 3000)), ("body_mass_g", ("<=", 4500))]
+
+
 ################################################################################
 # FILE: tests/test_readers.py
 ################################################################################
@@ -12038,6 +12751,8 @@ def test_compressed_txt_and_dat(tmp_path):
     dreader = get_reader(dat_gz)
     assert dreader.columns() == ["a", "b"]
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
+
+
 ################################################################################
 # FILE: tests/test_select.py
 ################################################################################
@@ -12265,6 +12980,27 @@ def test_select_bracketed_names_and_slices():
     assert list(pt.select(df, "[island name]:[body mass g]").columns) == ["island name", "bill length mm", "body mass g"]
     # Bracketed negation
     assert list(pt.select(df, "-[island name]").columns) == ["species", "bill length mm", "body mass g"]
+
+
+def test_select_contains_startswith_endswith_tuples():
+    # Lib Issue 14: contains, startswith, endswith accept tuples
+    df = pd.DataFrame({"bill_length_mm": [1], "bill_depth_mm": [2], "body_mass_g": [3]})
+    res_c = pt.select(df, contains=("bill", "body"))
+    assert list(res_c.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+    res_sw = pt.select(df, startswith=("bill", "body"))
+    assert list(res_sw.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+    res_ew = pt.select(df, endswith=("mm", "g"))
+    assert list(res_ew.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
+
+
+def test_select_exclude_bracketed_string():
+    # Issue 8: exclude with bracketed names
+    df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
+    res = pt.select(df, exclude="[col a, col b]")
+    assert list(res.columns) == ["keep"]
+
 ################################################################################
 # FILE: tests/test_shape.py
 ################################################################################
@@ -12400,8 +13136,37 @@ def test_wide_with_explicit_index():
     assert "Q2" in res.columns
 
 
+def test_wide_bracketed_names_and_column_validation():
+    # Lib Issue 6: wide unquotes bracketed names and checks column existence
+    df = pd.DataFrame({
+        "region name": ["East", "West"],
+        "quarter": ["Q1", "Q2"],
+        "sales": [1, 2],
+    })
+    res = df.pt.wide(index="[region name]", c="quarter", v="sales", a="sum")
+    assert "region name" in res.columns
+    assert "Q1" in res.columns
+    assert "Q2" in res.columns
+
+    with pytest.raises(KeyError, match=r"wide\(\): index column 'nope' not found in DataFrame"):
+        df.pt.wide(index="nope", c="quarter", v="sales", a="sum")
+
+    with pytest.raises(KeyError, match=r"wide\(\): columns 'c' column 'nope' not found in DataFrame"):
+        df.pt.wide(index="region name", c="nope", v="sales", a="sum")
+
+
+def test_safe_reset_index_name_collision():
+    # Lib Issue 13: index name collision does not raise ValueError
+    df = pd.DataFrame({"region": ["East", "East", "West"], "c": ["Q1", "Q2", "Q1"], "v": [1, 2, 3]})
+    df.index.name = "Q1"  # index name collides with pivoted column name "Q1"
+    res = df.pt.wide(index="region", c="c", v="v", a="sum")
+    assert "region" in res.columns
+    assert "Q1" in res.columns
+
+
 if __name__ == '__main__':
     pytest.main()
+
 ################################################################################
 # FILE: tests/test_sql.py
 ################################################################################
@@ -12488,6 +13253,9 @@ def test_sql_preserves_duckdb_lists_and_indexing():
     # String list literal
     out3 = pt.sql(df, "select ['x', 'y'] as pair from data where a = 1")
     assert list(out3["pair"][0]) == ["x", "y"]
+
+
+
 ################################################################################
 # FILE: tests/test_utilities.py
 ################################################################################
@@ -12651,3 +13419,11 @@ def test_clean_columns_dedupe_avoids_new_collisions():
     result = clean_column_names(["revenue", "revenue", "revenue_1"], dedupe=True)
     assert result == ["revenue", "revenue_2", "revenue_1"]
     assert len(set(result)) == len(result)
+
+
+def test_handle_missing_all_null_object_column():
+    # Lib Issue 15: all-null object column is filled by handle_missing
+    df = pd.DataFrame({"a": [None, None]}, dtype=object)
+    result = pt.handle_missing(df)
+    assert list(result["a"]) == [".", "."]
+

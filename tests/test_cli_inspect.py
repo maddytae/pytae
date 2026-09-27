@@ -894,6 +894,35 @@ def test_cli_pager(tmp_path, monkeypatch):
     assert "col" in paged[0]
 
 
+def test_cli_round_preserves_pipeline_precision(tmp_path, capsys):
+    # CLI Issue 4: intermediate sort does not corrupt full precision for later agg
+    df = pd.DataFrame({"g": ["x", "x"], "v": [0.4, 0.4]})
+    path = _write_csv(tmp_path, df)
+    exit_code = cli.main([path, "-round", "0", "-sort_by", "v", "-by", "g", "-agg", "sum"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "1" in out
+
+
+def test_cli_repeated_flags_run_with_respective_values(tmp_path, capsys):
+    # CLI Issue 7: -head 1 -head 3 runs head 1 then head 3 (result has 1 row)
+    df = pd.DataFrame({"a": range(10)})
+    path = _write_csv(tmp_path, df)
+    exit_code = cli.main([path, "-head", "1", "-head", "3", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 1)"
+
+
+def test_cli_expand_paths_literal_bracket_file(tmp_path, capsys):
+    # CLI Issue 9: data[1].csv read literally when file exists
+    p = tmp_path / "data[1].csv"
+    p.write_text("a,b\n1,2\n")
+    exit_code = cli.main([str(p), "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+
+
 
 
 

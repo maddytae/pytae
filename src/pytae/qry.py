@@ -48,20 +48,36 @@ def _parse_qry_string(raw: str) -> list[tuple[str, Any]]:
             raise ValueError("invalid qry conditions: empty column name")
         if not value_raw:
             raise ValueError(f"invalid qry conditions: '{key}' has no value")
-        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", value_raw)
+        val_strip = value_raw.strip()
+        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
+        if m_int:
+            left, b1, b2, right = m_int.groups()
+            b1_is_quoted = (b1.startswith("'") and b1.endswith("'")) or (b1.startswith('"') and b1.endswith('"'))
+            b2_is_quoted = (b2.startswith("'") and b2.endswith("'")) or (b2.startswith('"') and b2.endswith('"'))
+            if not (b1_is_quoted and b2_is_quoted and left == "[" and right == "]"):
+                pairs.append((key, val_strip))
+                continue
+
+        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
             try:
                 sub_val = ast.literal_eval(sub_raw)
             except (ValueError, SyntaxError):
-                sub_val = _unquote_name(sub_raw)
+                if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
+                    sub_val = sub_raw[1:-1]
+                else:
+                    sub_val = sub_raw
             pairs.append((key, (op, sub_val)))
             continue
         try:
-            value = ast.literal_eval(value_raw)
+            value = ast.literal_eval(val_strip)
         except (ValueError, SyntaxError):
-            value = _unquote_name(value_raw)
+            if len(val_strip) >= 2 and val_strip[0] in "'\"" and val_strip[-1] == val_strip[0]:
+                value = val_strip[1:-1]
+            else:
+                value = val_strip
         pairs.append((key, value))
     if not pairs:
         raise ValueError("qry() expects at least one condition")
@@ -181,6 +197,14 @@ def qry(
         elif isinstance(arg, dict):
             for col, cond in arg.items():
                 cond_pairs.append((str(col), cond))
+        elif isinstance(arg, (list, tuple)):
+            for item in arg:
+                if isinstance(item, (tuple, list)) and len(item) == 2:
+                    cond_pairs.append((str(item[0]), item[1]))
+                else:
+                    raise TypeError(
+                        f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
+                    )
         else:
             raise TypeError(
                 f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
@@ -246,22 +270,48 @@ def qry(
                 except TypeError as exc:
                     raise ValueError(f"qry: '{op}' on '{col}': invalid value {value!r} ({exc})") from exc
             elif op in ops:
-                if is_numeric:
-                    value = float(value)  # Convert to float for numeric columns
+                if is_numeric and not isinstance(value, (int, float)):
+                    try:
+                        value = int(value)
+                    except (ValueError, TypeError):
+                        try:
+                            value = float(value)
+                        except (ValueError, TypeError):
+                            pass
                 out = out.loc[ops[op](out[col], value)]
             else:
                 raise ValueError(
                     f"Unsupported tuple operator '{op}' for '{col}'. "
                     f"Use 'in', 'not in', or one of {list(ops.keys()) + list(str_ops.keys())}."
                 )
-        elif isinstance(cond, str) and re.match(r'^[\[(].*[)\]]$', cond):
+        elif isinstance(cond, str) and re.match(r'^[\[(].*[\])]$', cond):
             # Handle interval conditions (e.g., '(a,b)', '[a,b]')
-            interval_pattern = re.compile(r'^([\[(])(.*),(.*)([\])])$')
+            interval_pattern = re.compile(r'^([\[(])([^,]+),([^,]+)([\])])$')
             match = interval_pattern.match(cond)
             if match:
-                left_bracket, lower, upper, right_bracket = match.groups()
-                lower = float(lower) if is_numeric else lower
-                upper = float(upper) if is_numeric else upper
+                left_bracket, lower_raw, upper_raw, right_bracket = match.groups()
+                lower_str = lower_raw.strip()
+                upper_str = upper_raw.strip()
+                lower: int | float | str
+                upper: int | float | str
+                if is_numeric:
+                    try:
+                        lower = int(lower_str)
+                    except ValueError:
+                        try:
+                            lower = float(lower_str)
+                        except ValueError:
+                            lower = lower_str
+                    try:
+                        upper = int(upper_str)
+                    except ValueError:
+                        try:
+                            upper = float(upper_str)
+                        except ValueError:
+                            upper = upper_str
+                else:
+                    lower = lower_str
+                    upper = upper_str
 
                 if left_bracket == '[':
                     lower_op = operator.ge
@@ -274,6 +324,8 @@ def qry(
                     upper_op = operator.lt
 
                 out = out.loc[lower_op(out[col], lower) & upper_op(out[col], upper)]
+            else:
+                out = out.loc[out[col] == cond]
         else:
             # Handle single value equality (e.g., 'Adelie')
             out = out.loc[out[col] == cond]

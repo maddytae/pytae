@@ -65,7 +65,9 @@ def handle_missing(
             return False
         if s.dtype == object:
             non_na = s.dropna()
-            return len(non_na) > 0 and non_na.map(type).eq(str).all()
+            if len(non_na) == 0:
+                return True
+            return non_na.map(type).eq(str).all()
         return pd.api.types.is_string_dtype(s)
 
     str_cols = [c for c in df.columns if c in target_cols and _is_string_col(df[c])]

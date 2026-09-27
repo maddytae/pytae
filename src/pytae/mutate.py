@@ -81,9 +81,12 @@ def _map_values(series, mapping, default=_NO_MAP_DEFAULT):
     namespace: recode a column's values through a lookup (dict or Series), like
     pandas Series.map(). Keys with no match become `default` if given, else
     NaN."""
-    result = pd.Series(series).map(mapping)
+    s = pd.Series(series)
+    result = s.map(mapping)
     if default is not _NO_MAP_DEFAULT:
-        result = result.where(result.notna(), default)
+        keys = set(mapping.keys()) if hasattr(mapping, "keys") else (set(mapping.index) if hasattr(mapping, "index") else set(mapping))
+        is_missing_key = ~s.isin(keys)
+        result = result.mask(is_missing_key, default)
     return result
 
 
@@ -97,17 +100,26 @@ def _result_index(*candidates):
     return None
 
 
+def _clean_condition(cond):
+    if isinstance(cond, pd.Series):
+        return cond.fillna(False).to_numpy(dtype=bool)
+    if isinstance(cond, (list, tuple)):
+        return pd.Series(cond).fillna(False).to_numpy(dtype=bool)
+    return cond
+
+
 def _if_else(condition, true_value, false_value):
     """if_else(condition, true_value, false_value) helper injected into the
     fallback eval namespace -> np.where(...), returned as a Series so it chains
     and composes like any pandas Series."""
+    clean_cond = _clean_condition(condition)
     try:
-        result = np.where(condition, true_value, false_value)
+        result = np.where(clean_cond, true_value, false_value)
     except TypeError:
         # incompatible dtypes across branches have no common numpy dtype --
         # object arrays accept anything
         result = np.where(
-            condition,
+            clean_cond,
             np.asarray(true_value, dtype=object),
             np.asarray(false_value, dtype=object),
         )
@@ -152,13 +164,14 @@ def _case_when(*entries, default=None):
                 raise ValueError("case_when default (a non-tuple) must be the last argument")
     if not conditions:
         raise ValueError("case_when needs at least one (condition, value) pair")
+    clean_conditions = [_clean_condition(c) for c in conditions]
     try:
-        result = np.select(conditions, choices, default=default)
+        result = np.select(clean_conditions, choices, default=default)
     except TypeError:
         # incompatible dtypes across choices/default -- object arrays accept anything
         object_choices = [np.asarray(choice, dtype=object) for choice in choices]
         object_default = default if default is None else np.asarray(default, dtype=object)
-        result = np.select(conditions, object_choices, default=object_default)  # type: ignore[arg-type]
+        result = np.select(clean_conditions, object_choices, default=object_default)  # type: ignore[arg-type]
     return pd.Series(result, index=_result_index(*conditions, *choices))
 
 
@@ -167,15 +180,22 @@ def _coalesce(*candidates):
     returns the first non-null value for each row, like SQL COALESCE() or dplyr::coalesce()."""
     if not candidates:
         raise ValueError("coalesce expects at least one argument")
+    series_candidates = [c for c in candidates if isinstance(c, pd.Series)]
+    if not series_candidates:
+        for c in candidates:
+            if c is not None and not (isinstance(c, float) and np.isnan(c)) and not pd.isna(c):
+                return c
+        return None
+
+    target_index = series_candidates[0].index
     res = None
     for cand in candidates:
         if isinstance(cand, pd.Series):
-            res = cand.copy() if res is None else res.combine_first(cand)
+            s = cand if cand.index.equals(target_index) else cand.reindex(target_index)
+            res = s.copy() if res is None else res.combine_first(s)
         else:
-            res = res.fillna(cand) if res is not None else pd.Series(cand)
-    idx = _result_index(*candidates)
-    if res is not None and idx is not None:
-        res.index = idx
+            s = pd.Series(cand, index=target_index)
+            res = s if res is None else res.fillna(cand)
     return res
 
 
@@ -364,9 +384,6 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
         rewritten, at_names = _strip_at_refs(safe_expr)
         namespace = {**global_dict, **local_dict}
-        namespace.update({col: out[col] for col in out.columns if col.isidentifier()})
-        for alias, orig_col in col_map.items():
-            namespace[alias] = out[orig_col]
         namespace["map"] = _map_values  # prefix map(col, {...}[, default]) form
         namespace["if_else"] = _if_else
         namespace["case_when"] = _case_when
@@ -378,8 +395,11 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         namespace["max"] = lambda s: s.max() if hasattr(s, "max") else np.max(s)
         namespace["std"] = lambda s: s.std() if hasattr(s, "std") else np.std(s)
         namespace["var"] = lambda s: s.var() if hasattr(s, "var") else np.var(s)
-        if "n" not in out.columns and "n" not in local_dict and "n" not in global_dict:
+        if "n" not in out.columns:
             namespace["n"] = _RowCount(len(out))
+        namespace.update({col: out[col] for col in out.columns if col.isidentifier()})
+        for alias, orig_col in col_map.items():
+            namespace[alias] = out[orig_col]
         for name in at_names:  # @-refs mean caller-scope vars, so they win over columns
             if name in local_dict:
                 namespace[name] = local_dict[name]
@@ -525,24 +545,23 @@ def mutate(
                     out[col] = expr
             else:
                 work_df = out.copy(deep=False)
-                work_df.index = pd.RangeIndex(len(out))
+                work_df["__pt_pos__"] = np.arange(len(out))
                 pieces = []
                 for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
+                    pos = group_df["__pt_pos__"].to_numpy()
+                    clean_group = group_df.drop(columns=["__pt_pos__"])
                     if callable(expr):
-                        val = expr(group_df)
+                        val = expr(clean_group)
                     elif isinstance(expr, str):
-                        val = _eval(group_df, expr, local_dict, global_dict)
+                        val = _eval(clean_group, expr, local_dict, global_dict)
                     else:
                         val = expr
                     if isinstance(val, pd.Series):
-                        if len(val) == len(group_df):
-                            val = val.copy()
-                            val.index = group_df.index
-                        pieces.append(val)
+                        pieces.append(pd.Series(val.to_numpy(), index=pos))
                     else:
-                        pieces.append(pd.Series(val, index=group_df.index))
+                        pieces.append(pd.Series(val, index=pos))
                 if pieces:
-                    combined = pd.concat(pieces).reindex(work_df.index)
+                    combined = pd.concat(pieces).sort_index().reindex(np.arange(len(out)))
                     out[col] = combined.array
                 else:
                     out[col] = pd.Series(index=out.index, dtype=float)

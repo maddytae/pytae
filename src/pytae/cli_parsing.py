@@ -8,6 +8,7 @@ import difflib
 import glob
 import re
 from pathlib import Path
+from typing import Any
 
 from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
@@ -160,7 +161,12 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
     results: list[Path] = []
     seen: set[Path] = set()
     for item in items:
-        if any(ch in item for ch in "*?["):
+        p_literal = Path(item)
+        if p_literal.exists():
+            if p_literal not in seen:
+                results.append(p_literal)
+                seen.add(p_literal)
+        elif any(ch in item for ch in "*?["):
             matches = sorted(Path(p) for p in glob.glob(item))
             if not matches:
                 raise SystemExit(f"no files matched pattern: {item}")
@@ -169,10 +175,9 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
                     results.append(m)
                     seen.add(m)
         else:
-            p = Path(item)
-            if p not in seen:
-                results.append(p)
-                seen.add(p)
+            if p_literal not in seen:
+                results.append(p_literal)
+                seen.add(p_literal)
     return results
 
 
@@ -191,7 +196,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             col = m_cmp.group(1).strip()
             op = m_cmp.group(2).strip()
             val = m_cmp.group(3).strip()
-            entries.append((col, f"('{op}', {val})"))
+            entries.append((col, f"{op} {val}"))
             continue
         # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
         m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
@@ -208,7 +213,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
     return entries
 
 
-def parse_qry(raw: str) -> dict:
+def parse_qry(raw: str) -> list[tuple[str, Any]]:
     """Parse -qry conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
     "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") and bare string
@@ -216,15 +221,26 @@ def parse_qry(raw: str) -> dict:
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
-    conditions: dict = {}
+    conditions: list[tuple[str, Any]] = []
     for key_raw, value_raw in _split_qry_entries(stripped):
         key = _unquote_name(key_raw)
         if not key:
             raise SystemExit("invalid --qry conditions: empty column name")
-        if not value_raw:
+        val_strip = value_raw.strip()
+        if not val_strip:
             raise SystemExit(f"invalid --qry conditions: '{key}' has no value")
-        
-        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", value_raw)
+
+        # Check interval syntax: e.g. [3000, 4500], (3000, 4500), [a, c), (a, c]
+        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
+        if m_int:
+            left, b1, b2, right = m_int.groups()
+            b1_is_quoted = (b1.startswith("'") and b1.endswith("'")) or (b1.startswith('"') and b1.endswith('"'))
+            b2_is_quoted = (b2.startswith("'") and b2.endswith("'")) or (b2.startswith('"') and b2.endswith('"'))
+            if not (b1_is_quoted and b2_is_quoted and left == "[" and right == "]"):
+                conditions.append((key, val_strip))
+                continue
+
+        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
@@ -232,17 +248,17 @@ def parse_qry(raw: str) -> dict:
                 sub_val = ast.literal_eval(sub_raw)
             except (ValueError, SyntaxError):
                 sub_val = _unquote_name(sub_raw)
-            conditions[key] = (op, sub_val)
+            conditions.append((key, (op, sub_val)))
             continue
 
         try:
-            value = ast.literal_eval(value_raw)
+            value = ast.literal_eval(val_strip)
         except (ValueError, SyntaxError) as exc:
             raise SystemExit(
-                f"invalid --qry conditions: value for '{key}' ('{value_raw}') must be quoted "
+                f"invalid --qry conditions: value for '{key}' ('{val_strip}') must be quoted "
                 "(e.g. 'Male') or a valid literal (number/tuple/list)"
             ) from exc
-        conditions[key] = value
+        conditions.append((key, value))
     if not conditions:
         raise SystemExit("-qry expects keyword entries, e.g. \"col = ('>', 5)\" or \"col > 5\" (quotes around column name optional)")
     return conditions

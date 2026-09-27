@@ -379,4 +379,58 @@ def test_mutate_grouped_unknown_col():
         df.pt.mutate("m = mean(val)", by="grp_typo")
 
 
+def test_mutate_coalesce_scalar_broadcast():
+    # Lib Issue 5
+    df = pd.DataFrame({"a": [None, 2.0, None]}, index=[5, 6, 7])
+    res1 = pt.mutate(df, c="coalesce(0, a)")
+    assert list(res1["c"]) == [0.0, 0.0, 0.0]
+
+    res2 = pt.mutate(df, c="coalesce(1, 2)")
+    assert list(res2["c"]) == [1, 1, 1]
+
+
+def test_mutate_column_named_sum_overrides_helper():
+    # Lib Issue 7
+    df = pd.DataFrame({"sum": [1, 2], "x": [10, 20]})
+    res = df.pt.mutate(y="if_else(x > 15, sum, 0)")
+    assert list(res["y"]) == [0, 2]
+
+
+def test_mutate_map_preserves_explicit_null():
+    # Lib Issue 11
+    df = pd.DataFrame({"a": ["x", "y", "z"]})
+    res = pt.mutate(df, b="map(a, {'x': 1, 'y': None}, -1)")
+    assert res["b"].iloc[0] == 1.0
+    assert pd.isna(res["b"].iloc[1])
+    assert res["b"].iloc[2] == -1.0
+
+
+def test_mutate_if_else_and_case_when_nullable_boolean():
+    # Lib Issue 12
+    df = pd.DataFrame({"a": pd.Series([1, pd.NA, 3], dtype="Int64")})
+    res_if = pt.mutate(df, b="if_else(a > 2, 'y', 'n')")
+    assert list(res_if["b"]) == ["n", "n", "y"]
+
+    res_cw = pt.mutate(df, b="case_when((a > 2, 'y'), 'n')")
+    assert list(res_cw["b"]) == ["n", "n", "y"]
+
+
+def test_mutate_n_row_count_vs_col_and_helper():
+    # Lib Issue 16: caller local 'n' does not shadow row count 'n' unless referenced as '@n'
+    n = 999  # noqa: F841
+    df = pd.DataFrame({"val": [10, 20, 30]})
+    res = df.pt.mutate("cnt = n, caller_n = @n")
+    assert list(res["cnt"]) == [3, 3, 3]
+    assert list(res["caller_n"]) == [999, 999, 999]
+
+
+def test_mutate_grouped_callable_sees_original_index():
+    # Lib Issue 17: callable sees original index in grouped mutate
+    s = pd.Series([100, 200, 300], index=[10, 20, 30])
+    df = pd.DataFrame({"g": ["a", "b", "a"], "x": [1, 2, 3]}, index=[10, 20, 30])
+    res = df.pt.mutate(y=lambda d: d["x"] + s.reindex(d.index), by="g")
+    assert list(res["y"]) == [101, 202, 303]
+    assert list(res.index) == [10, 20, 30]
+
+
 

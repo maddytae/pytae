@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from typing import Any
 
 import pandas as pd
 
@@ -99,11 +100,14 @@ class _Pipeline:
         self._df = df.rename(columns=mapping)
         return None
 
-    def apply_qry(self, conditions: dict) -> str | None:
+    def apply_qry(self, conditions: list[tuple[str, Any]] | dict) -> str | None:
         """Apply one -qry spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         try:
-            self._df = qry(df, **conditions)
+            if isinstance(conditions, list):
+                self._df = qry(df, conditions)
+            else:
+                self._df = qry(df, **conditions)
         except Exception as exc:
             return f"-qry: {exc}"
         return None
@@ -288,6 +292,8 @@ class _Pipeline:
 
     def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
         df = self.dataframe()
+        if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+            df = df.reset_index()
         if frac is not None:
             sampled = df.sample(frac=frac, random_state=seed)
         else:
@@ -313,8 +319,14 @@ class _OrderedValue(argparse.Action):
     """Optional-value flag (nargs='?') that also records its dest in namespace.op_order, in CLI order."""
 
     def __call__(self, parser, namespace, values, option_string=None) -> None:
-        setattr(namespace, self.dest, self.const if values is None else values)
+        val = self.const if values is None else values
+        setattr(namespace, self.dest, val)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        op_values = getattr(namespace, "_op_values", None)
+        if op_values is None:
+            op_values = {}
+            setattr(namespace, "_op_values", op_values)
+        op_values.setdefault(self.dest, []).append(val)
 
 
 class _OrderedStore(argparse.Action):
@@ -323,6 +335,11 @@ class _OrderedStore(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None) -> None:
         setattr(namespace, self.dest, values)
         namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        op_values = getattr(namespace, "_op_values", None)
+        if op_values is None:
+            op_values = {}
+            setattr(namespace, "_op_values", op_values)
+        op_values.setdefault(self.dest, []).append(values)
 
 
 class _OrderedAppend(argparse.Action):

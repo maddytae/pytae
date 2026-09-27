@@ -130,14 +130,23 @@ def select(
 
     if exclude is not None:
         if isinstance(exclude, str):
-            for token in exclude.split(","):
-                token = token.strip()
+            raw_exclude = exclude.strip()
+            if raw_exclude.startswith("[") and raw_exclude.endswith("]"):
+                raw_exclude = raw_exclude[1:-1].strip()
+            for token in _tokenize(raw_exclude, ",", keep_quotes=True, track_brackets=True):
+                token = _unquote_name(token.strip())
                 if token:
                     excluded_cols.update(_resolve_negation(token))
         elif isinstance(exclude, (list, tuple, set)):
             for item in exclude:
                 if isinstance(item, str):
-                    excluded_cols.update(_resolve_negation(item))
+                    clean_item = _unquote_name(item.strip())
+                    if clean_item.startswith("[") and clean_item.endswith("]"):
+                        clean_item = clean_item[1:-1].strip()
+                    for sub in _tokenize(clean_item, ",", keep_quotes=True, track_brackets=True):
+                        sub = _unquote_name(sub.strip())
+                        if sub:
+                            excluded_cols.update(_resolve_negation(sub))
                 elif item in df.columns:
                     excluded_cols.add(item)
                 else:
@@ -259,24 +268,30 @@ def select(
     if contains is not None:
         if isinstance(contains, str):
             contains_cols = [col for col in df.columns if contains in str(col)]
-        elif isinstance(contains, list):
+        elif isinstance(contains, (list, tuple, Sequence)):
             contains_cols = [col for col in df.columns if any(sub in str(col) for sub in contains)]
+        else:
+            raise TypeError(f"contains must be a string or sequence of strings, got {type(contains)}")
         selected_cols.update(contains_cols)
         ordered_cols.extend([col for col in contains_cols if col not in ordered_cols])
 
     if startswith is not None:
         if isinstance(startswith, str):
             startswith_cols = [col for col in df.columns if str(col).startswith(startswith)]
-        elif isinstance(startswith, list):
+        elif isinstance(startswith, (list, tuple, Sequence)):
             startswith_cols = [col for col in df.columns if any(str(col).startswith(sub) for sub in startswith)]
+        else:
+            raise TypeError(f"startswith must be a string or sequence of strings, got {type(startswith)}")
         selected_cols.update(startswith_cols)
         ordered_cols.extend([col for col in startswith_cols if col not in ordered_cols])
 
     if endswith is not None:
         if isinstance(endswith, str):
             endswith_cols = [col for col in df.columns if str(col).endswith(endswith)]
-        elif isinstance(endswith, list):
+        elif isinstance(endswith, (list, tuple, Sequence)):
             endswith_cols = [col for col in df.columns if any(str(col).endswith(sub) for sub in endswith)]
+        else:
+            raise TypeError(f"endswith must be a string or sequence of strings, got {type(endswith)}")
         selected_cols.update(endswith_cols)
         ordered_cols.extend([col for col in endswith_cols if col not in ordered_cols])
 

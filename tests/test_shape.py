@@ -130,5 +130,33 @@ def test_wide_with_explicit_index():
     assert "Q2" in res.columns
 
 
+def test_wide_bracketed_names_and_column_validation():
+    # Lib Issue 6: wide unquotes bracketed names and checks column existence
+    df = pd.DataFrame({
+        "region name": ["East", "West"],
+        "quarter": ["Q1", "Q2"],
+        "sales": [1, 2],
+    })
+    res = df.pt.wide(index="[region name]", c="quarter", v="sales", a="sum")
+    assert "region name" in res.columns
+    assert "Q1" in res.columns
+    assert "Q2" in res.columns
+
+    with pytest.raises(KeyError, match=r"wide\(\): index column 'nope' not found in DataFrame"):
+        df.pt.wide(index="nope", c="quarter", v="sales", a="sum")
+
+    with pytest.raises(KeyError, match=r"wide\(\): columns 'c' column 'nope' not found in DataFrame"):
+        df.pt.wide(index="region name", c="nope", v="sales", a="sum")
+
+
+def test_safe_reset_index_name_collision():
+    # Lib Issue 13: index name collision does not raise ValueError
+    df = pd.DataFrame({"region": ["East", "East", "West"], "c": ["Q1", "Q2", "Q1"], "v": [1, 2, 3]})
+    df.index.name = "Q1"  # index name collides with pivoted column name "Q1"
+    res = df.pt.wide(index="region", c="c", v="v", a="sum")
+    assert "region" in res.columns
+    assert "Q1" in res.columns
+
+
 if __name__ == '__main__':
     pytest.main()

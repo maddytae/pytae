@@ -162,3 +162,35 @@ def test_wide_rejects_dropna_kwarg(tmp_path):
         cli.main([path, "-wide", "dropna=false"])
 
 
+def test_crosstab_sort_and_export_preserves_row_key(tmp_path):
+    # CLI Issue 5: -crosstab row index preserved across sort and file export
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
+    p = _write_csv(tmp_path, df)
+    out_csv = tmp_path / "out.csv"
+    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-sort_by", "Biscoe", "-o", str(out_csv)])
+    assert exit_code == 0
+    res = pd.read_csv(out_csv)
+    assert "species" in res.columns
+
+
+def test_crosstab_jsonl_export_preserves_row_index(tmp_path):
+    # CLI Issue 6: -crosstab -o ct.jsonl preserves row index
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
+    p = _write_csv(tmp_path, df)
+    out_jsonl = tmp_path / "ct.jsonl"
+    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-o", str(out_jsonl)])
+    assert exit_code == 0
+    res = pd.read_json(out_jsonl, lines=True)
+    assert "species" in res.columns
+
+
+def test_long_unknown_column_validation(tmp_path):
+    # CLI Issue 11: -long validates columns
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    p = _write_csv(tmp_path, df)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([p, "-long", "cols=nope"])
+    assert exc_info.value.code == 2
+
+
+

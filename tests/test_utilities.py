@@ -159,3 +159,10 @@ def test_clean_columns_dedupe_avoids_new_collisions():
     assert result == ["revenue", "revenue_2", "revenue_1"]
     assert len(set(result)) == len(result)
 
+
+def test_handle_missing_all_null_object_column():
+    # Lib Issue 15: all-null object column is filled by handle_missing
+    df = pd.DataFrame({"a": [None, None]}, dtype=object)
+    result = pt.handle_missing(df)
+    assert list(result["a"]) == [".", "."]
+
