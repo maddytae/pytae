@@ -259,19 +259,22 @@ def parse_agg(raw: str):
             "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
             "(col = mean, n = n)"
         )
-    entries = [e for e in _tokenize(raw, ",", keep_quotes=True) if e]
+    entries = [e for e in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if e]
     if not entries:
         raise SystemExit("-agg: expected a name, a comma list, or a mapping")
 
     def _is_mapping(entry: str) -> bool:
-        return len(_tokenize(entry, "=", keep_quotes=True)) >= 2 or len(_tokenize(entry, ":", keep_quotes=True)) >= 2
+        return (
+            len(_tokenize(entry, "=", keep_quotes=True, track_brackets=True)) >= 2
+            or len(_tokenize(entry, ":", keep_quotes=True, track_brackets=True)) >= 2
+        )
 
     mapped = [_is_mapping(e) for e in entries]
     if all(mapped):
         out: dict[str, str] = {}
         for entry in entries:
             if "=" in entry:
-                parts = _tokenize(entry, "=", keep_quotes=True)
+                parts = _tokenize(entry, "=", keep_quotes=True, track_brackets=True)
                 key = _unquote_name(parts[0])
                 value = _unquote_name("=".join(parts[1:]))
                 if key in ("column", "aggfunc"):

@@ -98,7 +98,27 @@ Chinstrap    3733.1    4800.0     68
    Gentoo    5076.0    6300.0    124
 ```
 
-Multiple grouping columns can be passed comma-separated: `-by "species,island"`.
+### Columns with Spaces (`[col]`)
+
+Columns with spaces can be enclosed in square brackets `[col]` anywhere in `-by` and `-agg`:
+
+```bash
+pytae tips.parquet \
+  -qry "day in ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
+  -select "smoker, tip, total_bill" \
+  -rename "total_bill:[total bill]" \
+  -by smoker \
+  -agg "tip = mean, [total bill] = mean, n = n"
+```
+
+**Output:**
+```text
+smoker      tip  total bill  n
+   Yes 3.087719   23.232281 57
+    No 3.225464   20.705876 97
+```
+
+Multiple grouping columns can be passed comma-separated: `-by "species,island"` or `-by "[group a],[group b]"`.
 
 ---
 

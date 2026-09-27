@@ -314,14 +314,17 @@ Column Order Rules:
   Columns pulled in by contains, regex, or everything() follow original DataFrame order.
 
 
-4.4. pt.agg_df() / df.pt.agg_df() — Grouped Aggregation
+4.4. pt.agg_df() / df.pt.agg_df() / df.pt.agg() — Grouped Aggregation
 --------------------------------------------------------------------------------
-Aggregates a DataFrame by grouping by ALL non-numeric columns and aggregating 
-numeric columns. Output column names follow dictionary key order.
+Aggregates a DataFrame grouped by explicit `by=` column(s) (or None for whole-table
+summary) and aggregates numeric columns. Supports string mapping specifications
+with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, or
+whole-frame aggregations.
 
 Signature:
   pt.agg_df(
       df: pd.DataFrame,
+      by: str | Sequence[str] | None,
       *args: Any,
       a: str | list[str] | None = None,
       dropna: bool = True,
@@ -330,19 +333,17 @@ Signature:
   ) -> pd.DataFrame
 
 Calling Styles:
-  1. Whole-Frame Aggregation:
-     df.pt.agg_df("mean")                  # applies mean to all numeric cols
-     df.pt.agg_df(["mean", "sum", "n"])     # applies multiple metrics to all numeric cols
-     df.pt.agg_df(a=["mean", "n"])          # using a= keyword
-  2. Specific Column Aggregations (kwargs):
-     df.pt.agg_df(body_mass_g="mean", flipper_length_mm="max", n="n")
-     df.pt.agg_df(body_mass_g=["mean", "sum"], row_count="n")
-
-Special Rules & Output Naming:
-  - Automatic Grouping: Any non-numeric column (string, category, object, bool) 
-    is treated as a grouping dimension. To group by a subset of columns, select 
-    them first:
-    df.pt.select("species", "body_mass_g").pt.agg_df("mean")
+  1. String Mapping Specification (Zero Dict Unpacking! Perfect for Spaced Columns):
+     df.pt.agg("smoker", "tip = mean, [total bill] = mean, n = n")
+     df.pt.agg("smoker", "tip = mean", "[total bill] = mean", "n = n")
+     df.pt.agg("[smoker status]", "[avg bill] = [total bill]:mean, [total count] = n")
+  2. Whole-Frame Aggregation:
+     df.pt.agg("species", "mean")                  # applies mean to all numeric cols
+     df.pt.agg(["species", "island"], ["mean", "sum", "n"]) # multi-column grouping
+     df.pt.agg(None, a=["mean", "n"])              # whole-table summary (1 row)
+  3. Specific Column Aggregations (kwargs):
+     df.pt.agg("species", body_mass_g="mean", flipper_length_mm="max", n="n")
+     df.pt.agg("species", body_mass_g=["mean", "sum"], row_count="n")
   - Row Count ('n'):
     Assigning a key with value 'n' produces the group row count.
     If the key is `n="n"`, the count column is named `n`.

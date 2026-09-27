@@ -144,17 +144,84 @@ def test_agg_df_whole_table_summary():
     assert res["sales_mean"].iloc[0] == 200.0
 
 
-def test_agg_df_whole_table_kwargs():
+def test_agg_df_string_spec_with_brackets():
     df = pd.DataFrame({
-        "sales": [100.0, 200.0, 300.0],
-        "units": [10, 20, 30],
+        "smoker status": ["Yes", "Yes", "No"],
+        "tip amount": [2.0, 4.0, 3.0],
+        "total bill": [10.0, 20.0, 30.0],
     })
-    res = df.pt.agg_df(None, sales="sum", orders="n")
-    assert len(res) == 1
-    assert list(res.columns) == ["sales", "orders"]
-    assert res["sales"].iloc[0] == 600.0
-    assert res["orders"].iloc[0] == 3
+    # 1. Single string spec with brackets
+    res1 = df.pt.agg_df("[smoker status]", "[tip amount] = mean, [total bill] = mean, n = n")
+    assert list(res1.columns) == ["smoker status", "tip amount", "total bill", "n"]
+    assert list(res1["smoker status"]) == ["No", "Yes"]
+    assert list(res1["tip amount"]) == [3.0, 3.0]
+    assert list(res1["total bill"]) == [30.0, 15.0]
+    assert list(res1["n"]) == [1, 2]
+
+    # 2. Multiple positional string specs
+    res2 = df.pt.agg_df("[smoker status]", "[tip amount] = mean", "[total bill] = mean", "n = n")
+    pd.testing.assert_frame_equal(res1, res2)
+
+    # 3. Passed via keyword a=
+    res3 = df.pt.agg_df("[smoker status]", a="[tip amount] = mean, [total bill] = mean, n = n")
+    pd.testing.assert_frame_equal(res1, res3)
+
+    # 4. Mixed string spec and kwargs
+    res4 = df.pt.agg_df("[smoker status]", "[total bill] = mean", **{"tip amount": "mean", "n": "n"})
+    assert list(res4.columns) == ["smoker status", "total bill", "tip amount", "n"]
+    assert list(res4["total bill"]) == [30.0, 15.0]
+
+    # 5. Named aggregation with brackets in output and source
+    res5 = df.pt.agg_df("[smoker status]", "[avg bill] = [total bill]:mean, [bill sum] = [total bill]:sum, [count] = n")
+    assert list(res5.columns) == ["smoker status", "avg bill", "bill sum", "count"]
+    assert list(res5["avg bill"]) == [30.0, 15.0]
+    assert list(res5["bill sum"]) == [30.0, 30.0]
+    assert list(res5["count"]) == [1, 2]
+
+    # 6. Whole-table summary with string mapping
+    res6 = df.pt.agg_df(None, "[avg bill] = [total bill]:mean, [count] = n")
+    assert len(res6) == 1
+    assert list(res6.columns) == ["avg bill", "count"]
+    assert res6["avg bill"].iloc[0] == 20.0
+    assert res6["count"].iloc[0] == 3
+
+
+def test_agg_df_whole_frame_string_spec():
+    df = pd.DataFrame({"g": ["a", "a", "b"], "v1": [1.0, 3.0, 5.0], "v2": [2.0, 4.0, 6.0]})
+    res = df.pt.agg_df("g", "mean, n")
+    assert list(res.columns) == ["g", "n", "v1", "v2"]
+    assert list(res["n"]) == [2, 1]
+    assert list(res["v1"]) == [2.0, 5.0]
+
+    res_multi = df.pt.agg_df("g", "mean", "n")
+    pd.testing.assert_frame_equal(res, res_multi)
+
+
+def test_agg_df_user_pipeline_tips():
+    tips = pt.sample("tips")
+    res = (
+        tips
+        .pt.qry(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
+        .pt.select("smoker", "tip", "total_bill")
+        .rename(columns={"total_bill": "total bill"})
+        .pt.agg_df("smoker", "tip = mean, [total bill] = mean, n = n")
+    )
+    assert list(res.columns) == ["smoker", "tip", "total bill", "n"]
+    assert len(res) == 2
+    assert list(res["smoker"]) == ["Yes", "No"]
+    assert list(res["n"]) == [57, 97]
+
+
+def test_agg_df_string_spec_errors():
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
+    with pytest.raises(ValueError, match="agg\\(\\):"):
+        df.pt.agg_df("g", "invalid syntax without equals and not known agg")
+    with pytest.raises(ValueError, match="cannot mix whole-frame aggregation"):
+        df.pt.agg_df("g", "mean", v="sum")
+    with pytest.raises(TypeError, match="multiple values for aggregation spec"):
+        df.pt.agg_df("g", "mean", a="sum")
 
 
 if __name__ == "__main__":
     pytest.main()
+

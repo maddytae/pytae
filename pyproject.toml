@@ -59,8 +59,8 @@ ignore = [
 "tests/*" = ["E402"]  # sys.path insert before pytae import
 "tests/test_mutate.py" = ["E402", "F841"]  # @locals are used via pandas eval
 "src/pytae/plotting.py" = ["E741", "F841"]
-"docs/library/*" = ["E402", "F401"]
-"docs/plotting/*" = ["E402", "F401"]
+"docs/library/*" = ["E402", "F401", "E401", "E701", "I001"]
+"docs/plotting/*" = ["E402", "F401", "E401", "E701", "I001"]
 
 [tool.mypy]
 python_version = "3.12"

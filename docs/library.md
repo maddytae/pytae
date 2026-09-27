@@ -147,12 +147,13 @@ wide = pt.wide(tall, c="feature", v="reading", a="mean")
 
 ### 5. Aggregation — `agg()` (`agg_df()`)
 
-Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts:
+Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts. Supports string mapping specifications with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, and whole-frame functions:
 
 ```python
 pt.agg(penguins, "species", "mean")                           # Mean of all numeric columns per species
 pt.agg(penguins, ["species", "island"], ["mean", "sum", "n"]) # Multi-column grouping
 pt.agg(penguins, "species", body_mass_g="mean", count="n")    # Column-specific aggregations
+pt.agg(tips, "smoker", "tip = mean, [total bill] = mean, n = n") # String spec with bracketed spaced columns
 pt.agg(penguins, "species", total="body_mass_g:sum")          # Named aggregation
 pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summary (no grouping)
 ```
@@ -250,7 +251,9 @@ flights  = pt.sample("flights")
 |---|---|---|
 | **Copy to Clipboard** | `df.to_clip()` in Python; `-o clip` in CLI | `df.head().to_clip()` |
 | **Mapping vs. Assignment** | `:` maps old to new; `=` assigns values | `pt.replace_values(df, {"old": "new"})` vs `pt.mutate(col="expr")` |
-| **Spaced Columns (Filter)** | String expressions handle spaces directly | `df.pt.qry("bill length mm > 40")` |
-| **Spaced Columns (Create)** | Unpack dictionary with `**` | `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})` |
+| **Spaced Columns (Filter)** | Enclose in brackets `[col]` | `df.pt.qry("[bill length mm] > 40")` |
+| **Spaced Columns (Select)** | Enclose in brackets `[col]` | `df.pt.select("species", "[body mass g]")` |
+| **Spaced Columns (Create)** | String assignment `[col] = ...` (or `**{...}`) | `df.pt.mutate("[body mass kg] = body_mass_g / 1000")` |
+| **Spaced Columns (Agg)** | String mapping `"[col] = func, n = n"` | `df.pt.agg("smoker", "tip = mean, [total bill] = mean, n = n")` |
 | **Spaced Columns (Expr)** | Reference via brackets `[col]` or backticks `` `col` `` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
 | **Standard Reshape Keys** | `c=` (column), `v=` (value), `a=` (aggregation) | `pt.wide(df, c="metric", v="value", a="mean")` |

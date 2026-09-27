@@ -7,8 +7,19 @@ from typing import Any
 import pandas as pd
 
 from pytae._text import unquote_name as _unquote_name
+from pytae.cli_parsing import parse_agg as _parse_agg
 
 _UNSET = object()
+
+
+def _safe_parse_agg(raw: str) -> Any:
+    try:
+        return _parse_agg(raw)
+    except SystemExit as exc:
+        msg = str(exc)
+        if msg.startswith("-agg: "):
+            msg = f"agg(): {msg[6:]}"
+        raise ValueError(msg) from exc
 _KNOWN_AGGS = {
     "mean",
     "sum",
@@ -63,7 +74,10 @@ def _agg_df_list(
             return grouped_df
 
         agg_operations = {col: remaining_agg_types for col in numeric_cols}
-        grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+        try:
+            grouped_df = df.groupby(group_cols, as_index=False, dropna=dropna, observed=observed).agg(agg_operations)
+        except (AttributeError, ValueError) as exc:
+            raise ValueError(f"agg(): invalid aggregation function ({exc})") from exc
 
         # Flatten MultiIndex in columns
         if len(remaining_agg_types) > 1:
@@ -90,7 +104,10 @@ def _agg_df_list(
             for agg in remaining_agg_types:
                 col_name = f"{col}_{agg}" if len(remaining_agg_types) > 1 else col
                 s = df[col]
-                val = getattr(s, agg)() if hasattr(s, agg) and callable(getattr(s, agg)) else s.agg(agg)
+                try:
+                    val = getattr(s, agg)() if hasattr(s, agg) and callable(getattr(s, agg)) else s.agg(agg)
+                except Exception as exc:
+                    raise ValueError(f"agg(): invalid aggregation function {agg!r} ({exc})") from exc
                 row_dict[col_name] = [val]
 
         return pd.DataFrame(row_dict)
@@ -123,14 +140,27 @@ def _agg_df_dict(
         if isinstance(spec, str) and ":" in spec:
             src_col, aggfunc = spec.split(":", 1)
             src_col, aggfunc = _unquote_name(src_col.strip()), aggfunc.strip()
-            aggs_list = [aggfunc]
+            aggfunc_clean = _unquote_name(aggfunc)
+            if "," in aggfunc_clean:
+                aggs_list = [s.strip() for s in aggfunc_clean.split(",") if s.strip()]
+            else:
+                aggs_list = [aggfunc_clean]
         elif isinstance(spec, tuple) and len(spec) == 2 and _unquote_name(spec[0]) in df.columns:
             src_col = _unquote_name(spec[0])
             aggfunc = spec[1]
             aggs_list = [aggfunc] if isinstance(aggfunc, str) else list(aggfunc)
         else:
             src_col = clean_out_name
-            aggs_list = [spec] if isinstance(spec, str) else list(spec)
+            if isinstance(spec, str):
+                spec_clean = _unquote_name(spec)
+                if "," in spec_clean:
+                    aggs_list = [s.strip() for s in spec_clean.split(",") if s.strip()]
+                else:
+                    aggs_list = [spec]
+            elif isinstance(spec, (list, tuple, set)):
+                aggs_list = list(spec)
+            else:
+                aggs_list = [spec]
 
         aggs_list = list(dict.fromkeys(aggs_list))  # preserve order
         if "n" in aggs_list:
@@ -219,14 +249,17 @@ def agg_df(
         Grouping column name(s). Pass None to perform a whole-table summary (grand total, 1 row).
         Can be passed positionally as the first argument or via keyword `by=` / `group_by=`.
     *args : str or list of str
-        Whole-frame aggregation function(s) applied to all numeric columns:
-        - If str (e.g., 'mean'): Apply to all numeric columns.
-        - If list (e.g., ['mean', 'n']): Apply listed aggregations. 'n' computes group row counts.
+        Aggregation specification(s):
+        - Column mapping string(s) (e.g., 'tip = mean, [total bill] = mean, n = n' or
+          'tip = mean', '[total bill] = mean', 'n = n'). Brackets [...] enclose columns with spaces.
+        - Whole-frame aggregation function(s) applied to all numeric columns:
+          - If str (e.g., 'mean', or 'mean, n'): Apply to all numeric columns.
+          - If list (e.g., ['mean', 'n']): Apply listed aggregations. 'n' computes group row counts.
     **kwargs :
         - Column aggregations passed as keyword arguments (e.g. df.pt.agg('species', body_mass_g='mean', count='n')).
           Keys with value 'n' specify the output column name for group row counts.
           Supports named aggregations like total='v1:sum'.
-        - a (str or list, optional): Whole-frame aggregation function(s) when passed as keyword `a=`.
+        - a (str or list, optional): Whole-frame or mapping aggregation function(s) when passed as keyword `a=`.
         - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
         - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
 
@@ -253,7 +286,8 @@ def agg_df(
 
     if isinstance(by, dict):
         raise TypeError(
-            "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+            "agg() no longer accepts dictionaries. Pass column aggregations as string mapping "
+            "(e.g. df.pt.agg('by_col', 'col = mean, n = n')) or keyword arguments: "
             "df.pt.agg('by_col', body_mass_g='mean', count='n')."
         )
 
@@ -298,22 +332,76 @@ def agg_df(
         raise TypeError(f"'by' must be a column name (str), list of column names, or None, got {type(by).__name__}")
 
     # Extract aggregation spec
+    col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed", "a")}
+    has_a = "a" in kwargs
+    a_arg = kwargs.pop("a", None)
+
+    if args and has_a:
+        raise TypeError("agg() got multiple values for aggregation spec ('a' and positional args)")
+
+    agg_types: Any
     if args:
         if isinstance(args[0], dict):
             raise TypeError(
-                "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "agg() no longer accepts dictionaries. Pass column aggregations as string mapping "
+                "(e.g. df.pt.agg('by_col', 'col = mean, n = n')) or keyword arguments: "
                 "df.pt.agg('by_col', body_mass_g='mean', count='n')."
             )
-        agg_types = args[0]
-    elif "a" in kwargs:
-        if isinstance(kwargs["a"], dict):
+        if all(isinstance(x, str) for x in args):
+            raw_spec = ", ".join(args)
+            parsed = _safe_parse_agg(raw_spec)
+            if isinstance(parsed, dict):
+                if col_kwargs:
+                    parsed.update(col_kwargs)
+                agg_types = parsed
+            else:
+                if col_kwargs:
+                    raise ValueError(
+                        "agg(): cannot mix whole-frame aggregation string with column keyword arguments; "
+                        "use one or the other"
+                    )
+                agg_types = parsed
+        elif len(args) == 1 and isinstance(args[0], (list, tuple)):
+            if col_kwargs:
+                raise ValueError(
+                    "agg(): cannot mix whole-frame aggregation list with column keyword arguments; "
+                    "use one or the other"
+                )
+            agg_types = list(args[0])
+        elif len(args) == 1:
+            agg_types = args[0]
+        else:
+            raise ValueError(f"agg(): unsupported positional arguments {args!r}")
+    elif has_a:
+        if isinstance(a_arg, dict):
             raise TypeError(
-                "agg() no longer accepts dictionaries. Pass column aggregations as keyword arguments: "
+                "agg() no longer accepts dictionaries. Pass column aggregations as string mapping "
+                "(e.g. df.pt.agg('by_col', 'col = mean, n = n')) or keyword arguments: "
                 "df.pt.agg('by_col', body_mass_g='mean', count='n')."
             )
-        agg_types = kwargs.pop("a")
+        if isinstance(a_arg, str):
+            parsed = _safe_parse_agg(a_arg)
+            if isinstance(parsed, dict):
+                if col_kwargs:
+                    parsed.update(col_kwargs)
+                agg_types = parsed
+            else:
+                if col_kwargs:
+                    raise ValueError(
+                        "agg(): cannot mix whole-frame aggregation string with column keyword arguments; "
+                        "use one or the other"
+                    )
+                agg_types = parsed
+        elif isinstance(a_arg, (list, tuple)):
+            if col_kwargs:
+                raise ValueError(
+                    "agg(): cannot mix whole-frame aggregation list with column keyword arguments; "
+                    "use one or the other"
+                )
+            agg_types = list(a_arg)
+        else:
+            agg_types = a_arg
     else:
-        col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed")}
         agg_types = col_kwargs if col_kwargs else ["sum"]
 
     dropna = kwargs.get("dropna", True)
