@@ -67,7 +67,25 @@ def _is_path_like(token: str) -> bool:
     return False
 
 
-def _normalize_progress_args(argv: list[str]) -> list[str]:
+_CLI_FLAGS = {
+    "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
+    "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
+    "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
+    "-unique", "--unique", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
+    "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
+    "-limit", "--limit", "-select", "--select", "-drop", "--drop", "-agg", "--agg",
+    "-agg_df", "--agg_df", "-group_x", "--group_x", "-handle_missing", "--handle_missing",
+    "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide",
+    "-crosstab", "--crosstab", "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
+    "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
+    "-file", "--file", "-query", "--query", "-qry", "--qry", "-mutate", "--mutate",
+    "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
+    "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
+    "-pager", "--pager", "-round", "--round", "-h", "--help",
+}
+
+
+def _normalize_cli_args(argv: list[str]) -> list[str]:
     out: list[str] = []
     i = 0
     while i < len(argv):
@@ -89,13 +107,20 @@ def _normalize_progress_args(argv: list[str]) -> list[str]:
                 out.append("--progress=200000")
                 i += 1
                 continue
+        elif arg in ("-select", "--select") and "=" not in arg:
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                if nxt.startswith("-") and nxt not in _CLI_FLAGS:
+                    out.append(f"--select={nxt}")
+                    i += 2
+                    continue
         out.append(arg)
         i += 1
     return out
 
 
 class PytaeParser(argparse.ArgumentParser):
-    """Custom parser that normalizes optional-value flags such as -progress."""
+    """Custom parser that normalizes optional-value flags such as -progress and negative -select specs."""
 
     def parse_known_args(  # type: ignore[override]
         self,
@@ -104,7 +129,7 @@ class PytaeParser(argparse.ArgumentParser):
     ) -> tuple[argparse.Namespace, list[str]]:
         if args is None:
             args = sys.argv[1:]
-        normalized = _normalize_progress_args(list(args))
+        normalized = _normalize_cli_args(list(args))
         return super().parse_known_args(normalized, namespace)
 
 
@@ -164,9 +189,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
-                              "names, start:end slices, and key=value (dtype, contains, startswith, endswith, "
-                              "regex, exclude_dtype); repeat to filter remaining columns, including after "
-                              '-agg/-long/-wide, e.g. -select "dtype=numeric" -select "contains=bill"')
+                              "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
+                              "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
+                              'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"')
     parser.add_argument("--drop", "-drop", dest="drop", action=_OrderedAppend, default=None, metavar="COLUMNS",
                          help="drop columns by exact name at this point in the pipeline (comma-separated names "
                               "only; use -select for dtype=/contains=/regex=/slices); remaining columns keep "

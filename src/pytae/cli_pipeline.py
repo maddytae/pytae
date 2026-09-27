@@ -75,6 +75,7 @@ class _Pipeline:
             self._df is not None
             or bool(kwargs)
             or any(":" in token for token in names)
+            or any(token.startswith(("-", "~")) for token in names)
         )
         if not needs_frame:
             self._pending_exact = list(names)

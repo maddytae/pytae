@@ -12,7 +12,7 @@ from pathlib import Path
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
-SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
+SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex", "exclude")
 
 
 def parse_columns(raw: str) -> list[str]:
@@ -108,14 +108,29 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
     """Exact-name tokens (and slice endpoints) that are not in the file."""
     unknown: list[str] = []
     for token in tokens:
-        if ":" in token:
+        if token in available:
+            continue
+        if token.startswith(("-", "~")):
+            raw = token[1:].strip()
+            if raw in available:
+                continue
+            if ":" in raw:
+                start, end = raw.split(":", 1)
+                start, end = start.strip(), end.strip()
+                if start and start not in available:
+                    unknown.append(start)
+                if end and end not in available:
+                    unknown.append(end)
+            else:
+                unknown.append(raw)
+        elif ":" in token:
             start, end = token.split(":", 1)
             start, end = start.strip(), end.strip()
             if start and start not in available:
                 unknown.append(start)
             if end and end not in available:
                 unknown.append(end)
-        elif token not in available:
+        else:
             unknown.append(token)
     return unknown
 

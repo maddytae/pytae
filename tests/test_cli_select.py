@@ -219,3 +219,30 @@ def test_select_runs_after_merge(tmp_path, capsys):
 
     assert capsys.readouterr().out.strip() == "(2, 2)"
 
+
+def test_select_cli_negative_column_syntax(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"species": ["A"], "island": ["B"], "val": [1]}),
+    )
+
+    exit_code = cli.main([path, "-select", "-species", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["island", "val"]
+
+    exit_code2 = cli.main([path, "-select", "~island", "-cols"])
+    assert exit_code2 == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["species", "val"]
+
+
+def test_select_cli_exclude_kwarg(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"species": ["A"], "island": ["B"], "val": [1]}),
+    )
+
+    exit_code = cli.main([path, "-select", "exclude=species", "-cols"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines() == ["island", "val"]
+
+
