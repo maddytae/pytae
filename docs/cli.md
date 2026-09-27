@@ -1,6 +1,6 @@
 # pytae — CLI Reference & Architecture Hub
 
-The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.qry()`, `pt.mutate()`, `pt.agg_df()`, `pt.group_x()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
+The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.qry()`, `pt.mutate()`, `pt.agg()`, `pt.group_x()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
 
 ---
 
@@ -34,7 +34,7 @@ The `pytae` CLI provides high-performance command-line data processing for tabul
 
 The `pytae` CLI executes operations sequentially from left to right as an in-memory pipeline:
 
-1. **Flag Order Is the Pipeline**: Flags are evaluated in the order written. For instance, `-qry ... -select ... -agg_df ...` filters rows first, narrows columns second, and aggregates the remaining columns third.
+1. **Flag Order Is the Pipeline**: Flags are evaluated in the order written. For instance, `-qry ... -select ... -agg ...` filters rows first, narrows columns second, and aggregates the remaining columns third.
 2. **State Handoff**: Each transformation step passes its resulting DataFrame to the next step.
 3. **Execution Modes**:
    - **Single-file mode** (standard): `pytae <path> [operations...] [output]`
@@ -67,7 +67,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | Feature Area | Documentation Guide | Key Flags & Capabilities |
 |---|---|---|
 | **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-meta`, `-pager` |
-| **Column Selection** | [Column Selection & Dropping Guide](cli/select_drop.md) | `-select`, `-drop`, slices `a:b`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
+| **Column Selection** | [Column Selection & Dropping Guide](cli/select_drop.md) | `-select`, `-drop`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
 | **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-query`, `-dropna`, intervals `[min, max]`, set membership, comparisons |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
@@ -105,13 +105,15 @@ pytae data.parquet -describe -pager  # Paginated statistical summary
 <a id="column-selection-dropping"></a>
 ### 2. Column Selection & Dropping
 
-Narrow, reorder, or subtract columns using exact names, positional slices, regex, pattern matching, or data type categories.
+Narrow, reorder, or subtract columns using exact names, negative prefixes (`-col`, `~col`), positional slices, regex, pattern matching, or data type categories.
 
 - **Primary flags**: `-select`, `-drop`
-- **Pattern tokens**: `contains=`, `startswith=`, `endswith=`, `regex=`, `dtype=`, `exclude_dtype=`
+- **Pattern tokens**: `contains=`, `startswith=`, `endswith=`, `regex=`, `dtype=`, `exclude_dtype=`, `exclude=`
+- **Negative selection**: `-col`, `~col`, `-start:end`, `exclude=col`
 
 ```bash
 pytae data.parquet -select "species,island,body_mass_g"           # Explicit column order
+pytae data.parquet -select "-species"                             # Exclude column directly in -select
 pytae data.parquet -select "species:bill_length_mm"               # Contiguous column slice
 pytae data.parquet -select "contains=bill,dtype=numeric"          # Pattern union
 pytae data.parquet -drop "sex,island"                             # Drop specific columns
@@ -310,7 +312,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-pretty` | Inspect | Format output as bordered markdown table | [cli/inspect.md](cli/inspect.md) |
 | `-round N` | Inspect | Round floating-point numbers to N decimal places | [cli/inspect.md](cli/inspect.md) |
 | `-diff PATH` | Inspect | Compare current frame against another file | [cli/diff.md](cli/diff.md) |
-| `-select SPEC` | Select & Filter | Filter and reorder columns by name, slice, regex, or dtype | [cli/select_drop.md](cli/select_drop.md) |
+| `-select SPEC` | Select & Filter | Filter/reorder columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select_drop.md](cli/select_drop.md) |
 | `-drop COLS` | Select & Filter | Remove specific columns by exact name | [cli/select_drop.md](cli/select_drop.md) |
 | `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
 | `-query EXPR` | Select & Filter | Filter rows using pandas `df.query()` expression | [cli/filter.md](cli/filter.md) |

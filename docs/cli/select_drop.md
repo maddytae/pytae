@@ -10,6 +10,7 @@ Select, filter, reorder, and subtract columns using names, ranges, pattern match
 
 - [Overview & Differences](#overview--differences)
 - [Selecting Explicit Columns](#selecting-explicit-columns)
+- [Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)](#negative-selection--exclusion)
 - [Slice Notation (`start:end`)](#slice-notation-startend)
 - [Pattern Matching (`contains=`, `startswith=`, `endswith=`, `regex=`)](#pattern-matching)
 - [Data Type Filtering (`dtype=`, `exclude_dtype=`)](#data-type-filtering)
@@ -23,7 +24,7 @@ Select, filter, reorder, and subtract columns using names, ranges, pattern match
 
 | Flag | Description | Reorders Columns? | Accepts Patterns / Dtypes? |
 |---|---|---|---|
-| `-select SPEC` | Keeps specified columns (union of tokens in SPEC) | **Yes** (matches order in SPEC) | **Yes** (`contains=`, `dtype=`, etc.) |
+| `-select SPEC` | Keeps specified columns or excludes negated ones (union/subtraction in SPEC) | **Yes** (matches order in SPEC) | **Yes** (`contains=`, `dtype=`, `exclude=`, negated names `-col`, `~col`, slices) |
 | `-drop COLUMNS` | Removes specified exact column names | **No** (preserves original file order) | **No** (exact comma-separated names only) |
 
 ---
@@ -47,6 +48,42 @@ species    island  body_mass_g
 Reorder columns on the fly:
 ```bash
 pytae penguins.parquet -select "body_mass_g,species" -head 3
+```
+
+---
+
+## Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)
+
+You can exclude specific columns or ranges directly within `-select` without needing a separate `-drop` step:
+
+### Negated Column Names (`-col` or `~col`)
+
+Prefix a column name with `-` or `~` to exclude it:
+
+```bash
+pytae penguins.parquet -select "-species" -head 3
+# Or using tilde:
+pytae penguins.parquet -select "~island" -head 3
+```
+
+Multiple negated columns can be combined in quotes:
+```bash
+pytae penguins.parquet -select "-species, -island, -sex" -head 3
+```
+
+### Negated Slices (`-start:end`)
+
+Exclude a contiguous range of columns:
+```bash
+pytae penguins.parquet -select "-bill_length_mm:flipper_length_mm" -head 3
+```
+
+### Keyword Exclusion (`exclude=`)
+
+Use the `exclude=` parameter to exclude one or more columns:
+```bash
+pytae penguins.parquet -select "exclude=species" -head 3
+pytae penguins.parquet -select "exclude=[species, island]" -head 3
 ```
 
 ---
@@ -169,11 +206,11 @@ pytae penguins.parquet -select "dtype=numeric" -drop "bill_depth_mm" -head 3
 
 ## Repeating `-select` in Pipelines
 
-`-select` can be repeated across intermediate pipeline steps (e.g. after `-mutate` or `-agg_df`):
+`-select` can be repeated across intermediate pipeline steps (e.g. after `-mutate` or `-agg`):
 
 ```bash
 pytae penguins.parquet \
   -mutate "mass_kg = body_mass_g / 1000" \
   -select "species,mass_kg" \
-  -agg_df mean
+  -agg mean
 ```

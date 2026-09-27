@@ -144,7 +144,7 @@ species  body_mass_g  sex
 Pass `-dropna false` to keep NA keys in groupings or aggregations:
 
 ```bash
-pytae penguins.parquet -agg_df mean -dropna false
+pytae penguins.parquet -agg mean -dropna false
 ```
 
 ---
