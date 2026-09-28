@@ -5,77 +5,272 @@
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
-Pandas helpers for everyday data-science tasks (filtering, selection, reshaping, aggregation, plotting), plus a `pytae` CLI that exposes the same operations for inspecting and converting tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.sas7bdat`) without writing any Python.
+Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, feature engineering, DuckDB SQL, and visualization.
 
-## Install
+`pytae` provides two complementary ways to work with tabular data:
+1. **Python Library & DataFrame Accessor (`df.pt`)**: Ergonomic data-science verbs (`qry`, `select`, `mutate`, `agg`, `long`, `wide`, `sql`, `plot`) that compose smoothly with vanilla Pandas.
+2. **Unix Pipeline CLI (`pytae`)**: Inspect, filter, derive columns, aggregate, join, diff, and convert tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.dat`, `.sas7bdat`, `.gz`) directly from the terminal without writing Python code.
+
+---
+
+## Quick Navigation
+
+- [Installation](#installation)
+- [Quick Start: CLI](#quick-start-cli)
+- [Quick Start: Python Library](#quick-start-python-library)
+- [Key Features](#key-features)
+  - [1. Row Filtering (`qry`)](#1-row-filtering-qry)
+  - [2. Column Creation & Grouped Window Calculations (`mutate`)](#2-column-creation--grouped-window-calculations-mutate)
+  - [3. Column Selection & Exclusion (`select`)](#3-column-selection--exclusion-select)
+  - [4. Grouped Aggregation (`agg` / `agg_df`)](#4-grouped-aggregation-agg--agg_df)
+  - [5. Reshaping (`long` & `wide`)](#5-reshaping-long--wide)
+  - [6. Embedded DuckDB SQL Engine (`sql`)](#6-embedded-duckdb-sql-engine-sql)
+  - [7. Visualization (`plot`)](#7-visualization-plot)
+  - [8. Zero-Cost Metadata Inspection & Diffing](#8-zero-cost-metadata-inspection--diffing)
+- [Key Syntax & Conventions Cheat Sheet](#key-syntax--conventions-cheat-sheet)
+- [Documentation & Interactive Tutorials](#documentation--interactive-tutorials)
+- [License](#license)
+
+---
+
+## Installation
 
 ```bash
-pip install pytae             # Core library and CLI
-pip install "pytae[plot]"      # Adds Plotter (matplotlib, scipy)
-pip install "pytae[sql]"       # Adds SQL engine (duckdb)
+pip install pytae              # Core library and CLI
+pip install "pytae[plot]"       # Includes matplotlib & scipy for plotting
+pip install "pytae[sql]"        # Includes DuckDB for SQL queries
+pip install "pytae[plot,sql]"   # All optional dependencies
 ```
 
-## CLI
+---
+
+## Quick Start: CLI
+
+`pytae` commands execute in exact terminal order like a Unix pipeline:
 
 ```bash
-pytae data.parquet -head
-pytae data.parquet -qry "species='Adelie'" -select "species,body_mass_g" -o subset.csv
-pytae data.parquet -sql "select species, avg(body_mass_g) from data group by species"
-pytae -file "data1.parquet=df1; data2.parquet=df2" -merge "left=df1,right=df2,on=id"
+# 1. Fast inspection: view shape, schema, and first 5 rows without reading full files
+pytae penguins.parquet -shape -head 5
+
+# 2. Filter, engineer features, sort, and export to CSV
+pytae penguins.parquet \
+  -qry "species = 'Adelie', body_mass_g > 3500" \
+  -mutate "mass_kg = body_mass_g / 1000, ratio = bill_length_mm / bill_depth_mm" \
+  -sort_by "mass_kg desc" \
+  -select "species,island,mass_kg,ratio" \
+  -o heavy_adelie.csv
+
+# 3. Grouped window calculation: calculate group mean and deviation per row
+pytae tips.parquet \
+  -by day \
+  -mutate "avg_tip = mean(tip), diff = tip - avg_tip, sz = n" \
+  -round 2 \
+  -head 5
+
+# 4. Grouped aggregation and pivoting
+pytae penguins.parquet \
+  -by 'island,species' \
+  -agg 'avg_mass=body_mass_g:mean, count=n' \
+  -wide 'c=species, v=avg_mass' \
+  -round 1
+
+# 5. Query any dataset using DuckDB SQL
+pytae sales.parquet -sql "select customer_id, sum(total) as revenue from data group by 1 order by 2 desc" -head 10
+
+# 6. Compare schemas and values between two files
+pytae current.parquet -diff previous.parquet
 ```
 
-See [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md) for the full CLI reference and flag guide, and [docs/cli/multi_file.md](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) for `-file`/`-merge`/`-concat`.
+👉 **Full CLI Guide**: [docs/cli.md](docs/cli.md) | **Individual Feature Guides**: [docs/cli/](docs/cli/)
 
-## Plotting
+---
 
-`Plotter`: method-chainable plots on top of `pandas.plot()` (`pip install pytae[plot]`).
+## Quick Start: Python Library
 
+Use verbs as standalone functions (`pt.verb(df, ...)`) or chain them naturally on any DataFrame via the `.pt` accessor (`df.pt.verb(...)`):
+
+```python
+import pytae as pt
+import pandas as pd
+
+# Load sample dataset
+penguins = pt.sample("penguins")
+
+# Clean, expressive pipeline
+summary = (
+    penguins
+    # 1. Row filtering with comparison and intervals
+    .pt.qry(species=["Adelie", "Gentoo"], body_mass_g=">= 3500")
+    # 2. Grouped window calculation (N -> N)
+    .pt.mutate(
+        mass_kg="body_mass_g / 1000",
+        avg_mass="mean(body_mass_g)",
+        diff="body_mass_g - avg_mass",
+        by="species",
+    )
+    # 3. Select columns with negative drop support
+    .pt.select("species", "island", "mass_kg", "diff")
+    # 4. Grouped aggregation (N -> K)
+    .pt.agg(by="species", mean_mass="mass_kg.mean()", count="n")
+)
+
+print(summary)
+```
+
+👉 **Full Library Guide**: [docs/library.md](docs/library.md) | **Interactive Tutorials**: [docs/library/](docs/library/)
+
+---
+
+## Key Features
+
+### 1. Row Filtering (`qry`)
+Filter rows without boilerplate. Accepts Python keywords, string expressions, and mathematical intervals:
+```python
+# Keywords, lists, and closed intervals [3000, 4000]
+df.pt.qry(species=["Adelie", "Gentoo"], body_mass_g="[3500, 4500]")
+
+# Columns containing spaces use square brackets
+df.pt.qry("[bill length mm] > 40")
+
+# Missing value checks
+df.pt.qry(sex=("notna",))
+```
+
+### 2. Column Creation & Grouped Window Calculations (`mutate`)
+Derive columns with Python/Pandas expressions, dplyr-style conditionals (`if_else`, `case_when`, `coalesce`), and grouped window summaries:
+```python
+# Formulas, vectorized conditionals, and caller-scope variables (@threshold)
+threshold = 4000
+df.pt.mutate(
+    mass_kg="body_mass_g / 1000",
+    size_class="if_else(body_mass_g > @threshold, 'Large', 'Normal')",
+)
+
+# Grouped window calculations: aggregates evaluate per group and broadcast back (N -> N)
+df.pt.mutate(
+    avg_mass="mean(body_mass_g)",
+    diff="body_mass_g - avg_mass",
+    group_size="n",
+    by="species",
+)
+```
+
+### 3. Column Selection & Exclusion (`select`)
+Reorder, slice, and filter columns using names, patterns, types, and negative drops:
+```python
+# Negative selection (drop specific columns)
+df.pt.select("-id", "-temp")
+
+# By pattern, dtype, and position
+df.pt.select("species", contains="bill", dtypes="numeric")
+
+# Reorder with everything helper
+df.pt.select("island", "species", pt.everything)
+```
+
+### 4. Grouped Aggregation (`agg` / `agg_df`)
+Concise group summaries with explicit `by=` grouping, bracket support for spaced names, and automatic row count token `n`:
+```python
+# Explicit grouping and named aggregations
+df.pt.agg(by="species", avg_mass="body_mass_g.mean()", n="n")
+
+# String mapping specification (perfect for spaced columns)
+df.pt.agg("island", "[avg mass] = [body mass g]:mean, n = n")
+```
+
+### 5. Reshaping (`long` & `wide`)
+Clean unpivoting (melting) and pivoting without MultiIndex complexity:
+```python
+# Unpivot non-numeric columns into key-value pairs
+long_df = df.pt.long(id_vars=["species", "island"], cols=["bill_length_mm", "bill_depth_mm"])
+
+# Pivot back to wide presentation matrix
+wide_df = long_df.pt.wide(c="variable", v="value", a="mean")
+```
+
+### 6. Embedded DuckDB SQL Engine (`sql`)
+Run analytical SQL directly on any Pandas DataFrame with zero copy:
+```python
+result = df.pt.sql("""
+    select species, count(*) as total, round(avg(body_mass_g), 1) as avg_mass
+    from data
+    where body_mass_g is not null
+    group by 1
+    order by avg_mass desc
+""")
+```
+
+### 7. Visualization (`plot`)
+Method-chainable charting powered by Matplotlib (`pip install "pytae[plot]"`):
 ```python
 from pytae.plotting import Plotter
 
 Plotter().data(penguins).plot(
-    x="bill_length_mm", y="bill_depth_mm", kind="scatter", c="species", cmap="viridis"
+    x="bill_length_mm",
+    y="bill_depth_mm",
+    kind="scatter",
+    c="species",
+    cmap="viridis",
+    title="Penguin Bill Dimensions",
 ).finalize()
 ```
 
-See [docs/plotting.md](https://github.com/maddytae/pytae/blob/master/docs/plotting.md) for more examples with sample data.
+### 8. Zero-Cost Metadata Inspection & Diffing
+Inspect large Parquet, CSV, and SAS datasets instantly without loading millions of rows into memory:
+```bash
+# Instant shape, columns, and types from Parquet file headers
+pytae large_dataset.parquet -shape -cols -meta
 
-## Library
-
-Import `pytae as pt`. Same verbs work as `pt.select(df, ...)` or as `df.pt.select(...)` (mix with pandas: `df.rename(...).pt.agg_df(...)`). Notebooks use the accessor chain. CLI flags (`-select`, `-qry`, …) are unchanged.
-
-```python
-import pytae as pt
-penguins = pt.sample("penguins")
-pt.select(penguins, "species", contains="bill")
-(penguins
- .pt.agg_df(["species", "island"], a=["mean", "n"])
-)
+# Compare schemas, null counts, and value differences across datasets
+pytae current.parquet -diff previous.parquet
 ```
 
-- **Filtering** — `pt.qry()` / `df.pt.qry()`: string expressions, dicts, or keyword filters (equality, lists, `in`/`not in`, comparisons, intervals)
-- **Selection** — `pt.select()`: columns by name, regex, dtype, or name pattern
-- **Mutating** — `pt.mutate()`: create/overwrite columns via formulas, grouped window transforms `by=`, `if_else()`, `case_when()`, `map()`
-- **Reshaping** — `pt.long()` / `pt.wide()`: melt numeric columns to rows, pivot back to columns
-- **Aggregation** — `pt.agg_df()`: groups by explicit `by=` column(s) (or `None` for whole-table summary) and aggregates numeric columns
-- **Utilities** — `df.to_clip()`, `pt.handle_missing()`, `pt.cols()`, `pt.clean_columns()`, `pt.replace_values()`
-- **SQL** — `pt.sql()` / `df.pt.sql()` via duckdb (`pip install pytae[sql]`); the frame is table `data`
+---
 
-See [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) for examples of each.
+## Key Syntax & Conventions Cheat Sheet
 
-## Key Conventions & Syntax Cheat Sheet
+| Task | Python Library (`df.pt`) | CLI Flag | Example |
+| :--- | :--- | :--- | :--- |
+| **Row Filtering** | `.pt.qry(...)` | `-qry "..."` | `df.pt.qry(species="Adelie", mass="> 3500")` |
+| **Spaced Columns (Expr)** | `[column name]` | `[column name]` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
+| **Grouped Window Calc** | `.pt.mutate(..., by=...)` | `-by ... -mutate "..."` | `pytae data.parquet -by dept -mutate "avg=mean(salary)"` |
+| **Negative Column Select** | `.pt.select("-col1", "-col2")` | `-select "-col1,-col2"` | `df.pt.select("-temp", "-raw_id")` |
+| **Grouped Aggregation** | `.pt.agg(by=..., ...)` | `-by ... -agg "..."` | `df.pt.agg(by="species", total="mass.sum()", n="n")` |
+| **Data Reshaping** | `.pt.long()`, `.pt.wide()` | `-long`, `-wide` | `df.pt.wide(c="metric", v="val", a="mean")` |
+| **DuckDB SQL Query** | `.pt.sql("select ...")` | `-sql "select ..."` | `pytae data.parquet -sql "select * from data limit 5"` |
+| **Copy to Clipboard** | `df.to_clip()` | `-o clip` | `df.head().to_clip()` vs `pytae data.parquet -head -o clip` |
+| **File Export & Routing** | `df.to_parquet(...)` | `-o <target.ext>` | `pytae data.parquet -o clean.csv.gz -od ./exports` |
+| **Dataset Diffing** | N/A | `-diff <other_file>` | `pytae data.parquet -diff old_data.parquet` |
 
-| Task | Syntax | Example |
-|---|---|---|
-| **Copy to Clipboard** | `df.to_clip()` in Python; `-o clip` in CLI | `df.head().to_clip()` vs. `pytae data.parquet -head -o clip` |
-| **Mapping vs. Assignment** | `:` maps old to new; `=` assigns values | `-rename "old:new"` vs. `-mutate "col = expr"` |
-| **Spaced Columns (Filter)** | Enclose in brackets `[col]` | `df.pt.qry("[bill length mm] > 40")` |
-| **Spaced Columns (Select)** | Enclose in brackets `[col]` | `df.pt.select("species", "[body mass g]")` |
-| **Spaced Columns (Create)** | String assignment `[col] = ...` (or `**{...}`) | `df.pt.mutate("[body mass kg] = body_mass_g / 1000")` |
-| **Spaced Columns (Agg)** | String mapping `"[col] = func, n = n"` | `df.pt.agg("smoker", "tip = mean, [total bill] = mean, n = n")` |
-| **Spaced Columns (Expr)** | Reference via brackets `[col]` or backticks `` `col` `` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
-| **Selective Grouping** | `agg_df` groups by explicit `by=` column(s) | `df.pt.agg_df("species", "mean")` |
+---
+
+## Documentation & Interactive Tutorials
+
+### CLI Documentation (`docs/cli/`)
+- [CLI Reference Hub](docs/cli.md) — Master flag guide, execution pipeline, and syntax rules
+- [Aggregation Guide](docs/cli/aggregate.md) — `-by`, `-agg`, and group frequency counts
+- [Mutation Guide](docs/cli/mutate.md) — Feature engineering, math, and grouped window formulas
+- [Filtering Guide](docs/cli/filter.md) — Numerical comparisons, string matching, and intervals
+- [Selection Guide](docs/cli/select.md) — Column slicing, dtypes, and negative exclusion
+- [Reshaping Guide](docs/cli/reshape.md) — Long-to-wide and wide-to-long pivots
+- [Export & Output Guide](docs/cli/export_io.md) — `-o`, `-od`, compression, and clipboard routing
+- [Dataset Diff Guide](docs/cli/diff.md) — Comparing schemas and records
+- [Multi-File Operations](docs/cli/multi_file.md) — `-file`, `-merge`, and `-concat`
+- [SQL Guide](docs/cli/sql.md) — Querying with embedded DuckDB
+
+### Interactive Jupyter Notebooks (`docs/library/`)
+Each core module has a standalone, fully runnable tutorial with live outputs:
+- **Filtering**: [`docs/library/qry.ipynb`](docs/library/qry.ipynb)
+- **Feature Engineering & Window Mutations**: [`docs/library/mutate.ipynb`](docs/library/mutate.ipynb)
+- **Aggregation**: [`docs/library/agg.ipynb`](docs/library/agg.ipynb)
+- **Selection**: [`docs/library/select.ipynb`](docs/library/select.ipynb)
+- **Reshaping**: [`docs/library/shape.ipynb`](docs/library/shape.ipynb)
+- **DuckDB SQL**: [`docs/library/sql.ipynb`](docs/library/sql.ipynb)
+- **Utilities & Cleaning**: [`docs/library/other_utilities.ipynb`](docs/library/other_utilities.ipynb)
+- **Plotting & Dashboards**: [`docs/plotting/plotter.ipynb`](docs/plotting/plotter.ipynb)
+
+---
 
 ## License
 
-MIT — see [LICENSE](https://github.com/maddytae/pytae/blob/master/LICENSE).
+MIT License. See [LICENSE](LICENSE) for details.
