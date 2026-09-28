@@ -228,6 +228,7 @@ class PtAccessor:
             ncols = facet_kwargs.pop("ncols", None)
             return Plotter.facet(self._obj, by=by_col, ncols=ncols, **facet_kwargs)
 
+        save_path = kwargs.pop("save", None)
         plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
         init_kwargs = {k: v for k, v in kwargs.items() if k in plotter_keys}
         plot_kwargs = {k: v for k, v in kwargs.items() if k not in plotter_keys}
@@ -236,5 +237,7 @@ class PtAccessor:
         plotter.data(self._obj)
         if plot_kwargs:
             plotter.plot(**plot_kwargs)
+        if save_path:
+            plotter.finalize().save(save_path)
         return plotter
 
