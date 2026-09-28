@@ -53,9 +53,13 @@
       - **Headless File Export (`-o <file>.<png|svg|pdf|jpg>`)**: Uses `matplotlib.use('Agg')` for clean background rendering without GUI popup windows; ideal for automated scripts, CI/CD pipelines, and remote SSH environments.
       - **Interactive GUI (`--show`)**: When passed or when `-o` is omitted, opens an interactive window (`plt.show()`) for panning and zooming.
     - **Supported Chart Types**: `scatter`, `line`, `bar`, `hist`, `box`, `violin`, `heatmap`, `count`.
+    - **CLI Layout Finalization (`-finalize "..."`)**:
+      - **Auto-finalize by default**: The CLI automatically executes `.finalize()` before saving or displaying figures, so single-shot commands look polished with clean spines and `tight_layout` without needing manual flags.
+      - **Custom finalization (`-finalize "..."`)**: Optional flag to configure `Plotter.finalize(...)` parameters (e.g. `-finalize "consolidate_legends=True, legend_loc='upper right', style=False"`).
   - **Library `.plot` Ergonomics**:
-    - Allow one-shot file export via `df.pt.plot(..., save="plot.png")` or direct figure return without requiring explicit `.finalize()`.
-    - Support interactive HTML export (`-o chart.html` or `.plot(..., backend="plotly")`).
+    - **Retain `.finalize()` as core pipeline method**: Keep `.finalize()` as the indispensable method for multi-panel dashboards, dual-axis charts, and mosaics to polish all axes after composition.
+    - **Convenience `save=` parameter**: Allow optional `df.pt.plot(..., save="plot.png")` to auto-call `.finalize()` and save in one step for simple single-panel plots without breaking manual chaining.
+    - **Interactive HTML export**: Support `-o chart.html` / `.plot(..., backend="plotly")`.
 
 
 ## Planned Robustness & Bug Fixes
