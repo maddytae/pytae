@@ -52,6 +52,8 @@ _FORMAT_SHORTHANDS = frozenset((
 
 
 def _is_path_like(token: str) -> bool:
+    if token == "-":
+        return True
     if token.startswith("-"):
         return False
     if any(ch in token for ch in "*?[]"):
@@ -81,6 +83,8 @@ _CLI_FLAGS = {
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
     "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
     "-pager", "--pager", "-round", "--round", "-h", "--help",
+    "-fmt", "--fmt", "-freq", "--freq", "-hist", "--hist",
+    "-plot", "--plot", "-finalize", "--finalize",
 }
 
 
@@ -168,6 +172,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="compare schema and contents against another dataset file")
     parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
                          help="show pandas value_counts across current working columns (use -select to choose columns)")
+    parser.add_argument("-freq", "--freq", dest="freq", action=_OrderedStore, default=None, metavar="COLUMN",
+                         help="render horizontal frequency bars with counts and percentages for a categorical column")
+    parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
+                         help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
     parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
                          help="drop duplicate rows and print unique rows")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
@@ -219,7 +227,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "e.g. c=country,v=balance,a=mean; a=n is an alias for pandas' 'size' "
                               "(group row count), matching agg_df's convention; honors -dropna")
     parser.add_argument("-crosstab", "--crosstab", dest="crosstab", metavar="KEY=VALUE,...", action=_OrderedStore,
-                         help="cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
+                         help="[DEPRECATED: planned for removal in next release; use -by ... -agg ... -wide ...] "
+                              "cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
                               "index= (one or more comma-separated columns), columns= (single column, required), "
                               "optional values=+aggfunc= together to aggregate instead of count, "
                               "normalize=index|columns|all, margins=true|false, margins_name= (default 'All'; "
@@ -234,6 +243,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "or 'clip'/'clipboard' to copy to system clipboard")
     parser.add_argument("-out_dir", "--out_dir", "-od", "--out-dir", dest="out_dir", type=Path, default=None, metavar="DIR",
                          help="target directory for exported files (created if it does not exist); requires -o/--output")
+    parser.add_argument("-fmt", "--fmt", dest="fmt", default=None, metavar="FORMAT",
+                         help="input format when reading from STDIN or extensionless files: csv, parquet, jsonl, txt, tsv")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
                               "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
@@ -292,6 +303,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
                               "current result so far), quoted since it has internal commas, e.g. "
                               "\"frames='df1,df2,df3'\"")
+    parser.add_argument("-plot", "--plot", dest="plot", action=_OrderedStore, default=None, metavar="SPEC",
+                         help="render visualization using pytae Plotter; e.g. -plot \"kind=scatter, x=col1, y=col2\"")
+    parser.add_argument("-finalize", "--finalize", dest="finalize", default=None, metavar="SPEC",
+                         help="layout/legend options for -plot, e.g. -finalize \"consolidate_legends=True, style=True\"")
     parser.add_argument("-progress", "--progress", nargs="?", const=200_000, type=parse_positive_int,
                          default=None, metavar="N",
                          help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
@@ -387,24 +402,24 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
-                         args.value_counts, args.unique, args.head is not None,
-                         args.tail is not None, args.sample is not None, args.sort_by is not None,
+                         args.value_counts, args.unique, args.freq is not None, args.hist is not None,
+                         args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
                          args.agg is not None, args.handle_missing is not None,
                          args.long is not None, args.wide is not None, args.crosstab is not None,
                          args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
-                         args.meta, args.diff is not None])
+                         args.meta, args.diff is not None, args.plot is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
-                     args.value_counts, args.unique, args.head is not None,
-                     args.tail is not None, args.sample is not None, args.sort_by is not None,
+                     args.value_counts, args.unique, args.freq is not None, args.hist is not None,
+                     args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
                      args.agg is not None, args.handle_missing is not None,
                      args.long is not None, args.wide is not None, args.crosstab is not None,
-                     args.clean_columns is not None, args.merge, args.concat])
+                     args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
+                     "-agg/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
     if args.by is not None and args.agg is None and not args.mutate:
         parser.error("-by requires -agg or -mutate")

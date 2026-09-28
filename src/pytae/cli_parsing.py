@@ -647,3 +647,40 @@ def parse_concat_arg(raw: str) -> dict:
     if len(names) < 2:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
+
+
+def parse_kv_spec(raw: str | None, *, flag: str) -> dict[str, Any]:
+    """Parse comma-separated key=value tokens into a kwargs dict, type-casting numbers and booleans."""
+    if not raw or not raw.strip():
+        return {}
+    kwargs: dict[str, Any] = {}
+    for token in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
+        token = token.strip()
+        if not token:
+            continue
+        if "=" not in token:
+            kwargs[token.strip()] = True
+            continue
+        key, _, raw_val = token.partition("=")
+        key = key.strip()
+        raw_val = raw_val.strip()
+        val: Any
+        if (raw_val.startswith("'") and raw_val.endswith("'")) or (raw_val.startswith('"') and raw_val.endswith('"')):
+            val = raw_val[1:-1]
+        elif raw_val.lower() == "true":
+            val = True
+        elif raw_val.lower() == "false":
+            val = False
+        elif raw_val.lower() in ("none", "null"):
+            val = None
+        else:
+            try:
+                val = int(raw_val)
+            except ValueError:
+                try:
+                    val = float(raw_val)
+                except ValueError:
+                    val = raw_val
+        kwargs[key] = val
+    return kwargs
+

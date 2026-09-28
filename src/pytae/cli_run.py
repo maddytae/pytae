@@ -6,6 +6,7 @@ import argparse
 import io
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from pytae.cli_parsing import (
     parse_clean_columns_arg,
     parse_columns,
     parse_crosstab_arg,
+    parse_kv_spec,
     parse_long_arg,
     parse_sort_by,
     parse_wide_arg,
@@ -24,7 +26,7 @@ from pytae.cli_parsing import (
 )
 from pytae.cli_pipeline import _Pipeline
 from pytae.other_utilities import clean_columns, handle_missing, safe_reset_index
-from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
+from pytae.readers import StdinReader, _split_path_suffixes, get_reader, write_dataframe
 
 
 def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
@@ -48,6 +50,83 @@ def _format_table(df: pd.DataFrame, *, index: bool | None = None, pretty: bool =
         return df.to_markdown(index=index)
     except ImportError:
         return df.to_string(index=index)
+
+
+def _compute_freq(source_df: pd.DataFrame, col: str | None, dropna: bool) -> pd.DataFrame:
+    if col is None:
+        if len(source_df.columns) == 1:
+            col = source_df.columns[0]
+        else:
+            raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
+    col = col.strip()
+    if col not in source_df.columns:
+        raise SystemExit(unknown_columns_message("-freq", [col], list(source_df.columns)))
+
+    counts = source_df[col].value_counts(dropna=dropna)
+    total = counts.sum()
+    max_cnt = counts.max() if not counts.empty else 1
+    bar_max_width = 20
+    data = []
+    for category, count in counts.items():
+        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        data.append({col: str(category), "Count": count, "Distribution": dist_str})
+    return pd.DataFrame(data)
+
+
+def _compute_hist(source_df: pd.DataFrame, hist_arg: str | None) -> pd.DataFrame:
+    raw = (hist_arg or "").strip()
+    bins = 10
+    col = None
+    if ":" in raw:
+        col_part, _, b_str = raw.partition(":")
+        col = col_part.strip()
+        try:
+            bins = int(b_str.strip())
+        except ValueError:
+            pass
+    elif "," in raw and "bins=" in raw:
+        col_part, _, b_part = raw.partition(",")
+        col = col_part.strip()
+        b_str = b_part.replace("bins=", "").strip()
+        try:
+            bins = int(b_str)
+        except ValueError:
+            pass
+    elif raw:
+        col = raw
+    else:
+        if len(source_df.columns) == 1:
+            col = source_df.columns[0]
+        else:
+            raise SystemExit("-hist: requires a column name (e.g. -hist mass or -hist mass:10)")
+
+    if col not in source_df.columns:
+        raise SystemExit(unknown_columns_message("-hist", [col], list(source_df.columns)))
+
+    s = pd.to_numeric(source_df[col], errors="coerce").dropna()
+    if s.empty:
+        return pd.DataFrame(columns=["Range", "Count", "Distribution"])
+
+    cut_series = pd.cut(s, bins=bins, include_lowest=True)
+    counts = cut_series.value_counts(sort=False)
+    total = len(s)
+    max_cnt = counts.max() if not counts.empty else 1
+    bar_max_width = 20
+    data = []
+    for interval, count in counts.items():
+        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        left_fmt = f"{interval.left:.2f}".rstrip("0").rstrip(".")
+        right_fmt = f"{interval.right:.2f}".rstrip("0").rstrip(".")
+        range_str = f"[{left_fmt}, {right_fmt}]"
+        data.append({"Range": range_str, "Count": count, "Distribution": dist_str})
+    return pd.DataFrame(data)
+
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -342,26 +421,44 @@ def _process_path(
     merge_specs = merge_specs or []
     concat_specs = concat_specs or []
     if frames is None:
-        if path is None or not path.exists():
-            return _fail(parser, batch, f"file not found: {path}")
-
         chunk_size = getattr(args, "chunk_size", None) or 200_000
-        try:
-            reader = get_reader(path, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
-        except (ValueError,ImportError) as exc:
-            return _fail(parser, batch, str(exc))
+        if str(path) == "-":
+            data_bytes = sys.stdin.buffer.read()
+            try:
+                reader = StdinReader(
+                    data_bytes,
+                    fmt=getattr(args, "fmt", None),
+                    sep=args.dlim,
+                    encoding=args.encoding,
+                    chunk_size=chunk_size,
+                )
+            except (ValueError, ImportError) as exc:
+                return _fail(parser, batch, str(exc))
 
-        pipeline = _Pipeline(
-            reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
-        )
+            pipeline = _Pipeline(
+                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+            )
+        elif path is None or not path.exists():
+            return _fail(parser, batch, f"file not found: {path}")
+        else:
+            try:
+                reader = get_reader(path, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+            except (ValueError, ImportError) as exc:
+                return _fail(parser, batch, str(exc))
+
+            pipeline = _Pipeline(
+                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+            )
     else:
         pipeline = _Pipeline(frames=frames)
 
     out_target = str(args.output).strip() if args.output is not None else None
+    image_exts = (".png", ".svg", ".pdf", ".jpg", ".jpeg", ".webp", ".tif", ".tiff")
+    is_image_out = out_target is not None and any(out_target.lower().endswith(ext) for ext in image_exts)
     is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
-    is_file = out_target is not None and not is_clip
+    is_file = out_target is not None and not is_clip and not is_image_out
     clip_action = None
-    emit_stdout = not is_clip and not is_file
+    emit_stdout = not is_clip and not is_file and not is_image_out
 
     if show_all:
         df = _apply_round(pipeline.dataframe(), args.round_ndigits)
@@ -572,6 +669,24 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "freq":
+            freq_col = _next_op_val("freq", getattr(args, "freq", None))
+            source_df = pipeline.dataframe()
+            result = _compute_freq(source_df, freq_col, args.dropna)
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "hist":
+            hist_arg = _next_op_val("hist", getattr(args, "hist", None))
+            source_df = pipeline.dataframe()
+            result = _compute_hist(source_df, hist_arg)
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "unique":
             source_df = safe_reset_index(pipeline.dataframe())
             unique_df = source_df.drop_duplicates().reset_index(drop=True)
@@ -714,13 +829,48 @@ def _process_path(
                 ct_kwargs["values"] = source_df[ct["values"]]
                 ct_kwargs["aggfunc"] = ct["aggfunc"]
             result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
-            # TODO: Deprecate -crosstab in next release in favor of -by ... -agg ... -wide ...
-            # which naturally produces clean, fully populated flat columns without specialized MultiIndex handling.
+            warnings.warn(
+                "The '-crosstab' flag is deprecated and will be removed in a future release. "
+                "Use '-by ... -agg ... -wide ...' instead.",
+                FutureWarning,
+                stacklevel=2,
+            )
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
             pipeline._df = safe_reset_index(result)
+        elif op == "plot":
+            plot_spec = _next_op_val("plot", getattr(args, "plot", None))
+            plot_kwargs = parse_kv_spec(plot_spec, flag="-plot")
+            finalize_kwargs = parse_kv_spec(getattr(args, "finalize", None), flag="-finalize")
+
+            source_df = pipeline.dataframe()
+            import matplotlib
+
+            from pytae.plotting import Plotter
+            if is_image_out or not should_print(idx):
+                matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+
+            plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
+            init_kwargs = {k: v for k, v in plot_kwargs.items() if k in plotter_keys}
+            chart_kwargs = {k: v for k, v in plot_kwargs.items() if k not in plotter_keys}
+
+            p = Plotter(source_df, **init_kwargs)
+            p.plot(**chart_kwargs)
+            p.finalize(**finalize_kwargs)
+
+            if is_image_out:
+                assert out_target is not None
+                dest_path = Path(out_target)
+                if args.out_dir is not None:
+                    args.out_dir.mkdir(parents=True, exist_ok=True)
+                    dest_path = args.out_dir / dest_path.name
+                p.save(dest_path)
+                print(f"Saved plot to {dest_path}")
+            elif should_print(idx):
+                plt.show()
 
     if is_clip and clip_action is not None:
         clip_action()
@@ -733,8 +883,8 @@ def _process_path(
             "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
         )
         if fmt in valid_formats:
-            if path is None:
-                return _fail(parser, batch, f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
+            if path is None or str(path) == "-":
+                return _fail(parser, batch, f"-o {out_target}: when reading from STDIN or -file mode, an explicit output file path is required")
             ext = ".parquet" if fmt == "pq" else f".{fmt}"
             clean_name = path.name[:-3] if path.name.lower().endswith(".gz") else path.name
             dest_name = f"{Path(clean_name).stem}{ext}"

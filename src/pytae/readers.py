@@ -9,7 +9,10 @@ DTYPE_SAMPLE_ROWS rows.
 from __future__ import annotations
 
 import importlib.util
+import io
 import os
+import re
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -484,6 +487,77 @@ class JsonlReader:
         return df[columns] if columns else df
 
 
+class StdinReader:
+    """Reader for data piped via STDIN, buffered in memory."""
+
+    def __init__(
+        self,
+        data: bytes,
+        *,
+        fmt: str | None = None,
+        sep: str | None = None,
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+    ) -> None:
+        self.data = data
+        self.path = Path("<stdin>")
+        self.chunk_size = chunk_size
+        self.sep = sep
+        self.encoding = encoding
+        self.fmt = fmt
+        self._df = self._load()
+
+    def _load(self) -> pd.DataFrame:
+        if not self.data:
+            return pd.DataFrame()
+        fmt = (self.fmt or "").lower().strip()
+        if fmt in ("parquet", "pq") or (not fmt and self.data.startswith(b"PAR1")):
+            return pd.read_parquet(io.BytesIO(self.data))
+        if fmt in ("jsonl", "ndjson") or (not fmt and self.data.lstrip()[:1] in (b"{", b"[")):
+            return pd.read_json(io.BytesIO(self.data), orient="records", lines=True)
+        # Delimited text (CSV, TSV, etc.)
+        sep = self.sep
+        if sep is None:
+            first_line = self.data.split(b"\n", 1)[0]
+            if b"\t" in first_line and b"," not in first_line:
+                sep = "\t"
+            elif b"|" in first_line and b"," not in first_line:
+                sep = "|"
+            else:
+                sep = ","
+        compression = "gzip" if self.data.startswith(b"\x1f\x8b") else None
+        return pd.read_csv(io.BytesIO(self.data), sep=sep, encoding=self.encoding, compression=compression)
+
+    def shape(self) -> tuple[int, int]:
+        return self._df.shape
+
+    def columns(self) -> list[str]:
+        return list(self._df.columns)
+
+    def dtypes(self) -> pd.Series:
+        return self._df.dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        return self._df.head(n)
+
+    def tail(self, n: int) -> pd.DataFrame:
+        return self._df.tail(n)
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        out = self._df
+        if columns is not None:
+            out = out[columns]
+        if nrows is not None:
+            out = out.iloc[:nrows]
+        return out
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
@@ -668,6 +742,21 @@ def _write_jsonl(
     print()
 
 
+def _coerce_failing_parquet_column(df: pd.DataFrame, error_msg: str) -> str | None:
+    match = re.search(r"Conversion failed for column (.+?) with type object", error_msg)
+    if match:
+        bad_col = match.group(1).strip()
+        if bad_col in df.columns:
+            df[bad_col] = df[bad_col].map(lambda v: str(v) if pd.notna(v) else None)
+            warnings.warn(
+                f"Column '{bad_col}' contained mixed object types; coerced to string for Parquet serialization.",
+                UserWarning,
+                stacklevel=3,
+            )
+            return bad_col
+    return None
+
+
 def _write_parquet(
     df: pd.DataFrame,
     dest: Path,
@@ -676,10 +765,37 @@ def _write_parquet(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool = False,
 ) -> None:
+    df_to_write = df
+    max_retries = max(len(df.columns), 1)
+
     if not progress or len(df) == 0:
-        df.to_parquet(dest, index=index)
+        for _ in range(max_retries + 1):
+            try:
+                df_to_write.to_parquet(dest, index=index)
+                return
+            except Exception as e:
+                if df_to_write is df:
+                    df_to_write = df.copy()
+                if _coerce_failing_parquet_column(df_to_write, str(e)):
+                    continue
+                raise
         return
-    table = pa.Table.from_pandas(df, preserve_index=index)
+
+    table = None
+    for _ in range(max_retries + 1):
+        try:
+            table = pa.Table.from_pandas(df_to_write, preserve_index=index)
+            break
+        except Exception as e:
+            if df_to_write is df:
+                df_to_write = df.copy()
+            if _coerce_failing_parquet_column(df_to_write, str(e)):
+                continue
+            raise
+
+    if table is None:
+        table = pa.Table.from_pandas(df_to_write, preserve_index=index)
+
     total = table.num_rows
     done = 0
     with pa_parquet.ParquetWriter(dest, table.schema) as writer:
