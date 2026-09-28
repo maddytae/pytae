@@ -4104,9 +4104,8 @@ def _process_path(
                 ct_kwargs["values"] = source_df[ct["values"]]
                 ct_kwargs["aggfunc"] = ct["aggfunc"]
             result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
-            # TODO: Consider flattening crosstab output on stdout by default via safe_reset_index(result)
-            # so repeated row index labels are filled across all rows (avoiding Pandas MultiIndex
-            # blanking) and terminal display matches downstream pipeline steps (-head, -o, etc.).
+            # TODO: Deprecate -crosstab in next release in favor of -by ... -agg ... -wide ...
+            # which naturally produces clean, fully populated flat columns without specialized MultiIndex handling.
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
             if is_clip:
