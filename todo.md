@@ -3,7 +3,7 @@
 ## Planned Deprecations
 - [ ] **Deprecate `-crosstab` CLI flag in next release**:
   - **Rationale**: `-crosstab` duplicates existing orthogonal primitives (`-by ... -agg ... -wide ...`), introduces complex multi-key argument parsing (`index=`, `columns=`, `values=`, `aggfunc=`, `margins=`, `normalize=`), and requires specialized MultiIndex output formatting.
-  - **Replacement Workflow**: Standardize all 2D cross-tabulation and matrix workflows on `-by`, `-agg`, and `-wide` (e.g. `pytae data.parquet -by 'island,species' -agg 'mass=body_mass_g:sum' -wide 'c=species,v=mass'`), which naturally produce clean, fully populated flat columns.
+  - **Replacement Workflow**: Standardize all 2D cross-tabulation and matrix workflows on the planned `-pivot "r=..., c=..., a=..."` primitive or `-by`, `-agg`, and `-wide` (which naturally produce clean, fully populated flat columns without MultiIndex overhead).
   - **Codebase Simplification**:
     - Removes dedicated crosstab parsing, key validations, and error handlers in `cli_parsing.py`.
     - Eliminates ~40 lines of specialized execution and formatting code in `cli_run.py`.
@@ -30,6 +30,20 @@
       Chinstrap     68  █████████            (19.8%)
       ```
     - **Numeric Distribution Histograms (`-hist COL [BINS]`)**: Render binned ASCII histograms showing numeric distributions, spread, and peaks directly in console scrollback.
+
+- [ ] **Ergonomic 2D Pivoting (`-pivot "r=..., c=..., v=..., a=..., dropna=..."`)**:
+  - **Concept**: Provide a first-class, ultra-intuitive 2D pivot table command using universal row/column vocabulary (`r` for rows, `c` for cols, `v` for values, `a` for aggregation).
+  - **Key Parameters**:
+    - `r` (or `rows`): Row index / grouping dimensions (single column or comma-separated, e.g. `r=island` or `r=island,sex`).
+    - `c` (or `cols`): Columns to pivot into header columns (e.g. `c=species`).
+    - `v` (or `values`): Value column to aggregate (optional).
+    - `a` (or `agg`): Aggregation function (`mean`, `sum`, `count`, `min`, `max`, `n`). Defaults to `count` if `v` is omitted, or `mean`/`sum` if `v` is supplied.
+    - `dropna`: Control whether missing categories/columns are omitted or retained (`dropna=true` / `dropna=false`), also respecting the global `-dropna` CLI flag.
+    - `fill`: Optional fill value for missing cells (e.g. `fill=0`).
+  - **Direct Ergonomic Successor to `-crosstab`**:
+    - **Frequency Matrix**: `pytae penguins.parquet -pivot "r=island, c=species"` replaces `-crosstab "index=island, columns=species"` in one shot while emitting flat, clean column headers.
+    - **Aggregated Matrix**: `pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean, dropna=false"`.
+  - **Relationship with `-wide`**: Built on `pytae`'s fast, flat reshaping core, but adopts standard `r`, `c`, `v`, `a` vocabulary that SQL, Excel, and Pandas users naturally reach for.
 
 - [ ] **Zero-Code Plotting Capability (`-plot "..."` in CLI & `.plot` Enhancements)**:
   - **Concept**: Connect `pytae`'s visualization engine (`df.pt.plot` / `Plotter`) directly to the command line, fulfilling the project description (*"zero-code CLI for tabular data manipulation and plotting"*), and expand library `.plot` convenience.
