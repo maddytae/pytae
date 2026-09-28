@@ -79,6 +79,16 @@ pytae sales.parquet -sql "select customer_id, sum(total) as revenue from data gr
 
 # 6. Compare schemas and values between two files
 pytae current.parquet -diff previous.parquet
+
+# 7. In-line terminal visualizations & ASCII charts
+pytae penguins.parquet -freq species
+pytae penguins.parquet -hist body_mass_g:10
+
+# 8. Render and export figures directly from the CLI
+pytae penguins.parquet -plot "kind=bar, x=species, y=body_mass_g, aggfunc=mean" -o mass_chart.png
+
+# 9. Pipe streaming via standard input (STDIN)
+cat penguins.csv | pytae - -select "species,island" -value_counts
 ```
 
 👉 **Full CLI Guide**: [docs/cli.md](docs/cli.md) | **Individual Feature Guides**: [docs/cli/](docs/cli/)
@@ -203,16 +213,18 @@ result = df.pt.sql("""
 ### 7. Visualization (`plot`)
 Method-chainable charting powered by Matplotlib (`pip install "pytae[plot]"`):
 ```python
-from pytae.plotting import Plotter
-
-Plotter().data(penguins).plot(
+# Direct accessor with auto-aggregation:
+penguins.pt.plot(
+    kind="scatter",
     x="bill_length_mm",
     y="bill_depth_mm",
-    kind="scatter",
     c="species",
     cmap="viridis",
     title="Penguin Bill Dimensions",
-).finalize()
+).pt.finalize()
+
+# One-shot direct file export (no explicit finalize required):
+penguins.pt.plot(kind="bar", x="species", y="body_mass_g", aggfunc="mean", save="mass.png")
 ```
 
 ### 8. Zero-Cost Metadata Inspection & Diffing
@@ -237,7 +249,10 @@ pytae current.parquet -diff previous.parquet
 | **Negative Column Select** | `.pt.select("-col1", "-col2")` | `-select "-col1,-col2"` | `df.pt.select("-temp", "-raw_id")` |
 | **Grouped Aggregation** | `.pt.agg(by=..., ...)` | `-by ... -agg "..."` | `df.pt.agg(by="species", total="mass.sum()", n="n")` |
 | **Data Reshaping** | `.pt.long()`, `.pt.wide()` | `-long`, `-wide` | `df.pt.wide(c="metric", v="val", a="mean")` |
+| **In-Line Terminal Charts** | N/A | `-freq`, `-hist` | `pytae data.parquet -freq species` / `-hist mass:10` |
+| **Figure Plotting & Export** | `.pt.plot(..., save=...)` | `-plot "..." -o ...` | `pytae data.parquet -plot "kind=bar, x=sp, y=wt" -o out.png` |
 | **DuckDB SQL Query** | `.pt.sql("select ...")` | `-sql "select ..."` | `pytae data.parquet -sql "select * from data limit 5"` |
+| **Pipe / STDIN Stream** | N/A | `pytae - [-fmt ...]` | `cat data.csv \| pytae - -head 5` |
 | **Copy to Clipboard** | `df.to_clip()` | `-o clip` | `df.head().to_clip()` vs `pytae data.parquet -head -o clip` |
 | **File Export & Routing** | `df.to_parquet(...)` | `-o <target.ext>` | `pytae data.parquet -o clean.csv.gz -od ./exports` |
 | **Dataset Diffing** | N/A | `-diff <other_file>` | `pytae data.parquet -diff old_data.parquet` |

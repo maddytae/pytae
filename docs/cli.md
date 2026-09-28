@@ -73,9 +73,10 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
-| **Reshaping & Matrices** | [Reshaping & Cross-Tabulation Guide](cli/reshape.md) | `-long` (melt), `-wide` (pivot), `-crosstab` (contingency matrix), `-value_counts`, `-unique`, `-sort_by` |
+| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) | `-long` (melt), `-wide` (pivot), `-value_counts`, `-unique`, `-sort_by` |
+| **Visualizations & Plots** | [Plotting Guide](plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
-| **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, `.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.csv.gz`, `.jsonl.gz`, `-progress` |
+| **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`), `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
 | **Multi-File Pipelines** | [Multi-File Pipelines Guide](cli/multi_file.md) | `-file`, `-merge` (joins), `-concat` (stacking), cross-file `-sql` |
 
 ---
@@ -219,20 +220,37 @@ pytae data.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = bod
 ---
 
 <a id="reshaping-cross-tabulation"></a>
-### 8. Reshaping & Cross-Tabulation
+### 8. Reshaping & Data Organization
 
-Pivot tables from long to wide, melt wide tables to long, generate two-way cross-tabulation matrices, tally value combinations, deduplicate rows, and sort records.
+Pivot tables from long to wide, melt wide tables to long, tally value combinations, deduplicate rows, and sort records.
 
-- **Primary flags**: `-long`, `-wide`, `-crosstab`, `-value_counts`, `-unique`, `-sort_by`
+- **Primary flags**: `-long`, `-wide`, `-value_counts`, `-unique`, `-sort_by`
 
 ```bash
 pytae data.parquet -long "c=metric,v=reading"                     # Melt
 pytae data.parquet -wide "c=metric,v=reading,a=mean"             # Pivot
-pytae data.parquet -crosstab "index=species,columns=island,margins=true"
+pytae data.parquet -select "species,island,sex" -wide "c=island,v=sex,a=n" # Frequency matrix
 pytae data.parquet -sort_by "body_mass_g desc"
 ```
 
-👉 See the complete guide: **[Reshaping & Cross-Tabulation Guide](cli/reshape.md)**
+👉 See the complete guide: **[Reshaping Guide](cli/reshape.md)**
+
+---
+
+<a id="visualizations-charts"></a>
+### 9. Visualizations & In-Line Charts
+
+Render instant terminal ASCII histograms and frequency bar distributions, or export publication-quality figures directly to disk.
+
+- **Primary flags**: `-freq`, `-hist`, `-plot`, `-finalize`
+
+```bash
+pytae penguins.parquet -freq species                             # Terminal ASCII bar chart
+pytae penguins.parquet -hist "body_mass_g:15"                    # Terminal ASCII histogram (15 bins)
+pytae penguins.parquet -plot "kind=bar, x=species, y=body_mass_g, aggfunc=mean" -o chart.png
+```
+
+👉 See the complete guide: **[Plotting Reference](plotting.md)**
 
 ---
 
@@ -326,10 +344,14 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pivot long table to wide format (`c=`, `v=`, `a=`) | [cli/reshape.md](cli/reshape.md) |
-| `-crosstab SPEC` | Reshape | Two-way cross-tabulation matrix (`index=`, `columns=`) | [cli/reshape.md](cli/reshape.md) |
 | `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/reshape.md](cli/reshape.md) |
 | `-unique` | Reshape | Remove duplicate rows | [cli/reshape.md](cli/reshape.md) |
 | `-sort_by SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` | [cli/reshape.md](cli/reshape.md) |
+| `-freq COL` | Visualize | Terminal ASCII frequency distribution bar chart | [cli/inspect.md](cli/inspect.md) |
+| `-hist COL[:BINS]` | Visualize | Terminal ASCII numeric histogram with bin intervals | [cli/inspect.md](cli/inspect.md) |
+| `-plot SPEC` | Visualize | Headless figure plotting (`kind=`, `x=`, `y=`, `by=`, `aggfunc=`) | [plotting.md](plotting.md) |
+| `-finalize SPEC` | Visualize | Plot decoration and styling (`title=`, `style=`, `tight_layout=`) | [plotting.md](plotting.md) |
+| `-fmt FORMAT` | I/O & Export | Format override for STDIN / extensionless files (`csv`, `parquet`, `jsonl`) | [cli/export_io.md](cli/export_io.md) |
 | `-file SPEC` | Multi-File | Load multiple named input files (`PATH=ALIAS;...`) | [cli/multi_file.md](cli/multi_file.md) |
 | `-merge SPEC` | Multi-File | Join `-file` aliases (`left=`, `right=`, `on=`, `how=`) | [cli/multi_file.md](cli/multi_file.md) |
 | `-concat SPEC` | Multi-File | Stack `-file` aliases row-wise (`frames=`) | [cli/multi_file.md](cli/multi_file.md) |
@@ -360,12 +382,16 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
 | **Whole-table summary** | `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
 | **Append group statistic to rows** | `-by` + `-mutate` | [Feature Engineering & Mutation](cli/mutate.md) |
-| **Unpivot / melt (wide → long)** | `-long` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
-| **Pivot table (long → wide)** | `-wide` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
-| **Contingency matrix / cross-tab** | `-crosstab` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
-| **Frequency distribution** | `-value_counts` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
-| **Deduplicate rows** | `-unique` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
-| **Sort rows** | `-sort_by` | [Reshaping & Cross-Tabulation](cli/reshape.md) |
+| **Unpivot / melt (wide → long)** | `-long` | [Reshaping](cli/reshape.md) |
+| **Pivot table (long → wide)** | `-wide` | [Reshaping](cli/reshape.md) |
+| **Contingency matrix / frequency pivot** | `-wide "..., a=n"` | [Reshaping](cli/reshape.md) |
+| **Frequency distribution** | `-value_counts` | [Reshaping](cli/reshape.md) |
+| **Terminal frequency bars (ASCII)** | `-freq` | [Inspection & Metadata](cli/inspect.md) |
+| **Terminal histogram (ASCII)** | `-hist` | [Inspection & Metadata](cli/inspect.md) |
+| **Render and export plot charts** | `-plot`, `-finalize` | [Plotting Reference](plotting.md) |
+| **Read from STDIN / UNIX pipes** | `pytae - [-fmt ...]` | [File I/O & Export](cli/export_io.md) |
+| **Deduplicate rows** | `-unique` | [Reshaping](cli/reshape.md) |
+| **Sort rows** | `-sort_by` | [Reshaping](cli/reshape.md) |
 | **Preview rows** | `-head`, `-tail`, `-sample` | [Inspection & Metadata](cli/inspect.md) |
 | **Inspect shape, cols, dtypes, nulls** | `-shape`, `-cols`, `-dtype`, `-nulls`, `-info` | [Inspection & Metadata](cli/inspect.md) |
 | **Fast Parquet metadata check** | `-meta` | [Inspection & Metadata](cli/inspect.md) |
@@ -426,14 +452,14 @@ python -c "import pytae; pytae.sample_data['flights'].to_parquet('flights.parque
 # Filter and aggregate
 pytae penguins.parquet -qry "species = 'Adelie'" -by species -agg mean
 
-# Two-way cross-tabulation
-pytae penguins.parquet -crosstab "index=species,columns=island"
+# Two-way frequency pivot matrix
+pytae penguins.parquet -select "species,island,sex" -wide "c=island,v=sex,a=n"
 
 # Grouped mutation without collapsing rows
 pytae tips.parquet -select "day,total_bill,tip" -by day -mutate "avg_tip = mean(tip), diff = tip - avg_tip"
 
-# Contingency table with grand totals
-pytae titanic.parquet -crosstab "index=pclass,columns=survived,margins=true"
+# Terminal frequency bar chart
+pytae titanic.parquet -freq survived
 
 # Aggregate numeric metrics per cut
 pytae diamonds.parquet -select "cut,price" -by cut -agg mean

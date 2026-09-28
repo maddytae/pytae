@@ -11,6 +11,7 @@ Inspect file dimensions, structure, sample rows, statistical distributions, and 
 - [Overview & Rules](#overview--rules)
 - [Zero-Scan Parquet Metadata (`-meta`)](#zero-scan-parquet-metadata--meta)
 - [Viewing Rows (`-head`, `-tail`, `-sample`)](#viewing-rows--head--tail--sample)
+- [In-Line ASCII Visualizations (`-freq`, `-hist`)](#in-line-ascii-visualizations--freq--hist)
 - [Dataset Dimensions (`-shape`)](#dataset-dimensions--shape)
 - [Column Names & Ordering (`-cols`)](#column-names--ordering--cols)
 - [Data Types & Null Counts (`-dtype`, `-nulls`)](#data-types--null-counts--dtype--nulls)
@@ -32,6 +33,8 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 | `-sample [N]` | Print N randomly sampled rows (default: 5) | No (returns DataFrame) |
 | `-seed N` | Random seed for `-sample` reproducibility | Modifier for `-sample` |
 | `-frac P` | Sample a fraction of rows (e.g. `0.1` for 10%) | Modifier for `-sample` |
+| `-freq COL` | Terminal ASCII frequency distribution bar chart | **Yes** (terminal) |
+| `-hist COL[:BINS]` | Terminal ASCII numeric histogram with bin intervals | **Yes** (terminal) |
 | `-shape` | Print `(rows, cols)` tuple | **Yes** (terminal) |
 | `-cols [ORDER]` | Print column names (optional `asc`/`desc` sorts names) | **Yes** (terminal) |
 | `-dtype [ORDER]` | Print data types per column | **Yes** (terminal) |
@@ -141,6 +144,49 @@ pytae penguins.parquet -sample -frac 0.01 -shape
 **Output:**
 ```text
 (3, 7)
+```
+
+---
+
+## In-Line ASCII Visualizations (`-freq`, `-hist`)
+
+Inspect categorical distributions and numeric value distributions directly in the terminal without requiring a graphical display or web browser.
+
+### Frequency Distribution Bars (`-freq COL`)
+
+Prints an ASCII horizontal bar chart showing category counts and percentages:
+
+```bash
+pytae penguins.parquet -freq species
+```
+
+**Output:**
+```text
+species
+Adelie     152 (44.2%)  ████████████████████████████████████████
+Gentoo     124 (36.0%)  ████████████████████████████████
+Chinstrap   68 (19.8%)  █████████████████
+```
+
+### Numeric Histogram (`-hist COL[:BINS]`)
+
+Computes bin intervals for numeric columns and renders a terminal histogram (defaults to 10 bins; specify `:BINS` to adjust):
+
+```bash
+pytae penguins.parquet -hist body_mass_g:8
+```
+
+**Output:**
+```text
+body_mass_g (8 bins)
+[2700.0, 3150.0)    64 (18.7%)  ████████████████
+[3150.0, 3600.0)    71 (20.8%)  ██████████████████
+[3600.0, 4050.0)    65 (19.0%)  ████████████████
+[4050.0, 4500.0)    37 (10.8%)  █████████
+[4500.0, 4950.0)    36 (10.5%)  █████████
+[4950.0, 5400.0)    46 (13.5%)  ███████████
+[5400.0, 5850.0)    19  (5.6%)  ████
+[5850.0, 6300.0]     4  (1.2%)  █
 ```
 
 ---

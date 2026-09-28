@@ -6,7 +6,6 @@ import argparse
 import io
 import subprocess
 import sys
-import warnings
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +16,6 @@ from pytae.cli_parsing import (
     parse_agg,
     parse_clean_columns_arg,
     parse_columns,
-    parse_crosstab_arg,
     parse_kv_spec,
     parse_long_arg,
     parse_sort_by,
@@ -809,37 +807,6 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "crosstab":
-            source_df = pipeline.dataframe()
-            ct_val = _next_op_val("crosstab", args.crosstab)
-            ct = parse_crosstab_arg(ct_val)
-            index_cols = parse_columns(ct["index"])
-            needed = index_cols + [ct["columns"]] + ([ct["values"]] if "values" in ct else [])
-            missing = [c for c in needed if c not in source_df.columns]
-            if missing:
-                return _fail(parser, batch, unknown_columns_message("-crosstab", missing, list(source_df.columns)))
-            ct_kwargs = {"dropna": args.dropna}
-            if "margins" in ct:
-                ct_kwargs["margins"] = ct["margins"]
-            if "margins_name" in ct:
-                ct_kwargs["margins_name"] = ct["margins_name"]
-            if "normalize" in ct:
-                ct_kwargs["normalize"] = ct["normalize"]
-            if "values" in ct:
-                ct_kwargs["values"] = source_df[ct["values"]]
-                ct_kwargs["aggfunc"] = ct["aggfunc"]
-            result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
-            warnings.warn(
-                "The '-crosstab' flag is deprecated and will be removed in a future release. "
-                "Use '-by ... -agg ... -wide ...' instead.",
-                FutureWarning,
-                stacklevel=2,
-            )
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
-            pipeline._df = safe_reset_index(result)
         elif op == "plot":
             plot_spec = _next_op_val("plot", getattr(args, "plot", None))
             plot_kwargs = parse_kv_spec(plot_spec, flag="-plot")

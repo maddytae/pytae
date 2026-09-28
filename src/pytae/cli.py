@@ -77,7 +77,7 @@ _CLI_FLAGS = {
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide",
-    "-crosstab", "--crosstab", "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
+    "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
     "-file", "--file", "-query", "--query", "-qry", "--qry", "-mutate", "--mutate",
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
@@ -226,16 +226,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
                               "e.g. c=country,v=balance,a=mean; a=n is an alias for pandas' 'size' "
                               "(group row count), matching agg_df's convention; honors -dropna")
-    parser.add_argument("-crosstab", "--crosstab", dest="crosstab", metavar="KEY=VALUE,...", action=_OrderedStore,
-                         help="[DEPRECATED: planned for removal in next release; use -by ... -agg ... -wide ...] "
-                              "cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
-                              "index= (one or more comma-separated columns), columns= (single column, required), "
-                              "optional values=+aggfunc= together to aggregate instead of count, "
-                              "normalize=index|columns|all, margins=true|false, margins_name= (default 'All'; "
-                              "requires margins=true); honors -dropna")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
                          metavar="BOOL",
-                         help="for -agg_df, -agg, -mutate, -wide, -value_counts, and -crosstab: "
+                         help="for -agg_df, -agg, -mutate, -wide, and -value_counts: "
                               "include NA keys when false; accepts true or false (default: true)")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
@@ -405,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.value_counts, args.unique, args.freq is not None, args.hist is not None,
                          args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
                          args.agg is not None, args.handle_missing is not None,
-                         args.long is not None, args.wide is not None, args.crosstab is not None,
+                         args.long is not None, args.wide is not None,
                          args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
                          args.meta, args.diff is not None, args.plot is not None])
@@ -414,12 +407,12 @@ def main(argv: list[str] | None = None) -> int:
                      args.value_counts, args.unique, args.freq is not None, args.hist is not None,
                      args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
                      args.agg is not None, args.handle_missing is not None,
-                     args.long is not None, args.wide is not None, args.crosstab is not None,
+                     args.long is not None, args.wide is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+                     "-agg/-handle_missing/-long/-wide/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
     if args.by is not None and args.agg is None and not args.mutate:
         parser.error("-by requires -agg or -mutate")

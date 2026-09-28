@@ -394,27 +394,6 @@ def parse_wide_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
-_CROSSTAB_KEYS = ("index", "columns", "values", "aggfunc", "normalize", "margins", "margins_name")
-_CROSSTAB_NORMALIZE_VALUES = ("index", "columns", "all")
-
-
-def parse_crosstab_arg(raw: str | None) -> dict:
-    """Parse -crosstab as key=value tokens: index= (one or more comma-separated columns),
-    columns= (single column, required), optional values=+aggfunc= (must be given together),
-    normalize=index|columns|all, margins=true|false, margins_name= (requires margins=true).
-    """
-    kwargs = parse_reshape_kwargs(raw, keys=_CROSSTAB_KEYS, flag="-crosstab")
-    if "index" not in kwargs or "columns" not in kwargs:
-        raise SystemExit("-crosstab: expected index= and columns=")
-    if ("values" in kwargs) != ("aggfunc" in kwargs):
-        raise SystemExit("-crosstab: values= and aggfunc= must be given together")
-    if "normalize" in kwargs and kwargs["normalize"] not in _CROSSTAB_NORMALIZE_VALUES:
-        raise SystemExit(f"-crosstab: normalize= must be one of {', '.join(_CROSSTAB_NORMALIZE_VALUES)}")
-    if "margins_name" in kwargs and not kwargs.get("margins"):
-        raise SystemExit("-crosstab: margins_name= requires margins=true")
-    return kwargs
-
-
 _REPLACE_KEYS = ("c", "v", "exact")
 
 
