@@ -260,6 +260,7 @@ Grouped Window Operations (by=..., dropna=..., observed=...):
     - dropna=False: Rows with NA in grouping columns form their own group and compute
       group metrics across all NA rows together:
       df.pt.mutate("avg = mean(val)", by="grp", dropna=False)
+      (In CLI: pass -dropna false, e.g. pytae data.parquet -by grp -dropna false -mutate "avg = mean(val)")
 
 External Spec File Format (@file.txt):
   Lines in `@specs.txt` are evaluated sequentially. Supports `#` comments and empty lines:
@@ -561,7 +562,6 @@ Inspection & Comparison Flags:
 Row Filtering Flags:
   -qry CONDITIONS       pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -query EXPR           pandas query() expression passed to numexpr
-  -dropna BOOL          Drop missing values (True/False)
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', exclude=)
@@ -573,6 +573,7 @@ Column Transformation Flags:
 Aggregation & Reshaping Flags:
   -by, -group_by COLS   Grouping columns for -agg and -mutate (e.g. -by species -agg mean)
   -agg, -agg_df SPECS   Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean)
+  -dropna BOOL          Control NA group handling for -agg, -mutate, -crosstab, -wide (true/false, default: true)
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pivot long columns into headers: "c=variable, v=value, a=mean"
   -crosstab SPECS       Frequency crosstabulation: "index=species, columns=sex"
@@ -773,6 +774,14 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
       -merge "left=tx, right=cust, on='customer_id', how='inner'" \
       -qry "amount > 100" \
       -o high_value_tx.parquet
+
+# 4. Grouped Window Calculation with Missing Group Key Retention (-dropna false)
+pytae penguins.parquet \
+  -by sex \
+  -dropna false \
+  -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass" \
+  -select "species,sex,body_mass_g,avg_mass,diff" \
+  -head 5
 ```
 
 
