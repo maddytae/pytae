@@ -30,3 +30,18 @@
       Chinstrap     68  █████████            (19.8%)
       ```
     - **Numeric Distribution Histograms (`-hist COL [BINS]`)**: Render binned ASCII histograms showing numeric distributions, spread, and peaks directly in console scrollback.
+
+## Planned Robustness & Bug Fixes
+- [ ] **Parquet Export Type Inference for Mixed Object Columns (`-o parquet`)**:
+  - **Issue Reported**:
+    ```text
+    pytae " (Could not convert '0828' with type str: tried to convert to double", 'Conversion failed for column Profit_Centre with type object')
+    ```
+  - **Root Cause**:
+    - When exporting data to Parquet via `-o parquet` (or `write_dataframe(df, ...)` in `src/pytae/readers.py`), PyArrow (`pa.Table.from_pandas` / `df.to_parquet`) performs automatic type inference on Pandas `object` dtype columns.
+    - If initial values in a column appear numeric (e.g. integers or floats) or if the column contains mixed types (such as accounting/ERP codes like `Profit_Centre`, cost centers, or postal codes with leading zeros like `'0828'`), PyArrow infers `double` and subsequently raises `ArrowInvalid` upon encountering a string value.
+  - **Planned Resolution**:
+    - **Automatic Fallback / String Coercion**: In `_write_parquet` (`src/pytae/readers.py`), intercept `pyarrow.lib.ArrowInvalid` when conversion fails on `object` columns, identify the failing column(s), coerce them cleanly to string (`df[col] = df[col].astype(str)` or PyArrow `pa.string()`), and retry the write.
+    - **Pre-Sanitization of Mixed Object Columns**: Alternatively inspect `object` columns containing mixed types prior to calling `to_parquet` / `from_pandas`, preventing pipeline crashes.
+    - **Helpful Diagnostic Warning**: Emit a clear, non-fatal notification when auto-coercing mixed object columns so users are informed of the serialization fallback.
+
