@@ -73,8 +73,8 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
-| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) | `-pivot` (2D pivot table), `-long` (melt), `-wide` (pure reshape), `-value_counts`, `-unique`, `-sort_by` |
-| **Visualizations & Plots** | [Plotting Guide](plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
+| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-unique`, `-sort_by` |
+| **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`), `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
 | **Multi-File Pipelines** | [Multi-File Pipelines Guide](cli/multi_file.md) | `-file`, `-merge` (joins), `-concat` (stacking), cross-file `-sql` |
@@ -234,7 +234,7 @@ pytae data.parquet -select "species,island,sex" -wide "c=island,v=sex,a=n" # Fre
 pytae data.parquet -sort_by "body_mass_g desc"
 ```
 
-👉 See the complete guide: **[Reshaping Guide](cli/reshape.md)**
+👉 See the complete guides: **[Reshaping Guide](cli/reshape.md)** • **[2D Pivot Tables Guide](cli/pivot.md)**
 
 ---
 
@@ -251,7 +251,7 @@ pytae penguins.parquet -hist "body_mass_g:15"                    # Terminal ASCI
 pytae penguins.parquet -plot "kind=bar, x=species, y=body_mass_g, aggfunc=mean" -o chart.png
 ```
 
-👉 See the complete guide: **[Plotting Reference](plotting.md)**
+👉 See the complete guide: **[Visualizations & Plotting Guide](cli/plotting.md)**
 
 ---
 
@@ -345,14 +345,14 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pure reshape: long table to wide format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
-| `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `fill=`) | [cli/reshape.md](cli/reshape.md) |
+| `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `fill=`) | [cli/pivot.md](cli/pivot.md) |
 | `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/reshape.md](cli/reshape.md) |
 | `-unique` | Reshape | Remove duplicate rows | [cli/reshape.md](cli/reshape.md) |
 | `-sort_by SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` | [cli/reshape.md](cli/reshape.md) |
 | `-freq COL` | Visualize | Terminal ASCII frequency distribution bar chart | [cli/inspect.md](cli/inspect.md) |
 | `-hist COL[:BINS]` | Visualize | Terminal ASCII numeric histogram with bin intervals | [cli/inspect.md](cli/inspect.md) |
-| `-plot SPEC` | Visualize | Headless figure plotting (`kind=`, `x=`, `y=`, `by=`, `aggfunc=`) | [plotting.md](plotting.md) |
-| `-finalize SPEC` | Visualize | Plot decoration and styling (`title=`, `style=`, `tight_layout=`) | [plotting.md](plotting.md) |
+| `-plot SPEC` | Visualize | Headless figure plotting (`kind=`, `x=`, `y=`, `by=`, `aggfunc=`) | [cli/plotting.md](cli/plotting.md) |
+| `-finalize SPEC` | Visualize | Plot decoration and styling (`title=`, `style=`, `tight_layout=`) | [cli/plotting.md](cli/plotting.md) |
 | `-fmt FORMAT` | I/O & Export | Format override for STDIN / extensionless files (`csv`, `parquet`, `jsonl`) | [cli/export_io.md](cli/export_io.md) |
 | `-file SPEC` | Multi-File | Load multiple named input files (`PATH=ALIAS;...`) | [cli/multi_file.md](cli/multi_file.md) |
 | `-merge SPEC` | Multi-File | Join `-file` aliases (`left=`, `right=`, `on=`, `how=`) | [cli/multi_file.md](cli/multi_file.md) |
@@ -383,14 +383,14 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Impute missing values (NA)** | `-handle_missing` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
 | **Whole-table summary** | `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
-| **2D Excel pivot table (r, c, v, a)** | `-pivot` | [Reshaping](cli/reshape.md) |
+| **2D Excel pivot table (r, c, v, a)** | `-pivot` | [2D Pivot Tables](cli/pivot.md) |
 | **Unpivot / melt (wide → long)** | `-long` | [Reshaping](cli/reshape.md) |
 | **Pure reshape (long → wide)** | `-wide` | [Reshaping](cli/reshape.md) |
-| **Contingency matrix / frequency pivot** | `-pivot "..., a=n"` / `-wide "..., a=n"` | [Reshaping](cli/reshape.md) |
+| **Contingency matrix / frequency pivot** | `-pivot "..., a=n"` / `-wide "..., a=n"` | [2D Pivot Tables](cli/pivot.md) |
 | **Frequency distribution** | `-value_counts` | [Reshaping](cli/reshape.md) |
 | **Terminal frequency bars (ASCII)** | `-freq` | [Inspection & Metadata](cli/inspect.md) |
 | **Terminal histogram (ASCII)** | `-hist` | [Inspection & Metadata](cli/inspect.md) |
-| **Render and export plot charts** | `-plot`, `-finalize` | [Plotting Reference](plotting.md) |
+| **Render and export plot charts** | `-plot`, `-finalize` | [Visualizations & Plotting](cli/plotting.md) |
 | **Read from STDIN / UNIX pipes** | `pytae - [-fmt ...]` | [File I/O & Export](cli/export_io.md) |
 | **Deduplicate rows** | `-unique` | [Reshaping](cli/reshape.md) |
 | **Sort rows** | `-sort_by` | [Reshaping](cli/reshape.md) |
