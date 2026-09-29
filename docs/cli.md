@@ -73,7 +73,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
-| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) | `-long` (melt), `-wide` (pivot), `-value_counts`, `-unique`, `-sort_by` |
+| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) | `-pivot` (2D pivot table), `-long` (melt), `-wide` (pure reshape), `-value_counts`, `-unique`, `-sort_by` |
 | **Visualizations & Plots** | [Plotting Guide](plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`), `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
@@ -224,11 +224,12 @@ pytae data.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = bod
 
 Pivot tables from long to wide, melt wide tables to long, tally value combinations, deduplicate rows, and sort records.
 
-- **Primary flags**: `-long`, `-wide`, `-value_counts`, `-unique`, `-sort_by`
+- **Primary flags**: `-pivot`, `-long`, `-wide`, `-value_counts`, `-unique`, `-sort_by`
 
 ```bash
-pytae data.parquet -long "c=metric,v=reading"                     # Melt
-pytae data.parquet -wide "c=metric,v=reading,a=mean"             # Pivot
+pytae data.parquet -pivot "r=Region,c=Year,v=Sales,a=sum"           # 2D Excel-style pivot
+pytae data.parquet -long "c=metric,v=reading"                       # Melt
+pytae data.parquet -wide "c=metric,v=reading"                       # Pure reshape
 pytae data.parquet -select "species,island,sex" -wide "c=island,v=sex,a=n" # Frequency matrix
 pytae data.parquet -sort_by "body_mass_g desc"
 ```
@@ -342,8 +343,9 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-rename OLD:NEW,...` | Clean | Rename columns anywhere in pipeline or during export | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-by COLS` | Aggregate & Transform | Grouping columns for `-agg` and `-mutate` | [cli/aggregate.md](cli/aggregate.md) |
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
-| `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`) | [cli/reshape.md](cli/reshape.md) |
-| `-wide [SPEC]` | Reshape | Pivot long table to wide format (`c=`, `v=`, `a=`) | [cli/reshape.md](cli/reshape.md) |
+| `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
+| `-wide [SPEC]` | Reshape | Pure reshape: long table to wide format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
+| `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `fill=`) | [cli/reshape.md](cli/reshape.md) |
 | `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/reshape.md](cli/reshape.md) |
 | `-unique` | Reshape | Remove duplicate rows | [cli/reshape.md](cli/reshape.md) |
 | `-sort_by SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` | [cli/reshape.md](cli/reshape.md) |
@@ -381,10 +383,10 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Impute missing values (NA)** | `-handle_missing` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
 | **Whole-table summary** | `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
-| **Append group statistic to rows** | `-by` + `-mutate` | [Feature Engineering & Mutation](cli/mutate.md) |
+| **2D Excel pivot table (r, c, v, a)** | `-pivot` | [Reshaping](cli/reshape.md) |
 | **Unpivot / melt (wide → long)** | `-long` | [Reshaping](cli/reshape.md) |
-| **Pivot table (long → wide)** | `-wide` | [Reshaping](cli/reshape.md) |
-| **Contingency matrix / frequency pivot** | `-wide "..., a=n"` | [Reshaping](cli/reshape.md) |
+| **Pure reshape (long → wide)** | `-wide` | [Reshaping](cli/reshape.md) |
+| **Contingency matrix / frequency pivot** | `-pivot "..., a=n"` / `-wide "..., a=n"` | [Reshaping](cli/reshape.md) |
 | **Frequency distribution** | `-value_counts` | [Reshaping](cli/reshape.md) |
 | **Terminal frequency bars (ASCII)** | `-freq` | [Inspection & Metadata](cli/inspect.md) |
 | **Terminal histogram (ASCII)** | `-hist` | [Inspection & Metadata](cli/inspect.md) |

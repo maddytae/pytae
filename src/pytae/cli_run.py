@@ -18,6 +18,7 @@ from pytae.cli_parsing import (
     parse_columns,
     parse_kv_spec,
     parse_long_arg,
+    parse_pivot_arg,
     parse_sort_by,
     parse_wide_arg,
     unknown_columns_message,
@@ -525,7 +526,7 @@ def _process_path(
                 df_cur = pipeline.dataframe()
                 if any(c not in df_cur.columns for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
-            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=args.dropna)
+            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=True if args.dropna is None else args.dropna)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -658,10 +659,10 @@ def _process_path(
 
             if len(value_count_cols) == 1:
                 col = value_count_cols[0]
-                result = source_df[col].value_counts(dropna=args.dropna).rename("count").reset_index()
+                result = source_df[col].value_counts(dropna=True if args.dropna is None else args.dropna).rename("count").reset_index()
                 result.columns = [col, "count"]
             else:
-                result = source_df.value_counts(subset=value_count_cols, dropna=args.dropna).rename("count").reset_index()
+                result = source_df.value_counts(subset=value_count_cols, dropna=True if args.dropna is None else args.dropna).rename("count").reset_index()
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
@@ -670,7 +671,7 @@ def _process_path(
         elif op == "freq":
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
             source_df = pipeline.dataframe()
-            result = _compute_freq(source_df, freq_col, args.dropna)
+            result = _compute_freq(source_df, freq_col, True if args.dropna is None else args.dropna)
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
@@ -740,7 +741,7 @@ def _process_path(
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                result = agg_df(df_cur, by_cols, agg_val, dropna=args.dropna)
+                result = agg_df(df_cur, by_cols, agg_val, dropna=True if args.dropna is None else args.dropna)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result
@@ -790,9 +791,10 @@ def _process_path(
             source_df = pipeline.dataframe()
             wide_val = _next_op_val("wide", args.wide)
             wide_kwargs = parse_wide_arg(wide_val)
-            wide_kwargs["dropna"] = args.dropna
+            if "dropna" not in wide_kwargs:
+                wide_kwargs["dropna"] = False if args.dropna is None else args.dropna
             to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
-            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index")
+            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index") or wide_kwargs.get("r") or wide_kwargs.get("rows")
             if by_cols:
                 to_check.extend(parse_columns(by_cols) if isinstance(by_cols, str) else list(by_cols))
             missing = [c for c in to_check if c not in source_df.columns]
@@ -800,6 +802,30 @@ def _process_path(
                 return _fail(parser, batch, unknown_columns_message("-wide", missing, list(source_df.columns)))
             try:
                 result = wide_fn(source_df, **wide_kwargs)
+            except (KeyError, ValueError) as exc:
+                return _fail(parser, batch, str(exc))
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "pivot":
+            from pytae.shape import pivot as pivot_fn
+            source_df = pipeline.dataframe()
+            pivot_val = _next_op_val("pivot", getattr(args, "pivot", None))
+            pivot_kwargs = parse_pivot_arg(pivot_val)
+            if "dropna" not in pivot_kwargs:
+                pivot_kwargs["dropna"] = False if args.dropna is None else args.dropna
+            to_check = []
+            for k in ("r", "rows", "index", "by", "c", "cols", "columns", "v", "values", "val", "vals"):
+                val = pivot_kwargs.get(k)
+                if val:
+                    to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))
+            missing = [col for col in to_check if col not in source_df.columns]
+            if missing:
+                return _fail(parser, batch, unknown_columns_message("-pivot", missing, list(source_df.columns)))
+            try:
+                result = pivot_fn(source_df, **pivot_kwargs)
             except (KeyError, ValueError) as exc:
                 return _fail(parser, batch, str(exc))
             pipeline._df = result

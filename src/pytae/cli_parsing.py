@@ -353,11 +353,11 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
 
 
 _LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
-_WIDE_KEYS = ("c", "v", "a", "index", "by")
+_WIDE_KEYS = ("c", "v", "a", "index", "by", "r", "rows")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide as key=value tokens, e.g. c=metric,v=reading,a=mean.
+    """Parse -long/-wide/-pivot as key=value tokens, e.g. c=metric,v=reading,a=mean.
     Comma-separated lists like frames=a,b,c or on=id:id,code:code work with or without quotes."""
     raw = (raw or "").strip()
     if not raw:
@@ -382,7 +382,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
             kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
     for key, value in list(kwargs.items()):
-        kwargs[key] = parse_bool_text(value) if key in ("margins", "exact") else value
+        kwargs[key] = parse_bool_text(value) if key in ("margins", "exact", "dropna") else value
     return kwargs
 
 
@@ -392,6 +392,19 @@ def parse_long_arg(raw: str | None) -> dict:
 
 def parse_wide_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+
+
+_PIVOT_KEYS = (
+    "r", "c", "v", "a", "dropna", "fill_value", "fill",
+    "rows", "row", "index", "by",
+    "cols", "col", "columns",
+    "values", "value", "val", "vals",
+    "agg", "aggfunc",
+)
+
+
+def parse_pivot_arg(raw: str | None) -> dict:
+    return parse_reshape_kwargs(raw, keys=_PIVOT_KEYS, flag="-pivot")
 
 
 _REPLACE_KEYS = ("c", "v", "exact")

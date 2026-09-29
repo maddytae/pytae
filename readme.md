@@ -8,7 +8,7 @@
 Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, feature engineering, DuckDB SQL, and visualization.
 
 `pytae` provides two complementary ways to work with tabular data:
-1. **Python Library & DataFrame Accessor (`df.pt`)**: Ergonomic data-science verbs (`qry`, `select`, `mutate`, `agg`, `long`, `wide`, `sql`, `plot`) that compose smoothly with vanilla Pandas.
+1. **Python Library & DataFrame Accessor (`df.pt`)**: Ergonomic data-science verbs (`qry`, `select`, `mutate`, `agg`, `long`, `wide`, `pivot`, `sql`, `plot`) that compose smoothly with vanilla Pandas.
 2. **Unix Pipeline CLI (`pytae`)**: Inspect, filter, derive columns, aggregate, join, diff, and convert tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.dat`, `.sas7bdat`, `.gz`) directly from the terminal without writing Python code.
 
 ---
@@ -23,7 +23,7 @@ Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, fe
   - [2. Column Creation & Grouped Window Calculations (`mutate`)](#2-column-creation--grouped-window-calculations-mutate)
   - [3. Column Selection & Exclusion (`select`)](#3-column-selection--exclusion-select)
   - [4. Grouped Aggregation (`agg` / `agg_df`)](#4-grouped-aggregation-agg--agg_df)
-  - [5. Reshaping (`long` & `wide`)](#5-reshaping-long--wide)
+  - [5. Reshaping & Pivoting (`long`, `wide`, `pivot`)](#5-reshaping--pivoting-long-wide-pivot)
   - [6. Embedded DuckDB SQL Engine (`sql`)](#6-embedded-duckdb-sql-engine-sql)
   - [7. Visualization (`plot`)](#7-visualization-plot)
   - [8. Zero-Cost Metadata Inspection & Diffing](#8-zero-cost-metadata-inspection--diffing)
@@ -188,14 +188,17 @@ df.pt.agg(by="species", avg_mass="body_mass_g.mean()", n="n")
 df.pt.agg("island", "[avg mass] = [body mass g]:mean, n = n")
 ```
 
-### 5. Reshaping (`long` & `wide`)
-Clean unpivoting (melting) and pivoting without MultiIndex complexity:
+### 5. Reshaping & Pivoting (`long`, `wide`, `pivot`)
+Clean unpivoting (melting), spreading, and 2D Excel-style pivot tables without MultiIndex complexity:
 ```python
-# Unpivot non-numeric columns into key-value pairs
+# 1. 2D Excel-style pivot table with auto-reset index (rows=r, cols=c, values=v, aggfunc=a)
+pivot_df = df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
+
+# 2. Unpivot non-numeric columns into key-value pairs
 long_df = df.pt.long(id_vars=["species", "island"], cols=["bill_length_mm", "bill_depth_mm"])
 
-# Pivot back to wide presentation matrix
-wide_df = long_df.pt.wide(c="variable", v="value", a="mean")
+# 3. Pure reshape back to wide presentation matrix
+wide_df = long_df.pt.wide(c="variable", v="value")
 ```
 
 ### 6. Embedded DuckDB SQL Engine (`sql`)
@@ -247,8 +250,8 @@ pytae current.parquet -diff previous.parquet
 | **Spaced Columns (Expr)** | `[column name]` | `[column name]` | `df.pt.mutate(ratio="[bill length mm] / [bill depth mm]")` |
 | **Grouped Window Calc** | `.pt.mutate(..., by=...)` | `-by ... -mutate "..."` | `pytae data.parquet -by dept -mutate "avg=mean(salary)"` |
 | **Negative Column Select** | `.pt.select("-col1", "-col2")` | `-select "-col1,-col2"` | `df.pt.select("-temp", "-raw_id")` |
-| **Grouped Aggregation** | `.pt.agg(by=..., ...)` | `-by ... -agg "..."` | `df.pt.agg(by="species", total="mass.sum()", n="n")` |
-| **Data Reshaping** | `.pt.long()`, `.pt.wide()` | `-long`, `-wide` | `df.pt.wide(c="metric", v="val", a="mean")` |
+| **2D Pivot Table** | `.pt.pivot(...)` | `-pivot "..."` | `df.pt.pivot(r="Region", c="Year", v="Sales", a="sum")` |
+| **Data Reshaping** | `.pt.long()`, `.pt.wide()` | `-long`, `-wide` | `df.pt.wide(c="metric", v="val")` |
 | **In-Line Terminal Charts** | N/A | `-freq`, `-hist` | `pytae data.parquet -freq species` / `-hist mass:10` |
 | **Figure Plotting & Export** | `.pt.plot(..., save=...)` | `-plot "..." -o ...` | `pytae data.parquet -plot "kind=bar, x=sp, y=wt" -o out.png` |
 | **DuckDB SQL Query** | `.pt.sql("select ...")` | `-sql "select ..."` | `pytae data.parquet -sql "select * from data limit 5"` |
