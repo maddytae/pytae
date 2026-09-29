@@ -387,7 +387,23 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
             kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
     for key, value in list(kwargs.items()):
-        kwargs[key] = parse_bool_text(value) if key in ("margins", "exact", "dropna") else value
+        if key in ("margins", "exact", "dropna"):
+            kwargs[key] = parse_bool_text(value)
+        elif key in ("fill", "fill_value"):
+            if isinstance(value, str):
+                v_lower = value.strip().lower()
+                if v_lower in ("none", "null"):
+                    kwargs[key] = None
+                else:
+                    try:
+                        kwargs[key] = int(value)
+                    except ValueError:
+                        try:
+                            kwargs[key] = float(value)
+                        except ValueError:
+                            raise SystemExit(f"{flag}: {key}= must be a numeric value or 'none'")
+        else:
+            kwargs[key] = value
     return kwargs
 
 
@@ -396,7 +412,12 @@ def parse_long_arg(raw: str | None) -> dict:
 
 
 def parse_wide_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+    parsed = parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+    if "cols" in parsed and "c" not in parsed:
+        parsed["c"] = parsed.pop("cols")
+    if "values" in parsed and "v" not in parsed:
+        parsed["v"] = parsed.pop("values")
+    return parsed
 
 
 _PIVOT_KEYS = (

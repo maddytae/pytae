@@ -36,7 +36,7 @@ _KIND_SPECS = {
         },
     },
     'pie': {
-        'strip': ['x', 'by', 'aggfunc', *_CONTROL_KWARGS],
+        'strip': ['x', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {},
     },
     'line': {
@@ -337,12 +337,13 @@ class Plotter:
         self.x = combined_kwargs.get('x', None)
         self.y = combined_kwargs.get('y', None)
         self.by = combined_kwargs.get('by', None)
-        self.column = combined_kwargs.get('column', None) or combined_kwargs.get('x', None)
+        col_arg = combined_kwargs.get('column', None)
+        self.column = col_arg if col_arg is not None else self.x
         self.kind = new_kind
 
         if self.kind == 'box':
-            self.y = self.y or self.column
-            self.x = self.x or self.by
+            self.y = self.y if self.y is not None else self.column
+            self.x = self.x if self.x is not None else self.by
 
         self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind in ['scatter', 'density', 'kde', 'hist', 'box'] else combined_kwargs.get('aggfunc', 'sum')
         self.dropna = combined_kwargs.get('dropna', False)
@@ -406,7 +407,11 @@ class Plotter:
     def _get_palette_colors(self, categories, palette=None, explicit_colors=None):
         """Map category names to colors from an explicit dict, list, or named matplotlib colormap/palette."""
         if isinstance(explicit_colors, dict):
-            return explicit_colors
+            color_map = {}
+            for k, v in explicit_colors.items():
+                color_map[k] = v
+                color_map[str(k)] = v
+            return color_map
         if isinstance(explicit_colors, str):
             return {cat: explicit_colors for cat in categories}
         if isinstance(explicit_colors, (list, tuple)):
@@ -433,7 +438,7 @@ class Plotter:
         self._store_plot_kwargs(ax, plot_dict)
         k = self.df.copy()
 
-        if self.by and self.by in k:
+        if self.by is not None and self.by in k:
             if isinstance(k[self.by].dtype, pd.CategoricalDtype):
                 present = set(k[self.by].dropna().unique())
                 groups = [g for g in k[self.by].cat.categories if g in present]
@@ -637,10 +642,10 @@ class Plotter:
             if key in self.last_kwargs:
                 imshow_kwargs[key] = self.last_kwargs[key]
 
-        if self.x and self.by and self.y:
+        if self.x is not None and self.by is not None and self.y is not None:
             matrix = self.get_pivot_data().set_index(self.x)
-        elif self.x and self.y:
-            matrix = self.df.pivot_table(index=self.x, columns=self.y, aggfunc='size', fill_value=0)
+        elif self.x is not None and self.y is not None:
+            matrix = self.df.pivot_table(index=self.x, columns=self.y, aggfunc='size', fill_value=0, dropna=self.dropna)
         else:
             matrix = self.df.select_dtypes(include='number')
 
@@ -691,12 +696,15 @@ class Plotter:
         """Plot a density or KDE chart."""
         plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
-        if self.by:
+        if self.by is not None:
             sub = self.df[[self.by, self.column]].copy()
-            sub["__row__"] = sub.groupby(self.by).cumcount()
+            if self.dropna:
+                sub = sub.dropna(subset=[self.by])
+            sub["__row__"] = sub.groupby(self.by, dropna=False).cumcount()
             k = sub.pivot(index="__row__", columns=self.by, values=self.column)
             k.index.name = None
             k.columns.name = None
+            k = k.loc[:, k.count() >= 2]
         else:
             k = self.df[[self.column]]
         palette = self.last_kwargs.get('palette')
@@ -712,9 +720,11 @@ class Plotter:
         """Plot a histogram."""
         plot_dict = self._prepare_plot_kwargs('hist')
         self._store_plot_kwargs(ax, plot_dict)
-        if self.by:
+        if self.by is not None:
             sub = self.df[[self.by, self.column]].copy()
-            sub["__row__"] = sub.groupby(self.by).cumcount()
+            if self.dropna:
+                sub = sub.dropna(subset=[self.by])
+            sub["__row__"] = sub.groupby(self.by, dropna=False).cumcount()
             k = sub.pivot(index="__row__", columns=self.by, values=self.column)
             k.index.name = None
             k.columns.name = None
@@ -737,26 +747,40 @@ class Plotter:
         Returns:
             pandas.DataFrame: Pivoted DataFrame ready for plotting.
         """
+        df_source = self.df
+        by_col = self.by
+        if by_col is not None and isinstance(by_col, int):
+            temp_by = f"__pytae_by_{by_col}__"
+            df_source = df_source.rename(columns={by_col: temp_by})
+            by_col = temp_by
+
+        def _safe_reset(piv_df, index_col):
+            if index_col is not None and index_col in piv_df.columns:
+                piv_df = piv_df.rename(columns={index_col: f"{index_col}_col"})
+            return piv_df.reset_index()
+
         if not self.aggregate:  # when aggregation is not required
-            if self.by:  # to convert to wide format without aggregate because pandas plot would expect wide data
+            if by_col is not None:  # to convert to wide format without aggregate because pandas plot would expect wide data
                 # Check for potential duplicates and raise error if found
-                unique_combos = self.df[[self.x, self.by]].drop_duplicates().shape[0]
-                if unique_combos < len(self.df):  # to ensure data is ready for wide formatting without agg
+                unique_combos = df_source[[self.x, by_col]].drop_duplicates().shape[0]
+                if unique_combos < len(df_source):  # to ensure data is ready for wide formatting without agg
                     raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
-                pivot_table = self.df.pivot(index=self.x, columns=self.by, values=self.y).reset_index()
+                raw_piv = df_source.pivot(index=self.x, columns=by_col, values=self.y)
+                pivot_table = _safe_reset(raw_piv, self.x)
             else:
                 y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
                 cols = ([self.x] if self.x is not None else []) + [c for c in y_cols if c != self.x]
-                pivot_table = self.df[cols].copy()
+                pivot_table = df_source[cols].copy()
         else:
-            pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
-                                            aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
-            if self.by is None and isinstance(self.y, (list, tuple)):
+            raw_piv = df_source.pivot_table(index=self.x, columns=by_col, values=self.y,
+                                            aggfunc=self.aggfunc, dropna=self.dropna, observed=False)
+            pivot_table = _safe_reset(raw_piv, self.x)
+            if by_col is None and isinstance(self.y, (list, tuple)):
                 desired_order = ([self.x] if self.x is not None and self.x in pivot_table.columns else []) + [c for c in self.y if c in pivot_table.columns]
                 other_cols = [c for c in pivot_table.columns if c not in desired_order]
                 pivot_table = pivot_table[desired_order + other_cols]
 
-        if self.x and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
+        if self.x is not None and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
             if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]):
                 pivot_table[self.x] = pivot_table[self.x].astype('object')
         pivot_table.columns.name = None  # ensure col names are not corrupt with multi index names post pivot
@@ -812,7 +836,7 @@ class Plotter:
 
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10, hide_secondary_y=False, 
                  legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False,
-                 style=True):
+                 style=True, title=None, xlabel=None, ylabel=None, tight_layout=True, **kwargs):
         """
         Finalize the plot with layout adjustments and legend settings.
         """
@@ -821,7 +845,26 @@ class Plotter:
         self.bbox_to_anchor = bbox_to_anchor
         self.ncols = ncols
         
-        if style:
+        if title is not None:
+            if len(self.fig.axes) == 1:
+                self.fig.axes[0].set_title(title)
+            else:
+                self.fig.suptitle(title)
+
+        if hasattr(self, 'ax') and self.ax is not None:
+            if xlabel is not None:
+                self.ax.set_xlabel(xlabel)
+            if ylabel is not None:
+                self.ax.set_ylabel(ylabel)
+
+        if isinstance(style, str):
+            try:
+                plt.style.use(style)
+            except Exception:
+                pass
+
+        style_bool = style if isinstance(style, bool) else True
+        if style_bool:
             self._hide_spines()
             self._adjust_ticks_and_spines()
             for ax in self.fig.axes:
@@ -853,10 +896,11 @@ class Plotter:
                     ax.spines['right'].set_visible(False)
         
         # Apply layout adjustments before drawing figure-level legend to avoid clipping
-        if self.consolidate_legends and self.bbox_to_anchor[1] < 0:
-            self.fig.tight_layout(rect=[0, 0.08, 1, 1])
-        else:
-            self.fig.tight_layout()
+        if tight_layout:
+            if self.consolidate_legends and self.bbox_to_anchor[1] < 0:
+                self.fig.tight_layout(rect=[0, 0.08, 1, 1])
+            else:
+                self.fig.tight_layout()
 
         if legend and self.consolidate_legends and handles:
             self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=legend_frameon)

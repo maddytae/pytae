@@ -666,4 +666,62 @@ def test_plotter_line_style_width_integer_keys():
             assert line.get_linewidth() == 5
 
 
+def test_plotter_hist_and_kde_with_by_having_missing_values():
+    penguins = pt.sample("penguins")
+    p_hist = pt.Plotter(penguins).plot(kind="hist", column="bill_length_mm", by="sex")
+    assert p_hist.axd["A"].has_data()
+
+    p_kde = pt.Plotter(penguins).plot(kind="kde", column="body_mass_g", by="sex")
+    assert p_kde.axd["A"].has_data()
+
+
+def test_plotter_pie_with_dropna():
+    df = pd.DataFrame({"cat": ["a", "a", None, "b"], "val": [1, 2, 5, 3]})
+    p1 = pt.Plotter(df).plot(kind="pie", by="cat", y="val", dropna=False)
+    assert p1.axd["A"].has_data()
+    p2 = pt.Plotter(df).plot(kind="pie", by="cat", y="val", dropna=True)
+    assert p2.axd["A"].has_data()
+
+
+def test_plotter_finalize_with_title_and_tight_layout():
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    p = pt.Plotter(df).plot(kind="scatter", x="x", y="y")
+    p.finalize(title="Custom Title", tight_layout=True, xlabel="X Axis", ylabel="Y Axis")
+    assert p.axd["A"].get_xlabel() == "X Axis"
+    assert p.axd["A"].get_ylabel() == "Y Axis"
+
+
+def test_plotter_heatmap_xy_honors_dropna():
+    df = pd.DataFrame({"x": ["a", "b", None], "y": ["u", "v", "v"]})
+    p_keep = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", dropna=False)
+    assert p_keep.axd["A"].has_data()
+    p_drop = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", dropna=True)
+    assert p_drop.axd["A"].has_data()
+
+
+def test_plotter_grouped_bar_by_value_equals_x_name():
+    df = pd.DataFrame({
+        "year": [2020, 2020, 2021],
+        "metric": ["year", "sales", "sales"],
+        "value": [1, 10, 12],
+    })
+    p = pt.Plotter(df).plot(kind="bar", x="year", y="value", by="metric")
+    assert p.axd["A"].has_data()
+
+
+def test_plotter_box_color_dict_with_integer_keys():
+    df = pd.DataFrame({"g": [1, 1, 2, 2], "v": [1, 2, 3, 4]})
+    p = pt.Plotter(df).plot(kind="box", x="g", y="v", color={1: "crimson", 2: "navy"})
+    assert p.axd["A"].has_data()
+
+
+def test_plotter_falsy_column_name_zero():
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4], 0: ["g1", "g2"]})
+    p_scatter = pt.Plotter(df).plot(kind="scatter", x="x", y="y", by=0)
+    assert p_scatter.axd["A"].has_data()
+
+    p_bar = pt.Plotter(df).plot(kind="bar", x="x", y="y", by=0)
+    assert p_bar.axd["A"].has_data()
+
+
 

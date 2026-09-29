@@ -4,6 +4,7 @@ import difflib
 from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from pytae._text import tokenize as _tokenize
@@ -136,6 +137,20 @@ def wide(
                 "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
             )
 
+    if "cols" in kwargs and c == "variable":
+        c = kwargs.pop("cols")
+    elif "col" in kwargs and c == "variable":
+        c = kwargs.pop("col")
+    elif "columns" in kwargs and c == "variable":
+        c = kwargs.pop("columns")
+
+    if "values" in kwargs and v == "value":
+        v = kwargs.pop("values")
+    elif "val" in kwargs and v == "value":
+        v = kwargs.pop("val")
+    elif "vals" in kwargs and v == "value":
+        v = kwargs.pop("vals")
+
     c = _unquote_name(c)
     if v is not None:
         v = _unquote_name(v)
@@ -247,14 +262,46 @@ def pivot(
         fill_value = 0
     val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
 
+    if aggfunc != "size":
+        overlap = [col for col in v_cols if (r_cols and col in r_cols) or (c_cols and col in c_cols)]
+        if overlap:
+            raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
+
+    observed = kwargs.get("observed", True)
+
+    def _format_part(part: Any) -> str:
+        if part is None or (isinstance(part, float) and np.isnan(part)) or pd.isna(part):
+            return "nan"
+        if isinstance(part, (float, np.floating)) and float(part).is_integer():
+            return str(int(part))
+        return str(part)
+
     def _flatten_cols(piv: pd.DataFrame) -> None:
+        raw_names: list[str] = []
         if isinstance(piv.columns, pd.MultiIndex):
-            piv.columns = [
-                "_".join(str(part) for part in col if part is not None and str(part) != "")
-                for col in piv.columns
-            ]
+            for col in piv.columns:
+                formatted_parts = [_format_part(part) for part in col if part is not None and str(part) != ""]
+                raw_names.append("_".join(formatted_parts))
         else:
-            piv.columns = [str(col) for col in piv.columns]
+            raw_names = [_format_part(col) for col in piv.columns]
+
+        # Deduplicate headers to avoid label collisions (e.g. 1 and "1", or nan and "nan")
+        seen: dict[str, int] = {}
+        unique_names: list[str] = []
+        for name in raw_names:
+            if name not in seen:
+                seen[name] = 1
+                unique_names.append(name)
+            else:
+                count = seen[name]
+                seen[name] += 1
+                new_name = f"{name}_{count}"
+                while new_name in seen:
+                    new_name = f"{name}_{seen[name]}"
+                    seen[name] += 1
+                seen[new_name] = 1
+                unique_names.append(new_name)
+        piv.columns = unique_names
 
     def _cast_size_ints(df_out: pd.DataFrame) -> pd.DataFrame:
         if aggfunc == "size":
@@ -270,55 +317,66 @@ def pivot(
         return df_out
 
     if r_cols and c_cols:
-        pivoted = df.pivot_table(
-            index=r_cols,
-            columns=c_cols,
-            values=val_arg,
-            aggfunc=aggfunc,
-            dropna=dropna,
-            fill_value=fill_value,
-        )
+        group_keys = list(r_cols) + list(c_cols)
+        if aggfunc == "size":
+            s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
+            pivoted = s.unstack(list(c_cols), fill_value=fill_value if fill_value is not None else 0)
+        else:
+            if len(v_cols) == 1:
+                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
+                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
+            else:
+                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
+                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
         _flatten_cols(pivoted)
         res = _safe_reset_index(pivoted)
         res.columns.name = None
         return _cast_size_ints(res)
     elif r_cols:
         if aggfunc == "size":
-            s = df.groupby(r_cols, dropna=dropna).size()
-            res = s.to_frame(name=v_cols[0] if len(v_cols) == 1 else "count").reset_index()
+            s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
+            target_name = v_cols[0] if len(v_cols) == 1 else "count"
+            if target_name in r_cols:
+                target_name = "n" if "n" not in r_cols else f"{target_name}_count"
+            res = _safe_reset_index(s.to_frame(name=target_name))
             res.columns.name = None
             return _cast_size_ints(res)
         else:
-            pivoted = df.pivot_table(
-                index=r_cols,
-                values=val_arg,
-                aggfunc=aggfunc,
-                dropna=dropna,
-                fill_value=fill_value,
-            )
+            val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
+            g = df.groupby(r_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
+            pivoted = g if isinstance(g, pd.DataFrame) else g.to_frame()
+            if fill_value is not None:
+                pivoted = pivoted.fillna(fill_value)
             _flatten_cols(pivoted)
             res = _safe_reset_index(pivoted)
             res.columns.name = None
             return res
     elif c_cols:
         if aggfunc == "size":
-            s = df.groupby(c_cols, dropna=dropna).size()
-            res = s.to_frame().T.reset_index(drop=True)
-            _flatten_cols(res)
-            res.columns.name = None
-            return _cast_size_ints(res)
-        else:
-            pivoted = df.pivot_table(
-                columns=c_cols,
-                values=val_arg,
-                aggfunc=aggfunc,
-                dropna=dropna,
-                fill_value=fill_value,
-            )
+            s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
+            pivoted = s.to_frame().T.reset_index(drop=True)
             _flatten_cols(pivoted)
-            res = pivoted.reset_index(drop=True)
-            res.columns.name = None
-            return res
+            pivoted.columns.name = None
+            return _cast_size_ints(pivoted)
+        else:
+            if len(v_cols) == 1:
+                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
+                pivoted = g.to_frame().T.reset_index(drop=True)
+                if fill_value is not None:
+                    pivoted = pivoted.fillna(fill_value)
+                _flatten_cols(pivoted)
+                pivoted.columns.name = None
+                return pivoted
+            else:
+                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
+                pivoted = g.T
+                if fill_value is not None:
+                    pivoted = pivoted.fillna(fill_value)
+                _flatten_cols(pivoted)
+                pivoted.index.name = "metric"
+                res = _safe_reset_index(pivoted)
+                res.columns.name = None
+                return res
     else:
         if aggfunc == "size":
             res = pd.DataFrame({col: [len(df)] for col in v_cols}, dtype="int64")
@@ -326,7 +384,7 @@ def pivot(
             res = df[v_cols].agg(aggfunc).to_frame().T.reset_index(drop=True)
         if fill_value is not None:
             res = res.fillna(fill_value)
-        res.columns = [str(col) for col in res.columns]
+        _flatten_cols(res)
         res.columns.name = None
         return _cast_size_ints(res)
 
