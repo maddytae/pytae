@@ -12,15 +12,16 @@ TABLE OF CONTENTS
     4.2.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.3.  pt.select() / df.pt.select() — Column Selection & Reordering
     4.4.  pt.agg_df() / df.pt.agg_df() — Grouped Aggregation
-    4.5.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping
-    4.6.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
-    4.7.  Other Utilities:
+    4.5.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+    4.6.  pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+    4.7.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
+    4.8.  Other Utilities:
           - pt.cols() / df.pt.cols()
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
           - pt.replace_values() / df.pt.replace_values()
           - df.to_clip() (DataFrame & Series method)
-    4.8.  Plotter — Visualization & Dashboarding (Plotting API)
+    4.9.  Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -59,12 +60,18 @@ Key principles:
    `n=n`) without tedious `.groupby().agg()` boilerplate.
 5. Non-Destructive: All library verbs return copies of DataFrames and never 
    mutate inputs in place. Original indices are preserved during filtering.
+6. Honest Error Handling ("Be generous in what you accept, but strictly honest 
+   when ambiguous"): Flexible inputs are accepted where unambiguous, but collisions, 
+   conflicts, and invalid arguments raise clear exceptions rather than silently 
+   inventing artificial column suffixes or guessing.
+7. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
+   is `wide()`, 2D aggregation is `pivot()`, column selection is `select()`.
 
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
 Installation (PyPI: https://pypi.org/project/pytae/):
-  pip install pytae            # latest release: 3.6.0
+  pip install pytae            # latest release: 3.7.0
   pip install 'pytae[plot]'    # includes matplotlib, scipy
   pip install 'pytae[sql]'     # includes duckdb
 
@@ -78,8 +85,10 @@ Top-Level Functions exported by `pytae`:
   - pt.qry(df, *args, **kwargs)
   - pt.mutate(df, *args, **kwargs)
   - pt.agg_df(df, *args, **kwargs)
-  - pt.long(df, c="variable", v="value")
-  - pt.wide(df, c="variable", v="value", a=None, dropna=True)
+  - pt.agg(df, *args, **kwargs) (alias for agg_df)
+  - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
+  - pt.wide(df, c="variable", v="value")
+  - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
   - pt.sql(df, query, **frames)
   - pt.handle_missing(df, fillna=".")
   - pt.cols(df, ascending=True)
@@ -98,8 +107,10 @@ DataFrame Accessor:
     df.pt.qry(...)
     df.pt.mutate(...)
     df.pt.agg_df(...)
+    df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
+    df.pt.pivot(...)
     df.pt.sql(...)
     df.pt.handle_missing(...)
     df.pt.cols(...)
@@ -201,8 +212,8 @@ Creates or overwrites columns using expressions evaluated in order via pandas ev
 with automatic fallback to plain Python eval on Series objects.
 
 Signature:
-  pt.mutate(df: pd.DataFrame, *args: Any, by: str | Sequence[str] | None = None, dropna: bool = True, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
-  df.pt.mutate(*args: Any, by: str | Sequence[str] | None = None, dropna: bool = True, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
+  pt.mutate(df: pd.DataFrame, *args: Any, by: str | Sequence[str] | None = None, dropna: bool = False, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
+  df.pt.mutate(*args: Any, by: str | Sequence[str] | None = None, dropna: bool = False, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
 
 Calling Styles:
   1. Keyword Arguments:
@@ -247,7 +258,7 @@ Injected Helper Functions in Expressions:
     Method chains on Series work seamlessly:
     df.pt.mutate(initial="species.str[0]", rounded="bill_length_mm.round()")
 
-Grouped Window Operations (by=..., dropna=..., observed=...):
+Grouped Window Operations (by=..., dropna=False, observed=True):
   Evaluates window calculations and group summaries broadcast back to every row (N -> N):
   - Injected Aggregations: mean(x), sum(x), median(x), min(x), max(x), std(x), var(x), n (or n())
   - Sequential Derivation:
@@ -255,12 +266,12 @@ Grouped Window Operations (by=..., dropna=..., observed=...):
   - Multi-Column Grouping:
     df.pt.mutate("avg = mean(val)", by=["species", "island"])
   - Handling Missing Group Keys (dropna):
-    - dropna=True (default): Rows with NA in grouping columns receive NaN in new columns;
+    - dropna=False (default across pytae): Rows with NA in grouping columns form their own group
+      and compute group metrics across all NA rows together.
+    - dropna=True: Rows with NA in grouping columns receive NaN in new columns;
       row count and alignment are strictly preserved.
-    - dropna=False: Rows with NA in grouping columns form their own group and compute
-      group metrics across all NA rows together:
-      df.pt.mutate("avg = mean(val)", by="grp", dropna=False)
-      (In CLI: pass -dropna false, e.g. pytae data.parquet -by grp -dropna false -mutate "avg = mean(val)")
+      df.pt.mutate("avg = mean(val)", by="grp", dropna=True)
+      (In CLI: pass -dropna true to exclude NA groups)
 
 External Spec File Format (@file.txt):
   Lines in `@specs.txt` are evaluated sequentially. Supports `#` comments and empty lines:
@@ -339,7 +350,7 @@ Signature:
       by: str | Sequence[str] | None,
       *args: Any,
       a: str | list[str] | None = None,
-      dropna: bool = True,
+      dropna: bool = False,
       observed: bool = True,
       **kwargs: Any,
   ) -> pd.DataFrame
@@ -357,44 +368,100 @@ Calling Styles:
      df.pt.agg("species", body_mass_g="mean", flipper_length_mm="max", n="n")
      df.pt.agg("species", body_mass_g=["mean", "sum"], row_count="n")
   - Row Count ('n'):
-    Assigning a key with value 'n' produces the group row count.
-    If the key is `n="n"`, the count column is named `n`.
-    If the key is `count="n"`, the count column is named `count`.
+     Assigning a key with value 'n' produces the group row count.
+     If the key is `n="n"`, the count column is named `n`.
+     If the key is `count="n"`, the count column is named `count`.
   - Column Names:
-    If a single aggregation is applied to a column, its original name is preserved:
-    `body_mass_g='mean'` -> output column: `body_mass_g`
-    If multiple aggregations are applied to a column, names become `{col}_{agg}`:
-    `body_mass_g=['mean', 'max']` -> output columns: `body_mass_g_mean`, `body_mass_g_max`
+     If a single aggregation is applied to a column, its original name is preserved:
+     `body_mass_g='mean'` -> output column: `body_mass_g`
+     If multiple aggregations are applied to a column, names become `{col}_{agg}`:
+     `body_mass_g=['mean', 'max']` -> output columns: `body_mass_g_mean`, `body_mass_g_max`
   - Group Counts Only:
-    If the DataFrame has no numeric columns and only 'n' is requested, it returns 
-    the frequency counts of the groups.
+     If the DataFrame has no numeric columns and only 'n' is requested, it returns 
+     the frequency counts of the groups.
+  - dropna Default:
+     dropna=False by default retains missing category groups across aggregations.
 
 
-4.5. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping
+4.5. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
 --------------------------------------------------------------------------------
-Tools for pivoting and melting data.
+Pure structural reshaping between long and wide formats without aggregation.
 
-pt.long(df, c="variable", v="value"):
-  Melts all numeric columns to rows, keeping non-numeric columns as ID variables.
+pt.long(df, cols=None, id_vars=None, c="variable", v="value"):
+  Melts columns to rows. If cols is None, melts all numeric columns, keeping 
+  non-numeric columns as ID variables.
   Parameters:
+    cols: Column(s) to melt to rows. Can be string or list/tuple of strings.
+    id_vars: Identifier column(s) to keep as rows.
     c: column name for melted metric names (default: "variable")
     v: column name for melted metric values (default: "value")
   Example:
     tall = df.pt.long(c="metric", v="measurement")
 
-pt.wide(df, c="variable", v="value", a=None, dropna=True):
-  Pivots long-format rows into headers.
+pt.wide(df, c="variable", v="value"):
+  Pivots long-format records back into column headers (exact reverse of pt.long).
+  Strictly 1-to-1 without aggregation.
   Parameters:
     c: column whose unique values become headers (default: "variable")
     v: column containing values (default: "value")
-    a: optional aggregation function if duplicate combinations exist (e.g. "mean", "sum", "n").
-       'n' aliases pandas 'size' (group row count).
-    dropna: drop all-NA columns (default: True)
+  Rules:
+    - Requires unique (index, c) pairs. If duplicate keys exist, raises ValueError
+      guiding the user to use pt.pivot() instead.
+    - c and v cannot be the same column.
   Example:
-    wide = tall.pt.wide(c="metric", v="measurement", a="mean")
+    wide = tall.pt.wide(c="metric", v="measurement")
 
 
-4.6. pt.sql() / df.pt.sql() — DuckDB SQL Engine
+4.6. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+--------------------------------------------------------------------------------
+Full multi-dimensional 2D pivot table and frequency cross-tabulation engine.
+Automatically flattens multi-level column hierarchies to clean 1D string names 
+and resets the index to standard RangeIndex(0, 1, 2, ...).
+
+Signature:
+  pt.pivot(
+      df: pd.DataFrame,
+      r: str | Sequence[str] | None = None,
+      c: str | Sequence[str] | None = None,
+      v: str | Sequence[str] | None = None,
+      a: str | Callable | Sequence[str | Callable] = "sum",
+      dropna: bool = False,
+      fill_value: Any = None,
+  ) -> pd.DataFrame
+  df.pt.pivot(r=None, c=None, v=None, a="sum", dropna=False, fill_value=None) -> pd.DataFrame
+
+Parameters:
+  r: Row grouping column(s). String (e.g. "island", "species,island") or list of strings.
+     Alias: index=, rows=
+  c: Column dimension(s). String (e.g. "sex") or list of strings.
+     Alias: columns=, cols=
+  v: Value column(s) to aggregate. Optional when counting (a="n").
+     Alias: values=
+  a: Aggregation function (default: "sum"). Supports standard aggregations
+     ("mean", "sum", "median", "min", "max", "std", "var") and "n" for row counts.
+     Alias: aggfunc=
+  dropna: Whether to drop NA categories in row/column keys (default: False).
+  fill_value: Scalar value for missing grid intersections. For a="n", defaults to 0.
+
+Key Features & Conventions:
+  - 1D Flat Headers: Multi-column pivots format headers cleanly (e.g. "MALE_2007", "FEMALE_2007").
+  - Pure Integer Counts: Row counts (a="n") return standard int64 (or Int64) integers, not floats.
+  - Zero Count Fill: Missing grid combinations in frequency tables default to 0.
+  - Omit v for Counts: For frequency cross-tabulations (a="n"), v is optional.
+  - RangeIndex: Index is always reset to 0, 1, 2, ... with no lingering MultiIndex.
+
+Examples:
+  # 2D summary matrix
+  df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
+
+  # Frequency cross-tabulation (count rows across dimensions)
+  df.pt.pivot(r="island", c="species", a="n")
+
+  # Multi-dimensional pivot with custom fill
+  df.pt.pivot(r=["species", "island"], c="sex", v="body_mass_g", a="median", fill_value=0)
+
+
+4.7. pt.sql() / df.pt.sql() — DuckDB SQL Engine
 --------------------------------------------------------------------------------
 Executes SQL queries directly over in-memory DataFrames using DuckDB.
 Requires: pip install 'pytae[sql]'
@@ -414,7 +481,7 @@ Rules & Features:
     df.pt.sql("@analysis.sql")
 
 
-4.7. Other Utilities
+4.8. Other Utilities
 --------------------------------------------------------------------------------
 - pt.cols(df, ascending=True):
   Returns list of column names.
@@ -447,7 +514,7 @@ Rules & Features:
   Copies DataFrame or Series to system clipboard as tab-separated values without index. Attached directly to pd.DataFrame and pd.Series on import pytae (no pt. or df.pt. needed).
 
 
-4.8. Plotter — Visualization & Dashboarding (Plotting API)
+4.9. Plotter — Visualization & Dashboarding (Plotting API)
 --------------------------------------------------------------------------------
 Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
@@ -573,10 +640,11 @@ Column Transformation Flags:
 Aggregation & Reshaping Flags:
   -by, -group_by COLS   Grouping columns for -agg and -mutate (e.g. -by species -agg mean)
   -agg, -agg_df SPECS   Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean)
-  -dropna BOOL          Control NA group handling for -agg, -mutate, -crosstab, -wide (true/false, default: true)
+  -dropna BOOL          Control NA group handling for -agg, -mutate, -pivot, -wide (true/false, default: false)
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
-  -wide [SPECS]         Pivot long columns into headers: "c=variable, v=value, a=mean"
-  -crosstab SPECS       Frequency crosstabulation: "index=species, columns=sex"
+  -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
+  -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=n")
+  -crosstab SPECS       Frequency crosstabulation (delegates to -pivot): "index=species, columns=sex"
 
 SQL & Multi-File Flags:
   -sql QUERY            Run DuckDB SQL on table 'data' (or @query.sql)
@@ -674,12 +742,12 @@ Convert files between formats with zero python code via -o:
    - Calling `pt.select(df, "^bill")` will search for a literal column named `^bill` and fail.
    - You MUST use `regex=`: `pt.select(df, regex=r"^bill")`.
 3. Aggregation Grouping Logic:
-   - `agg_df` automatically groups by EVERY non-numeric column.
+   - `agg_df` automatically groups by EVERY non-numeric column when by= is omitted.
    - If your DataFrame has 10 string columns, it groups by all 10.
-   - Always filter columns first if you only want to group by 1 or 2 columns:
+   - Always filter columns first if you only want to group by 1 or 2 columns, or specify `by=`:
      `df.pt.select("species", "body_mass_g").pt.agg_df("mean")`.
 4. The Count Column 'n':
-   - 'n' is a reserved aggregation token in `agg_df` and grouped `mutate(..., by=...)`.
+   - 'n' is a reserved aggregation token in `agg_df`, `pivot`, and grouped `mutate(..., by=...)`.
    - If your input table already has a real numeric column named 'n', rename it first to avoid collision.
 5. In-Place Modification:
    - pytae NEVER modifies DataFrames in place. Always assign the returned DataFrame:
@@ -687,6 +755,10 @@ Convert files between formats with zero python code via -o:
 6. Null Checks in qry():
    - Null checks are 1-element tuples: `sex=('isna',)` or `sex=('notna',)`.
    - Do NOT pass a second element.
+7. Reshaping: wide() vs pivot():
+   - `wide()` is strictly for pure 1-to-1 structural unmelting (reversing long()) without aggregation.
+   - For 2D cross-tabulations, aggregations across dimensions, or when duplicate keys exist, use `pivot()`:
+     `df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")`.
 
 
 7. END-TO-END RECIPES & EXAMPLES
@@ -775,13 +847,36 @@ pytae -file "transactions.csv=tx; customers.parquet=cust" \
       -qry "amount > 100" \
       -o high_value_tx.parquet
 
-# 4. Grouped Window Calculation with Missing Group Key Retention (-dropna false)
+# 4. Grouped Window Calculation with Missing Group Key Retention (-dropna false default)
 pytae penguins.parquet \
   -by sex \
-  -dropna false \
   -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass" \
   -select "species,sex,body_mass_g,avg_mass,diff" \
   -head 5
+```
+
+Recipe 4: 2D Pivot Tables & Frequency Matrices (Python & CLI)
+--------------------------------------------------------------------------------
+```python
+import pytae as pt
+
+penguins = pt.sample("penguins")
+
+# 1. 2D Summary Grid (Mean Body Mass by Island and Species)
+grid = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
+print(grid)
+
+# 2. 2D Frequency Matrix (Counts with a="n")
+counts = penguins.pt.pivot(r="island", c="species", a="n")
+print(counts)
+```
+
+```bash
+# CLI 2D Pivot Summary
+pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
+
+# CLI 2D Frequency Counts
+pytae penguins.parquet -pivot "r=island, c=species, a=n"
 ```
 
 
@@ -790,11 +885,11 @@ pytae penguins.parquet \
 ================================================================================
 
 .
+├── .githooks
+│   └── pre-commit
 ├── .github
 │   └── workflows
 │       └── ci.yml
-├── .githooks
-│   └── pre-commit
 ├── .gitignore
 ├── LICENSE
 ├── changelog.md
@@ -809,6 +904,8 @@ pytae penguins.parquet \
 │   │   ├── inspect.md
 │   │   ├── multi_file.md
 │   │   ├── mutate.md
+│   │   ├── pivot.md
+│   │   ├── plotting.md
 │   │   ├── reshape.md
 │   │   ├── select.md
 │   │   └── sql.md
@@ -817,19 +914,19 @@ pytae penguins.parquet \
 │   │   ├── agg.ipynb
 │   │   ├── mutate.ipynb
 │   │   ├── other_utilities.ipynb
+│   │   ├── pivot.ipynb
+│   │   ├── plotting.ipynb
 │   │   ├── qry.ipynb
+│   │   ├── reshape.ipynb
 │   │   ├── select.ipynb
-│   │   ├── shape.ipynb
 │   │   └── sql.ipynb
-│   ├── library.md
-│   ├── plotting
-│   │   └── plotter.ipynb
-│   └── plotting.md
+│   └── library.md
 ├── pyproject.toml
 ├── readme.md
 ├── reference
 │   └── pytae_reference.txt
 ├── scripts
+│   ├── generate_reference.py
 │   └── run_notebooks.py
 ├── src
 │   └── pytae
@@ -882,6 +979,7 @@ pytae penguins.parquet \
 │   ├── test_agg_df.py
 │   ├── test_cli_agg.py
 │   ├── test_cli_clean.py
+│   ├── test_cli_enhancements.py
 │   ├── test_cli_filter.py
 │   ├── test_cli_inspect.py
 │   ├── test_cli_merge.py
@@ -893,6 +991,7 @@ pytae penguins.parquet \
 │   ├── test_cli_sql.py
 │   ├── test_import.py
 │   ├── test_mutate.py
+│   ├── test_pivot.py
 │   ├── test_plotter.py
 │   ├── test_qry.py
 │   ├── test_readers.py
@@ -900,7 +999,6 @@ pytae penguins.parquet \
 │   ├── test_shape.py
 │   ├── test_sql.py
 │   └── test_utilities.py
-├── todo.md
 └── uv.lock
 
 ================================================================================
@@ -915,7 +1013,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.6.0"
+version = "3.7.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -987,7 +1085,6 @@ exclude = ["src/pytae/plotting.py"]
 module = ["pytae.plotting", "pytae.plotting.*"]
 ignore_errors = true
 
-
 ================================================================================
 10. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
 ================================================================================
@@ -1058,10 +1155,11 @@ sample_data = _SampleData()
 
 
 def _bind_shape():
-    from .shape import long, wide
+    from .shape import long, pivot, wide
     globals()["long"] = long
     globals()["wide"] = wide
-    return long, wide
+    globals()["pivot"] = pivot
+    return long, wide, pivot
 
 
 def __getattr__(name):
@@ -1078,7 +1176,7 @@ def __getattr__(name):
             return plot
         else:
             return finalize
-    if name in ("long", "wide"):
+    if name in ("long", "wide", "pivot"):
         _bind_shape()
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -1095,9 +1193,9 @@ __all__ = [
     "mutate",
     "agg",
     "agg_df",
-
     "long",
     "wide",
+    "pivot",
     "handle_missing",
     "cols",
     "clean_columns",
@@ -1202,7 +1300,6 @@ def unquote_name(raw: str) -> str:
             changed = True
     return raw
 
-
 ################################################################################
 # FILE: src/pytae/accessor.py
 ################################################################################
@@ -1281,7 +1378,7 @@ class PtAccessor:
         self,
         *args: Any,
         by: str | Sequence[str] | None = None,
-        dropna: bool = True,
+        dropna: bool = False,
         observed: bool = True,
         **kwargs: Any,
     ) -> pd.DataFrame:
@@ -1344,18 +1441,53 @@ class PtAccessor:
         self,
         c: str = "variable",
         v: str = "value",
-        a: str | None = None,
-        dropna: bool = True,
         index: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
         """Pivot long-form records back to wide format (columns).
 
-        Headers are created from `c` (default 'variable'), cells from `v` (default 'value'),
-        with optional aggregation function `a` (e.g. 'mean', 'sum', 'n') if duplicates exist.
+        Headers are created from `c` (default 'variable'), cells from `v` (default 'value').
+        Strictly 1-to-1 structural reshaping without aggregation.
+        For multi-dimensional aggregation, use `df.pt.pivot()`.
         """
         from .shape import wide as _wide
-        return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
+        return _wide(self._obj, c=c, v=v, index=index, **kwargs)
+
+    def pivot(
+        self,
+        r: str | Sequence[str] | None = None,
+        c: str | Sequence[str] | None = None,
+        v: str | Sequence[str] | None = None,
+        a: str = "sum",
+        dropna: bool = False,
+        fill_value: Any = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Summarize and aggregate DataFrame across dimensions (Excel-style pivot table).
+
+        Parameters:
+        -----------
+        r : str or sequence of str, optional
+            Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+        c : str or sequence of str, optional
+            Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+        v : str or sequence of str
+            Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+        a : str, default 'sum'
+            Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
+            'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+        dropna : bool, default False
+            Whether to drop NA categories from grouping keys.
+        fill_value : any, optional
+            Value to replace missing grid intersections with (e.g. 0).
+
+        Returns:
+        --------
+        pd.DataFrame
+            Clean, flattened DataFrame with standard RangeIndex and 1D column names.
+        """
+        from .shape import pivot as _pivot
+        return _pivot(self._obj, r=r, c=c, v=v, a=a, dropna=dropna, fill_value=fill_value, **kwargs)
 
     def handle_missing(
         self,
@@ -1436,6 +1568,7 @@ class PtAccessor:
             ncols = facet_kwargs.pop("ncols", None)
             return Plotter.facet(self._obj, by=by_col, ncols=ncols, **facet_kwargs)
 
+        save_path = kwargs.pop("save", None)
         plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
         init_kwargs = {k: v for k, v in kwargs.items() if k in plotter_keys}
         plot_kwargs = {k: v for k, v in kwargs.items() if k not in plotter_keys}
@@ -1444,8 +1577,9 @@ class PtAccessor:
         plotter.data(self._obj)
         if plot_kwargs:
             plotter.plot(**plot_kwargs)
+        if save_path:
+            plotter.finalize().save(save_path)
         return plotter
-
 
 ################################################################################
 # FILE: src/pytae/agg_df.py
@@ -1725,7 +1859,7 @@ def agg_df(
           Keys with value 'n' specify the output column name for group row counts.
           Supports named aggregations like total='v1:sum'.
         - a (str or list, optional): Whole-frame or mapping aggregation function(s) when passed as keyword `a=`.
-        - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
+        - dropna (bool): Whether to drop NA values in groupby. Defaults to False.
         - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
 
     Returns:
@@ -1869,7 +2003,7 @@ def agg_df(
     else:
         agg_types = col_kwargs if col_kwargs else ["sum"]
 
-    dropna = kwargs.get("dropna", True)
+    dropna = kwargs.get("dropna", False)
     observed = kwargs.get("observed", True)
 
     if isinstance(agg_types, dict):
@@ -1938,6 +2072,8 @@ _FORMAT_SHORTHANDS = frozenset((
 
 
 def _is_path_like(token: str) -> bool:
+    if token == "-":
+        return True
     if token.startswith("-"):
         return False
     if any(ch in token for ch in "*?[]"):
@@ -1960,13 +2096,15 @@ _CLI_FLAGS = {
     "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
-    "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide",
-    "-crosstab", "--crosstab", "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
+    "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
+    "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
     "-file", "--file", "-query", "--query", "-qry", "--qry", "-mutate", "--mutate",
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
     "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
     "-pager", "--pager", "-round", "--round", "-h", "--help",
+    "-fmt", "--fmt", "-freq", "--freq", "-hist", "--hist",
+    "-plot", "--plot", "-finalize", "--finalize",
 }
 
 
@@ -2054,6 +2192,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="compare schema and contents against another dataset file")
     parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
                          help="show pandas value_counts across current working columns (use -select to choose columns)")
+    parser.add_argument("-freq", "--freq", dest="freq", action=_OrderedStore, default=None, metavar="COLUMN",
+                         help="render horizontal frequency bars with counts and percentages for a categorical column")
+    parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
+                         help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
     parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
                          help="drop duplicate rows and print unique rows")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
@@ -2101,25 +2243,25 @@ def build_parser() -> argparse.ArgumentParser:
                               "v=value; e.g. c=metric,v=reading")
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
-                              "e.g. c=country,v=balance,a=mean; a=n is an alias for pandas' 'size' "
-                              "(group row count), matching agg_df's convention; honors -dropna")
-    parser.add_argument("-crosstab", "--crosstab", dest="crosstab", metavar="KEY=VALUE,...", action=_OrderedStore,
-                         help="cross-tabulate columns into a matrix (pandas crosstab()); key=value specs: "
-                              "index= (one or more comma-separated columns), columns= (single column, required), "
-                              "optional values=+aggfunc= together to aggregate instead of count, "
-                              "normalize=index|columns|all, margins=true|false, margins_name= (default 'All'; "
-                              "requires margins=true); honors -dropna")
-    parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=True,
+                         help="pivot long form to wide for 1-to-1 reshaping (pytae wide()); defaults c=variable, v=value; "
+                              "for aggregation or 2D contingency tables, use -pivot")
+    parser.add_argument("-pivot", "--pivot", dest="pivot", nargs="?", const="", default=None,
+                         metavar="KEY=VALUE,...", action=_OrderedValue,
+                         help="2-D pivot table (pytae pivot()); r=row_cols (optional), c=col_cols "
+                              "(optional), v=value_cols (required), a=aggfunc (default sum; n=size), "
+                              "dropna=false (default), fill_value=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
+    parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=None,
                          metavar="BOOL",
-                         help="for -agg_df, -agg, -mutate, -wide, -value_counts, and -crosstab: "
-                              "include NA keys when false; accepts true or false (default: true)")
+                         help="for -agg, -mutate, -value_counts, -freq, -pivot, -plot (default: false): "
+                              "include NA keys when false; set true to drop NA keys; accepts true or false")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
                               "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
                               "or 'clip'/'clipboard' to copy to system clipboard")
     parser.add_argument("-out_dir", "--out_dir", "-od", "--out-dir", dest="out_dir", type=Path, default=None, metavar="DIR",
                          help="target directory for exported files (created if it does not exist); requires -o/--output")
+    parser.add_argument("-fmt", "--fmt", dest="fmt", default=None, metavar="FORMAT",
+                         help="input format when reading from STDIN or extensionless files: csv, parquet, jsonl, txt, tsv")
     parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
                          help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
                               "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
@@ -2178,6 +2320,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
                               "current result so far), quoted since it has internal commas, e.g. "
                               "\"frames='df1,df2,df3'\"")
+    parser.add_argument("-plot", "--plot", dest="plot", action=_OrderedStore, default=None, metavar="SPEC",
+                         help="render visualization using pytae Plotter; e.g. -plot \"kind=scatter, x=col1, y=col2\"")
+    parser.add_argument("-finalize", "--finalize", dest="finalize", default=None, metavar="SPEC",
+                         help="layout/legend options for -plot, e.g. -finalize \"consolidate_legends=True, style=True\"")
     parser.add_argument("-progress", "--progress", nargs="?", const=200_000, type=parse_positive_int,
                          default=None, metavar="N",
                          help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
@@ -2273,24 +2419,24 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
-                         args.value_counts, args.unique, args.head is not None,
-                         args.tail is not None, args.sample is not None, args.sort_by is not None,
+                         args.value_counts, args.unique, args.freq is not None, args.hist is not None,
+                         args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
                          args.agg is not None, args.handle_missing is not None,
-                         args.long is not None, args.wide is not None, args.crosstab is not None,
+                         args.long is not None, args.wide is not None, args.pivot is not None,
                          args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
-                         args.meta, args.diff is not None])
+                         args.meta, args.diff is not None, args.plot is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
-                     args.value_counts, args.unique, args.head is not None,
-                     args.tail is not None, args.sample is not None, args.sort_by is not None,
+                     args.value_counts, args.unique, args.freq is not None, args.hist is not None,
+                     args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
                      args.agg is not None, args.handle_missing is not None,
-                     args.long is not None, args.wide is not None, args.crosstab is not None,
-                     args.clean_columns is not None, args.merge, args.concat])
+                     args.long is not None, args.wide is not None, args.pivot is not None,
+                     args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg/-handle_missing/-long/-wide/-crosstab/-clean_columns/-merge/-concat; "
+                     "-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
     if args.by is not None and args.agg is None and not args.mutate:
         parser.error("-by requires -agg or -mutate")
@@ -2531,7 +2677,11 @@ def parse_rename(raw: str) -> dict[str, str]:
             raise SystemExit(f"invalid -rename mapping '{pair}'; use ':' (e.g. -rename 'old:new'). '=' is not supported.")
         else:
             raise SystemExit(f"invalid -rename mapping '{pair}'; expected old:new")
-        mapping[_unquote_name(old)] = _unquote_name(new)
+        old_clean = _unquote_name(old)
+        new_clean = _unquote_name(new)
+        if old_clean in mapping and mapping[old_clean] != new_clean:
+            raise SystemExit(f"invalid -rename: conflicting mappings for '{old_clean}': '{mapping[old_clean]}' and '{new_clean}'")
+        mapping[old_clean] = new_clean
     return mapping
 
 
@@ -2733,11 +2883,11 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
 
 
 _LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
-_WIDE_KEYS = ("c", "v", "a", "index", "by")
+_WIDE_KEYS = ("c", "v", "index", "by", "r", "rows", "cols", "values")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide as key=value tokens, e.g. c=metric,v=reading,a=mean.
+    """Parse -long/-wide/-pivot as key=value tokens, e.g. c=metric,v=reading,a=mean.
     Comma-separated lists like frames=a,b,c or on=id:id,code:code work with or without quotes."""
     raw = (raw or "").strip()
     if not raw:
@@ -2749,6 +2899,11 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             key, _, value = token.partition("=")
             key = key.strip()
             value = _unquote_name(value)
+            if flag == "-wide" and key in ("a", "agg", "aggfunc"):
+                raise SystemExit(
+                    "-wide: -wide is strictly for 1-to-1 reshaping without aggregation. "
+                    "Use -pivot for aggregations (e.g. -pivot 'r=...,c=...,v=...,a=...')."
+                )
             if key not in keys:
                 raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
             if not value:
@@ -2762,7 +2917,23 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
             kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
     for key, value in list(kwargs.items()):
-        kwargs[key] = parse_bool_text(value) if key in ("margins", "exact") else value
+        if key in ("margins", "exact", "dropna"):
+            kwargs[key] = parse_bool_text(value)
+        elif key in ("fill", "fill_value"):
+            if isinstance(value, str):
+                v_lower = value.strip().lower()
+                if v_lower in ("none", "null"):
+                    kwargs[key] = None
+                else:
+                    try:
+                        kwargs[key] = int(value)
+                    except ValueError:
+                        try:
+                            kwargs[key] = float(value)
+                        except ValueError:
+                            raise SystemExit(f"{flag}: {key}= must be a numeric value or 'none'")
+        else:
+            kwargs[key] = value
     return kwargs
 
 
@@ -2771,28 +2942,25 @@ def parse_long_arg(raw: str | None) -> dict:
 
 
 def parse_wide_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+    parsed = parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
+    if "cols" in parsed and "c" not in parsed:
+        parsed["c"] = parsed.pop("cols")
+    if "values" in parsed and "v" not in parsed:
+        parsed["v"] = parsed.pop("values")
+    return parsed
 
 
-_CROSSTAB_KEYS = ("index", "columns", "values", "aggfunc", "normalize", "margins", "margins_name")
-_CROSSTAB_NORMALIZE_VALUES = ("index", "columns", "all")
+_PIVOT_KEYS = (
+    "r", "c", "v", "a", "dropna", "fill_value", "fill",
+    "rows", "row", "index", "by",
+    "cols", "col", "columns",
+    "values", "value", "val", "vals",
+    "agg", "aggfunc",
+)
 
 
-def parse_crosstab_arg(raw: str | None) -> dict:
-    """Parse -crosstab as key=value tokens: index= (one or more comma-separated columns),
-    columns= (single column, required), optional values=+aggfunc= (must be given together),
-    normalize=index|columns|all, margins=true|false, margins_name= (requires margins=true).
-    """
-    kwargs = parse_reshape_kwargs(raw, keys=_CROSSTAB_KEYS, flag="-crosstab")
-    if "index" not in kwargs or "columns" not in kwargs:
-        raise SystemExit("-crosstab: expected index= and columns=")
-    if ("values" in kwargs) != ("aggfunc" in kwargs):
-        raise SystemExit("-crosstab: values= and aggfunc= must be given together")
-    if "normalize" in kwargs and kwargs["normalize"] not in _CROSSTAB_NORMALIZE_VALUES:
-        raise SystemExit(f"-crosstab: normalize= must be one of {', '.join(_CROSSTAB_NORMALIZE_VALUES)}")
-    if "margins_name" in kwargs and not kwargs.get("margins"):
-        raise SystemExit("-crosstab: margins_name= requires margins=true")
-    return kwargs
+def parse_pivot_arg(raw: str | None) -> dict:
+    return parse_reshape_kwargs(raw, keys=_PIVOT_KEYS, flag="-pivot")
 
 
 _REPLACE_KEYS = ("c", "v", "exact")
@@ -3028,6 +3196,42 @@ def parse_concat_arg(raw: str) -> dict:
         raise SystemExit("-concat: frames= needs at least two names")
     return {"frames": names}
 
+
+def parse_kv_spec(raw: str | None, *, flag: str) -> dict[str, Any]:
+    """Parse comma-separated key=value tokens into a kwargs dict, type-casting numbers and booleans."""
+    if not raw or not raw.strip():
+        return {}
+    kwargs: dict[str, Any] = {}
+    for token in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
+        token = token.strip()
+        if not token:
+            continue
+        if "=" not in token:
+            kwargs[token.strip()] = True
+            continue
+        key, _, raw_val = token.partition("=")
+        key = key.strip()
+        raw_val = raw_val.strip()
+        val: Any
+        if (raw_val.startswith("'") and raw_val.endswith("'")) or (raw_val.startswith('"') and raw_val.endswith('"')):
+            val = raw_val[1:-1]
+        elif raw_val.lower() == "true":
+            val = True
+        elif raw_val.lower() == "false":
+            val = False
+        elif raw_val.lower() in ("none", "null"):
+            val = None
+        else:
+            try:
+                val = int(raw_val)
+            except ValueError:
+                try:
+                    val = float(raw_val)
+                except ValueError:
+                    val = raw_val
+        kwargs[key] = val
+    return kwargs
+
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -3146,7 +3350,7 @@ class _Pipeline:
         return None
 
     def apply_mutate(
-        self, spec: str, by: list[str] | None = None, dropna: bool = True
+        self, spec: str, by: list[str] | None = None, dropna: bool = False
     ) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()
@@ -3406,15 +3610,16 @@ from pytae.cli_parsing import (
     parse_agg,
     parse_clean_columns_arg,
     parse_columns,
-    parse_crosstab_arg,
+    parse_kv_spec,
     parse_long_arg,
+    parse_pivot_arg,
     parse_sort_by,
     parse_wide_arg,
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
 from pytae.other_utilities import clean_columns, handle_missing, safe_reset_index
-from pytae.readers import _split_path_suffixes, get_reader, write_dataframe
+from pytae.readers import StdinReader, _split_path_suffixes, get_reader, write_dataframe
 
 
 def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
@@ -3438,6 +3643,83 @@ def _format_table(df: pd.DataFrame, *, index: bool | None = None, pretty: bool =
         return df.to_markdown(index=index)
     except ImportError:
         return df.to_string(index=index)
+
+
+def _compute_freq(source_df: pd.DataFrame, col: str | None, dropna: bool) -> pd.DataFrame:
+    if col is None:
+        if len(source_df.columns) == 1:
+            col = source_df.columns[0]
+        else:
+            raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
+    col = col.strip()
+    if col not in source_df.columns:
+        raise SystemExit(unknown_columns_message("-freq", [col], list(source_df.columns)))
+
+    counts = source_df[col].value_counts(dropna=dropna)
+    total = counts.sum()
+    max_cnt = counts.max() if not counts.empty else 1
+    bar_max_width = 20
+    data = []
+    for category, count in counts.items():
+        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        data.append({col: str(category), "Count": count, "Distribution": dist_str})
+    return pd.DataFrame(data)
+
+
+def _compute_hist(source_df: pd.DataFrame, hist_arg: str | None) -> pd.DataFrame:
+    raw = (hist_arg or "").strip()
+    bins = 10
+    col = None
+    if ":" in raw:
+        col_part, _, b_str = raw.partition(":")
+        col = col_part.strip()
+        try:
+            bins = int(b_str.strip())
+        except ValueError:
+            pass
+    elif "," in raw and "bins=" in raw:
+        col_part, _, b_part = raw.partition(",")
+        col = col_part.strip()
+        b_str = b_part.replace("bins=", "").strip()
+        try:
+            bins = int(b_str)
+        except ValueError:
+            pass
+    elif raw:
+        col = raw
+    else:
+        if len(source_df.columns) == 1:
+            col = source_df.columns[0]
+        else:
+            raise SystemExit("-hist: requires a column name (e.g. -hist mass or -hist mass:10)")
+
+    if col not in source_df.columns:
+        raise SystemExit(unknown_columns_message("-hist", [col], list(source_df.columns)))
+
+    s = pd.to_numeric(source_df[col], errors="coerce").dropna()
+    if s.empty:
+        return pd.DataFrame(columns=["Range", "Count", "Distribution"])
+
+    cut_series = pd.cut(s, bins=bins, include_lowest=True)
+    counts = cut_series.value_counts(sort=False)
+    total = len(s)
+    max_cnt = counts.max() if not counts.empty else 1
+    bar_max_width = 20
+    data = []
+    for interval, count in counts.items():
+        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        left_fmt = f"{interval.left:.2f}".rstrip("0").rstrip(".")
+        right_fmt = f"{interval.right:.2f}".rstrip("0").rstrip(".")
+        range_str = f"[{left_fmt}, {right_fmt}]"
+        data.append({"Range": range_str, "Count": count, "Distribution": dist_str})
+    return pd.DataFrame(data)
+
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -3524,8 +3806,8 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
             lines.append(f"Column names: {', '.join(cols[:15])}{'...' if len(cols) > 15 else ''}")
         except UnicodeError as exc:
             lines.append(f"Error reading encoding: {_encoding_error_message(path, encoding, exc)}")
-        except Exception:
-            pass
+        except Exception as exc:
+            lines.append(f"Error reading column info: {exc}")
     return "\n".join(lines)
 
 
@@ -3732,26 +4014,44 @@ def _process_path(
     merge_specs = merge_specs or []
     concat_specs = concat_specs or []
     if frames is None:
-        if path is None or not path.exists():
-            return _fail(parser, batch, f"file not found: {path}")
-
         chunk_size = getattr(args, "chunk_size", None) or 200_000
-        try:
-            reader = get_reader(path, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
-        except (ValueError,ImportError) as exc:
-            return _fail(parser, batch, str(exc))
+        if str(path) == "-":
+            data_bytes = sys.stdin.buffer.read()
+            try:
+                reader = StdinReader(
+                    data_bytes,
+                    fmt=getattr(args, "fmt", None),
+                    sep=args.dlim,
+                    encoding=args.encoding,
+                    chunk_size=chunk_size,
+                )
+            except (ValueError, ImportError) as exc:
+                return _fail(parser, batch, str(exc))
 
-        pipeline = _Pipeline(
-            reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
-        )
+            pipeline = _Pipeline(
+                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+            )
+        elif path is None or not path.exists():
+            return _fail(parser, batch, f"file not found: {path}")
+        else:
+            try:
+                reader = get_reader(path, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+            except (ValueError, ImportError) as exc:
+                return _fail(parser, batch, str(exc))
+
+            pipeline = _Pipeline(
+                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+            )
     else:
         pipeline = _Pipeline(frames=frames)
 
     out_target = str(args.output).strip() if args.output is not None else None
+    image_exts = (".png", ".svg", ".pdf", ".jpg", ".jpeg", ".webp", ".tif", ".tiff")
+    is_image_out = out_target is not None and any(out_target.lower().endswith(ext) for ext in image_exts)
     is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
-    is_file = out_target is not None and not is_clip
+    is_file = out_target is not None and not is_clip and not is_image_out
     clip_action = None
-    emit_stdout = not is_clip and not is_file
+    emit_stdout = not is_clip and not is_file and not is_image_out
 
     if show_all:
         df = _apply_round(pipeline.dataframe(), args.round_ndigits)
@@ -3820,7 +4120,7 @@ def _process_path(
                 df_cur = pipeline.dataframe()
                 if any(c not in df_cur.columns for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
-            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=args.dropna)
+            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False if args.dropna is None else args.dropna)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -3951,12 +4251,38 @@ def _process_path(
             source_df = pipeline.dataframe()
             value_count_cols = list(source_df.columns)
 
-            if len(value_count_cols) == 1:
-                col = value_count_cols[0]
-                result = source_df[col].value_counts(dropna=args.dropna).rename("count").reset_index()
-                result.columns = [col, "count"]
-            else:
-                result = source_df.value_counts(subset=value_count_cols, dropna=args.dropna).rename("count").reset_index()
+            if "count" in value_count_cols and "n" in value_count_cols:
+                return _fail(parser, batch, "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers")
+
+            try:
+                if len(value_count_cols) == 1:
+                    col = value_count_cols[0]
+                    count_name = "count" if col != "count" else "n"
+                    result = source_df[col].value_counts(dropna=False if args.dropna is None else args.dropna).rename(count_name).reset_index()
+                    result.columns = [col, count_name]
+                else:
+                    count_name = "count" if "count" not in value_count_cols else "n"
+                    result = source_df.value_counts(subset=value_count_cols, dropna=False if args.dropna is None else args.dropna).rename(count_name).reset_index()
+            except Exception as exc:
+                return _fail(parser, batch, str(exc))
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "freq":
+            freq_col = _next_op_val("freq", getattr(args, "freq", None))
+            source_df = pipeline.dataframe()
+            result = _compute_freq(source_df, freq_col, False if args.dropna is None else args.dropna)
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "hist":
+            hist_arg = _next_op_val("hist", getattr(args, "hist", None))
+            source_df = pipeline.dataframe()
+            result = _compute_hist(source_df, hist_arg)
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
@@ -4017,7 +4343,7 @@ def _process_path(
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                result = agg_df(df_cur, by_cols, agg_val, dropna=args.dropna)
+                result = agg_df(df_cur, by_cols, agg_val, dropna=False if args.dropna is None else args.dropna)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result
@@ -4067,9 +4393,8 @@ def _process_path(
             source_df = pipeline.dataframe()
             wide_val = _next_op_val("wide", args.wide)
             wide_kwargs = parse_wide_arg(wide_val)
-            wide_kwargs["dropna"] = args.dropna
             to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
-            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index")
+            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index") or wide_kwargs.get("r") or wide_kwargs.get("rows")
             if by_cols:
                 to_check.extend(parse_columns(by_cols) if isinstance(by_cols, str) else list(by_cols))
             missing = [c for c in to_check if c not in source_df.columns]
@@ -4084,33 +4409,69 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "crosstab":
+        elif op == "pivot":
+            from pytae.shape import pivot as pivot_fn
             source_df = pipeline.dataframe()
-            ct_val = _next_op_val("crosstab", args.crosstab)
-            ct = parse_crosstab_arg(ct_val)
-            index_cols = parse_columns(ct["index"])
-            needed = index_cols + [ct["columns"]] + ([ct["values"]] if "values" in ct else [])
-            missing = [c for c in needed if c not in source_df.columns]
+            pivot_val = _next_op_val("pivot", getattr(args, "pivot", None))
+            pivot_kwargs = parse_pivot_arg(pivot_val)
+            if "dropna" not in pivot_kwargs:
+                pivot_kwargs["dropna"] = False if args.dropna is None else args.dropna
+            to_check = []
+            for k in ("r", "rows", "index", "by", "c", "cols", "columns", "v", "values", "val", "vals"):
+                val = pivot_kwargs.get(k)
+                if val:
+                    to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))
+            missing = [col for col in to_check if col not in source_df.columns]
             if missing:
-                return _fail(parser, batch, unknown_columns_message("-crosstab", missing, list(source_df.columns)))
-            ct_kwargs = {"dropna": args.dropna}
-            if "margins" in ct:
-                ct_kwargs["margins"] = ct["margins"]
-            if "margins_name" in ct:
-                ct_kwargs["margins_name"] = ct["margins_name"]
-            if "normalize" in ct:
-                ct_kwargs["normalize"] = ct["normalize"]
-            if "values" in ct:
-                ct_kwargs["values"] = source_df[ct["values"]]
-                ct_kwargs["aggfunc"] = ct["aggfunc"]
-            result = pd.crosstab([source_df[c] for c in index_cols], source_df[ct["columns"]], **ct_kwargs)
-            # TODO: Deprecate -crosstab in next release in favor of -by ... -agg ... -wide ...
-            # which naturally produces clean, fully populated flat columns without specialized MultiIndex handling.
+                return _fail(parser, batch, unknown_columns_message("-pivot", missing, list(source_df.columns)))
+            try:
+                result = pivot_fn(source_df, **pivot_kwargs)
+            except Exception as exc:
+                return _fail(parser, batch, str(exc))
+            pipeline._df = result
             if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), index=True, pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
-            pipeline._df = safe_reset_index(result)
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "plot":
+            plot_spec = _next_op_val("plot", getattr(args, "plot", None))
+            plot_kwargs = parse_kv_spec(plot_spec, flag="-plot")
+            finalize_kwargs = parse_kv_spec(getattr(args, "finalize", None), flag="-finalize")
+
+            source_df = pipeline.dataframe()
+            import matplotlib
+
+            from pytae.plotting import Plotter
+            if is_image_out or not should_print(idx):
+                matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+
+            if isinstance(finalize_kwargs.get("style"), str):
+                try:
+                    plt.style.use(finalize_kwargs["style"])
+                except Exception as exc:
+                    return _fail(parser, batch, f"-finalize style: {exc}")
+
+            plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
+            init_kwargs = {k: v for k, v in plot_kwargs.items() if k in plotter_keys}
+            chart_kwargs = {k: v for k, v in plot_kwargs.items() if k not in plotter_keys}
+            if "dropna" not in chart_kwargs and getattr(args, "dropna", None) is not None:
+                chart_kwargs["dropna"] = args.dropna
+
+            p = Plotter(source_df, **init_kwargs)
+            p.plot(**chart_kwargs)
+            p.finalize(**finalize_kwargs)
+
+            if is_image_out:
+                assert out_target is not None
+                dest_path = Path(out_target)
+                if args.out_dir is not None:
+                    args.out_dir.mkdir(parents=True, exist_ok=True)
+                    dest_path = args.out_dir / dest_path.name
+                p.save(dest_path)
+                print(f"Saved plot to {dest_path}")
+            elif should_print(idx):
+                plt.show()
 
     if is_clip and clip_action is not None:
         clip_action()
@@ -4123,8 +4484,8 @@ def _process_path(
             "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
         )
         if fmt in valid_formats:
-            if path is None:
-                return _fail(parser, batch, f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
+            if path is None or str(path) == "-":
+                return _fail(parser, batch, f"-o {out_target}: when reading from STDIN or -file mode, an explicit output file path is required")
             ext = ".parquet" if fmt == "pq" else f".{fmt}"
             clean_name = path.name[:-3] if path.name.lower().endswith(".gz") else path.name
             dest_name = f"{Path(clean_name).stem}{ext}"
@@ -4150,8 +4511,6 @@ def _process_path(
             return _fail(parser, batch, str(exc))
 
     return False
-
-
 
 ################################################################################
 # FILE: src/pytae/mutate.py
@@ -4576,7 +4935,7 @@ def mutate(
     df: pd.DataFrame,
     *args: Any,
     by: str | Sequence[str] | None = None,
-    dropna: bool = True,
+    dropna: bool = False,
     observed: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
@@ -4599,8 +4958,8 @@ def mutate(
         pandas transform/window operations). When specified, aggregations (e.g. `mean(x)`,
         `sum(x)`, `n`) and window expressions (e.g. `x - mean(x)`) are evaluated per group
         and broadcast back to each row without collapsing the DataFrame.
-    dropna : bool, default True
-        Whether to drop NA groups when grouping with `by=`.
+    dropna : bool, default False
+        Whether to drop NA groups when grouping with `by=`. Defaults to False.
     observed : bool, default True
         Whether to observe categorical levels when grouping with `by=`.
     params : dict, optional
@@ -4630,9 +4989,9 @@ def mutate(
     >>> tips = pt.sample("tips")
     >>> tips.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n", by="day").head(3)
 
-    >>> # Handling missing groups: dropna=True (default) sets NaN; dropna=False computes on NA group
+    >>> # Handling missing groups: dropna=False (default) computes on NA group; dropna=True sets NaN
     >>> sample = pd.DataFrame({'grp': ['A', 'A', None, None], 'val': [10.0, 20.0, 30.0, 50.0]})
-    >>> sample.pt.mutate("avg = mean(val)", by="grp", dropna=False)
+    >>> sample.pt.mutate("avg = mean(val)", by="grp")
        grp   val   avg
     0    A  10.0  15.0
     1    A  20.0  15.0
@@ -4772,34 +5131,22 @@ pd.Series.to_clip = to_clip
 
 
 def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
-    """Reset index safely ensuring that any index name colliding with an existing column
-    causes the colliding column to be disambiguated, so headers remain unique and the
-    index levels retain their intended names."""
+    """Reset index, ensuring no index level name collides with existing columns."""
     if isinstance(df.index, pd.RangeIndex) and df.index.name is None:
         return df
     idx_names = list(df.index.names)
     col_names = [str(col) for col in df.columns]
-    colliding = set()
+    colliding = []
     used_names = set(col_names)
     for i, name in enumerate(idx_names):
         target_name = str(name) if name is not None else ("index" if len(idx_names) == 1 else f"level_{i}")
         if target_name in used_names:
-            colliding.add(target_name)
+            colliding.append(target_name)
     if colliding:
-        new_columns = []
-        for col in col_names:
-            if col in colliding:
-                cand_idx = 1
-                cand = f"{col}_{cand_idx}"
-                while cand in used_names or cand in [str(n) for n in idx_names]:
-                    cand_idx += 1
-                    cand = f"{col}_{cand_idx}"
-                used_names.add(cand)
-                new_columns.append(cand)
-            else:
-                new_columns.append(col)
-        df = df.copy(deep=False)
-        df.columns = new_columns
+        raise ValueError(
+            f"Resetting index failed: index level name(s) {colliding} collide with existing column name(s). "
+            "Rename the column or index before resetting."
+        )
     return df.reset_index()
 
 
@@ -5056,7 +5403,7 @@ _KIND_SPECS = {
         },
     },
     'pie': {
-        'strip': ['x', 'by', 'aggfunc', *_CONTROL_KWARGS],
+        'strip': ['x', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {},
     },
     'line': {
@@ -5357,12 +5704,13 @@ class Plotter:
         self.x = combined_kwargs.get('x', None)
         self.y = combined_kwargs.get('y', None)
         self.by = combined_kwargs.get('by', None)
-        self.column = combined_kwargs.get('column', None) or combined_kwargs.get('x', None)
+        col_arg = combined_kwargs.get('column', None)
+        self.column = col_arg if col_arg is not None else self.x
         self.kind = new_kind
 
         if self.kind == 'box':
-            self.y = self.y or self.column
-            self.x = self.x or self.by
+            self.y = self.y if self.y is not None else self.column
+            self.x = self.x if self.x is not None else self.by
 
         self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind in ['scatter', 'density', 'kde', 'hist', 'box'] else combined_kwargs.get('aggfunc', 'sum')
         self.dropna = combined_kwargs.get('dropna', False)
@@ -5426,7 +5774,11 @@ class Plotter:
     def _get_palette_colors(self, categories, palette=None, explicit_colors=None):
         """Map category names to colors from an explicit dict, list, or named matplotlib colormap/palette."""
         if isinstance(explicit_colors, dict):
-            return explicit_colors
+            color_map = {}
+            for k, v in explicit_colors.items():
+                color_map[k] = v
+                color_map[str(k)] = v
+            return color_map
         if isinstance(explicit_colors, str):
             return {cat: explicit_colors for cat in categories}
         if isinstance(explicit_colors, (list, tuple)):
@@ -5453,7 +5805,7 @@ class Plotter:
         self._store_plot_kwargs(ax, plot_dict)
         k = self.df.copy()
 
-        if self.by and self.by in k:
+        if self.by is not None and self.by in k:
             if isinstance(k[self.by].dtype, pd.CategoricalDtype):
                 present = set(k[self.by].dropna().unique())
                 groups = [g for g in k[self.by].cat.categories if g in present]
@@ -5657,10 +6009,10 @@ class Plotter:
             if key in self.last_kwargs:
                 imshow_kwargs[key] = self.last_kwargs[key]
 
-        if self.x and self.by and self.y:
+        if self.x is not None and self.by is not None and self.y is not None:
             matrix = self.get_pivot_data().set_index(self.x)
-        elif self.x and self.y:
-            matrix = self.df.pivot_table(index=self.x, columns=self.y, aggfunc='size', fill_value=0)
+        elif self.x is not None and self.y is not None:
+            matrix = self.df.pivot_table(index=self.x, columns=self.y, aggfunc='size', fill_value=0, dropna=self.dropna)
         else:
             matrix = self.df.select_dtypes(include='number')
 
@@ -5711,12 +6063,15 @@ class Plotter:
         """Plot a density or KDE chart."""
         plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
-        if self.by:
+        if self.by is not None:
             sub = self.df[[self.by, self.column]].copy()
-            sub["__row__"] = sub.groupby(self.by).cumcount()
+            if self.dropna:
+                sub = sub.dropna(subset=[self.by])
+            sub["__row__"] = sub.groupby(self.by, dropna=False).cumcount()
             k = sub.pivot(index="__row__", columns=self.by, values=self.column)
             k.index.name = None
             k.columns.name = None
+            k = k.loc[:, k.count() >= 2]
         else:
             k = self.df[[self.column]]
         palette = self.last_kwargs.get('palette')
@@ -5732,9 +6087,11 @@ class Plotter:
         """Plot a histogram."""
         plot_dict = self._prepare_plot_kwargs('hist')
         self._store_plot_kwargs(ax, plot_dict)
-        if self.by:
+        if self.by is not None:
             sub = self.df[[self.by, self.column]].copy()
-            sub["__row__"] = sub.groupby(self.by).cumcount()
+            if self.dropna:
+                sub = sub.dropna(subset=[self.by])
+            sub["__row__"] = sub.groupby(self.by, dropna=False).cumcount()
             k = sub.pivot(index="__row__", columns=self.by, values=self.column)
             k.index.name = None
             k.columns.name = None
@@ -5757,26 +6114,41 @@ class Plotter:
         Returns:
             pandas.DataFrame: Pivoted DataFrame ready for plotting.
         """
+        if self.by is not None and isinstance(self.by, int):
+            raise TypeError(f"Plotter: column name for 'by' must be a string, got integer {self.by!r}")
+
         if not self.aggregate:  # when aggregation is not required
-            if self.by:  # to convert to wide format without aggregate because pandas plot would expect wide data
+            if self.by is not None:  # to convert to wide format without aggregate because pandas plot would expect wide data
                 # Check for potential duplicates and raise error if found
                 unique_combos = self.df[[self.x, self.by]].drop_duplicates().shape[0]
                 if unique_combos < len(self.df):  # to ensure data is ready for wide formatting without agg
                     raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
-                pivot_table = self.df.pivot(index=self.x, columns=self.by, values=self.y).reset_index()
+                raw_piv = self.df.pivot(index=self.x, columns=self.by, values=self.y)
+                if self.x is not None and self.x in raw_piv.columns:
+                    raise ValueError(
+                        f"Plotter: category '{self.x}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
+                        "Rename the category or x-axis column to avoid ambiguous plot data."
+                    )
+                pivot_table = raw_piv.reset_index()
             else:
                 y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
                 cols = ([self.x] if self.x is not None else []) + [c for c in y_cols if c != self.x]
                 pivot_table = self.df[cols].copy()
         else:
-            pivot_table = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
-                                            aggfunc=self.aggfunc, dropna=self.dropna, observed=False).reset_index()
+            raw_piv = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
+                                          aggfunc=self.aggfunc, dropna=self.dropna, observed=False)
+            if self.x is not None and self.x in raw_piv.columns:
+                raise ValueError(
+                    f"Plotter: category '{self.x}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
+                    "Rename the category or x-axis column to avoid ambiguous plot data."
+                )
+            pivot_table = raw_piv.reset_index()
             if self.by is None and isinstance(self.y, (list, tuple)):
                 desired_order = ([self.x] if self.x is not None and self.x in pivot_table.columns else []) + [c for c in self.y if c in pivot_table.columns]
                 other_cols = [c for c in pivot_table.columns if c not in desired_order]
                 pivot_table = pivot_table[desired_order + other_cols]
 
-        if self.x and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
+        if self.x is not None and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
             if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]):
                 pivot_table[self.x] = pivot_table[self.x].astype('object')
         pivot_table.columns.name = None  # ensure col names are not corrupt with multi index names post pivot
@@ -5791,8 +6163,8 @@ class Plotter:
         if self.clip_data:
             try:
                 data.to_clipboard(index=False)
-            except Exception:
-                pass
+            except Exception as exc:
+                warnings.warn(f"Plotter: failed to copy data to clipboard: {exc}")
 
     def _collect_handles_and_legends(self):
         """
@@ -5832,7 +6204,7 @@ class Plotter:
 
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10, hide_secondary_y=False, 
                  legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False,
-                 style=True):
+                 style=True, title=None, xlabel=None, ylabel=None, tight_layout=True, **kwargs):
         """
         Finalize the plot with layout adjustments and legend settings.
         """
@@ -5841,7 +6213,26 @@ class Plotter:
         self.bbox_to_anchor = bbox_to_anchor
         self.ncols = ncols
         
-        if style:
+        if title is not None:
+            if len(self.fig.axes) == 1:
+                self.fig.axes[0].set_title(title)
+            else:
+                self.fig.suptitle(title)
+
+        if hasattr(self, 'ax') and self.ax is not None:
+            if xlabel is not None:
+                self.ax.set_xlabel(xlabel)
+            if ylabel is not None:
+                self.ax.set_ylabel(ylabel)
+
+        if isinstance(style, str):
+            try:
+                plt.style.use(style)
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"Plotter.finalize(): stylesheet '{style}' not recognized by matplotlib") from exc
+
+        style_bool = style if isinstance(style, bool) else True
+        if style_bool:
             self._hide_spines()
             self._adjust_ticks_and_spines()
             for ax in self.fig.axes:
@@ -5873,10 +6264,11 @@ class Plotter:
                     ax.spines['right'].set_visible(False)
         
         # Apply layout adjustments before drawing figure-level legend to avoid clipping
-        if self.consolidate_legends and self.bbox_to_anchor[1] < 0:
-            self.fig.tight_layout(rect=[0, 0.08, 1, 1])
-        else:
-            self.fig.tight_layout()
+        if tight_layout:
+            if self.consolidate_legends and self.bbox_to_anchor[1] < 0:
+                self.fig.tight_layout(rect=[0, 0.08, 1, 1])
+            else:
+                self.fig.tight_layout()
 
         if legend and self.consolidate_legends and handles:
             self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=legend_frameon)
@@ -6047,8 +6439,6 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
     elif not isinstance(plotter, Plotter):
         raise TypeError(f"Expected a Plotter instance, got {type(plotter).__name__}")
     return plotter.finalize(**kwargs)
-
-
 
 ################################################################################
 # FILE: src/pytae/qry.py
@@ -6355,15 +6745,19 @@ def qry(
                     except ValueError:
                         try:
                             lower = float(lower_str)
-                        except ValueError:
-                            lower = lower_str
+                        except ValueError as exc:
+                            raise ValueError(
+                                f"qry: interval lower bound for numeric column '{col}' must be a number, got {lower_str!r}"
+                            ) from exc
                     try:
                         upper = int(upper_str)
                     except ValueError:
                         try:
                             upper = float(upper_str)
-                        except ValueError:
-                            upper = upper_str
+                        except ValueError as exc:
+                            raise ValueError(
+                                f"qry: interval upper bound for numeric column '{col}' must be a number, got {upper_str!r}"
+                            ) from exc
                 else:
                     lower = lower_str
                     upper = upper_str
@@ -6401,7 +6795,10 @@ DTYPE_SAMPLE_ROWS rows.
 from __future__ import annotations
 
 import importlib.util
+import io
 import os
+import re
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -6876,6 +7273,77 @@ class JsonlReader:
         return df[columns] if columns else df
 
 
+class StdinReader:
+    """Reader for data piped via STDIN, buffered in memory."""
+
+    def __init__(
+        self,
+        data: bytes,
+        *,
+        fmt: str | None = None,
+        sep: str | None = None,
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+    ) -> None:
+        self.data = data
+        self.path = Path("<stdin>")
+        self.chunk_size = chunk_size
+        self.sep = sep
+        self.encoding = encoding
+        self.fmt = fmt
+        self._df = self._load()
+
+    def _load(self) -> pd.DataFrame:
+        if not self.data:
+            return pd.DataFrame()
+        fmt = (self.fmt or "").lower().strip()
+        if fmt in ("parquet", "pq") or (not fmt and self.data.startswith(b"PAR1")):
+            return pd.read_parquet(io.BytesIO(self.data))
+        if fmt in ("jsonl", "ndjson") or (not fmt and self.data.lstrip()[:1] in (b"{", b"[")):
+            return pd.read_json(io.BytesIO(self.data), orient="records", lines=True)
+        # Delimited text (CSV, TSV, etc.)
+        sep = self.sep
+        if sep is None:
+            first_line = self.data.split(b"\n", 1)[0]
+            if b"\t" in first_line and b"," not in first_line:
+                sep = "\t"
+            elif b"|" in first_line and b"," not in first_line:
+                sep = "|"
+            else:
+                sep = ","
+        compression = "gzip" if self.data.startswith(b"\x1f\x8b") else None
+        return pd.read_csv(io.BytesIO(self.data), sep=sep, encoding=self.encoding, compression=compression)
+
+    def shape(self) -> tuple[int, int]:
+        return self._df.shape
+
+    def columns(self) -> list[str]:
+        return list(self._df.columns)
+
+    def dtypes(self) -> pd.Series:
+        return self._df.dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        return self._df.head(n)
+
+    def tail(self, n: int) -> pd.DataFrame:
+        return self._df.tail(n)
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        out = self._df
+        if columns is not None:
+            out = out[columns]
+        if nrows is not None:
+            out = out.iloc[:nrows]
+        return out
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
@@ -7060,6 +7528,21 @@ def _write_jsonl(
     print()
 
 
+def _coerce_failing_parquet_column(df: pd.DataFrame, error_msg: str) -> str | None:
+    match = re.search(r"Conversion failed for column (.+?) with type object", error_msg)
+    if match:
+        bad_col = match.group(1).strip()
+        if bad_col in df.columns:
+            df[bad_col] = df[bad_col].map(lambda v: str(v) if pd.notna(v) else None)
+            warnings.warn(
+                f"Column '{bad_col}' contained mixed object types; coerced to string for Parquet serialization.",
+                UserWarning,
+                stacklevel=3,
+            )
+            return bad_col
+    return None
+
+
 def _write_parquet(
     df: pd.DataFrame,
     dest: Path,
@@ -7068,10 +7551,37 @@ def _write_parquet(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool = False,
 ) -> None:
+    df_to_write = df
+    max_retries = max(len(df.columns), 1)
+
     if not progress or len(df) == 0:
-        df.to_parquet(dest, index=index)
+        for _ in range(max_retries + 1):
+            try:
+                df_to_write.to_parquet(dest, index=index)
+                return
+            except Exception as e:
+                if df_to_write is df:
+                    df_to_write = df.copy()
+                if _coerce_failing_parquet_column(df_to_write, str(e)):
+                    continue
+                raise
         return
-    table = pa.Table.from_pandas(df, preserve_index=index)
+
+    table = None
+    for _ in range(max_retries + 1):
+        try:
+            table = pa.Table.from_pandas(df_to_write, preserve_index=index)
+            break
+        except Exception as e:
+            if df_to_write is df:
+                df_to_write = df.copy()
+            if _coerce_failing_parquet_column(df_to_write, str(e)):
+                continue
+            raise
+
+    if table is None:
+        table = pa.Table.from_pandas(df_to_write, preserve_index=index)
+
     total = table.num_rows
     done = 0
     with pa_parquet.ParquetWriter(dest, table.schema) as writer:
@@ -7414,6 +7924,7 @@ import difflib
 from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from pytae._text import tokenize as _tokenize
@@ -7485,6 +7996,11 @@ def long(
     melt_cols = _normalize_col_spec(cols, "cols")
     keep_ids = _normalize_col_spec(id_vars, "id_vars")
 
+    if melt_cols is not None and keep_ids is not None:
+        overlap = set(melt_cols).intersection(keep_ids)
+        if overlap:
+            raise ValueError(f"long(): column(s) {sorted(overlap)} cannot appear in both 'cols' and 'id_vars'")
+
     if melt_cols is not None:
         if keep_ids is None:
             keep_ids = [col for col in all_cols if col not in melt_cols]
@@ -7517,12 +8033,10 @@ def wide(
     df: pd.DataFrame,
     c: str = "variable",
     v: str = "value",
-    a: str | None = None,
-    dropna: bool = True,
     index: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """Pivot a long column into headers.
+    """Pivot a long column into headers (pure 1-to-1 reshape).
 
     Parameters:
     -----------
@@ -7532,30 +8046,48 @@ def wide(
         Column whose values become headers (columns).
     v : str, default 'value'
         Values column to populate table cells.
-    a : str, optional
-        Aggregation function if duplicate index/column pairs exist.
-        If set, uses `pivot_table` with this aggfunc; else uses `pivot`, falling back to `sum`.
-        'n' is accepted as an alias for pandas 'size' (group row count).
-    dropna : bool, default True
-        Whether to drop all-NA columns in pivot_table.
     index : str or sequence of str, optional
-        Explicit index column(s) to use. If omitted, all columns other than `c` and `v` are used.
+        Explicit index column(s) to use. Aliases: `r`, `rows`, `by`, `id_vars`.
+        If omitted, all columns other than `c` and `v` are used.
 
     Returns:
     --------
     pd.DataFrame
-        Pivoted wide DataFrame.
+        Pivoted wide DataFrame with standard RangeIndex.
     """
+    for bad_arg in ("a", "agg", "aggfunc", "dropna"):
+        if bad_arg in kwargs:
+            raise ValueError(
+                f"wide() does not support '{bad_arg}'. wide() is strictly for 1-to-1 reshaping "
+                "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
+            )
+
+    if "cols" in kwargs and c == "variable":
+        c = kwargs.pop("cols")
+    elif "col" in kwargs and c == "variable":
+        c = kwargs.pop("col")
+    elif "columns" in kwargs and c == "variable":
+        c = kwargs.pop("columns")
+
+    if "values" in kwargs and v == "value":
+        v = kwargs.pop("values")
+    elif "val" in kwargs and v == "value":
+        v = kwargs.pop("val")
+    elif "vals" in kwargs and v == "value":
+        v = kwargs.pop("vals")
+
     c = _unquote_name(c)
     if v is not None:
         v = _unquote_name(v)
+    if c == v:
+        raise ValueError(f"wide(): 'c' and 'v' cannot be the same column ('{c}')")
     if c not in df.columns:
         raise KeyError(f"wide(): columns 'c' column '{c}' not found in DataFrame")
     if v is not None and v not in df.columns:
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
     if index is None:
-        index = kwargs.pop("by", kwargs.pop("id_vars", None))
+        index = kwargs.pop("r", kwargs.pop("rows", kwargs.pop("by", kwargs.pop("id_vars", None))))
 
     if index is not None:
         if isinstance(index, str):
@@ -7565,28 +8097,230 @@ def wide(
         for col in index_cols:
             if col not in df.columns:
                 raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
+        if c in index_cols:
+            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in index columns")
+        if v is not None and v in index_cols:
+            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in index columns")
     else:
         index_cols = [col for col in df.columns if col not in [c, v]]
 
-    aggfunc = "size" if a == "n" else a
+    try:
+        pivoted = df.pivot(index=index_cols if index_cols else None, columns=c, values=v)
+    except ValueError as exc:
+        raise ValueError(
+            f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
+            "wide() is strictly for 1-to-1 reshaping without aggregation. "
+            "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
+        ) from exc
 
-    if aggfunc is None:
-        try:
-            pivoted = df.pivot(index=index_cols if index_cols else None, columns=c, values=v)
-            wide_df = _safe_reset_index(pivoted)
-        except ValueError:
-            pivoted = df.pivot_table(
-                index=index_cols if index_cols else None, columns=c, values=v, aggfunc="sum", dropna=dropna
-            )
-            wide_df = _safe_reset_index(pivoted)
-    else:
-        pivoted = df.pivot_table(
-            index=index_cols if index_cols else None, columns=c, values=v, aggfunc=aggfunc, dropna=dropna
-        )
-        wide_df = _safe_reset_index(pivoted)
-
+    wide_df = _safe_reset_index(pivoted)
     wide_df.columns.name = None
     return wide_df
+
+
+def pivot(
+    df: pd.DataFrame,
+    r: str | Sequence[str] | None = None,
+    c: str | Sequence[str] | None = None,
+    v: str | Sequence[str] | None = None,
+    a: str = "sum",
+    dropna: bool = False,
+    fill_value: Any = None,
+    **kwargs: Any,
+) -> pd.DataFrame:
+    """Summarize and aggregate a DataFrame across dimensions (Excel-style pivot table).
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame to pivot.
+    r : str or sequence of str, optional
+        Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+    c : str or sequence of str, optional
+        Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+    v : str or sequence of str
+        Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+    a : str, default 'sum'
+        Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
+        'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+    dropna : bool, default False
+        Whether to drop NA categories from grouping keys.
+    fill_value : any, optional
+        Value to replace missing grid intersections with (e.g. 0).
+
+    Returns:
+    --------
+    pd.DataFrame
+        Clean, flattened DataFrame with standard RangeIndex and 1D column names.
+    """
+    if r is None:
+        r = kwargs.pop("rows", kwargs.pop("row", kwargs.pop("index", kwargs.pop("by", None))))
+    if c is None:
+        c = kwargs.pop("cols", kwargs.pop("col", kwargs.pop("columns", None)))
+    if v is None:
+        v = kwargs.pop("values", kwargs.pop("value", kwargs.pop("val", kwargs.pop("vals", None))))
+    if a == "sum":
+        a = kwargs.pop("agg", kwargs.pop("aggfunc", a))
+    if fill_value is None:
+        fill_value = kwargs.pop("fill", None)
+
+    all_cols = list(df.columns)
+
+    def _normalize_cols(spec: str | Sequence[str] | None, param_name: str) -> list[str]:
+        if spec is None:
+            return []
+        if isinstance(spec, str):
+            cols = [_unquote_name(item.strip()) for item in _tokenize(spec, ",", keep_quotes=True, track_brackets=True) if item.strip()]
+        elif isinstance(spec, (list, tuple, set)):
+            cols = [_unquote_name(item) if isinstance(item, str) else item for item in spec]
+        else:
+            raise TypeError(f"pivot(): {param_name} must be a column name or sequence of names, got {type(spec).__name__}")
+        for col in cols:
+            if col not in df.columns:
+                close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"pivot(): {param_name} column '{col}' not found in DataFrame{hint}")
+        return cols
+
+    aggfunc = "size" if a == "n" else a
+    if aggfunc == "size" and fill_value is None:
+        fill_value = 0
+
+    r_cols = _normalize_cols(r, "r (rows)")
+    c_cols = _normalize_cols(c, "c (cols)")
+    v_cols = _normalize_cols(v, "v (values)")
+    if not v_cols and aggfunc != "size":
+        raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
+
+    overlap = [col for col in v_cols if (r_cols and col in r_cols) or (c_cols and col in c_cols)]
+    if overlap:
+        if aggfunc == "size":
+            raise ValueError(
+                f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
+                "For row counts (a='n'), omit 'v' or specify a non-grouping column."
+            )
+        else:
+            raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
+
+    observed = kwargs.get("observed", True)
+
+    def _format_part(part: Any) -> str:
+        if part is None or (isinstance(part, float) and np.isnan(part)) or pd.isna(part):
+            return "nan"
+        if isinstance(part, (float, np.floating)) and float(part).is_integer():
+            return str(int(part))
+        return str(part)
+
+    def _flatten_cols(piv: pd.DataFrame) -> None:
+        raw_names: list[str] = []
+        if isinstance(piv.columns, pd.MultiIndex):
+            for col in piv.columns:
+                formatted_parts = [_format_part(part) for part in col if part is not None and str(part) != ""]
+                raw_names.append("_".join(formatted_parts))
+        else:
+            raw_names = [_format_part(col) for col in piv.columns]
+
+        duplicates = []
+        seen = set()
+        for name in raw_names:
+            if name in seen and name not in duplicates:
+                duplicates.append(name)
+            seen.add(name)
+        if duplicates:
+            raise ValueError(
+                f"pivot(): resulting column header(s) {duplicates} contain duplicate names. "
+                "Ensure pivoted column keys have distinct string representations."
+            )
+        piv.columns = raw_names
+
+    def _cast_size_ints(df_out: pd.DataFrame) -> pd.DataFrame:
+        if aggfunc == "size":
+            val_cols = [col for col in df_out.columns if not (r_cols and col in r_cols)]
+            for col in val_cols:
+                try:
+                    if df_out[col].isna().any():
+                        df_out[col] = df_out[col].astype("Int64")
+                    else:
+                        df_out[col] = df_out[col].astype("int64")
+                except (TypeError, ValueError):
+                    pass
+        return df_out
+
+    if r_cols and c_cols:
+        group_keys = list(r_cols) + list(c_cols)
+        if aggfunc == "size":
+            s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
+            pivoted = s.unstack(list(c_cols), fill_value=fill_value if fill_value is not None else 0)
+        else:
+            if len(v_cols) == 1:
+                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
+                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
+            else:
+                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
+                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
+        _flatten_cols(pivoted)
+        res = _safe_reset_index(pivoted)
+        res.columns.name = None
+        return _cast_size_ints(res)
+    elif r_cols:
+        if aggfunc == "size":
+            target_name = v_cols[0] if v_cols else "n"
+            if target_name in r_cols:
+                raise ValueError(
+                    f"pivot(): count column name '{target_name}' collides with row grouping column. "
+                    "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                )
+            s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
+            res = s.to_frame(name=target_name).reset_index()
+            res.columns.name = None
+            return _cast_size_ints(res)
+        else:
+            val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
+            g = df.groupby(r_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
+            pivoted = g if isinstance(g, pd.DataFrame) else g.to_frame()
+            if fill_value is not None:
+                pivoted = pivoted.fillna(fill_value)
+            _flatten_cols(pivoted)
+            res = _safe_reset_index(pivoted)
+            res.columns.name = None
+            return res
+    elif c_cols:
+        if aggfunc == "size":
+            s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
+            pivoted = s.to_frame().T.reset_index(drop=True)
+            _flatten_cols(pivoted)
+            pivoted.columns.name = None
+            return _cast_size_ints(pivoted)
+        else:
+            if len(v_cols) == 1:
+                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
+                pivoted = g.to_frame().T.reset_index(drop=True)
+                if fill_value is not None:
+                    pivoted = pivoted.fillna(fill_value)
+                _flatten_cols(pivoted)
+                pivoted.columns.name = None
+                return pivoted
+            else:
+                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
+                pivoted = g.T
+                if fill_value is not None:
+                    pivoted = pivoted.fillna(fill_value)
+                _flatten_cols(pivoted)
+                pivoted.index.name = "metric"
+                res = _safe_reset_index(pivoted)
+                res.columns.name = None
+                return res
+    else:
+        if aggfunc == "size":
+            target_cols = v_cols if v_cols else ["n"]
+            res = pd.DataFrame({col: [len(df)] for col in target_cols}, dtype="int64")
+        else:
+            res = df[v_cols].agg(aggfunc).to_frame().T.reset_index(drop=True)
+        if fill_value is not None:
+            res = res.fillna(fill_value)
+        _flatten_cols(res)
+        res.columns.name = None
+        return _cast_size_ints(res)
 
 ################################################################################
 # FILE: src/pytae/sql.py
@@ -7715,7 +8449,6 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
             raise ValueError(f"sql: {exc}") from exc
     finally:
         con.close()
-
 
 ================================================================================
 11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
@@ -7886,10 +8619,11 @@ def test_all_agg():
     })
     df["id"] = df["id"].replace("", np.nan)
 
+    # Default dropna=False keeps NA groups
     result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"])
 
     expected_df = (
-        df.groupby(["id", "country"])
+        df.groupby(["id", "country"], dropna=False)
         .agg(
             n=("id", "size"),
             balance_sum=("balance", "sum"),
@@ -7911,10 +8645,10 @@ def test_all_agg_drop_na():
     })
     df["id"] = df["id"].replace("", np.nan)
 
-    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"], dropna=False)
+    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"], dropna=True)
 
     expected_df = (
-        df.groupby(["id", "country"], dropna=False)
+        df.groupby(["id", "country"], dropna=True)
         .agg(
             n=("id", "size"),
             balance_sum=("balance", "sum"),
@@ -8101,7 +8835,6 @@ def test_agg_df_group_by_n_with_count_n_raises():
 if __name__ == "__main__":
     pytest.main()
 
-
 ################################################################################
 # FILE: tests/test_cli_agg.py
 ################################################################################
@@ -8140,7 +8873,7 @@ def test_order_agg_then_shape_uses_aggregated_frame(tmp_path, capsys):
     assert "(1, 2)" in out
 
 
-def test_order_agg_dropna_false_keeps_na_group(tmp_path, capsys):
+def test_order_agg_dropna_default_and_flags(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", None],
@@ -8149,12 +8882,17 @@ def test_order_agg_dropna_false_keeps_na_group(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-dropna", "false", "-shape"])
-
+    # Default is dropna=false: keeps the NA grouping key, so both groups remain (2 rows).
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    # dropna=false keeps the NA grouping key, so both groups remain.
     assert "(2, 2)" in out
+
+    # Explicit -dropna true drops the NA grouping key (1 row).
+    exit_code_drop = cli.main([path, "-by", "grp", "-agg", "sum", "-dropna", "true", "-shape"])
+    out_drop = capsys.readouterr().out
+    assert exit_code_drop == 0
+    assert "(1, 2)" in out_drop
 
 
 def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
@@ -8302,7 +9040,6 @@ def test_agg_mapping_named_a_does_not_collide_with_kwargs(tmp_path, capsys):
     assert exit_code == 0
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["grp", "a"]
-
 
 ################################################################################
 # FILE: tests/test_cli_clean.py
@@ -8527,6 +9264,168 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
 
+################################################################################
+# FILE: tests/test_cli_enhancements.py
+################################################################################
+import io
+import sys
+
+import pandas as pd
+import pytest
+
+from pytae import cli
+from pytae.readers import write_dataframe
+from tests.cli_helpers import _write_csv
+
+
+def test_parquet_mixed_object_coercion(tmp_path):
+    df = pd.DataFrame({"Profit_Centre": [100.5, 200.0, "0828"], "val": [1, 2, 3]})
+    dest = tmp_path / "mixed.parquet"
+    with pytest.warns(UserWarning, match="contained mixed object types; coerced to string"):
+        write_dataframe(df, dest)
+    res = pd.read_parquet(dest)
+    assert list(res["Profit_Centre"]) == ["100.5", "200.0", "0828"]
+    assert res["val"].tolist() == [1, 2, 3]
+
+
+class MockStdin:
+    def __init__(self, raw_bytes: bytes) -> None:
+        self.buffer = io.BytesIO(raw_bytes)
+
+
+def test_stdin_csv_head_and_shape(monkeypatch, capsys):
+    csv_bytes = b"a,b\n1,x\n2,y\n3,z\n"
+    monkeypatch.setattr(sys, "stdin", MockStdin(csv_bytes))
+
+    exit_code = cli.main(["-", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+
+    monkeypatch.setattr(sys, "stdin", MockStdin(csv_bytes))
+    exit_code = cli.main(["-", "-head", "2"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "1" in out and "2" in out and "3" not in out
+
+
+def test_stdin_parquet_streaming(monkeypatch, capsys):
+    df = pd.DataFrame({"col_x": [10, 20], "col_y": ["alpha", "beta"]})
+    buf = io.BytesIO()
+    df.to_parquet(buf, index=False)
+    parquet_bytes = buf.getvalue()
+
+    monkeypatch.setattr(sys, "stdin", MockStdin(parquet_bytes))
+    exit_code = cli.main(["-", "-cols"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "col_x" in out and "col_y" in out
+
+
+def test_stdin_with_sql_and_export(tmp_path, monkeypatch, capsys):
+    csv_bytes = b"id,val\n1,10\n2,20\n3,30\n"
+    monkeypatch.setattr(sys, "stdin", MockStdin(csv_bytes))
+    dest = tmp_path / "filtered.csv"
+
+    exit_code = cli.main(["-", "-sql", "select * from data where id > 1", "-o", str(dest)])
+    assert exit_code == 0
+    read_back = pd.read_csv(dest)
+    assert len(read_back) == 2
+    assert read_back["id"].tolist() == [2, 3]
+
+
+def test_stdin_jsonl_streaming(monkeypatch, capsys):
+    jsonl_bytes = b'{"name": "alice", "score": 95}\n{"name": "bob", "score": 88}\n'
+    monkeypatch.setattr(sys, "stdin", MockStdin(jsonl_bytes))
+
+    exit_code = cli.main(["-", "-fmt", "jsonl", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 2)"
+
+
+def test_freq_categorical_bars(tmp_path, capsys):
+    df = pd.DataFrame({"category": ["apple", "apple", "apple", "banana", "banana", "cherry"]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-freq", "category"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "category" in out and "Count" in out and "Distribution" in out
+    assert "apple" in out and "3" in out and "(50.0%)" in out
+    assert "banana" in out and "2" in out and "(33.3%)" in out
+    assert "cherry" in out and "1" in out and "(16.7%)" in out
+    assert "█" in out
+
+
+def test_freq_dropna_default_and_flags(tmp_path, capsys):
+    df = pd.DataFrame({"category": ["apple", None, "apple"]})
+    path = _write_csv(tmp_path, df)
+
+    # Default is dropna=false: retains NA category
+    exit_code = cli.main([path, "-freq", "category"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "apple" in out
+    assert "NaN" in out or "<NA>" in out or "None" in out or "nan" in out
+
+    # Explicit -dropna true: drops NA category
+    exit_code_drop = cli.main([path, "-freq", "category", "-dropna", "true"])
+    assert exit_code_drop == 0
+    out_drop = capsys.readouterr().out
+    assert "apple" in out_drop
+    assert "NaN" not in out_drop and "<NA>" not in out_drop and "None" not in out_drop
+
+
+def test_hist_numeric_distribution(tmp_path, capsys):
+    df = pd.DataFrame({"score": [10, 12, 14, 50, 52, 90]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-hist", "score:3"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Range" in out and "Count" in out and "Distribution" in out
+    assert "█" in out
+
+
+def test_cli_plot_save_png(tmp_path, capsys):
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    path = _write_csv(tmp_path, df)
+    out_img = tmp_path / "chart.png"
+
+    exit_code = cli.main([path, "-plot", "kind=scatter, x=x, y=y", "-o", str(out_img)])
+    assert exit_code == 0
+    assert out_img.exists()
+    assert out_img.stat().st_size > 0
+    assert f"Saved plot to {out_img}" in capsys.readouterr().out
+
+
+def test_cli_plot_with_finalize(tmp_path, capsys):
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    path = _write_csv(tmp_path, df)
+    out_svg = tmp_path / "chart.svg"
+
+    exit_code = cli.main([path, "-plot", "kind=line, x=x, y=y", "-finalize", "style=True", "-o", str(out_svg)])
+    assert exit_code == 0
+    assert out_svg.exists()
+    assert out_svg.stat().st_size > 0
+
+
+def test_library_plot_save_kwarg(tmp_path):
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    out_file = tmp_path / "lib_plot.png"
+    plotter = df.pt.plot(kind="scatter", x="x", y="y", save=str(out_file))
+    assert plotter is not None
+    assert out_file.exists()
+    assert out_file.stat().st_size > 0
+
+
+def test_cli_plot_forwards_dropna(tmp_path):
+    df = pd.DataFrame({"cat": ["A", "B", None], "val": [10, 20, 30]})
+    path = _write_csv(tmp_path, df)
+    out_png = tmp_path / "chart.png"
+
+    exit_code = cli.main([path, "-plot", "kind=bar, x=cat, y=val", "-dropna", "true", "-o", str(out_png)])
+    assert exit_code == 0
+    assert out_png.exists()
 
 ################################################################################
 # FILE: tests/test_cli_filter.py
@@ -8682,7 +9581,6 @@ def test_qry_cli_bracket_interval(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 1)"
 
-
 ################################################################################
 # FILE: tests/test_cli_inspect.py
 ################################################################################
@@ -8828,7 +9726,7 @@ def test_cli_wide_short_aliases(tmp_path, capsys):
     df = pd.DataFrame({"id": ["a", "b"], "country": ["sg", "cn"], "balance": [10, 20]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c=country,v=balance,a=mean", "-cols"])
+    exit_code = cli.main([path, "-wide", "c=country,v=balance", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
@@ -8866,7 +9764,7 @@ def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
     # value_counts result has two columns: key + count.
     assert "(2, 2)" in out
 
-def test_value_counts_dropna_false_keeps_na_key(tmp_path, capsys):
+def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", None, "x"],
@@ -8874,12 +9772,17 @@ def test_value_counts_dropna_false_keeps_na_key(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-dropna", "false", "-shape"])
-
+    # Default is dropna=false: includes NA as its own key, yielding x + NA (2 rows).
+    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    # dropna=false includes NA as its own key, yielding x + NA.
     assert "(2, 2)" in out
+
+    # Explicit -dropna true drops the NA key (1 row).
+    exit_code_drop = cli.main([path, "-select", "grp", "-value_counts", "-dropna", "true", "-shape"])
+    out_drop = capsys.readouterr().out
+    assert exit_code_drop == 0
+    assert "(1, 2)" in out_drop
 
 def test_value_counts_uses_selected_multiple_columns(tmp_path, capsys):
     df = pd.DataFrame(
@@ -8913,6 +9816,16 @@ def test_value_counts_without_argument_uses_selected_columns(tmp_path, capsys):
     assert exit_code == 0
     # -select narrows working columns, so no-arg -value_counts uses those two.
     assert "(3, 3)" in out
+
+
+def test_value_counts_collision_fails_cleanly(tmp_path, capsys):
+    df = pd.DataFrame({"count": [1, 2], "n": [3, 4]})
+    path = _write_csv(tmp_path, df)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-value_counts"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "columns contain both 'count' and 'n'" in err
 
 def test_order_sort_by_then_shape_uses_sorted_frame(tmp_path, capsys):
     df = pd.DataFrame(
@@ -9256,7 +10169,7 @@ def test_cli_invalid_progress_chunk_size_errors(tmp_path):
     assert exc_info.value.code == 2
 
 
-def test_describe_and_crosstab_export_preserves_index(tmp_path):
+def test_describe_export_preserves_index(tmp_path):
     src = tmp_path / "data.parquet"
     df = pd.DataFrame({"sp": ["A", "B", "A"], "val": [10, 20, 30]})
     df.to_parquet(src, index=False)
@@ -9270,11 +10183,6 @@ def test_describe_and_crosstab_export_preserves_index(tmp_path):
     assert cli.main([str(src), "-describe", "-o", str(desc_pq)]) == 0
     read_desc_pq = pd.read_parquet(desc_pq)
     assert list(read_desc_pq.index) == ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
-
-    ct_csv = tmp_path / "ct.csv"
-    assert cli.main([str(src), "-crosstab", "index=sp,columns=sp", "-o", str(ct_csv)]) == 0
-    read_ct_csv = pd.read_csv(ct_csv, index_col=0)
-    assert list(read_ct_csv.index) == ["A", "B"]
 
     reg_csv = tmp_path / "reg.csv"
     assert cli.main([str(src), "-head", "2", "-o", str(reg_csv)]) == 0
@@ -9609,13 +10517,6 @@ def test_cli_expand_paths_literal_bracket_file(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 2)"
 
-
-
-
-
-
-
-
 ################################################################################
 # FILE: tests/test_cli_merge.py
 ################################################################################
@@ -9914,9 +10815,6 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 4)"
 
-
-
-
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
@@ -10080,7 +10978,6 @@ def test_mutate_by_unknown_column_cli(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "-by: unknown column" in err
 
-
 ################################################################################
 # FILE: tests/test_cli_parse.py
 ################################################################################
@@ -10119,6 +11016,15 @@ def test_expand_paths_single_and_list(tmp_path):
     assert "no files matched pattern" in str(exc_info.value)
 
 
+def test_parse_rename_conflicting_mappings():
+    import pytest
+
+    from pytae.cli_parsing import parse_rename
+
+    assert parse_rename("old:new, other:target") == {"old": "new", "other": "target"}
+    with pytest.raises(SystemExit) as exc_info:
+        parse_rename("col:new1, col:new2")
+    assert "conflicting mappings for 'col'" in str(exc_info.value)
 
 ################################################################################
 # FILE: tests/test_cli_reshape.py
@@ -10132,68 +11038,8 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from pytae import cli
-from tests.cli_helpers import _penguins_frame, _write_csv
+from tests.cli_helpers import _write_csv
 
-
-def test_crosstab_counts(tmp_path, capsys):
-    path = _write_csv(tmp_path, _penguins_frame())
-
-    exit_code = cli.main([path, "-crosstab", "index=species,columns=island"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    lines = out.strip().splitlines()
-    assert lines[0].split() == ["island", "Biscoe", "Dream"]
-    assert lines[2].split() == ["Adelie", "1", "2"]
-
-def test_crosstab_margins_adds_totals(tmp_path, capsys):
-    path = _write_csv(tmp_path, _penguins_frame())
-
-    cli.main([path, "-crosstab", "index=species,columns=island,margins=true"])
-
-    out = capsys.readouterr().out
-    assert "All" in out.strip().splitlines()[0]
-
-def test_crosstab_margins_name_renames_totals(tmp_path, capsys):
-    path = _write_csv(tmp_path, _penguins_frame())
-
-    cli.main([path, "-crosstab", "index=species,columns=island,margins=true,margins_name=Total"])
-
-    out = capsys.readouterr().out
-    assert "Total" in out.strip().splitlines()[0]
-    assert "All" not in out
-
-def test_crosstab_margins_name_requires_margins(tmp_path):
-    path = _write_csv(tmp_path, _penguins_frame())
-
-    with pytest.raises(SystemExit, match="margins_name= requires margins=true"):
-        cli.main([path, "-crosstab", "index=species,columns=island,margins_name=Total"])
-
-def test_crosstab_values_and_aggfunc(tmp_path, capsys):
-    path = _write_csv(tmp_path, _penguins_frame())
-
-    exit_code = cli.main([
-        path, "-crosstab",
-        "index=species,columns=sex,values=body_mass_g,aggfunc=mean",
-        "-round", "1",
-    ])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "3875.0" in out
-
-def test_crosstab_values_requires_aggfunc(tmp_path):
-    path = _write_csv(tmp_path, _penguins_frame())
-
-    with pytest.raises(SystemExit, match="values= and aggfunc= must be given together"):
-        cli.main([path, "-crosstab", "index=species,columns=sex,values=body_mass_g"])
-
-def test_crosstab_unknown_column_errors(tmp_path):
-    path = _write_csv(tmp_path, _penguins_frame())
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-crosstab", "index=species,columns=nope"])
-    assert exc_info.value.code == 2
 
 def test_long_melts_numeric_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a", "b"], "n": [1, 2], "x": [10, 20]})
@@ -10255,7 +11101,21 @@ def test_wide_quoted_names_with_spaces(tmp_path, capsys):
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["id", "cn", "sg"]
 
-def test_wide_aggfunc_mean(tmp_path, capsys):
+def test_wide_rejects_a_arg(tmp_path):
+    df = pd.DataFrame(
+        {
+            "id": ["a", "b"],
+            "country": ["sg", "cn"],
+            "balance": [10, 20],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    with pytest.raises(SystemExit, match=r"-wide: -wide is strictly for 1-to-1 reshaping without aggregation"):
+        cli.main([path, "-wide", "c=country,v=balance,a=mean"])
+
+
+def test_wide_duplicate_keys_fail_cleanly(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "id": ["a", "a"],
@@ -10265,11 +11125,12 @@ def test_wide_aggfunc_mean(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c=country,v=balance,a=mean", "-head", "1"])
-
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-wide", "c=country,v=balance"])
+    assert exc_info.value.code == 2
     captured = capsys.readouterr()
-    assert exit_code == 0, captured.err
-    assert "15" in captured.out
+    assert "duplicate entries" in captured.err.lower()
+    assert "-pivot" in captured.err
 
 def test_wide_unknown_column_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"id": ["a"], "balance": [1]}))
@@ -10287,28 +11148,6 @@ def test_wide_rejects_dropna_kwarg(tmp_path):
         cli.main([path, "-wide", "dropna=false"])
 
 
-def test_crosstab_sort_and_export_preserves_row_key(tmp_path):
-    # CLI Issue 5: -crosstab row index preserved across sort and file export
-    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
-    p = _write_csv(tmp_path, df)
-    out_csv = tmp_path / "out.csv"
-    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-sort_by", "Biscoe", "-o", str(out_csv)])
-    assert exit_code == 0
-    res = pd.read_csv(out_csv)
-    assert "species" in res.columns
-
-
-def test_crosstab_jsonl_export_preserves_row_index(tmp_path):
-    # CLI Issue 6: -crosstab -o ct.jsonl preserves row index
-    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
-    p = _write_csv(tmp_path, df)
-    out_jsonl = tmp_path / "ct.jsonl"
-    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-o", str(out_jsonl)])
-    assert exit_code == 0
-    res = pd.read_json(out_jsonl, lines=True)
-    assert "species" in res.columns
-
-
 def test_long_unknown_column_validation(tmp_path):
     # CLI Issue 11: -long validates columns
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
@@ -10318,73 +11157,12 @@ def test_long_unknown_column_validation(tmp_path):
     assert exc_info.value.code == 2
 
 
-def test_crosstab_collision_sort_and_jsonl_export(tmp_path):
-    # CLI Issue 1 (Review 2ec5bbba): index name colliding with category or margins column
-    df = pd.DataFrame({"question": ["question", "other", "question"], "answer": ["question", "yes", "no"]})
-    p = _write_csv(tmp_path, df)
-    exit_code = cli.main([p, "-crosstab", "index=question,columns=answer", "-sort_by", "yes"])
-    assert exit_code == 0
-
-    df2 = pd.DataFrame({"species": ["A", "B"], "island": ["X", "Y"]})
-    p2 = _write_csv(tmp_path, df2)
-    out_jsonl = tmp_path / "ct.jsonl"
-    exit_code2 = cli.main([p2, "-crosstab", "index=species,columns=island,margins=true,margins_name=species", "-o", str(out_jsonl)])
-    assert exit_code2 == 0
-    res = pd.read_json(out_jsonl, lines=True)
-    assert "species" in res.columns
-    assert "species_1" in res.columns
-
-
-def test_crosstab_round_clip(tmp_path, monkeypatch):
-    # CLI Issue 2 (Review 2ec5bbba): -crosstab -round -o clip copies rounded values
-    df = pd.DataFrame({"species": ["A", "A"], "sex": ["M", "M"], "body_mass_g": [1.26, 1.26]})
-    p = _write_csv(tmp_path, df)
-    copied = []
-    monkeypatch.setattr(pd.DataFrame, "to_clipboard", lambda self, *a, **kw: copied.append((self.copy(), kw)))
-    exit_code = cli.main([p, "-crosstab", "index=species,columns=sex,values=body_mass_g,aggfunc=mean", "-round", "1", "-o", "clip"])
-    assert exit_code == 0
-    assert len(copied) == 1
-    clip_df, clip_kwargs = copied[0]
-    assert clip_df.iloc[0, 0] == 1.3
-    assert clip_kwargs.get("index") is True
-
-
-def test_crosstab_follow_on_ops_on_row_index(tmp_path, capsys):
-    # CLI Issue 3 (Review 2ec5bbba): -sort_by, -qry, and -select can reference crosstab row key
+def test_crosstab_unrecognized_argument(tmp_path):
     df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
     p = _write_csv(tmp_path, df)
-    exit_sort = cli.main([p, "-crosstab", "index=species,columns=island", "-sort_by", "species"])
-    assert exit_sort == 0
-    out_sort = capsys.readouterr().out
-    assert "species" in out_sort
-
-    exit_qry = cli.main([p, "-crosstab", "index=species,columns=island", "-qry", "species = 'Adelie'"])
-    assert exit_qry == 0
-    out_qry = capsys.readouterr().out
-    assert "Adelie" in out_qry
-    assert "Gentoo" not in out_qry
-
-    exit_sel = cli.main([p, "-crosstab", "index=species,columns=island", "-select", "species,Biscoe"])
-    assert exit_sel == 0
-    out_sel = capsys.readouterr().out
-    assert "species" in out_sel
-
-
-def test_crosstab_head_clip_includes_row_key(tmp_path, monkeypatch):
-    # CLI Issue 4 (Review 2ec5bbba): -head -o clip after crosstab preserves row key
-    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Biscoe", "Dream"]})
-    p = _write_csv(tmp_path, df)
-    copied = []
-    monkeypatch.setattr(pd.DataFrame, "to_clipboard", lambda self, *a, **kw: copied.append((self.copy(), kw)))
-    exit_code = cli.main([p, "-crosstab", "index=species,columns=island", "-head", "1", "-o", "clip"])
-    assert exit_code == 0
-    assert len(copied) == 1
-    clip_df, _ = copied[0]
-    assert "species" in clip_df.columns or clip_df.index.name == "species"
-
-
-
-
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([p, "-crosstab", "index=species,columns=island"])
+    assert exc_info.value.code == 2
 
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
@@ -10424,12 +11202,12 @@ def sample_dataset_dir(tmp_path_factory):
 # Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
     ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
-    ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
+    ("penguins.parquet", ["-pivot", "r=species,c=island,v=sex,a=n"]),
     ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
-    ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),
+    ("titanic.parquet", ["-freq", "survived"]),
     ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
     ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
-    ("flights.parquet", ["-by", "year", "-agg", "passengers = sum"]),
+    ("flights.parquet", ["-wide", "c=month,v=passengers,r=year", "-head", "5"]),
 ]
 
 
@@ -10439,66 +11217,31 @@ def test_docs_sample_dataset_examples_run_cleanly(sample_dataset_dir, filename, 
     assert exit_code == 0, capsys.readouterr().err
 
 
-def test_crosstab_counts_match_known_penguins_distribution(sample_parquet, capsys):
+def test_pivot_a_n_counts_on_real_penguins(sample_parquet, capsys):
     path = sample_parquet("penguins")
 
-    exit_code = cli.main([path, "-crosstab", "index=species,columns=island"])
-
-    out = capsys.readouterr().out
+    exit_code = cli.main([path, "-pivot", "r=species,c=island,v=sex,a=n"])
     assert exit_code == 0
-    lines = {line.split()[0]: line.split()[1:] for line in out.strip().splitlines()[2:]}
-    assert lines["Adelie"] == ["44", "56", "52"]
-    assert lines["Chinstrap"] == ["0", "68", "0"]
-    assert lines["Gentoo"] == ["124", "0", "0"]
-
-
-def test_crosstab_multi_column_index_on_real_penguins(sample_parquet, capsys):
-    path = sample_parquet("penguins")
-
-    exit_code = cli.main([path, "-crosstab", "index='species,island',columns=sex"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # multi-level row index: species and island both appear as separate leading columns
-    assert "species" in out and "island" in out
-    assert "Torgersen" in out
-
-
-def test_crosstab_multi_column_index_unknown_column_errors(sample_parquet):
-    path = sample_parquet("penguins")
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-crosstab", "index='species,nope',columns=sex"])
-    assert exc_info.value.code == 2
-
-
-def test_wide_a_n_matches_crosstab_counts_on_real_penguins(sample_parquet, capsys):
-    path = sample_parquet("penguins")
-
-    cli.main([path, "-select", "species,island,sex", "-wide", "c=island,v=sex,a=n"])
     wide_out = capsys.readouterr().out
 
-    cli.main([path, "-crosstab", "index=species,columns=island"])
-    crosstab_out = capsys.readouterr().out
-
     def _row(line):
-        # -wide leaves NaN for missing combos where -crosstab shows 0.
-        return [0.0 if tok == "NaN" else float(tok) for tok in line.split()[1:]]
+        return [int(tok) for tok in line.split()[1:]]
 
     wide_rows = {line.split()[0]: _row(line) for line in wide_out.strip().splitlines()[1:]}
-    crosstab_rows = {line.split()[0]: _row(line) for line in crosstab_out.strip().splitlines()[2:]}
-    assert wide_rows == crosstab_rows
+    assert wide_rows["Adelie"] == [44, 56, 52]
+    assert wide_rows["Chinstrap"] == [0, 68, 0]
+    assert wide_rows["Gentoo"] == [124, 0, 0]
 
 
-def test_crosstab_margins_match_known_titanic_totals(sample_parquet, capsys):
-    path = sample_parquet("titanic")
+def test_wide_pure_reshape_on_real_flights(sample_parquet, capsys):
+    path = sample_parquet("flights")
 
-    exit_code = cli.main([path, "-crosstab", "index=pclass,columns=survived,margins=true"])
-
-    out = capsys.readouterr().out
+    exit_code = cli.main([path, "-wide", "c=month,v=passengers,r=year", "-cols"])
     assert exit_code == 0
-    last_line = out.strip().splitlines()[-1].split()
-    assert last_line == ["All", "549", "342", "891"]
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols[0] == "year"
+    assert "Jan" in cols
+    assert "Dec" in cols
 
 
 def test_agg_groups_by_diamonds_cut_categories(sample_parquet, capsys):
@@ -10870,10 +11613,6 @@ def test_select_cli_bracketed_columns(tmp_path, capsys):
     assert exit_code3 == 0
     assert capsys.readouterr().out.strip().splitlines() == ["species", "bill length mm"]
 
-
-
-
-
 ################################################################################
 # FILE: tests/test_cli_sql.py
 ################################################################################
@@ -11063,9 +11802,6 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 2)"
 
-
-
-
 ################################################################################
 # FILE: tests/test_import.py
 ################################################################################
@@ -11205,7 +11941,6 @@ else:
     )
     assert result.returncode == 0, result.stderr
     assert "pytae[sql]" in result.stderr
-
 
 ################################################################################
 # FILE: tests/test_mutate.py
@@ -11558,6 +12293,12 @@ def test_mutate_grouped_spaced_brackets():
 
 def test_mutate_grouped_dropna_observed():
     df = pd.DataFrame({"grp": ["a", None, "a"], "val": [10.0, 50.0, 30.0]})
+    # Default is dropna=False: computes on the NA group
+    res_default = df.pt.mutate("m = mean(val)", by="grp")
+    assert res_default["m"].iloc[1] == 50.0
+    assert res_default["m"].iloc[0] == 20.0
+    assert res_default["m"].iloc[2] == 20.0
+
     res_dropna = df.pt.mutate("m = mean(val)", by="grp", dropna=True)
     assert pd.isna(res_dropna["m"].iloc[1])
     assert res_dropna["m"].iloc[0] == 20.0
@@ -11657,9 +12398,418 @@ def test_mutate_scalar_if_else_and_case_when():
     df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
     assert df3.pt.mutate(y="if_else(n > 1, 1, 0)", by="g")["y"].tolist() == [1, 1, 0]
 
+################################################################################
+# FILE: tests/test_pivot.py
+################################################################################
+import numpy as np
+import pandas as pd
+import pytest
+
+import pytae as pt
+from pytae import cli
 
 
+@pytest.fixture
+def sales_df():
+    return pd.DataFrame({
+        "Region": ["East", "East", "West", "West", "East"],
+        "Store": ["S1", "S2", "S1", "S2", "S1"],
+        "Year": [2023, 2023, 2023, 2024, 2024],
+        "Quarter": ["Q1", "Q2", "Q1", "Q1", "Q2"],
+        "Sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+        "Profit": [10.0, 25.0, 35.0, 50.0, 20.0],
+    })
 
+
+def test_pivot_both_r_and_c(sales_df):
+    res = sales_df.pt.pivot(r="Region", c="Year", v="Sales", a="sum")
+    assert isinstance(res, pd.DataFrame)
+    assert list(res.columns) == ["Region", "2023", "2024"]
+    assert res.columns.name is None
+    assert list(res.index) == [0, 1]
+
+    east_row = res[res["Region"] == "East"].iloc[0]
+    assert east_row["2023"] == 300.0  # 100 + 200
+    assert east_row["2024"] == 150.0
+
+    west_row = res[res["Region"] == "West"].iloc[0]
+    assert west_row["2023"] == 300.0
+    assert west_row["2024"] == 400.0
+
+
+def test_pivot_r_only(sales_df):
+    res = pt.pivot(sales_df, r="Region", v="Sales", a="sum")
+    assert list(res.columns) == ["Region", "Sales"]
+    assert res.columns.name is None
+    assert len(res) == 2
+    assert res.loc[res["Region"] == "East", "Sales"].iloc[0] == 450.0
+    assert res.loc[res["Region"] == "West", "Sales"].iloc[0] == 700.0
+
+
+def test_pivot_c_only(sales_df):
+    res = sales_df.pt.pivot(c="Year", v="Sales", a="sum")
+    assert list(res.columns) == ["2023", "2024"]
+    assert len(res) == 1
+    assert res["2023"].iloc[0] == 600.0
+    assert res["2024"].iloc[0] == 550.0
+
+
+def test_pivot_neither_r_nor_c(sales_df):
+    res = sales_df.pt.pivot(v="Sales", a="sum")
+    assert list(res.columns) == ["Sales"]
+    assert len(res) == 1
+    assert res["Sales"].iloc[0] == 1150.0
+
+
+def test_pivot_multiple_rows(sales_df):
+    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="sum")
+    assert list(res.columns[:2]) == ["Region", "Store"]
+    assert "2023" in res.columns
+    assert "2024" in res.columns
+    assert len(res) == 4  # East-S1, East-S2, West-S1, West-S2 -> 4 combinations
+    assert res.columns.name is None
+
+
+def test_pivot_multiple_values(sales_df):
+    res = sales_df.pt.pivot(r="Region", c="Year", v=["Sales", "Profit"], a="sum")
+    assert res.columns[0] == "Region"
+    assert "Sales_2023" in res.columns
+    assert "Profit_2023" in res.columns
+    assert "Sales_2024" in res.columns
+    assert "Profit_2024" in res.columns
+    assert not isinstance(res.columns, pd.MultiIndex)
+
+
+def test_pivot_multiple_columns(sales_df):
+    res = sales_df.pt.pivot(r="Region", c=["Year", "Quarter"], v="Sales", a="sum")
+    assert res.columns[0] == "Region"
+    # Column names are flattened with underscore
+    assert any("2023_Q1" in col for col in res.columns)
+    assert not isinstance(res.columns, pd.MultiIndex)
+
+
+def test_pivot_agg_n_alias(sales_df):
+    res = sales_df.pt.pivot(r="Region", c="Year", v="Sales", a="n")
+    assert list(res.columns) == ["Region", "2023", "2024"]
+    assert res["2023"].dtype == "int64"
+    assert res["2024"].dtype == "int64"
+    east_row = res[res["Region"] == "East"].iloc[0]
+    assert east_row["2023"] == 2  # two rows for East in 2023
+    assert east_row["2024"] == 1
+
+
+def test_pivot_agg_n_fill_zero_by_default():
+    # If a combination has 0 occurrences, it should be 0 and int64
+    df = pd.DataFrame({
+        "Island": ["Biscoe", "Biscoe", "Dream"],
+        "Species": ["Adelie", "Gentoo", "Chinstrap"],
+        "Sex": ["M", "F", "M"],
+    })
+    res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n")
+    assert list(res.columns) == ["Island", "Adelie", "Chinstrap", "Gentoo"]
+    assert res["Adelie"].dtype == "int64"
+    assert res["Chinstrap"].dtype == "int64"
+    assert res["Gentoo"].dtype == "int64"
+
+    biscoe = res[res["Island"] == "Biscoe"].iloc[0]
+    assert biscoe["Adelie"] == 1
+    assert biscoe["Chinstrap"] == 0
+    assert biscoe["Gentoo"] == 1
+
+    dream = res[res["Island"] == "Dream"].iloc[0]
+    assert dream["Adelie"] == 0
+    assert dream["Chinstrap"] == 1
+    assert dream["Gentoo"] == 0
+
+
+def test_pivot_agg_n_r_only(sales_df):
+    res = sales_df.pt.pivot(r="Region", v="Sales", a="n")
+    assert list(res.columns) == ["Region", "Sales"]
+    assert res["Sales"].dtype == "int64"
+    assert res.loc[res["Region"] == "East", "Sales"].iloc[0] == 3
+    assert res.loc[res["Region"] == "West", "Sales"].iloc[0] == 2
+
+
+def test_pivot_agg_n_c_only(sales_df):
+    res = sales_df.pt.pivot(c="Year", v="Sales", a="n")
+    assert list(res.columns) == ["2023", "2024"]
+    assert res["2023"].dtype == "int64"
+    assert res["2024"].dtype == "int64"
+    assert res["2023"].iloc[0] == 3
+    assert res["2024"].iloc[0] == 2
+
+
+def test_pivot_agg_n_neither_r_nor_c(sales_df):
+    res = sales_df.pt.pivot(v="Sales", a="n")
+    assert list(res.columns) == ["Sales"]
+    assert res["Sales"].dtype == "int64"
+    assert res["Sales"].iloc[0] == 5
+
+
+def test_pivot_agg_n_explicit_nan_fill():
+    df = pd.DataFrame({
+        "Island": ["Biscoe", "Dream"],
+        "Species": ["Adelie", "Chinstrap"],
+        "Sex": ["M", "F"],
+    })
+    res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n", fill_value=np.nan)
+    # When explicit NaN fill is requested, missing combinations are <NA> of Int64 dtype
+    assert res["Adelie"].dtype == "Int64"
+    assert res["Chinstrap"].dtype == "Int64"
+    assert pd.isna(res.loc[res["Island"] == "Dream", "Adelie"].iloc[0])
+    assert res.loc[res["Island"] == "Dream", "Chinstrap"].iloc[0] == 1
+
+
+def test_pivot_fill_value(sales_df):
+    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="sum", fill_value=0.0)
+    # Check that missing combinations have 0.0 instead of NaN
+    assert not res.isna().any().any()
+
+
+def test_pivot_dropna_false_default():
+    df_na = pd.DataFrame({
+        "Region": ["East", np.nan, "West"],
+        "Year": [2023, 2023, np.nan],
+        "Sales": [10.0, 20.0, 30.0],
+    })
+    res = df_na.pt.pivot(r="Region", c="Year", v="Sales", a="sum")
+    # Region has NaN, so there should be a row with NaN in Region
+    assert res["Region"].isna().any()
+    # Year has NaN, so there should be a column representing nan
+    col_names = [str(c) for c in res.columns]
+    assert any("nan" in c.lower() for c in col_names)
+
+
+def test_pivot_aliases(sales_df):
+    res = sales_df.pt.pivot(rows="Region", cols="Year", values="Sales", aggfunc="mean", fill=0.0)
+    assert list(res.columns) == ["Region", "2023", "2024"]
+
+
+def test_pivot_missing_v_error(sales_df):
+    with pytest.raises(ValueError, match="value column 'v' is required"):
+        sales_df.pt.pivot(r="Region", c="Year")
+
+
+def test_pivot_unknown_column_error(sales_df):
+    with pytest.raises(KeyError, match="not found in DataFrame"):
+        sales_df.pt.pivot(r="NonExistent", c="Year", v="Sales")
+
+
+def test_wide_accepts_r_alias(sales_df):
+    # wide accepts r as alias for index/by
+    tall = sales_df.pt.long(cols=["Sales", "Profit"], id_vars=["Region", "Store", "Year"])
+    back = tall.pt.wide(r=["Region", "Store", "Year"], c="variable", v="value")
+    assert "Sales" in back.columns
+    assert "Profit" in back.columns
+
+
+# ---------------- CLI Tests ----------------
+
+
+def test_cli_pivot_basic(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Year": [2023, 2024, 2023],
+        "Sales": [100, 150, 200],
+    })
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+
+    exit_code = cli.main([path, "-pivot", "r=Region,c=Year,v=Sales,a=sum"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "East" in captured.out
+    assert "West" in captured.out
+    assert "2023" in captured.out
+    assert "2024" in captured.out
+
+
+def test_cli_pivot_r_only(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Sales": [100, 150, 200],
+    })
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+
+    exit_code = cli.main([path, "-pivot", "r=Region,v=Sales,a=sum"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "East" in captured.out
+    assert "250" in captured.out
+    assert "200" in captured.out
+
+
+def test_cli_pivot_c_only(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Year": [2023, 2024, 2023],
+        "Sales": [100, 150, 200],
+    })
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+
+    exit_code = cli.main([path, "-pivot", "c=Year,v=Sales,a=sum"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "300" in captured.out
+    assert "150" in captured.out
+
+
+def test_cli_pivot_unknown_column(tmp_path):
+    df = pd.DataFrame({"Region": ["East"], "Sales": [100]})
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-pivot", "r=NoSuchCol,v=Sales"])
+    assert exc.value.code == 2
+
+
+def test_cli_pivot_export_parquet(tmp_path):
+    df = pd.DataFrame({
+        "Region": ["East", "West"],
+        "Year": [2023, 2024],
+        "Sales": [100, 200],
+    })
+    in_path = str(tmp_path / "in.csv")
+    out_path = str(tmp_path / "out.parquet")
+    df.to_csv(in_path, index=False)
+
+    exit_code = cli.main([in_path, "-pivot", "r=Region,c=Year,v=Sales", "-o", out_path])
+    assert exit_code == 0
+
+    pivoted_df = pd.read_parquet(out_path)
+    assert "Region" in pivoted_df.columns
+    assert "2023" in pivoted_df.columns
+    assert "2024" in pivoted_df.columns
+
+
+def test_pivot_no_cartesian_product_unobserved_combinations():
+    doc = pd.DataFrame({
+        "Region": ["East", "East", "East", "East", "West", "West"],
+        "Store": ["Store A", "Store A", "Store B", "Store B", "Store C", "Store C"],
+        "Year": [2023, 2024, 2023, 2024, 2023, 2024],
+        "Sales": [700.0, 850.0, 800.0, 950.0, 900.0, 1100.0],
+    })
+    res_sum = doc.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="sum")
+    # Only observed Region-Store pairs should exist (3 rows), not 6
+    assert len(res_sum) == 3
+    assert set(res_sum["Store"]) == {"Store A", "Store B", "Store C"}
+
+    res_n = doc.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="n")
+    assert len(res_n) == 3
+
+
+def test_pivot_multi_c_cols_a_n_preserves_outer_keys():
+    df = pd.DataFrame({
+        "Region": ["East", "East", "East", "East"],
+        "Year": [2023, 2023, 2023, 2024],
+        "Quarter": ["Q1", "Q1", "Q2", "Q1"],
+        "Sales": [1, 1, 1, 1],
+    })
+    out = df.pt.pivot(r="Region", c=["Year", "Quarter"], v="Sales", a="n")
+    assert "2023_Q1" in out.columns
+    assert "2023_Q2" in out.columns
+    assert "2024_Q1" in out.columns
+    assert out["2023_Q1"].iloc[0] == 2
+    assert out["2023_Q2"].iloc[0] == 1
+    assert out["2024_Q1"].iloc[0] == 1
+
+
+def test_pivot_header_deduplication():
+    df1 = pd.DataFrame({"r": ["a", "a"], "c": [1, "1"], "v": [10.0, 20.0]})
+    with pytest.raises(ValueError, match="contain duplicate names"):
+        df1.pt.pivot(r="r", c="c", v="v", a="sum")
+
+    df2 = pd.DataFrame({"r": ["a", "a", "a"], "c": [np.nan, "nan", "ok"], "v": [1.0, 2.0, 3.0]})
+    with pytest.raises(ValueError, match="contain duplicate names"):
+        df2.pt.pivot(r="r", c="c", v="v", a="sum")
+
+
+def test_pivot_c_only_multi_values_keeps_metric_index():
+    df = pd.DataFrame({
+        "Year": [2023, 2024, 2023],
+        "Sales": [100.0, 150.0, 200.0],
+        "Profit": [10.0, 15.0, 20.0],
+    })
+    out = df.pt.pivot(c="Year", v=["Sales", "Profit"], a="sum")
+    assert "metric" in out.columns
+    assert set(out["metric"]) == {"Sales", "Profit"}
+
+
+def test_pivot_row_only_a_n_count_key_collision():
+    df1 = pd.DataFrame({"island": ["A", "A", "B"]})
+    out1 = df1.pt.pivot(r="island", a="n")
+    assert "island" in out1.columns
+    assert "n" in out1.columns
+    assert list(out1["n"]) == [2, 1]
+
+    # If v is specified and overlaps with r, raise ValueError
+    with pytest.raises(ValueError, match="cannot also be in grouping dimensions"):
+        df1.pt.pivot(r="island", v="island", a="n")
+
+    # If row grouping column is named "n", omitting v will default to "n" which collides
+    df_colliding = pd.DataFrame({"n": ["a", "a", "b"], "val": [1, 2, 3]})
+    with pytest.raises(ValueError, match="collides with row grouping column"):
+        df_colliding.pt.pivot(r="n", a="n")
+
+    # Providing a non-colliding column for v works
+    out_custom = df_colliding.pt.pivot(r="n", v="val", a="n")
+    assert list(out_custom.columns) == ["n", "val"]
+
+
+def test_pivot_v_in_dimensions_validation():
+    df = pd.DataFrame({"Region": ["East", "West"], "Year": [2023, 2024], "Sales": [10, 20]})
+    with pytest.raises(ValueError, match="cannot also be in grouping dimensions"):
+        df.pt.pivot(r="Region", c="Year", v="Region", a="sum")
+
+
+def test_cli_pivot_fill_numeric(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "West"],
+        "Store": ["A", "B"],
+        "Sales": [4.0, 2.0],
+    })
+    path = str(tmp_path / "sales.csv")
+    df.to_csv(path, index=False)
+    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,fill=0", "-round", "1"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "0" in out
+
+
+def test_cli_pivot_unknown_agg_fails_cleanly(tmp_path):
+    df = pd.DataFrame({"Region": ["East"], "Sales": [100]})
+    path = str(tmp_path / "sales.csv")
+    df.to_csv(path, index=False)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-pivot", "r=Region,v=Sales,a=nope"])
+    assert exc.value.code == 2
+
+
+def test_wide_cols_and_values_aliases(tmp_path):
+    df = pd.DataFrame({
+        "id": ["a", "b"],
+        "country": ["sg", "cn"],
+        "balance": [10, 20],
+    })
+    w1 = df.pt.wide(cols="country", values="balance")
+    assert "cn" in w1.columns and "sg" in w1.columns
+
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+    exit_code = cli.main([path, "-wide", "cols=country,values=balance"])
+    assert exit_code == 0
+
+
+def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):
+    df = pd.DataFrame({"count": ["a", "a", "b"]})
+    path = str(tmp_path / "counts.csv")
+    df.to_csv(path, index=False)
+    exit_code = cli.main([path, "-value_counts"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "count" in out
 
 ################################################################################
 # FILE: tests/test_plotter.py
@@ -12332,6 +13482,73 @@ def test_plotter_line_style_width_integer_keys():
             assert line.get_linewidth() == 5
 
 
+def test_plotter_hist_and_kde_with_by_having_missing_values():
+    penguins = pt.sample("penguins")
+    p_hist = pt.Plotter(penguins).plot(kind="hist", column="bill_length_mm", by="sex")
+    assert p_hist.axd["A"].has_data()
+
+    p_kde = pt.Plotter(penguins).plot(kind="kde", column="body_mass_g", by="sex")
+    assert p_kde.axd["A"].has_data()
+
+
+def test_plotter_pie_with_dropna():
+    df = pd.DataFrame({"cat": ["a", "a", None, "b"], "val": [1, 2, 5, 3]})
+    p1 = pt.Plotter(df).plot(kind="pie", by="cat", y="val", dropna=False)
+    assert p1.axd["A"].has_data()
+    p2 = pt.Plotter(df).plot(kind="pie", by="cat", y="val", dropna=True)
+    assert p2.axd["A"].has_data()
+
+
+def test_plotter_finalize_with_title_and_tight_layout():
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    p = pt.Plotter(df).plot(kind="scatter", x="x", y="y")
+    p.finalize(title="Custom Title", tight_layout=True, xlabel="X Axis", ylabel="Y Axis")
+    assert p.axd["A"].get_xlabel() == "X Axis"
+    assert p.axd["A"].get_ylabel() == "Y Axis"
+
+
+def test_plotter_heatmap_xy_honors_dropna():
+    df = pd.DataFrame({"x": ["a", "b", None], "y": ["u", "v", "v"]})
+    p_keep = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", dropna=False)
+    assert p_keep.axd["A"].has_data()
+    p_drop = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", dropna=True)
+    assert p_drop.axd["A"].has_data()
+
+
+def test_plotter_grouped_bar_by_value_equals_x_name():
+    df = pd.DataFrame({
+        "year": [2020, 2020, 2021],
+        "metric": ["year", "sales", "sales"],
+        "value": [1, 10, 12],
+    })
+    with pytest.raises(ValueError, match="collides with x-axis column name"):
+        pt.Plotter(df).plot(kind="bar", x="year", y="value", by="metric")
+
+
+def test_plotter_box_color_dict_with_integer_keys():
+    df = pd.DataFrame({"g": [1, 1, 2, 2], "v": [1, 2, 3, 4]})
+    p = pt.Plotter(df).plot(kind="box", x="g", y="v", color={1: "crimson", 2: "navy"})
+    assert p.axd["A"].has_data()
+
+
+def test_plotter_falsy_column_name_zero():
+    # String column "0" works cleanly
+    df_str = pd.DataFrame({"x": [1, 2], "y": [3, 4], "0": ["g1", "g2"]})
+    p_bar_str = pt.Plotter(df_str).plot(kind="bar", x="x", y="y", by="0")
+    assert p_bar_str.axd["A"].has_data()
+
+    # Integer column 0 is rejected with TypeError for ambiguous unstacking
+    df_int = pd.DataFrame({"x": [1, 2], "y": [3, 4], 0: ["g1", "g2"]})
+    with pytest.raises(TypeError, match="column name for 'by' must be a string"):
+        pt.Plotter(df_int).plot(kind="bar", x="x", y="y", by=0)
+
+
+def test_plotter_finalize_invalid_style():
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    p = pt.Plotter(df).plot(kind="line", x="x", y="y")
+    with pytest.raises(ValueError, match="stylesheet 'non_existent_style_xyz' not recognized"):
+        p.finalize(style="non_existent_style_xyz")
+
 ################################################################################
 # FILE: tests/test_qry.py
 ################################################################################
@@ -12634,6 +13851,14 @@ def test_parse_qry_multiple_conditions_on_same_column():
     assert conditions == [("body_mass_g", (">=", 3000)), ("body_mass_g", ("<=", 4500))]
 
 
+def test_qry_numeric_interval_invalid_bounds():
+    df = pd.DataFrame({"mass": [2000, 3000, 4000]})
+    with pytest.raises(ValueError, match="interval lower bound for numeric column 'mass' must be a number"):
+        df.pt.qry("mass = [abc, 4000]")
+
+    with pytest.raises(ValueError, match="interval upper bound for numeric column 'mass' must be a number"):
+        df.pt.qry("mass = [2000, xyz]")
+
 ################################################################################
 # FILE: tests/test_readers.py
 ################################################################################
@@ -12925,7 +14150,6 @@ def test_compressed_txt_and_dat(tmp_path):
     assert dreader.columns() == ["a", "b"]
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
 
-
 ################################################################################
 # FILE: tests/test_select.py
 ################################################################################
@@ -13206,8 +14430,8 @@ def test_long():
     pd.testing.assert_frame_equal(result, expected_df)
 
 
-def test_wide_falls_back_to_sum_when_pivot_has_duplicate_keys():
-    """Duplicate (id, country) makes DataFrame.pivot raise ValueError; wide() sums."""
+def test_wide_raises_on_duplicate_keys():
+    """Duplicate (id, country) raises ValueError directing user to pt.pivot()."""
     df = pd.DataFrame(
         {
             "id": ["a", "b", "c", "d", "e", "", "f", "f"],
@@ -13216,13 +14440,8 @@ def test_wide_falls_back_to_sum_when_pivot_has_duplicate_keys():
         }
     )
 
-    result = pt.wide(df, c="country", v="balance")
-
-    expected_df = df.pivot_table(
-        index="id", columns="country", values="balance", aggfunc="sum"
-    ).reset_index()
-    expected_df.columns.name = None
-    pd.testing.assert_frame_equal(result, expected_df)
+    with pytest.raises(ValueError, match=r"wide\(\) encountered duplicate entries.*Use pt\.pivot\(\)"):
+        pt.wide(df, c="country", v="balance")
 
 
 def test_wide_uses_pivot_when_keys_are_unique():
@@ -13241,23 +14460,21 @@ def test_wide_uses_pivot_when_keys_are_unique():
     pd.testing.assert_frame_equal(result, expected_df)
 
 
-def test_wide_a_n_is_alias_for_size():
-    """a='n' matches agg_df's group-count convention; passes 'size' to pivot_table under the hood."""
+def test_wide_rejects_aggregation_arguments():
+    """wide() is strictly for 1-to-1 reshaping and rejects aggregation 'a'."""
     df = pd.DataFrame(
         {
-            "id": ["a", "a", "b", "b", "b"],
-            "balance": [10, 20, 0, 21, 15],
-            "country": ["sg", "sg", "cn", "cn", "cn"],
+            "id": ["a", "b"],
+            "balance": [10, 20],
+            "country": ["sg", "cn"],
         }
     )
 
-    result = pt.wide(df, c="country", v="balance", a="n")
+    with pytest.raises(ValueError, match=r"wide\(\) does not support 'a'.*Use pt\.pivot\(\)"):
+        pt.wide(df, c="country", v="balance", a="sum")
 
-    expected_df = df.pivot_table(
-        index="id", columns="country", values="balance", aggfunc="size"
-    ).reset_index()
-    expected_df.columns.name = None
-    pd.testing.assert_frame_equal(result, expected_df)
+    with pytest.raises(ValueError, match=r"wide\(\) does not support 'agg'.*Use pt\.pivot\(\)"):
+        df.pt.wide(c="country", v="balance", agg="mean")
 
 
 def test_long_raises_when_no_numeric_columns():
@@ -13298,12 +14515,12 @@ def test_long_unknown_col_raises_helpful_error():
 
 def test_wide_with_explicit_index():
     df = pd.DataFrame({
-        "region": ["East", "East", "West"],
-        "rep": ["Alice", "Bob", "Charlie"],
-        "quarter": ["Q1", "Q2", "Q1"],
-        "sales": [100, 200, 300],
+        "region": ["East", "West"],
+        "rep": ["Alice", "Bob"],
+        "quarter": ["Q1", "Q2"],
+        "sales": [100, 200],
     })
-    res = df.pt.wide(index="region", c="quarter", v="sales", a="sum")
+    res = df.pt.wide(index="region", c="quarter", v="sales")
     assert "region" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
@@ -13316,36 +14533,47 @@ def test_wide_bracketed_names_and_column_validation():
         "quarter": ["Q1", "Q2"],
         "sales": [1, 2],
     })
-    res = df.pt.wide(index="[region name]", c="quarter", v="sales", a="sum")
+    res = df.pt.wide(index="[region name]", c="quarter", v="sales")
     assert "region name" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
 
     with pytest.raises(KeyError, match=r"wide\(\): index column 'nope' not found in DataFrame"):
-        df.pt.wide(index="nope", c="quarter", v="sales", a="sum")
+        df.pt.wide(index="nope", c="quarter", v="sales")
 
     with pytest.raises(KeyError, match=r"wide\(\): columns 'c' column 'nope' not found in DataFrame"):
-        df.pt.wide(index="region name", c="nope", v="sales", a="sum")
+        df.pt.wide(index="region name", c="nope", v="sales")
 
 
 def test_safe_reset_index_name_collision():
     # Lib Issue 13: index name collision does not raise ValueError
-    df = pd.DataFrame({"region": ["East", "East", "West"], "c": ["Q1", "Q2", "Q1"], "v": [1, 2, 3]})
+    df = pd.DataFrame({"region": ["East", "West"], "c": ["Q1", "Q2"], "v": [1, 2]})
     df.index.name = "Q1"  # index name collides with pivoted column name "Q1"
-    res = df.pt.wide(index="region", c="c", v="v", a="sum")
+    res = df.pt.wide(index="region", c="c", v="v")
     assert "region" in res.columns
     assert "Q1" in res.columns
 
 
 def test_safe_reset_index_disambiguates_collision():
-    # Lib Issue 2 (Review 2ec5bbba): when pivoted column name matches index name,
-    # safe_reset_index disambiguates so headers remain unique and index column access stays a Series
-    df = pd.DataFrame({"id": [1, 1, 2], "k": ["a", "id", "a"], "v": [10, 20, 30]})
-    r = df.pt.wide(index="id", c="k", v="v", a="sum")
-    assert "id" in r.columns
-    assert "id_1" in r.columns
-    assert isinstance(r["id"], pd.Series)
-    assert r.pt.qry("id == 1").shape[0] == 1
+    # When pivoted column name matches index name, raise ValueError rather than magical renaming
+    df = pd.DataFrame({"id": [1, 2], "k": ["id", "a"], "v": [10, 20]})
+    with pytest.raises(ValueError, match="collide with existing column name"):
+        df.pt.wide(index="id", c="k", v="v")
+
+
+def test_long_cols_and_id_vars_overlap():
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
+    with pytest.raises(ValueError, match="cannot appear in both 'cols' and 'id_vars'"):
+        df.pt.long(cols=["a", "b"], id_vars=["b", "c"])
+
+
+def test_wide_c_and_v_collisions():
+    df = pd.DataFrame({"x": ["A", "B"], "y": [1, 2], "z": [3, 4]})
+    with pytest.raises(ValueError, match="'c' and 'v' cannot be the same column"):
+        df.pt.wide(index="x", c="y", v="y")
+
+    with pytest.raises(ValueError, match="cannot also be in index columns"):
+        df.pt.wide(index=["x", "y"], c="y", v="z")
 
 
 if __name__ == '__main__':
@@ -13437,8 +14665,6 @@ def test_sql_preserves_duckdb_lists_and_indexing():
     # String list literal
     out3 = pt.sql(df, "select ['x', 'y'] as pair from data where a = 1")
     assert list(out3["pair"][0]) == ["x", "y"]
-
-
 
 ################################################################################
 # FILE: tests/test_utilities.py
@@ -13610,4 +14836,3 @@ def test_handle_missing_all_null_object_column():
     df = pd.DataFrame({"a": [None, None]}, dtype=object)
     result = pt.handle_missing(df)
     assert list(result["a"]) == [".", "."]
-
