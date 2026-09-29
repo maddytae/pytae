@@ -12,11 +12,12 @@
   - [1. Row Filtering (`qry`)](#1-row-filtering--qry)
   - [2. Column Selection (`select`)](#2-column-selection--select)
   - [3. Feature Engineering (`mutate`)](#3-feature-engineering--mutate)
-  - [4. Reshaping (`long`, `wide`)](#4-reshaping--long-wide)
-  - [5. Aggregation (`agg_df`)](#5-aggregation--agg_df)
-  - [6. DuckDB SQL Engine (`sql`)](#6-duckdb-sql-engine--sql)
-  - [7. Plotting (`Plotter`)](#7-plotting--plotter)
-  - [8. Utilities & Cleaning](#8-utilities--cleaning)
+  - [4. Pure Reshaping (`long`, `wide`)](#4-pure-reshaping--long-wide)
+  - [5. 2D Pivot Tables (`pivot`)](#5-2d-pivot-tables--pivot)
+  - [6. Aggregation (`agg`)](#6-aggregation--agg)
+  - [7. DuckDB SQL Engine (`sql`)](#7-duckdb-sql-engine--sql)
+  - [8. Plotting (`Plotter` & `df.pt.plot`)](#8-plotting--plotter)
+  - [9. Utilities & Cleaning](#9-utilities--cleaning)
 - [Bundled Sample Datasets](#sample-datasets)
 - [Syntax & Convention Cheat Sheet](#syntax-conventions)
 
@@ -62,10 +63,11 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
-| **Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, pivot back to wide tables with standard `c=`, `v=`, `a=` keys | [library/shape.ipynb](library/shape.ipynb) |
+| **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
+| **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
-| **Plotting** | `pt.Plotter`, `Plotter.facet()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [docs/plotting.md](plotting.md)<br>• [plotting/plotter.ipynb](plotting/plotter.ipynb) |
+| **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
 | **Utilities** | `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
 
 ---
@@ -137,22 +139,42 @@ pt.mutate(df, avg_val="mean(val)", by="group", dropna=False)
 
 ### 4. Reshaping — `long()`, `wide()`
 
-Reshape between long and wide formats using consistent `c=` (column dimension), `v=` (value column), and `a=` (aggregation function) parameter roles:
+### 4. Pure Reshaping — `long()` & `wide()`
+
+Reshape between long and wide formats using consistent `c=` (column dimension), `v=` (value column), and `r=` (row identifiers) parameter roles:
 
 ```python
 # Melt numeric columns into (feature, value) rows
 tall = pt.long(penguins, c="feature", v="reading")
 
-# Pivot long-form records back to columns
-wide = pt.wide(tall, c="feature", v="reading", a="mean")
+# Pure reshape: spread long-form records back to columns
+wide = pt.wide(tall, c="feature", v="reading")
 ```
 
-👉 **Interactive Walkthrough:** [library/shape.ipynb](library/shape.ipynb)
+👉 **Interactive Walkthrough:** [library/reshape.ipynb](library/reshape.ipynb)
 
 ---
 
-<a id="5-aggregation--agg_df"></a>
-### 5. Aggregation — `agg()` (`agg_df()`)
+### 5. 2D Pivot Tables — `pivot()`
+
+Excel-style 2D pivot table engine with the intuitive `r, c, v, a` vocabulary. Guarantees flat 1D column names and automatically resets index to `RangeIndex(0, 1, 2, ...)`:
+
+```python
+# 2D summary grid of mean body mass across island and species
+pt.pivot(penguins, r="island", c="species", v="body_mass_g", a="mean")
+
+# Frequency matrix (count rows across dimensions)
+pt.pivot(penguins, r="island", c="species", v="sex", a="n")
+
+# Hierarchical multi-row summary
+pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", fill_value=0)
+```
+
+👉 **Interactive Walkthrough:** [library/pivot.ipynb](library/pivot.ipynb)
+
+---
+
+### 6. Aggregation — `agg()`
 
 Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts. Supports string mapping specifications with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, and whole-frame functions:
 
@@ -169,7 +191,7 @@ pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summ
 
 ---
 
-### 6. DuckDB SQL Engine — `sql()`
+### 7. DuckDB SQL Engine — `sql()`
 
 Execute SQL queries directly over in-memory DataFrames using DuckDB (`pip install "pytae[sql]"`). The source DataFrame is queryable as table `data`, and additional frames can be registered as keyword arguments:
 
@@ -189,8 +211,8 @@ pt.sql(orders, """
 
 ---
 
-<a id="7-plotting--plotter"></a>
-### 7. Plotting — `Plotter` & `df.pt.plot()`
+<a id="8-plotting--plotter"></a>
+### 8. Plotting — `Plotter` & `df.pt.plot()`
 
 Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, small-multiples grid faceting, and direct accessor chaining via `df.pt.plot()`:
 
@@ -210,9 +232,7 @@ p.plot(on="B", kind="box", x="species", y="bill_length_mm")
 p.finalize(consolidate_legends=True)
 ```
 
-👉 **Dedicated Guides:**
-- [Plotting Architecture & Capabilities Guide](plotting.md)
-- [Interactive Plotter Guide (Progressive Walkthrough)](plotting/plotter.ipynb)
+👉 **Interactive Walkthrough:** [library/plotting.ipynb](library/plotting.ipynb)
 
 
 

@@ -22,11 +22,12 @@ Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, fe
   - [1. Row Filtering (`qry`)](#1-row-filtering-qry)
   - [2. Column Creation & Grouped Window Calculations (`mutate`)](#2-column-creation--grouped-window-calculations-mutate)
   - [3. Column Selection & Exclusion (`select`)](#3-column-selection--exclusion-select)
-  - [4. Grouped Aggregation (`agg` / `agg_df`)](#4-grouped-aggregation-agg--agg_df)
-  - [5. Reshaping & Pivoting (`long`, `wide`, `pivot`)](#5-reshaping--pivoting-long-wide-pivot)
-  - [6. Embedded DuckDB SQL Engine (`sql`)](#6-embedded-duckdb-sql-engine-sql)
-  - [7. Visualization (`plot`)](#7-visualization-plot)
-  - [8. Zero-Cost Metadata Inspection & Diffing](#8-zero-cost-metadata-inspection--diffing)
+  - [4. Grouped Aggregation (`agg`)](#4-grouped-aggregation-agg)
+  - [5. Pure Reshaping (`long` & `wide`)](#5-pure-reshaping-long--wide)
+  - [6. 2D Pivot Tables (`pivot`)](#6-2d-pivot-tables-pivot)
+  - [7. Embedded DuckDB SQL Engine (`sql`)](#7-embedded-duckdb-sql-engine-sql)
+  - [8. Visualization (`plot`)](#8-visualization-plot)
+  - [9. Zero-Cost Metadata Inspection & Diffing](#9-zero-cost-metadata-inspection--diffing)
 - [Key Syntax & Conventions Cheat Sheet](#key-syntax--conventions-cheat-sheet)
 - [Documentation & Interactive Tutorials](#documentation--interactive-tutorials)
 - [License](#license)
@@ -178,7 +179,7 @@ df.pt.select("species", contains="bill", dtypes="numeric")
 df.pt.select("island", "species", pt.everything)
 ```
 
-### 4. Grouped Aggregation (`agg` / `agg_df`)
+### 4. Grouped Aggregation (`agg`)
 Concise group summaries with explicit `by=` grouping, bracket support for spaced names, and automatic row count token `n`:
 ```python
 # Explicit grouping and named aggregations
@@ -188,20 +189,27 @@ df.pt.agg(by="species", avg_mass="body_mass_g.mean()", n="n")
 df.pt.agg("island", "[avg mass] = [body mass g]:mean, n = n")
 ```
 
-### 5. Reshaping & Pivoting (`long`, `wide`, `pivot`)
-Clean unpivoting (melting), spreading, and 2D Excel-style pivot tables without MultiIndex complexity:
+### 5. Pure Reshaping (`long` & `wide`)
+Clean, deterministic unpivoting (melting) and spreading without MultiIndex complexity:
 ```python
-# 1. 2D Excel-style pivot table with auto-reset index (rows=r, cols=c, values=v, aggfunc=a)
-pivot_df = df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
-
-# 2. Unpivot non-numeric columns into key-value pairs
+# 1. Unpivot non-numeric columns into key-value pairs
 long_df = df.pt.long(id_vars=["species", "island"], cols=["bill_length_mm", "bill_depth_mm"])
 
-# 3. Pure reshape back to wide presentation matrix
+# 2. Pure reshape back to wide presentation matrix
 wide_df = long_df.pt.wide(c="variable", v="value")
 ```
 
-### 6. Embedded DuckDB SQL Engine (`sql`)
+### 6. 2D Pivot Tables (`pivot`)
+Excel-style 2D pivot tables with automatic index reset and flat 1D columns:
+```python
+# 2D grid summarizing average body mass across island and species
+pivot_df = df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
+
+# Frequency matrix (count rows across dimensions)
+freq_matrix = df.pt.pivot(r="island", c="species", v="sex", a="n")
+```
+
+### 7. Embedded DuckDB SQL Engine (`sql`)
 Run analytical SQL directly on any Pandas DataFrame with zero copy:
 ```python
 result = df.pt.sql("""
@@ -213,7 +221,7 @@ result = df.pt.sql("""
 """)
 ```
 
-### 7. Visualization (`plot`)
+### 8. Visualization (`plot`)
 Method-chainable charting powered by Matplotlib (`pip install "pytae[plot]"`):
 ```python
 # Direct accessor with auto-aggregation:
@@ -230,7 +238,7 @@ penguins.pt.plot(
 penguins.pt.plot(kind="bar", x="species", y="body_mass_g", aggfunc="mean", save="mass.png")
 ```
 
-### 8. Zero-Cost Metadata Inspection & Diffing
+### 9. Zero-Cost Metadata Inspection & Diffing
 Inspect large Parquet, CSV, and SAS datasets instantly without loading millions of rows into memory:
 ```bash
 # Instant shape, columns, and types from Parquet file headers
@@ -270,7 +278,9 @@ pytae current.parquet -diff previous.parquet
 - [Mutation Guide](docs/cli/mutate.md) — Feature engineering, math, and grouped window formulas
 - [Filtering Guide](docs/cli/filter.md) — Numerical comparisons, string matching, and intervals
 - [Selection Guide](docs/cli/select.md) — Column slicing, dtypes, and negative exclusion
-- [Reshaping Guide](docs/cli/reshape.md) — Long-to-wide and wide-to-long pivots
+- [Pure Reshaping Guide](docs/cli/reshape.md) — Long-to-wide and wide-to-long pure reshapes (`-long`, `-wide`)
+- [2D Pivot Tables Guide](docs/cli/pivot.md) — Excel-style 2D pivot tables with automatic index reset (`-pivot`)
+- [Visualizations & Plotting Guide](docs/cli/plotting.md) — In-line terminal charts (`-freq`, `-hist`) and figure export (`-plot`)
 - [Export & Output Guide](docs/cli/export_io.md) — `-o`, `-od`, compression, and clipboard routing
 - [Dataset Diff Guide](docs/cli/diff.md) — Comparing schemas and records
 - [Multi-File Operations](docs/cli/multi_file.md) — `-file`, `-merge`, and `-concat`
@@ -279,13 +289,14 @@ pytae current.parquet -diff previous.parquet
 ### Interactive Jupyter Notebooks (`docs/library/`)
 Each core module has a standalone, fully runnable tutorial with live outputs:
 - **Filtering**: [`docs/library/qry.ipynb`](docs/library/qry.ipynb)
+- **Selection**: [`docs/library/select.ipynb`](docs/library/select.ipynb)
 - **Feature Engineering & Window Mutations**: [`docs/library/mutate.ipynb`](docs/library/mutate.ipynb)
 - **Aggregation**: [`docs/library/agg.ipynb`](docs/library/agg.ipynb)
-- **Selection**: [`docs/library/select.ipynb`](docs/library/select.ipynb)
-- **Reshaping**: [`docs/library/shape.ipynb`](docs/library/shape.ipynb)
+- **Pure Reshaping**: [`docs/library/reshape.ipynb`](docs/library/reshape.ipynb)
+- **2D Pivot Tables**: [`docs/library/pivot.ipynb`](docs/library/pivot.ipynb)
 - **DuckDB SQL**: [`docs/library/sql.ipynb`](docs/library/sql.ipynb)
+- **Plotting & Dashboards**: [`docs/library/plotting.ipynb`](docs/library/plotting.ipynb)
 - **Utilities & Cleaning**: [`docs/library/other_utilities.ipynb`](docs/library/other_utilities.ipynb)
-- **Plotting & Dashboards**: [`docs/plotting/plotter.ipynb`](docs/plotting/plotter.ipynb)
 
 ---
 
