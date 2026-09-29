@@ -70,7 +70,21 @@ def test_wide_quoted_names_with_spaces(tmp_path, capsys):
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["id", "cn", "sg"]
 
-def test_wide_aggfunc_mean(tmp_path, capsys):
+def test_wide_rejects_a_arg(tmp_path):
+    df = pd.DataFrame(
+        {
+            "id": ["a", "b"],
+            "country": ["sg", "cn"],
+            "balance": [10, 20],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    with pytest.raises(SystemExit, match=r"-wide: -wide is strictly for 1-to-1 reshaping without aggregation"):
+        cli.main([path, "-wide", "c=country,v=balance,a=mean"])
+
+
+def test_wide_duplicate_keys_fail_cleanly(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "id": ["a", "a"],
@@ -80,11 +94,12 @@ def test_wide_aggfunc_mean(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c=country,v=balance,a=mean", "-head", "1"])
-
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-wide", "c=country,v=balance"])
+    assert exc_info.value.code == 2
     captured = capsys.readouterr()
-    assert exit_code == 0, captured.err
-    assert "15" in captured.out
+    assert "duplicate entries" in captured.err.lower()
+    assert "-pivot" in captured.err
 
 def test_wide_unknown_column_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"id": ["a"], "balance": [1]}))

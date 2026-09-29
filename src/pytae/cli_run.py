@@ -791,8 +791,6 @@ def _process_path(
             source_df = pipeline.dataframe()
             wide_val = _next_op_val("wide", args.wide)
             wide_kwargs = parse_wide_arg(wide_val)
-            if "dropna" not in wide_kwargs:
-                wide_kwargs["dropna"] = False if args.dropna is None else args.dropna
             to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
             by_cols = wide_kwargs.get("by") or wide_kwargs.get("index") or wide_kwargs.get("r") or wide_kwargs.get("rows")
             if by_cols:

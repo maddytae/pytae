@@ -27,8 +27,8 @@ def test_long():
     pd.testing.assert_frame_equal(result, expected_df)
 
 
-def test_wide_falls_back_to_sum_when_pivot_has_duplicate_keys():
-    """Duplicate (id, country) makes DataFrame.pivot raise ValueError; wide() sums."""
+def test_wide_raises_on_duplicate_keys():
+    """Duplicate (id, country) raises ValueError directing user to pt.pivot()."""
     df = pd.DataFrame(
         {
             "id": ["a", "b", "c", "d", "e", "", "f", "f"],
@@ -37,13 +37,8 @@ def test_wide_falls_back_to_sum_when_pivot_has_duplicate_keys():
         }
     )
 
-    result = pt.wide(df, c="country", v="balance")
-
-    expected_df = df.pivot_table(
-        index="id", columns="country", values="balance", aggfunc="sum"
-    ).reset_index()
-    expected_df.columns.name = None
-    pd.testing.assert_frame_equal(result, expected_df)
+    with pytest.raises(ValueError, match=r"wide\(\) encountered duplicate entries.*Use pt\.pivot\(\)"):
+        pt.wide(df, c="country", v="balance")
 
 
 def test_wide_uses_pivot_when_keys_are_unique():
@@ -62,23 +57,21 @@ def test_wide_uses_pivot_when_keys_are_unique():
     pd.testing.assert_frame_equal(result, expected_df)
 
 
-def test_wide_a_n_is_alias_for_size():
-    """a='n' matches agg_df's group-count convention; passes 'size' to pivot_table under the hood."""
+def test_wide_rejects_aggregation_arguments():
+    """wide() is strictly for 1-to-1 reshaping and rejects aggregation 'a'."""
     df = pd.DataFrame(
         {
-            "id": ["a", "a", "b", "b", "b"],
-            "balance": [10, 20, 0, 21, 15],
-            "country": ["sg", "sg", "cn", "cn", "cn"],
+            "id": ["a", "b"],
+            "balance": [10, 20],
+            "country": ["sg", "cn"],
         }
     )
 
-    result = pt.wide(df, c="country", v="balance", a="n")
+    with pytest.raises(ValueError, match=r"wide\(\) does not support 'a'.*Use pt\.pivot\(\)"):
+        pt.wide(df, c="country", v="balance", a="sum")
 
-    expected_df = df.pivot_table(
-        index="id", columns="country", values="balance", aggfunc="size"
-    ).reset_index()
-    expected_df.columns.name = None
-    pd.testing.assert_frame_equal(result, expected_df)
+    with pytest.raises(ValueError, match=r"wide\(\) does not support 'agg'.*Use pt\.pivot\(\)"):
+        df.pt.wide(c="country", v="balance", agg="mean")
 
 
 def test_long_raises_when_no_numeric_columns():
@@ -119,12 +112,12 @@ def test_long_unknown_col_raises_helpful_error():
 
 def test_wide_with_explicit_index():
     df = pd.DataFrame({
-        "region": ["East", "East", "West"],
-        "rep": ["Alice", "Bob", "Charlie"],
-        "quarter": ["Q1", "Q2", "Q1"],
-        "sales": [100, 200, 300],
+        "region": ["East", "West"],
+        "rep": ["Alice", "Bob"],
+        "quarter": ["Q1", "Q2"],
+        "sales": [100, 200],
     })
-    res = df.pt.wide(index="region", c="quarter", v="sales", a="sum")
+    res = df.pt.wide(index="region", c="quarter", v="sales")
     assert "region" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
@@ -137,23 +130,23 @@ def test_wide_bracketed_names_and_column_validation():
         "quarter": ["Q1", "Q2"],
         "sales": [1, 2],
     })
-    res = df.pt.wide(index="[region name]", c="quarter", v="sales", a="sum")
+    res = df.pt.wide(index="[region name]", c="quarter", v="sales")
     assert "region name" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
 
     with pytest.raises(KeyError, match=r"wide\(\): index column 'nope' not found in DataFrame"):
-        df.pt.wide(index="nope", c="quarter", v="sales", a="sum")
+        df.pt.wide(index="nope", c="quarter", v="sales")
 
     with pytest.raises(KeyError, match=r"wide\(\): columns 'c' column 'nope' not found in DataFrame"):
-        df.pt.wide(index="region name", c="nope", v="sales", a="sum")
+        df.pt.wide(index="region name", c="nope", v="sales")
 
 
 def test_safe_reset_index_name_collision():
     # Lib Issue 13: index name collision does not raise ValueError
-    df = pd.DataFrame({"region": ["East", "East", "West"], "c": ["Q1", "Q2", "Q1"], "v": [1, 2, 3]})
+    df = pd.DataFrame({"region": ["East", "West"], "c": ["Q1", "Q2"], "v": [1, 2]})
     df.index.name = "Q1"  # index name collides with pivoted column name "Q1"
-    res = df.pt.wide(index="region", c="c", v="v", a="sum")
+    res = df.pt.wide(index="region", c="c", v="v")
     assert "region" in res.columns
     assert "Q1" in res.columns
 
@@ -161,8 +154,8 @@ def test_safe_reset_index_name_collision():
 def test_safe_reset_index_disambiguates_collision():
     # Lib Issue 2 (Review 2ec5bbba): when pivoted column name matches index name,
     # safe_reset_index disambiguates so headers remain unique and index column access stays a Series
-    df = pd.DataFrame({"id": [1, 1, 2], "k": ["a", "id", "a"], "v": [10, 20, 30]})
-    r = df.pt.wide(index="id", c="k", v="v", a="sum")
+    df = pd.DataFrame({"id": [1, 2], "k": ["id", "a"], "v": [10, 20]})
+    r = df.pt.wide(index="id", c="k", v="v")
     assert "id" in r.columns
     assert "id_1" in r.columns
     assert isinstance(r["id"], pd.Series)

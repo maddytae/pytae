@@ -107,12 +107,10 @@ def wide(
     df: pd.DataFrame,
     c: str = "variable",
     v: str = "value",
-    a: str | None = None,
-    dropna: bool = False,
     index: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """Pivot a long column into headers (pure reshape).
+    """Pivot a long column into headers (pure 1-to-1 reshape).
 
     Parameters:
     -----------
@@ -122,12 +120,6 @@ def wide(
         Column whose values become headers (columns).
     v : str, default 'value'
         Values column to populate table cells.
-    a : str, optional
-        Aggregation function if duplicate index/column pairs exist.
-        If set, uses `pivot_table` with this aggfunc; else uses `pivot`, falling back to `sum`.
-        'n' is accepted as an alias for pandas 'size' (group row count).
-    dropna : bool, default False
-        Whether to drop all-NA columns in pivot_table.
     index : str or sequence of str, optional
         Explicit index column(s) to use. Aliases: `r`, `rows`, `by`, `id_vars`.
         If omitted, all columns other than `c` and `v` are used.
@@ -135,8 +127,15 @@ def wide(
     Returns:
     --------
     pd.DataFrame
-        Pivoted wide DataFrame.
+        Pivoted wide DataFrame with standard RangeIndex.
     """
+    for bad_arg in ("a", "agg", "aggfunc", "dropna"):
+        if bad_arg in kwargs:
+            raise ValueError(
+                f"wide() does not support '{bad_arg}'. wide() is strictly for 1-to-1 reshaping "
+                "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
+            )
+
     c = _unquote_name(c)
     if v is not None:
         v = _unquote_name(v)
@@ -159,23 +158,16 @@ def wide(
     else:
         index_cols = [col for col in df.columns if col not in [c, v]]
 
-    aggfunc = "size" if a == "n" else a
+    try:
+        pivoted = df.pivot(index=index_cols if index_cols else None, columns=c, values=v)
+    except ValueError as exc:
+        raise ValueError(
+            f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
+            "wide() is strictly for 1-to-1 reshaping without aggregation. "
+            "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
+        ) from exc
 
-    if aggfunc is None:
-        try:
-            pivoted = df.pivot(index=index_cols if index_cols else None, columns=c, values=v)
-            wide_df = _safe_reset_index(pivoted)
-        except ValueError:
-            pivoted = df.pivot_table(
-                index=index_cols if index_cols else None, columns=c, values=v, aggfunc="sum", dropna=dropna
-            )
-            wide_df = _safe_reset_index(pivoted)
-    else:
-        pivoted = df.pivot_table(
-            index=index_cols if index_cols else None, columns=c, values=v, aggfunc=aggfunc, dropna=dropna
-        )
-        wide_df = _safe_reset_index(pivoted)
-
+    wide_df = _safe_reset_index(pivoted)
     wide_df.columns.name = None
     return wide_df
 

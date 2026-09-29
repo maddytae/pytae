@@ -33,12 +33,12 @@ def sample_dataset_dir(tmp_path_factory):
 # Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
     ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
-    ("penguins.parquet", ["-select", "species,island,sex", "-wide", "c=island,v=sex,a=n"]),
+    ("penguins.parquet", ["-pivot", "r=species,c=island,v=sex,a=n"]),
     ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
     ("titanic.parquet", ["-freq", "survived"]),
     ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
     ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
-    ("flights.parquet", ["-by", "year", "-agg", "passengers = sum"]),
+    ("flights.parquet", ["-wide", "c=month,v=passengers,r=year", "-head", "5"]),
 ]
 
 
@@ -48,20 +48,31 @@ def test_docs_sample_dataset_examples_run_cleanly(sample_dataset_dir, filename, 
     assert exit_code == 0, capsys.readouterr().err
 
 
-def test_wide_a_n_counts_on_real_penguins(sample_parquet, capsys):
+def test_pivot_a_n_counts_on_real_penguins(sample_parquet, capsys):
     path = sample_parquet("penguins")
 
-    exit_code = cli.main([path, "-select", "species,island,sex", "-wide", "c=island,v=sex,a=n"])
+    exit_code = cli.main([path, "-pivot", "r=species,c=island,v=sex,a=n"])
     assert exit_code == 0
     wide_out = capsys.readouterr().out
 
     def _row(line):
-        return [0.0 if tok == "NaN" else float(tok) for tok in line.split()[1:]]
+        return [int(tok) for tok in line.split()[1:]]
 
     wide_rows = {line.split()[0]: _row(line) for line in wide_out.strip().splitlines()[1:]}
-    assert wide_rows["Adelie"] == [44.0, 56.0, 52.0]
-    assert wide_rows["Chinstrap"] == [0.0, 68.0, 0.0]
-    assert wide_rows["Gentoo"] == [124.0, 0.0, 0.0]
+    assert wide_rows["Adelie"] == [44, 56, 52]
+    assert wide_rows["Chinstrap"] == [0, 68, 0]
+    assert wide_rows["Gentoo"] == [124, 0, 0]
+
+
+def test_wide_pure_reshape_on_real_flights(sample_parquet, capsys):
+    path = sample_parquet("flights")
+
+    exit_code = cli.main([path, "-wide", "c=month,v=passengers,r=year", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols[0] == "year"
+    assert "Jan" in cols
+    assert "Dec" in cols
 
 
 def test_agg_groups_by_diamonds_cut_categories(sample_parquet, capsys):
