@@ -62,14 +62,12 @@ _KIND_SPECS = {
         'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
         'unsupported': {
             'aggfunc': "Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.",
-            'dropna': "The 'dropna' argument is not applicable to kde/density plots and will be ignored.",
         },
     },
     'hist': {
         'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
         'unsupported': {
             'aggfunc': "Aggregation is not supported for hist plot. The 'aggfunc' argument will be ignored.",
-            'dropna': "The 'dropna' argument is not applicable to hist plots and will be ignored.",
         },
     },
 }
@@ -104,7 +102,7 @@ class Plotter:
 
     def __new__(cls, *args, **kwargs):
         df = args[0] if args else kwargs.get("df")
-        by_col = kwargs.get("by") or kwargs.get("col")
+        by_col = kwargs.get("by") if kwargs.get("by") is not None else kwargs.get("col")
         has_facet_trigger = (
             kwargs.get("ncols") is not None
             or kwargs.get("facet") is True
@@ -117,7 +115,7 @@ class Plotter:
         if (
             not kwargs.get("_is_facet_grid")
             and isinstance(df, pd.DataFrame)
-            and by_col
+            and by_col is not None
             and by_col in df
             and has_facet_trigger
             and is_plot_call
@@ -500,9 +498,9 @@ class Plotter:
             self.ax = ax
             if self.last_kwargs.get('title'):
                 ax.set_title(self.last_kwargs['title'])
-            if self.last_kwargs.get('xlabel') is None and self.x:
+            if self.last_kwargs.get('xlabel') is None and self.x is not None:
                 ax.set_xlabel(str(self.x))
-            if self.last_kwargs.get('ylabel') is None and self.y:
+            if self.last_kwargs.get('ylabel') is None and self.y is not None:
                 ax.set_ylabel(str(self.y))
             self._apply_axis_labels(ax)
             self._handle_data_output(k, ax)
@@ -516,6 +514,9 @@ class Plotter:
                 is_in_cols = False
             if is_in_cols and not pd.api.types.is_numeric_dtype(k[c]):
                 k[c] = k[c].astype('category')
+        for coord in ('x', 'y'):
+            if coord in plot_dict and isinstance(plot_dict[coord], int) and plot_dict[coord] in k.columns:
+                plot_dict[coord] = k.columns.get_loc(plot_dict[coord])
         self.ax = k.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(k, ax)
@@ -542,6 +543,9 @@ class Plotter:
         """Plot a hexbin chart."""
         plot_dict = self._prepare_plot_kwargs('hexbin')
         self._store_plot_kwargs(ax, plot_dict)
+        for coord in ('x', 'y'):
+            if coord in plot_dict and isinstance(plot_dict[coord], int) and plot_dict[coord] in self.df.columns:
+                plot_dict[coord] = self.df.columns.get_loc(plot_dict[coord])
         self.ax = self.df.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(self.df, ax)
@@ -571,6 +575,8 @@ class Plotter:
         if width is not None and not isinstance(width, dict):
             plot_dict['linewidth'] = width
 
+        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in pivot_data.columns:
+            plot_dict['x'] = pivot_data.columns.get_loc(plot_dict['x'])
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
         if style is not None and isinstance(style, dict):
             style_lookup = {str(k): v for k, v in style.items()}
@@ -598,9 +604,9 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('box')
         self._store_plot_kwargs(ax, plot_dict)
         val_col = self.y
-        cat_col = self.x
+        cat_col = self.x if self.x is not None else self.by
 
-        if cat_col and cat_col in self.df:
+        if cat_col is not None and cat_col in self.df:
             if isinstance(self.df[cat_col].dtype, pd.CategoricalDtype):
                 present = set(self.df[cat_col].dropna().unique())
                 categories = [c for c in self.df[cat_col].cat.categories if c in present]
@@ -687,6 +693,8 @@ class Plotter:
             data_cols = [c for c in pivot_data.columns if c != self.x]
             colors = self._get_palette_colors(data_cols, palette=palette)
             plot_dict['color'] = [colors.get(c) for c in data_cols]
+        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in pivot_data.columns:
+            plot_dict['x'] = pivot_data.columns.get_loc(plot_dict['x'])
         self.ax = pivot_data.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(pivot_data, ax)
@@ -705,8 +713,12 @@ class Plotter:
             k.index.name = None
             k.columns.name = None
             k = k.loc[:, k.count() >= 2]
+            if k.empty or len(k.columns) == 0:
+                raise ValueError("Plotter: kde/density plot requires at least two non-null observations in a group.")
         else:
             k = self.df[[self.column]]
+            if k[self.column].count() < 2:
+                raise ValueError("Plotter: kde/density plot requires at least two non-null observations.")
         palette = self.last_kwargs.get('palette')
         if palette and 'color' not in plot_dict:
             colors = self._get_palette_colors(list(k.columns), palette=palette)
@@ -747,39 +759,65 @@ class Plotter:
         Returns:
             pandas.DataFrame: Pivoted DataFrame ready for plotting.
         """
-        if self.by is not None and isinstance(self.by, int):
-            raise TypeError(f"Plotter: column name for 'by' must be a string, got integer {self.by!r}")
+        df_source = self.df
+        by_col = self.by
+        is_int_by = isinstance(by_col, int)
+        if is_int_by:
+            sentinel_by = f"__pytae_by_{by_col}__"
+            df_source = self.df.rename(columns={by_col: sentinel_by})
+            by_col = sentinel_by
+
+        def _normalize_col_label(c: object) -> str:
+            if c is None or (isinstance(c, float) and np.isnan(c)) or pd.isna(c):
+                return "nan"
+            if isinstance(c, (float, np.floating)) and float(c).is_integer():
+                return str(int(c))
+            return str(c)
 
         if not self.aggregate:  # when aggregation is not required
-            if self.by is not None:  # to convert to wide format without aggregate because pandas plot would expect wide data
+            if by_col is not None:  # to convert to wide format without aggregate because pandas plot would expect wide data
                 # Check for potential duplicates and raise error if found
-                unique_combos = self.df[[self.x, self.by]].drop_duplicates().shape[0]
-                if unique_combos < len(self.df):  # to ensure data is ready for wide formatting without agg
+                unique_combos = df_source[[self.x, by_col]].drop_duplicates().shape[0]
+                if unique_combos < len(df_source):  # to ensure data is ready for wide formatting without agg
                     raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
-                raw_piv = self.df.pivot(index=self.x, columns=self.by, values=self.y)
-                if self.x is not None and self.x in raw_piv.columns:
-                    raise ValueError(
-                        f"Plotter: category '{self.x}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
-                        "Rename the category or x-axis column to avoid ambiguous plot data."
-                    )
+                raw_piv = df_source.pivot(index=self.x, columns=by_col, values=self.y)
+                if self.x is not None:
+                    norm_x = _normalize_col_label(self.x)
+                    for col in raw_piv.columns:
+                        if _normalize_col_label(col) == norm_x:
+                            raise ValueError(
+                                f"Plotter: category '{col}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
+                                "Rename the category or x-axis column to avoid ambiguous plot data."
+                            )
                 pivot_table = raw_piv.reset_index()
             else:
                 y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
                 cols = ([self.x] if self.x is not None else []) + [c for c in y_cols if c != self.x]
                 pivot_table = self.df[cols].copy()
         else:
-            raw_piv = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
-                                          aggfunc=self.aggfunc, dropna=self.dropna, observed=False)
-            if self.x is not None and self.x in raw_piv.columns:
-                raise ValueError(
-                    f"Plotter: category '{self.x}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
-                    "Rename the category or x-axis column to avoid ambiguous plot data."
-                )
-            pivot_table = raw_piv.reset_index()
-            if self.by is None and isinstance(self.y, (list, tuple)):
-                desired_order = ([self.x] if self.x is not None and self.x in pivot_table.columns else []) + [c for c in self.y if c in pivot_table.columns]
-                other_cols = [c for c in pivot_table.columns if c not in desired_order]
-                pivot_table = pivot_table[desired_order + other_cols]
+            if by_col is not None:
+                raw_piv = df_source.pivot_table(index=self.x, columns=by_col, values=self.y,
+                                              aggfunc=self.aggfunc, dropna=self.dropna, observed=False)
+                if self.x is not None:
+                    norm_x = _normalize_col_label(self.x)
+                    for col in raw_piv.columns:
+                        if _normalize_col_label(col) == norm_x:
+                            raise ValueError(
+                                f"Plotter: category '{col}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
+                                "Rename the category or x-axis column to avoid ambiguous plot data."
+                            )
+                pivot_table = raw_piv.reset_index()
+            else:
+                y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
+                if self.x is not None:
+                    raw_piv = self.df.groupby(self.x, as_index=True, dropna=self.dropna, observed=False)[y_cols].agg(self.aggfunc)
+                    pivot_table = raw_piv.reset_index()
+                    desired_order = [self.x] + [c for c in y_cols if c in pivot_table.columns and c != self.x]
+                    other_cols = [c for c in pivot_table.columns if c not in desired_order]
+                    pivot_table = pivot_table[desired_order + other_cols]
+                else:
+                    raw_piv = self.df[y_cols].agg(self.aggfunc).to_frame().T
+                    pivot_table = raw_piv.reset_index(drop=True)
 
         if self.x is not None and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
             if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]):
@@ -837,10 +875,14 @@ class Plotter:
 
     def finalize(self, consolidate_legends=False, bbox_to_anchor=(0.8, -0.05), ncols=10, hide_secondary_y=False, 
                  legend=True, legend_primary=True, legend_secondary=True, legend_loc='best', legend_frameon=False,
-                 style=True, title=None, xlabel=None, ylabel=None, tight_layout=True, **kwargs):
+                 style=True, title=None, xlabel=None, ylabel=None, tight_layout=True, sharex=False, sharey=False, **kwargs):
         """
         Finalize the plot with layout adjustments and legend settings.
         """
+        if kwargs:
+            first_bad = next(iter(kwargs))
+            raise ValueError(f"Plotter.finalize(): unexpected argument '{first_bad}'")
+
         Plotter._last_active = self
         self.consolidate_legends = consolidate_legends
         self.bbox_to_anchor = bbox_to_anchor
@@ -885,6 +927,21 @@ class Plotter:
                     ax.tick_params(axis='both', labelsize=fontsize)
                 if rot is not None:
                     ax.tick_params(axis=target_axis, labelrotation=rot)
+
+        axes_list = list(self.axd.values()) if hasattr(self, 'axd') and self.axd else self.fig.axes
+        plot_axes = [ax for ax in axes_list if '<colorbar>' not in ax.get_label() and not ax.get_label().endswith('^')]
+        if sharex and len(plot_axes) > 1:
+            base_ax = plot_axes[0]
+            for other_ax in plot_axes[1:]:
+                base_ax.sharex(other_ax)
+            for ax in plot_axes:
+                ax.autoscale()
+        if sharey and len(plot_axes) > 1:
+            base_ax = plot_axes[0]
+            for other_ax in plot_axes[1:]:
+                base_ax.sharey(other_ax)
+            for ax in plot_axes:
+                ax.autoscale()
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
                             legend_loc=legend_loc, legend_frameon=legend_frameon)
         

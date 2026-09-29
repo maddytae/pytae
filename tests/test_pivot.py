@@ -407,3 +407,18 @@ def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "count" in out
+
+
+def test_pivot_multi_key_empty_string_component():
+    # Issue 3: multi-key pivot keeps empty string level rather than dropping it
+    df = pd.DataFrame({
+        "r": ["r1", "r1", "r1"],
+        "y": [2023, 2023, 2024],
+        "q": ["", "Q1", "Q2"],
+        "v": [15, 10, 20],
+    })
+    piv = df.pt.pivot(r="r", c=["y", "q"], v="v", a="sum")
+    assert "2023_" in piv.columns
+    assert "2023_Q1" in piv.columns
+    assert "2024_Q2" in piv.columns
+    assert piv.loc[piv["r"] == "r1", "2023_"].iloc[0] == 15

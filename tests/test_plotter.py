@@ -721,10 +721,10 @@ def test_plotter_falsy_column_name_zero():
     p_bar_str = pt.Plotter(df_str).plot(kind="bar", x="x", y="y", by="0")
     assert p_bar_str.axd["A"].has_data()
 
-    # Integer column 0 is rejected with TypeError for ambiguous unstacking
+    # Integer column 0 works cleanly
     df_int = pd.DataFrame({"x": [1, 2], "y": [3, 4], 0: ["g1", "g2"]})
-    with pytest.raises(TypeError, match="column name for 'by' must be a string"):
-        pt.Plotter(df_int).plot(kind="bar", x="x", y="y", by=0)
+    p_bar_int = pt.Plotter(df_int).plot(kind="bar", x="x", y="y", by=0)
+    assert p_bar_int.axd["A"].has_data()
 
 
 def test_plotter_finalize_invalid_style():
@@ -732,6 +732,100 @@ def test_plotter_finalize_invalid_style():
     p = pt.Plotter(df).plot(kind="line", x="x", y="y")
     with pytest.raises(ValueError, match="stylesheet 'non_existent_style_xyz' not recognized"):
         p.finalize(style="non_existent_style_xyz")
+
+
+def test_plotter_normalized_by_category_collision_with_x():
+    # Issue 4: stringified collision between by category and x column name
+    df1 = pd.DataFrame({"1": ["a", "b", "c"], "g": [1, 1, 2], "v": [10, 20, 30]})
+    with pytest.raises(ValueError, match="collides with x-axis column name"):
+        pt.Plotter(df1).plot(kind="bar", x="1", y="v", by="g")
+
+    df2 = pd.DataFrame({"nan": [1, 2, 3], "g": [None, None, "a"], "v": [10, 20, 30]})
+    with pytest.raises(ValueError, match="collides with x-axis column name"):
+        pt.Plotter(df2).plot(kind="bar", x="nan", y="v", by="g")
+
+
+def test_plotter_integer_x_labels():
+    # Issue 5: integer x column label is treated as column, not out-of-bounds positional index
+    df = pd.DataFrame({1: ["a", "a", "b"], "g": ["x", "y", "x"], "v": [10, 20, 30]})
+    p1 = pt.Plotter(df).plot(kind="bar", x=1, y="v", by="g")
+    assert p1.axd["A"].has_data()
+
+    df_2020 = pd.DataFrame({2020: ["a", "b", "c"], "v": [10, 20, 30]})
+    p2 = pt.Plotter(df_2020).plot(kind="bar", x=2020, y="v")
+    assert p2.axd["A"].has_data()
+
+
+def test_plotter_integer_column_scatter_and_hexbin():
+    # Issue 6: integer column label in scatter and hexbin
+    df = pd.DataFrame({"x": [1, 2, 3], 0: [4, 5, 6], "g": ["a", "a", "b"]})
+    p_scat = pt.Plotter(df).plot(kind="scatter", x="x", y=0)
+    assert p_scat.axd["A"].has_data()
+
+    p_hex = pt.Plotter(df).plot(kind="hexbin", x="x", y=0)
+    assert p_hex.axd["A"].has_data()
+
+
+def test_plotter_box_plot_with_cat_col_zero():
+    # Issue 7: box grouping on column named 0
+    df = pd.DataFrame({0: [1, 1, 2, 2], "v": [1.0, 2.0, 100.0, 200.0]})
+    p_box_x = pt.Plotter(df).plot(kind="box", x=0, y="v")
+    assert len(p_box_x.tables["A"].columns) == 2
+
+    p_box_by = pt.Plotter(df).plot(kind="box", by=0, y="v")
+    assert len(p_box_by.tables["A"].columns) == 2
+
+
+def test_plotter_faceting_with_by_zero():
+    # Issue 8: faceting on by=0
+    df = pd.DataFrame({0: ["a", "a", "b", "b"], "x": [1, 2, 3, 4], "y": [10, 20, 30, 40]})
+    p = pt.Plotter(df, by=0, ncols=2, kind="scatter", x="x", y="y")
+    assert "a" in p.axd and "b" in p.axd
+    assert p.axd["a"].has_data()
+    assert p.axd["b"].has_data()
+
+    p_acc = df.pt.plot(by=0, ncols=2, kind="scatter", x="x", y="y")
+    assert "a" in p_acc.axd and "b" in p_acc.axd
+    assert p_acc.axd["a"].has_data()
+    assert p_acc.axd["b"].has_data()
+
+
+def test_plotter_mixed_y_aggregate_true():
+    # Issue 10: mixed integer and string column names in y with aggregate=True
+    df = pd.DataFrame({"x": [1, 2], 0: [4, 5], "b": [7, 8]})
+    p = pt.Plotter(df).plot(kind="bar", x="x", y=[0, "b"])
+    assert p.axd["A"].has_data()
+
+
+def test_plotter_kde_minimum_count_check():
+    # Issue 11: kde raises ValueError when observation count per group < 2
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1.0, 2.0]})
+    with pytest.raises(ValueError, match="kde/density plot requires at least two"):
+        pt.Plotter(df).plot(kind="kde", column="v", by="g")
+
+
+def test_plotter_finalize_sharex_and_sharey():
+    # Issue 12: finalize(sharex=True, sharey=True) links axes
+    df1 = pd.DataFrame({"x": [1, 2], "y": [10, 20]})
+    df2 = pd.DataFrame({"x": [1, 2], "y": [100, 200]})
+    p = pt.Plotter(mosaic="AB")
+    p.data(df1).plot(on="A", kind="bar", x="x", y="y")
+    p.data(df2).plot(on="B", kind="bar", x="x", y="y")
+    p.finalize(sharey=True)
+    ax_a = p.axd["A"]
+    ax_b = p.axd["B"]
+    assert ax_a.get_shared_y_axes().joined(ax_a, ax_b)
+
+
+def test_plotter_hist_and_kde_no_dropna_warning():
+    # Issue 13: dropna is supported in hist and kde without warning
+    import warnings
+    df = pd.DataFrame({"g": ["a", "a", None], "v": [1.0, 2.0, 3.0]})
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        pt.Plotter(df).plot(kind="hist", column="v", by="g", dropna=True)
+    dropna_warnings = [w for w in record if "dropna" in str(w.message).lower()]
+    assert len(dropna_warnings) == 0
 
 
 
