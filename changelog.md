@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.7.0] - 2026-09-29
+
+### Added
+- **2D Pivot Tables (`pt.pivot()` and CLI `-pivot`)**:
+  - Full multi-dimensional Excel-style pivot table engine with universal `r`, `c`, `v`, `a` vocabulary.
+  - Automatically resets index to standard `RangeIndex(0, 1, 2, ...)` with flat 1D string column headers.
+  - Returns `int64` standard integers for count aggregations (`a="n"` / `a="size"`), with empty intersections filled as `0`.
+  - Value column `v` is optional for row counts (`a="n"`).
+  - Unobserved groupings across MultiIndexes are cleanly filtered without generating artificial Cartesian product rows.
+  - Preserves hierarchical outer column keys across multi-column pivots (e.g. `2023_Q1`).
+- **Plotter Finalization and Enhancement**:
+  - `Plotter.finalize()` accepts `title`, `xlabel`, `ylabel`, `tight_layout`, and stylesheet names via `style=`.
+  - Automated categorical grouping in `-plot` uses `by=<col>` for multi-series styling.
+
+### Changed & Refactored
+- **Strictly Honest Error Handling Principle**:
+  - Standardized on *"Be generous in what you accept, but strictly honest when ambiguous"*.
+  - Replaced magical column renaming (e.g. `_1`, `year_col`) with clear, descriptive `ValueError` and `TypeError` exceptions that guide user data preparation.
+  - `safe_reset_index()` raises a clear `ValueError` when an index level name collides with an existing column rather than generating `col_1` suffixes.
+  - `long()` raises `ValueError` if `cols` and `id_vars` overlap.
+  - `wide()` raises `ValueError` if `c == v` or if `c`/`v` are also specified in `index`.
+  - `wide()` strictly limited to pure 1-to-1 reshaping without aggregation.
+  - `qry()` raises `ValueError` when non-numeric interval bounds are passed to numeric columns.
+  - `-rename` rejects conflicting mappings for the same column with a clear error.
+  - `-value_counts` fails cleanly when both `count` and `n` exist in columns.
+- **Uniform `dropna=False` Default**:
+  - Standardized `dropna=False` default across all operations (`pivot`, `wide`, `agg`, `mutate`, `freq`, `value_counts`, and plotting), preserving missing categories unless explicitly excluded via `dropna=True`.
+
 ## [3.6.0] - 2026-09-27
 
 ### Breaking Changes
@@ -39,7 +67,7 @@ All notable changes to this project are documented in this file.
     - `long()` supports melting non-numeric columns via explicit `cols` and `id_vars`.
     - `wide()` supports explicit index specification.
   - `safe_reset_index()` utility:
-    - Automatically detects index-column name collisions on `reset_index()`, suffixing conflicting columns (e.g. `col_1`) to keep columns 1D Series.
+    - Safely resets DataFrame index, raising an informative ValueError if an index level name collides with an existing column to prevent ambiguous duplicate headers.
   - Standardized bracket syntax (`[Column Name]`) across all verbs and queries for columns with spaces and special characters.
   - Type checking: Added `py.typed` marker (PEP 561 compliance) for strict type checker integration.
 - **CLI Features**:
