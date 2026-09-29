@@ -12,23 +12,38 @@ All notable changes to this project are documented in this file.
   - Value column `v` is optional for row counts (`a="n"`).
   - Unobserved groupings across MultiIndexes are cleanly filtered without generating artificial Cartesian product rows.
   - Preserves hierarchical outer column keys across multi-column pivots (e.g. `2023_Q1`).
-- **Plotter Finalization and Enhancement**:
+  - Validates duplicate dimensions in `r`/`c` and duplicate values in `v`.
+- **Plotter Enhancements & Modernization**:
   - `Plotter.finalize()` accepts `title`, `xlabel`, `ylabel`, `tight_layout`, and stylesheet names via `style=`.
-  - Automated categorical grouping in `-plot` uses `by=<col>` for multi-series styling.
+  - Added chainable `Plotter.show()` method for interactive inspection.
+  - Supports plotting wide data directly with optional `y` (e.g. `df.pt.plot(kind="barh", x="day")`).
+  - Seamlessly handles integer column coordinates when column index is integer-typed.
+  - Safely links `sharex`/`sharey` across 3+ axes in mosaic layouts.
+- **Aggregation & Reshaping**:
+  - `agg_df` accepts comma-separated grouping strings (e.g. `by="day,sex"` or `by="species,island"`).
+  - `wide()` supports reshaping when all columns are partitioned into `c` and `v` (no id columns).
+  - `long()` supports bracketed multi-word column names in `cols` and `id_vars`.
 
 ### Changed & Refactored
+- **Plotter Simplified (Path A)**:
+  - Removed implicit aggregation and `aggfunc=`/`aggregate=` parameters from `Plotter`.
+  - `Plotter` focuses exclusively on clean visualization—aggregate first with `df.pt.agg()` or `df.pt.pivot()`.
 - **Strictly Honest Error Handling Principle**:
   - Standardized on *"Be generous in what you accept, but strictly honest when ambiguous"*.
-  - Replaced magical column renaming (e.g. `_1`, `year_col`) with clear, descriptive `ValueError` and `TypeError` exceptions that guide user data preparation.
-  - `safe_reset_index()` raises a clear `ValueError` when an index level name collides with an existing column rather than generating `col_1` suffixes.
+  - Replaced magical column renaming with clear, descriptive `ValueError` and `TypeError` exceptions.
+  - `agg_df` checks for duplicate output column names and collisions with grouping columns.
+  - Grouped KDE/density requires at least 2 non-null observations per group, raising `ValueError` on singletons.
+  - Validates that `by` column exists across all plot kinds (`line`, `bar`, `barh`, `area`, `scatter`, `kde`, `hist`, `box`).
+  - CLI `-plot` wraps user errors cleanly with exit code 2.
+  - `safe_reset_index()` raises `ValueError` when an index level name collides with an existing column.
   - `long()` raises `ValueError` if `cols` and `id_vars` overlap.
-  - `wide()` raises `ValueError` if `c == v` or if `c`/`v` are also specified in `index`.
-  - `wide()` strictly limited to pure 1-to-1 reshaping without aggregation.
+  - `wide()` raises `ValueError` if `c == v` or if `c`/`v` are in `index`, and strictly limits to 1-to-1 reshaping.
   - `qry()` raises `ValueError` when non-numeric interval bounds are passed to numeric columns.
   - `-rename` rejects conflicting mappings for the same column with a clear error.
   - `-value_counts` fails cleanly when both `count` and `n` exist in columns.
 - **Uniform `dropna=False` Default**:
-  - Standardized `dropna=False` default across all operations (`pivot`, `wide`, `agg`, `mutate`, `freq`, `value_counts`, and plotting), preserving missing categories unless explicitly excluded via `dropna=True`.
+  - Standardized `dropna=False` default across all operations (`pivot`, `wide`, `agg`, `mutate`, `freq`, `value_counts`, and plotting).
+  - When `dropna=True` is passed to `Plotter`, NA values in `x` or `by` are dropped cleanly before reshaping/plotting across heatmap, line, bar, barh, and area.
 
 ## [3.6.0] - 2026-09-27
 
