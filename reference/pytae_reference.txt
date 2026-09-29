@@ -1594,6 +1594,7 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import parse_agg as _parse_agg
 
@@ -1918,16 +1919,20 @@ def agg_df(
         clean_by = _unquote_name(by)
         if clean_by in df.columns:
             by = clean_by
-        elif by not in df.columns:
-            if by.lower() in _KNOWN_AGGS:
-                raise ValueError(
-                    f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
-                    "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
-                    f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
-                )
-            close = difflib.get_close_matches(clean_by, df.columns, n=1)
-            hint = f" (did you mean '{close[0]}'?)" if close else ""
-            raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
+        else:
+            tokens = [_unquote_name(t.strip()) for t in _tokenize(by, ",", keep_quotes=True, track_brackets=True) if t.strip()]
+            if len(tokens) > 1:
+                by = tokens
+            else:
+                if by.lower() in _KNOWN_AGGS:
+                    raise ValueError(
+                        f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
+                        "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
+                        f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
+                    )
+                close = difflib.get_close_matches(clean_by, df.columns, n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
 
     if isinstance(by, (list, tuple)):
         by = [_unquote_name(x) if isinstance(x, str) else x for x in by]
@@ -5475,8 +5480,8 @@ _KIND_SPECS['density'] = _KIND_SPECS['kde']  # 'kde' and 'density' are aliases
 _REQUIRED_KWARGS = {
     'scatter': ['x', 'y'],
     'hexbin': ['x', 'y'],
-    'line': ['x', 'y'],
-    'other': ['x', 'y'],
+    'line': ['x'],
+    'other': ['x'],
     'box': ['y'],
     'pie': ['by', 'y'],
     'kde': ['column'],
@@ -6018,12 +6023,17 @@ class Plotter:
         if self.by is not None:
             if self.by not in plot_data.columns:
                 raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
-            if self.x is not None and self.y is not None:
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='line' with by='{self.by}' needs y=")
+            if self.x is not None:
                 plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, 'line', dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
             if self.dropna and self.x in plot_data.columns:
                 plot_data = plot_data.dropna(subset=[self.x])
 
@@ -6168,12 +6178,17 @@ class Plotter:
         if self.by is not None:
             if self.by not in plot_data.columns:
                 raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
-            if self.x is not None and self.y is not None:
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='{self.kind}' with by='{self.by}' needs y=")
+            if self.x is not None:
                 plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, self.kind, dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
             if self.dropna and self.x in plot_data.columns:
                 plot_data = plot_data.dropna(subset=[self.x])
 
@@ -9013,6 +9028,17 @@ def test_agg_df_list_collision_with_group_col():
     df = pd.DataFrame({"Sales_sum": ["A", "B"], "Sales": [10, 20]})
     with pytest.raises(ValueError, match="collides with group column 'Sales_sum'"):
         df.pt.agg("Sales_sum", ["sum", "mean"])
+
+
+def test_agg_df_comma_separated_by_string():
+    df = pd.DataFrame({
+        "day": ["Thur", "Thur", "Fri"],
+        "sex": ["Male", "Female", "Male"],
+        "total_bill": [10.0, 20.0, 30.0],
+    })
+    res = df.pt.agg("day,sex", total_bill="mean")
+    assert list(res.columns) == ["day", "sex", "total_bill"]
+    assert len(res) == 3
 
 
 if __name__ == "__main__":
@@ -13958,6 +13984,20 @@ def test_plotter_hist_and_kde_no_dropna_warning():
         pt.Plotter(df).plot(kind="hist", column="v", by="g", dropna=True)
     dropna_warnings = [w for w in record if "dropna" in str(w.message).lower()]
     assert len(dropna_warnings) == 0
+
+
+def test_plotter_wide_data_optional_y():
+    # When plotting wide data (e.g. from pivot), y is optional
+    df = pd.DataFrame({
+        "day": ["Thur", "Fri"],
+        "Lunch": [10.0, 15.0],
+        "Dinner": [20.0, 25.0],
+    })
+    p_barh = df.pt.plot(kind="barh", x="day")
+    assert p_barh.axd["A"].has_data()
+
+    p_line = df.pt.plot(kind="line", x="day")
+    assert p_line.axd["A"].has_data()
 
 ################################################################################
 # FILE: tests/test_qry.py

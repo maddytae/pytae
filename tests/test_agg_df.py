@@ -266,6 +266,17 @@ def test_agg_df_list_collision_with_group_col():
         df.pt.agg("Sales_sum", ["sum", "mean"])
 
 
+def test_agg_df_comma_separated_by_string():
+    df = pd.DataFrame({
+        "day": ["Thur", "Thur", "Fri"],
+        "sex": ["Male", "Female", "Male"],
+        "total_bill": [10.0, 20.0, 30.0],
+    })
+    res = df.pt.agg("day,sex", total_bill="mean")
+    assert list(res.columns) == ["day", "sex", "total_bill"]
+    assert len(res) == 3
+
+
 if __name__ == "__main__":
     pytest.main()
 

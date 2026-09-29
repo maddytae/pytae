@@ -918,5 +918,20 @@ def test_plotter_hist_and_kde_no_dropna_warning():
     assert len(dropna_warnings) == 0
 
 
+def test_plotter_wide_data_optional_y():
+    # When plotting wide data (e.g. from pivot), y is optional
+    df = pd.DataFrame({
+        "day": ["Thur", "Fri"],
+        "Lunch": [10.0, 15.0],
+        "Dinner": [20.0, 25.0],
+    })
+    p_barh = df.pt.plot(kind="barh", x="day")
+    assert p_barh.axd["A"].has_data()
+
+    p_line = df.pt.plot(kind="line", x="day")
+    assert p_line.axd["A"].has_data()
+
+
+
 
 

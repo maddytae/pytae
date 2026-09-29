@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import parse_agg as _parse_agg
 
@@ -330,16 +331,20 @@ def agg_df(
         clean_by = _unquote_name(by)
         if clean_by in df.columns:
             by = clean_by
-        elif by not in df.columns:
-            if by.lower() in _KNOWN_AGGS:
-                raise ValueError(
-                    f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
-                    "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
-                    f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
-                )
-            close = difflib.get_close_matches(clean_by, df.columns, n=1)
-            hint = f" (did you mean '{close[0]}'?)" if close else ""
-            raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
+        else:
+            tokens = [_unquote_name(t.strip()) for t in _tokenize(by, ",", keep_quotes=True, track_brackets=True) if t.strip()]
+            if len(tokens) > 1:
+                by = tokens
+            else:
+                if by.lower() in _KNOWN_AGGS:
+                    raise ValueError(
+                        f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
+                        "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
+                        f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
+                    )
+                close = difflib.get_close_matches(clean_by, df.columns, n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
 
     if isinstance(by, (list, tuple)):
         by = [_unquote_name(x) if isinstance(x, str) else x for x in by]

@@ -82,8 +82,8 @@ _KIND_SPECS['density'] = _KIND_SPECS['kde']  # 'kde' and 'density' are aliases
 _REQUIRED_KWARGS = {
     'scatter': ['x', 'y'],
     'hexbin': ['x', 'y'],
-    'line': ['x', 'y'],
-    'other': ['x', 'y'],
+    'line': ['x'],
+    'other': ['x'],
     'box': ['y'],
     'pie': ['by', 'y'],
     'kde': ['column'],
@@ -625,12 +625,17 @@ class Plotter:
         if self.by is not None:
             if self.by not in plot_data.columns:
                 raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
-            if self.x is not None and self.y is not None:
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='line' with by='{self.by}' needs y=")
+            if self.x is not None:
                 plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, 'line', dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
             if self.dropna and self.x in plot_data.columns:
                 plot_data = plot_data.dropna(subset=[self.x])
 
@@ -775,12 +780,17 @@ class Plotter:
         if self.by is not None:
             if self.by not in plot_data.columns:
                 raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
-            if self.x is not None and self.y is not None:
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='{self.kind}' with by='{self.by}' needs y=")
+            if self.x is not None:
                 plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, self.kind, dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
             if self.dropna and self.x in plot_data.columns:
                 plot_data = plot_data.dropna(subset=[self.x])
 
