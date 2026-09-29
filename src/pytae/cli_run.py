@@ -212,8 +212,8 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
             lines.append(f"Column names: {', '.join(cols[:15])}{'...' if len(cols) > 15 else ''}")
         except UnicodeError as exc:
             lines.append(f"Error reading encoding: {_encoding_error_message(path, encoding, exc)}")
-        except Exception:
-            pass
+        except Exception as exc:
+            lines.append(f"Error reading column info: {exc}")
     return "\n".join(lines)
 
 
@@ -656,6 +656,9 @@ def _process_path(
         elif op == "value_counts":
             source_df = pipeline.dataframe()
             value_count_cols = list(source_df.columns)
+
+            if "count" in value_count_cols and "n" in value_count_cols:
+                return _fail(parser, batch, "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers")
 
             try:
                 if len(value_count_cols) == 1:

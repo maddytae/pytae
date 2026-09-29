@@ -76,6 +76,11 @@ def long(
     melt_cols = _normalize_col_spec(cols, "cols")
     keep_ids = _normalize_col_spec(id_vars, "id_vars")
 
+    if melt_cols is not None and keep_ids is not None:
+        overlap = set(melt_cols).intersection(keep_ids)
+        if overlap:
+            raise ValueError(f"long(): column(s) {sorted(overlap)} cannot appear in both 'cols' and 'id_vars'")
+
     if melt_cols is not None:
         if keep_ids is None:
             keep_ids = [col for col in all_cols if col not in melt_cols]
@@ -154,6 +159,8 @@ def wide(
     c = _unquote_name(c)
     if v is not None:
         v = _unquote_name(v)
+    if c == v:
+        raise ValueError(f"wide(): 'c' and 'v' cannot be the same column ('{c}')")
     if c not in df.columns:
         raise KeyError(f"wide(): columns 'c' column '{c}' not found in DataFrame")
     if v is not None and v not in df.columns:
@@ -170,6 +177,10 @@ def wide(
         for col in index_cols:
             if col not in df.columns:
                 raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
+        if c in index_cols:
+            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in index columns")
+        if v is not None and v in index_cols:
+            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in index columns")
     else:
         index_cols = [col for col in df.columns if col not in [c, v]]
 
@@ -311,7 +322,7 @@ def pivot(
                         df_out[col] = df_out[col].astype("Int64")
                     else:
                         df_out[col] = df_out[col].astype("int64")
-                except Exception:
+                except (TypeError, ValueError):
                     pass
         return df_out
 

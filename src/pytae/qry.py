@@ -300,15 +300,19 @@ def qry(
                     except ValueError:
                         try:
                             lower = float(lower_str)
-                        except ValueError:
-                            lower = lower_str
+                        except ValueError as exc:
+                            raise ValueError(
+                                f"qry: interval lower bound for numeric column '{col}' must be a number, got {lower_str!r}"
+                            ) from exc
                     try:
                         upper = int(upper_str)
                     except ValueError:
                         try:
                             upper = float(upper_str)
-                        except ValueError:
-                            upper = upper_str
+                        except ValueError as exc:
+                            raise ValueError(
+                                f"qry: interval upper bound for numeric column '{col}' must be a number, got {upper_str!r}"
+                            ) from exc
                 else:
                     lower = lower_str
                     upper = upper_str

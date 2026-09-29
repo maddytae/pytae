@@ -152,14 +152,25 @@ def test_safe_reset_index_name_collision():
 
 
 def test_safe_reset_index_disambiguates_collision():
-    # Lib Issue 2 (Review 2ec5bbba): when pivoted column name matches index name,
-    # safe_reset_index disambiguates so headers remain unique and index column access stays a Series
+    # When pivoted column name matches index name, raise ValueError rather than magical renaming
     df = pd.DataFrame({"id": [1, 2], "k": ["id", "a"], "v": [10, 20]})
-    r = df.pt.wide(index="id", c="k", v="v")
-    assert "id" in r.columns
-    assert "id_1" in r.columns
-    assert isinstance(r["id"], pd.Series)
-    assert r.pt.qry("id == 1").shape[0] == 1
+    with pytest.raises(ValueError, match="collide with existing column name"):
+        df.pt.wide(index="id", c="k", v="v")
+
+
+def test_long_cols_and_id_vars_overlap():
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
+    with pytest.raises(ValueError, match="cannot appear in both 'cols' and 'id_vars'"):
+        df.pt.long(cols=["a", "b"], id_vars=["b", "c"])
+
+
+def test_wide_c_and_v_collisions():
+    df = pd.DataFrame({"x": ["A", "B"], "y": [1, 2], "z": [3, 4]})
+    with pytest.raises(ValueError, match="'c' and 'v' cannot be the same column"):
+        df.pt.wide(index="x", c="y", v="y")
+
+    with pytest.raises(ValueError, match="cannot also be in index columns"):
+        df.pt.wide(index=["x", "y"], c="y", v="z")
 
 
 if __name__ == '__main__':

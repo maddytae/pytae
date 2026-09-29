@@ -19,34 +19,22 @@ pd.Series.to_clip = to_clip
 
 
 def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
-    """Reset index safely ensuring that any index name colliding with an existing column
-    causes the colliding column to be disambiguated, so headers remain unique and the
-    index levels retain their intended names."""
+    """Reset index, ensuring no index level name collides with existing columns."""
     if isinstance(df.index, pd.RangeIndex) and df.index.name is None:
         return df
     idx_names = list(df.index.names)
     col_names = [str(col) for col in df.columns]
-    colliding = set()
+    colliding = []
     used_names = set(col_names)
     for i, name in enumerate(idx_names):
         target_name = str(name) if name is not None else ("index" if len(idx_names) == 1 else f"level_{i}")
         if target_name in used_names:
-            colliding.add(target_name)
+            colliding.append(target_name)
     if colliding:
-        new_columns = []
-        for col in col_names:
-            if col in colliding:
-                cand_idx = 1
-                cand = f"{col}_{cand_idx}"
-                while cand in used_names or cand in [str(n) for n in idx_names]:
-                    cand_idx += 1
-                    cand = f"{col}_{cand_idx}"
-                used_names.add(cand)
-                new_columns.append(cand)
-            else:
-                new_columns.append(col)
-        df = df.copy(deep=False)
-        df.columns = new_columns
+        raise ValueError(
+            f"Resetting index failed: index level name(s) {colliding} collide with existing column name(s). "
+            "Rename the column or index before resetting."
+        )
     return df.reset_index()
 
 

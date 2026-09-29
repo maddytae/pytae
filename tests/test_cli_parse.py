@@ -33,3 +33,14 @@ def test_expand_paths_single_and_list(tmp_path):
     assert "no files matched pattern" in str(exc_info.value)
 
 
+def test_parse_rename_conflicting_mappings():
+    import pytest
+
+    from pytae.cli_parsing import parse_rename
+
+    assert parse_rename("old:new, other:target") == {"old": "new", "other": "target"}
+    with pytest.raises(SystemExit) as exc_info:
+        parse_rename("col:new1, col:new2")
+    assert "conflicting mappings for 'col'" in str(exc_info.value)
+
+

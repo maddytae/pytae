@@ -796,8 +796,8 @@ class Plotter:
         if self.clip_data:
             try:
                 data.to_clipboard(index=False)
-            except Exception:
-                pass
+            except Exception as exc:
+                warnings.warn(f"Plotter: failed to copy data to clipboard: {exc}")
 
     def _collect_handles_and_legends(self):
         """
@@ -861,8 +861,8 @@ class Plotter:
         if isinstance(style, str):
             try:
                 plt.style.use(style)
-            except Exception:
-                pass
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"Plotter.finalize(): stylesheet '{style}' not recognized by matplotlib") from exc
 
         style_bool = style if isinstance(style, bool) else True
         if style_bool:

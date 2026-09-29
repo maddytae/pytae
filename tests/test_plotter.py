@@ -727,4 +727,11 @@ def test_plotter_falsy_column_name_zero():
         pt.Plotter(df_int).plot(kind="bar", x="x", y="y", by=0)
 
 
+def test_plotter_finalize_invalid_style():
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    p = pt.Plotter(df).plot(kind="line", x="x", y="y")
+    with pytest.raises(ValueError, match="stylesheet 'non_existent_style_xyz' not recognized"):
+        p.finalize(style="non_existent_style_xyz")
+
+
 
