@@ -88,9 +88,73 @@ def test_pivot_multiple_columns(sales_df):
 def test_pivot_agg_n_alias(sales_df):
     res = sales_df.pt.pivot(r="Region", c="Year", v="Sales", a="n")
     assert list(res.columns) == ["Region", "2023", "2024"]
+    assert res["2023"].dtype == "int64"
+    assert res["2024"].dtype == "int64"
     east_row = res[res["Region"] == "East"].iloc[0]
     assert east_row["2023"] == 2  # two rows for East in 2023
     assert east_row["2024"] == 1
+
+
+def test_pivot_agg_n_fill_zero_by_default():
+    # If a combination has 0 occurrences, it should be 0 and int64
+    df = pd.DataFrame({
+        "Island": ["Biscoe", "Biscoe", "Dream"],
+        "Species": ["Adelie", "Gentoo", "Chinstrap"],
+        "Sex": ["M", "F", "M"],
+    })
+    res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n")
+    assert list(res.columns) == ["Island", "Adelie", "Chinstrap", "Gentoo"]
+    assert res["Adelie"].dtype == "int64"
+    assert res["Chinstrap"].dtype == "int64"
+    assert res["Gentoo"].dtype == "int64"
+
+    biscoe = res[res["Island"] == "Biscoe"].iloc[0]
+    assert biscoe["Adelie"] == 1
+    assert biscoe["Chinstrap"] == 0
+    assert biscoe["Gentoo"] == 1
+
+    dream = res[res["Island"] == "Dream"].iloc[0]
+    assert dream["Adelie"] == 0
+    assert dream["Chinstrap"] == 1
+    assert dream["Gentoo"] == 0
+
+
+def test_pivot_agg_n_r_only(sales_df):
+    res = sales_df.pt.pivot(r="Region", v="Sales", a="n")
+    assert list(res.columns) == ["Region", "Sales"]
+    assert res["Sales"].dtype == "int64"
+    assert res.loc[res["Region"] == "East", "Sales"].iloc[0] == 3
+    assert res.loc[res["Region"] == "West", "Sales"].iloc[0] == 2
+
+
+def test_pivot_agg_n_c_only(sales_df):
+    res = sales_df.pt.pivot(c="Year", v="Sales", a="n")
+    assert list(res.columns) == ["2023", "2024"]
+    assert res["2023"].dtype == "int64"
+    assert res["2024"].dtype == "int64"
+    assert res["2023"].iloc[0] == 3
+    assert res["2024"].iloc[0] == 2
+
+
+def test_pivot_agg_n_neither_r_nor_c(sales_df):
+    res = sales_df.pt.pivot(v="Sales", a="n")
+    assert list(res.columns) == ["Sales"]
+    assert res["Sales"].dtype == "int64"
+    assert res["Sales"].iloc[0] == 5
+
+
+def test_pivot_agg_n_explicit_nan_fill():
+    df = pd.DataFrame({
+        "Island": ["Biscoe", "Dream"],
+        "Species": ["Adelie", "Chinstrap"],
+        "Sex": ["M", "F"],
+    })
+    res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n", fill_value=np.nan)
+    # When explicit NaN fill is requested, missing combinations are <NA> of Int64 dtype
+    assert res["Adelie"].dtype == "Int64"
+    assert res["Chinstrap"].dtype == "Int64"
+    assert pd.isna(res.loc[res["Island"] == "Dream", "Adelie"].iloc[0])
+    assert res.loc[res["Island"] == "Dream", "Chinstrap"].iloc[0] == 1
 
 
 def test_pivot_fill_value(sales_df):
