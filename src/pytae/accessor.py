@@ -137,7 +137,7 @@ class PtAccessor:
         c: str = "variable",
         v: str = "value",
         a: str | None = None,
-        dropna: bool = True,
+        dropna: bool = False,
         index: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
@@ -148,6 +148,42 @@ class PtAccessor:
         """
         from .shape import wide as _wide
         return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
+
+    def pivot(
+        self,
+        r: str | Sequence[str] | None = None,
+        c: str | Sequence[str] | None = None,
+        v: str | Sequence[str] | None = None,
+        a: str = "sum",
+        dropna: bool = False,
+        fill_value: Any = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Summarize and aggregate DataFrame across dimensions (Excel-style pivot table).
+
+        Parameters:
+        -----------
+        r : str or sequence of str, optional
+            Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+        c : str or sequence of str, optional
+            Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+        v : str or sequence of str
+            Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+        a : str, default 'sum'
+            Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
+            'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+        dropna : bool, default False
+            Whether to drop NA categories from grouping keys.
+        fill_value : any, optional
+            Value to replace missing grid intersections with (e.g. 0).
+
+        Returns:
+        --------
+        pd.DataFrame
+            Clean, flattened DataFrame with standard RangeIndex and 1D column names.
+        """
+        from .shape import pivot as _pivot
+        return _pivot(self._obj, r=r, c=c, v=v, a=a, dropna=dropna, fill_value=fill_value, **kwargs)
 
     def handle_missing(
         self,

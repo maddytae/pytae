@@ -61,10 +61,11 @@ sample_data = _SampleData()
 
 
 def _bind_shape():
-    from .shape import long, wide
+    from .shape import long, pivot, wide
     globals()["long"] = long
     globals()["wide"] = wide
-    return long, wide
+    globals()["pivot"] = pivot
+    return long, wide, pivot
 
 
 def __getattr__(name):
@@ -81,7 +82,7 @@ def __getattr__(name):
             return plot
         else:
             return finalize
-    if name in ("long", "wide"):
+    if name in ("long", "wide", "pivot"):
         _bind_shape()
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -98,9 +99,9 @@ __all__ = [
     "mutate",
     "agg",
     "agg_df",
-
     "long",
     "wide",
+    "pivot",
     "handle_missing",
     "cols",
     "clean_columns",

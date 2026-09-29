@@ -33,9 +33,9 @@ def sample_dataset_dir(tmp_path_factory):
 # Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
     ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
-    ("penguins.parquet", ["-crosstab", "index=species,columns=island"]),
+    ("penguins.parquet", ["-select", "species,island,sex", "-wide", "c=island,v=sex,a=n"]),
     ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
-    ("titanic.parquet", ["-crosstab", "index=pclass,columns=survived,margins=true"]),
+    ("titanic.parquet", ["-freq", "survived"]),
     ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
     ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
     ("flights.parquet", ["-by", "year", "-agg", "passengers = sum"]),
@@ -48,66 +48,20 @@ def test_docs_sample_dataset_examples_run_cleanly(sample_dataset_dir, filename, 
     assert exit_code == 0, capsys.readouterr().err
 
 
-def test_crosstab_counts_match_known_penguins_distribution(sample_parquet, capsys):
+def test_wide_a_n_counts_on_real_penguins(sample_parquet, capsys):
     path = sample_parquet("penguins")
 
-    exit_code = cli.main([path, "-crosstab", "index=species,columns=island"])
-
-    out = capsys.readouterr().out
+    exit_code = cli.main([path, "-select", "species,island,sex", "-wide", "c=island,v=sex,a=n"])
     assert exit_code == 0
-    lines = {line.split()[0]: line.split()[1:] for line in out.strip().splitlines()[2:]}
-    assert lines["Adelie"] == ["44", "56", "52"]
-    assert lines["Chinstrap"] == ["0", "68", "0"]
-    assert lines["Gentoo"] == ["124", "0", "0"]
-
-
-def test_crosstab_multi_column_index_on_real_penguins(sample_parquet, capsys):
-    path = sample_parquet("penguins")
-
-    exit_code = cli.main([path, "-crosstab", "index='species,island',columns=sex"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # multi-level row index: species and island both appear as separate leading columns
-    assert "species" in out and "island" in out
-    assert "Torgersen" in out
-
-
-def test_crosstab_multi_column_index_unknown_column_errors(sample_parquet):
-    path = sample_parquet("penguins")
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-crosstab", "index='species,nope',columns=sex"])
-    assert exc_info.value.code == 2
-
-
-def test_wide_a_n_matches_crosstab_counts_on_real_penguins(sample_parquet, capsys):
-    path = sample_parquet("penguins")
-
-    cli.main([path, "-select", "species,island,sex", "-wide", "c=island,v=sex,a=n"])
     wide_out = capsys.readouterr().out
 
-    cli.main([path, "-crosstab", "index=species,columns=island"])
-    crosstab_out = capsys.readouterr().out
-
     def _row(line):
-        # -wide leaves NaN for missing combos where -crosstab shows 0.
         return [0.0 if tok == "NaN" else float(tok) for tok in line.split()[1:]]
 
     wide_rows = {line.split()[0]: _row(line) for line in wide_out.strip().splitlines()[1:]}
-    crosstab_rows = {line.split()[0]: _row(line) for line in crosstab_out.strip().splitlines()[2:]}
-    assert wide_rows == crosstab_rows
-
-
-def test_crosstab_margins_match_known_titanic_totals(sample_parquet, capsys):
-    path = sample_parquet("titanic")
-
-    exit_code = cli.main([path, "-crosstab", "index=pclass,columns=survived,margins=true"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    last_line = out.strip().splitlines()[-1].split()
-    assert last_line == ["All", "549", "342", "891"]
+    assert wide_rows["Adelie"] == [44.0, 56.0, 52.0]
+    assert wide_rows["Chinstrap"] == [0.0, 68.0, 0.0]
+    assert wide_rows["Gentoo"] == [124.0, 0.0, 0.0]
 
 
 def test_agg_groups_by_diamonds_cut_categories(sample_parquet, capsys):

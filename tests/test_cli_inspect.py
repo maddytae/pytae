@@ -568,7 +568,7 @@ def test_cli_invalid_progress_chunk_size_errors(tmp_path):
     assert exc_info.value.code == 2
 
 
-def test_describe_and_crosstab_export_preserves_index(tmp_path):
+def test_describe_export_preserves_index(tmp_path):
     src = tmp_path / "data.parquet"
     df = pd.DataFrame({"sp": ["A", "B", "A"], "val": [10, 20, 30]})
     df.to_parquet(src, index=False)
@@ -582,11 +582,6 @@ def test_describe_and_crosstab_export_preserves_index(tmp_path):
     assert cli.main([str(src), "-describe", "-o", str(desc_pq)]) == 0
     read_desc_pq = pd.read_parquet(desc_pq)
     assert list(read_desc_pq.index) == ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
-
-    ct_csv = tmp_path / "ct.csv"
-    assert cli.main([str(src), "-crosstab", "index=sp,columns=sp", "-o", str(ct_csv)]) == 0
-    read_ct_csv = pd.read_csv(ct_csv, index_col=0)
-    assert list(read_ct_csv.index) == ["A", "B"]
 
     reg_csv = tmp_path / "reg.csv"
     assert cli.main([str(src), "-head", "2", "-o", str(reg_csv)]) == 0

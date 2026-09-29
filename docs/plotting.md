@@ -62,6 +62,9 @@ penguins = pt.sample("penguins")
 tips.pt.plot(kind="bar", x="day", y="total_bill", by="sex", aggfunc="mean",
              palette="tab10", title="Average Bill by Day and Sex").pt.finalize()
 
+# One-shot direct file export via save= (no explicit .finalize() required):
+tips.pt.plot(kind="bar", x="day", y="total_bill", aggfunc="mean", save="bill_by_day.png")
+
 # Or functional style with pt.plot and pt.finalize:
 p = pt.plot(tips, kind="scatter", x="total_bill", y="tip", c="day", title="Bill vs Tip")
 pt.finalize(p)
@@ -290,6 +293,43 @@ p.axd["B"].axhline(3.0, color="crimson", linestyle="--", linewidth=1.2, label=r"
 p.axd["B"].legend(loc="upper left", frameon=True, fontsize=8)
 
 p.fig
+```
+
+---
+
+<a id="cli-plotting"></a>
+## CLI Plotting & Terminal Visualizations
+
+`pytae` brings the plotting engine directly to the terminal for both instant visual inspections and publication-grade figure generation.
+
+### 1. Generating Figures via CLI (`-plot`, `-finalize`)
+
+Render charts headless and export directly to `.png`, `.jpg`, `.svg`, or `.pdf` using `-o`:
+
+```bash
+# Bar chart of mean body mass per species
+pytae penguins.parquet \
+  -plot "kind=bar, x=species, y=body_mass_g, aggfunc=mean" \
+  -finalize "title='Average Penguin Mass (g)', style=True" \
+  -o mass_by_species.png
+
+# Grouped scatter plot
+pytae tips.parquet \
+  -plot "kind=scatter, x=total_bill, y=tip, by=day" \
+  -finalize "title='Tips vs Total Bill', tight_layout=True" \
+  -o tips_scatter.svg
+```
+
+### 2. In-Line Terminal Visualizations (`-freq`, `-hist`)
+
+Inspect distributions without generating graphics or leaving the terminal session:
+
+```bash
+# Categorical frequency bars
+pytae penguins.parquet -freq species
+
+# Numeric histogram with custom bins
+pytae penguins.parquet -hist body_mass_g:12
 ```
 
 ---

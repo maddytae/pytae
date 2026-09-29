@@ -353,11 +353,11 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
 
 
 _LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
-_WIDE_KEYS = ("c", "v", "a", "index", "by")
+_WIDE_KEYS = ("c", "v", "a", "index", "by", "r", "rows")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
-    """Parse -long/-wide as key=value tokens, e.g. c=metric,v=reading,a=mean.
+    """Parse -long/-wide/-pivot as key=value tokens, e.g. c=metric,v=reading,a=mean.
     Comma-separated lists like frames=a,b,c or on=id:id,code:code work with or without quotes."""
     raw = (raw or "").strip()
     if not raw:
@@ -382,7 +382,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
             kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
     for key, value in list(kwargs.items()):
-        kwargs[key] = parse_bool_text(value) if key in ("margins", "exact") else value
+        kwargs[key] = parse_bool_text(value) if key in ("margins", "exact", "dropna") else value
     return kwargs
 
 
@@ -394,25 +394,17 @@ def parse_wide_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
-_CROSSTAB_KEYS = ("index", "columns", "values", "aggfunc", "normalize", "margins", "margins_name")
-_CROSSTAB_NORMALIZE_VALUES = ("index", "columns", "all")
+_PIVOT_KEYS = (
+    "r", "c", "v", "a", "dropna", "fill_value", "fill",
+    "rows", "row", "index", "by",
+    "cols", "col", "columns",
+    "values", "value", "val", "vals",
+    "agg", "aggfunc",
+)
 
 
-def parse_crosstab_arg(raw: str | None) -> dict:
-    """Parse -crosstab as key=value tokens: index= (one or more comma-separated columns),
-    columns= (single column, required), optional values=+aggfunc= (must be given together),
-    normalize=index|columns|all, margins=true|false, margins_name= (requires margins=true).
-    """
-    kwargs = parse_reshape_kwargs(raw, keys=_CROSSTAB_KEYS, flag="-crosstab")
-    if "index" not in kwargs or "columns" not in kwargs:
-        raise SystemExit("-crosstab: expected index= and columns=")
-    if ("values" in kwargs) != ("aggfunc" in kwargs):
-        raise SystemExit("-crosstab: values= and aggfunc= must be given together")
-    if "normalize" in kwargs and kwargs["normalize"] not in _CROSSTAB_NORMALIZE_VALUES:
-        raise SystemExit(f"-crosstab: normalize= must be one of {', '.join(_CROSSTAB_NORMALIZE_VALUES)}")
-    if "margins_name" in kwargs and not kwargs.get("margins"):
-        raise SystemExit("-crosstab: margins_name= requires margins=true")
-    return kwargs
+def parse_pivot_arg(raw: str | None) -> dict:
+    return parse_reshape_kwargs(raw, keys=_PIVOT_KEYS, flag="-pivot")
 
 
 _REPLACE_KEYS = ("c", "v", "exact")

@@ -10,6 +10,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Supported Formats Matrix](#supported-formats-matrix)
+- [Reading from STDIN & Pipes (`-`, `-fmt`)](#reading-from-stdin--pipes---fmt)
 - [Export Destinations (`-o`)](#export-destinations--o)
   - [Explicit File Path](#explicit-file-path)
   - [In-Place Format Shorthands](#in-place-format-shorthands)
@@ -19,6 +20,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 - [Transparent Compression (`.gz`)](#transparent-compression-gz)
 - [JSON Lines Format (`.jsonl`, `.ndjson`)](#json-lines-format-jsonl-ndjson)
 - [Delimiters & Encodings (`-dlim`, `-encoding`)](#delimiters--encodings--dlim--encoding)
+- [Robust Mixed-Type Parquet Export](#robust-mixed-type-parquet-export)
 - [Streaming Progress Bars (`-progress [N]`)](#streaming-progress-bars--progress-n)
 - [Batch Conversions with Globbing](#batch-conversions-with-globbing)
 
@@ -30,6 +32,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 |---|---|---|
 | `-o TARGET` | Output destination (file path, format shorthand, or `clip`) | `-o clean.parquet`, `-o csv`, `-o clip` |
 | `-out_dir DIR` / `-od DIR` | Target directory for exported files (requires `-o`) | `-o parquet -out_dir exports/` |
+| `-fmt FORMAT` | Input format override when reading from STDIN (`-`) or extensionless files | `-fmt jsonl`, `-fmt csv` |
 | `-progress [N]` | Display streaming row progress (default: 200,000 rows/chunk) | `-progress`, `-progress 50000` |
 | `-dlim CHAR` | Text field delimiter (`.csv`, `.txt`, `.dat`) | `-dlim "\|"`, `-dlim "\t"` |
 | `-encoding ENC` | Text encoding (SAS default `utf-8`, dat default `latin-1`) | `-encoding latin-1` |
@@ -47,6 +50,26 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 | **JSON Lines** | `.jsonl`, `.ndjson` | ✓ | ✓ | Line-delimited JSON records, streamed in chunks |
 | **Compressed Gzip** | `.csv.gz`, `.txt.gz`, `.dat.gz`, `.jsonl.gz` | ✓ | ✓ | Transparent on-the-fly streaming compression and decompression |
 | **SAS Dataset** | `.sas7bdat` | ✓ | — | SAS binary dataset format (read-only; export to Parquet or CSV) |
+
+---
+
+## Reading from STDIN & Pipes (`-`, `-fmt`)
+
+`pytae` can read tabular streams directly from standard input (STDIN) using `-` as the input path, allowing seamless integration with UNIX pipes and shell pipelines:
+
+```bash
+# Pipe CSV stream into pytae
+cat penguins.csv | pytae - -head 5
+
+# Stream from curl with explicit format
+curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -agg n
+```
+
+When reading from STDIN, `pytae` automatically inspects the first chunk to sniff the format (`csv` vs `jsonl`). You can explicitly specify or force the input format using `-fmt`:
+- `-fmt csv`
+- `-fmt jsonl` / `-fmt ndjson`
+- `-fmt txt` / `-fmt tsv`
+- `-fmt parquet`
 
 ---
 
@@ -204,6 +227,17 @@ Handle non-UTF-8 character encodings:
 ```bash
 pytae legacy_data.sas7bdat -encoding latin-1 -o modern.parquet
 ```
+
+---
+
+## Robust Mixed-Type Parquet Export
+
+When converting messy datasets (such as CSV or SAS tables containing mixed strings, integers, and floats within an `object` column) to Parquet, PyArrow typically raises an `ArrowInvalid` conversion error:
+```text
+pyarrow.lib.ArrowInvalid: Could not convert '0828' with type str: tried to convert to double
+```
+
+`pytae` automatically intercepts `ArrowInvalid` during Parquet writes, safely converts the problematic mixed columns to clean strings with a clear `UserWarning`, and completes the export without crashing.
 
 ---
 

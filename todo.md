@@ -27,19 +27,19 @@
       ```
     - **Numeric Distribution Histograms (`-hist COL [BINS]`)**: Render binned ASCII histograms showing numeric distributions, spread, and peaks directly in console scrollback.
 
-- [ ] **Ergonomic 2D Pivoting (`-pivot "r=..., c=..., v=..., a=..., dropna=..."`)**:
-  - **Concept**: Provide a first-class, ultra-intuitive 2D pivot table command using universal row/column vocabulary (`r` for rows, `c` for cols, `v` for values, `a` for aggregation).
+- [x] **Ergonomic 2D Pivoting (`-pivot "r=..., c=..., v=..., a=..., dropna=..."` and `pt.pivot(...)`)**:
+  - **Concept**: Provide a first-class, ultra-intuitive 2D pivot table command and library function mimicking Excel Pivot Tables with automatic index resetting and flat 1D column names.
   - **Key Parameters**:
-    - `r` (or `rows`): Row index / grouping dimensions (single column or comma-separated, e.g. `r=island` or `r=island,sex`).
-    - `c` (or `cols`): Columns to pivot into header columns (e.g. `c=species`).
-    - `v` (or `values`): Value column to aggregate (optional).
-    - `a` (or `agg`): Aggregation function (`mean`, `sum`, `count`, `min`, `max`, `n`). Defaults to `count` if `v` is omitted, or `mean`/`sum` if `v` is supplied.
-    - `dropna`: Control whether missing categories/columns are omitted or retained (`dropna=true` / `dropna=false`), also respecting the global `-dropna` CLI flag.
-    - `fill`: Optional fill value for missing cells (e.g. `fill=0`).
-  - **Direct Ergonomic Successor to `-crosstab`**:
-    - **Frequency Matrix**: `pytae penguins.parquet -pivot "r=island, c=species"` replaces `-crosstab "index=island, columns=species"` in one shot while emitting flat, clean column headers.
-    - **Aggregated Matrix**: `pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean, dropna=false"`.
-  - **Relationship with `-wide`**: Built on `pytae`'s fast, flat reshaping core, but adopts standard `r`, `c`, `v`, `a` vocabulary that SQL, Excel, and Pandas users naturally reach for.
+    - `r` (or `rows`, `index`, `by`): Row dimension(s) (optional; single or multiple columns, e.g. `r=Region` or `r=Region,Store`).
+    - `c` (or `cols`, `columns`): Column dimension(s) to spread as headers (optional; single or multiple columns, e.g. `c=Year` or `c=Year,Quarter`).
+    - `v` (or `values`, `val`): Value column(s) to aggregate (required; e.g. `v=Sales` or `v=Sales,Profit`).
+    - `a` (or `agg`, `aggfunc`): Aggregation function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`/`size`; default: `sum`).
+    - `dropna`: Control whether missing categories are retained (`default: false` across library and CLI).
+    - `fill_value` (or `fill`): Optional fill value for missing grid intersections (e.g. `fill=0`).
+  - **Guarantees**:
+    - Always returns a clean, rectangular DataFrame with standard `RangeIndex(0, 1, 2, ...)` and 1D column names (MultiIndex tuples flattened with `_`).
+    - Subsets DataFrame automatically to only `r`, `c`, and `v`—no `-select` needed beforehand.
+    - Zero presentation pollution: no subtotals or grand totals, ensuring full relational downstream chaining.
 
 - [x] **Zero-Code Plotting Capability (`-plot "..."` in CLI & `.plot` Enhancements)**:
   - **Concept**: Connect `pytae`'s visualization engine (`df.pt.plot` / `Plotter`) directly to the command line, fulfilling the project description (*"zero-code CLI for tabular data manipulation and plotting"*), and expand library `.plot` convenience.

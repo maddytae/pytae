@@ -108,11 +108,11 @@ def wide(
     c: str = "variable",
     v: str = "value",
     a: str | None = None,
-    dropna: bool = True,
+    dropna: bool = False,
     index: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """Pivot a long column into headers.
+    """Pivot a long column into headers (pure reshape).
 
     Parameters:
     -----------
@@ -126,10 +126,11 @@ def wide(
         Aggregation function if duplicate index/column pairs exist.
         If set, uses `pivot_table` with this aggfunc; else uses `pivot`, falling back to `sum`.
         'n' is accepted as an alias for pandas 'size' (group row count).
-    dropna : bool, default True
+    dropna : bool, default False
         Whether to drop all-NA columns in pivot_table.
     index : str or sequence of str, optional
-        Explicit index column(s) to use. If omitted, all columns other than `c` and `v` are used.
+        Explicit index column(s) to use. Aliases: `r`, `rows`, `by`, `id_vars`.
+        If omitted, all columns other than `c` and `v` are used.
 
     Returns:
     --------
@@ -145,7 +146,7 @@ def wide(
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
     if index is None:
-        index = kwargs.pop("by", kwargs.pop("id_vars", None))
+        index = kwargs.pop("r", kwargs.pop("rows", kwargs.pop("by", kwargs.pop("id_vars", None))))
 
     if index is not None:
         if isinstance(index, str):
@@ -177,3 +178,135 @@ def wide(
 
     wide_df.columns.name = None
     return wide_df
+
+
+def pivot(
+    df: pd.DataFrame,
+    r: str | Sequence[str] | None = None,
+    c: str | Sequence[str] | None = None,
+    v: str | Sequence[str] | None = None,
+    a: str = "sum",
+    dropna: bool = False,
+    fill_value: Any = None,
+    **kwargs: Any,
+) -> pd.DataFrame:
+    """Summarize and aggregate a DataFrame across dimensions (Excel-style pivot table).
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame to pivot.
+    r : str or sequence of str, optional
+        Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+    c : str or sequence of str, optional
+        Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+    v : str or sequence of str
+        Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+    a : str, default 'sum'
+        Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
+        'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+    dropna : bool, default False
+        Whether to drop NA categories from grouping keys.
+    fill_value : any, optional
+        Value to replace missing grid intersections with (e.g. 0).
+
+    Returns:
+    --------
+    pd.DataFrame
+        Clean, flattened DataFrame with standard RangeIndex and 1D column names.
+    """
+    if r is None:
+        r = kwargs.pop("rows", kwargs.pop("row", kwargs.pop("index", kwargs.pop("by", None))))
+    if c is None:
+        c = kwargs.pop("cols", kwargs.pop("col", kwargs.pop("columns", None)))
+    if v is None:
+        v = kwargs.pop("values", kwargs.pop("value", kwargs.pop("val", kwargs.pop("vals", None))))
+    if a == "sum":
+        a = kwargs.pop("agg", kwargs.pop("aggfunc", a))
+    if fill_value is None:
+        fill_value = kwargs.pop("fill", None)
+
+    all_cols = list(df.columns)
+
+    def _normalize_cols(spec: str | Sequence[str] | None, param_name: str) -> list[str] | None:
+        if spec is None:
+            return None
+        if isinstance(spec, str):
+            cols = [_unquote_name(item.strip()) for item in _tokenize(spec, ",", keep_quotes=True, track_brackets=True) if item.strip()]
+        elif isinstance(spec, (list, tuple, set)):
+            cols = [_unquote_name(item) if isinstance(item, str) else item for item in spec]
+        else:
+            raise TypeError(f"pivot(): {param_name} must be a column name or sequence of names, got {type(spec).__name__}")
+        for col in cols:
+            if col not in df.columns:
+                close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"pivot(): {param_name} column '{col}' not found in DataFrame{hint}")
+        return cols
+
+    v_cols = _normalize_cols(v, "v (values)")
+    if not v_cols:
+        raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
+    r_cols = _normalize_cols(r, "r (rows)")
+    c_cols = _normalize_cols(c, "c (cols)")
+
+    aggfunc = "size" if a == "n" else a
+    val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
+
+    def _flatten_cols(piv: pd.DataFrame) -> None:
+        if isinstance(piv.columns, pd.MultiIndex):
+            piv.columns = [
+                "_".join(str(part) for part in col if part is not None and str(part) != "")
+                for col in piv.columns
+            ]
+        else:
+            piv.columns = [str(col) for col in piv.columns]
+
+    if r_cols and c_cols:
+        pivoted = df.pivot_table(
+            index=r_cols,
+            columns=c_cols,
+            values=val_arg,
+            aggfunc=aggfunc,
+            dropna=dropna,
+            fill_value=fill_value,
+        )
+        _flatten_cols(pivoted)
+        res = _safe_reset_index(pivoted)
+        res.columns.name = None
+        return res
+    elif r_cols:
+        pivoted = df.pivot_table(
+            index=r_cols,
+            values=val_arg,
+            aggfunc=aggfunc,
+            dropna=dropna,
+            fill_value=fill_value,
+        )
+        _flatten_cols(pivoted)
+        res = _safe_reset_index(pivoted)
+        res.columns.name = None
+        return res
+    elif c_cols:
+        pivoted = df.pivot_table(
+            columns=c_cols,
+            values=val_arg,
+            aggfunc=aggfunc,
+            dropna=dropna,
+            fill_value=fill_value,
+        )
+        _flatten_cols(pivoted)
+        res = pivoted.reset_index(drop=True)
+        res.columns.name = None
+        return res
+    else:
+        if aggfunc == "size":
+            res = pd.DataFrame({col: [len(df)] for col in v_cols})
+        else:
+            res = df[v_cols].agg(aggfunc).to_frame().T.reset_index(drop=True)
+        if fill_value is not None:
+            res = res.fillna(fill_value)
+        res.columns = [str(col) for col in res.columns]
+        res.columns.name = None
+        return res
+

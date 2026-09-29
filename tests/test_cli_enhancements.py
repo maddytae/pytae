@@ -128,11 +128,3 @@ def test_library_plot_save_kwarg(tmp_path):
     assert plotter is not None
     assert out_file.exists()
     assert out_file.stat().st_size > 0
-
-
-def test_crosstab_deprecation_warning(tmp_path, capsys):
-    df = pd.DataFrame({"row": ["A", "B", "A"], "col": ["X", "Y", "X"]})
-    path = _write_csv(tmp_path, df)
-    with pytest.warns(FutureWarning, match="'-crosstab' flag is deprecated"):
-        exit_code = cli.main([path, "-crosstab", "index=row,columns=col"])
-    assert exit_code == 0
