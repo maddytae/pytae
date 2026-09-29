@@ -248,7 +248,7 @@ Render instant terminal ASCII histograms and frequency bar distributions, or exp
 ```bash
 pytae penguins.parquet -freq species                             # Terminal ASCII bar chart
 pytae penguins.parquet -hist "body_mass_g:15"                    # Terminal ASCII histogram (15 bins)
-pytae penguins.parquet -plot "kind=bar, x=species, y=body_mass_g, aggfunc=mean" -o chart.png
+pytae penguins.parquet -by species -agg "mass=body_mass_g:mean" -plot "kind=bar, x=species, y=mass" -o chart.png
 ```
 
 👉 See the complete guide: **[Visualizations & Plotting Guide](cli/plotting.md)**
@@ -351,7 +351,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-sort_by SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` | [cli/reshape.md](cli/reshape.md) |
 | `-freq COL` | Visualize | Terminal ASCII frequency distribution bar chart | [cli/inspect.md](cli/inspect.md) |
 | `-hist COL[:BINS]` | Visualize | Terminal ASCII numeric histogram with bin intervals | [cli/inspect.md](cli/inspect.md) |
-| `-plot SPEC` | Visualize | Headless figure plotting (`kind=`, `x=`, `y=`, `by=`, `aggfunc=`) | [cli/plotting.md](cli/plotting.md) |
+| `-plot SPEC` | Visualize | Headless figure plotting (`kind=`, `x=`, `y=`, `by=`) | [cli/plotting.md](cli/plotting.md) |
 | `-finalize SPEC` | Visualize | Plot decoration and styling (`title=`, `style=`, `tight_layout=`) | [cli/plotting.md](cli/plotting.md) |
 | `-fmt FORMAT` | I/O & Export | Format override for STDIN / extensionless files (`csv`, `parquet`, `jsonl`) | [cli/export_io.md](cli/export_io.md) |
 | `-file SPEC` | Multi-File | Load multiple named input files (`PATH=ALIAS;...`) | [cli/multi_file.md](cli/multi_file.md) |
