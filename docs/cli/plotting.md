@@ -15,7 +15,7 @@
 - [Terminal Numeric Histograms (`-hist`)](#terminal-numeric-histograms--hist)
 - [Headless Figure Plotting (`-plot` & `-finalize`)](#headless-figure-plotting--plot--finalize)
   - [1. Single Plots with Auto-Aggregation](#1-single-plots-with-auto-aggregation)
-  - [2. Multi-Dimensional Categorical Grouping (`color=`)](#2-multi-dimensional-categorical-grouping-color)
+  - [2. Multi-Dimensional Categorical Grouping (`by=`)](#2-multi-dimensional-categorical-grouping-by)
   - [3. Distribution Plots (`box`, `kde`, `hist`)](#3-distribution-plots-box-kde-hist)
   - [4. Custom Styling & Finalization (`-finalize`)](#4-custom-styling--finalization--finalize)
   - [5. Exporting Figures (`-o`)](#5-exporting-figures--o)
@@ -99,14 +99,14 @@ pytae penguins.parquet \
   -o avg_mass.png
 ```
 
-### 2. Multi-Dimensional Categorical Grouping (`color=`)
+### 2. Multi-Dimensional Categorical Grouping (`by=`)
 
 Produce multi-series bar or scatter plots with automated color mapping:
 
 ```bash
 pytae penguins.parquet \
   -qry "sex = ('notna',)" \
-  -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, color=species" \
+  -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=species" \
   -finalize "title='Bill Length vs Body Mass', tight_layout=true" \
   -o scatter.png
 ```
@@ -159,5 +159,5 @@ pytae data.parquet -plot "kind=bar,x=cat,y=val" -o chart.png -od ./reports/figur
 If `-o` is omitted and the output is not redirected, `pytae` invokes `plt.show()` so you can inspect charts interactively in a desktop window:
 
 ```bash
-pytae penguins.parquet -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, color=species"
+pytae penguins.parquet -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=species"
 ```
