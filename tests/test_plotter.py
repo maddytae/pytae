@@ -931,7 +931,21 @@ def test_plotter_wide_data_optional_y():
     p_line = df.pt.plot(kind="line", x="day")
     assert p_line.axd["A"].has_data()
 
+def test_plotter_remap_coord_pandas2_and_3():
+    from unittest.mock import MagicMock
 
+    from pytae.plotting import _remap_coord_if_needed
 
+    # Simulating pandas 2.x Index with _holds_integer() -> True
+    mock_cols_pd2 = MagicMock()
+    mock_cols_pd2.dtype.kind = "O"
+    mock_cols_pd2._holds_integer.return_value = True
+    mock_cols_pd2.__contains__.side_effect = lambda k: k in ["x", 0, "g"]
+    assert _remap_coord_if_needed(mock_cols_pd2, 0) == 0
+    assert _remap_coord_if_needed(mock_cols_pd2, "x") == "x"
 
+    # Current pandas (e.g. pandas 3.x) where Index does not have _holds_integer
+    cols_pd3 = pd.Index(["x", 0, "g"])
+    assert _remap_coord_if_needed(cols_pd3, 0) == 1
+    assert _remap_coord_if_needed(cols_pd3, "x") == "x"
 

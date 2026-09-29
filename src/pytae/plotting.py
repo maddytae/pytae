@@ -106,8 +106,17 @@ def _holds_integer(cols: pd.Index) -> bool:
 
 
 def _remap_coord_if_needed(cols: pd.Index, val: Any) -> Any:
-    if not _holds_integer(cols) and isinstance(val, (int, np.integer)) and val in cols:
-        return cols.get_loc(val)
+    if not isinstance(val, bool) and isinstance(val, (int, np.integer)) and val in cols:
+        if _holds_integer(cols):
+            return val
+        if hasattr(cols, '_holds_integer') and cols._holds_integer():
+            return val
+        loc = cols.get_loc(val)
+        if isinstance(loc, slice):
+            return loc.start
+        if isinstance(loc, np.ndarray):
+            return int(np.where(loc)[0][0])
+        return loc
     return val
 
 
