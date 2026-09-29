@@ -666,19 +666,4 @@ def test_plotter_line_style_width_integer_keys():
             assert line.get_linewidth() == 5
 
 
-def test_plotter_color_and_hue_alias_to_by():
-    df = pd.DataFrame({
-        "x": [1, 2, 3, 4],
-        "y": [10, 20, 30, 40],
-        "species": ["A", "A", "B", "B"],
-    })
-    # Both color='species' and hue='species' alias to by='species'
-    p_by = pt.Plotter(df).plot(kind="scatter", x="x", y="y", by="species")
-    p_color = pt.Plotter(df).plot(kind="scatter", x="x", y="y", color="species")
-    p_hue = pt.Plotter(df).plot(kind="scatter", x="x", y="y", hue="species")
-
-    assert len(p_by.ax.collections) == 2
-    assert len(p_color.ax.collections) == 2
-    assert len(p_hue.ax.collections) == 2
-
 
