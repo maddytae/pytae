@@ -192,15 +192,23 @@ def _agg_df_dict(
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
                     final_name = f"{src_col}_{agg_fn}"
+                    if final_name in group_cols:
+                        raise ValueError(f"agg_df: output column name '{final_name}' collides with group column '{final_name}'")
                     output_cols.append(final_name)
                     named_aggs[final_name] = (src_col, agg_fn)
             else:
+                if src_col in group_cols:
+                    raise ValueError(f"agg_df: output column name '{src_col}' collides with group column '{src_col}'")
                 output_cols.append(src_col)
                 named_aggs[src_col] = (src_col, aggs_list[0])
         else:
+            if clean_out_name in group_cols:
+                raise ValueError(f"agg_df: output column name '{clean_out_name}' collides with group column '{clean_out_name}'")
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
                     final_name = f"{clean_out_name}_{agg_fn}"
+                    if final_name in group_cols:
+                        raise ValueError(f"agg_df: output column name '{final_name}' collides with group column '{final_name}'")
                     output_cols.append(final_name)
                     named_aggs[final_name] = (src_col, agg_fn)
             else:

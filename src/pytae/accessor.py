@@ -234,7 +234,7 @@ class PtAccessor:
                 "df.pt.plot() requires matplotlib. Install with: pip install 'pytae[plot]'"
             ) from exc
 
-        by_col = kwargs.get("by") or kwargs.get("col")
+        by_col = kwargs.get("by") if kwargs.get("by") is not None else kwargs.get("col")
         has_facet_trigger = (
             kwargs.get("ncols") is not None
             or kwargs.get("facet") is True
@@ -246,7 +246,7 @@ class PtAccessor:
 
         if (
             isinstance(self._obj, pd.DataFrame)
-            and by_col
+            and by_col is not None
             and by_col in self._obj
             and has_facet_trigger
             and is_plot_call

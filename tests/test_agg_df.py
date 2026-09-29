@@ -243,6 +243,20 @@ def test_agg_df_group_by_n_with_count_n_raises():
         df.pt.agg_df("n", v="mean", n="n")
 
 
+def test_agg_df_output_name_collides_with_group_col():
+    # Issue 1: named agg output matching a group column raises ValueError
+    df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
+    with pytest.raises(ValueError, match="collides with group column"):
+        df.pt.agg("Region", Region="Sales:sum")
+
+    with pytest.raises(ValueError, match="collides with group column"):
+        df.pt.agg("Region", "Region = Sales:sum")
+
+    df_suffixed = pd.DataFrame({"Sales_sum": ["East", "East", "West"], "Profit": [1, 2, 3]})
+    with pytest.raises(ValueError, match="collides with group column"):
+        df_suffixed.pt.agg("Sales_sum", Sales="Profit:sum,mean")
+
+
 if __name__ == "__main__":
     pytest.main()
 

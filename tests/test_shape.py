@@ -173,5 +173,21 @@ def test_wide_c_and_v_collisions():
         df.pt.wide(index=["x", "y"], c="y", v="z")
 
 
+def test_long_output_name_collisions():
+    # Issue 2: long() output names colliding with id_vars, cols, or each other
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    with pytest.raises(ValueError, match="cannot have the same name"):
+        df.pt.long(cols=["a"], id_vars=["b"], c="val", v="val")
+
+    with pytest.raises(ValueError, match="collides with kept id column"):
+        df.pt.long(cols=["a"], id_vars=["b"], c="b", v="val")
+
+    with pytest.raises(ValueError, match="collides with kept id column"):
+        df.pt.long(cols=["a"], id_vars=["b"], c="var", v="b")
+
+    with pytest.raises(ValueError, match="collides with melted column"):
+        df.pt.long(cols=["a"], id_vars=["b"], c="var", v="a")
+
+
 if __name__ == '__main__':
     pytest.main()

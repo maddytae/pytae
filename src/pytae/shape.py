@@ -100,6 +100,15 @@ def long(
         melt_cols = numeric_cols
         keep_ids = [col for col in all_cols if col not in melt_cols]
 
+    if c == v:
+        raise ValueError(f"long(): output variable column 'c' ({c!r}) and value column 'v' ({v!r}) cannot have the same name")
+    if c in keep_ids:
+        raise ValueError(f"long(): output variable column 'c' ({c!r}) collides with kept id column(s)")
+    if v in keep_ids:
+        raise ValueError(f"long(): output value column 'v' ({v!r}) collides with kept id column(s)")
+    if v in melt_cols:
+        raise ValueError(f"long(): output value column 'v' ({v!r}) collides with melted column(s)")
+
     return pd.melt(
         df,
         id_vars=keep_ids,
@@ -295,7 +304,7 @@ def pivot(
         raw_names: list[str] = []
         if isinstance(piv.columns, pd.MultiIndex):
             for col in piv.columns:
-                formatted_parts = [_format_part(part) for part in col if part is not None and str(part) != ""]
+                formatted_parts = [_format_part(part) for part in col if part is not None]
                 raw_names.append("_".join(formatted_parts))
         else:
             raw_names = [_format_part(col) for col in piv.columns]
