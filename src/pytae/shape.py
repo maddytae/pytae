@@ -335,18 +335,16 @@ def pivot(
                     pass
         return df_out
 
+    val_arg = v_cols[0] if len(v_cols) == 1 else v_cols
+
     if r_cols and c_cols:
         group_keys = list(r_cols) + list(c_cols)
         if aggfunc == "size":
             s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
             pivoted = s.unstack(list(c_cols), fill_value=fill_value if fill_value is not None else 0)
         else:
-            if len(v_cols) == 1:
-                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
-                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
-            else:
-                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
-                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
+            g = df.groupby(group_keys, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
+            pivoted = g.unstack(list(c_cols), fill_value=fill_value)
         _flatten_cols(pivoted)
         res = _safe_reset_index(pivoted)
         res.columns.name = None
@@ -364,7 +362,6 @@ def pivot(
             res.columns.name = None
             return _cast_size_ints(res)
         else:
-            val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
             g = df.groupby(r_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
             pivoted = g if isinstance(g, pd.DataFrame) else g.to_frame()
             if fill_value is not None:
@@ -381,8 +378,8 @@ def pivot(
             pivoted.columns.name = None
             return _cast_size_ints(pivoted)
         else:
+            g = df.groupby(c_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
             if len(v_cols) == 1:
-                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
                 pivoted = g.to_frame().T.reset_index(drop=True)
                 if fill_value is not None:
                     pivoted = pivoted.fillna(fill_value)
@@ -390,7 +387,6 @@ def pivot(
                 pivoted.columns.name = None
                 return pivoted
             else:
-                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
                 pivoted = g.T
                 if fill_value is not None:
                     pivoted = pivoted.fillna(fill_value)
