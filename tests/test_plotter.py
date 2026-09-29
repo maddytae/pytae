@@ -944,8 +944,11 @@ def test_plotter_remap_coord_pandas2_and_3():
     assert _remap_coord_if_needed(mock_cols_pd2, 0) == 0
     assert _remap_coord_if_needed(mock_cols_pd2, "x") == "x"
 
-    # Current pandas (e.g. pandas 3.x) where Index does not have _holds_integer
-    cols_pd3 = pd.Index(["x", 0, "g"])
-    assert _remap_coord_if_needed(cols_pd3, 0) == 1
-    assert _remap_coord_if_needed(cols_pd3, "x") == "x"
+    # Simulating pandas 3.x where Index does not have _holds_integer
+    mock_cols_pd3 = MagicMock(spec=["dtype", "get_loc", "__contains__"])
+    mock_cols_pd3.dtype.kind = "O"
+    mock_cols_pd3.__contains__.side_effect = lambda k: k in ["x", 0, "g"]
+    mock_cols_pd3.get_loc.side_effect = lambda k: ["x", 0, "g"].index(k)
+    assert _remap_coord_if_needed(mock_cols_pd3, 0) == 1
+    assert _remap_coord_if_needed(mock_cols_pd3, "x") == "x"
 
