@@ -279,3 +279,124 @@ def test_cli_pivot_export_parquet(tmp_path):
     assert "Region" in pivoted_df.columns
     assert "2023" in pivoted_df.columns
     assert "2024" in pivoted_df.columns
+
+
+def test_pivot_no_cartesian_product_unobserved_combinations():
+    doc = pd.DataFrame({
+        "Region": ["East", "East", "East", "East", "West", "West"],
+        "Store": ["Store A", "Store A", "Store B", "Store B", "Store C", "Store C"],
+        "Year": [2023, 2024, 2023, 2024, 2023, 2024],
+        "Sales": [700.0, 850.0, 800.0, 950.0, 900.0, 1100.0],
+    })
+    res_sum = doc.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="sum")
+    # Only observed Region-Store pairs should exist (3 rows), not 6
+    assert len(res_sum) == 3
+    assert set(res_sum["Store"]) == {"Store A", "Store B", "Store C"}
+
+    res_n = doc.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="n")
+    assert len(res_n) == 3
+
+
+def test_pivot_multi_c_cols_a_n_preserves_outer_keys():
+    df = pd.DataFrame({
+        "Region": ["East", "East", "East", "East"],
+        "Year": [2023, 2023, 2023, 2024],
+        "Quarter": ["Q1", "Q1", "Q2", "Q1"],
+        "Sales": [1, 1, 1, 1],
+    })
+    out = df.pt.pivot(r="Region", c=["Year", "Quarter"], v="Sales", a="n")
+    assert "2023_Q1" in out.columns
+    assert "2023_Q2" in out.columns
+    assert "2024_Q1" in out.columns
+    assert out["2023_Q1"].iloc[0] == 2
+    assert out["2023_Q2"].iloc[0] == 1
+    assert out["2024_Q1"].iloc[0] == 1
+
+
+def test_pivot_header_deduplication():
+    df1 = pd.DataFrame({"r": ["a", "a"], "c": [1, "1"], "v": [10.0, 20.0]})
+    out1 = df1.pt.pivot(r="r", c="c", v="v", a="sum")
+    assert list(out1.columns) == ["r", "1", "1_1"]
+
+    df2 = pd.DataFrame({"r": ["a", "a", "a"], "c": [np.nan, "nan", "ok"], "v": [1.0, 2.0, 3.0]})
+    out2 = df2.pt.pivot(r="r", c="c", v="v", a="sum")
+    assert "nan" in out2.columns
+    assert "nan_1" in out2.columns
+
+
+def test_pivot_c_only_multi_values_keeps_metric_index():
+    df = pd.DataFrame({
+        "Year": [2023, 2024, 2023],
+        "Sales": [100.0, 150.0, 200.0],
+        "Profit": [10.0, 15.0, 20.0],
+    })
+    out = df.pt.pivot(c="Year", v=["Sales", "Profit"], a="sum")
+    assert "metric" in out.columns
+    assert set(out["metric"]) == {"Sales", "Profit"}
+
+
+def test_pivot_row_only_a_n_count_key_collision():
+    df1 = pd.DataFrame({"island": ["A", "A", "B"]})
+    out1 = df1.pt.pivot(r="island", v="island", a="n")
+    assert "island" in out1.columns
+    assert "n" in out1.columns
+    assert list(out1["n"]) == [2, 1]
+
+    df2 = pd.DataFrame({"count": ["a", "a", "b"], "Sales": [1, 2, 3], "Profit": [4, 5, 6]})
+    out2 = df2.pt.pivot(r="count", v=["Sales", "Profit"], a="n")
+    assert "count" in out2.columns
+    assert "n" in out2.columns
+
+
+def test_pivot_v_in_dimensions_validation():
+    df = pd.DataFrame({"Region": ["East", "West"], "Year": [2023, 2024], "Sales": [10, 20]})
+    with pytest.raises(ValueError, match="cannot also be in grouping dimensions"):
+        df.pt.pivot(r="Region", c="Year", v="Region", a="sum")
+
+
+def test_cli_pivot_fill_numeric(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "West"],
+        "Store": ["A", "B"],
+        "Sales": [4.0, 2.0],
+    })
+    path = str(tmp_path / "sales.csv")
+    df.to_csv(path, index=False)
+    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,fill=0", "-round", "1"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "0" in out
+
+
+def test_cli_pivot_unknown_agg_fails_cleanly(tmp_path):
+    df = pd.DataFrame({"Region": ["East"], "Sales": [100]})
+    path = str(tmp_path / "sales.csv")
+    df.to_csv(path, index=False)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-pivot", "r=Region,v=Sales,a=nope"])
+    assert exc.value.code == 2
+
+
+def test_wide_cols_and_values_aliases(tmp_path):
+    df = pd.DataFrame({
+        "id": ["a", "b"],
+        "country": ["sg", "cn"],
+        "balance": [10, 20],
+    })
+    w1 = df.pt.wide(cols="country", values="balance")
+    assert "cn" in w1.columns and "sg" in w1.columns
+
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+    exit_code = cli.main([path, "-wide", "cols=country,values=balance"])
+    assert exit_code == 0
+
+
+def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):
+    df = pd.DataFrame({"count": ["a", "a", "b"]})
+    path = str(tmp_path / "counts.csv")
+    df.to_csv(path, index=False)
+    exit_code = cli.main([path, "-value_counts"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "count" in out

@@ -657,12 +657,17 @@ def _process_path(
             source_df = pipeline.dataframe()
             value_count_cols = list(source_df.columns)
 
-            if len(value_count_cols) == 1:
-                col = value_count_cols[0]
-                result = source_df[col].value_counts(dropna=False if args.dropna is None else args.dropna).rename("count").reset_index()
-                result.columns = [col, "count"]
-            else:
-                result = source_df.value_counts(subset=value_count_cols, dropna=False if args.dropna is None else args.dropna).rename("count").reset_index()
+            try:
+                if len(value_count_cols) == 1:
+                    col = value_count_cols[0]
+                    count_name = "count" if col != "count" else "n"
+                    result = source_df[col].value_counts(dropna=False if args.dropna is None else args.dropna).rename(count_name).reset_index()
+                    result.columns = [col, count_name]
+                else:
+                    count_name = "count" if "count" not in value_count_cols else "n"
+                    result = source_df.value_counts(subset=value_count_cols, dropna=False if args.dropna is None else args.dropna).rename(count_name).reset_index()
+            except Exception as exc:
+                return _fail(parser, batch, str(exc))
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
@@ -824,7 +829,7 @@ def _process_path(
                 return _fail(parser, batch, unknown_columns_message("-pivot", missing, list(source_df.columns)))
             try:
                 result = pivot_fn(source_df, **pivot_kwargs)
-            except (KeyError, ValueError) as exc:
+            except Exception as exc:
                 return _fail(parser, batch, str(exc))
             pipeline._df = result
             if should_print(idx):
@@ -843,6 +848,12 @@ def _process_path(
             if is_image_out or not should_print(idx):
                 matplotlib.use("Agg")
             import matplotlib.pyplot as plt
+
+            if isinstance(finalize_kwargs.get("style"), str):
+                try:
+                    plt.style.use(finalize_kwargs["style"])
+                except Exception as exc:
+                    return _fail(parser, batch, f"-finalize style: {exc}")
 
             plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
             init_kwargs = {k: v for k, v in plot_kwargs.items() if k in plotter_keys}
