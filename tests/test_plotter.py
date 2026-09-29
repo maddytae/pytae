@@ -20,14 +20,14 @@ def test_plotter_constructs_default_axis():
 
 
 def test_pie_plot_does_not_overwrite_plotter_df():
-    df = pd.DataFrame({"cat": ["a", "a", "b"], "val": [1, 2, 3]})
+    df = pd.DataFrame({"cat": ["a", "b"], "val": [1, 2]})
     plotter = Plotter().data(df)
     plotter.plot(x="cat", y="val", kind="pie", by="cat")
     pd.testing.assert_frame_equal(plotter.df, df)
 
 
 def test_unknown_mosaic_on_key_raises():
-    df = pd.DataFrame({"cat": ["a", "a", "b"], "val": [1, 2, 3]})
+    df = pd.DataFrame({"cat": ["a", "b"], "val": [1, 2]})
     plotter = Plotter(mosaic="AB").data(df)
     with pytest.raises(ValueError, match="Unknown mosaic key"):
         plotter.plot(x="cat", y="val", kind="bar", on="Z")
@@ -132,15 +132,15 @@ def test_scatter_groups_by_category_with_labels():
     assert set(labels) == {"x", "y"}
 
 
-def test_hist_warns_on_unsupported_aggfunc_kwarg():
+def test_aggfunc_raises_helpful_error():
     df = pd.DataFrame({"a": [1, 2, 3]})
-    with pytest.warns(UserWarning, match="not supported for hist plot"):
+    with pytest.raises(ValueError, match="Plotter does not perform aggregation"):
         Plotter().data(df).plot(kind="hist", column="a", aggfunc="mean")
 
 
 def test_supported_kwargs_lists_unsupported_and_controls():
     info = Plotter.supported_kwargs("scatter")
-    assert set(info["unsupported"]) == {"aggfunc", "dropna"}
+    assert set(info["unsupported"]) == {"dropna"}
     assert "on" in info["pytae_controls"]
     assert "palette" in info["pytae_controls"]
 
@@ -193,7 +193,7 @@ def test_plotter_init_with_dataframe():
 def test_df_pt_plot_accessor():
     import pytae  # noqa: F401 registers df.pt
     df = pd.DataFrame({"x": ["a", "b", "c"], "y": [10, 20, 30]})
-    p = df.pt.plot(kind="bar", x="x", y="y", aggfunc="mean").finalize()
+    p = df.pt.plot(kind="bar", x="x", y="y").finalize()
     assert isinstance(p, Plotter)
     assert p.ax is not None
 
@@ -230,7 +230,7 @@ def test_palette_and_axis_labels():
 
 def test_heatmap_rendering():
     df = pd.DataFrame({"x": ["A", "A", "B", "B"], "y": ["C", "D", "C", "D"], "v": [1, 2, 3, 4]})
-    p = Plotter(df).plot(kind="heatmap", x="x", y="v", by="y", aggfunc="mean", annot=True)
+    p = Plotter(df).plot(kind="heatmap", x="x", y="v", by="y", annot=True)
     assert p.ax is not None
     table = p.get_data("A")
     assert table.shape == (2, 2)
@@ -253,7 +253,7 @@ def test_facet_sharex_sharey():
 def test_pt_plot_top_level_function():
     import pytae as pt
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
-    p = pt.plot(df, kind="bar", x="day", y="bill", aggfunc="mean").finalize()
+    p = pt.plot(df, kind="bar", x="day", y="bill").finalize()
     assert isinstance(p, Plotter)
     assert p.ax is not None
 
@@ -286,13 +286,13 @@ def test_pt_finalize_function_explicit_and_implicit():
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
 
     # 1. Explicit plotter passed
-    p1 = pt.plot(df, kind="bar", x="day", y="bill", aggfunc="mean")
+    p1 = pt.plot(df, kind="bar", x="day", y="bill")
     res1 = pt.finalize(p1)
     assert res1 is p1
     assert not p1.ax.spines["top"].get_visible()
 
     # 2. Implicit active plotter (zero args)
-    p2 = pt.plot(df, kind="bar", x="day", y="bill", aggfunc="mean")
+    p2 = pt.plot(df, kind="bar", x="day", y="bill")
     res2 = pt.finalize()
     assert res2 is p2
     assert not p2.ax.spines["top"].get_visible()
@@ -312,7 +312,7 @@ def test_plotter_pt_namespace_chaining():
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
 
     # Fluent .pt namespace throughout the entire pipeline
-    p = df.pt.plot(kind="bar", x="day", y="bill", aggfunc="mean").pt.finalize()
+    p = df.pt.plot(kind="bar", x="day", y="bill").pt.finalize()
     assert isinstance(p, pt.Plotter)
     assert not p.ax.spines["top"].get_visible()
 
@@ -324,8 +324,8 @@ def test_control_kwargs_secondary_y_and_print_clip(capsys):
     # secondary_y=True should automatically route to A^
     p = (
         pt.Plotter(df, figsize=(8, 4))
-        .plot(on="A", kind="bar", x="day", y="bill", aggfunc="mean")
-        .plot(kind="line", x="day", y="tip", aggfunc="mean", secondary_y=True, print_data=True, clip_data=True)
+        .plot(on="A", kind="bar", x="day", y="bill")
+        .plot(kind="line", x="day", y="tip", secondary_y=True, print_data=True, clip_data=True)
         .finalize()
     )
     assert "A^" in p.axd
@@ -479,7 +479,7 @@ def test_plotter_init_immediate_plot_and_unexpected_kwargs():
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
 
     # Passing plot kwargs to Plotter constructor draws immediately
-    p = pt.Plotter(df, kind="bar", x="day", y="bill", aggfunc="mean")
+    p = pt.Plotter(df, kind="bar", x="day", y="bill")
     assert p.axd["A"].has_data()
 
     # Unexpected kwargs raise TypeError
@@ -611,20 +611,19 @@ def test_plotter_ungrouped_scatter_color_and_array_c():
 
 
 def test_plotter_pie_colors_list():
-    df = pd.DataFrame({"cat": ["a", "a", "b"], "val": [1, 2, 3]})
+    df = pd.DataFrame({"cat": ["a", "b"], "val": [1, 2]})
     p = pt.Plotter(df).plot(kind="pie", by="cat", y="val", colors=["red", "blue"])
     assert p.axd["A"].has_data()
 
 
-def test_plotter_get_pivot_data_list_y_order_and_aggregate_false():
+def test_plotter_list_y_order_and_aggregate_error():
     df = pd.DataFrame({"q": ["Q1", "Q2"], "rev": [100, 200], "cost": [40, 80]})
-    # aggregate=False with list y
-    p1 = pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"], aggregate=False)
+    p1 = pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"])
     assert list(p1.get_data("A").columns) == ["q", "rev", "cost"]
 
-    # aggregate=True preserves requested y order
-    p2 = pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"], aggregate=True)
-    assert list(p2.get_data("A").columns) == ["q", "rev", "cost"]
+    # Passing aggregate raises ValueError
+    with pytest.raises(ValueError, match="Plotter does not perform aggregation"):
+        pt.Plotter(df).plot(kind="bar", x="q", y=["rev", "cost"], aggregate=True)
 
 
 def test_plotter_hist_and_kde_with_by_on_duplicate_index():
@@ -676,11 +675,13 @@ def test_plotter_hist_and_kde_with_by_having_missing_values():
 
 
 def test_plotter_pie_with_dropna():
-    df = pd.DataFrame({"cat": ["a", "a", None, "b"], "val": [1, 2, 5, 3]})
+    df = pd.DataFrame({"cat": ["a", "b", None], "val": [1, 2, 5]})
     p1 = pt.Plotter(df).plot(kind="pie", by="cat", y="val", dropna=False)
     assert p1.axd["A"].has_data()
+    assert len(p1.get_data("A")) == 3
     p2 = pt.Plotter(df).plot(kind="pie", by="cat", y="val", dropna=True)
     assert p2.axd["A"].has_data()
+    assert len(p2.get_data("A")) == 2
 
 
 def test_plotter_finalize_with_title_and_tight_layout():
@@ -691,12 +692,11 @@ def test_plotter_finalize_with_title_and_tight_layout():
     assert p.axd["A"].get_ylabel() == "Y Axis"
 
 
-def test_plotter_heatmap_xy_honors_dropna():
-    df = pd.DataFrame({"x": ["a", "b", None], "y": ["u", "v", "v"]})
-    p_keep = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", dropna=False)
-    assert p_keep.axd["A"].has_data()
-    p_drop = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", dropna=True)
-    assert p_drop.axd["A"].has_data()
+def test_plotter_heatmap_matrix_honors_annot_and_numeric():
+    df = pd.DataFrame({"x": ["a", "b"], "c1": [1.0, 2.0], "c2": [3.0, 4.0]})
+    p = pt.Plotter(df).plot(kind="heatmap", x="x", annot=True)
+    assert p.axd["A"].has_data()
+    assert p.get_data("A").shape == (2, 2)
 
 
 def test_plotter_grouped_bar_by_value_equals_x_name():

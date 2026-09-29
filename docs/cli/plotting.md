@@ -14,7 +14,7 @@
 - [Terminal Frequency Distribution (`-freq`)](#terminal-frequency-distribution--freq)
 - [Terminal Numeric Histograms (`-hist`)](#terminal-numeric-histograms--hist)
 - [Headless Figure Plotting (`-plot` & `-finalize`)](#headless-figure-plotting--plot--finalize)
-  - [1. Single Plots with Auto-Aggregation](#1-single-plots-with-auto-aggregation)
+  - [1. Single Plots with Explicit Pipeline Aggregation](#1-single-plots-with-explicit-pipeline-aggregation)
   - [2. Multi-Dimensional Categorical Grouping (`by=`)](#2-multi-dimensional-categorical-grouping-by)
   - [3. Distribution Plots (`box`, `kde`, `hist`)](#3-distribution-plots-box-kde-hist)
   - [4. Custom Styling & Finalization (`-finalize`)](#4-custom-styling--finalization--finalize)
@@ -86,7 +86,7 @@ body_mass_g            count
 
 `-plot` connects `pytae`'s visualization engine (`Plotter`) directly to the command line. Any pipeline can end with a plot and route directly to disk or interactive screen.
 
-### 1. Single Plots with Auto-Aggregation
+### 1. Single Plots with Explicit Pipeline Aggregation
 
 Filter, aggregate, and plot in one pipeline:
 
@@ -128,7 +128,8 @@ Pass any figure-level customization keys to `-finalize`:
 
 ```bash
 pytae tips.parquet \
-  -plot "kind=bar, x=day, y=total_bill, aggfunc=mean" \
+  -by day -agg "avg_bill=total_bill:mean" \
+  -plot "kind=bar, x=day, y=avg_bill" \
   -finalize "title='Average Bill by Day', style=seaborn-v0_8-whitegrid, xlabel='Day of Week', ylabel='Average Bill ($)'" \
   -o daily_bill.svg
 ```
