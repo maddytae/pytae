@@ -251,6 +251,8 @@ def pivot(
     c_cols = _normalize_cols(c, "c (cols)")
 
     aggfunc = "size" if a == "n" else a
+    if aggfunc == "size" and fill_value is None:
+        fill_value = 0
     val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
 
     def _flatten_cols(piv: pd.DataFrame) -> None:
@@ -261,6 +263,19 @@ def pivot(
             ]
         else:
             piv.columns = [str(col) for col in piv.columns]
+
+    def _cast_size_ints(df_out: pd.DataFrame) -> pd.DataFrame:
+        if aggfunc == "size":
+            val_cols = [col for col in df_out.columns if not (r_cols and col in r_cols)]
+            for col in val_cols:
+                try:
+                    if df_out[col].isna().any():
+                        df_out[col] = df_out[col].astype("Int64")
+                    else:
+                        df_out[col] = df_out[col].astype("int64")
+                except Exception:
+                    pass
+        return df_out
 
     if r_cols and c_cols:
         pivoted = df.pivot_table(
@@ -274,39 +289,52 @@ def pivot(
         _flatten_cols(pivoted)
         res = _safe_reset_index(pivoted)
         res.columns.name = None
-        return res
+        return _cast_size_ints(res)
     elif r_cols:
-        pivoted = df.pivot_table(
-            index=r_cols,
-            values=val_arg,
-            aggfunc=aggfunc,
-            dropna=dropna,
-            fill_value=fill_value,
-        )
-        _flatten_cols(pivoted)
-        res = _safe_reset_index(pivoted)
-        res.columns.name = None
-        return res
+        if aggfunc == "size":
+            s = df.groupby(r_cols, dropna=dropna).size()
+            res = s.to_frame(name=v_cols[0] if len(v_cols) == 1 else "count").reset_index()
+            res.columns.name = None
+            return _cast_size_ints(res)
+        else:
+            pivoted = df.pivot_table(
+                index=r_cols,
+                values=val_arg,
+                aggfunc=aggfunc,
+                dropna=dropna,
+                fill_value=fill_value,
+            )
+            _flatten_cols(pivoted)
+            res = _safe_reset_index(pivoted)
+            res.columns.name = None
+            return res
     elif c_cols:
-        pivoted = df.pivot_table(
-            columns=c_cols,
-            values=val_arg,
-            aggfunc=aggfunc,
-            dropna=dropna,
-            fill_value=fill_value,
-        )
-        _flatten_cols(pivoted)
-        res = pivoted.reset_index(drop=True)
-        res.columns.name = None
-        return res
+        if aggfunc == "size":
+            s = df.groupby(c_cols, dropna=dropna).size()
+            res = s.to_frame().T.reset_index(drop=True)
+            _flatten_cols(res)
+            res.columns.name = None
+            return _cast_size_ints(res)
+        else:
+            pivoted = df.pivot_table(
+                columns=c_cols,
+                values=val_arg,
+                aggfunc=aggfunc,
+                dropna=dropna,
+                fill_value=fill_value,
+            )
+            _flatten_cols(pivoted)
+            res = pivoted.reset_index(drop=True)
+            res.columns.name = None
+            return res
     else:
         if aggfunc == "size":
-            res = pd.DataFrame({col: [len(df)] for col in v_cols})
+            res = pd.DataFrame({col: [len(df)] for col in v_cols}, dtype="int64")
         else:
             res = df[v_cols].agg(aggfunc).to_frame().T.reset_index(drop=True)
         if fill_value is not None:
             res = res.fillna(fill_value)
         res.columns = [str(col) for col in res.columns]
         res.columns.name = None
-        return res
+        return _cast_size_ints(res)
 

@@ -15,11 +15,12 @@
 ## Contents
 
 - [Overview & Quick Reference](#overview--quick-reference)
-- [The 4 Excel-Style Pivot Layouts](#the-4-excel-style-pivot-layouts)
+- [Excel-Style Pivot Layouts](#excel-style-pivot-layouts)
   - [1. 2D Grid with Rows & Columns (`r=`, `c=`, `v=`)](#1-2d-grid-with-rows--columns-r-c-v)
-  - [2. Vertical Summary Table (`r=`, `v=`)](#2-vertical-summary-table-r-v)
-  - [3. Horizontal Summary Table (`c=`, `v=`)](#3-horizontal-summary-table-c-v)
-  - [4. Grand Total Summary (`v=`)](#4-grand-total-summary-v)
+  - [2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)](#2-2d-frequency-matrix--cross-tabulation-an)
+  - [3. Vertical Summary Table (`r=`, `v=`)](#3-vertical-summary-table-r-v)
+  - [4. Horizontal Summary Table (`c=`, `v=`)](#4-horizontal-summary-table-c-v)
+  - [5. Grand Total Summary (`v=`)](#5-grand-total-summary-v)
 - [Hierarchical Grouping with Multiple Rows (`r=Region,Store`)](#hierarchical-grouping-with-multiple-rows-rregionstore)
 - [Multi-Metric Reporting (`v=Sales,Profit`)](#multi-metric-reporting-vsalesprofit)
 - [Filling Empty Intersections (`fill=0`)](#filling-empty-intersections-fill0)
@@ -40,7 +41,7 @@
 
 ---
 
-## The 4 Excel-Style Pivot Layouts
+## Excel-Style Pivot Layouts
 
 Just like dragging fields into Rows and Columns in Excel, `r` and `c` are completely optional:
 
@@ -60,7 +61,23 @@ pytae penguins.parquet \
 Torgersen  3706.4        NaN     NaN
 ```
 
-### 2. Vertical Summary Table (`r=`, `v=`)
+### 2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)
+
+When counting occurrences across dimensions with `a=n` (or `a=size`), `pytae` automatically returns standard integers (`int64`) and sets unobserved intersections to `0` rather than `NaN`:
+
+```bash
+pytae penguins.parquet -pivot "r=island,c=species,v=sex,a=n"
+```
+
+**Output:**
+```text
+   island  Adelie  Chinstrap  Gentoo
+   Biscoe      44          0     124
+    Dream      56         68       0
+Torgersen      52          0       0
+```
+
+### 3. Vertical Summary Table (`r=`, `v=`)
 
 Omit `c=` to summarize values strictly by row groups (like Excel with only Rows and Values):
 
@@ -75,7 +92,7 @@ Region   Sales
   West  3350.0
 ```
 
-### 3. Horizontal Summary Table (`c=`, `v=`)
+### 4. Horizontal Summary Table (`c=`, `v=`)
 
 Omit `r=` to summarize values horizontally across column headers:
 
@@ -89,7 +106,7 @@ pytae sales.parquet -pivot "c=Year,v=Sales,a=sum"
 2100.0  2600.0  3150.0
 ```
 
-### 4. Grand Total Summary (`v=`)
+### 5. Grand Total Summary (`v=`)
 
 Omit both `r=` and `c=` for a single-row grand aggregation:
 
