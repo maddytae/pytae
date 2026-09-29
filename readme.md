@@ -205,8 +205,8 @@ Excel-style 2D pivot tables with automatic index reset and flat 1D columns:
 # 2D grid summarizing average body mass across island and species
 pivot_df = df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
 
-# Frequency matrix (count rows across dimensions)
-freq_matrix = df.pt.pivot(r="island", c="species", v="sex", a="n")
+# Frequency matrix (count rows across dimensions; v is optional for a="n")
+freq_matrix = df.pt.pivot(r="island", c="species", a="n")
 ```
 
 ### 7. Embedded DuckDB SQL Engine (`sql`)

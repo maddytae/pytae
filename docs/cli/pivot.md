@@ -5,7 +5,7 @@
 `-pivot` provides an Excel-style 2D pivot table engine with universal `r, c, v, a` vocabulary:
 - **Rows (`r=`)**: Row dimension(s) (*optional*).
 - **Cols (`c=`)**: Column dimension(s) to spread as headers (*optional*).
-- **Values (`v=`)**: Measure / metric column(s) to aggregate (**required**).
+- **Values (`v=`)**: Measure / metric column(s) to aggregate (**required** for metric aggregations; optional for `a=n`).
 - **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`/`size`; default: `sum`).
 - **Missing Categories (`dropna=`)**: Retain `NaN` keys when `false` (default: `false`).
 - **Empty Intersections (`fill=`)**: Fill missing grid cells (e.g. `fill=0`).
@@ -34,7 +34,7 @@
 |---|---|---|---|
 | `r` (or `rows`, `index`, `by`) | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
 | `c` (or `cols`, `columns`) | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
-| `v` (or `values`, `val`) | Metric column(s) to aggregate | **Required** | `v=Sales` or `v=Sales,Profit` |
+| `v` (or `values`, `val`) | Metric column(s) to aggregate | Required (optional for `a=n`) | `v=Sales` or `v=Sales,Profit` |
 | `a` (or `agg`, `aggfunc`) | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
 | `fill` (or `fill_value`) | Fill for empty cells | `None` (`NaN`) | `fill=0` |
@@ -63,10 +63,10 @@ Torgersen  3706.4        NaN     NaN
 
 ### 2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)
 
-When counting occurrences across dimensions with `a=n` (or `a=size`), `pytae` automatically returns standard integers (`int64`) and sets unobserved intersections to `0` rather than `NaN`:
+When counting occurrences across dimensions with `a=n` (or `a=size`), `pytae` automatically returns standard integers (`int64`), sets unobserved intersections to `0` rather than `NaN`, and allows `v=` to be omitted:
 
 ```bash
-pytae penguins.parquet -pivot "r=island,c=species,v=sex,a=n"
+pytae penguins.parquet -pivot "r=island,c=species,a=n"
 ```
 
 **Output:**

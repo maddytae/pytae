@@ -161,8 +161,8 @@ Excel-style 2D pivot table engine with the intuitive `r, c, v, a` vocabulary. Gu
 # 2D summary grid of mean body mass across island and species
 pt.pivot(penguins, r="island", c="species", v="body_mass_g", a="mean")
 
-# Frequency matrix (count rows across dimensions)
-pt.pivot(penguins, r="island", c="species", v="sex", a="n")
+# Frequency matrix (count rows across dimensions; v can be omitted for row counts)
+pt.pivot(penguins, r="island", c="species", a="n")
 
 # Hierarchical multi-row summary
 pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", fill_value=0)
@@ -236,7 +236,7 @@ p.finalize(consolidate_legends=True)
 
 ---
 
-### 8. Utilities & Cleaning
+### 9. Utilities & Cleaning
 
 Essential tabular utilities for everyday manipulation:
 
