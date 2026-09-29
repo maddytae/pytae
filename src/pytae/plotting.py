@@ -82,8 +82,8 @@ _KIND_SPECS['density'] = _KIND_SPECS['kde']  # 'kde' and 'density' are aliases
 _REQUIRED_KWARGS = {
     'scatter': ['x', 'y'],
     'hexbin': ['x', 'y'],
-    'line': ['x', 'y'],
-    'other': ['x', 'y'],
+    'line': ['x'],
+    'other': ['x'],
     'box': ['y'],
     'pie': ['by', 'y'],
     'kde': ['column'],
@@ -101,14 +101,27 @@ def _normalize_col_label(c: object) -> str:
     return str(c)
 
 
-def _reshape_by_to_wide(df: pd.DataFrame, x: Any, by: Any, y: Any, kind_name: str) -> pd.DataFrame:
+def _holds_integer(cols: pd.Index) -> bool:
+    return getattr(cols, 'dtype', None) is not None and getattr(cols.dtype, 'kind', None) in 'iu'
+
+
+def _remap_coord_if_needed(cols: pd.Index, val: Any) -> Any:
+    if not _holds_integer(cols) and isinstance(val, (int, np.integer)) and val in cols:
+        return cols.get_loc(val)
+    return val
+
+
+def _reshape_by_to_wide(df: pd.DataFrame, x: Any, by: Any, y: Any, kind_name: str, dropna: bool = False) -> pd.DataFrame:
     """Reshape tidy (x, by, y) into wide columns per 'by' category without aggregation."""
-    if df[[x, by]].duplicated().any():
+    sub = df[[x, by, y]].copy()
+    if dropna:
+        sub = sub.dropna(subset=[x, by])
+    if sub[[x, by]].duplicated().any():
         raise ValueError(
             f"Plotter: cannot plot {kind_name} with by='{by}' because duplicate ({x}, {by}) pairs exist. "
             "Aggregate first using df.pt.pivot(...) or df.pt.agg(...) before plotting."
         )
-    raw_piv = df.pivot(index=x, columns=by, values=y)
+    raw_piv = sub.pivot(index=x, columns=by, values=y)
     norm_x = _normalize_col_label(x)
     for col in raw_piv.columns:
         if _normalize_col_label(col) == norm_x:
@@ -468,7 +481,9 @@ class Plotter:
         self._store_plot_kwargs(ax, plot_dict)
         k = self.df.copy()
 
-        if self.by is not None and self.by in k:
+        if self.by is not None:
+            if self.by not in k.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
             if isinstance(k[self.by].dtype, pd.CategoricalDtype):
                 present = set(k[self.by].dropna().unique())
                 groups = [g for g in k[self.by].cat.categories if g in present]
@@ -547,8 +562,8 @@ class Plotter:
             if is_in_cols and not pd.api.types.is_numeric_dtype(k[c]):
                 k[c] = k[c].astype('category')
         for coord in ('x', 'y'):
-            if coord in plot_dict and isinstance(plot_dict[coord], int) and plot_dict[coord] in k.columns:
-                plot_dict[coord] = k.columns.get_loc(plot_dict[coord])
+            if coord in plot_dict:
+                plot_dict[coord] = _remap_coord_if_needed(k.columns, plot_dict[coord])
         self.ax = k.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(k, ax)
@@ -591,8 +606,8 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('hexbin')
         self._store_plot_kwargs(ax, plot_dict)
         for coord in ('x', 'y'):
-            if coord in plot_dict and isinstance(plot_dict[coord], int) and plot_dict[coord] in self.df.columns:
-                plot_dict[coord] = self.df.columns.get_loc(plot_dict[coord])
+            if coord in plot_dict:
+                plot_dict[coord] = _remap_coord_if_needed(self.df.columns, plot_dict[coord])
         self.ax = self.df.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(self.df, ax)
@@ -607,12 +622,22 @@ class Plotter:
         palette = self.last_kwargs.get('palette')
 
         plot_data = self.df.copy()
-        if self.by is not None and self.by in plot_data.columns and self.x is not None and self.y is not None:
-            plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, 'line')
+        if self.by is not None:
+            if self.by not in plot_data.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='line' with by='{self.by}' needs y=")
+            if self.x is not None:
+                plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, 'line', dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
 
         data_cols = [c for c in plot_data.columns if c != self.x]
 
@@ -630,8 +655,8 @@ class Plotter:
         if width is not None and not isinstance(width, dict):
             plot_dict['linewidth'] = width
 
-        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in plot_data.columns:
-            plot_dict['x'] = plot_data.columns.get_loc(plot_dict['x'])
+        if 'x' in plot_dict:
+            plot_dict['x'] = _remap_coord_if_needed(plot_data.columns, plot_dict['x'])
         self.ax = plot_data.plot(ax=ax, **plot_dict)
         if style is not None and isinstance(style, dict):
             style_lookup = {str(k): v for k, v in style.items()}
@@ -661,7 +686,9 @@ class Plotter:
         val_col = self.y
         cat_col = self.x if self.x is not None else self.by
 
-        if cat_col is not None and cat_col in self.df:
+        if cat_col is not None:
+            if cat_col not in self.df.columns:
+                raise KeyError(f"Plotter: column '{cat_col}' not found in DataFrame")
             if isinstance(self.df[cat_col].dtype, pd.CategoricalDtype):
                 present = set(self.df[cat_col].dropna().unique())
                 categories = [c for c in self.df[cat_col].cat.categories if c in present]
@@ -704,12 +731,15 @@ class Plotter:
                 imshow_kwargs[key] = self.last_kwargs[key]
 
         if self.x is not None and self.by is not None and self.y is not None:
-            wide_df = _reshape_by_to_wide(self.df, self.x, self.by, self.y, 'heatmap')
+            wide_df = _reshape_by_to_wide(self.df, self.x, self.by, self.y, 'heatmap', dropna=self.dropna)
             matrix = wide_df.set_index(self.x)
         elif self.x is not None and self.x in self.df.columns:
-            matrix = self.df.set_index(self.x).select_dtypes(include='number')
+            sub = self.df.dropna(subset=[self.x]) if self.dropna else self.df
+            matrix = sub.set_index(self.x).select_dtypes(include='number')
         else:
             matrix = self.df.select_dtypes(include='number')
+            if self.dropna:
+                matrix = matrix.dropna(how='all')
 
         if matrix.empty:
             raise ValueError("Plotter: heatmap requires numeric columns to plot.")
@@ -747,12 +777,22 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('other')
         self._store_plot_kwargs(ax, plot_dict)
         plot_data = self.df.copy()
-        if self.by is not None and self.by in plot_data.columns and self.x is not None and self.y is not None:
-            plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, self.kind)
+        if self.by is not None:
+            if self.by not in plot_data.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='{self.kind}' with by='{self.by}' needs y=")
+            if self.x is not None:
+                plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, self.kind, dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
 
         if self.x is not None and self.x in plot_data.columns and self.kind in ['bar', 'barh']:
             if not pd.api.types.is_datetime64_any_dtype(plot_data[self.x]):
@@ -763,8 +803,8 @@ class Plotter:
             data_cols = [c for c in plot_data.columns if c != self.x]
             colors = self._get_palette_colors(data_cols, palette=palette)
             plot_dict['color'] = [colors.get(c) for c in data_cols]
-        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in plot_data.columns:
-            plot_dict['x'] = plot_data.columns.get_loc(plot_dict['x'])
+        if 'x' in plot_dict:
+            plot_dict['x'] = _remap_coord_if_needed(plot_data.columns, plot_dict['x'])
         self.ax = plot_data.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(plot_data, ax)
@@ -775,6 +815,8 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
         if self.by is not None:
+            if self.by not in self.df.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
             sub = self.df[[self.by, self.column]].copy()
             if self.dropna:
                 sub = sub.dropna(subset=[self.by])
@@ -782,9 +824,12 @@ class Plotter:
             k = sub.pivot(index="__row__", columns=self.by, values=self.column)
             k.index.name = None
             k.columns.name = None
-            k = k.loc[:, k.count() >= 2]
-            if k.empty or len(k.columns) == 0:
-                raise ValueError("Plotter: kde/density plot requires at least two non-null observations in a group.")
+            too_small = [col for col in k.columns if k[col].count() < 2]
+            if too_small:
+                raise ValueError(
+                    f"Plotter: kde/density plot requires at least two non-null observations in each group. "
+                    f"Group(s) with fewer observations: {too_small}"
+                )
         else:
             k = self.df[[self.column]]
             if k[self.column].count() < 2:
@@ -803,6 +848,8 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('hist')
         self._store_plot_kwargs(ax, plot_dict)
         if self.by is not None:
+            if self.by not in self.df.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
             sub = self.df[[self.by, self.column]].copy()
             if self.dropna:
                 sub = sub.dropna(subset=[self.by])
@@ -931,13 +978,15 @@ class Plotter:
         if sharex and len(plot_axes) > 1:
             base_ax = plot_axes[0]
             for other_ax in plot_axes[1:]:
-                base_ax.sharex(other_ax)
+                if getattr(other_ax, '_sharex', None) is not base_ax and getattr(base_ax, '_sharex', None) is not other_ax:
+                    other_ax.sharex(base_ax)
             for ax in plot_axes:
                 ax.autoscale()
         if sharey and len(plot_axes) > 1:
             base_ax = plot_axes[0]
             for other_ax in plot_axes[1:]:
-                base_ax.sharey(other_ax)
+                if getattr(other_ax, '_sharey', None) is not base_ax and getattr(base_ax, '_sharey', None) is not other_ax:
+                    other_ax.sharey(base_ax)
             for ax in plot_axes:
                 ax.autoscale()
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
@@ -961,6 +1010,22 @@ class Plotter:
         if legend and self.consolidate_legends and handles:
             self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=legend_frameon)
 
+        return self
+
+    def show(self):
+        """Display the figure interactively. Chainable."""
+        try:
+            import matplotlib._pylab_helpers as pylab_helpers
+            manager = getattr(self.fig.canvas, 'manager', None)
+            if manager is None or manager.num not in pylab_helpers.Gcf.figs:
+                dummy = plt.figure()
+                new_manager = dummy.canvas.manager
+                if new_manager is not None:
+                    new_manager.canvas.figure = self.fig
+                    self.fig.set_canvas(new_manager.canvas)
+        except Exception:
+            pass
+        plt.show()
         return self
 
     def save(self, path, **kwargs):

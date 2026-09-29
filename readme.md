@@ -224,7 +224,7 @@ result = df.pt.sql("""
 ### 8. Visualization (`plot`)
 Method-chainable charting powered by Matplotlib (`pip install "pytae[plot]"`):
 ```python
-# Direct accessor with auto-aggregation:
+# Direct accessor chaining:
 penguins.pt.plot(
     kind="scatter",
     x="bill_length_mm",

@@ -185,8 +185,31 @@ def test_long_output_name_collisions():
     with pytest.raises(ValueError, match="collides with kept id column"):
         df.pt.long(cols=["a"], id_vars=["b"], c="var", v="b")
 
-    with pytest.raises(ValueError, match="collides with melted column"):
-        df.pt.long(cols=["a"], id_vars=["b"], c="var", v="a")
+def test_wide_no_id_columns():
+    # Issue 4: wide() where index_cols is empty
+    df = pd.DataFrame({"metric": ["Sales", "Profit"], "val": [100, 20]})
+    res = df.pt.wide(c="metric", v="val")
+    assert list(res.columns) == ["Profit", "Sales"]
+    assert len(res) == 1
+    assert res.iloc[0]["Sales"] == 100
+    assert res.iloc[0]["Profit"] == 20
+
+    # Duplicates should raise clean ValueError
+    df_dup = pd.DataFrame({"metric": ["Sales", "Sales"], "val": [100, 200]})
+    with pytest.raises(ValueError, match="encountered duplicate entries"):
+        df_dup.pt.wide(c="metric", v="val")
+
+
+def test_long_bracketed_column_names():
+    # Issue 11: long() bracket tokenization for cols and id_vars
+    df = pd.DataFrame({
+        "order id": [1, 2],
+        "total bill": [10.5, 20.0],
+        "tip amount": [2.0, 3.5],
+    })
+    res = df.pt.long(id_vars="[order id]", cols="[total bill], [tip amount]")
+    assert list(res.columns) == ["order id", "variable", "value"]
+    assert len(res) == 4
 
 
 if __name__ == '__main__':

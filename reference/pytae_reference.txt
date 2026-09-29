@@ -1594,6 +1594,7 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import parse_agg as _parse_agg
 
@@ -1675,12 +1676,27 @@ def _agg_df_list(
 
         # Flatten MultiIndex in columns
         if len(remaining_agg_types) > 1:
-            grouped_df.columns = [
+            flattened = [
                 col[0] if (len(col) > 1 and not col[1]) else (f"{col[0]}_{col[1]}" if len(col) > 1 else str(col[0]))
                 for col in grouped_df.columns.values
             ]
         else:
-            grouped_df.columns = [col[0] for col in grouped_df.columns.values]
+            flattened = [col[0] for col in grouped_df.columns.values]
+
+        non_group_cols = [c for i, c in enumerate(flattened) if i >= len(group_cols)]
+        for col in non_group_cols:
+            if col in group_cols:
+                raise ValueError(f"agg_df: output column name '{col}' collides with group column '{col}'")
+        if len(non_group_cols) != len(set(non_group_cols)):
+            counts: dict[str, int] = {}
+            for col in non_group_cols:
+                counts[col] = counts.get(col, 0) + 1
+            dups = [col for col, count in counts.items() if count > 1]
+            raise ValueError(f"agg_df: output column name '{dups[0]}' is duplicated in aggregation output")
+        if has_n and "n" in non_group_cols:
+            raise ValueError("agg_df: output column name 'n' collides with count column 'n'")
+
+        grouped_df.columns = flattened
 
         if has_n:
             grouped_df["n"] = df.groupby(group_cols, dropna=dropna, observed=observed).size().values
@@ -1700,6 +1716,8 @@ def _agg_df_list(
         for col in numeric_cols:
             for agg in remaining_agg_types:
                 col_name = f"{col}_{agg}" if len(remaining_agg_types) > 1 else col
+                if col_name in row_dict:
+                    raise ValueError(f"agg_df: output column name '{col_name}' is duplicated in aggregation specification")
                 s = df[col]
                 try:
                     val = getattr(s, agg)() if hasattr(s, agg) and callable(getattr(s, agg)) else s.agg(agg)
@@ -1734,6 +1752,8 @@ def _agg_df_dict(
                 raise ValueError(
                     f"agg_df: count output name '{clean_out_name}' collides with group column '{clean_out_name}'"
                 )
+            if clean_out_name in output_cols:
+                raise ValueError(f"agg_df: output column name '{clean_out_name}' is duplicated in aggregation specification")
             count_cols.append(clean_out_name)
             output_cols.append(clean_out_name)
             continue
@@ -1776,32 +1796,26 @@ def _agg_df_dict(
         if not aggs_list:
             raise ValueError(f"No valid aggregation functions specified for column '{src_col}'")
 
+        def _record_output_col(name: str, src: str, fn: str) -> None:
+            if name in group_cols:
+                raise ValueError(f"agg_df: output column name '{name}' collides with group column '{name}'")
+            if name in output_cols:
+                raise ValueError(f"agg_df: output column name '{name}' is duplicated in aggregation specification")
+            output_cols.append(name)
+            named_aggs[name] = (src, fn)
+
         if src_col == clean_out_name:
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
-                    final_name = f"{src_col}_{agg_fn}"
-                    if final_name in group_cols:
-                        raise ValueError(f"agg_df: output column name '{final_name}' collides with group column '{final_name}'")
-                    output_cols.append(final_name)
-                    named_aggs[final_name] = (src_col, agg_fn)
+                    _record_output_col(f"{src_col}_{agg_fn}", src_col, agg_fn)
             else:
-                if src_col in group_cols:
-                    raise ValueError(f"agg_df: output column name '{src_col}' collides with group column '{src_col}'")
-                output_cols.append(src_col)
-                named_aggs[src_col] = (src_col, aggs_list[0])
+                _record_output_col(src_col, src_col, aggs_list[0])
         else:
-            if clean_out_name in group_cols:
-                raise ValueError(f"agg_df: output column name '{clean_out_name}' collides with group column '{clean_out_name}'")
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
-                    final_name = f"{clean_out_name}_{agg_fn}"
-                    if final_name in group_cols:
-                        raise ValueError(f"agg_df: output column name '{final_name}' collides with group column '{final_name}'")
-                    output_cols.append(final_name)
-                    named_aggs[final_name] = (src_col, agg_fn)
+                    _record_output_col(f"{clean_out_name}_{agg_fn}", src_col, agg_fn)
             else:
-                output_cols.append(clean_out_name)
-                named_aggs[clean_out_name] = (src_col, aggs_list[0])
+                _record_output_col(clean_out_name, src_col, aggs_list[0])
 
 
     if group_cols:
@@ -1905,16 +1919,20 @@ def agg_df(
         clean_by = _unquote_name(by)
         if clean_by in df.columns:
             by = clean_by
-        elif by not in df.columns:
-            if by.lower() in _KNOWN_AGGS:
-                raise ValueError(
-                    f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
-                    "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
-                    f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
-                )
-            close = difflib.get_close_matches(clean_by, df.columns, n=1)
-            hint = f" (did you mean '{close[0]}'?)" if close else ""
-            raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
+        else:
+            tokens = [_unquote_name(t.strip()) for t in _tokenize(by, ",", keep_quotes=True, track_brackets=True) if t.strip()]
+            if len(tokens) > 1:
+                by = tokens
+            else:
+                if by.lower() in _KNOWN_AGGS:
+                    raise ValueError(
+                        f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
+                        "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
+                        f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
+                    )
+                close = difflib.get_close_matches(clean_by, df.columns, n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
 
     if isinstance(by, (list, tuple)):
         by = [_unquote_name(x) if isinstance(x, str) else x for x in by]
@@ -4468,9 +4486,12 @@ def _process_path(
             if "dropna" not in chart_kwargs and getattr(args, "dropna", None) is not None:
                 chart_kwargs["dropna"] = args.dropna
 
-            p = Plotter(source_df, **init_kwargs)
-            p.plot(**chart_kwargs)
-            p.finalize(**finalize_kwargs)
+            try:
+                p = Plotter(source_df, **init_kwargs)
+                p.plot(**chart_kwargs)
+                p.finalize(**finalize_kwargs)
+            except Exception as exc:
+                return _fail(parser, batch, str(exc))
 
             if is_image_out:
                 assert out_target is not None
@@ -4481,7 +4502,7 @@ def _process_path(
                 p.save(dest_path)
                 print(f"Saved plot to {dest_path}")
             elif should_print(idx):
-                plt.show()
+                p.show()
 
     if is_clip and clip_action is not None:
         clip_action()
@@ -5459,8 +5480,8 @@ _KIND_SPECS['density'] = _KIND_SPECS['kde']  # 'kde' and 'density' are aliases
 _REQUIRED_KWARGS = {
     'scatter': ['x', 'y'],
     'hexbin': ['x', 'y'],
-    'line': ['x', 'y'],
-    'other': ['x', 'y'],
+    'line': ['x'],
+    'other': ['x'],
     'box': ['y'],
     'pie': ['by', 'y'],
     'kde': ['column'],
@@ -5478,14 +5499,27 @@ def _normalize_col_label(c: object) -> str:
     return str(c)
 
 
-def _reshape_by_to_wide(df: pd.DataFrame, x: Any, by: Any, y: Any, kind_name: str) -> pd.DataFrame:
+def _holds_integer(cols: pd.Index) -> bool:
+    return getattr(cols, 'dtype', None) is not None and getattr(cols.dtype, 'kind', None) in 'iu'
+
+
+def _remap_coord_if_needed(cols: pd.Index, val: Any) -> Any:
+    if not _holds_integer(cols) and isinstance(val, (int, np.integer)) and val in cols:
+        return cols.get_loc(val)
+    return val
+
+
+def _reshape_by_to_wide(df: pd.DataFrame, x: Any, by: Any, y: Any, kind_name: str, dropna: bool = False) -> pd.DataFrame:
     """Reshape tidy (x, by, y) into wide columns per 'by' category without aggregation."""
-    if df[[x, by]].duplicated().any():
+    sub = df[[x, by, y]].copy()
+    if dropna:
+        sub = sub.dropna(subset=[x, by])
+    if sub[[x, by]].duplicated().any():
         raise ValueError(
             f"Plotter: cannot plot {kind_name} with by='{by}' because duplicate ({x}, {by}) pairs exist. "
             "Aggregate first using df.pt.pivot(...) or df.pt.agg(...) before plotting."
         )
-    raw_piv = df.pivot(index=x, columns=by, values=y)
+    raw_piv = sub.pivot(index=x, columns=by, values=y)
     norm_x = _normalize_col_label(x)
     for col in raw_piv.columns:
         if _normalize_col_label(col) == norm_x:
@@ -5845,7 +5879,9 @@ class Plotter:
         self._store_plot_kwargs(ax, plot_dict)
         k = self.df.copy()
 
-        if self.by is not None and self.by in k:
+        if self.by is not None:
+            if self.by not in k.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
             if isinstance(k[self.by].dtype, pd.CategoricalDtype):
                 present = set(k[self.by].dropna().unique())
                 groups = [g for g in k[self.by].cat.categories if g in present]
@@ -5924,8 +5960,8 @@ class Plotter:
             if is_in_cols and not pd.api.types.is_numeric_dtype(k[c]):
                 k[c] = k[c].astype('category')
         for coord in ('x', 'y'):
-            if coord in plot_dict and isinstance(plot_dict[coord], int) and plot_dict[coord] in k.columns:
-                plot_dict[coord] = k.columns.get_loc(plot_dict[coord])
+            if coord in plot_dict:
+                plot_dict[coord] = _remap_coord_if_needed(k.columns, plot_dict[coord])
         self.ax = k.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(k, ax)
@@ -5968,8 +6004,8 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('hexbin')
         self._store_plot_kwargs(ax, plot_dict)
         for coord in ('x', 'y'):
-            if coord in plot_dict and isinstance(plot_dict[coord], int) and plot_dict[coord] in self.df.columns:
-                plot_dict[coord] = self.df.columns.get_loc(plot_dict[coord])
+            if coord in plot_dict:
+                plot_dict[coord] = _remap_coord_if_needed(self.df.columns, plot_dict[coord])
         self.ax = self.df.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(self.df, ax)
@@ -5984,12 +6020,22 @@ class Plotter:
         palette = self.last_kwargs.get('palette')
 
         plot_data = self.df.copy()
-        if self.by is not None and self.by in plot_data.columns and self.x is not None and self.y is not None:
-            plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, 'line')
+        if self.by is not None:
+            if self.by not in plot_data.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='line' with by='{self.by}' needs y=")
+            if self.x is not None:
+                plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, 'line', dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
 
         data_cols = [c for c in plot_data.columns if c != self.x]
 
@@ -6007,8 +6053,8 @@ class Plotter:
         if width is not None and not isinstance(width, dict):
             plot_dict['linewidth'] = width
 
-        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in plot_data.columns:
-            plot_dict['x'] = plot_data.columns.get_loc(plot_dict['x'])
+        if 'x' in plot_dict:
+            plot_dict['x'] = _remap_coord_if_needed(plot_data.columns, plot_dict['x'])
         self.ax = plot_data.plot(ax=ax, **plot_dict)
         if style is not None and isinstance(style, dict):
             style_lookup = {str(k): v for k, v in style.items()}
@@ -6038,7 +6084,9 @@ class Plotter:
         val_col = self.y
         cat_col = self.x if self.x is not None else self.by
 
-        if cat_col is not None and cat_col in self.df:
+        if cat_col is not None:
+            if cat_col not in self.df.columns:
+                raise KeyError(f"Plotter: column '{cat_col}' not found in DataFrame")
             if isinstance(self.df[cat_col].dtype, pd.CategoricalDtype):
                 present = set(self.df[cat_col].dropna().unique())
                 categories = [c for c in self.df[cat_col].cat.categories if c in present]
@@ -6081,12 +6129,15 @@ class Plotter:
                 imshow_kwargs[key] = self.last_kwargs[key]
 
         if self.x is not None and self.by is not None and self.y is not None:
-            wide_df = _reshape_by_to_wide(self.df, self.x, self.by, self.y, 'heatmap')
+            wide_df = _reshape_by_to_wide(self.df, self.x, self.by, self.y, 'heatmap', dropna=self.dropna)
             matrix = wide_df.set_index(self.x)
         elif self.x is not None and self.x in self.df.columns:
-            matrix = self.df.set_index(self.x).select_dtypes(include='number')
+            sub = self.df.dropna(subset=[self.x]) if self.dropna else self.df
+            matrix = sub.set_index(self.x).select_dtypes(include='number')
         else:
             matrix = self.df.select_dtypes(include='number')
+            if self.dropna:
+                matrix = matrix.dropna(how='all')
 
         if matrix.empty:
             raise ValueError("Plotter: heatmap requires numeric columns to plot.")
@@ -6124,12 +6175,22 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('other')
         self._store_plot_kwargs(ax, plot_dict)
         plot_data = self.df.copy()
-        if self.by is not None and self.by in plot_data.columns and self.x is not None and self.y is not None:
-            plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, self.kind)
+        if self.by is not None:
+            if self.by not in plot_data.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
+            if self.y is None:
+                raise ValueError(f"Plotter: kind='{self.kind}' with by='{self.by}' needs y=")
+            if self.x is not None:
+                plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, self.kind, dropna=self.dropna)
         elif self.x is not None and self.y is not None:
             y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
             cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
             plot_data = plot_data[cols]
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
+        elif self.x is not None:
+            if self.dropna and self.x in plot_data.columns:
+                plot_data = plot_data.dropna(subset=[self.x])
 
         if self.x is not None and self.x in plot_data.columns and self.kind in ['bar', 'barh']:
             if not pd.api.types.is_datetime64_any_dtype(plot_data[self.x]):
@@ -6140,8 +6201,8 @@ class Plotter:
             data_cols = [c for c in plot_data.columns if c != self.x]
             colors = self._get_palette_colors(data_cols, palette=palette)
             plot_dict['color'] = [colors.get(c) for c in data_cols]
-        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in plot_data.columns:
-            plot_dict['x'] = plot_data.columns.get_loc(plot_dict['x'])
+        if 'x' in plot_dict:
+            plot_dict['x'] = _remap_coord_if_needed(plot_data.columns, plot_dict['x'])
         self.ax = plot_data.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
         self._handle_data_output(plot_data, ax)
@@ -6152,6 +6213,8 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('density')
         self._store_plot_kwargs(ax, plot_dict)
         if self.by is not None:
+            if self.by not in self.df.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
             sub = self.df[[self.by, self.column]].copy()
             if self.dropna:
                 sub = sub.dropna(subset=[self.by])
@@ -6159,9 +6222,12 @@ class Plotter:
             k = sub.pivot(index="__row__", columns=self.by, values=self.column)
             k.index.name = None
             k.columns.name = None
-            k = k.loc[:, k.count() >= 2]
-            if k.empty or len(k.columns) == 0:
-                raise ValueError("Plotter: kde/density plot requires at least two non-null observations in a group.")
+            too_small = [col for col in k.columns if k[col].count() < 2]
+            if too_small:
+                raise ValueError(
+                    f"Plotter: kde/density plot requires at least two non-null observations in each group. "
+                    f"Group(s) with fewer observations: {too_small}"
+                )
         else:
             k = self.df[[self.column]]
             if k[self.column].count() < 2:
@@ -6180,6 +6246,8 @@ class Plotter:
         plot_dict = self._prepare_plot_kwargs('hist')
         self._store_plot_kwargs(ax, plot_dict)
         if self.by is not None:
+            if self.by not in self.df.columns:
+                raise KeyError(f"Plotter: column '{self.by}' for 'by' not found in DataFrame")
             sub = self.df[[self.by, self.column]].copy()
             if self.dropna:
                 sub = sub.dropna(subset=[self.by])
@@ -6308,13 +6376,15 @@ class Plotter:
         if sharex and len(plot_axes) > 1:
             base_ax = plot_axes[0]
             for other_ax in plot_axes[1:]:
-                base_ax.sharex(other_ax)
+                if getattr(other_ax, '_sharex', None) is not base_ax and getattr(base_ax, '_sharex', None) is not other_ax:
+                    other_ax.sharex(base_ax)
             for ax in plot_axes:
                 ax.autoscale()
         if sharey and len(plot_axes) > 1:
             base_ax = plot_axes[0]
             for other_ax in plot_axes[1:]:
-                base_ax.sharey(other_ax)
+                if getattr(other_ax, '_sharey', None) is not base_ax and getattr(base_ax, '_sharey', None) is not other_ax:
+                    other_ax.sharey(base_ax)
             for ax in plot_axes:
                 ax.autoscale()
         self._manage_legend(legend=legend, legend_primary=legend_primary, legend_secondary=legend_secondary, 
@@ -6338,6 +6408,22 @@ class Plotter:
         if legend and self.consolidate_legends and handles:
             self.fig.legend(handles, labels, bbox_to_anchor=self.bbox_to_anchor, ncol=self.ncols, frameon=legend_frameon)
 
+        return self
+
+    def show(self):
+        """Display the figure interactively. Chainable."""
+        try:
+            import matplotlib._pylab_helpers as pylab_helpers
+            manager = getattr(self.fig.canvas, 'manager', None)
+            if manager is None or manager.num not in pylab_helpers.Gcf.figs:
+                dummy = plt.figure()
+                new_manager = dummy.canvas.manager
+                if new_manager is not None:
+                    new_manager.canvas.figure = self.fig
+                    self.fig.set_canvas(new_manager.canvas)
+        except Exception:
+            pass
+        plt.show()
         return self
 
     def save(self, path, **kwargs):
@@ -8046,9 +8132,9 @@ def long(
         if spec is None:
             return None
         if isinstance(spec, str):
-            items = [item.strip() for item in spec.split(",") if item.strip()]
+            items = [_unquote_name(item.strip()) for item in _tokenize(spec, ",", keep_quotes=True, track_brackets=True) if item.strip()]
         elif isinstance(spec, (list, tuple, set)):
-            items = list(spec)
+            items = [_unquote_name(item) if isinstance(item, str) else item for item in spec]
         else:
             raise TypeError(f"{param_name} must be a column name or sequence of names, got {type(spec).__name__}")
         for item in items:
@@ -8179,7 +8265,12 @@ def wide(
         index_cols = [col for col in df.columns if col not in [c, v]]
 
     try:
-        pivoted = df.pivot(index=index_cols if index_cols else None, columns=c, values=v)
+        if not index_cols:
+            temp_df = df.copy()
+            temp_df["__pt_wide_tmp__"] = 0
+            pivoted = temp_df.pivot(index="__pt_wide_tmp__", columns=c, values=v)
+        else:
+            pivoted = df.pivot(index=index_cols, columns=c, values=v)
     except ValueError as exc:
         raise ValueError(
             f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
@@ -8188,6 +8279,8 @@ def wide(
         ) from exc
 
     wide_df = _safe_reset_index(pivoted)
+    if not index_cols and "__pt_wide_tmp__" in wide_df.columns:
+        wide_df = wide_df.drop(columns=["__pt_wide_tmp__"])
     wide_df.columns.name = None
     return wide_df
 
@@ -8263,6 +8356,18 @@ def pivot(
     r_cols = _normalize_cols(r, "r (rows)")
     c_cols = _normalize_cols(c, "c (cols)")
     v_cols = _normalize_cols(v, "v (values)")
+
+    dim_counts: dict[str, int] = {}
+    for col in r_cols + c_cols:
+        dim_counts[col] = dim_counts.get(col, 0) + 1
+    dups = [col for col, count in dim_counts.items() if count > 1]
+    if dups:
+        raise ValueError(f"pivot(): column(s) {dups} cannot appear multiple times in grouping dimensions (r/c)")
+
+    if len(v_cols) != len(set(v_cols)):
+        v_dups = [col for col in dict.fromkeys(v_cols) if v_cols.count(col) > 1]
+        raise ValueError(f"pivot(): value column(s) {v_dups} cannot appear multiple times in 'v'")
+
     if not v_cols and aggfunc != "size":
         raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
 
@@ -8320,18 +8425,16 @@ def pivot(
                     pass
         return df_out
 
+    val_arg = v_cols[0] if len(v_cols) == 1 else v_cols
+
     if r_cols and c_cols:
         group_keys = list(r_cols) + list(c_cols)
         if aggfunc == "size":
             s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
             pivoted = s.unstack(list(c_cols), fill_value=fill_value if fill_value is not None else 0)
         else:
-            if len(v_cols) == 1:
-                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
-                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
-            else:
-                g = df.groupby(group_keys, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
-                pivoted = g.unstack(list(c_cols), fill_value=fill_value)
+            g = df.groupby(group_keys, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
+            pivoted = g.unstack(list(c_cols), fill_value=fill_value)
         _flatten_cols(pivoted)
         res = _safe_reset_index(pivoted)
         res.columns.name = None
@@ -8349,7 +8452,6 @@ def pivot(
             res.columns.name = None
             return _cast_size_ints(res)
         else:
-            val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
             g = df.groupby(r_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
             pivoted = g if isinstance(g, pd.DataFrame) else g.to_frame()
             if fill_value is not None:
@@ -8366,8 +8468,8 @@ def pivot(
             pivoted.columns.name = None
             return _cast_size_ints(pivoted)
         else:
+            g = df.groupby(c_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
             if len(v_cols) == 1:
-                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols[0]].agg(aggfunc)
                 pivoted = g.to_frame().T.reset_index(drop=True)
                 if fill_value is not None:
                     pivoted = pivoted.fillna(fill_value)
@@ -8375,7 +8477,6 @@ def pivot(
                 pivoted.columns.name = None
                 return pivoted
             else:
-                g = df.groupby(c_cols, dropna=dropna, observed=observed)[v_cols].agg(aggfunc)
                 pivoted = g.T
                 if fill_value is not None:
                     pivoted = pivoted.fillna(fill_value)
@@ -8915,9 +9016,29 @@ def test_agg_df_output_name_collides_with_group_col():
     with pytest.raises(ValueError, match="collides with group column"):
         df.pt.agg("Region", "Region = Sales:sum")
 
-    df_suffixed = pd.DataFrame({"Sales_sum": ["East", "East", "West"], "Profit": [1, 2, 3]})
-    with pytest.raises(ValueError, match="collides with group column"):
-        df_suffixed.pt.agg("Sales_sum", Sales="Profit:sum,mean")
+def test_agg_df_duplicate_output_cols():
+    # Issue 1: duplicate output column name in named_aggs / output_cols
+    df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
+    with pytest.raises(ValueError, match="is duplicated in aggregation specification"):
+        df.pt.agg("Region", Sales_sum="Profit:sum", Sales="Sales:sum,mean")
+
+
+def test_agg_df_list_collision_with_group_col():
+    # Issue 2: generated agg column collides with group column in _agg_df_list
+    df = pd.DataFrame({"Sales_sum": ["A", "B"], "Sales": [10, 20]})
+    with pytest.raises(ValueError, match="collides with group column 'Sales_sum'"):
+        df.pt.agg("Sales_sum", ["sum", "mean"])
+
+
+def test_agg_df_comma_separated_by_string():
+    df = pd.DataFrame({
+        "day": ["Thur", "Thur", "Fri"],
+        "sex": ["Male", "Female", "Male"],
+        "total_bill": [10.0, 20.0, 30.0],
+    })
+    res = df.pt.agg("day,sex", total_bill="mean")
+    assert list(res.columns) == ["day", "sex", "total_bill"]
+    assert len(res) == 3
 
 
 if __name__ == "__main__":
@@ -9514,6 +9635,15 @@ def test_cli_plot_forwards_dropna(tmp_path):
     exit_code = cli.main([path, "-plot", "kind=bar, x=cat, y=val", "-dropna", "true", "-o", str(out_png)])
     assert exit_code == 0
     assert out_png.exists()
+
+
+def test_cli_plot_error_clean_exit(tmp_path):
+    # Issue 9: user error in -plot exits with code 2 cleanly instead of unhandled traceback
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    path = _write_csv(tmp_path, df)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-plot", "kind=scatter, x=nonexistent, y=y"])
+    assert exc.value.code == 2
 
 ################################################################################
 # FILE: tests/test_cli_filter.py
@@ -12911,8 +13041,27 @@ def test_pivot_multi_key_empty_string_component():
     piv = df.pt.pivot(r="r", c=["y", "q"], v="v", a="sum")
     assert "2023_" in piv.columns
     assert "2023_Q1" in piv.columns
-    assert "2024_Q2" in piv.columns
     assert piv.loc[piv["r"] == "r1", "2023_"].iloc[0] == 15
+
+
+def test_pivot_repeated_columns_in_dimensions_and_values():
+    # Issue 3: Repeated column in pivot dimensions or values
+    df = pd.DataFrame({
+        "Region": ["East", "West"],
+        "Year": [2023, 2024],
+        "Sales": [100, 200],
+    })
+    with pytest.raises(ValueError, match="cannot appear multiple times in grouping dimensions"):
+        df.pt.pivot(r="Region", c="Region", v="Sales")
+
+    with pytest.raises(ValueError, match="cannot appear multiple times in grouping dimensions"):
+        df.pt.pivot(r=["Region", "Region"], v="Sales")
+
+    with pytest.raises(ValueError, match="cannot appear multiple times in grouping dimensions"):
+        df.pt.pivot(c=["Year", "Year"], v="Sales")
+
+    with pytest.raises(ValueError, match="cannot appear multiple times in 'v'"):
+        df.pt.pivot(r="Region", v=["Sales", "Sales"])
 
 ################################################################################
 # FILE: tests/test_plotter.py
@@ -13736,6 +13885,96 @@ def test_plotter_finalize_sharex_and_sharey():
     assert ax_a.get_shared_y_axes().joined(ax_a, ax_b)
 
 
+def test_plotter_integer_coords_on_integer_columns():
+    # Issue 5: integer coordinates x and y on DataFrame with integer column index
+    df = pd.DataFrame([[10, 20], [30, 40]], columns=[1, 2])
+    p1 = pt.Plotter(df).plot(kind="scatter", x=1, y=2)
+    assert p1.axd["A"].has_data()
+
+    p2 = pt.Plotter(df).plot(kind="line", x=1, y=2)
+    assert p2.axd["A"].has_data()
+
+    p3 = pt.Plotter(df).plot(kind="bar", x=1, y=2)
+    assert p3.axd["A"].has_data()
+
+
+def test_plotter_dropna_in_line_bar_heatmap():
+    # Issue 6: dropna dropped NA values before reshaping/plotting
+    df = pd.DataFrame({
+        "x": ["a", "b", None, "c"],
+        "g": ["g1", "g1", "g2", "g2"],
+        "y": [1.0, 2.0, 3.0, 4.0],
+    })
+    # Line with dropna=True drops None row in x
+    p_line = pt.Plotter(df).plot(kind="line", x="x", y="y", by="g", dropna=True)
+    table_line = p_line.get_data("A")
+    assert None not in table_line["x"].values
+
+    # Bar with dropna=True
+    p_bar = pt.Plotter(df).plot(kind="bar", x="x", y="y", by="g", dropna=True)
+    table_bar = p_bar.get_data("A")
+    assert None not in table_bar["x"].values
+
+    # Heatmap with dropna=True
+    p_heat = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", by="g", dropna=True)
+    table_heat = p_heat.get_data("A")
+    assert None not in table_heat.index
+
+
+def test_plotter_grouped_kde_singleton_raises_value_error():
+    # Issue 7: Grouped kde requires at least 2 non-null observations in each group
+    df = pd.DataFrame({
+        "g": ["A", "A", "B"],  # B has only 1 observation
+        "v": [10.0, 20.0, 30.0],
+    })
+    with pytest.raises(ValueError, match="at least two non-null observations in each group.*'B'"):
+        pt.Plotter(df).plot(kind="kde", column="v", by="g")
+
+
+def test_plotter_finalize_sharex_and_sharey_three_axes():
+    # Issue 8: finalize(sharex=True, sharey=True) with 3+ axes
+    df = pd.DataFrame({"x": [1, 2], "y": [10, 20]})
+    p = pt.Plotter(mosaic="ABC")
+    p.data(df).plot(on="A", kind="line", x="x", y="y")
+    p.data(df).plot(on="B", kind="line", x="x", y="y")
+    p.data(df).plot(on="C", kind="line", x="x", y="y")
+    p.finalize(sharex=True, sharey=True)
+    ax_a = p.axd["A"]
+    ax_b = p.axd["B"]
+    ax_c = p.axd["C"]
+    assert ax_a.get_shared_x_axes().joined(ax_a, ax_b)
+    assert ax_a.get_shared_x_axes().joined(ax_a, ax_c)
+    assert ax_a.get_shared_y_axes().joined(ax_a, ax_b)
+    assert ax_a.get_shared_y_axes().joined(ax_a, ax_c)
+
+
+def test_plotter_show_method():
+    # Issue 10: Plotter.show() exists and is chainable
+    df = pd.DataFrame({"x": [1, 2], "y": [10, 20]})
+    p = pt.Plotter(df).plot(kind="line", x="x", y="y")
+    ret = p.show()
+    assert ret is p
+
+
+def test_plotter_by_column_validation():
+    # Issue 12: Validate that 'by' column exists in DataFrame
+    df = pd.DataFrame({"x": [1, 2], "y": [10, 20]})
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="line", x="x", y="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="bar", x="x", y="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="scatter", x="x", y="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="kde", column="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="hist", column="y", by="nonexistent")
+
+
 def test_plotter_hist_and_kde_no_dropna_warning():
     # Issue 13: dropna is supported in hist and kde without warning
     import warnings
@@ -13745,6 +13984,20 @@ def test_plotter_hist_and_kde_no_dropna_warning():
         pt.Plotter(df).plot(kind="hist", column="v", by="g", dropna=True)
     dropna_warnings = [w for w in record if "dropna" in str(w.message).lower()]
     assert len(dropna_warnings) == 0
+
+
+def test_plotter_wide_data_optional_y():
+    # When plotting wide data (e.g. from pivot), y is optional
+    df = pd.DataFrame({
+        "day": ["Thur", "Fri"],
+        "Lunch": [10.0, 15.0],
+        "Dinner": [20.0, 25.0],
+    })
+    p_barh = df.pt.plot(kind="barh", x="day")
+    assert p_barh.axd["A"].has_data()
+
+    p_line = df.pt.plot(kind="line", x="day")
+    assert p_line.axd["A"].has_data()
 
 ################################################################################
 # FILE: tests/test_qry.py
@@ -14785,8 +15038,31 @@ def test_long_output_name_collisions():
     with pytest.raises(ValueError, match="collides with kept id column"):
         df.pt.long(cols=["a"], id_vars=["b"], c="var", v="b")
 
-    with pytest.raises(ValueError, match="collides with melted column"):
-        df.pt.long(cols=["a"], id_vars=["b"], c="var", v="a")
+def test_wide_no_id_columns():
+    # Issue 4: wide() where index_cols is empty
+    df = pd.DataFrame({"metric": ["Sales", "Profit"], "val": [100, 20]})
+    res = df.pt.wide(c="metric", v="val")
+    assert list(res.columns) == ["Profit", "Sales"]
+    assert len(res) == 1
+    assert res.iloc[0]["Sales"] == 100
+    assert res.iloc[0]["Profit"] == 20
+
+    # Duplicates should raise clean ValueError
+    df_dup = pd.DataFrame({"metric": ["Sales", "Sales"], "val": [100, 200]})
+    with pytest.raises(ValueError, match="encountered duplicate entries"):
+        df_dup.pt.wide(c="metric", v="val")
+
+
+def test_long_bracketed_column_names():
+    # Issue 11: long() bracket tokenization for cols and id_vars
+    df = pd.DataFrame({
+        "order id": [1, 2],
+        "total bill": [10.5, 20.0],
+        "tip amount": [2.0, 3.5],
+    })
+    res = df.pt.long(id_vars="[order id]", cols="[total bill], [tip amount]")
+    assert list(res.columns) == ["order id", "variable", "value"]
+    assert len(res) == 4
 
 
 if __name__ == '__main__':

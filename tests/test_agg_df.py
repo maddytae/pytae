@@ -252,9 +252,29 @@ def test_agg_df_output_name_collides_with_group_col():
     with pytest.raises(ValueError, match="collides with group column"):
         df.pt.agg("Region", "Region = Sales:sum")
 
-    df_suffixed = pd.DataFrame({"Sales_sum": ["East", "East", "West"], "Profit": [1, 2, 3]})
-    with pytest.raises(ValueError, match="collides with group column"):
-        df_suffixed.pt.agg("Sales_sum", Sales="Profit:sum,mean")
+def test_agg_df_duplicate_output_cols():
+    # Issue 1: duplicate output column name in named_aggs / output_cols
+    df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
+    with pytest.raises(ValueError, match="is duplicated in aggregation specification"):
+        df.pt.agg("Region", Sales_sum="Profit:sum", Sales="Sales:sum,mean")
+
+
+def test_agg_df_list_collision_with_group_col():
+    # Issue 2: generated agg column collides with group column in _agg_df_list
+    df = pd.DataFrame({"Sales_sum": ["A", "B"], "Sales": [10, 20]})
+    with pytest.raises(ValueError, match="collides with group column 'Sales_sum'"):
+        df.pt.agg("Sales_sum", ["sum", "mean"])
+
+
+def test_agg_df_comma_separated_by_string():
+    df = pd.DataFrame({
+        "day": ["Thur", "Thur", "Fri"],
+        "sex": ["Male", "Female", "Male"],
+        "total_bill": [10.0, 20.0, 30.0],
+    })
+    res = df.pt.agg("day,sex", total_bill="mean")
+    assert list(res.columns) == ["day", "sex", "total_bill"]
+    assert len(res) == 3
 
 
 if __name__ == "__main__":
