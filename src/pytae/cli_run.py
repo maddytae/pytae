@@ -847,6 +847,8 @@ def _process_path(
             plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
             init_kwargs = {k: v for k, v in plot_kwargs.items() if k in plotter_keys}
             chart_kwargs = {k: v for k, v in plot_kwargs.items() if k not in plotter_keys}
+            if "dropna" not in chart_kwargs and getattr(args, "dropna", None) is not None:
+                chart_kwargs["dropna"] = args.dropna
 
             p = Plotter(source_df, **init_kwargs)
             p.plot(**chart_kwargs)

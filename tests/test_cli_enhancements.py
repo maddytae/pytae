@@ -128,3 +128,14 @@ def test_library_plot_save_kwarg(tmp_path):
     assert plotter is not None
     assert out_file.exists()
     assert out_file.stat().st_size > 0
+
+
+def test_cli_plot_forwards_dropna(tmp_path):
+    df = pd.DataFrame({"cat": ["A", "B", None], "val": [10, 20, 30]})
+    path = _write_csv(tmp_path, df)
+    out_png = tmp_path / "chart.png"
+
+    exit_code = cli.main([path, "-plot", "kind=bar, x=cat, y=val", "-dropna", "true", "-o", str(out_png)])
+    assert exit_code == 0
+    assert out_png.exists()
+

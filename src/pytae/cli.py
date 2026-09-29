@@ -233,7 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=None,
                          metavar="BOOL",
                          help="for -agg, -mutate, -value_counts (default: true) and "
-                              "-pivot (default: false): include NA keys when false; accepts true or false")
+                              "-pivot, -plot (default: false): include NA keys when false; accepts true or false")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
                               "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
