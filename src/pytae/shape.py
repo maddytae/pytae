@@ -235,9 +235,9 @@ def pivot(
 
     all_cols = list(df.columns)
 
-    def _normalize_cols(spec: str | Sequence[str] | None, param_name: str) -> list[str] | None:
+    def _normalize_cols(spec: str | Sequence[str] | None, param_name: str) -> list[str]:
         if spec is None:
-            return None
+            return []
         if isinstance(spec, str):
             cols = [_unquote_name(item.strip()) for item in _tokenize(spec, ",", keep_quotes=True, track_brackets=True) if item.strip()]
         elif isinstance(spec, (list, tuple, set)):
@@ -251,20 +251,24 @@ def pivot(
                 raise KeyError(f"pivot(): {param_name} column '{col}' not found in DataFrame{hint}")
         return cols
 
-    v_cols = _normalize_cols(v, "v (values)")
-    if not v_cols:
-        raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
-    r_cols = _normalize_cols(r, "r (rows)")
-    c_cols = _normalize_cols(c, "c (cols)")
-
     aggfunc = "size" if a == "n" else a
     if aggfunc == "size" and fill_value is None:
         fill_value = 0
-    val_arg = v_cols if len(v_cols) > 1 else v_cols[0]
 
-    if aggfunc != "size":
-        overlap = [col for col in v_cols if (r_cols and col in r_cols) or (c_cols and col in c_cols)]
-        if overlap:
+    r_cols = _normalize_cols(r, "r (rows)")
+    c_cols = _normalize_cols(c, "c (cols)")
+    v_cols = _normalize_cols(v, "v (values)")
+    if not v_cols and aggfunc != "size":
+        raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
+
+    overlap = [col for col in v_cols if (r_cols and col in r_cols) or (c_cols and col in c_cols)]
+    if overlap:
+        if aggfunc == "size":
+            raise ValueError(
+                f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
+                "For row counts (a='n'), omit 'v' or specify a non-grouping column."
+            )
+        else:
             raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
 
     observed = kwargs.get("observed", True)
@@ -285,23 +289,18 @@ def pivot(
         else:
             raw_names = [_format_part(col) for col in piv.columns]
 
-        # Deduplicate headers to avoid label collisions (e.g. 1 and "1", or nan and "nan")
-        seen: dict[str, int] = {}
-        unique_names: list[str] = []
+        duplicates = []
+        seen = set()
         for name in raw_names:
-            if name not in seen:
-                seen[name] = 1
-                unique_names.append(name)
-            else:
-                count = seen[name]
-                seen[name] += 1
-                new_name = f"{name}_{count}"
-                while new_name in seen:
-                    new_name = f"{name}_{seen[name]}"
-                    seen[name] += 1
-                seen[new_name] = 1
-                unique_names.append(new_name)
-        piv.columns = unique_names
+            if name in seen and name not in duplicates:
+                duplicates.append(name)
+            seen.add(name)
+        if duplicates:
+            raise ValueError(
+                f"pivot(): resulting column header(s) {duplicates} contain duplicate names. "
+                "Ensure pivoted column keys have distinct string representations."
+            )
+        piv.columns = raw_names
 
     def _cast_size_ints(df_out: pd.DataFrame) -> pd.DataFrame:
         if aggfunc == "size":
@@ -334,11 +333,14 @@ def pivot(
         return _cast_size_ints(res)
     elif r_cols:
         if aggfunc == "size":
-            s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
-            target_name = v_cols[0] if len(v_cols) == 1 else "count"
+            target_name = v_cols[0] if v_cols else "n"
             if target_name in r_cols:
-                target_name = "n" if "n" not in r_cols else f"{target_name}_count"
-            res = _safe_reset_index(s.to_frame(name=target_name))
+                raise ValueError(
+                    f"pivot(): count column name '{target_name}' collides with row grouping column. "
+                    "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                )
+            s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
+            res = s.to_frame(name=target_name).reset_index()
             res.columns.name = None
             return _cast_size_ints(res)
         else:
@@ -379,7 +381,8 @@ def pivot(
                 return res
     else:
         if aggfunc == "size":
-            res = pd.DataFrame({col: [len(df)] for col in v_cols}, dtype="int64")
+            target_cols = v_cols if v_cols else ["n"]
+            res = pd.DataFrame({col: [len(df)] for col in target_cols}, dtype="int64")
         else:
             res = df[v_cols].agg(aggfunc).to_frame().T.reset_index(drop=True)
         if fill_value is not None:

@@ -747,35 +747,36 @@ class Plotter:
         Returns:
             pandas.DataFrame: Pivoted DataFrame ready for plotting.
         """
-        df_source = self.df
-        by_col = self.by
-        if by_col is not None and isinstance(by_col, int):
-            temp_by = f"__pytae_by_{by_col}__"
-            df_source = df_source.rename(columns={by_col: temp_by})
-            by_col = temp_by
-
-        def _safe_reset(piv_df, index_col):
-            if index_col is not None and index_col in piv_df.columns:
-                piv_df = piv_df.rename(columns={index_col: f"{index_col}_col"})
-            return piv_df.reset_index()
+        if self.by is not None and isinstance(self.by, int):
+            raise TypeError(f"Plotter: column name for 'by' must be a string, got integer {self.by!r}")
 
         if not self.aggregate:  # when aggregation is not required
-            if by_col is not None:  # to convert to wide format without aggregate because pandas plot would expect wide data
+            if self.by is not None:  # to convert to wide format without aggregate because pandas plot would expect wide data
                 # Check for potential duplicates and raise error if found
-                unique_combos = df_source[[self.x, by_col]].drop_duplicates().shape[0]
-                if unique_combos < len(df_source):  # to ensure data is ready for wide formatting without agg
+                unique_combos = self.df[[self.x, self.by]].drop_duplicates().shape[0]
+                if unique_combos < len(self.df):  # to ensure data is ready for wide formatting without agg
                     raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
-                raw_piv = df_source.pivot(index=self.x, columns=by_col, values=self.y)
-                pivot_table = _safe_reset(raw_piv, self.x)
+                raw_piv = self.df.pivot(index=self.x, columns=self.by, values=self.y)
+                if self.x is not None and self.x in raw_piv.columns:
+                    raise ValueError(
+                        f"Plotter: category '{self.x}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
+                        "Rename the category or x-axis column to avoid ambiguous plot data."
+                    )
+                pivot_table = raw_piv.reset_index()
             else:
                 y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
                 cols = ([self.x] if self.x is not None else []) + [c for c in y_cols if c != self.x]
-                pivot_table = df_source[cols].copy()
+                pivot_table = self.df[cols].copy()
         else:
-            raw_piv = df_source.pivot_table(index=self.x, columns=by_col, values=self.y,
-                                            aggfunc=self.aggfunc, dropna=self.dropna, observed=False)
-            pivot_table = _safe_reset(raw_piv, self.x)
-            if by_col is None and isinstance(self.y, (list, tuple)):
+            raw_piv = self.df.pivot_table(index=self.x, columns=self.by, values=self.y,
+                                          aggfunc=self.aggfunc, dropna=self.dropna, observed=False)
+            if self.x is not None and self.x in raw_piv.columns:
+                raise ValueError(
+                    f"Plotter: category '{self.x}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
+                    "Rename the category or x-axis column to avoid ambiguous plot data."
+                )
+            pivot_table = raw_piv.reset_index()
+            if self.by is None and isinstance(self.y, (list, tuple)):
                 desired_order = ([self.x] if self.x is not None and self.x in pivot_table.columns else []) + [c for c in self.y if c in pivot_table.columns]
                 other_cols = [c for c in pivot_table.columns if c not in desired_order]
                 pivot_table = pivot_table[desired_order + other_cols]

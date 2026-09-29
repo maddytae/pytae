@@ -315,13 +315,12 @@ def test_pivot_multi_c_cols_a_n_preserves_outer_keys():
 
 def test_pivot_header_deduplication():
     df1 = pd.DataFrame({"r": ["a", "a"], "c": [1, "1"], "v": [10.0, 20.0]})
-    out1 = df1.pt.pivot(r="r", c="c", v="v", a="sum")
-    assert list(out1.columns) == ["r", "1", "1_1"]
+    with pytest.raises(ValueError, match="contain duplicate names"):
+        df1.pt.pivot(r="r", c="c", v="v", a="sum")
 
     df2 = pd.DataFrame({"r": ["a", "a", "a"], "c": [np.nan, "nan", "ok"], "v": [1.0, 2.0, 3.0]})
-    out2 = df2.pt.pivot(r="r", c="c", v="v", a="sum")
-    assert "nan" in out2.columns
-    assert "nan_1" in out2.columns
+    with pytest.raises(ValueError, match="contain duplicate names"):
+        df2.pt.pivot(r="r", c="c", v="v", a="sum")
 
 
 def test_pivot_c_only_multi_values_keeps_metric_index():
@@ -337,15 +336,23 @@ def test_pivot_c_only_multi_values_keeps_metric_index():
 
 def test_pivot_row_only_a_n_count_key_collision():
     df1 = pd.DataFrame({"island": ["A", "A", "B"]})
-    out1 = df1.pt.pivot(r="island", v="island", a="n")
+    out1 = df1.pt.pivot(r="island", a="n")
     assert "island" in out1.columns
     assert "n" in out1.columns
     assert list(out1["n"]) == [2, 1]
 
-    df2 = pd.DataFrame({"count": ["a", "a", "b"], "Sales": [1, 2, 3], "Profit": [4, 5, 6]})
-    out2 = df2.pt.pivot(r="count", v=["Sales", "Profit"], a="n")
-    assert "count" in out2.columns
-    assert "n" in out2.columns
+    # If v is specified and overlaps with r, raise ValueError
+    with pytest.raises(ValueError, match="cannot also be in grouping dimensions"):
+        df1.pt.pivot(r="island", v="island", a="n")
+
+    # If row grouping column is named "n", omitting v will default to "n" which collides
+    df_colliding = pd.DataFrame({"n": ["a", "a", "b"], "val": [1, 2, 3]})
+    with pytest.raises(ValueError, match="collides with row grouping column"):
+        df_colliding.pt.pivot(r="n", a="n")
+
+    # Providing a non-colliding column for v works
+    out_custom = df_colliding.pt.pivot(r="n", v="val", a="n")
+    assert list(out_custom.columns) == ["n", "val"]
 
 
 def test_pivot_v_in_dimensions_validation():

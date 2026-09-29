@@ -705,8 +705,8 @@ def test_plotter_grouped_bar_by_value_equals_x_name():
         "metric": ["year", "sales", "sales"],
         "value": [1, 10, 12],
     })
-    p = pt.Plotter(df).plot(kind="bar", x="year", y="value", by="metric")
-    assert p.axd["A"].has_data()
+    with pytest.raises(ValueError, match="collides with x-axis column name"):
+        pt.Plotter(df).plot(kind="bar", x="year", y="value", by="metric")
 
 
 def test_plotter_box_color_dict_with_integer_keys():
@@ -716,12 +716,15 @@ def test_plotter_box_color_dict_with_integer_keys():
 
 
 def test_plotter_falsy_column_name_zero():
-    df = pd.DataFrame({"x": [1, 2], "y": [3, 4], 0: ["g1", "g2"]})
-    p_scatter = pt.Plotter(df).plot(kind="scatter", x="x", y="y", by=0)
-    assert p_scatter.axd["A"].has_data()
+    # String column "0" works cleanly
+    df_str = pd.DataFrame({"x": [1, 2], "y": [3, 4], "0": ["g1", "g2"]})
+    p_bar_str = pt.Plotter(df_str).plot(kind="bar", x="x", y="y", by="0")
+    assert p_bar_str.axd["A"].has_data()
 
-    p_bar = pt.Plotter(df).plot(kind="bar", x="x", y="y", by=0)
-    assert p_bar.axd["A"].has_data()
+    # Integer column 0 is rejected with TypeError for ambiguous unstacking
+    df_int = pd.DataFrame({"x": [1, 2], "y": [3, 4], 0: ["g1", "g2"]})
+    with pytest.raises(TypeError, match="column name for 'by' must be a string"):
+        pt.Plotter(df_int).plot(kind="bar", x="x", y="y", by=0)
 
 
 
