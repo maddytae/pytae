@@ -9,7 +9,7 @@ Thank you for your interest in contributing to `pytae`! This document outlines o
 When contributing code, designing new features, or refactoring existing modules in `pytae`, adhere to the following principles:
 
 ### 1. Be generous in what you accept, but strictly honest when ambiguous
-- **Generous in input**: Accept flexible, ergonomic inputs where the intent is unambiguous—strings or sequences of strings (e.g. `by="species,island"` or `by=["species", "island"]`, `r="a,b"`, `cols="q1,q2"`, `select("x, y")`), brackets for spaced names (`[total bill]`), case-insensitivity where natural, and well-documented aliases (`by=` for `group_by=`, `a=` for `aggfunc=`, `r=` for `rows=`, `n` for row counts).
+- **Generous in input**: Accept flexible, ergonomic inputs where the intent is unambiguous—strings or sequences of strings (e.g. `by="species,island"` or `by=["species", "island"]`, `r="a,b"`, `select("x, y")`), brackets for spaced names (`[total bill]`), case-insensitivity where natural, and well-documented aliases (`by=` for `group_by=`, `a=` for `aggfunc=`, `r=` for `rows=`, `n` for row counts).
 - **Strictly honest when ambiguous**: When inputs collide, contradict, or produce ambiguous results, **fail fast with a clear, descriptive error**.
   - **No silent renaming or magical suffixes**: Never silently invent artificial names like `col_1`, `year_col`, or `1_1` to work around collisions. If an index name collides with a column name during `reset_index()`, or a pivoted column name collides with an index column, raise a `ValueError`.
   - **No silent fallback guessing**: If an explicit stylesheet, palette, or column reference cannot be resolved or is invalid, raise a `ValueError` or `KeyError` rather than guessing or silently ignoring the instruction.
