@@ -273,7 +273,7 @@ def agg_df(
           Keys with value 'n' specify the output column name for group row counts.
           Supports named aggregations like total='v1:sum'.
         - a (str or list, optional): Whole-frame or mapping aggregation function(s) when passed as keyword `a=`.
-        - dropna (bool): Whether to drop NA values in groupby. Defaults to True.
+        - dropna (bool): Whether to drop NA values in groupby. Defaults to False.
         - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
 
     Returns:
@@ -417,7 +417,7 @@ def agg_df(
     else:
         agg_types = col_kwargs if col_kwargs else ["sum"]
 
-    dropna = kwargs.get("dropna", True)
+    dropna = kwargs.get("dropna", False)
     observed = kwargs.get("observed", True)
 
     if isinstance(agg_types, dict):

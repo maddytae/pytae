@@ -334,7 +334,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-select SPEC` | Select & Filter | Filter, reorder, or exclude columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select.md](cli/select.md) |
 | `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
 | `-query EXPR` | Select & Filter | Filter rows using pandas `df.query()` expression | [cli/filter.md](cli/filter.md) |
-| `-dropna BOOL` | Select & Filter | Control whether NA keys are dropped in aggregations | [cli/filter.md](cli/filter.md) |
+| `-dropna BOOL` | Select & Filter | Control whether NA grouping keys are dropped in aggregations, mutations, value counts, and pivots (default: false) | [cli/filter.md](cli/filter.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
 | `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |
 | `-clean_columns SPEC` | Clean | Clean headers (strip, squeeze, strip_special, fill, case, dedupe) | [cli/clean_replace.md](cli/clean_replace.md) |

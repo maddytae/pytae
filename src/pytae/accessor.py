@@ -73,7 +73,7 @@ class PtAccessor:
         self,
         *args: Any,
         by: str | Sequence[str] | None = None,
-        dropna: bool = True,
+        dropna: bool = False,
         observed: bool = True,
         **kwargs: Any,
     ) -> pd.DataFrame:

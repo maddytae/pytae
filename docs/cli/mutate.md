@@ -156,13 +156,13 @@ pytae tips.parquet \
   -round 2
 ```
 
-### Missing Groups with `-dropna false`
+### Missing Groups with `-dropna`
 
-By default (`-dropna true`), rows containing `NA` in grouping columns are excluded from group calculations, receiving `NaN` in the newly created columns while preserving the full row count. Pass `-dropna false` to treat `NA` as its own distinct group:
+By default (`-dropna false`), rows containing `NA` in grouping columns are treated as their own distinct group so that no data is silently discarded. Pass `-dropna true` to exclude `NA` groups from calculation (assigning them `NaN` in the newly created columns):
 
 ```bash
-# Calculate group average while treating NA groups as a distinct group
-pytae data.parquet -by category -dropna false -mutate "avg_val = mean(val)"
+# Exclude NA groups from group calculation (they receive NaN)
+pytae data.parquet -by category -dropna true -mutate "avg_val = mean(val)"
 ```
 
 ---

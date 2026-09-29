@@ -180,8 +180,8 @@ For more examples including group counts (`n`), multi-column grouping, and space
 
 ## Handling Missing Group Keys (`-dropna`)
 
-By default, missing values (`NaN`) in group columns are excluded from groupings (`-dropna true`). To retain rows with missing group keys:
+By default, missing values (`NaN`) in group columns form their own group (`-dropna false`) to prevent silent data loss. To exclude rows with missing group keys:
 
 ```bash
-pytae penguins.parquet -by species -agg mean -dropna false
+pytae penguins.parquet -by sex -agg mean -dropna true
 ```

@@ -113,7 +113,7 @@ class _Pipeline:
         return None
 
     def apply_mutate(
-        self, spec: str, by: list[str] | None = None, dropna: bool = True
+        self, spec: str, by: list[str] | None = None, dropna: bool = False
     ) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()

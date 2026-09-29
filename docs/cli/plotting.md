@@ -51,9 +51,9 @@ Gentoo       124  ████████████████     (36.0%)
 Chinstrap     68  █████████            (19.8%)
 ```
 
-Respects `-dropna`:
+Respects `-dropna` (defaults to `false` to retain NA; set `true` to exclude):
 ```bash
-pytae penguins.parquet -freq sex -dropna false
+pytae penguins.parquet -freq sex -dropna true
 ```
 
 ---

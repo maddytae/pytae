@@ -178,7 +178,7 @@ def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
     # value_counts result has two columns: key + count.
     assert "(2, 2)" in out
 
-def test_value_counts_dropna_false_keeps_na_key(tmp_path, capsys):
+def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", None, "x"],
@@ -186,12 +186,17 @@ def test_value_counts_dropna_false_keeps_na_key(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-dropna", "false", "-shape"])
-
+    # Default is dropna=false: includes NA as its own key, yielding x + NA (2 rows).
+    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    # dropna=false includes NA as its own key, yielding x + NA.
     assert "(2, 2)" in out
+
+    # Explicit -dropna true drops the NA key (1 row).
+    exit_code_drop = cli.main([path, "-select", "grp", "-value_counts", "-dropna", "true", "-shape"])
+    out_drop = capsys.readouterr().out
+    assert exit_code_drop == 0
+    assert "(1, 2)" in out_drop
 
 def test_value_counts_uses_selected_multiple_columns(tmp_path, capsys):
     df = pd.DataFrame(
