@@ -817,6 +817,96 @@ def test_plotter_finalize_sharex_and_sharey():
     assert ax_a.get_shared_y_axes().joined(ax_a, ax_b)
 
 
+def test_plotter_integer_coords_on_integer_columns():
+    # Issue 5: integer coordinates x and y on DataFrame with integer column index
+    df = pd.DataFrame([[10, 20], [30, 40]], columns=[1, 2])
+    p1 = pt.Plotter(df).plot(kind="scatter", x=1, y=2)
+    assert p1.axd["A"].has_data()
+
+    p2 = pt.Plotter(df).plot(kind="line", x=1, y=2)
+    assert p2.axd["A"].has_data()
+
+    p3 = pt.Plotter(df).plot(kind="bar", x=1, y=2)
+    assert p3.axd["A"].has_data()
+
+
+def test_plotter_dropna_in_line_bar_heatmap():
+    # Issue 6: dropna dropped NA values before reshaping/plotting
+    df = pd.DataFrame({
+        "x": ["a", "b", None, "c"],
+        "g": ["g1", "g1", "g2", "g2"],
+        "y": [1.0, 2.0, 3.0, 4.0],
+    })
+    # Line with dropna=True drops None row in x
+    p_line = pt.Plotter(df).plot(kind="line", x="x", y="y", by="g", dropna=True)
+    table_line = p_line.get_data("A")
+    assert None not in table_line["x"].values
+
+    # Bar with dropna=True
+    p_bar = pt.Plotter(df).plot(kind="bar", x="x", y="y", by="g", dropna=True)
+    table_bar = p_bar.get_data("A")
+    assert None not in table_bar["x"].values
+
+    # Heatmap with dropna=True
+    p_heat = pt.Plotter(df).plot(kind="heatmap", x="x", y="y", by="g", dropna=True)
+    table_heat = p_heat.get_data("A")
+    assert None not in table_heat.index
+
+
+def test_plotter_grouped_kde_singleton_raises_value_error():
+    # Issue 7: Grouped kde requires at least 2 non-null observations in each group
+    df = pd.DataFrame({
+        "g": ["A", "A", "B"],  # B has only 1 observation
+        "v": [10.0, 20.0, 30.0],
+    })
+    with pytest.raises(ValueError, match="at least two non-null observations in each group.*'B'"):
+        pt.Plotter(df).plot(kind="kde", column="v", by="g")
+
+
+def test_plotter_finalize_sharex_and_sharey_three_axes():
+    # Issue 8: finalize(sharex=True, sharey=True) with 3+ axes
+    df = pd.DataFrame({"x": [1, 2], "y": [10, 20]})
+    p = pt.Plotter(mosaic="ABC")
+    p.data(df).plot(on="A", kind="line", x="x", y="y")
+    p.data(df).plot(on="B", kind="line", x="x", y="y")
+    p.data(df).plot(on="C", kind="line", x="x", y="y")
+    p.finalize(sharex=True, sharey=True)
+    ax_a = p.axd["A"]
+    ax_b = p.axd["B"]
+    ax_c = p.axd["C"]
+    assert ax_a.get_shared_x_axes().joined(ax_a, ax_b)
+    assert ax_a.get_shared_x_axes().joined(ax_a, ax_c)
+    assert ax_a.get_shared_y_axes().joined(ax_a, ax_b)
+    assert ax_a.get_shared_y_axes().joined(ax_a, ax_c)
+
+
+def test_plotter_show_method():
+    # Issue 10: Plotter.show() exists and is chainable
+    df = pd.DataFrame({"x": [1, 2], "y": [10, 20]})
+    p = pt.Plotter(df).plot(kind="line", x="x", y="y")
+    ret = p.show()
+    assert ret is p
+
+
+def test_plotter_by_column_validation():
+    # Issue 12: Validate that 'by' column exists in DataFrame
+    df = pd.DataFrame({"x": [1, 2], "y": [10, 20]})
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="line", x="x", y="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="bar", x="x", y="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="scatter", x="x", y="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="kde", column="y", by="nonexistent")
+
+    with pytest.raises(KeyError, match="column 'nonexistent' for 'by' not found"):
+        pt.Plotter(df).plot(kind="hist", column="y", by="nonexistent")
+
+
 def test_plotter_hist_and_kde_no_dropna_warning():
     # Issue 13: dropna is supported in hist and kde without warning
     import warnings
@@ -826,6 +916,7 @@ def test_plotter_hist_and_kde_no_dropna_warning():
         pt.Plotter(df).plot(kind="hist", column="v", by="g", dropna=True)
     dropna_warnings = [w for w in record if "dropna" in str(w.message).lower()]
     assert len(dropna_warnings) == 0
+
 
 
 

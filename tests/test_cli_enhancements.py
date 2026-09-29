@@ -158,3 +158,13 @@ def test_cli_plot_forwards_dropna(tmp_path):
     assert exit_code == 0
     assert out_png.exists()
 
+
+def test_cli_plot_error_clean_exit(tmp_path):
+    # Issue 9: user error in -plot exits with code 2 cleanly instead of unhandled traceback
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    path = _write_csv(tmp_path, df)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-plot", "kind=scatter, x=nonexistent, y=y"])
+    assert exc.value.code == 2
+
+

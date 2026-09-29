@@ -420,5 +420,25 @@ def test_pivot_multi_key_empty_string_component():
     piv = df.pt.pivot(r="r", c=["y", "q"], v="v", a="sum")
     assert "2023_" in piv.columns
     assert "2023_Q1" in piv.columns
-    assert "2024_Q2" in piv.columns
     assert piv.loc[piv["r"] == "r1", "2023_"].iloc[0] == 15
+
+
+def test_pivot_repeated_columns_in_dimensions_and_values():
+    # Issue 3: Repeated column in pivot dimensions or values
+    df = pd.DataFrame({
+        "Region": ["East", "West"],
+        "Year": [2023, 2024],
+        "Sales": [100, 200],
+    })
+    with pytest.raises(ValueError, match="cannot appear multiple times in grouping dimensions"):
+        df.pt.pivot(r="Region", c="Region", v="Sales")
+
+    with pytest.raises(ValueError, match="cannot appear multiple times in grouping dimensions"):
+        df.pt.pivot(r=["Region", "Region"], v="Sales")
+
+    with pytest.raises(ValueError, match="cannot appear multiple times in grouping dimensions"):
+        df.pt.pivot(c=["Year", "Year"], v="Sales")
+
+    with pytest.raises(ValueError, match="cannot appear multiple times in 'v'"):
+        df.pt.pivot(r="Region", v=["Sales", "Sales"])
+

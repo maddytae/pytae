@@ -864,9 +864,12 @@ def _process_path(
             if "dropna" not in chart_kwargs and getattr(args, "dropna", None) is not None:
                 chart_kwargs["dropna"] = args.dropna
 
-            p = Plotter(source_df, **init_kwargs)
-            p.plot(**chart_kwargs)
-            p.finalize(**finalize_kwargs)
+            try:
+                p = Plotter(source_df, **init_kwargs)
+                p.plot(**chart_kwargs)
+                p.finalize(**finalize_kwargs)
+            except Exception as exc:
+                return _fail(parser, batch, str(exc))
 
             if is_image_out:
                 assert out_target is not None
@@ -877,7 +880,7 @@ def _process_path(
                 p.save(dest_path)
                 print(f"Saved plot to {dest_path}")
             elif should_print(idx):
-                plt.show()
+                p.show()
 
     if is_clip and clip_action is not None:
         clip_action()

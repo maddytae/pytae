@@ -87,12 +87,27 @@ def _agg_df_list(
 
         # Flatten MultiIndex in columns
         if len(remaining_agg_types) > 1:
-            grouped_df.columns = [
+            flattened = [
                 col[0] if (len(col) > 1 and not col[1]) else (f"{col[0]}_{col[1]}" if len(col) > 1 else str(col[0]))
                 for col in grouped_df.columns.values
             ]
         else:
-            grouped_df.columns = [col[0] for col in grouped_df.columns.values]
+            flattened = [col[0] for col in grouped_df.columns.values]
+
+        non_group_cols = [c for i, c in enumerate(flattened) if i >= len(group_cols)]
+        for col in non_group_cols:
+            if col in group_cols:
+                raise ValueError(f"agg_df: output column name '{col}' collides with group column '{col}'")
+        if len(non_group_cols) != len(set(non_group_cols)):
+            counts: dict[str, int] = {}
+            for col in non_group_cols:
+                counts[col] = counts.get(col, 0) + 1
+            dups = [col for col, count in counts.items() if count > 1]
+            raise ValueError(f"agg_df: output column name '{dups[0]}' is duplicated in aggregation output")
+        if has_n and "n" in non_group_cols:
+            raise ValueError("agg_df: output column name 'n' collides with count column 'n'")
+
+        grouped_df.columns = flattened
 
         if has_n:
             grouped_df["n"] = df.groupby(group_cols, dropna=dropna, observed=observed).size().values
@@ -112,6 +127,8 @@ def _agg_df_list(
         for col in numeric_cols:
             for agg in remaining_agg_types:
                 col_name = f"{col}_{agg}" if len(remaining_agg_types) > 1 else col
+                if col_name in row_dict:
+                    raise ValueError(f"agg_df: output column name '{col_name}' is duplicated in aggregation specification")
                 s = df[col]
                 try:
                     val = getattr(s, agg)() if hasattr(s, agg) and callable(getattr(s, agg)) else s.agg(agg)
@@ -146,6 +163,8 @@ def _agg_df_dict(
                 raise ValueError(
                     f"agg_df: count output name '{clean_out_name}' collides with group column '{clean_out_name}'"
                 )
+            if clean_out_name in output_cols:
+                raise ValueError(f"agg_df: output column name '{clean_out_name}' is duplicated in aggregation specification")
             count_cols.append(clean_out_name)
             output_cols.append(clean_out_name)
             continue
@@ -188,32 +207,26 @@ def _agg_df_dict(
         if not aggs_list:
             raise ValueError(f"No valid aggregation functions specified for column '{src_col}'")
 
+        def _record_output_col(name: str, src: str, fn: str) -> None:
+            if name in group_cols:
+                raise ValueError(f"agg_df: output column name '{name}' collides with group column '{name}'")
+            if name in output_cols:
+                raise ValueError(f"agg_df: output column name '{name}' is duplicated in aggregation specification")
+            output_cols.append(name)
+            named_aggs[name] = (src, fn)
+
         if src_col == clean_out_name:
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
-                    final_name = f"{src_col}_{agg_fn}"
-                    if final_name in group_cols:
-                        raise ValueError(f"agg_df: output column name '{final_name}' collides with group column '{final_name}'")
-                    output_cols.append(final_name)
-                    named_aggs[final_name] = (src_col, agg_fn)
+                    _record_output_col(f"{src_col}_{agg_fn}", src_col, agg_fn)
             else:
-                if src_col in group_cols:
-                    raise ValueError(f"agg_df: output column name '{src_col}' collides with group column '{src_col}'")
-                output_cols.append(src_col)
-                named_aggs[src_col] = (src_col, aggs_list[0])
+                _record_output_col(src_col, src_col, aggs_list[0])
         else:
-            if clean_out_name in group_cols:
-                raise ValueError(f"agg_df: output column name '{clean_out_name}' collides with group column '{clean_out_name}'")
             if len(aggs_list) > 1:
                 for agg_fn in aggs_list:
-                    final_name = f"{clean_out_name}_{agg_fn}"
-                    if final_name in group_cols:
-                        raise ValueError(f"agg_df: output column name '{final_name}' collides with group column '{final_name}'")
-                    output_cols.append(final_name)
-                    named_aggs[final_name] = (src_col, agg_fn)
+                    _record_output_col(f"{clean_out_name}_{agg_fn}", src_col, agg_fn)
             else:
-                output_cols.append(clean_out_name)
-                named_aggs[clean_out_name] = (src_col, aggs_list[0])
+                _record_output_col(clean_out_name, src_col, aggs_list[0])
 
 
     if group_cols:
