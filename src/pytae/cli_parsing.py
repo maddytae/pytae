@@ -353,7 +353,7 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
 
 
 _LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
-_WIDE_KEYS = ("c", "v", "a", "index", "by", "r", "rows")
+_WIDE_KEYS = ("c", "v", "index", "by", "r", "rows", "cols", "values")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
@@ -369,6 +369,11 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             key, _, value = token.partition("=")
             key = key.strip()
             value = _unquote_name(value)
+            if flag == "-wide" and key in ("a", "agg", "aggfunc"):
+                raise SystemExit(
+                    "-wide: -wide is strictly for 1-to-1 reshaping without aggregation. "
+                    "Use -pivot for aggregations (e.g. -pivot 'r=...,c=...,v=...,a=...')."
+                )
             if key not in keys:
                 raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
             if not value:

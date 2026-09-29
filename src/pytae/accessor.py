@@ -136,18 +136,17 @@ class PtAccessor:
         self,
         c: str = "variable",
         v: str = "value",
-        a: str | None = None,
-        dropna: bool = False,
         index: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
         """Pivot long-form records back to wide format (columns).
 
-        Headers are created from `c` (default 'variable'), cells from `v` (default 'value'),
-        with optional aggregation function `a` (e.g. 'mean', 'sum', 'n') if duplicates exist.
+        Headers are created from `c` (default 'variable'), cells from `v` (default 'value').
+        Strictly 1-to-1 structural reshaping without aggregation.
+        For multi-dimensional aggregation, use `df.pt.pivot()`.
         """
         from .shape import wide as _wide
-        return _wide(self._obj, c=c, v=v, a=a, dropna=dropna, index=index, **kwargs)
+        return _wide(self._obj, c=c, v=v, index=index, **kwargs)
 
     def pivot(
         self,

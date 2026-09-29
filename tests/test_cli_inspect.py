@@ -140,7 +140,7 @@ def test_cli_wide_short_aliases(tmp_path, capsys):
     df = pd.DataFrame({"id": ["a", "b"], "country": ["sg", "cn"], "balance": [10, 20]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-wide", "c=country,v=balance,a=mean", "-cols"])
+    exit_code = cli.main([path, "-wide", "c=country,v=balance", "-cols"])
 
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err

@@ -223,9 +223,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "v=value; e.g. c=metric,v=reading")
     parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="pivot long form to wide (pytae wide()); defaults c=variable, v=value; "
-                              "e.g. c=country,v=balance,a=mean; a=n is an alias for pandas' 'size' "
-                              "(group row count), matching agg_df's convention; honors -dropna")
+                         help="pivot long form to wide for 1-to-1 reshaping (pytae wide()); defaults c=variable, v=value; "
+                              "for aggregation or 2D contingency tables, use -pivot")
     parser.add_argument("-pivot", "--pivot", dest="pivot", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="2-D pivot table (pytae pivot()); r=row_cols (optional), c=col_cols "
@@ -233,8 +232,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "dropna=false (default), fill_value=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=None,
                          metavar="BOOL",
-                         help="for -agg_df, -agg, -mutate, -value_counts (default: true) and "
-                              "-wide, -pivot (default: false): include NA keys when false; accepts true or false")
+                         help="for -agg, -mutate, -value_counts (default: true) and "
+                              "-pivot (default: false): include NA keys when false; accepts true or false")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
                               "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "

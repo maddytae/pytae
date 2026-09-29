@@ -229,8 +229,8 @@ Pivot tables from long to wide, melt wide tables to long, tally value combinatio
 ```bash
 pytae data.parquet -pivot "r=Region,c=Year,v=Sales,a=sum"           # 2D Excel-style pivot
 pytae data.parquet -long "c=metric,v=reading"                       # Melt
-pytae data.parquet -wide "c=metric,v=reading"                       # Pure reshape
-pytae data.parquet -select "species,island,sex" -wide "c=island,v=sex,a=n" # Frequency matrix
+pytae data.parquet -wide "c=metric,v=reading"                       # Pure 1:1 reshape
+pytae data.parquet -pivot "r=species,c=island,v=sex,a=n"            # Frequency matrix
 pytae data.parquet -sort_by "body_mass_g desc"
 ```
 
@@ -386,7 +386,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **2D Excel pivot table (r, c, v, a)** | `-pivot` | [2D Pivot Tables](cli/pivot.md) |
 | **Unpivot / melt (wide → long)** | `-long` | [Reshaping](cli/reshape.md) |
 | **Pure reshape (long → wide)** | `-wide` | [Reshaping](cli/reshape.md) |
-| **Contingency matrix / frequency pivot** | `-pivot "..., a=n"` / `-wide "..., a=n"` | [2D Pivot Tables](cli/pivot.md) |
+| **Contingency matrix / frequency pivot** | `-pivot "..., a=n"` | [2D Pivot Tables](cli/pivot.md) |
 | **Frequency distribution** | `-value_counts` | [Reshaping](cli/reshape.md) |
 | **Terminal frequency bars (ASCII)** | `-freq` | [Inspection & Metadata](cli/inspect.md) |
 | **Terminal histogram (ASCII)** | `-hist` | [Inspection & Metadata](cli/inspect.md) |
@@ -455,7 +455,7 @@ python -c "import pytae; pytae.sample_data['flights'].to_parquet('flights.parque
 pytae penguins.parquet -qry "species = 'Adelie'" -by species -agg mean
 
 # Two-way frequency pivot matrix
-pytae penguins.parquet -select "species,island,sex" -wide "c=island,v=sex,a=n"
+pytae penguins.parquet -pivot "r=species,c=island,v=sex,a=n"
 
 # Grouped mutation without collapsing rows
 pytae tips.parquet -select "day,total_bill,tip" -by day -mutate "avg_tip = mean(tip), diff = tip - avg_tip"
