@@ -526,7 +526,7 @@ def _process_path(
                 df_cur = pipeline.dataframe()
                 if any(c not in df_cur.columns for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
-            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=True if args.dropna is None else args.dropna)
+            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False if args.dropna is None else args.dropna)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -659,10 +659,10 @@ def _process_path(
 
             if len(value_count_cols) == 1:
                 col = value_count_cols[0]
-                result = source_df[col].value_counts(dropna=True if args.dropna is None else args.dropna).rename("count").reset_index()
+                result = source_df[col].value_counts(dropna=False if args.dropna is None else args.dropna).rename("count").reset_index()
                 result.columns = [col, "count"]
             else:
-                result = source_df.value_counts(subset=value_count_cols, dropna=True if args.dropna is None else args.dropna).rename("count").reset_index()
+                result = source_df.value_counts(subset=value_count_cols, dropna=False if args.dropna is None else args.dropna).rename("count").reset_index()
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
@@ -671,7 +671,7 @@ def _process_path(
         elif op == "freq":
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
             source_df = pipeline.dataframe()
-            result = _compute_freq(source_df, freq_col, True if args.dropna is None else args.dropna)
+            result = _compute_freq(source_df, freq_col, False if args.dropna is None else args.dropna)
             pipeline._df = result
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
@@ -741,7 +741,7 @@ def _process_path(
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                result = agg_df(df_cur, by_cols, agg_val, dropna=True if args.dropna is None else args.dropna)
+                result = agg_df(df_cur, by_cols, agg_val, dropna=False if args.dropna is None else args.dropna)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result

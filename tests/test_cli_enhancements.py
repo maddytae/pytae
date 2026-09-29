@@ -87,6 +87,25 @@ def test_freq_categorical_bars(tmp_path, capsys):
     assert "█" in out
 
 
+def test_freq_dropna_default_and_flags(tmp_path, capsys):
+    df = pd.DataFrame({"category": ["apple", None, "apple"]})
+    path = _write_csv(tmp_path, df)
+
+    # Default is dropna=false: retains NA category
+    exit_code = cli.main([path, "-freq", "category"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "apple" in out
+    assert "NaN" in out or "<NA>" in out or "None" in out or "nan" in out
+
+    # Explicit -dropna true: drops NA category
+    exit_code_drop = cli.main([path, "-freq", "category", "-dropna", "true"])
+    assert exit_code_drop == 0
+    out_drop = capsys.readouterr().out
+    assert "apple" in out_drop
+    assert "NaN" not in out_drop and "<NA>" not in out_drop and "None" not in out_drop
+
+
 def test_hist_numeric_distribution(tmp_path, capsys):
     df = pd.DataFrame({"score": [10, 12, 14, 50, 52, 90]})
     path = _write_csv(tmp_path, df)

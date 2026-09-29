@@ -346,6 +346,12 @@ def test_mutate_grouped_spaced_brackets():
 
 def test_mutate_grouped_dropna_observed():
     df = pd.DataFrame({"grp": ["a", None, "a"], "val": [10.0, 50.0, 30.0]})
+    # Default is dropna=False: computes on the NA group
+    res_default = df.pt.mutate("m = mean(val)", by="grp")
+    assert res_default["m"].iloc[1] == 50.0
+    assert res_default["m"].iloc[0] == 20.0
+    assert res_default["m"].iloc[2] == 20.0
+
     res_dropna = df.pt.mutate("m = mean(val)", by="grp", dropna=True)
     assert pd.isna(res_dropna["m"].iloc[1])
     assert res_dropna["m"].iloc[0] == 20.0

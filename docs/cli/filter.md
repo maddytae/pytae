@@ -27,7 +27,7 @@ Filter rows using pytae's ergonomic filter expressions (`-qry`) or standard Pand
 |---|---|---|
 | `-qry CONDITIONS` | Pytae `pt.qry()` | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, handles special characters safely |
 | `-query EXPR` | Pandas `df.query()` | Boolean expression string passed to `numexpr` (`col > 10 and other == 'x'`) |
-| `-dropna BOOL` | Pandas NA drop | Controls whether null/NaN keys are dropped in aggregations |
+| `-dropna BOOL` | Group NA drop | Controls whether null/NaN grouping keys are dropped in aggregations, mutations, value counts, and pivots (default: false) |
 
 ---
 
@@ -140,12 +140,12 @@ species  body_mass_g  sex
 
 ---
 
-## Filtering Missing Values (`-dropna`)
+## Handling Missing Group Keys (`-dropna`)
 
-Pass `-dropna false` to keep NA keys in groupings or aggregations:
+By default (`-dropna false`), missing values (`NaN`) in grouping columns are retained as their own group across aggregations, window mutations, value counts, frequency tables, and pivot tables. To drop rows or categories with missing grouping keys, pass `-dropna true`:
 
 ```bash
-pytae penguins.parquet -agg mean -dropna false
+pytae penguins.parquet -by sex -agg mean -dropna true
 ```
 
 ---

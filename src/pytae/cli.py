@@ -232,8 +232,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "dropna=false (default), fill_value=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
     parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=None,
                          metavar="BOOL",
-                         help="for -agg, -mutate, -value_counts (default: true) and "
-                              "-pivot, -plot (default: false): include NA keys when false; accepts true or false")
+                         help="for -agg, -mutate, -value_counts, -freq, -pivot, -plot (default: false): "
+                              "include NA keys when false; set true to drop NA keys; accepts true or false")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
                               "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "

@@ -33,7 +33,7 @@ def test_order_agg_then_shape_uses_aggregated_frame(tmp_path, capsys):
     assert "(1, 2)" in out
 
 
-def test_order_agg_dropna_false_keeps_na_group(tmp_path, capsys):
+def test_order_agg_dropna_default_and_flags(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", None],
@@ -42,12 +42,17 @@ def test_order_agg_dropna_false_keeps_na_group(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-dropna", "false", "-shape"])
-
+    # Default is dropna=false: keeps the NA grouping key, so both groups remain (2 rows).
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    # dropna=false keeps the NA grouping key, so both groups remain.
     assert "(2, 2)" in out
+
+    # Explicit -dropna true drops the NA grouping key (1 row).
+    exit_code_drop = cli.main([path, "-by", "grp", "-agg", "sum", "-dropna", "true", "-shape"])
+    out_drop = capsys.readouterr().out
+    assert exit_code_drop == 0
+    assert "(1, 2)" in out_drop
 
 
 def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):

@@ -418,7 +418,7 @@ def mutate(
     df: pd.DataFrame,
     *args: Any,
     by: str | Sequence[str] | None = None,
-    dropna: bool = True,
+    dropna: bool = False,
     observed: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
@@ -441,8 +441,8 @@ def mutate(
         pandas transform/window operations). When specified, aggregations (e.g. `mean(x)`,
         `sum(x)`, `n`) and window expressions (e.g. `x - mean(x)`) are evaluated per group
         and broadcast back to each row without collapsing the DataFrame.
-    dropna : bool, default True
-        Whether to drop NA groups when grouping with `by=`.
+    dropna : bool, default False
+        Whether to drop NA groups when grouping with `by=`. Defaults to False.
     observed : bool, default True
         Whether to observe categorical levels when grouping with `by=`.
     params : dict, optional
@@ -472,9 +472,9 @@ def mutate(
     >>> tips = pt.sample("tips")
     >>> tips.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n", by="day").head(3)
 
-    >>> # Handling missing groups: dropna=True (default) sets NaN; dropna=False computes on NA group
+    >>> # Handling missing groups: dropna=False (default) computes on NA group; dropna=True sets NaN
     >>> sample = pd.DataFrame({'grp': ['A', 'A', None, None], 'val': [10.0, 20.0, 30.0, 50.0]})
-    >>> sample.pt.mutate("avg = mean(val)", by="grp", dropna=False)
+    >>> sample.pt.mutate("avg = mean(val)", by="grp")
        grp   val   avg
     0    A  10.0  15.0
     1    A  20.0  15.0

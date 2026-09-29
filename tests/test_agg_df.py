@@ -30,10 +30,11 @@ def test_all_agg():
     })
     df["id"] = df["id"].replace("", np.nan)
 
+    # Default dropna=False keeps NA groups
     result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"])
 
     expected_df = (
-        df.groupby(["id", "country"])
+        df.groupby(["id", "country"], dropna=False)
         .agg(
             n=("id", "size"),
             balance_sum=("balance", "sum"),
@@ -55,10 +56,10 @@ def test_all_agg_drop_na():
     })
     df["id"] = df["id"].replace("", np.nan)
 
-    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"], dropna=False)
+    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"], dropna=True)
 
     expected_df = (
-        df.groupby(["id", "country"], dropna=False)
+        df.groupby(["id", "country"], dropna=True)
         .agg(
             n=("id", "size"),
             balance_sum=("balance", "sum"),
