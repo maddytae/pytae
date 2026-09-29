@@ -337,6 +337,14 @@ class Plotter:
         self.x = combined_kwargs.get('x', None)
         self.y = combined_kwargs.get('y', None)
         self.by = combined_kwargs.get('by', None)
+        if self.by is None and isinstance(self.df, pd.DataFrame):
+            for alias in ('color', 'hue'):
+                val = combined_kwargs.get(alias)
+                if isinstance(val, str) and val in self.df.columns:
+                    self.by = val
+                    if alias in self.last_kwargs:
+                        del self.last_kwargs[alias]
+                    break
         self.column = combined_kwargs.get('column', None) or combined_kwargs.get('x', None)
         self.kind = new_kind
 
