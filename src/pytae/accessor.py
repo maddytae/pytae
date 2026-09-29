@@ -221,7 +221,7 @@ class PtAccessor:
             df.pt.plot(mosaic="AB", figsize=(10, 5)).plot(on="A", ...)
 
         Or with direct plot arguments to plot immediately:
-            df.pt.plot(kind="bar", x="day", y="total_bill", aggfunc="mean").pt.finalize()
+            df.pt.agg("day", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill").pt.finalize()
 
         Or with faceting parameters (e.g. by="species", ncols=3) to automatically
         produce a small-multiples grid across groups:

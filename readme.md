@@ -86,7 +86,7 @@ pytae penguins.parquet -freq species
 pytae penguins.parquet -hist body_mass_g:10
 
 # 8. Render and export figures directly from the CLI
-pytae penguins.parquet -plot "kind=bar, x=species, y=body_mass_g, aggfunc=mean" -o mass_chart.png
+pytae penguins.parquet -by species -agg "body_mass_g=mean" -plot "kind=bar, x=species, y=body_mass_g" -o mass_chart.png
 
 # 9. Pipe streaming via standard input (STDIN)
 cat penguins.csv | pytae - -select "species,island" -value_counts
@@ -235,7 +235,7 @@ penguins.pt.plot(
 ).pt.finalize()
 
 # One-shot direct file export (no explicit finalize required):
-penguins.pt.plot(kind="bar", x="species", y="body_mass_g", aggfunc="mean", save="mass.png")
+penguins.pt.agg("species", body_mass_g="mean").pt.plot(kind="bar", x="species", y="body_mass_g").save("mass.png")
 ```
 
 ### 9. Zero-Cost Metadata Inspection & Diffing

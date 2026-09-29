@@ -858,7 +858,7 @@ def _process_path(
                 except Exception as exc:
                     return _fail(parser, batch, f"-finalize style: {exc}")
 
-            plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
+            plotter_keys = {"mosaic", "figsize", "sharex", "sharey", "nrows", "ncols"}
             init_kwargs = {k: v for k, v in plot_kwargs.items() if k in plotter_keys}
             chart_kwargs = {k: v for k, v in plot_kwargs.items() if k not in plotter_keys}
             if "dropna" not in chart_kwargs and getattr(args, "dropna", None) is not None:

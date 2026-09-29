@@ -529,8 +529,8 @@ Requires: pip install 'pytae[plot]'
 
 Key Concepts:
   - Fluent Accessor & Functional Shortcuts:
-    tips.pt.plot(kind="bar", x="day", y="total_bill", by="sex", aggfunc="mean", palette="tab10").pt.finalize()
-    pt.plot(tips, kind="bar", x="day", y="total_bill", aggfunc="mean").finalize()
+    tips.pt.agg("day,sex", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill", by="sex", palette="tab10").pt.finalize()
+    tips.pt.agg("day", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill").pt.finalize()
   - Chain Pattern:
     k = pt.Plotter(figsize=(6, 4))
     (k
@@ -539,9 +539,11 @@ Key Concepts:
      .finalize()
     )
     k.fig  # access matplotlib figure
-  - Auto-Aggregation:
-    No need to pre-aggregate data. Pass `by=` and `aggfunc=`:
-    k.data(tips).plot(kind="bar", x="day", y="total_bill", by="sex", aggfunc="mean").finalize()
+  - Clean Separation of Concerns (No In-Plot Aggregation):
+    In accordance with Unix philosophy ("one and only one right way"), Plotter plots data directly without performing aggregation.
+    Summarize first with `df.pt.agg()` or `df.pt.pivot()`:
+    tips_avg = tips.pt.agg("day,sex", total_bill="mean")
+    k.data(tips_avg).plot(kind="bar", x="day", y="total_bill", by="sex").finalize()
   - Box Plots (True Unaggregated Quartiles):
     pt.Plotter(penguins).plot(kind="box", x="species", y="body_mass_g", palette="Set1").finalize()
   - Heatmap Matrix:
@@ -555,7 +557,7 @@ Key Concepts:
     k = pt.Plotter(mosaic, figsize=(10, 8))
     (k
      .data(penguins).plot(on="A", kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species")
-     .data(tips).plot(on="B", kind="bar", x="day", y="total_bill", aggfunc="mean")
+     .data(tips.pt.agg("day", total_bill="mean")).plot(on="B", kind="bar", x="day", y="total_bill")
      .finalize(consolidate_legends=True)
     )
   - Secondary Y-Axis ('^'):

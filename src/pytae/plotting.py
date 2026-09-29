@@ -3,15 +3,25 @@ from __future__ import annotations
 import io
 import math
 import warnings
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+
+def _check_no_aggregation(kwargs: dict) -> None:
+    if 'aggfunc' in kwargs or 'aggregate' in kwargs:
+        raise ValueError(
+            "Plotter does not perform aggregation. "
+            "Aggregate your DataFrame first using df.pt.agg(...) or df.pt.pivot(...) before plotting."
+        )
+
+
 # pytae's own control kwargs -- these drive Plotter's behavior directly and are
 # never forwarded to pandas.plot() (see _prepare_plot_kwargs/_filter_plot_kwargs).
 _CONTROL_KWARGS = [
-    'on', 'print_data', 'clip_data', 'secondary_y', 'aggregate',
+    'on', 'print_data', 'clip_data', 'secondary_y',
     'xlabel', 'ylabel', 'palette', 'annot', 'fmt',
 ]
 
@@ -21,61 +31,54 @@ _CONTROL_KWARGS = [
 # apply to this kind at all (warned about, then dropped via `strip`).
 _KIND_SPECS = {
     'scatter': {
-        'strip': ['aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'strip': ['dropna', *_CONTROL_KWARGS],
         'unsupported': {
-            'aggfunc': "Aggregation is not supported for scatter plots. The 'aggfunc' argument will be ignored.",
             'dropna': "The 'dropna' argument is not applicable to scatter plots and will be ignored.",
         },
     },
     'hexbin': {
-        'strip': ['by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'strip': ['by', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {
-            'aggfunc': "Aggregation is not supported for hex plots. Use reduce_C_function instead.",
             'dropna': "The 'dropna' argument is not applicable to hex plots and will be ignored.",
             'by': "Use 'c' and 'cmap' to split the hex plot by a particular column. The 'by' argument will be ignored.",
         },
     },
     'pie': {
-        'strip': ['x', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'strip': ['x', 'by', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {},
     },
     'line': {
-        'strip': ['y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'strip': ['y', 'by', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {},
     },
     'box': {
-        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
+        'strip': ['x', 'y', 'by', 'dropna', 'column', *_CONTROL_KWARGS],
         'unsupported': {
-            'aggfunc': "Aggregation is not supported for box plots. The 'aggfunc' argument will be ignored.",
             'dropna': "The 'dropna' argument is not applicable to box plots and will be ignored.",
         },
     },
     'heatmap': {
-        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
+        'strip': ['x', 'y', 'by', 'dropna', 'column', *_CONTROL_KWARGS],
         'unsupported': {},
     },
     'other': {
-        'strip': ['y', 'by', 'aggfunc', 'dropna', *_CONTROL_KWARGS],
+        'strip': ['y', 'by', 'dropna', *_CONTROL_KWARGS],
         'unsupported': {},
     },
     'kde': {
-        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
-        'unsupported': {
-            'aggfunc': "Aggregation is not supported for kde/density plot. The 'aggfunc' argument will be ignored.",
-        },
+        'strip': ['x', 'y', 'by', 'dropna', 'column', *_CONTROL_KWARGS],
+        'unsupported': {},
     },
     'hist': {
-        'strip': ['x', 'y', 'by', 'aggfunc', 'dropna', 'column', *_CONTROL_KWARGS],
-        'unsupported': {
-            'aggfunc': "Aggregation is not supported for hist plot. The 'aggfunc' argument will be ignored.",
-        },
+        'strip': ['x', 'y', 'by', 'dropna', 'column', *_CONTROL_KWARGS],
+        'unsupported': {},
     },
 }
 _KIND_SPECS['density'] = _KIND_SPECS['kde']  # 'kde' and 'density' are aliases
 
 # Kwargs each kind needs set (via .data()/.plot(x=, y=, by=, column=, ...)) before
 # it can render at all -- checked up front so a missing one raises a clear pytae
-# error instead of a cryptic pandas KeyError deep inside get_pivot_data()/etc.
+# error instead of a cryptic pandas KeyError deep inside pandas.
 _REQUIRED_KWARGS = {
     'scatter': ['x', 'y'],
     'hexbin': ['x', 'y'],
@@ -88,6 +91,35 @@ _REQUIRED_KWARGS = {
     'hist': ['column'],
     'heatmap': [],
 }
+
+
+def _normalize_col_label(c: object) -> str:
+    if c is None or (isinstance(c, float) and np.isnan(c)) or pd.isna(c):
+        return "nan"
+    if isinstance(c, (float, np.floating)) and float(c).is_integer():
+        return str(int(c))
+    return str(c)
+
+
+def _reshape_by_to_wide(df: pd.DataFrame, x: Any, by: Any, y: Any, kind_name: str) -> pd.DataFrame:
+    """Reshape tidy (x, by, y) into wide columns per 'by' category without aggregation."""
+    if df[[x, by]].duplicated().any():
+        raise ValueError(
+            f"Plotter: cannot plot {kind_name} with by='{by}' because duplicate ({x}, {by}) pairs exist. "
+            "Aggregate first using df.pt.pivot(...) or df.pt.agg(...) before plotting."
+        )
+    raw_piv = df.pivot(index=x, columns=by, values=y)
+    norm_x = _normalize_col_label(x)
+    for col in raw_piv.columns:
+        if _normalize_col_label(col) == norm_x:
+            raise ValueError(
+                f"Plotter: category '{col}' in 'by={by}' collides with x-axis column name '{x}'. "
+                "Rename the category or x-axis column to avoid ambiguous plot data."
+            )
+    res = raw_piv.reset_index()
+    res.columns.name = None
+    return res
+
 
 class Plotter:
     """
@@ -135,7 +167,8 @@ class Plotter:
 
         return super().__new__(cls)
 
-    def __init__(self, df=None, mosaic=None, figsize=None, aggregate=True, sharex=False, sharey=False, nrows=None, ncols=None, **kwargs):
+    def __init__(self, df=None, mosaic=None, figsize=None, sharex=False, sharey=False, nrows=None, ncols=None, **kwargs):
+        _check_no_aggregation(kwargs)
         if getattr(self, '_initialized', False):
             return
         self._initialized = True
@@ -172,7 +205,6 @@ class Plotter:
         self.df = None
         self.plot_kwargs_store = {}
         self.tables = {}
-        self.aggregate = aggregate  # Class-level default for aggregation; can be overridden at plot level for flexibility
         if df is not None:
             self.data(df)
         plt.close()
@@ -213,7 +245,7 @@ class Plotter:
         raise KeyError(f"No plotted data found for axis {on!r}; available: {list(self.tables)}")
 
     @classmethod
-    def facet(cls, df, by, *, ncols=None, sort=True, titles=True, figsize=None, aggregate=True, sharex=False, sharey=False, **plot_kwargs):
+    def facet(cls, df, by, *, ncols=None, sort=True, titles=True, figsize=None, sharex=False, sharey=False, **plot_kwargs):
         """Build a small-multiples grid, one axis per distinct value of `by`, and plot
         the same chart (**plot_kwargs, e.g. x=/y=/kind=) on each facet's own subset of
         rows. A grid isn't always exactly fillable (e.g. 5 groups doesn't tile a 2x3
@@ -233,7 +265,7 @@ class Plotter:
             which always uses its own defined category order.
         titles : bool, optional
             Set each facet's axis title to its group value (default True).
-        figsize, aggregate :
+        figsize :
             Passed straight through to the underlying Plotter().
         sharex, sharey : bool, optional
             Share x or y axis scales across facets (default False).
@@ -246,6 +278,7 @@ class Plotter:
             A regular Plotter instance (chain `.finalize()` etc. as usual); `.axd` is
             keyed by the stringified group values, e.g. `plotter.axd['Adelie']`.
         """
+        _check_no_aggregation(plot_kwargs)
         if isinstance(df[by].dtype, pd.CategoricalDtype):
             present = set(df[by].dropna().unique())
             groups = [g for g in df[by].cat.categories if g in present]
@@ -276,7 +309,7 @@ class Plotter:
         plot_kwargs.pop('nrows', None)
         plot_kwargs.pop('on', None)
         suptitle = plot_kwargs.pop('suptitle', None) or plot_kwargs.pop('title', None)
-        plotter = cls(mosaic=grid, figsize=figsize, aggregate=aggregate, sharex=sharex, sharey=sharey, _is_facet_grid=True)
+        plotter = cls(mosaic=grid, figsize=figsize, sharex=sharex, sharey=sharey, _is_facet_grid=True)
         for group, key in zip(groups, keys):
             plotter.data(df[df[by] == group]).plot(on=key, **plot_kwargs)
             if titles:
@@ -316,6 +349,7 @@ class Plotter:
         return self
 
     def _update_kwargs(self, kwargs):
+        _check_no_aggregation(kwargs)
         # Extract print_data and clip_data before updating last_kwargs
         self.print_data = kwargs.get('print_data', False)
         self.clip_data = kwargs.get('clip_data', False)
@@ -343,9 +377,7 @@ class Plotter:
             self.y = self.y if self.y is not None else self.column
             self.x = self.x if self.x is not None else self.by
 
-        self.aggfunc = combined_kwargs.get('aggfunc', None) if self.kind in ['scatter', 'density', 'kde', 'hist', 'box'] else combined_kwargs.get('aggfunc', 'sum')
         self.dropna = combined_kwargs.get('dropna', False)
-        self.aggregate = combined_kwargs.get('aggregate', self.aggregate)  # Plot-level overrides class-level
 
     def _get_target_axis(self):
         ax_key = self.last_kwargs.get('on', 'A')
@@ -525,7 +557,22 @@ class Plotter:
         """Plot a pie chart."""
         plot_dict = self._prepare_plot_kwargs('pie')
         self._store_plot_kwargs(ax, plot_dict)
-        pie_df = self.df[[self.by, self.y]].groupby(self.by, observed=True, dropna=self.dropna).agg({self.y: self.aggfunc})
+        cat_col = self.by if self.by is not None else self.x
+        if cat_col is not None and cat_col in self.df.columns:
+            sub = self.df[[cat_col, self.y]].copy()
+            if self.dropna:
+                sub = sub.dropna(subset=[cat_col])
+            if sub[cat_col].duplicated().any():
+                raise ValueError(
+                    f"Plotter: pie chart category '{cat_col}' has duplicate entries. "
+                    "Aggregate first using df.pt.agg(...) or df.pt.freq(...) before plotting."
+                )
+            if not self.dropna and sub[cat_col].isna().any():
+                sub[cat_col] = sub[cat_col].fillna("NaN")
+            pie_df = sub.set_index(cat_col)[[self.y]]
+        else:
+            pie_df = self.df[[self.y]]
+
         if 'colors' in self.last_kwargs:
             color_arg = self.last_kwargs['colors']
             if isinstance(color_arg, (list, tuple)):
@@ -558,8 +605,16 @@ class Plotter:
         width = plot_dict.pop('width', None)
         color_map = plot_dict.pop('color', None)
         palette = self.last_kwargs.get('palette')
-        pivot_data = self.get_pivot_data()
-        data_cols = [c for c in pivot_data.columns if c != self.x]
+
+        plot_data = self.df.copy()
+        if self.by is not None and self.by in plot_data.columns and self.x is not None and self.y is not None:
+            plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, 'line')
+        elif self.x is not None and self.y is not None:
+            y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
+            cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
+            plot_data = plot_data[cols]
+
+        data_cols = [c for c in plot_data.columns if c != self.x]
 
         if color_map and isinstance(color_map, dict):
             color_list = [color_map.get(col, None) for col in data_cols]
@@ -575,9 +630,9 @@ class Plotter:
         if width is not None and not isinstance(width, dict):
             plot_dict['linewidth'] = width
 
-        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in pivot_data.columns:
-            plot_dict['x'] = pivot_data.columns.get_loc(plot_dict['x'])
-        self.ax = pivot_data.plot(ax=ax, **plot_dict)
+        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in plot_data.columns:
+            plot_dict['x'] = plot_data.columns.get_loc(plot_dict['x'])
+        self.ax = plot_data.plot(ax=ax, **plot_dict)
         if style is not None and isinstance(style, dict):
             style_lookup = {str(k): v for k, v in style.items()}
             style_lookup.update(style)
@@ -597,7 +652,7 @@ class Plotter:
                 for line in self.ax.get_lines():
                     line.set_linewidth(width)
         self._apply_axis_labels(ax)
-        self._handle_data_output(pivot_data, ax)
+        self._handle_data_output(plot_data, ax)
 
     def _plot_box(self, ax):
         """Plot a box chart showing unaggregated distributions per group or single column."""
@@ -649,11 +704,15 @@ class Plotter:
                 imshow_kwargs[key] = self.last_kwargs[key]
 
         if self.x is not None and self.by is not None and self.y is not None:
-            matrix = self.get_pivot_data().set_index(self.x)
-        elif self.x is not None and self.y is not None:
-            matrix = self.df.pivot_table(index=self.x, columns=self.y, aggfunc='size', fill_value=0, dropna=self.dropna)
+            wide_df = _reshape_by_to_wide(self.df, self.x, self.by, self.y, 'heatmap')
+            matrix = wide_df.set_index(self.x)
+        elif self.x is not None and self.x in self.df.columns:
+            matrix = self.df.set_index(self.x).select_dtypes(include='number')
         else:
             matrix = self.df.select_dtypes(include='number')
+
+        if matrix.empty:
+            raise ValueError("Plotter: heatmap requires numeric columns to plot.")
 
         im = ax.imshow(matrix.values, cmap=cmap, aspect='auto', **imshow_kwargs)
         ax.set_xticks(range(len(matrix.columns)))
@@ -687,17 +746,28 @@ class Plotter:
     def _plot_other(self, ax):
         plot_dict = self._prepare_plot_kwargs('other')
         self._store_plot_kwargs(ax, plot_dict)
-        pivot_data = self.get_pivot_data()
+        plot_data = self.df.copy()
+        if self.by is not None and self.by in plot_data.columns and self.x is not None and self.y is not None:
+            plot_data = _reshape_by_to_wide(plot_data, self.x, self.by, self.y, self.kind)
+        elif self.x is not None and self.y is not None:
+            y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else [self.y]
+            cols = [self.x] + [c for c in y_cols if c != self.x and c in plot_data.columns]
+            plot_data = plot_data[cols]
+
+        if self.x is not None and self.x in plot_data.columns and self.kind in ['bar', 'barh']:
+            if not pd.api.types.is_datetime64_any_dtype(plot_data[self.x]):
+                plot_data[self.x] = plot_data[self.x].astype('object')
+
         palette = self.last_kwargs.get('palette')
         if palette and 'color' not in plot_dict:
-            data_cols = [c for c in pivot_data.columns if c != self.x]
+            data_cols = [c for c in plot_data.columns if c != self.x]
             colors = self._get_palette_colors(data_cols, palette=palette)
             plot_dict['color'] = [colors.get(c) for c in data_cols]
-        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in pivot_data.columns:
-            plot_dict['x'] = pivot_data.columns.get_loc(plot_dict['x'])
-        self.ax = pivot_data.plot(ax=ax, **plot_dict)
+        if 'x' in plot_dict and isinstance(plot_dict['x'], int) and plot_dict['x'] in plot_data.columns:
+            plot_dict['x'] = plot_data.columns.get_loc(plot_dict['x'])
+        self.ax = plot_data.plot(ax=ax, **plot_dict)
         self._apply_axis_labels(ax)
-        self._handle_data_output(pivot_data, ax)
+        self._handle_data_output(plot_data, ax)
 
     # kde, density
     def _plot_density(self, ax):
@@ -752,78 +822,6 @@ class Plotter:
 
     def _filter_plot_kwargs(self, keys_to_remove):
         return {k: v for k, v in self.last_kwargs.items() if k not in keys_to_remove}
-
-    def get_pivot_data(self):
-        """
-        Generate a pivoted DataFrame for plotting.
-        Returns:
-            pandas.DataFrame: Pivoted DataFrame ready for plotting.
-        """
-        df_source = self.df
-        by_col = self.by
-        is_int_by = isinstance(by_col, int)
-        if is_int_by:
-            sentinel_by = f"__pytae_by_{by_col}__"
-            df_source = self.df.rename(columns={by_col: sentinel_by})
-            by_col = sentinel_by
-
-        def _normalize_col_label(c: object) -> str:
-            if c is None or (isinstance(c, float) and np.isnan(c)) or pd.isna(c):
-                return "nan"
-            if isinstance(c, (float, np.floating)) and float(c).is_integer():
-                return str(int(c))
-            return str(c)
-
-        if not self.aggregate:  # when aggregation is not required
-            if by_col is not None:  # to convert to wide format without aggregate because pandas plot would expect wide data
-                # Check for potential duplicates and raise error if found
-                unique_combos = df_source[[self.x, by_col]].drop_duplicates().shape[0]
-                if unique_combos < len(df_source):  # to ensure data is ready for wide formatting without agg
-                    raise ValueError("Duplicates found in data for pivot. Use aggregate=True or remove duplicates.")
-                raw_piv = df_source.pivot(index=self.x, columns=by_col, values=self.y)
-                if self.x is not None:
-                    norm_x = _normalize_col_label(self.x)
-                    for col in raw_piv.columns:
-                        if _normalize_col_label(col) == norm_x:
-                            raise ValueError(
-                                f"Plotter: category '{col}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
-                                "Rename the category or x-axis column to avoid ambiguous plot data."
-                            )
-                pivot_table = raw_piv.reset_index()
-            else:
-                y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
-                cols = ([self.x] if self.x is not None else []) + [c for c in y_cols if c != self.x]
-                pivot_table = self.df[cols].copy()
-        else:
-            if by_col is not None:
-                raw_piv = df_source.pivot_table(index=self.x, columns=by_col, values=self.y,
-                                              aggfunc=self.aggfunc, dropna=self.dropna, observed=False)
-                if self.x is not None:
-                    norm_x = _normalize_col_label(self.x)
-                    for col in raw_piv.columns:
-                        if _normalize_col_label(col) == norm_x:
-                            raise ValueError(
-                                f"Plotter: category '{col}' in 'by={self.by}' collides with x-axis column name '{self.x}'. "
-                                "Rename the category or x-axis column to avoid ambiguous plot data."
-                            )
-                pivot_table = raw_piv.reset_index()
-            else:
-                y_cols = list(self.y) if isinstance(self.y, (list, tuple)) else ([self.y] if self.y is not None else [])
-                if self.x is not None:
-                    raw_piv = self.df.groupby(self.x, as_index=True, dropna=self.dropna, observed=False)[y_cols].agg(self.aggfunc)
-                    pivot_table = raw_piv.reset_index()
-                    desired_order = [self.x] + [c for c in y_cols if c in pivot_table.columns and c != self.x]
-                    other_cols = [c for c in pivot_table.columns if c not in desired_order]
-                    pivot_table = pivot_table[desired_order + other_cols]
-                else:
-                    raw_piv = self.df[y_cols].agg(self.aggfunc).to_frame().T
-                    pivot_table = raw_piv.reset_index(drop=True)
-
-        if self.x is not None and self.x in pivot_table.columns and self.kind in ['bar', 'barh']:
-            if not pd.api.types.is_datetime64_any_dtype(pivot_table[self.x]):
-                pivot_table[self.x] = pivot_table[self.x].astype('object')
-        pivot_table.columns.name = None  # ensure col names are not corrupt with multi index names post pivot
-        return pivot_table
 
     def _handle_data_output(self, data, ax=None):
         """Handle data output options (print, copy to clipboard, record table)."""
@@ -1079,14 +1077,14 @@ def plot(df: pd.DataFrame, *args, **kwargs) -> Plotter:
     *args :
         Positional arguments passed to Plotter constructor (e.g. mosaic).
     **kwargs :
-        Plotter constructor arguments (mosaic, figsize, aggregate, sharex, sharey)
-        or .plot() parameters (kind, x, y, by, aggfunc, palette, etc.).
+        Plotter constructor arguments (mosaic, figsize, sharex, sharey)
+        or .plot() parameters (kind, x, y, by, palette, etc.).
 
     Examples:
     ---------
     >>> import pytae as pt
     >>> tips = pt.sample("tips")
-    >>> pt.plot(tips, kind="bar", x="day", y="total_bill", aggfunc="mean").finalize()
+    >>> tips.pt.agg("day", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill").finalize()
     """
     return df.pt.plot(*args, **kwargs)
 
