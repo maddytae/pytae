@@ -151,7 +151,11 @@ def parse_rename(raw: str) -> dict[str, str]:
             raise SystemExit(f"invalid -rename mapping '{pair}'; use ':' (e.g. -rename 'old:new'). '=' is not supported.")
         else:
             raise SystemExit(f"invalid -rename mapping '{pair}'; expected old:new")
-        mapping[_unquote_name(old)] = _unquote_name(new)
+        old_clean = _unquote_name(old)
+        new_clean = _unquote_name(new)
+        if old_clean in mapping and mapping[old_clean] != new_clean:
+            raise SystemExit(f"invalid -rename: conflicting mappings for '{old_clean}': '{mapping[old_clean]}' and '{new_clean}'")
+        mapping[old_clean] = new_clean
     return mapping
 
 

@@ -231,6 +231,16 @@ def test_value_counts_without_argument_uses_selected_columns(tmp_path, capsys):
     # -select narrows working columns, so no-arg -value_counts uses those two.
     assert "(3, 3)" in out
 
+
+def test_value_counts_collision_fails_cleanly(tmp_path, capsys):
+    df = pd.DataFrame({"count": [1, 2], "n": [3, 4]})
+    path = _write_csv(tmp_path, df)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-value_counts"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "columns contain both 'count' and 'n'" in err
+
 def test_order_sort_by_then_shape_uses_sorted_frame(tmp_path, capsys):
     df = pd.DataFrame(
         {

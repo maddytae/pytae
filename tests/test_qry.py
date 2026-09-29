@@ -296,3 +296,12 @@ def test_parse_qry_multiple_conditions_on_same_column():
     conditions = parse_qry("body_mass_g >= 3000, body_mass_g <= 4500")
     assert conditions == [("body_mass_g", (">=", 3000)), ("body_mass_g", ("<=", 4500))]
 
+
+def test_qry_numeric_interval_invalid_bounds():
+    df = pd.DataFrame({"mass": [2000, 3000, 4000]})
+    with pytest.raises(ValueError, match="interval lower bound for numeric column 'mass' must be a number"):
+        df.pt.qry("mass = [abc, 4000]")
+
+    with pytest.raises(ValueError, match="interval upper bound for numeric column 'mass' must be a number"):
+        df.pt.qry("mass = [2000, xyz]")
+
