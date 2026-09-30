@@ -55,7 +55,7 @@ Key principles:
 1. Dual Calling Convention: Every library verb exists both as a functional 
    function `pt.verb(df, ...)` and as a Pandas DataFrame accessor `df.pt.verb(...)`.
    The accessor enables seamless method chaining with standard Pandas methods:
-   `df.rename(...).pt.qry(...).pt.select(...).pt.agg_df(...)`.
+   `df.rename(...).pt.qry(...).pt.agg_df(...)`.
 2. Unix Pipeline CLI: The command-line tool `pytae` processes operations in 
    the exact order flags are passed on the terminal:
    `pytae data.parquet -qry "..." -mutate "..." -select "..." -head 10`.
@@ -751,11 +751,11 @@ Convert files between formats with zero python code via -o:
 2. Select Regex vs Positional String:
    - Calling `pt.select(df, "^bill")` will search for a literal column named `^bill` and fail.
    - You MUST use `regex=`: `pt.select(df, regex=r"^bill")`.
-3. Aggregation Grouping Logic:
-   - `agg_df` automatically groups by EVERY non-numeric column when by= is omitted.
-   - If your DataFrame has 10 string columns, it groups by all 10.
-   - Always filter columns first if you only want to group by 1 or 2 columns, or specify `by=`:
-     `df.pt.select("species", "body_mass_g").pt.agg_df("mean")`.
+3. Aggregation Grouping & Selection Logic:
+   - `agg_df` / `agg` requires an explicit grouping key: specify `by` column(s) as the first argument, or `None` for a whole-table summary.
+   - You do NOT need a redundant `pt.select(...)` or `-select` before aggregating. Target columns and metrics are declared directly within `agg`:
+     `df.pt.agg("species", body_mass_g="mean", count="n")`
+     `pytae penguins.parquet -by species -agg body_mass_g=mean`
 4. The Count Column 'n':
    - 'n' is a reserved aggregation token in `agg_df`, `pivot`, and grouped `mutate(..., by=...)`.
    - If your input table already has a real numeric column named 'n', rename it first to avoid collision.
@@ -782,7 +782,7 @@ import pytae as pt
 # Load bundled dataset
 penguins = pt.sample("penguins")
 
-# Clean pipeline: filter -> derive features -> select -> aggregate
+# Clean pipeline: filter -> derive features -> aggregate
 summary = (
     penguins
     # 1. Filter: Adelie & Gentoo with known sex and body mass >= 3500g
@@ -801,10 +801,9 @@ summary = (
     .pt.mutate(**{
         "normalized bill": "bill_length_mm / bill_length_mm.max()",
     })
-    # 4. Narrow to columns of interest
-    .pt.select("species", "size_class", "mass_kg", "bill_ratio")
-    # 5. Grouped aggregation: mean mass, max ratio, group counts
+    # 4. Grouped aggregation: mean mass, max ratio, group counts
     .pt.agg_df(
+        ["species", "size_class"],
         mass_kg="mean",
         bill_ratio="max",
         n="n",

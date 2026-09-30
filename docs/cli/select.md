@@ -191,9 +191,9 @@ pytae penguins.parquet -select "dtype=numeric" -select "-bill_depth_mm" -head 3
 ```
 
 ```bash
-# In an aggregation pipeline
+# Narrowing output columns after an aggregation
 pytae penguins.parquet \
-  -mutate "mass_kg = body_mass_g / 1000" \
-  -select "species,mass_kg" \
-  -agg mean
+  -by species \
+  -agg "avg_mass = body_mass_g:mean, total = n" \
+  -select "species,avg_mass"
 ```

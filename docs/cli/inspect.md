@@ -362,7 +362,7 @@ pytae penguins.parquet -head 3 -pretty
 Rounds all floating-point numbers across the printed output or clipboard:
 
 ```bash
-pytae penguins.parquet -select "species,body_mass_g" -agg mean -round 2
+pytae penguins.parquet -agg body_mass_g=mean -round 2
 ```
 
 ---

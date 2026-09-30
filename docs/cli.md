@@ -464,7 +464,7 @@ pytae tips.parquet -select "day,total_bill,tip" -by day -mutate "avg_tip = mean(
 pytae titanic.parquet -freq survived
 
 # Aggregate numeric metrics per cut
-pytae diamonds.parquet -select "cut,price" -by cut -agg mean
+pytae diamonds.parquet -by cut -agg price=mean
 
 # Sort by numeric column descending
 pytae mpg.parquet -select "origin,mpg" -sort_by "mpg desc" -head 5

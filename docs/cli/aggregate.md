@@ -37,12 +37,16 @@ Specify grouping column(s) with `-by` (or `--by`), and aggregation function(s) w
 
 Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `n` (row count), etc.
 
+> [!TIP]
+> **No Need for Pre-`-select`**:
+> You do not need a redundant `-select` to filter columns before aggregating. Target columns can be specified directly in `-agg` (e.g. `-by species -agg body_mass_g=mean` or `-agg "avg = body_mass_g:mean, n = n"`). Only use `-select` if you want to reorder or drop columns *after* aggregation.
+
 ### Single Function across Numeric Columns
 
-Average body mass by species:
+Average body mass by species (specify the metric directly in `-agg` without a pre-`-select`):
 
 ```bash
-pytae penguins.parquet -select "species,body_mass_g" -by species -agg mean -round 1
+pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
 ```
 
 **Output:**
@@ -58,15 +62,15 @@ Chinstrap       3733.1
 Compute mean and sample size simultaneously:
 
 ```bash
-pytae penguins.parquet -select "species,body_mass_g" -by species -agg "mean,n" -round 1
+pytae penguins.parquet -by species -agg "body_mass_g=mean, n=n" -round 1
 ```
 
 **Output:**
 ```text
-  species   n  body_mass_g
-   Adelie 152       3700.7
-Chinstrap  68       3733.1
-   Gentoo 124       5076.0
+  species  body_mass_g   n
+   Adelie       3700.7 152
+Chinstrap       3733.1  68
+   Gentoo       5076.0 124
 ```
 
 ### Column-Specific Mapping
@@ -105,8 +109,7 @@ Columns with spaces can be enclosed in square brackets `[col]` anywhere in `-by`
 
 ```bash
 pytae tips.parquet \
-  -qry "day in ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
-  -select "smoker, tip, total_bill" \
+  -qry "day = ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
   -rename "total_bill:[total bill]" \
   -by smoker \
   -agg "tip = mean, [total bill] = mean, n = n"
