@@ -18,8 +18,8 @@ TABLE OF CONTENTS
 4.  PYTHON LIBRARY REFERENCE (API VERBS)
     4.1.  pt.qry() / df.pt.qry() — Row Filtering
     4.2.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
-    4.3.  pt.select() / df.pt.select() — Column Selection & Reordering
-    4.4.  pt.agg_df() / df.pt.agg_df() — Grouped Aggregation
+    4.3.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
+    4.4.  pt.agg_df() / df.pt.agg_df() / df.pt.agg() — Grouped Aggregation
     4.5.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.6.  pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
     4.7.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
@@ -28,17 +28,35 @@ TABLE OF CONTENTS
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
           - pt.replace_values() / df.pt.replace_values()
-          - df.to_clip() (DataFrame & Series method)
+          - safe_reset_index(df)
+          - df.to_clip() / s.to_clip() (System Clipboard Export)
     4.9.  Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
     5.3.  All CLI Flags & Syntax Rules
-    5.4.  Quoting & Delimiter Standards (: vs =)
-    5.5.  Multi-File Operations (-file, -merge, -concat, -sql)
-    5.6.  Batch Processing & Conversions
-6.  COMMON PITFALLS, SYNTAX RULES, AND EDGE CASES
+    5.4.  In-Terminal Visualizations (-freq, -hist)
+    5.5.  Quoting & Delimiter Standards (: vs =)
+    5.6.  Multi-File Operations (-file, -merge, -concat, -sql)
+    5.7.  Batch Processing, Conversions & Clipboard (-o)
+6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
+    6.1.  Why is `-select` before `-agg` redundant?
+    6.2.  Why is `by` required in `pt.agg_df()` but optional in the CLI (`-by`)?
+    6.3.  How do I apply custom functions in `mutate()`? (Vectorized vs Series vs Row)
+    6.4.  Can row-level functions access newly created columns in the same `mutate()`?
+    6.5.  Why does `df.pt.mutate(col=my_func)` fail when `my_func` expects a row?
+    6.6.  What is the difference between `wide()` and `pivot()`?
+    6.7.  How do negative column exclusions work in `select()` and CLI `-select`?
+    6.8.  How do columns with spaces work across expressions?
+    6.9.  Why did `-sort` fail? (Use `-sort_by`)
+    6.10. How do I inspect metadata without reading data into RAM?
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
+    Recipe 1: Master Mutate Recipe (All 10 Features in One Pipeline)
+    Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
+    Recipe 3: DuckDB SQL Query with Joining Frames
+    Recipe 4: Multi-File Merge, Concat, and Export
+    Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -sort_by)
+    Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  REPOSITORY DIRECTORY TREE
 9.  BUILD & CONFIGURATION (pyproject.toml)
 10. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -74,6 +92,9 @@ Key principles:
    inventing artificial column suffixes or guessing.
 7. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
    is `wide()`, 2D aggregation is `pivot()`, column selection is `select()`.
+8. Plotting Without Implicit Aggregation (Path A): Plotters focus purely on 
+   visual representation—data should be aggregated explicitly first via `agg_df` 
+   or `pivot` before plotting, avoiding hidden or surprising aggregations.
 
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
@@ -88,27 +109,28 @@ Importing:
   import pandas as pd
 
 Top-Level Functions exported by `pytae`:
-  - pt.select(df, *args, **kwargs)
-  - pt.everything() (sentinel for select)
+  - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
+  - pt.everything() / pt.everything (sentinel for select)
   - pt.qry(df, *args, **kwargs)
-  - pt.mutate(df, *args, **kwargs)
-  - pt.agg_df(df, *args, **kwargs)
-  - pt.agg(df, *args, **kwargs) (alias for agg_df)
+  - pt.mutate(df, *args, by=None, dropna=False, observed=True, params=None, **kwargs)
+  - pt.agg_df(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs)
+  - pt.agg(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs) (alias for agg_df)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
-  - pt.wide(df, c="variable", v="value")
+  - pt.wide(df, c="variable", v="value", index=None)
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
   - pt.sql(df, query, **frames)
-  - pt.handle_missing(df, fillna=".")
+  - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
   - pt.cols(df, ascending=True)
-  - pt.clean_columns(df, **kwargs)
-  - pt.replace_values(df, v, c=None, exact=True)
+  - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False)
+  - pt.replace_values(df, v: dict, c=None, exact=True)
+  - pt.safe_reset_index(df)
   - pt.sample(name)
   - pt.sample_data (Mapping of bundled datasets)
   - pt.Plotter (lazy loaded when matplotlib is installed)
   - pt.plot(df, *args, **kwargs)
   - pt.finalize(plotter=None, **kwargs)
 
-DataFrame Accessor:
+DataFrame Accessor (`df.pt`):
   Importing pytae automatically registers the `.pt` accessor on `pd.DataFrame`.
   Methods on `df.pt`:
     df.pt.select(...)
@@ -125,7 +147,10 @@ DataFrame Accessor:
     df.pt.clean_columns(...)
     df.pt.replace_values(...)
     df.pt.plot(...)
-    df.pt.finalize(...)
+
+Clipboard Methods (attached directly to Pandas on import pytae):
+  df.to_clip()  # Copies DataFrame to clipboard as TSV without index
+  s.to_clip()   # Copies Series to clipboard without index
 
 
 3. SAMPLE DATASETS
@@ -136,7 +161,7 @@ Access methods:
   df = pt.sample_data["penguins"]
 
 List available dataset names:
-  pt.sample_data.keys()
+  list(pt.sample_data.keys())
   Available datasets include:
   - 'penguins': Palmer penguins dataset (species, island, bill_length_mm, 
     bill_depth_mm, flipper_length_mm, body_mass_g, sex, year).
@@ -144,7 +169,7 @@ List available dataset names:
   - 'titanic': Titanic passenger survival data (survived, pclass, sex, age, ...).
   - 'healthexp': Healthcare spending and life expectancy.
   - 'fmri': Functional MRI time points and BOLD signal.
-  - 'flights', 'diamonds', 'iris', 'planets', etc.
+  - 'flights', 'diamonds', 'iris', 'planets', 'taxis', 'seaice', 'mpg', etc.
 
 
 4. PYTHON LIBRARY REFERENCE (API VERBS)
@@ -169,13 +194,13 @@ Calling Styles:
      df.pt.qry({"bill length mm": "> 40", "species": "Adelie"})
   4. Mixed Calling:
      df.pt.qry("bill length mm > 40", {"island": "Biscoe"}, species="Gentoo")
-  5. Library Function:
+  5. Functional Style:
      pt.qry(penguins, species="Adelie")
 
 Supported Condition Types & Operators:
   - Equality:
     species="Adelie"
-    "species = Adelie" or "species = 'Adelie'"
+    "species = Adelie" or "species = 'Adelie'" or "species == 'Adelie'"
     {"species": "Adelie"}
   - Membership (in list):
     species=["Adelie", "Gentoo"]
@@ -220,83 +245,92 @@ Creates or overwrites columns using expressions evaluated in order via pandas ev
 with automatic fallback to plain Python eval on Series objects.
 
 Signature:
-  pt.mutate(df: pd.DataFrame, *args: Any, by: str | Sequence[str] | None = None, dropna: bool = False, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
-  df.pt.mutate(*args: Any, by: str | Sequence[str] | None = None, dropna: bool = False, observed: bool = True, params: dict | None = None, **kwargs: Any) -> pd.DataFrame
+  pt.mutate(
+      df: pd.DataFrame,
+      *args: Any,
+      by: str | Sequence[str] | None = None,
+      dropna: bool = False,
+      observed: bool = True,
+      params: dict | None = None,
+      **kwargs: Any,
+  ) -> pd.DataFrame
 
 Calling Styles:
   1. Keyword Arguments:
      df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")
   2. Dictionary Unpacking (for column names containing spaces):
      df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})
-  3. External Spec File:
+  3. String Expressions (matching CLI -mutate):
+     df.pt.mutate("mass_kg = body_mass_g / 1000, [mass lbs] = mass_kg * 2.20462")
+  4. External Spec File:
      df.pt.mutate("@features.txt")
-  4. Callables / Lambdas:
+  5. Callables / Lambdas:
      df.pt.mutate(is_heavy=lambda d: d["body_mass_g"] > 4000)
 
-Key Behaviors & Features:
-  - Sequential Chaining: Later expressions can reference columns created earlier 
-    in the SAME mutate() call:
-    df.pt.mutate(mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
-  - Columns With Spaces:
-    When referencing existing columns that contain spaces in expressions, 
-    surround them in SQL brackets `[col]` or backticks `` `col` ``:
-    df.pt.mutate(ratio="[body mass g] / [bill length mm]")
-    df.pt.mutate(ratio="`body mass g` / `bill length mm`")
-  - Local Scope Variables (@local_var):
-    Reference local variables from caller scope using `@name`:
-    threshold = 4000
-    df.pt.mutate(heavy="body_mass_g >= @threshold")
-    Or pass explicitly via params:
-    df.pt.mutate(heavy="body_mass_g >= @threshold", params={"threshold": 4000})
-
-Injected Helper Functions in Expressions:
-  - if_else(condition, true_value, false_value):
-    df.pt.mutate(category="if_else(body_mass_g > 4000, 'Heavy', 'Light')")
-  - case_when((cond1, val1), (cond2, val2), ..., default=val):
-    Evaluated in order, first match wins. Accepts tuples or flat alternating pairs:
-    df.pt.mutate(size="case_when((body_mass_g >= 4500, 'L'), (body_mass_g >= 3500, 'M'), default='S')")
-    df.pt.mutate(size="case_when(body_mass_g >= 4500, 'L', body_mass_g >= 3500, 'M', default='S')")
-  - coalesce(col1, col2, ..., default):
-    Returns the first non-null value per row:
-    df.pt.mutate(phone="coalesce(mobile, home, work, 'None')")
-  - map(column, {key: value, ...}[, default]):
-    Recodes values via dictionary lookup:
-    df.pt.mutate(code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, default='Other')")
-  - Series Methods Fallback:
-    Method chains on Series work seamlessly:
-    df.pt.mutate(initial="species.str[0]", rounded="bill_length_mm.round()")
-
-Grouped Window Operations (by=..., dropna=False, observed=True):
-  Evaluates window calculations and group summaries broadcast back to every row (N -> N):
-  - Injected Aggregations: mean(x), sum(x), median(x), min(x), max(x), std(x), var(x), n (or n())
-  - Sequential Derivation:
-    df.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, sz = n", by="day")
-  - Multi-Column Grouping:
-    df.pt.mutate("avg = mean(val)", by=["species", "island"])
-  - Handling Missing Group Keys (dropna):
-    - dropna=False (default across pytae): Rows with NA in grouping columns form their own group
-      and compute group metrics across all NA rows together.
-    - dropna=True: Rows with NA in grouping columns receive NaN in new columns;
-      row count and alignment are strictly preserved.
-      df.pt.mutate("avg = mean(val)", by="grp", dropna=True)
-      (In CLI: pass -dropna true to exclude NA groups)
-
-External Spec File Format (@file.txt):
-  Lines in `@specs.txt` are evaluated sequentially. Supports `#` comments and empty lines:
-  # Feature engineering specs
-  mass_kg = body_mass_g / 1000
-  mass_lb = mass_kg * 2.20462
-  bill_ratio = [bill length mm] / [bill depth mm]
+Comprehensive Feature Set (The 10 Mutate Capabilities):
+  1. Normal Mutate: Standard arithmetic and boolean derivations.
+  2. Sequential Chaining: Later expressions can reference columns created earlier 
+     in the SAME mutate() call:
+     df.pt.mutate(mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
+  3. Binary Conditionals (`if_else`):
+     df.pt.mutate(size="if_else(body_mass_g >= 4000, 'Heavy', 'Standard')")
+  4. Multi-Condition Tiers (`case_when`):
+     Ordered evaluation (first match wins). Accepts (cond, value) tuples or flat pairs:
+     df.pt.mutate(tier="case_when((mass_kg >= 5.0, 'XL'), (mass_kg >= 4.0, 'L'), default='S')")
+     df.pt.mutate(tier="case_when(mass_kg >= 5.0, 'XL', mass_kg >= 4.0, 'L', default='S')")
+  5. First Non-Null Resolution (`coalesce`):
+     Resolves the first non-null candidate per row:
+     df.pt.mutate(contact="coalesce(mobile, home, work, 'Unknown')")
+  6. Dictionary Lookup (`map`):
+     Recodes values through a mapping dictionary with optional default fallback:
+     df.pt.mutate(code="map(species, {'Adelie': 'AD', 'Gentoo': 'GE'}, default='OTHER')")
+  7. Caller Scope Variables (`@var`):
+     Reference local variables from caller scope using `@name`:
+     threshold = 4000
+     df.pt.mutate(heavy="body_mass_g >= @threshold")
+     Or pass explicitly via params:
+     df.pt.mutate(heavy="body_mass_g >= @threshold", params={"threshold": 4000})
+     (Note: In CLI, `@var` gives a helpful error explaining that caller scopes exist only in Python).
+  8. Columns With Spaces (`[col]` or `` `col` ``):
+     Enclose spaced column names in brackets `[body mass g]` or backticks:
+     df.pt.mutate(ratio="[body mass g] / [bill length mm]")
+  9. Grouped Window Transforms (`by=`, `dropna=False`, `observed=True`):
+     Evaluates aggregations per group and broadcasts back to each row without collapsing rows (N -> N):
+     - Injected Aggregations: mean(x), sum(x), median(x), min(x), max(x), std(x), var(x), n (or n())
+     - Example:
+       df.pt.mutate("avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass, group_size = n", by="species")
+     - `dropna=False` (default across pytae): Missing group categories form their own distinct group.
+     - `dropna=True`: Rows with NA in grouping columns receive NaN in new columns while preserving index alignment.
+  10. Custom Functions & Callables in `mutate()`:
+      - Vectorized Functions: If your function takes Series or arrays, call it directly:
+        df.pt.mutate(ratio="calc_ratio(bill_length_mm, bill_depth_mm)")
+      - Series Method `.apply()`: Directly call `.apply()` on columns in expressions:
+        df.pt.mutate(clean="species.apply(clean_species)")
+      - Whole-DataFrame Callables: Pass a lambda taking the accumulated DataFrame:
+        df.pt.mutate(is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5))
+      - Row-Level Functions (`lambda df: df.apply(my_func, axis=1)`):
+        When custom business logic requires a function expecting a single row (`Series`):
+        def classify(row):
+            if pd.isna(row["mass_kg"]): return "Missing"
+            return "Heavy" if row["mass_kg"] > 4.5 and row["species"] == "Gentoo" else "Standard"
+        df.pt.mutate(
+            mass_kg="body_mass_g / 1000",
+            category=lambda df: df.apply(classify, axis=1),
+        )
+        Notice: Because `mutate()` executes sequentially, `row["mass_kg"]` is immediately
+        accessible inside `classify(row)`!
 
 
-4.3. pt.select() / df.pt.select() — Column Selection & Reordering
+4.3. pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
 --------------------------------------------------------------------------------
-Selects and reorders columns using names, ranges/slices, data types, patterns, or predicates.
+Selects, reorders, or excludes columns using names, ranges/slices, criteria keywords, 
+or negative exclusions.
 
 Signature:
   pt.select(
       df: pd.DataFrame,
       *args: Any,
+      exclude: str | Sequence[str] | None = None,
       dtype: str | type | Sequence[str | type] | None = None,
       exclude_dtype: str | type | Sequence[str | type] | None = None,
       contains: str | Sequence[str] | None = None,
@@ -314,13 +348,25 @@ Argument Types for *args:
     Contiguous slice from start to end (inclusive of both bounds):
     df.pt.select("bill_length_mm:body_mass_g")
     Open slices: ":body_mass_g" (from start), "body_mass_g:" (to end)
-  - pt.everything():
+  - pt.everything() (or pt.everything):
     Pulls in all remaining unselected columns in their original order:
     df.pt.select("species", pt.everything())  # species first, then the rest
   - Predicate Callable:
     df.pt.select(lambda c: c.startswith("b"))
 
-Keyword Arguments:
+Negative Column Selection & Exclusions:
+  - Positional Negation: Pass names prefixed with `-` or `~`:
+    df.pt.select("-species")                      # Drop species, keep the rest
+    df.pt.select("-species", "-island")           # Drop multiple
+    df.pt.select("-bill_length_mm:body_mass_g")   # Drop contiguous slice range
+  - Keyword Exclusion (`exclude=`):
+    df.pt.select(exclude="species")
+    df.pt.select(exclude=["species", "island"])
+    df.pt.select(exclude="[col a, col b]")
+  - Automatic Inversion: If ONLY exclusions are specified, `select()` automatically starts 
+    with all columns and drops the excluded ones.
+
+Criteria Keyword Arguments:
   - regex: Regex pattern matching column names.
     df.pt.select(regex=r"^bill")
     df.pt.select("species", regex=r"mm$")
@@ -347,15 +393,14 @@ Column Order Rules:
 
 4.4. pt.agg_df() / df.pt.agg_df() / df.pt.agg() — Grouped Aggregation
 --------------------------------------------------------------------------------
-Aggregates a DataFrame grouped by explicit `by=` column(s) (or None for whole-table
-summary) and aggregates numeric columns. Supports string mapping specifications
-with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, or
-whole-frame aggregations.
+Aggregates numeric columns grouped by explicit `by=` column(s) (or `None` for a 
+whole-table grand total summary). Supports string mapping specifications with bracketed 
+columns `[col]` (matching CLI `-agg`), keyword arguments, or whole-frame aggregations.
 
 Signature:
   pt.agg_df(
       df: pd.DataFrame,
-      by: str | Sequence[str] | None,
+      by: str | Sequence[str] | None = _UNSET,
       *args: Any,
       a: str | list[str] | None = None,
       dropna: bool = False,
@@ -375,20 +420,35 @@ Calling Styles:
   3. Specific Column Aggregations (kwargs):
      df.pt.agg("species", body_mass_g="mean", flipper_length_mm="max", n="n")
      df.pt.agg("species", body_mass_g=["mean", "sum"], row_count="n")
+
+Key Rules & Behaviors:
+  - `by` is REQUIRED in the Python Library:
+    In Python, `by` must be passed as the first positional argument or via `by=...` / `group_by=...`.
+    To perform a whole-table summary (grand total, 1 row), explicitly pass `by=None`.
+    (In CLI, `-by` is optional—omitting `-by` defaults to a whole-table summary).
+  - Multi-Column Grouping:
+    Pass as list `by=["species", "island"]` or comma-separated string `by="species,island"`.
+  - NO REDUNDANT SELECT:
+    You NEVER need a `pt.select(...)` or `-select` before `agg()`. Target columns and aggregation
+    functions are declared directly inside `agg`:
+    # GOOD:
+    df.pt.agg("species", body_mass_g="mean")
+    # REDUNDANT (discouraged):
+    df.pt.select("species", "body_mass_g").pt.agg("species", body_mass_g="mean")
   - Row Count ('n'):
-     Assigning a key with value 'n' produces the group row count.
-     If the key is `n="n"`, the count column is named `n`.
-     If the key is `count="n"`, the count column is named `count`.
+    Assigning a key with value 'n' produces the group row count.
+    If the key is `n="n"`, the count column is named `n`.
+    If the key is `count="n"`, the count column is named `count`.
   - Column Names:
-     If a single aggregation is applied to a column, its original name is preserved:
-     `body_mass_g='mean'` -> output column: `body_mass_g`
-     If multiple aggregations are applied to a column, names become `{col}_{agg}`:
-     `body_mass_g=['mean', 'max']` -> output columns: `body_mass_g_mean`, `body_mass_g_max`
+    If a single aggregation is applied to a column, its original name is preserved:
+    `body_mass_g='mean'` -> output column: `body_mass_g`
+    If multiple aggregations are applied to a column, names become `{col}_{agg}`:
+    `body_mass_g=['mean', 'max']` -> output columns: `body_mass_g_mean`, `body_mass_g_max`
   - Group Counts Only:
-     If the DataFrame has no numeric columns and only 'n' is requested, it returns 
-     the frequency counts of the groups.
+    If the DataFrame has no numeric columns and only 'n' is requested, it returns 
+    the frequency counts of the groups.
   - dropna Default:
-     dropna=False by default retains missing category groups across aggregations.
+    `dropna=False` by default preserves missing category groups across aggregations.
 
 
 4.5. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
@@ -400,22 +460,25 @@ pt.long(df, cols=None, id_vars=None, c="variable", v="value"):
   non-numeric columns as ID variables.
   Parameters:
     cols: Column(s) to melt to rows. Can be string or list/tuple of strings.
+          Supports bracketed multi-word column names `[col name]`.
     id_vars: Identifier column(s) to keep as rows.
     c: column name for melted metric names (default: "variable")
     v: column name for melted metric values (default: "value")
   Example:
     tall = df.pt.long(c="metric", v="measurement")
 
-pt.wide(df, c="variable", v="value"):
+pt.wide(df, c="variable", v="value", index=None):
   Pivots long-format records back into column headers (exact reverse of pt.long).
   Strictly 1-to-1 without aggregation.
   Parameters:
     c: column whose unique values become headers (default: "variable")
     v: column containing values (default: "value")
+    index: explicit row identifier column(s). If None, all columns except `c` and `v` are used.
   Rules:
     - Requires unique (index, c) pairs. If duplicate keys exist, raises ValueError
       guiding the user to use pt.pivot() instead.
     - c and v cannot be the same column.
+    - If all columns are partitioned into `c` and `v` (no id columns), wide() reshapes cleanly.
   Example:
     wide = tall.pt.wide(c="metric", v="measurement")
 
@@ -440,14 +503,14 @@ Signature:
 
 Parameters:
   r: Row grouping column(s). String (e.g. "island", "species,island") or list of strings.
-     Alias: index=, rows=
+     Aliases: index=, rows=, row=, by=
   c: Column dimension(s). String (e.g. "sex") or list of strings.
-     Alias: columns=, cols=
+     Aliases: columns=, cols=, col=
   v: Value column(s) to aggregate. Optional when counting (a="n").
-     Alias: values=
+     Aliases: values=, value=, val=, vals=
   a: Aggregation function (default: "sum"). Supports standard aggregations
-     ("mean", "sum", "median", "min", "max", "std", "var") and "n" for row counts.
-     Alias: aggfunc=
+     ("mean", "sum", "median", "min", "max", "std", "var") and "n" (or "size") for row counts.
+     Aliases: agg=, aggfunc=
   dropna: Whether to drop NA categories in row/column keys (default: False).
   fill_value: Scalar value for missing grid intersections. For a="n", defaults to 0.
 
@@ -457,6 +520,8 @@ Key Features & Conventions:
   - Zero Count Fill: Missing grid combinations in frequency tables default to 0.
   - Omit v for Counts: For frequency cross-tabulations (a="n"), v is optional.
   - RangeIndex: Index is always reset to 0, 1, 2, ... with no lingering MultiIndex.
+  - No Cartesian Products: Unobserved groupings across MultiIndexes are cleanly filtered without
+    generating artificial Cartesian product rows.
 
 Examples:
   # 2D summary matrix
@@ -497,11 +562,12 @@ Rules & Features:
   ascending=False -> Alphabetical Z-A
   ascending=None  -> Original DataFrame file order
 
-- pt.handle_missing(df, fillna="."):
-  Sanitizes missing values:
-  - Category columns are converted to object.
-  - String columns: fills NaN with `fillna` (default '.') and strips whitespace.
-  - Numeric columns: fills NaN with `0`.
+- pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True):
+  Sanitizes missing values with type-safe defaults:
+  - Categorical columns: preserves categorical dtype (`preserve_categories=True`) and fills missing categories.
+  - String/object columns: fills NaN with `fillna` (default '.') and strips whitespace.
+  - Numeric columns: fills NaN with `numeric_fill` (default 0; can also be "mean", "median", or None).
+  - Specific columns: pass `cols=["col1", "col2"]` to target specific subsets.
 
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
   Systematically sanitizes DataFrame column header names in fixed order:
@@ -518,8 +584,13 @@ Rules & Features:
   c:      scoped column name or list of columns (default None = entire DataFrame)
   exact:  True = exact match of cell value; False = substring replacement (regex)
 
+- safe_reset_index(df):
+  Safely resets DataFrame index, raising an informative ValueError if an index level name collides
+  with an existing column to prevent ambiguous duplicate headers.
+
 - df.to_clip() / s.to_clip():
-  Copies DataFrame or Series to system clipboard as tab-separated values without index. Attached directly to pd.DataFrame and pd.Series on import pytae (no pt. or df.pt. needed).
+  Copies DataFrame or Series to system clipboard as tab-separated values without index.
+  Attached directly to pd.DataFrame and pd.Series on import pytae (no pt. or df.pt. needed).
 
 
 4.9. Plotter — Visualization & Dashboarding (Plotting API)
@@ -528,22 +599,25 @@ Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
 
 Key Concepts:
-  - Fluent Accessor & Functional Shortcuts:
-    tips.pt.agg("day,sex", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill", by="sex", palette="tab10").pt.finalize()
-    tips.pt.agg("day", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill").pt.finalize()
-  - Chain Pattern:
-    k = pt.Plotter(figsize=(6, 4))
-    (k
-     .data(df)
-     .plot(kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species", palette="Set1")
-     .finalize()
-    )
-    k.fig  # access matplotlib figure
-  - Clean Separation of Concerns (No In-Plot Aggregation):
-    In accordance with Unix philosophy ("one and only one right way"), Plotter plots data directly without performing aggregation.
+  - Clean Separation of Concerns (Path A — No In-Plot Aggregation):
+    Plotter plots data directly without performing aggregation.
     Summarize first with `df.pt.agg()` or `df.pt.pivot()`:
     tips_avg = tips.pt.agg("day,sex", total_bill="mean")
-    k.data(tips_avg).plot(kind="bar", x="day", y="total_bill", by="sex").finalize()
+    pt.plot(tips_avg, kind="bar", x="day", y="total_bill", by="sex").finalize()
+  - Accessor & Functional Shortcuts:
+    tips.pt.agg("day,sex", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill", by="sex", palette="tab10")
+    pt.finalize(title="Average Bill by Day")
+  - Method Chaining Pattern:
+    k = pt.Plotter(figsize=(6, 4))
+    (k
+     .data(penguins)
+     .plot(kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species", palette="Set1")
+     .finalize(title="Bill Dimensions")
+    )
+    k.fig  # access matplotlib figure
+  - Wide Data Plotting (Optional y):
+    Plot multiple metrics directly from wide tables without melting:
+    wide_data.pt.plot(kind="barh", x="category")
   - Box Plots (True Unaggregated Quartiles):
     pt.Plotter(penguins).plot(kind="box", x="species", y="body_mass_g", palette="Set1").finalize()
   - Heatmap Matrix:
@@ -570,6 +644,8 @@ Key Concepts:
   - Small Multiples / Auto-Faceting:
     pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="bill_depth_mm").finalize()
     pt.Plotter.facet(df, by="species", ncols=2, kind="scatter", x="bill_length_mm", y="bill_depth_mm")
+  - Post-Processing (`pt.finalize` / `plotter.finalize`):
+    Accepts: `title`, `xlabel`, `ylabel`, `style` (matplotlib style sheet name), `consolidate_legends=True`, `tight_layout=True`.
   - Saving:
     k.save("chart.png", dpi=300)
 
@@ -581,7 +657,7 @@ Key Concepts:
 --------------------------------------------------------------------------------
 The CLI command `pytae` processes operations sequentially in the order given on 
 the command line:
-  pytae input.parquet -qry "body_mass_g > 3000" -select "species,body_mass_g" -head 5
+  pytae input.parquet -qry "body_mass_g > 3000" -mutate "mass_kg = body_mass_g / 1000" -head 5
 
 Pipeline Rules:
 1. Positional Path: The first unflagged argument is the input file path.
@@ -598,6 +674,7 @@ Pipeline Rules:
 Supported input & output file types:
   - .parquet, .pq (columnar storage)
   - .csv (comma-delimited text)
+  - .tsv (tab-delimited text)
   - .txt (tab-delimited text or custom delimiter)
   - .dat (pipe-delimited text, latin-1 encoding)
   - .jsonl, .ndjson (line-delimited JSON records)
@@ -618,38 +695,45 @@ Fast Zero-Cost Inspection (Metadata-Only):
 
 5.3. All CLI Flags & Syntax Rules
 --------------------------------------------------------------------------------
-Inspection & Comparison Flags:
+Inspection & Summary Flags:
   -head [N]             Print first N rows (default 5)
   -tail [N]             Print last N rows (default 5)
-  -shape                Print row and column counts
-  -cols [ORDER]         Print column names (ORDER: asc, desc, none)
-  -dtype [ORDER]        Print column data types
-  -nulls [ORDER]        Print null value counts per column
+  -shape                Print row and column counts (rows, cols)
+  -cols [ORDER]         Print column names (ORDER: asc, desc, file)
+  -dtype [ORDER]        Print column data types (ORDER: asc, desc, file)
+  -nulls [ORDER]        Print null value counts per column (ORDER: asc, desc, file)
   -describe             Descriptive statistics for numeric columns
   -info                 DataFrame summary (dtypes, non-null counts, memory)
   -meta                 Display zero-scan Parquet metadata (row groups, schema, compression)
   -diff PATH            Compare schema, shape, null counts, and cell values against another file
-  -value_counts         Value counts for categorical/string columns
-  -unique               Count of unique values per column
-  -sample [N]           Random sample of N rows
+  -value_counts         Value counts for categorical/string columns (honors -dropna)
+  -unique               Drop duplicate rows and print unique rows
+  -sample [N]           Random sample of N rows (default 5)
   -seed N               Random seed for sampling
-  -frac P               Sample fraction P (0.0 to 1.0)
-  -nrows N              Limit reading to first N rows of file
+  -frac P               Sample fraction P (0.0 < P <= 1.0)
+  -nrows, -limit N      Limit reading to first N rows of file
+  -sort_by SPEC         Sort rows by columns: e.g. -sort_by "col1, col2 asc" or -sort_by "col1 desc"
+
+In-Terminal ASCII Visualizations:
+  -freq COL             Render horizontal frequency distribution bars with counts & percentages
+  -hist COL[:BINS]      Render in-terminal distribution histogram for a numeric column (default: 10 bins)
 
 Row Filtering Flags:
   -qry CONDITIONS       pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -query EXPR           pandas query() expression passed to numexpr
 
 Column Transformation Flags:
-  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', exclude=)
+  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
   -mutate SPEC          Create/overwrite columns ("new_col = expression")
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
   -replace_values SPEC  Replace values: "v='old:new', c='col', exact=True"
-  -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower'"
+  -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
+  -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
   -by, -group_by COLS   Grouping columns for -agg and -mutate (e.g. -by species -agg mean)
-  -agg, -agg_df SPECS   Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean)
+  -agg, -agg_df [SPECS] Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
+                        When -by is omitted, -agg computes a whole-table summary!
   -dropna BOOL          Control NA group handling for -agg, -mutate, -pivot, -wide (true/false, default: false)
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
@@ -662,11 +746,16 @@ SQL & Multi-File Flags:
   -merge SPECS          Join files: "left=df1, right=df2, on=id, how=inner"
   -concat SPECS         Stack files: "frames='df1,df2'"
 
+Plotting Flags (CLI Visualization):
+  -plot SPEC            Render chart using pytae Plotter; e.g. -plot "kind=scatter, x=col1, y=col2"
+  -finalize SPEC        Layout/legend options for -plot, e.g. -finalize "consolidate_legends=True, style=True"
+
 Output & Formatting Flags:
   -o TARGET             Output destination: file path (.csv, .parquet, .jsonl, .csv.gz, etc.),
                         format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat',
                         'jsonl', 'csv.gz', 'jsonl.gz'), or 'clip'/'clipboard'
   -out_dir, -od DIR     Target directory for exported files (created if missing; requires -o)
+  -fmt FORMAT           Input format when reading from STDIN or extensionless files (csv, parquet, jsonl, txt, tsv)
   -dlim CHAR            Delimiter character for input/output text files
   -encoding ENC         File encoding (e.g. utf-8, latin-1)
   -pretty               Pretty-print tables with bordered markdown formatting
@@ -675,7 +764,33 @@ Output & Formatting Flags:
   -progress [N]         Show row-reading/writing progress (default: 200,000 rows per chunk)
 
 
-5.4. Quoting & Delimiter Standards (: vs =)
+5.4. In-Terminal Visualizations (-freq, -hist)
+--------------------------------------------------------------------------------
+Inspect distributions instantly in the terminal without opening a browser or GUI:
+
+1. Horizontal Frequency Bars (-freq):
+   pytae penguins.parquet -freq species
+   Output:
+   species
+   Adelie     152 (44.2%)  ████████████████████████████████████████
+   Gentoo     124 (36.0%)  ████████████████████████████████
+   Chinstrap   68 (19.8%)  █████████████████
+
+2. In-Terminal Distribution Histogram (-hist):
+   pytae penguins.parquet -hist body_mass_g:8
+   Output:
+   body_mass_g (8 bins)
+   [2700.0, 3150.0)    64 (18.7%)  ████████████████
+   [3150.0, 3600.0)    71 (20.8%)  ██████████████████
+   [3600.0, 4050.0)    65 (19.0%)  ████████████████
+   [4050.0, 4500.0)    37 (10.8%)  █████████
+   [4500.0, 4950.0)    36 (10.5%)  █████████
+   [4950.0, 5400.0)    46 (13.5%)  ███████████
+   [5400.0, 5850.0)    19  (5.6%)  ████
+   [5850.0, 6300.0]     4  (1.2%)  █
+
+
+5.5. Quoting & Delimiter Standards (: vs =)
 --------------------------------------------------------------------------------
 pytae enforces strict delimiters depending on the semantic meaning:
 
@@ -689,6 +804,7 @@ pytae enforces strict delimiters depending on the semantic meaning:
    - `-qry`: "species = 'Adelie', body_mass_g > 3500"
    - `-clean_columns`: "strip=True, fill='_', case='lower'"
    - `-merge`: "left=df1, right=df2, on=id, how=left"
+   - `-agg`: "tip=mean, total_bill=mean, n=n"
 
 Quoting Rules:
 - String literals in expressions require quotes: `species = 'Adelie'`.
@@ -697,7 +813,7 @@ Quoting Rules:
 - Column names containing spaces must use brackets `[col]` or backticks `` `col` ``.
 
 
-5.5. Multi-File Operations (-file, -merge, -concat, -sql)
+5.6. Multi-File Operations (-file, -merge, -concat, -sql)
 --------------------------------------------------------------------------------
 When operating across multiple files, `-file` replaces the positional file path:
 
@@ -705,22 +821,28 @@ Syntax:
   pytae -file "PATH=ALIAS; PATH=ALIAS" -merge ...
 
 1. Joining Files (-merge):
-   pytae -file "orders.parquet=ord; customers.csv=cust"          -merge "left=ord, right=cust, on=cust_id, how=inner"          -select "order_id,cust_name,amount" -head 10
+   pytae -file "orders.parquet=ord; customers.csv=cust" \\
+         -merge "left=ord, right=cust, on=cust_id, how=inner" \\
+         -select "order_id,cust_name,amount" -head 10
 
    Joining on differing column names:
    -merge "left=df1, right=df2, on='left_id:right_id', how=left"
 
-   Joining multiple files in sequence ('data' represents previous merge result):
-   pytae -file "a.csv=a; b.csv=b; c.csv=c"          -merge "left=a, right=b, on=id"          -merge "left=data, right=c, on=id"
+   Joining multiple files in sequence ('df' represents previous merge result):
+   pytae -file "a.csv=a; b.csv=b; c.csv=c" \\
+         -merge "left=a, right=b, on=id" \\
+         -merge "left=df, right=c, on=id"
 
 2. Stacking Files (-concat):
-   pytae -file "jan.csv=m1; feb.csv=m2; mar.csv=m3"          -concat "frames='m1,m2,m3'" -shape
+   pytae -file "jan.csv=m1; feb.csv=m2; mar.csv=m3" \\
+         -concat "frames='m1,m2,m3'" -shape
 
 3. SQL Across Multiple Files:
-   pytae -file "orders.parquet=ord; customers.csv=cust"          -sql "select ord.id, cust.name, ord.total from ord join cust using (cust_id)"
+   pytae -file "orders.parquet=ord; customers.csv=cust" \\
+         -sql "select ord.id, cust.name, ord.total from ord join cust using (cust_id)"
 
 
-5.6. Batch Processing & Conversions (-o)
+5.7. Batch Processing, Conversions & Clipboard (-o)
 --------------------------------------------------------------------------------
 Convert files between formats with zero python code via -o:
   # Convert parquet to CSV
@@ -739,80 +861,188 @@ Convert files between formats with zero python code via -o:
   pytae penguins.parquet -head -o clip
 
 
-6. COMMON PITFALLS, SYNTAX RULES, AND EDGE CASES
+6. FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
 --------------------------------------------------------------------------------
-1. Spaced Column Names:
-   - In `df.pt.qry()`: String expressions handle spaces directly:
-     `df.pt.qry("bill length mm > 40")`.
-   - In `df.pt.mutate()`: Python kwargs syntax cannot have spaces (`col name = ...` is a SyntaxError).
-     Must unpack a dictionary:
-     `df.pt.mutate(**{"col name": "a + b"})`.
-   - Inside expressions: Always enclose spaced names in brackets `[col name]` or backticks `` `col name` ``.
-2. Select Regex vs Positional String:
-   - Calling `pt.select(df, "^bill")` will search for a literal column named `^bill` and fail.
-   - You MUST use `regex=`: `pt.select(df, regex=r"^bill")`.
-3. Aggregation Grouping & Selection Logic:
-   - `agg_df` / `agg` requires an explicit grouping key: specify `by` column(s) as the first argument, or `None` for a whole-table summary.
-   - You do NOT need a redundant `pt.select(...)` or `-select` before aggregating. Target columns and metrics are declared directly within `agg`:
-     `df.pt.agg("species", body_mass_g="mean", count="n")`
-     `pytae penguins.parquet -by species -agg body_mass_g=mean`
-4. The Count Column 'n':
-   - 'n' is a reserved aggregation token in `agg_df`, `pivot`, and grouped `mutate(..., by=...)`.
-   - If your input table already has a real numeric column named 'n', rename it first to avoid collision.
-5. In-Place Modification:
-   - pytae NEVER modifies DataFrames in place. Always assign the returned DataFrame:
-     `df = df.pt.mutate(...)` or chain operations.
-6. Null Checks in qry():
-   - Null checks are 1-element tuples: `sex=('isna',)` or `sex=('notna',)`.
-   - Do NOT pass a second element.
-7. Reshaping: wide() vs pivot():
-   - `wide()` is strictly for pure 1-to-1 structural unmelting (reversing long()) without aggregation.
-   - For 2D cross-tabulations, aggregations across dimensions, or when duplicate keys exist, use `pivot()`:
-     `df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")`.
+
+6.1. Why is `-select` before `-agg` redundant?
+---------------------------------------------
+In pytae, both the library `agg_df()` and CLI `-agg` directly declare the target columns 
+and their desired aggregations. Writing a redundant `select` or `-select` before `agg` 
+wastes an intermediate DataFrame transformation:
+  # REDUNDANT:
+  pytae penguins.parquet -select "species,body_mass_g" -by species -agg mean -round 1
+  df.pt.select("species", "body_mass_g").pt.agg("species", body_mass_g="mean")
+
+  # CLEAN & IDIOMATIC:
+  pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
+  df.pt.agg("species", body_mass_g="mean")
+
+6.2. Why is `by` required in `pt.agg_df()` but optional in CLI (`-by`)?
+----------------------------------------------------------------------
+- In Python library: `pt.agg_df(df, by, ...)` enforces explicit intent. Pass `by="species"` 
+  for grouped aggregations, or explicitly pass `by=None` for a whole-table summary (1 row). 
+  This prevents accidental whole-table collapses when a user forgets to pass grouping columns.
+- In CLI: Command flags are composable. If `-by` is omitted, `pytae input.parquet -agg mean` 
+  cleanly interprets the command as a whole-table grand total.
+
+6.3. How do I apply custom functions in `mutate()`?
+---------------------------------------------------
+1. Vectorized Functions (Series -> Series): Call directly in expression strings:
+   def ratio(a, b): return a / b
+   df.pt.mutate(r="ratio(bill_length_mm, bill_depth_mm)")
+
+2. Single-Column Scalar Functions (element -> element): Call Series `.apply()` in expressions:
+   def clean_text(s): return s.strip().lower()
+   df.pt.mutate(clean="species.apply(clean_text)")
+
+3. Row-Wise Multi-Column Functions (row -> value): Pass a DataFrame lambda with `df.apply(fn, axis=1)`:
+   def classify(row):
+       if row["species"] == "Gentoo" and row["mass_kg"] > 5.0: return "Giant"
+       return "Standard"
+   df.pt.mutate(
+       mass_kg="body_mass_g / 1000",
+       tier=lambda df: df.apply(classify, axis=1),
+   )
+
+6.4. Can row-level functions access newly created columns in the same `mutate()`?
+---------------------------------------------------------------------------------
+YES! Because `mutate()` processes arguments in order from left to right, earlier mutations 
+are immediately attached to the DataFrame. Your row function will see newly created columns 
+(e.g. `row["mass_kg"]`) with zero errors.
+
+6.5. Why does `df.pt.mutate(col=my_func)` fail when `my_func` expects a row?
+----------------------------------------------------------------------------
+When a callable is passed directly as `mutate(col=fn)`, `mutate` passes the **entire DataFrame** 
+to `fn` (`fn(df)`). Inside a row-level function, `row["species"] == "Gentoo"` produces a 
+boolean Series, raising: `ValueError: The truth value of a Series is ambiguous`. 
+To run a row-level function, write: `lambda df: df.apply(my_func, axis=1)`.
+
+6.6. What is the difference between `wide()` and `pivot()`?
+-----------------------------------------------------------
+- `wide()` is strictly for pure 1-to-1 structural unmelting (reversing `long()`) with NO aggregation. 
+  It raises a `ValueError` if duplicate `(index, c)` keys exist.
+- `pivot()` is the full 2D aggregation engine. It summarizes data across row (`r`) and column (`c`) 
+  dimensions using an aggregation function `a` (or counts `a="n"`), returning a flat RangeIndex table.
+
+6.7. How do negative column exclusions work in `select()` and CLI `-select`?
+----------------------------------------------------------------------------
+- In Library: Pass negative prefixes `pt.select(df, "-species", "-island")`, slice negations 
+  `"-start:end"`, or keyword `exclude=["species", "island"]`.
+- In CLI: Pass `-select "-species, -island"` or `-select "exclude=species,island"`.
+- If only exclusions are given, pytae starts with all columns and drops the specified exclusions.
+
+6.8. How do columns with spaces work across expressions?
+--------------------------------------------------------
+- In `qry()`: Handled natively in strings: `df.pt.qry("bill length mm > 40")`.
+- In `mutate()` / expressions: Enclose in brackets `[col name]` or backticks `` `col name` ``:
+  `df.pt.mutate(ratio="[body mass g] / [bill length mm]")`.
+- In kwargs: Python syntax prohibits spaces in keyword arguments. Use dictionary unpacking:
+  `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})`.
+
+6.9. Why did `-sort` fail? (Use `-sort_by`)
+-------------------------------------------
+The legacy `-sort` flag was retired to prevent ambiguity with pandas `.sort_values`. 
+Use `-sort_by SPEC`, e.g. `pytae data.parquet -sort_by "body_mass_g desc"` or 
+`-sort_by "species, body_mass_g asc"`.
+
+6.10. How do I inspect metadata without reading data into RAM?
+--------------------------------------------------------------
+For Parquet files, use `-meta` to inspect row groups, schema, and compression codecs in 
+sub-milliseconds without loading table data. Flags like `-shape`, `-cols`, `-dtype`, and 
+`-head` also read purely from metadata headers for Parquet and SAS7BDAT.
 
 
 7. END-TO-END RECIPES & EXAMPLES
 --------------------------------------------------------------------------------
 
-Recipe 1: Full Python Data Engineering Pipeline
+Recipe 1: Master Mutate Recipe (All 10 Capabilities in One Pipeline)
+--------------------------------------------------------------------------------
+```python
+import numpy as np
+import pandas as pd
+import pytae as pt
+
+penguins = pt.sample("penguins")
+
+# Caller-scope variable referenced via @ prefix
+target_threshold = 4.2
+
+# Custom row-level function
+def classify_penguin(row):
+    if pd.isna(row["mass_kg"]): return "Incomplete"
+    if row["species"] == "Gentoo" and row["mass_kg"] > 5.0: return "Giant Gentoo"
+    return "Standard"
+
+master_df = (
+    penguins
+    .pt.mutate(
+        # 1. Normal mutate: standard arithmetic derivation
+        bill_ratio="bill_length_mm / bill_depth_mm",
+        mass_kg="body_mass_g / 1000",
+        
+        # 2. Sequential referencing of newly created col (mass_kg)
+        bmi="mass_kg / ((flipper_length_mm / 1000) ** 2)",
+        
+        # 7. Local caller-scope variable reference (@target_threshold)
+        above_target="mass_kg > @target_threshold",
+        
+        # 3. Binary conditional logic (if_else)
+        size_label="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')",
+        
+        # 4. Multi-condition tiered categorization (case_when)
+        weight_tier="case_when((mass_kg >= 5.0, 'XL'), (mass_kg >= 4.0, 'Large'), default='Small')",
+        
+        # 5. Null fallback (coalesce)
+        effective_sex="coalesce(sex, 'Undetermined')",
+        
+        # 6. Dictionary category lookup (map)
+        species_code="map(species, {'Adelie': 'AD', 'Gentoo': 'GE', 'Chinstrap': 'CH'}, 'OTHER')",
+        
+        # 8. Spaced column creation via dict unpacking & bracket referencing
+        **{"mass lbs": "mass_kg * 2.20462"},
+        heavy_lbs="[mass lbs] > 9.5",
+        
+        # 9. Grouped window transforms via by= without collapsing rows
+        species_avg_mass="mean(mass_kg)",
+        mass_diff="mass_kg - species_avg_mass",
+        group_size="n",
+        
+        # 10a. DataFrame lambda
+        is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5),
+        
+        # 10b. Row-level function via lambda df: df.apply(..., axis=1)
+        category=lambda df: df.apply(classify_penguin, axis=1),
+        
+        by="species",
+    )
+)
+```
+
+Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
 --------------------------------------------------------------------------------
 ```python
 import pytae as pt
 
-# Load bundled dataset
 penguins = pt.sample("penguins")
 
-# Clean pipeline: filter -> derive features -> aggregate
-summary = (
-    penguins
-    # 1. Filter: Adelie & Gentoo with known sex and body mass >= 3500g
-    .pt.qry(
-        species=["Adelie", "Gentoo"],
-        sex=("notna",),
-        body_mass_g=">= 3500",
-    )
-    # 2. Derive features: convert mass, calculate ratio, categorize size
-    .pt.mutate(
-        mass_kg="body_mass_g / 1000",
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        size_class="if_else(mass_kg > 4.5, 'Large', 'Regular')",
-    )
-    # 3. Create a column with spaces using dict unpacking
-    .pt.mutate(**{
-        "normalized bill": "bill_length_mm / bill_length_mm.max()",
-    })
-    # 4. Grouped aggregation: mean mass, max ratio, group counts
-    .pt.agg_df(
-        ["species", "size_class"],
-        mass_kg="mean",
-        bill_ratio="max",
-        n="n",
-    )
-)
-print(summary)
+# 1. Clean grouped aggregation (no redundant select!)
+agg_summary = penguins.pt.agg("species,island", mass_mean="body_mass_g:mean", count="n")
+
+# 2. 2D Summary Matrix (Mean body mass across dimensions)
+grid = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
+
+# 3. Frequency Cross-Tabulation (Counts across dimensions, v is omitted)
+counts = penguins.pt.pivot(r="island", c="species", a="n")
 ```
 
-Recipe 2: DuckDB SQL Query on DataFrame
+```bash
+# Equivalent CLI One-Liners:
+pytae penguins.parquet -by "species,island" -agg "mass_mean=body_mass_g:mean, count=n"
+pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
+pytae penguins.parquet -pivot "r=island, c=species, a=n"
+```
+
+Recipe 3: DuckDB SQL Query on DataFrame
 --------------------------------------------------------------------------------
 ```python
 import pytae as pt
@@ -836,56 +1066,60 @@ result = tips.pt.sql(query)
 print(result)
 ```
 
-Recipe 3: Advanced CLI Pipeline One-Liners
+Recipe 4: Multi-File Merge, Concat, and Export
 --------------------------------------------------------------------------------
 ```bash
-# 1. Inspect schema and row count without loading full data into memory
-pytae raw_data.parquet -shape -cols
+# 1. Join files on shared key and filter
+pytae -file "orders.parquet=ord; customers.csv=cust" \\
+      -merge "left=ord, right=cust, on=cust_id, how=inner" \\
+      -qry "amount > 50" \\
+      -o filtered_orders.parquet
 
-# 2. Filter, engineer columns, clean headers, and inspect head
-pytae penguins.parquet \\
-  -qry "species = 'Adelie', body_mass_g > 3500" \\
-  -mutate "mass_kg = body_mass_g / 1000, is_heavy = mass_kg > 4.0" \\
-  -clean_columns "strip=True, fill='_', case='lower'" \\
-  -select "species,island,mass_kg,is_heavy" \\
-  -head 5
-
-# 3. Fast Join Across Two Files and Export to Parquet
-pytae -file "transactions.csv=tx; customers.parquet=cust" \\
-      -merge "left=tx, right=cust, on='customer_id', how='inner'" \\
-      -qry "amount > 100" \\
-      -o high_value_tx.parquet
-
-# 4. Grouped Window Calculation with Missing Group Key Retention (-dropna false default)
-pytae penguins.parquet \\
-  -by sex \\
-  -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass" \\
-  -select "species,sex,body_mass_g,avg_mass,diff" \\
-  -head 5
+# 2. Concatenate monthly files and check row count
+pytae -file "jan.parquet=m1; feb.parquet=m2; mar.parquet=m3" \\
+      -concat "frames='m1,m2,m3'" \\
+      -shape
 ```
 
-Recipe 4: 2D Pivot Tables & Frequency Matrices (Python & CLI)
+Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -sort_by)
+--------------------------------------------------------------------------------
+```bash
+# 1. Zero-scan Parquet metadata
+pytae penguins.parquet -meta
+
+# 2. Frequency distribution bars for categorical column
+pytae penguins.parquet -freq species
+
+# 3. Terminal histogram for numeric distribution (8 bins)
+pytae penguins.parquet -hist body_mass_g:8
+
+# 4. Sort and view top rows
+pytae penguins.parquet -sort_by "body_mass_g desc" -head 5
+```
+
+Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 --------------------------------------------------------------------------------
 ```python
 import pytae as pt
 
 penguins = pt.sample("penguins")
+tips = pt.sample("tips")
 
-# 1. 2D Summary Grid (Mean Body Mass by Island and Species)
-grid = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
-print(grid)
+# 1. Multi-panel dashboard via mosaic layout
+mosaic = \"\"\"
+AB
+CD
+\"\"\"
+k = pt.Plotter(mosaic, figsize=(10, 8))
+(k
+ .data(penguins).plot(on="A", kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species")
+ .data(tips.pt.agg("day", total_bill="mean")).plot(on="B", kind="bar", x="day", y="total_bill")
+ .finalize(title="Executive Dashboard", consolidate_legends=True)
+)
+k.save("dashboard.png", dpi=300)
 
-# 2. 2D Frequency Matrix (Counts with a="n")
-counts = penguins.pt.pivot(r="island", c="species", a="n")
-print(counts)
-```
-
-```bash
-# CLI 2D Pivot Summary
-pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
-
-# CLI 2D Frequency Counts
-pytae penguins.parquet -pivot "r=island, c=species, a=n"
+# 2. Small multiples / Auto-faceting
+pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="bill_depth_mm").finalize()
 ```
 
 
