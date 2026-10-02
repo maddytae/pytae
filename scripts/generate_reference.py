@@ -57,10 +57,12 @@ TABLE OF CONTENTS
     Recipe 4: Multi-File Merge, Concat, and Export
     Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -sort_by)
     Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
-8.  REPOSITORY DIRECTORY TREE
-9.  BUILD & CONFIGURATION (pyproject.toml)
-10. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
-11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
+8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
+9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
+10. REPOSITORY DIRECTORY TREE
+11. BUILD & CONFIGURATION (pyproject.toml)
+12. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
+13. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
 
 
@@ -1124,7 +1126,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 
 
 ================================================================================
-8. REPOSITORY DIRECTORY TREE
+10. REPOSITORY DIRECTORY TREE
 ================================================================================
 
 .
@@ -1246,23 +1248,106 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 """
 
 
-def generate_reference() -> None:
-    parts: list[str] = [MANUAL_TEXT.strip()]
+def _format_notebook(nb_path: Path) -> str:
+    import json
+    nb = json.loads(nb_path.read_text(encoding="utf-8"))
+    out_lines: list[str] = [f"# Notebook: {nb_path.name}\n"]
+    for cell in nb.get("cells", []):
+        cell_type = cell.get("cell_type")
+        source = "".join(cell.get("source", [])).strip()
+        if not source:
+            continue
+        if cell_type == "markdown":
+            out_lines.append(source)
+            out_lines.append("")
+        elif cell_type == "code":
+            out_lines.append("```python")
+            out_lines.append(source)
+            out_lines.append("```")
+            for out in cell.get("outputs", []):
+                if "text" in out:
+                    text_str = "".join(out["text"]).strip()
+                    if text_str:
+                        out_lines.append("Output:")
+                        out_lines.append("```text")
+                        out_lines.append(text_str)
+                        out_lines.append("```")
+                elif "data" in out and "text/plain" in out["data"]:
+                    data_val = out["data"]["text/plain"]
+                    text_str = ("".join(data_val) if isinstance(data_val, list) else str(data_val)).strip()
+                    if text_str:
+                        out_lines.append("Output:")
+                        out_lines.append("```text")
+                        out_lines.append(text_str)
+                        out_lines.append("```")
+            out_lines.append("")
+    return "\n".join(out_lines)
 
-    # Section 9: pyproject.toml
+
+def generate_reference() -> None:
+    parts: list[str] = []
+
+    # MANUAL_TEXT contains sections 1 to 7 and section 10 (directory tree)
+    # Split MANUAL_TEXT so sections 8 and 9 (docs) sit before the directory tree
+    tree_marker = "================================================================================\n10. REPOSITORY DIRECTORY TREE"
+    if tree_marker in MANUAL_TEXT:
+        manual_pre, manual_tree = MANUAL_TEXT.split(tree_marker, 1)
+        parts.append(manual_pre.strip())
+    else:
+        manual_pre = MANUAL_TEXT
+        manual_tree = ""
+        parts.append(manual_pre.strip())
+
+    # Section 8: CLI Feature Documentation Guides (docs/cli/ & docs/cli.md)
+    parts.append("\n================================================================================")
+    parts.append("8. CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)")
+    parts.append("================================================================================\n")
+    cli_files = [REPO_ROOT / "docs" / "cli.md"] + sorted((REPO_ROOT / "docs" / "cli").glob("*.md"))
+    for f in cli_files:
+        rel_path = f.relative_to(REPO_ROOT)
+        parts.append("################################################################################")
+        parts.append(f"# FILE: {rel_path}")
+        parts.append("################################################################################")
+        parts.append(f.read_text(encoding="utf-8").rstrip() + "\n")
+
+    # Section 9: Interactive Library Notebook Walkthroughs (docs/library/ & docs/library.md)
+    parts.append("================================================================================")
+    parts.append("9. INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)")
+    parts.append("================================================================================\n")
+    lib_md = REPO_ROOT / "docs" / "library.md"
+    parts.append("################################################################################")
+    parts.append(f"# FILE: {lib_md.relative_to(REPO_ROOT)}")
+    parts.append("################################################################################")
+    parts.append(lib_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    nb_files = sorted((REPO_ROOT / "docs" / "library").glob("*.ipynb"))
+    for nb_path in nb_files:
+        rel_path = nb_path.relative_to(REPO_ROOT)
+        parts.append("################################################################################")
+        parts.append(f"# NOTEBOOK: {rel_path}")
+        parts.append("################################################################################")
+        parts.append(_format_notebook(nb_path).rstrip() + "\n")
+
+    # Section 10: Repository Directory Tree (from manual_tree)
+    if manual_tree:
+        parts.append("================================================================================")
+        parts.append("10. REPOSITORY DIRECTORY TREE")
+        parts.append(manual_tree.strip())
+
+    # Section 11: pyproject.toml
     pyproject_path = REPO_ROOT / "pyproject.toml"
     pyproject_content = pyproject_path.read_text(encoding="utf-8").strip()
 
     parts.append("\n================================================================================")
-    parts.append("9. BUILD & CONFIGURATION (pyproject.toml)")
+    parts.append("11. BUILD & CONFIGURATION (pyproject.toml)")
     parts.append("================================================================================\n")
     parts.append("File: pyproject.toml")
     parts.append("----------------------------------------")
     parts.append(pyproject_content)
 
-    # Section 10: Underlying Python Implementation Source Code (src/pytae/)
+    # Section 12: Underlying Python Implementation Source Code (src/pytae/)
     parts.append("\n================================================================================")
-    parts.append("10. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)")
+    parts.append("12. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)")
     parts.append("================================================================================\n")
 
     src_dir = REPO_ROOT / "src" / "pytae"
@@ -1274,9 +1359,9 @@ def generate_reference() -> None:
         parts.append("################################################################################")
         parts.append(f.read_text(encoding="utf-8").rstrip() + "\n")
 
-    # Section 11: Test Suite Implementation Source Code (tests/)
+    # Section 13: Test Suite Implementation Source Code (tests/)
     parts.append("================================================================================")
-    parts.append("11. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)")
+    parts.append("13. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)")
     parts.append("================================================================================\n")
 
     test_dir = REPO_ROOT / "tests"
