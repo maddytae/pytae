@@ -3109,6 +3109,8 @@ Compute new columns or overwrite existing columns with mathematical formulas, ra
 - [Basic Arithmetic & Unit Conversion](#basic-arithmetic--unit-conversion)
 - [Defining Multiple Columns](#defining-multiple-columns)
 - [Boolean Indicators & Flags](#boolean-indicators--flags)
+- [Conditional Logic with `if_else`](#conditional-logic-with-if_else)
+- [Multi-Tiered Branching with `case_when`](#multi-tiered-branching-with-case_when)
 - [Handling Column Names With Spaces](#handling-column-names-with-spaces)
 - [Grouped Mutations (`-by` + `-mutate`)](#grouped-mutations--by--mutate)
 - [Loading Specs From a File (`@specs.txt`)](#loading-specs-from-a-file-specstxt)
@@ -3192,6 +3194,102 @@ species  body_mass_g  is_heavy
  Adelie       3750.0     False
  Adelie       3800.0     False
  Adelie       3250.0     False
+```
+
+---
+
+<a id="conditional-logic-with-if_else"></a>
+## Conditional Logic with `if_else`
+
+Use `if_else(condition, true_val, false_val)` to perform vectorized binary branching.
+
+### Example 1: Assigning Category Labels
+
+Inside the outer double quotes `"-mutate \"...\""`, use single quotes `'...'` for string literals:
+
+```bash
+pytae tips.parquet \
+  -mutate "generous = if_else(tip > 3.0, 'Yes', 'No')" \
+  -select "total_bill,tip,generous" \
+  -head 5
+```
+
+**Output:**
+```text
+ total_bill  tip generous
+      16.99 1.01       No
+      10.34 1.66       No
+      21.01 3.50      Yes
+      23.68 3.31      Yes
+      24.59 3.61      Yes
+```
+
+### Example 2: Fallback to an Existing Column or Floor Value
+
+Pass column names (unquoted) or numeric scalars for either branch:
+
+```bash
+# Set a tip floor at 2.00, preserving the actual tip if higher
+pytae tips.parquet \
+  -mutate "adj_tip = if_else(tip < 2.0, 2.0, tip)" \
+  -select "total_bill,tip,adj_tip" \
+  -head 5
+```
+
+**Output:**
+```text
+ total_bill  tip  adj_tip
+      16.99 1.01     2.00
+      10.34 1.66     2.00
+      21.01 3.50     3.50
+      23.68 3.31     3.31
+      24.59 3.61     3.61
+```
+
+### Example 3: Compound Conditions with `and` / `or`
+
+Combine multiple conditions naturally using `and`, `or`, or `&`, `|`:
+
+```bash
+pytae tips.parquet \
+  -mutate "high_spender = if_else(total_bill > 20 and tip > 3.0, 'High', 'Standard')" \
+  -select "total_bill,tip,high_spender" \
+  -head 5
+```
+
+**Output:**
+```text
+ total_bill  tip high_spender
+      16.99 1.01     Standard
+      10.34 1.66     Standard
+      21.01 3.50         High
+      23.68 3.31         High
+      24.59 3.61         High
+```
+
+---
+
+<a id="multi-tiered-branching-with-case_when"></a>
+## Multi-Tiered Branching with `case_when`
+
+For multiple conditions evaluated in priority order, use `case_when((cond1, val1), (cond2, val2), default=fallback)`:
+
+```bash
+pytae tips.parquet \
+  -mutate "tier = case_when((total_bill >= 25, 'High'), (total_bill >= 15, 'Medium'), default='Low')" \
+  -select "total_bill,tier" \
+  -head 6
+```
+
+**Output:**
+```text
+ total_bill   tier
+      16.99 Medium
+      10.34    Low
+      21.01 Medium
+      23.68 Medium
+      24.59 Medium
+      25.29   High
 ```
 
 ---
