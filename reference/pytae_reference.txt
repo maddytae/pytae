@@ -314,14 +314,16 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
         )
         Notice: Because `mutate()` executes sequentially, `row["mass_kg"]` is immediately
         accessible inside `classify(row)`!
-   11. Literal Constants with `pt.lit()`:
+   11. Literal Constants with `pt.lit()` (Python API):
        When assigning a literal string that happens to match an existing column name in the
        DataFrame (e.g. `df.pt.mutate(source="original")` when a column named `original` exists),
        `pandas.eval()` treats unquoted names as column references and copies the column.
-       To prevent this silent aliasing, use `pt.lit()` (idiomatic, matching Polars `pl.lit`):
-       - In Python: `df.pt.mutate(source=pt.lit("original"))`
-       - In string expressions: `df.pt.mutate(source="pt.lit('original')")` or `df.pt.mutate("source = pt.lit(original)")`
-       - In CLI: `pytae data.parquet -mutate "source = pt.lit(original)"`
+       To prevent this silent aliasing in Python code, use `pt.lit()` (matching Polars `pl.lit`):
+       ```python
+       df.pt.mutate(source=pt.lit("original"))
+       ```
+       (Note: In the CLI or inside formula expressions, `pt.lit()` is unnecessary because standard
+       inner single quotes already denote string literals: `-mutate "source = 'original'"`).
        `pt.lit()` marks the value as an explicit literal constant and is unwrapped directly
        inside `mutate()` without evaluating against DataFrame columns.
 
@@ -966,12 +968,15 @@ If no column called `original` exists, it evaluates as a string literal `'origin
 This creates a silent trap if a column with that name is added to the data later.
 
 To ensure a value is always treated as an explicit literal constant:
-1. In Python: `df.pt.mutate(source=pt.lit("original"))`
+1. In Python code: `df.pt.mutate(source=pt.lit("original"))`
    - Explicit, linter/IDE-friendly, and follows standard DataFrame conventions (like Polars `pl.lit` or PySpark `F.lit`).
-2. In string expressions: `df.pt.mutate(source="pt.lit('original')")` or `df.pt.mutate("source = pt.lit(original)")`
-3. In CLI: `pytae data.parquet -mutate "source = pt.lit(original)"`
+2. In CLI or string expressions: Standard single quotes are all you need:
+   ```bash
+   pytae data.parquet -mutate "source = 'original'"
+   ```
+   In CLI/expressions, inner single quotes unambiguously designate string literals, so `pt.lit` is not needed.
 
-`pt.lit()` marks the value as a literal constant and is unwrapped directly without column evaluation.
+`pt.lit()` marks the value as a literal constant in Python calls and is unwrapped directly without column evaluation.
 
 
 7. END-TO-END RECIPES & EXAMPLES
