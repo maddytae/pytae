@@ -50,6 +50,7 @@ TABLE OF CONTENTS
     6.8.  How do columns with spaces work across expressions?
     6.9.  Why did `-sort` fail? (Use `-sort_by`)
     6.10. How do I inspect metadata without reading data into RAM?
+    6.11. Why did `df.pt.mutate(source='original')` copy the `original` column? (Use `lit('original')`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 10 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -321,6 +322,16 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
         )
         Notice: Because `mutate()` executes sequentially, `row["mass_kg"]` is immediately
         accessible inside `classify(row)`!
+   11. Literal Constants with `lit()`:
+       When assigning a literal string that happens to match an existing column name in the
+       DataFrame (e.g. `df.pt.mutate(source="original")` when a column named `original` exists),
+       `pandas.eval()` treats unquoted names as column references and copies the column.
+       To prevent this silent aliasing, use `lit()`:
+       - In Python: `df.pt.mutate(source=lit("original"))` (or `pt.lit("original")`)
+       - In string expressions: `df.pt.mutate(source="lit('original')")` or `df.pt.mutate("source = lit(original)")`
+       - In CLI: `pytae data.parquet -mutate "source = lit(original)"`
+       `lit(value)` is automatically registered in Python's builtins upon `import pytae as pt`,
+       exported in `__all__`, and unwrapped inside `mutate()` so the literal value is assigned directly.
 
 
 4.3. pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
@@ -952,6 +963,22 @@ Use `-sort_by SPEC`, e.g. `pytae data.parquet -sort_by "body_mass_g desc"` or
 For Parquet files, use `-meta` to inspect row groups, schema, and compression codecs in 
 sub-milliseconds without loading table data. Flags like `-shape`, `-cols`, `-dtype`, and 
 `-head` also read purely from metadata headers for Parquet and SAS7BDAT.
+
+6.11. Why did `df.pt.mutate(source='original')` copy the `original` column? (Use `lit('original')`)
+---------------------------------------------------------------------------------------------------
+Because `mutate()` evaluates strings via `pandas.eval()`, bare words like `'original'` are 
+interpreted as column references if that column exists in the DataFrame. If you write:
+  `df.pt.mutate(source="original")`
+and a column called `original` is already in `df`, pytae copies column `original` into `source`.
+If no column called `original` exists, it evaluates as a string literal `'original'`.
+This creates a silent trap if a column with that name is added to the data later.
+
+To ensure a value is always treated as an explicit literal constant:
+1. Bare helper: `df.pt.mutate(source=lit("original"))` (or `pt.lit("original")`)
+2. String expression: `df.pt.mutate(source="lit('original')")` or `df.pt.mutate("source = lit(original)")`
+3. CLI: `pytae data.parquet -mutate "source = lit(original)"`
+
+`lit()` marks the value as a literal constant and is unwrapped directly without column evaluation.
 
 
 7. END-TO-END RECIPES & EXAMPLES

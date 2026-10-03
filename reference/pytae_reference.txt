@@ -42,6 +42,7 @@ TABLE OF CONTENTS
     6.8.  How do columns with spaces work across expressions?
     6.9.  Why did `-sort` fail? (Use `-sort_by`)
     6.10. How do I inspect metadata without reading data into RAM?
+    6.11. Why did `df.pt.mutate(source='original')` copy the `original` column? (Use `lit('original')`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 10 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -313,6 +314,16 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
         )
         Notice: Because `mutate()` executes sequentially, `row["mass_kg"]` is immediately
         accessible inside `classify(row)`!
+   11. Literal Constants with `lit()`:
+       When assigning a literal string that happens to match an existing column name in the
+       DataFrame (e.g. `df.pt.mutate(source="original")` when a column named `original` exists),
+       `pandas.eval()` treats unquoted names as column references and copies the column.
+       To prevent this silent aliasing, use `lit()`:
+       - In Python: `df.pt.mutate(source=lit("original"))` (or `pt.lit("original")`)
+       - In string expressions: `df.pt.mutate(source="lit('original')")` or `df.pt.mutate("source = lit(original)")`
+       - In CLI: `pytae data.parquet -mutate "source = lit(original)"`
+       `lit(value)` is automatically registered in Python's builtins upon `import pytae as pt`,
+       exported in `__all__`, and unwrapped inside `mutate()` so the literal value is assigned directly.
 
 
 4.3. pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
@@ -944,6 +955,22 @@ Use `-sort_by SPEC`, e.g. `pytae data.parquet -sort_by "body_mass_g desc"` or
 For Parquet files, use `-meta` to inspect row groups, schema, and compression codecs in 
 sub-milliseconds without loading table data. Flags like `-shape`, `-cols`, `-dtype`, and 
 `-head` also read purely from metadata headers for Parquet and SAS7BDAT.
+
+6.11. Why did `df.pt.mutate(source='original')` copy the `original` column? (Use `lit('original')`)
+---------------------------------------------------------------------------------------------------
+Because `mutate()` evaluates strings via `pandas.eval()`, bare words like `'original'` are 
+interpreted as column references if that column exists in the DataFrame. If you write:
+  `df.pt.mutate(source="original")`
+and a column called `original` is already in `df`, pytae copies column `original` into `source`.
+If no column called `original` exists, it evaluates as a string literal `'original'`.
+This creates a silent trap if a column with that name is added to the data later.
+
+To ensure a value is always treated as an explicit literal constant:
+1. Bare helper: `df.pt.mutate(source=lit("original"))` (or `pt.lit("original")`)
+2. String expression: `df.pt.mutate(source="lit('original')")` or `df.pt.mutate("source = lit(original)")`
+3. CLI: `pytae data.parquet -mutate "source = lit(original)"`
+
+`lit()` marks the value as a literal constant and is unwrapped directly without column evaluation.
 
 
 7. END-TO-END RECIPES & EXAMPLES
@@ -8684,6 +8711,7 @@ ignore_errors = true
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -8691,7 +8719,7 @@ import pandas as pd
 
 from .accessor import PtAccessor  # noqa: F401  — registers df.pt
 from .agg_df import agg, agg_df
-from .mutate import mutate
+from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
@@ -8701,6 +8729,8 @@ from .other_utilities import (
 from .qry import qry
 from .select import everything, select
 from .sql import sql
+
+builtins.lit = lit
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -8790,6 +8820,7 @@ __all__ = [
     "replace_values",
     "sql",
     "everything",
+    "lit",
     "PtAccessor",
 ]
 
@@ -12462,11 +12493,31 @@ def _strip_at_refs(expr: str) -> tuple[str, set[str]]:
     return "".join(out_chars), names
 
 
+class _Lit:
+    """Wrapper marking a value as an explicit literal constant in mutate()."""
+
+    def __init__(self, value: Any):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"lit({self.value!r})"
+
+
+def lit(value: Any) -> _Lit:
+    """Mark a value as an explicit literal constant in mutate().
+
+    Prevents literal strings that match column names from being evaluated as column references:
+        df.pt.mutate(source=lit("original"))  # assigns string "original", does not copy column "original"
+    """
+    return _Lit(value)
+
+
 class _BoolOpRewriter(ast.NodeTransformer):
     """Rewrite `and`/`or`/`not` to `&`/`|`/`~` for the Python-eval fallback, so
     boolean conditions on a Series work (plain `and`/`or` on a Series raises
-    "ambiguous truth value"). Done on the AST, so operand grouping/precedence is
-    preserved automatically. Matches pandas eval()'s own and/or translation."""
+    "ambiguous truth value"). Also rewrites `lit(identifier)` to literal string constants.
+    Done on the AST, so operand grouping/precedence is preserved automatically.
+    Matches pandas eval()'s own and/or translation."""
 
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         self.generic_visit(node)
@@ -12480,6 +12531,17 @@ class _BoolOpRewriter(ast.NodeTransformer):
         self.generic_visit(node)
         if isinstance(node.op, ast.Not):
             return ast.UnaryOp(op=ast.Invert(), operand=node.operand)
+        return node
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name) and node.func.id == "lit":
+            if len(node.args) == 1:
+                arg = node.args[0]
+                if isinstance(arg, ast.Name):
+                    return ast.Constant(value=arg.id)
+                if isinstance(arg, ast.Constant):
+                    return arg
         return node
 
 
@@ -12526,6 +12588,7 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         namespace["if_else"] = _if_else
         namespace["case_when"] = _case_when
         namespace["coalesce"] = _coalesce
+        namespace["lit"] = lambda val: val.value if isinstance(val, _Lit) else val
         namespace["mean"] = lambda s: s.mean() if hasattr(s, "mean") else np.mean(s)
         namespace["sum"] = lambda s: s.sum() if hasattr(s, "sum") else np.sum(s)
         namespace["median"] = lambda s: s.median() if hasattr(s, "median") else np.median(s)
@@ -12684,7 +12747,9 @@ def mutate(
     for col, expr in expressions.items():
         try:
             if by_cols is None:
-                if callable(expr):
+                if isinstance(expr, _Lit):
+                    out[col] = expr.value
+                elif callable(expr):
                     out[col] = expr(out)
                 elif isinstance(expr, str):
                     out[col] = _eval(out, expr, local_dict, global_dict)
@@ -12697,7 +12762,9 @@ def mutate(
                 for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
                     pos = group_df["__pt_pos__"].to_numpy()
                     clean_group = group_df.drop(columns=["__pt_pos__"])
-                    if callable(expr):
+                    if isinstance(expr, _Lit):
+                        val = expr.value
+                    elif callable(expr):
                         val = expr(clean_group)
                     elif isinstance(expr, str):
                         val = _eval(clean_group, expr, local_dict, global_dict)
@@ -20210,6 +20277,47 @@ def test_mutate_scalar_if_else_and_case_when():
 
     df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
     assert df3.pt.mutate(y="if_else(n > 1, 1, 0)", by="g")["y"].tolist() == [1, 1, 0]
+
+
+def test_mutate_lit_constant_when_column_exists():
+    # Verify that lit('original') prevents silent column copying when a column named 'original' exists
+    from pytae import lit
+
+    df = pd.DataFrame({"original": [10, 20], "val": [1, 2]})
+
+    # Without lit(), passing source="original" copies the column
+    assert list(df.pt.mutate(source="original")["source"]) == [10, 20]
+
+    # With lit() helper directly
+    res_lit = df.pt.mutate(source=lit("original"))
+    assert list(res_lit["source"]) == ["original", "original"]
+
+    # Via pt.lit()
+    res_pt_lit = df.pt.mutate(source=pt.lit("original"))
+    assert list(res_pt_lit["source"]) == ["original", "original"]
+
+    # String expression with lit('original')
+    res_str_quoted = df.pt.mutate(source="lit('original')")
+    assert list(res_str_quoted["source"]) == ["original", "original"]
+
+    # String expression with bare lit(original)
+    res_str_bare = df.pt.mutate(source="lit(original)")
+    assert list(res_str_bare["source"]) == ["original", "original"]
+
+    # Positional string expression
+    res_pos = df.pt.mutate("source = lit(original)")
+    assert list(res_pos["source"]) == ["original", "original"]
+
+    # Grouped mutation with lit()
+    res_grp = df.pt.mutate(source=lit("original"), by="val")
+    assert list(res_grp["source"]) == ["original", "original"]
+
+    res_grp_str = df.pt.mutate("source = lit('original')", by="val")
+    assert list(res_grp_str["source"]) == ["original", "original"]
+
+    # Non-string literals
+    res_num = df.pt.mutate(source=lit(42))
+    assert list(res_num["source"]) == [42, 42]
 
 ################################################################################
 # FILE: tests/test_pivot.py

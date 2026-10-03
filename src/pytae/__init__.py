@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import pandas as pd
 
 from .accessor import PtAccessor  # noqa: F401  — registers df.pt
 from .agg_df import agg, agg_df
-from .mutate import mutate
+from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
@@ -19,6 +20,8 @@ from .other_utilities import (
 from .qry import qry
 from .select import everything, select
 from .sql import sql
+
+builtins.lit = lit
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -108,5 +111,6 @@ __all__ = [
     "replace_values",
     "sql",
     "everything",
+    "lit",
     "PtAccessor",
 ]

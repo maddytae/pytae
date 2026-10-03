@@ -328,11 +328,31 @@ def _strip_at_refs(expr: str) -> tuple[str, set[str]]:
     return "".join(out_chars), names
 
 
+class _Lit:
+    """Wrapper marking a value as an explicit literal constant in mutate()."""
+
+    def __init__(self, value: Any):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"lit({self.value!r})"
+
+
+def lit(value: Any) -> _Lit:
+    """Mark a value as an explicit literal constant in mutate().
+
+    Prevents literal strings that match column names from being evaluated as column references:
+        df.pt.mutate(source=lit("original"))  # assigns string "original", does not copy column "original"
+    """
+    return _Lit(value)
+
+
 class _BoolOpRewriter(ast.NodeTransformer):
     """Rewrite `and`/`or`/`not` to `&`/`|`/`~` for the Python-eval fallback, so
     boolean conditions on a Series work (plain `and`/`or` on a Series raises
-    "ambiguous truth value"). Done on the AST, so operand grouping/precedence is
-    preserved automatically. Matches pandas eval()'s own and/or translation."""
+    "ambiguous truth value"). Also rewrites `lit(identifier)` to literal string constants.
+    Done on the AST, so operand grouping/precedence is preserved automatically.
+    Matches pandas eval()'s own and/or translation."""
 
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         self.generic_visit(node)
@@ -346,6 +366,17 @@ class _BoolOpRewriter(ast.NodeTransformer):
         self.generic_visit(node)
         if isinstance(node.op, ast.Not):
             return ast.UnaryOp(op=ast.Invert(), operand=node.operand)
+        return node
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name) and node.func.id == "lit":
+            if len(node.args) == 1:
+                arg = node.args[0]
+                if isinstance(arg, ast.Name):
+                    return ast.Constant(value=arg.id)
+                if isinstance(arg, ast.Constant):
+                    return arg
         return node
 
 
@@ -392,6 +423,7 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         namespace["if_else"] = _if_else
         namespace["case_when"] = _case_when
         namespace["coalesce"] = _coalesce
+        namespace["lit"] = lambda val: val.value if isinstance(val, _Lit) else val
         namespace["mean"] = lambda s: s.mean() if hasattr(s, "mean") else np.mean(s)
         namespace["sum"] = lambda s: s.sum() if hasattr(s, "sum") else np.sum(s)
         namespace["median"] = lambda s: s.median() if hasattr(s, "median") else np.median(s)
@@ -550,7 +582,9 @@ def mutate(
     for col, expr in expressions.items():
         try:
             if by_cols is None:
-                if callable(expr):
+                if isinstance(expr, _Lit):
+                    out[col] = expr.value
+                elif callable(expr):
                     out[col] = expr(out)
                 elif isinstance(expr, str):
                     out[col] = _eval(out, expr, local_dict, global_dict)
@@ -563,7 +597,9 @@ def mutate(
                 for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
                     pos = group_df["__pt_pos__"].to_numpy()
                     clean_group = group_df.drop(columns=["__pt_pos__"])
-                    if callable(expr):
+                    if isinstance(expr, _Lit):
+                        val = expr.value
+                    elif callable(expr):
                         val = expr(clean_group)
                     elif isinstance(expr, str):
                         val = _eval(clean_group, expr, local_dict, global_dict)
