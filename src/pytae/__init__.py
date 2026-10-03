@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import builtins
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -20,8 +19,6 @@ from .other_utilities import (
 from .qry import qry
 from .select import everything, select
 from .sql import sql
-
-builtins.lit = lit
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
