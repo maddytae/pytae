@@ -108,6 +108,5 @@ __all__ = [
     "replace_values",
     "sql",
     "everything",
-    "lit",
     "PtAccessor",
 ]

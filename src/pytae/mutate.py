@@ -370,13 +370,22 @@ class _BoolOpRewriter(ast.NodeTransformer):
 
     def visit_Call(self, node: ast.Call) -> ast.AST:
         self.generic_visit(node)
+        is_lit = False
         if isinstance(node.func, ast.Name) and node.func.id == "lit":
-            if len(node.args) == 1:
-                arg = node.args[0]
-                if isinstance(arg, ast.Name):
-                    return ast.Constant(value=arg.id)
-                if isinstance(arg, ast.Constant):
-                    return arg
+            is_lit = True
+        elif (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "lit"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in ("pt", "pytae")
+        ):
+            is_lit = True
+        if is_lit and len(node.args) == 1:
+            arg = node.args[0]
+            if isinstance(arg, ast.Name):
+                return ast.Constant(value=arg.id)
+            if isinstance(arg, ast.Constant):
+                return arg
         return node
 
 
@@ -424,6 +433,12 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         namespace["case_when"] = _case_when
         namespace["coalesce"] = _coalesce
         namespace["lit"] = lambda val: val.value if isinstance(val, _Lit) else val
+
+        class _PtLitHolder:
+            lit = staticmethod(lambda val: val.value if isinstance(val, _Lit) else val)
+
+        if "pt" not in namespace:
+            namespace["pt"] = _PtLitHolder
         namespace["mean"] = lambda s: s.mean() if hasattr(s, "mean") else np.mean(s)
         namespace["sum"] = lambda s: s.sum() if hasattr(s, "sum") else np.sum(s)
         namespace["median"] = lambda s: s.median() if hasattr(s, "median") else np.median(s)

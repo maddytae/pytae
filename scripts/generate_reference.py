@@ -327,9 +327,9 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
        DataFrame (e.g. `df.pt.mutate(source="original")` when a column named `original` exists),
        `pandas.eval()` treats unquoted names as column references and copies the column.
        To prevent this silent aliasing, use `pt.lit()` (idiomatic, matching Polars `pl.lit`):
-       - In Python: `df.pt.mutate(source=pt.lit("original"))` (or `from pytae import lit; df.pt.mutate(source=lit("original"))`)
-       - In string expressions: `df.pt.mutate(source="lit('original')")` or `df.pt.mutate("source = lit(original)")`
-       - In CLI: `pytae data.parquet -mutate "source = lit(original)"`
+       - In Python: `df.pt.mutate(source=pt.lit("original"))`
+       - In string expressions: `df.pt.mutate(source="pt.lit('original')")` or `df.pt.mutate("source = pt.lit(original)")`
+       - In CLI: `pytae data.parquet -mutate "source = pt.lit(original)"`
        `pt.lit()` marks the value as an explicit literal constant and is unwrapped directly
        inside `mutate()` without evaluating against DataFrame columns.
 
@@ -974,11 +974,10 @@ If no column called `original` exists, it evaluates as a string literal `'origin
 This creates a silent trap if a column with that name is added to the data later.
 
 To ensure a value is always treated as an explicit literal constant:
-1. Recommended (Python): `df.pt.mutate(source=pt.lit("original"))`
+1. In Python: `df.pt.mutate(source=pt.lit("original"))`
    - Explicit, linter/IDE-friendly, and follows standard DataFrame conventions (like Polars `pl.lit` or PySpark `F.lit`).
-   - If preferred, `from pytae import lit; df.pt.mutate(source=lit("original"))` also works.
-2. String expression: `df.pt.mutate(source="lit('original')")` or `df.pt.mutate("source = lit(original)")`
-3. CLI: `pytae data.parquet -mutate "source = lit(original)"`
+2. In string expressions: `df.pt.mutate(source="pt.lit('original')")` or `df.pt.mutate("source = pt.lit(original)")`
+3. In CLI: `pytae data.parquet -mutate "source = pt.lit(original)"`
 
 `pt.lit()` marks the value as a literal constant and is unwrapped directly without column evaluation.
 

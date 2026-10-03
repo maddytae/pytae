@@ -453,43 +453,45 @@ def test_mutate_scalar_if_else_and_case_when():
 
 
 def test_mutate_lit_constant_when_column_exists():
-    # Verify that lit('original') prevents silent column copying when a column named 'original' exists
-    from pytae import lit
-
+    # Verify that pt.lit('original') prevents silent column copying when a column named 'original' exists
     df = pd.DataFrame({"original": [10, 20], "val": [1, 2]})
 
-    # Without lit(), passing source="original" copies the column
+    # Without pt.lit(), passing source="original" copies the column
     assert list(df.pt.mutate(source="original")["source"]) == [10, 20]
 
-    # With lit() helper directly
-    res_lit = df.pt.mutate(source=lit("original"))
-    assert list(res_lit["source"]) == ["original", "original"]
-
-    # Via pt.lit()
+    # With pt.lit() helper
     res_pt_lit = df.pt.mutate(source=pt.lit("original"))
     assert list(res_pt_lit["source"]) == ["original", "original"]
+
+    # String expression with pt.lit('original')
+    res_str_pt = df.pt.mutate(source="pt.lit('original')")
+    assert list(res_str_pt["source"]) == ["original", "original"]
 
     # String expression with lit('original')
     res_str_quoted = df.pt.mutate(source="lit('original')")
     assert list(res_str_quoted["source"]) == ["original", "original"]
+
+    # String expression with bare pt.lit(original)
+    res_str_bare_pt = df.pt.mutate(source="pt.lit(original)")
+    assert list(res_str_bare_pt["source"]) == ["original", "original"]
 
     # String expression with bare lit(original)
     res_str_bare = df.pt.mutate(source="lit(original)")
     assert list(res_str_bare["source"]) == ["original", "original"]
 
     # Positional string expression
-    res_pos = df.pt.mutate("source = lit(original)")
+    res_pos = df.pt.mutate("source = pt.lit(original)")
     assert list(res_pos["source"]) == ["original", "original"]
 
-    # Grouped mutation with lit()
-    res_grp = df.pt.mutate(source=lit("original"), by="val")
+    # Grouped mutation with pt.lit()
+    res_grp = df.pt.mutate(source=pt.lit("original"), by="val")
     assert list(res_grp["source"]) == ["original", "original"]
 
-    res_grp_str = df.pt.mutate("source = lit('original')", by="val")
+    res_grp_str = df.pt.mutate("source = pt.lit('original')", by="val")
     assert list(res_grp_str["source"]) == ["original", "original"]
 
     # Non-string literals
-    res_num = df.pt.mutate(source=lit(42))
+    res_num = df.pt.mutate(source=pt.lit(42))
     assert list(res_num["source"]) == [42, 42]
 
 
