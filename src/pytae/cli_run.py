@@ -25,7 +25,13 @@ from pytae.cli_parsing import (
 )
 from pytae.cli_pipeline import _Pipeline
 from pytae.other_utilities import clean_columns, handle_missing, safe_reset_index
-from pytae.readers import StdinReader, _split_path_suffixes, get_reader, write_dataframe
+from pytae.readers import (
+    DataFrameReader,
+    StdinReader,
+    _split_path_suffixes,
+    get_reader,
+    write_dataframe,
+)
 
 
 def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
@@ -421,13 +427,13 @@ def _process_path(
     concat_specs = concat_specs or []
     if frames is None:
         chunk_size = getattr(args, "chunk_size", None) or 200_000
+        reader: Any
         if str(path).lower() == "clip":
             try:
                 clip_sep = args.dlim if args.dlim else r"\s+"
                 clip_df = pd.read_clipboard(sep=clip_sep)
             except Exception as exc:
                 return _fail(parser, batch, f"clipboard error: {exc}")
-            from pytae.readers import DataFrameReader
             reader = DataFrameReader(clip_df, path="<clipboard>")
             pipeline = _Pipeline(
                 reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
