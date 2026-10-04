@@ -92,7 +92,7 @@ pytae penguins.parquet -by species -agg "body_mass_g=mean" -plot "kind=bar, x=sp
 cat penguins.csv | pytae - -select "species,island" -value_counts
 ```
 
-👉 **Full CLI Guide**: [docs/cli.md](docs/cli.md) | **Individual Feature Guides**: [docs/cli/](docs/cli/)
+👉 **Full CLI Guide**: [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md) | **Individual Feature Guides**: [docs/cli/](https://github.com/maddytae/pytae/tree/master/docs/cli/)
 
 ---
 
@@ -128,7 +128,7 @@ summary = (
 print(summary)
 ```
 
-👉 **Full Library Guide**: [docs/library.md](docs/library.md) | **Interactive Tutorials**: [docs/library/](docs/library/)
+👉 **Full Library Guide**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) | **Interactive Tutorials**: [docs/library/](https://github.com/maddytae/pytae/tree/master/docs/library/)
 
 ---
 
@@ -273,33 +273,35 @@ pytae current.parquet -diff previous.parquet
 ## Documentation & Interactive Tutorials
 
 ### CLI Documentation (`docs/cli/`)
-- [CLI Reference Hub](docs/cli.md) — Master flag guide, execution pipeline, and syntax rules
-- [Aggregation Guide](docs/cli/aggregate.md) — `-by`, `-agg`, and group frequency counts
-- [Mutation Guide](docs/cli/mutate.md) — Feature engineering, math, and grouped window formulas
-- [Filtering Guide](docs/cli/filter.md) — Numerical comparisons, string matching, and intervals
-- [Selection Guide](docs/cli/select.md) — Column slicing, dtypes, and negative exclusion
-- [Pure Reshaping Guide](docs/cli/reshape.md) — Long-to-wide and wide-to-long pure reshapes (`-long`, `-wide`)
-- [2D Pivot Tables Guide](docs/cli/pivot.md) — Excel-style 2D pivot tables with automatic index reset (`-pivot`)
-- [Visualizations & Plotting Guide](docs/cli/plotting.md) — In-line terminal charts (`-freq`, `-hist`) and figure export (`-plot`)
-- [Export & Output Guide](docs/cli/export_io.md) — `-o`, `-od`, compression, and clipboard routing
-- [Dataset Diff Guide](docs/cli/diff.md) — Comparing schemas and records
-- [Multi-File Operations](docs/cli/multi_file.md) — `-file`, `-merge`, and `-concat`
-- [SQL Guide](docs/cli/sql.md) — Querying with embedded DuckDB
+- [CLI Reference Hub](https://github.com/maddytae/pytae/blob/master/docs/cli.md) — Master flag guide, execution pipeline, and syntax rules
+- [Aggregation Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/aggregate.md) — `-by`, `-agg`, and group frequency counts
+- [Mutation Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/mutate.md) — Feature engineering, math, and grouped window formulas
+- [Filtering Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/filter.md) — Numerical comparisons, string matching, and intervals
+- [Selection Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/select.md) — Column slicing, dtypes, and negative exclusion
+- [Pure Reshaping Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/reshape.md) — Long-to-wide and wide-to-long pure reshapes (`-long`, `-wide`)
+- [2D Pivot Tables Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/pivot.md) — Excel-style 2D pivot tables with automatic index reset (`-pivot`)
+- [Visualizations & Plotting Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/plotting.md) — In-line terminal charts (`-freq`, `-hist`) and figure export (`-plot`)
+- [Export & Output Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/export_io.md) — `-o`, `-od`, compression, and clipboard routing
+- [Dataset Diff Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/diff.md) — Comparing schemas and records
+- [Multi-File Operations](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) — `-file`, `-merge`, and `-concat`
+- [SQL Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/sql.md) — Querying with embedded DuckDB
+- [Metadata & Inspection Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/inspect.md) — `-shape`, `-cols`, `-meta`, and zero-cost header inspection
+- [Cleaning & Replacement Guide](https://github.com/maddytae/pytae/blob/master/docs/cli/clean_replace.md) — `-clean_columns` and `-replace_values`
 
 ### Interactive Jupyter Notebooks (`docs/library/`)
 Each core module has a standalone, fully runnable tutorial with live outputs:
-- **Filtering**: [`docs/library/qry.ipynb`](docs/library/qry.ipynb)
-- **Selection**: [`docs/library/select.ipynb`](docs/library/select.ipynb)
-- **Feature Engineering & Window Mutations**: [`docs/library/mutate.ipynb`](docs/library/mutate.ipynb)
-- **Aggregation**: [`docs/library/agg.ipynb`](docs/library/agg.ipynb)
-- **Pure Reshaping**: [`docs/library/reshape.ipynb`](docs/library/reshape.ipynb)
-- **2D Pivot Tables**: [`docs/library/pivot.ipynb`](docs/library/pivot.ipynb)
-- **DuckDB SQL**: [`docs/library/sql.ipynb`](docs/library/sql.ipynb)
-- **Plotting & Dashboards**: [`docs/library/plotting.ipynb`](docs/library/plotting.ipynb)
-- **Utilities & Cleaning**: [`docs/library/other_utilities.ipynb`](docs/library/other_utilities.ipynb)
+- **Filtering**: [`docs/library/qry.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/qry.ipynb)
+- **Selection**: [`docs/library/select.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/select.ipynb)
+- **Feature Engineering & Window Mutations**: [`docs/library/mutate.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/mutate.ipynb)
+- **Aggregation**: [`docs/library/agg.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/agg.ipynb)
+- **Pure Reshaping**: [`docs/library/reshape.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/reshape.ipynb)
+- **2D Pivot Tables**: [`docs/library/pivot.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/pivot.ipynb)
+- **DuckDB SQL**: [`docs/library/sql.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/sql.ipynb)
+- **Plotting & Dashboards**: [`docs/library/plotting.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/plotting.ipynb)
+- **Utilities & Cleaning**: [`docs/library/other_utilities.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/other_utilities.ipynb)
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](https://github.com/maddytae/pytae/blob/master/LICENSE) for details.
