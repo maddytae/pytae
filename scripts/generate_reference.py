@@ -333,8 +333,13 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
        ```python
        df.pt.mutate(source=pt.lit("tag"), status=pt.lit("active"))
        ```
-       (Note: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard
-       inner single quotes already define string literals: `-mutate "source = 'original'"`).
+       Important Notes on where `pt.lit()` is **NOT** needed:
+       - **Inside expressions/conditionals (`if_else`, `case_when`, `coalesce`)**: `pt.lit()` is
+         **not relevant**. Inside string formulas, standard inner single quotes `'...'` already
+         unambiguously distinguish string literals from column names:
+         `df.pt.mutate(size="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')")`.
+       - **In the CLI**: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard
+         inner single quotes already define string literals: `-mutate "source = 'original'"`.
        `pt.lit()` marks the value as an explicit literal constant in Python calls and is unwrapped
        directly inside `mutate()` without evaluating against DataFrame columns.
 
@@ -981,13 +986,15 @@ bare words are always interpreted as column references:
 In both cases, `source="word"` does not assign the string literal `"word"`.
 
 To assign an explicit literal constant:
-1. In Python code: `df.pt.mutate(source=pt.lit("active"))`
+1. In Python kwargs: `df.pt.mutate(source=pt.lit("active"))`
    - Clean, linter/IDE-friendly, and avoids awkward nested quotes like `source="'active'"`.
    - Follows standard DataFrame conventions (like Polars `pl.lit` or PySpark `lit`).
-2. In CLI: `pt.lit()` is **never needed in the CLI**. Standard inner single quotes denote string literals:
-   ```bash
-   pytae data.parquet -mutate "source = 'original'"
-   ```
+2. Where `pt.lit()` is **NOT** needed:
+   - **Inside formula expressions / conditional helpers (`if_else`, `case_when`, `coalesce`)**: `pt.lit()` is
+     **completely irrelevant**. Standard inner single quotes `'...'` already distinguish string literals
+     from column references: `df.pt.mutate(size="if_else(x > 10, 'Heavy', 'Standard')")`.
+   - **In the CLI**: `pt.lit()` is **never needed in the CLI**. Standard inner single quotes denote string literals:
+     `pytae data.parquet -mutate "source = 'original'"`
 
 `pt.lit()` marks the value as a literal constant in Python calls and is unwrapped directly without column evaluation.
 

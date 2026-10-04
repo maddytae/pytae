@@ -325,8 +325,13 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
        ```python
        df.pt.mutate(source=pt.lit("tag"), status=pt.lit("active"))
        ```
-       (Note: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard
-       inner single quotes already define string literals: `-mutate "source = 'original'"`).
+       Important Notes on where `pt.lit()` is **NOT** needed:
+       - **Inside expressions/conditionals (`if_else`, `case_when`, `coalesce`)**: `pt.lit()` is
+         **not relevant**. Inside string formulas, standard inner single quotes `'...'` already
+         unambiguously distinguish string literals from column names:
+         `df.pt.mutate(size="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')")`.
+       - **In the CLI**: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard
+         inner single quotes already define string literals: `-mutate "source = 'original'"`.
        `pt.lit()` marks the value as an explicit literal constant in Python calls and is unwrapped
        directly inside `mutate()` without evaluating against DataFrame columns.
 
@@ -973,13 +978,15 @@ bare words are always interpreted as column references:
 In both cases, `source="word"` does not assign the string literal `"word"`.
 
 To assign an explicit literal constant:
-1. In Python code: `df.pt.mutate(source=pt.lit("active"))`
+1. In Python kwargs: `df.pt.mutate(source=pt.lit("active"))`
    - Clean, linter/IDE-friendly, and avoids awkward nested quotes like `source="'active'"`.
    - Follows standard DataFrame conventions (like Polars `pl.lit` or PySpark `lit`).
-2. In CLI: `pt.lit()` is **never needed in the CLI**. Standard inner single quotes denote string literals:
-   ```bash
-   pytae data.parquet -mutate "source = 'original'"
-   ```
+2. Where `pt.lit()` is **NOT** needed:
+   - **Inside formula expressions / conditional helpers (`if_else`, `case_when`, `coalesce`)**: `pt.lit()` is
+     **completely irrelevant**. Standard inner single quotes `'...'` already distinguish string literals
+     from column references: `df.pt.mutate(size="if_else(x > 10, 'Heavy', 'Standard')")`.
+   - **In the CLI**: `pt.lit()` is **never needed in the CLI**. Standard inner single quotes denote string literals:
+     `pytae data.parquet -mutate "source = 'original'"`
 
 `pt.lit()` marks the value as a literal constant in Python calls and is unwrapped directly without column evaluation.
 
@@ -5642,15 +5649,22 @@ species species_code  mass_kg  species_avg_mass  mass_diff  group_size  \
 ```
 
 ## Assigning Literal Constants with `pt.lit()`
-In `mutate()`, all string arguments are evaluated as **formulas and column expressions**, never as string literals:
+In `mutate()`, all string arguments are evaluated as **formulas and column expressions**, never as raw string literals:
 - If you write `status="active"`, pytae searches for a column named `active`. Because no such column exists, it raises `KeyError: name 'active' is not defined`.
 - Worse, if a column named `original` happens to exist, writing `source="original"` will silently copy that column instead of assigning the word `"original"`.
 
-To assign a literal constant value without awkward nested quotes (`status="'active'"`), wrap it in `pt.lit()` (analogous to Polars `pl.lit` or PySpark `lit`):
-- In Python: `.pt.mutate(status=pt.lit("active"), source=pt.lit("original"))`
-- In expressions: `.pt.mutate(status="'active'", source="'original'")`
+To assign a standalone literal constant value directly as a keyword argument without awkward nested quotes (`status="'active'"`), wrap it in `pt.lit()`:
+- `.pt.mutate(status=pt.lit("active"), source=pt.lit("original"))`
 
-> **Note**: `pt.lit()` is purely a Python keyword-argument convenience and is **never needed in the CLI**. In terminal commands, standard inner single quotes are always used: `-mutate "status = 'active'"`.
+> **When is `pt.lit()` NOT needed?**
+> 1. **Inside conditional helpers (`if_else`, `case_when`, `coalesce`)**: `pt.lit()` is **completely irrelevant here**. Inside formula expressions, standard inner single quotes `'...'` already distinguish string literals from column references:
+>    ```python
+>    df.pt.mutate(size="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')")
+>    ```
+> 2. **In the CLI**: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard inner single quotes are always used:
+>    ```bash
+>    pytae data.parquet -mutate "status = 'active'"
+>    ```
 
 ```python
 import pandas as pd
@@ -5664,6 +5678,18 @@ print("Copied column 'original':\n", df.pt.mutate(source='original'))
 
 # 2. With pt.lit(): assigns literal string constants cleanly and safely
 print("\nWith pt.lit():\n", df.pt.mutate(source=pt.lit('original'), status=pt.lit('active')))
+```
+Output:
+```text
+Copied column 'original':
+    original  val  source
+0       100    1     100
+1       200    2     200
+
+With pt.lit():
+    original  val    source  status
+0       100    1  original  active
+1       200    2  original  active
 ```
 
 ################################################################################
