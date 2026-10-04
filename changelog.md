@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.7.3] - 2026-10-04
+
+### Added
+- **Transposed Summary (`glimpse`)**:
+  - Added `-glimpse` to the CLI and `df.pt.glimpse(width=None)` / `pt.glimpse(df)` to the Python library (inspired by `dplyr::glimpse` and Polars).
+  - Provides a transposed overview of rows count, columns count, column data types, and inline sample values.
+  - In Python, returns the original DataFrame `self` for non-destructive inspection mid-pipeline.
+- **Auto-Pipe Detection (CLI)**:
+  - `pytae` automatically detects when data is piped via standard input (`stdin`) or redirected via shell, eliminating the requirement to pass a trailing `-` (e.g. `cat file.csv | pytae -head 5` works directly).
+  - Explicit `-` continues to be fully supported for standard unix pipeline workflows.
+- **Clipboard Ingestion (`pytae clip`)**:
+  - Added `clip` as the canonical input target (`pytae clip [flags...]`).
+  - Reads tabular data directly from the system clipboard into the pipeline via `pd.read_clipboard()`, with optional delimiter override via `-dlim`.
+  - Strictly adheres to the "one and only one right way" philosophy: backward compatibility aliases `from_clip` and `clipboard` are removed.
+- **Dedicated Row-Dropping Flag (`-drop_na`)**:
+  - Added `-drop_na [COLS]` to the CLI pipeline.
+  - Bare `-drop_na` drops rows containing `NaN` across any column; `-drop_na col1,col2` drops rows where specified columns are `NaN`.
+  - Runs in the cleaning/filtering stage before aggregations and transformations.
+
+## [3.7.2] - 2026-10-04
+
+### Fixed
+- **Documentation & PyPI Link Targets**:
+  - Converted relative links in `readme.md` to absolute GitHub URLs so that documentation and Jupyter tutorial links resolve correctly on PyPI.
+
+## [3.7.1] - 2026-10-04
+
+### Documentation
+- **Explicit Literal Constants with `pt.lit()`**:
+  - Clarified that `pt.lit("str")` is used exclusively in Python `pt.mutate()` when assigning string constants that match existing column names to avoid column aliasing.
+  - Clarified that `pt.lit()` is never required in the CLI or inside conditional expressions (`if_else`, `case_when`).
+
 ## [3.7.0] - 2026-09-29
 
 ### Added

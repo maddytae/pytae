@@ -68,7 +68,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
-| **Utilities** | `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
+| **Utilities** | `glimpse`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
 
 ---
 
@@ -241,6 +241,7 @@ p.finalize(consolidate_legends=True)
 Essential tabular utilities for everyday manipulation:
 
 ```python
+penguins.pt.glimpse()                                                 # Transposed column overview (returns self)
 pt.clean_columns(df, strip=True, fill="_", case="lower", dedupe=True) # Normalize headers
 pt.replace_values(df, {"old": "new"}, c="col_a", exact=True)          # Replace cell values
 pt.handle_missing(df, fillna="NA")                                    # Impute missing values

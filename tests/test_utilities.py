@@ -166,3 +166,32 @@ def test_handle_missing_all_null_object_column():
     result = pt.handle_missing(df)
     assert list(result["a"]) == [".", "."]
 
+
+def test_glimpse_formatting_and_chaining(capsys):
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo", None],
+        "mass": [3700.0, 5200.0, 4100.0],
+    })
+    out_str = pt.format_glimpse(df, width=80)
+    assert "Rows: 3" in out_str
+    assert "Columns: 2" in out_str
+    assert "$ species" in out_str
+    assert "$ mass" in out_str
+    assert "'Adelie'" in out_str
+    assert "NA" in out_str
+
+    # Method chaining: df.pt.glimpse() returns df
+    chained = df.pt.glimpse(width=80)
+    assert chained is df
+    captured = capsys.readouterr()
+    assert "Rows: 3" in captured.out
+    assert "Columns: 2" in captured.out
+
+
+def test_glimpse_empty_dataframe():
+    df = pd.DataFrame()
+    out_str = pt.format_glimpse(df)
+    assert "Rows: 0" in out_str
+    assert "Columns: 0" in out_str
+
+

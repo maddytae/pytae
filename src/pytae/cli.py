@@ -76,6 +76,7 @@ _CLI_FLAGS = {
     "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
+    "-drop_na", "--drop_na", "-glimpse", "--glimpse",
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
     "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
@@ -122,6 +123,27 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
     return out
 
 
+def _is_stdin_piped() -> bool:
+    """Check if standard input is attached to a real pipe or redirected stream."""
+    stdin = sys.stdin
+    # If pytest is capturing stdin without input provided, DontReadFromInput is used
+    if getattr(stdin, "__class__", None) and stdin.__class__.__module__.startswith("_pytest"):
+        return False
+    try:
+        if stdin.isatty():
+            return False
+        fileno = getattr(stdin, "fileno", None)
+        if fileno is not None:
+            try:
+                import os
+                return not os.isatty(fileno())
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+
+
 class PytaeParser(argparse.ArgumentParser):
     """Custom parser that normalizes optional-value flags such as -progress and negative -select specs."""
 
@@ -144,9 +166,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("path", nargs="*", default=None,
                          help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
+                              "'clip' to read from system clipboard, "
                               "a .yaml/.yml connection config (Databricks table or remote SSH file), "
                               "or glob patterns/multiple files for batch operations; "
-                              "omit when using -file with -merge/-concat/-sql")
+                              "omit when piping from stdin or using -file with -merge/-concat/-sql")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the first N rows (default 5)")
@@ -166,6 +189,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="print pandas describe() summary (count/mean/std/min/quartiles/max)")
     parser.add_argument("-info", "--info", dest="info", action=_OrderedFlag,
                          help="print pandas info() (columns, non-null counts, dtypes, memory)")
+    parser.add_argument("-glimpse", "--glimpse", dest="glimpse", action=_OrderedFlag,
+                         help="print a transposed overview of DataFrame columns, dtypes, and sample values")
     parser.add_argument("-meta", "--meta", dest="meta", action=_OrderedFlag,
                          help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data")
     parser.add_argument("-diff", "--diff", dest="diff", default=None, metavar="PATH", action=_OrderedStore,
@@ -209,6 +234,10 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
+    parser.add_argument("-drop_na", "--drop_na", dest="drop_na", nargs="?", const="", default=None,
+                         metavar="COLS", action=_OrderedValue,
+                         help="drop rows containing NaN (bare -drop_na drops rows with any NaN; "
+                              "-drop_na \"col1,col2\" drops rows where specified columns are NaN)")
     parser.add_argument("-clean_columns", "--clean_columns", dest="clean_columns", action=_OrderedStore,
                          metavar="KEY=VALUE,...",
                          help="clean column header names, in order strip -> strip_special -> squeeze -> "
@@ -396,12 +425,16 @@ def main(argv: list[str] | None = None) -> int:
         if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
             parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
     elif not raw_paths:
-        parser.error("the following arguments are required: path")
+        if _is_stdin_piped():
+            raw_paths = ["-"]
+            args.path = ["-"]
+        else:
+            parser.error("the following arguments are required: path")
 
-    show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
+    show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
                          args.value_counts, args.unique, args.freq is not None, args.hist is not None,
                          args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.agg is not None, args.handle_missing is not None,
+                         args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
                          args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
@@ -410,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.freq is not None, args.hist is not None,
                      args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg is not None, args.handle_missing is not None,
+                     args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
                      args.long is not None, args.wide is not None, args.pivot is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:

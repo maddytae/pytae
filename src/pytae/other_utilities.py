@@ -249,3 +249,60 @@ def replace_values(
     else:
         df = df.replace(to_replace, regex=not exact)
     return df
+
+
+def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
+    """Format DataFrame as a transposed glimpse summary (like dplyr::glimpse / Polars).
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame to glimpse.
+    width : int, optional
+        Maximum line width (defaults to terminal width or 80).
+    """
+    if width is None:
+        import shutil
+        width = shutil.get_terminal_size(fallback=(80, 24)).columns
+
+    lines = [
+        f"Rows: {len(df):,}",
+        f"Columns: {len(df.columns):,}",
+    ]
+    if len(df.columns) == 0:
+        return "\n".join(lines)
+
+    col_names = [str(c) for c in df.columns]
+    max_col_len = min(max((len(c) for c in col_names), default=0), 30)
+
+    dtypes = [f"<{df[col].dtype}>" for col in df.columns]
+    max_dtype_len = min(max((len(d) for d in dtypes), default=0), 20)
+
+    for col, dtype_str in zip(df.columns, dtypes):
+        col_str = str(col)
+        prefix = f"$ {col_str.ljust(max_col_len)} {dtype_str.ljust(max_dtype_len)} "
+        sample_vals: list[str] = []
+        for val in df[col].head(25):
+            if pd.isna(val):
+                sample_vals.append("NA")
+            elif isinstance(val, str):
+                sample_vals.append(repr(val))
+            else:
+                sample_vals.append(str(val))
+
+        remaining_width = max(width - len(prefix), 10)
+        vals_str = ", ".join(sample_vals)
+        if len(vals_str) > remaining_width:
+            vals_str = vals_str[:remaining_width - 3].rstrip(", ") + "..."
+        lines.append(prefix + vals_str)
+
+    return "\n".join(lines)
+
+
+def glimpse(df: pd.DataFrame, width: int | None = None) -> pd.DataFrame:
+    """Print a transposed overview of DataFrame columns, dtypes, and sample values.
+
+    Returns the original DataFrame for method chaining.
+    """
+    print(format_glimpse(df, width=width))
+    return df

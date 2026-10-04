@@ -55,14 +55,16 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 
 ## Reading from STDIN & Pipes (`-`, `-fmt`)
 
-`pytae` can read tabular streams directly from standard input (STDIN) using `-` as the input path, allowing seamless integration with UNIX pipes and shell pipelines:
+`pytae` can read tabular streams directly from standard input (STDIN). With **auto-pipe detection**, you can pipe directly into `pytae` without typing an explicit `-`:
 
 ```bash
-# Pipe CSV stream into pytae
-cat penguins.csv | pytae - -head 5
+# Direct pipe (no dash needed!)
+cat penguins.csv | pytae -head 5
+curl -s https://example.com/events.csv | pytae -by event_type -agg "count=n"
 
-# Stream from curl with explicit format
-curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -agg n
+# Explicit dash also fully supported
+cat penguins.csv | pytae - -head 5
+curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -agg "count=n"
 ```
 
 When reading from STDIN, `pytae` automatically inspects the first chunk to sniff the format (`csv` vs `jsonl`). You can explicitly specify or force the input format using `-fmt`:
@@ -107,10 +109,20 @@ Wrote 344 rows to penguins.csv
 
 ### System Clipboard (`clip`)
 
+#### Exporting to Clipboard (`-o clip`)
 Copies the output table or report directly to the system clipboard (suppressing stdout printing):
 
 ```bash
 pytae penguins.parquet -head 5 -o clip
+```
+
+#### Ingesting from Clipboard (`pytae clip`)
+Directly read and analyze tabular data copied to your system clipboard (e.g. from Excel, web tables, or Slack) without creating a temporary file:
+
+```bash
+# Copy a table in your browser/Excel, then immediately query it:
+pytae clip -head 5
+pytae clip -qry "sales > 100" -by region -agg "total = sales:sum"
 ```
 
 ---

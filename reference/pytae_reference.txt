@@ -17,6 +17,7 @@ TABLE OF CONTENTS
     4.7.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
     4.8.  Other Utilities:
           - pt.cols() / df.pt.cols()
+          - pt.glimpse() / df.pt.glimpse()
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
           - pt.replace_values() / df.pt.replace_values()
@@ -116,6 +117,7 @@ Top-Level Functions exported by `pytae`:
   - pt.sql(df, query, **frames)
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
   - pt.cols(df, ascending=True)
+  - pt.glimpse(df, width=None)
   - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False)
   - pt.replace_values(df, v: dict, c=None, exact=True)
   - pt.safe_reset_index(df)
@@ -139,6 +141,7 @@ DataFrame Accessor (`df.pt`):
     df.pt.sql(...)
     df.pt.handle_missing(...)
     df.pt.cols(...)
+    df.pt.glimpse(...)
     df.pt.clean_columns(...)
     df.pt.replace_values(...)
     df.pt.plot(...)
@@ -577,6 +580,11 @@ Rules & Features:
   ascending=False -> Alphabetical Z-A
   ascending=None  -> Original DataFrame file order
 
+- pt.glimpse(df, width=None) / df.pt.glimpse(width=None):
+  Prints a transposed overview of DataFrame columns, dtypes, and inline sample values
+  (inspired by dplyr::glimpse and Polars). Returns the DataFrame for non-destructive method chaining:
+  `df.pt.qry("sales > 100").pt.glimpse().pt.select("region", "sales")`
+
 - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True):
   Sanitizes missing values with type-safe defaults:
   - Categorical columns: preserves categorical dtype (`preserve_categories=True`) and fills missing categories.
@@ -675,8 +683,10 @@ the command line:
   pytae input.parquet -qry "body_mass_g > 3000" -mutate "mass_kg = body_mass_g / 1000" -head 5
 
 Pipeline Rules:
-1. Positional Path: The first unflagged argument is the input file path.
-   (Except in `-file` multi-file mode, where `-file` replaces the positional path).
+1. Input Source: The first unflagged argument is the input file path, or 'clip'
+   to ingest tabular data directly from the system clipboard. When data is piped via STDIN
+   (e.g. `cat data.csv | pytae -head 5`), pytae auto-detects the stream without requiring an explicit
+   path or `-`. (In `-file` multi-file mode, `-file` replaces the positional path).
 2. Sequential Mutation: Each operation transforms the intermediate dataset in memory.
    For example, `-qry` before `-select -col` allows filtering on a column that is subsequently excluded.
 3. Final Operation Determines Output: Only the last operation in the chain prints or exports, 
@@ -719,6 +729,7 @@ Inspection & Summary Flags:
   -nulls [ORDER]        Print null value counts per column (ORDER: asc, desc, file)
   -describe             Descriptive statistics for numeric columns
   -info                 DataFrame summary (dtypes, non-null counts, memory)
+  -glimpse              Transposed column overview with dtypes and sample values (like dplyr/Polars)
   -meta                 Display zero-scan Parquet metadata (row groups, schema, compression)
   -diff PATH            Compare schema, shape, null counts, and cell values against another file
   -value_counts         Value counts for categorical/string columns (honors -dropna)
@@ -736,6 +747,7 @@ In-Terminal ASCII Visualizations:
 Row Filtering Flags:
   -qry CONDITIONS       pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -query EXPR           pandas query() expression passed to numexpr
+  -drop_na [COLS]       Drop rows containing NaN (bare for any column, or comma-separated columns)
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
@@ -1239,17 +1251,17 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 
 | Feature Area | Documentation Guide | Key Flags & Capabilities |
 |---|---|---|
-| **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-meta`, `-pager` |
+| **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-glimpse`, `-meta`, `-pager` |
 | **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
 | **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-query`, `-dropna`, intervals `[min, max]`, set membership, comparisons |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
-| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
+| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-drop_na`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
 | **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-unique`, `-sort_by` |
 | **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
-| **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`), `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
+| **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`, auto-pipe), `clip`, `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
 | **Multi-File Pipelines** | [Multi-File Pipelines Guide](cli/multi_file.md) | `-file`, `-merge` (joins), `-concat` (stacking), cross-file `-sql` |
 
 ---
@@ -1499,6 +1511,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-nulls [asc\|desc]` | Inspect | Report null counts per column | [cli/inspect.md](cli/inspect.md) |
 | `-describe` | Inspect | Summary statistics (returns DataFrame) | [cli/inspect.md](cli/inspect.md) |
 | `-info` | Inspect | Pandas `info()` memory and non-null summary | [cli/inspect.md](cli/inspect.md) |
+| `-glimpse` | Inspect | Transposed overview of columns, dtypes, and sample values | [cli/inspect.md](cli/inspect.md) |
 | `-meta` | Inspect | Zero-scan Parquet metadata (compression, row groups, schema) | [cli/inspect.md](cli/inspect.md) |
 | `-pager` | Inspect | Pipe terminal output through `$PAGER` or `less` | [cli/inspect.md](cli/inspect.md) |
 | `-pretty` | Inspect | Format output as bordered markdown table | [cli/inspect.md](cli/inspect.md) |
@@ -1507,6 +1520,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-select SPEC` | Select & Filter | Filter, reorder, or exclude columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select.md](cli/select.md) |
 | `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
 | `-query EXPR` | Select & Filter | Filter rows using pandas `df.query()` expression | [cli/filter.md](cli/filter.md) |
+| `-drop_na [COLS]` | Select & Filter | Drop rows containing NaN (bare for any column, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-dropna BOOL` | Select & Filter | Control whether NA grouping keys are dropped in aggregations, mutations, value counts, and pivots (default: false) | [cli/filter.md](cli/filter.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
 | `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |
@@ -1862,6 +1876,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
   - [Restricting to Columns (`c=`)](#restricting-to-columns-c)
   - [Substring Replacement (`exact=false`)](#substring-replacement-exactfalse)
 - [Imputing Missing Values (`-handle_missing`)](#imputing-missing-values--handle_missing)
+- [Dropping Missing Values (`-drop_na`)](#dropping-missing-values--drop_na)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 
 ---
@@ -1873,6 +1888,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
 | `-clean_columns SPEC` | Column headers | `,` / `=` | Standardizes headers (strip, squeeze, fill, case, dedupe) |
 | `-replace_values SPEC` | Cell contents | `old:new` | Swaps values inside cells |
 | `-handle_missing [FILL]` | Cell contents | String value | Imputes `NaN` (defaults to `.` for text, `0` for numeric) |
+| `-drop_na [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for any column, or comma-separated columns) |
 | `-rename OLD:NEW,...` | Column headers | `old:new` | Explicitly renames column names |
 
 ---
@@ -1968,6 +1984,26 @@ pytae dataset.parquet -handle_missing "UNKNOWN"
      bad_val      0.0    approved
      UNKNOWN     30.2 draft_stage
 ```
+
+---
+
+## Dropping Missing Values (`-drop_na`)
+
+Drop rows containing missing values (`NaN`). Can be run bare to drop rows with `NaN` across any column, or scoped to specific target columns:
+
+```bash
+# Drop rows with NaN in any column
+pytae penguins.parquet -drop_na
+
+# Drop rows with NaN in specific column(s)
+pytae penguins.parquet -drop_na body_mass_g
+pytae penguins.parquet -drop_na "body_mass_g,sex"
+```
+
+> [!NOTE]
+> **Difference between `-drop_na` and `-dropna`**:
+> - **`-drop_na [cols]`**: Directly drops rows containing `NaN` from the dataset.
+> - **`-dropna true|false`**: Controls whether group-by aggregations (`-by`, `-pivot`) include or drop a category for missing `NaN` keys.
 
 ---
 
@@ -2176,14 +2212,16 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 
 ## Reading from STDIN & Pipes (`-`, `-fmt`)
 
-`pytae` can read tabular streams directly from standard input (STDIN) using `-` as the input path, allowing seamless integration with UNIX pipes and shell pipelines:
+`pytae` can read tabular streams directly from standard input (STDIN). With **auto-pipe detection**, you can pipe directly into `pytae` without typing an explicit `-`:
 
 ```bash
-# Pipe CSV stream into pytae
-cat penguins.csv | pytae - -head 5
+# Direct pipe (no dash needed!)
+cat penguins.csv | pytae -head 5
+curl -s https://example.com/events.csv | pytae -by event_type -agg "count=n"
 
-# Stream from curl with explicit format
-curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -agg n
+# Explicit dash also fully supported
+cat penguins.csv | pytae - -head 5
+curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -agg "count=n"
 ```
 
 When reading from STDIN, `pytae` automatically inspects the first chunk to sniff the format (`csv` vs `jsonl`). You can explicitly specify or force the input format using `-fmt`:
@@ -2228,10 +2266,20 @@ Wrote 344 rows to penguins.csv
 
 ### System Clipboard (`clip`)
 
+#### Exporting to Clipboard (`-o clip`)
 Copies the output table or report directly to the system clipboard (suppressing stdout printing):
 
 ```bash
 pytae penguins.parquet -head 5 -o clip
+```
+
+#### Ingesting from Clipboard (`pytae clip`)
+Directly read and analyze tabular data copied to your system clipboard (e.g. from Excel, web tables, or Slack) without creating a temporary file:
+
+```bash
+# Copy a table in your browser/Excel, then immediately query it:
+pytae clip -head 5
+pytae clip -qry "sales > 100" -by region -agg "total = sales:sum"
 ```
 
 ---
@@ -2609,6 +2657,7 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 | `-nulls [ORDER]` | Print count of missing / NaN values per column | **Yes** (terminal) |
 | `-meta` | Zero-scan Parquet metadata (row groups, compression, schema) | **Yes** (terminal) |
 | `-info` | Pandas `info()` memory and non-null summary | **Yes** (terminal) |
+| `-glimpse` | Transposed column overview with dtypes and inline sample values | **Yes** (terminal) |
 | `-describe` | Pandas `describe()` statistical summary | No (returns DataFrame) |
 | `-pager` | Pipe long outputs through system pager (`$PAGER` or `less`) | Display flag |
 | `-pretty` | Render plain tables with bordered markdown formatting | Display flag |
@@ -2901,6 +2950,30 @@ Prints columns, non-null counts, dtypes, and memory usage:
 ```bash
 pytae penguins.parquet -info
 ```
+
+### Transposed Summary (`-glimpse`)
+
+Inspired by `dplyr::glimpse()` and Polars, `-glimpse` provides an immediate, transposed view of all columns, displaying row count, column count, dtypes, and an inline preview of first values:
+
+```bash
+pytae penguins.parquet -glimpse
+```
+
+**Output:**
+```text
+Rows: 344
+Columns: 7
+$ species           <str>     'Adelie', 'Adelie', 'Adelie', 'Adelie', 'Adelie...
+$ island            <str>     'Torgersen', 'Torgersen', 'Torgersen', 'Torgers...
+$ bill_length_mm    <float64> 39.1, 39.5, 40.3, NA, 36.7, 39.3, 38.9, 39.2, 3...
+$ bill_depth_mm     <float64> 18.7, 17.4, 18.0, NA, 19.3, 20.6, 17.8, 19.6, 1...
+$ flipper_length_mm <float64> 181.0, 186.0, 195.0, NA, 193.0, 190.0, 181.0, 1...
+$ body_mass_g       <float64> 3750.0, 3800.0, 3250.0, NA, 3450.0, 3650.0, 362...
+$ sex               <str>     'Male', 'Female', 'Female', NA, 'Female', 'Male...
+```
+
+> [!TIP]
+> Unlike `-head`, which wraps across screen lines when dealing with wide tables (20–100+ columns), `-glimpse` guarantees that every column and its data type fit neatly on one line. It is also available in Python via `df.pt.glimpse()`.
 
 ---
 
@@ -4378,7 +4451,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
-| **Utilities** | `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
+| **Utilities** | `glimpse`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
 
 ---
 
@@ -4551,6 +4624,7 @@ p.finalize(consolidate_legends=True)
 Essential tabular utilities for everyday manipulation:
 
 ```python
+penguins.pt.glimpse()                                                 # Transposed column overview (returns self)
 pt.clean_columns(df, strip=True, fill="_", case="lower", dedupe=True) # Normalize headers
 pt.replace_values(df, {"old": "new"}, c="col_a", exact=True)          # Replace cell values
 pt.handle_missing(df, fillna="NA")                                    # Impute missing values
@@ -5708,6 +5782,7 @@ With pt.lit():
 | Utility | Purpose |
 |---|---|
 | `.pt.cols()` | List column names sorted or in original order |
+| `.pt.glimpse()` | Transposed column overview with dtypes and sample values (returns self for chaining) |
 | `.pt.handle_missing()` | Fill string NaN with a marker, numeric NaN with 0, strip whitespace |
 | `.pt.clean_columns()` | Clean column header names (strip, squeeze, fill, case, dedupe) |
 | `.pt.replace_values()` | Replace values, optionally scoped to columns, exact or substring match |
@@ -5726,6 +5801,8 @@ import pytae as pt
 penguins = pt.sample_data['penguins']
 titanic = pt.sample_data['titanic']
 ```
+
+## `cols()` — list column names
 
 ```python
 # Alphabetical column list — useful for quick discovery
@@ -5755,6 +5832,90 @@ Output:
  'body_mass_g',
  'bill_length_mm',
  'bill_depth_mm']
+```
+
+## `glimpse()` — transposed column overview
+
+`.pt.glimpse()` prints a compact, transposed overview of the DataFrame inspired by R/dplyr's `glimpse()`:
+- Summarizes row count, column count, and in-memory footprint.
+- Lists every column name alongside its dtype and inline sample values.
+- Non-destructive: prints to stdout and returns `self` (the unchanged DataFrame) so it can be inserted anywhere inside a method chain for debugging.
+
+```python
+# Direct glimpse overview
+penguins.pt.glimpse()
+```
+Output:
+```text
+Rows: 344
+Columns: 7
+$ species           <str>     'Adelie', 'Adelie', 'Adelie', 'Adelie', 'Adelie...
+$ island            <str>     'Torgersen', 'Torgersen', 'Torgersen', 'Torgers...
+$ bill_length_mm    <float64> 39.1, 39.5, 40.3, NA, 36.7, 39.3, 38.9, 39.2, 3...
+$ bill_depth_mm     <float64> 18.7, 17.4, 18.0, NA, 19.3, 20.6, 17.8, 19.6, 1...
+$ flipper_length_mm <float64> 181.0, 186.0, 195.0, NA, 193.0, 190.0, 181.0, 1...
+$ body_mass_g       <float64> 3750.0, 3800.0, 3250.0, NA, 3450.0, 3650.0, 362...
+$ sex               <str>     'Male', 'Female', 'Female', NA, 'Female', 'Male...
+```
+Output:
+```text
+species     island  bill_length_mm  bill_depth_mm  flipper_length_mm  \
+0    Adelie  Torgersen            39.1           18.7              181.0   
+1    Adelie  Torgersen            39.5           17.4              186.0   
+2    Adelie  Torgersen            40.3           18.0              195.0   
+3    Adelie  Torgersen             NaN            NaN                NaN   
+4    Adelie  Torgersen            36.7           19.3              193.0   
+..      ...        ...             ...            ...                ...   
+339  Gentoo     Biscoe             NaN            NaN                NaN   
+340  Gentoo     Biscoe            46.8           14.3              215.0   
+341  Gentoo     Biscoe            50.4           15.7              222.0   
+342  Gentoo     Biscoe            45.2           14.8              212.0   
+343  Gentoo     Biscoe            49.9           16.1              213.0   
+
+     body_mass_g     sex  
+0         3750.0    Male  
+1         3800.0  Female  
+2         3250.0  Female  
+3            NaN     NaN  
+4         3450.0  Female  
+..           ...     ...  
+339          NaN     NaN  
+340       4850.0  Female  
+341       5750.0    Male  
+342       5200.0  Female  
+343       5400.0    Male  
+
+[344 rows x 7 columns]
+```
+
+```python
+# Non-destructive: returns self, allowing inspection mid-pipeline
+(
+    penguins
+    .pt.qry("body_mass_g > 4000")
+    .pt.glimpse()
+    .pt.select("species", "island", "body_mass_g")
+    .head(3)
+)
+```
+Output:
+```text
+Rows: 172
+Columns: 7
+$ species           <str>     'Adelie', 'Adelie', 'Adelie', 'Adelie', 'Adelie...
+$ island            <str>     'Torgersen', 'Torgersen', 'Torgersen', 'Torgers...
+$ bill_length_mm    <float64> 39.2, 42.0, 34.6, 42.5, 46.0, 39.2, 39.8, 44.1...
+$ bill_depth_mm     <float64> 19.6, 20.2, 21.1, 20.7, 21.5, 21.1, 19.1, 19.7...
+$ flipper_length_mm <float64> 195.0, 190.0, 198.0, 197.0, 194.0, 196.0, 184.0...
+$ body_mass_g       <float64> 4675.0, 4250.0, 4400.0, 4500.0, 4200.0, 4150.0...
+$ sex               <str>     'Male', NA, 'Male', 'Male', 'Male', 'Male', 'Ma...
+```
+Output:
+```text
+species     island  body_mass_g
+7   Adelie  Torgersen       4675.0
+9   Adelie  Torgersen       4250.0
+14  Adelie  Torgersen       4400.0
 ```
 
 ## `handle_missing()` — clean before aggregating
@@ -8796,7 +8957,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.7.2"
+version = "3.7.3"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -8890,6 +9051,8 @@ from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
+    format_glimpse,
+    glimpse,
     handle_missing,
     replace_values,
 )
@@ -8981,6 +9144,8 @@ __all__ = [
     "pivot",
     "handle_missing",
     "cols",
+    "format_glimpse",
+    "glimpse",
     "clean_columns",
     "replace_values",
     "sql",
@@ -9106,14 +9271,10 @@ from .agg_df import agg_df as _agg_df
 from .mutate import mutate as _mutate
 from .other_utilities import (
     clean_columns as _clean_columns,
-)
-from .other_utilities import (
     cols as _cols,
-)
-from .other_utilities import (
+    format_glimpse as _format_glimpse,
+    glimpse as _glimpse,
     handle_missing as _handle_missing,
-)
-from .other_utilities import (
     replace_values as _replace_values,
 )
 from .qry import qry as _qry
@@ -9134,6 +9295,7 @@ class PtAccessor:
     - replace_values: Cell value replacement (exact or substring).
     - handle_missing: Missing value imputation with type-safe defaults.
     - cols: Column names sorted alphabetically or preserved in order.
+    - glimpse: Transposed summary of columns, dtypes, and inline sample values.
     - plot: Method-chainable visualization engine with faceting and mosaics.
     """
 
@@ -9301,6 +9463,13 @@ class PtAccessor:
     ) -> pd.DataFrame:
         """Replace cell values via `{old: new}` mapping, optionally scoped to columns `c`."""
         return _replace_values(self._obj, v, c=c, exact=exact)
+
+    def glimpse(self, width: int | None = None) -> pd.DataFrame:
+        """Print a transposed overview of DataFrame columns, dtypes, and sample values.
+
+        Returns the original DataFrame for method chaining.
+        """
+        return _glimpse(self._obj, width=width)
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Create a pytae Plotter pre-loaded with this DataFrame.
@@ -9905,6 +10074,7 @@ _CLI_FLAGS = {
     "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
+    "-drop_na", "--drop_na", "-glimpse", "--glimpse",
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
     "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
@@ -9951,6 +10121,27 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
     return out
 
 
+def _is_stdin_piped() -> bool:
+    """Check if standard input is attached to a real pipe or redirected stream."""
+    stdin = sys.stdin
+    # If pytest is capturing stdin without input provided, DontReadFromInput is used
+    if getattr(stdin, "__class__", None) and stdin.__class__.__module__.startswith("_pytest"):
+        return False
+    try:
+        if stdin.isatty():
+            return False
+        fileno = getattr(stdin, "fileno", None)
+        if fileno is not None:
+            try:
+                import os
+                return not os.isatty(fileno())
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+
+
 class PytaeParser(argparse.ArgumentParser):
     """Custom parser that normalizes optional-value flags such as -progress and negative -select specs."""
 
@@ -9973,9 +10164,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("path", nargs="*", default=None,
                          help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
+                              "'clip' to read from system clipboard, "
                               "a .yaml/.yml connection config (Databricks table or remote SSH file), "
                               "or glob patterns/multiple files for batch operations; "
-                              "omit when using -file with -merge/-concat/-sql")
+                              "omit when piping from stdin or using -file with -merge/-concat/-sql")
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print the first N rows (default 5)")
@@ -9995,6 +10187,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="print pandas describe() summary (count/mean/std/min/quartiles/max)")
     parser.add_argument("-info", "--info", dest="info", action=_OrderedFlag,
                          help="print pandas info() (columns, non-null counts, dtypes, memory)")
+    parser.add_argument("-glimpse", "--glimpse", dest="glimpse", action=_OrderedFlag,
+                         help="print a transposed overview of DataFrame columns, dtypes, and sample values")
     parser.add_argument("-meta", "--meta", dest="meta", action=_OrderedFlag,
                          help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data")
     parser.add_argument("-diff", "--diff", dest="diff", default=None, metavar="PATH", action=_OrderedStore,
@@ -10038,6 +10232,10 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
+    parser.add_argument("-drop_na", "--drop_na", dest="drop_na", nargs="?", const="", default=None,
+                         metavar="COLS", action=_OrderedValue,
+                         help="drop rows containing NaN (bare -drop_na drops rows with any NaN; "
+                              "-drop_na \"col1,col2\" drops rows where specified columns are NaN)")
     parser.add_argument("-clean_columns", "--clean_columns", dest="clean_columns", action=_OrderedStore,
                          metavar="KEY=VALUE,...",
                          help="clean column header names, in order strip -> strip_special -> squeeze -> "
@@ -10225,12 +10423,16 @@ def main(argv: list[str] | None = None) -> int:
         if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
             parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
     elif not raw_paths:
-        parser.error("the following arguments are required: path")
+        if _is_stdin_piped():
+            raw_paths = ["-"]
+            args.path = ["-"]
+        else:
+            parser.error("the following arguments are required: path")
 
-    show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info,
+    show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
                          args.value_counts, args.unique, args.freq is not None, args.hist is not None,
                          args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.agg is not None, args.handle_missing is not None,
+                         args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
                          args.select, args.qry, args.query, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
@@ -10239,7 +10441,7 @@ def main(argv: list[str] | None = None) -> int:
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.unique, args.freq is not None, args.hist is not None,
                      args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg is not None, args.handle_missing is not None,
+                     args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
                      args.long is not None, args.wide is not None, args.pivot is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
@@ -11197,6 +11399,21 @@ class _Pipeline:
             return f"-query: {exc}"
         return None
 
+    def apply_drop_na(self, spec: str | None) -> str | None:
+        """Drop rows containing NaN values. Returns an error message or None."""
+        df = self.dataframe()
+        if not spec:
+            self._df = df.dropna()
+            return None
+        from pytae.cli_parsing import parse_columns, unknown_columns_message
+        cols = parse_columns(spec)
+        available = list(df.columns)
+        unknown = [c for c in cols if c not in available]
+        if unknown:
+            return unknown_columns_message("-drop_na", unknown, available)
+        self._df = df.dropna(subset=cols)
+        return None
+
     def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
         """Apply one -replace_values spec to the current view. Returns an error message or None."""
         df = self.dataframe()
@@ -11717,7 +11934,7 @@ def _compute_diff(
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
 # chaining, nothing can follow them except -o clip.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff"})
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff", "glimpse"})
 
 
 def _list_order_names(names, order):
@@ -11824,7 +12041,18 @@ def _process_path(
     concat_specs = concat_specs or []
     if frames is None:
         chunk_size = getattr(args, "chunk_size", None) or 200_000
-        if str(path) == "-":
+        if str(path).lower() == "clip":
+            try:
+                clip_sep = args.dlim if args.dlim else r"\s+"
+                clip_df = pd.read_clipboard(sep=clip_sep)
+            except Exception as exc:
+                return _fail(parser, batch, f"clipboard error: {exc}")
+            from pytae.readers import DataFrameReader
+            reader = DataFrameReader(clip_df, path="<clipboard>")
+            pipeline = _Pipeline(
+                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+            )
+        elif str(path) == "-":
             data_bytes = sys.stdin.buffer.read()
             try:
                 reader = StdinReader(
@@ -12043,6 +12271,13 @@ def _process_path(
                 _output_text(info_str, args)
             if is_clip:
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
+        elif op == "glimpse":
+            from pytae.other_utilities import format_glimpse
+            glimpse_str = format_glimpse(pipeline.dataframe())
+            if should_print(idx):
+                _output_text(glimpse_str, args)
+            if is_clip:
+                clip_action = lambda s=glimpse_str: _copy_to_clipboard(s)
         elif op == "meta":
             meta_str = _extract_metadata(path if path is not None else Path("<merged>"), sep=args.dlim, encoding=args.encoding)
             if should_print(idx):
@@ -12168,6 +12403,12 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "drop_na":
+            drop_na_val = _next_op_val("drop_na", getattr(args, "drop_na", None))
+            err = pipeline.apply_drop_na(drop_na_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "clean_columns":
             cc_val = _next_op_val("clean_columns", args.clean_columns)
             opts = parse_clean_columns_arg(cc_val)
@@ -13227,6 +13468,63 @@ def replace_values(
         df[target_cols] = df[target_cols].replace(to_replace, regex=not exact)
     else:
         df = df.replace(to_replace, regex=not exact)
+    return df
+
+
+def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
+    """Format DataFrame as a transposed glimpse summary (like dplyr::glimpse / Polars).
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame to glimpse.
+    width : int, optional
+        Maximum line width (defaults to terminal width or 80).
+    """
+    if width is None:
+        import shutil
+        width = shutil.get_terminal_size(fallback=(80, 24)).columns
+
+    lines = [
+        f"Rows: {len(df):,}",
+        f"Columns: {len(df.columns):,}",
+    ]
+    if len(df.columns) == 0:
+        return "\n".join(lines)
+
+    col_names = [str(c) for c in df.columns]
+    max_col_len = min(max((len(c) for c in col_names), default=0), 30)
+
+    dtypes = [f"<{df[col].dtype}>" for col in df.columns]
+    max_dtype_len = min(max((len(d) for d in dtypes), default=0), 20)
+
+    for col, dtype_str in zip(df.columns, dtypes):
+        col_str = str(col)
+        prefix = f"$ {col_str.ljust(max_col_len)} {dtype_str.ljust(max_dtype_len)} "
+        sample_vals: list[str] = []
+        for val in df[col].head(25):
+            if pd.isna(val):
+                sample_vals.append("NA")
+            elif isinstance(val, str):
+                sample_vals.append(repr(val))
+            else:
+                sample_vals.append(str(val))
+
+        remaining_width = max(width - len(prefix), 10)
+        vals_str = ", ".join(sample_vals)
+        if len(vals_str) > remaining_width:
+            vals_str = vals_str[:remaining_width - 3].rstrip(", ") + "..."
+        lines.append(prefix + vals_str)
+
+    return "\n".join(lines)
+
+
+def glimpse(df: pd.DataFrame, width: int | None = None) -> pd.DataFrame:
+    """Print a transposed overview of DataFrame columns, dtypes, and sample values.
+
+    Returns the original DataFrame for method chaining.
+    """
+    print(format_glimpse(df, width=width))
     return df
 
 ################################################################################
@@ -15309,6 +15607,43 @@ class StdinReader:
                 sep = ","
         compression = "gzip" if self.data.startswith(b"\x1f\x8b") else None
         return pd.read_csv(io.BytesIO(self.data), sep=sep, encoding=self.encoding, compression=compression)
+
+    def shape(self) -> tuple[int, int]:
+        return self._df.shape
+
+    def columns(self) -> list[str]:
+        return list(self._df.columns)
+
+    def dtypes(self) -> pd.Series:
+        return self._df.dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        return self._df.head(n)
+
+    def tail(self, n: int) -> pd.DataFrame:
+        return self._df.tail(n)
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        out = self._df
+        if columns is not None:
+            out = out[columns]
+        if nrows is not None:
+            out = out.iloc[:nrows]
+        return out
+
+
+class DataFrameReader:
+    """Reader wrapping an in-memory DataFrame (e.g. from clipboard or memory)."""
+
+    def __init__(self, df: pd.DataFrame, path: Path | str = "<dataframe>") -> None:
+        self._df = df
+        self.path = Path(str(path))
 
     def shape(self) -> tuple[int, int]:
         return self._df.shape
@@ -19040,6 +19375,98 @@ def test_mutate_by_unknown_column_cli(tmp_path, capsys):
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "-by: unknown column" in err
+
+################################################################################
+# FILE: tests/test_cli_new_features.py
+################################################################################
+import io
+import os
+import sys
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from pytae.cli import main
+
+PENGUINS_PATH = str(Path(__file__).resolve().parent.parent / "src" / "pytae" / "datasets" / "penguins.parquet")
+
+
+def test_cli_glimpse(capsys):
+    ret = main([PENGUINS_PATH, "-glimpse"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "Rows: 344" in captured.out
+    assert "Columns: 7" in captured.out
+    assert "$ species" in captured.out
+    assert "$ body_mass_g" in captured.out
+
+
+def test_cli_drop_na_all_columns(capsys):
+    # Dropping all NaNs reduces rows from 344 to 333
+    ret = main([PENGUINS_PATH, "-drop_na", "-shape"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "(333, 7)" in captured.out
+
+
+def test_cli_drop_na_specific_columns(capsys):
+    # Dropping rows with missing body_mass_g reduces rows from 344 to 342
+    ret = main([PENGUINS_PATH, "-drop_na", "body_mass_g", "-shape"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "(342, 7)" in captured.out
+
+
+def test_cli_drop_na_chained_with_agg(capsys):
+    ret = main([PENGUINS_PATH, "-drop_na", "body_mass_g", "-by", "species", "-agg", "count=n"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "Adelie    151" in captured.out
+    assert "Gentoo    123" in captured.out
+
+
+def test_cli_drop_na_unknown_column(capsys):
+    with pytest.raises(SystemExit):
+        main([PENGUINS_PATH, "-drop_na", "nonexistent_col"])
+    captured = capsys.readouterr()
+    assert "Column 'nonexistent_col' does not exist" in captured.err or "unknown column" in captured.err.lower()
+
+
+def test_cli_auto_pipe_detection(monkeypatch, capsys):
+    # Simulate piped stdin
+    csv_data = b"col1,col2\n10,20\n30,40\n"
+    fake_stdin = io.BytesIO(csv_data)
+    fake_stdin.buffer = fake_stdin
+
+    monkeypatch.setattr(sys, "stdin", fake_stdin)
+    monkeypatch.setattr(fake_stdin, "isatty", lambda: False)
+
+    # Call main without specifying any path
+    ret = main(["-head", "2"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "col1" in captured.out
+    assert "10" in captured.out
+
+
+def test_cli_clipboard_ingestion(monkeypatch, capsys):
+    df = pd.DataFrame({"fruit": ["apple", "banana"], "price": [1.5, 2.0]})
+    monkeypatch.setattr(pd, "read_clipboard", lambda **kwargs: df.copy())
+
+    # Test pytae clip
+    ret = main(["clip", "-head", "2"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "apple" in captured.out
+    assert "banana" in captured.out
+
+    # pytae from_clip and pytae clipboard are not recognized as clipboard
+    with pytest.raises(SystemExit):
+        main(["from_clip", "-shape"])
+
+    with pytest.raises(SystemExit):
+        main(["clipboard", "-shape"])
 
 ################################################################################
 # FILE: tests/test_cli_parse.py
@@ -23234,3 +23661,31 @@ def test_handle_missing_all_null_object_column():
     df = pd.DataFrame({"a": [None, None]}, dtype=object)
     result = pt.handle_missing(df)
     assert list(result["a"]) == [".", "."]
+
+
+def test_glimpse_formatting_and_chaining(capsys):
+    df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo", None],
+        "mass": [3700.0, 5200.0, 4100.0],
+    })
+    out_str = pt.format_glimpse(df, width=80)
+    assert "Rows: 3" in out_str
+    assert "Columns: 2" in out_str
+    assert "$ species" in out_str
+    assert "$ mass" in out_str
+    assert "'Adelie'" in out_str
+    assert "NA" in out_str
+
+    # Method chaining: df.pt.glimpse() returns df
+    chained = df.pt.glimpse(width=80)
+    assert chained is df
+    captured = capsys.readouterr()
+    assert "Rows: 3" in captured.out
+    assert "Columns: 2" in captured.out
+
+
+def test_glimpse_empty_dataframe():
+    df = pd.DataFrame()
+    out_str = pt.format_glimpse(df)
+    assert "Rows: 0" in out_str
+    assert "Columns: 0" in out_str

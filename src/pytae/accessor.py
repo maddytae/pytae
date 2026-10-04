@@ -23,6 +23,9 @@ from .other_utilities import (
     cols as _cols,
 )
 from .other_utilities import (
+    glimpse as _glimpse,
+)
+from .other_utilities import (
     handle_missing as _handle_missing,
 )
 from .other_utilities import (
@@ -46,6 +49,7 @@ class PtAccessor:
     - replace_values: Cell value replacement (exact or substring).
     - handle_missing: Missing value imputation with type-safe defaults.
     - cols: Column names sorted alphabetically or preserved in order.
+    - glimpse: Transposed summary of columns, dtypes, and inline sample values.
     - plot: Method-chainable visualization engine with faceting and mosaics.
     """
 
@@ -213,6 +217,13 @@ class PtAccessor:
     ) -> pd.DataFrame:
         """Replace cell values via `{old: new}` mapping, optionally scoped to columns `c`."""
         return _replace_values(self._obj, v, c=c, exact=exact)
+
+    def glimpse(self, width: int | None = None) -> pd.DataFrame:
+        """Print a transposed overview of DataFrame columns, dtypes, and sample values.
+
+        Returns the original DataFrame for method chaining.
+        """
+        return _glimpse(self._obj, width=width)
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Create a pytae Plotter pre-loaded with this DataFrame.

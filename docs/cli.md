@@ -66,17 +66,17 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 
 | Feature Area | Documentation Guide | Key Flags & Capabilities |
 |---|---|---|
-| **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-meta`, `-pager` |
+| **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-glimpse`, `-meta`, `-pager` |
 | **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
 | **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-query`, `-dropna`, intervals `[min, max]`, set membership, comparisons |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
-| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-rename` |
+| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-drop_na`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
 | **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-unique`, `-sort_by` |
 | **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
-| **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`), `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
+| **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`, auto-pipe), `clip`, `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
 | **Multi-File Pipelines** | [Multi-File Pipelines Guide](cli/multi_file.md) | `-file`, `-merge` (joins), `-concat` (stacking), cross-file `-sql` |
 
 ---
@@ -326,6 +326,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-nulls [asc\|desc]` | Inspect | Report null counts per column | [cli/inspect.md](cli/inspect.md) |
 | `-describe` | Inspect | Summary statistics (returns DataFrame) | [cli/inspect.md](cli/inspect.md) |
 | `-info` | Inspect | Pandas `info()` memory and non-null summary | [cli/inspect.md](cli/inspect.md) |
+| `-glimpse` | Inspect | Transposed overview of columns, dtypes, and sample values | [cli/inspect.md](cli/inspect.md) |
 | `-meta` | Inspect | Zero-scan Parquet metadata (compression, row groups, schema) | [cli/inspect.md](cli/inspect.md) |
 | `-pager` | Inspect | Pipe terminal output through `$PAGER` or `less` | [cli/inspect.md](cli/inspect.md) |
 | `-pretty` | Inspect | Format output as bordered markdown table | [cli/inspect.md](cli/inspect.md) |
@@ -334,6 +335,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-select SPEC` | Select & Filter | Filter, reorder, or exclude columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select.md](cli/select.md) |
 | `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
 | `-query EXPR` | Select & Filter | Filter rows using pandas `df.query()` expression | [cli/filter.md](cli/filter.md) |
+| `-drop_na [COLS]` | Select & Filter | Drop rows containing NaN (bare for any column, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-dropna BOOL` | Select & Filter | Control whether NA grouping keys are dropped in aggregations, mutations, value counts, and pivots (default: false) | [cli/filter.md](cli/filter.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
 | `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |

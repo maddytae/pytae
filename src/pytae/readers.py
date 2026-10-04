@@ -558,6 +558,43 @@ class StdinReader:
         return out
 
 
+class DataFrameReader:
+    """Reader wrapping an in-memory DataFrame (e.g. from clipboard or memory)."""
+
+    def __init__(self, df: pd.DataFrame, path: Path | str = "<dataframe>") -> None:
+        self._df = df
+        self.path = Path(str(path))
+
+    def shape(self) -> tuple[int, int]:
+        return self._df.shape
+
+    def columns(self) -> list[str]:
+        return list(self._df.columns)
+
+    def dtypes(self) -> pd.Series:
+        return self._df.dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        return self._df.head(n)
+
+    def tail(self, n: int) -> pd.DataFrame:
+        return self._df.tail(n)
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        out = self._df
+        if columns is not None:
+            out = out[columns]
+        if nrows is not None:
+            out = out.iloc[:nrows]
+        return out
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,

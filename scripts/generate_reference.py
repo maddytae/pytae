@@ -25,6 +25,7 @@ TABLE OF CONTENTS
     4.7.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
     4.8.  Other Utilities:
           - pt.cols() / df.pt.cols()
+          - pt.glimpse() / df.pt.glimpse()
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
           - pt.replace_values() / df.pt.replace_values()
@@ -124,6 +125,7 @@ Top-Level Functions exported by `pytae`:
   - pt.sql(df, query, **frames)
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
   - pt.cols(df, ascending=True)
+  - pt.glimpse(df, width=None)
   - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False)
   - pt.replace_values(df, v: dict, c=None, exact=True)
   - pt.safe_reset_index(df)
@@ -147,6 +149,7 @@ DataFrame Accessor (`df.pt`):
     df.pt.sql(...)
     df.pt.handle_missing(...)
     df.pt.cols(...)
+    df.pt.glimpse(...)
     df.pt.clean_columns(...)
     df.pt.replace_values(...)
     df.pt.plot(...)
@@ -585,6 +588,11 @@ Rules & Features:
   ascending=False -> Alphabetical Z-A
   ascending=None  -> Original DataFrame file order
 
+- pt.glimpse(df, width=None) / df.pt.glimpse(width=None):
+  Prints a transposed overview of DataFrame columns, dtypes, and inline sample values
+  (inspired by dplyr::glimpse and Polars). Returns the DataFrame for non-destructive method chaining:
+  `df.pt.qry("sales > 100").pt.glimpse().pt.select("region", "sales")`
+
 - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True):
   Sanitizes missing values with type-safe defaults:
   - Categorical columns: preserves categorical dtype (`preserve_categories=True`) and fills missing categories.
@@ -683,8 +691,10 @@ the command line:
   pytae input.parquet -qry "body_mass_g > 3000" -mutate "mass_kg = body_mass_g / 1000" -head 5
 
 Pipeline Rules:
-1. Positional Path: The first unflagged argument is the input file path.
-   (Except in `-file` multi-file mode, where `-file` replaces the positional path).
+1. Input Source: The first unflagged argument is the input file path, or 'clip'
+   to ingest tabular data directly from the system clipboard. When data is piped via STDIN
+   (e.g. `cat data.csv | pytae -head 5`), pytae auto-detects the stream without requiring an explicit
+   path or `-`. (In `-file` multi-file mode, `-file` replaces the positional path).
 2. Sequential Mutation: Each operation transforms the intermediate dataset in memory.
    For example, `-qry` before `-select -col` allows filtering on a column that is subsequently excluded.
 3. Final Operation Determines Output: Only the last operation in the chain prints or exports, 
@@ -727,6 +737,7 @@ Inspection & Summary Flags:
   -nulls [ORDER]        Print null value counts per column (ORDER: asc, desc, file)
   -describe             Descriptive statistics for numeric columns
   -info                 DataFrame summary (dtypes, non-null counts, memory)
+  -glimpse              Transposed column overview with dtypes and sample values (like dplyr/Polars)
   -meta                 Display zero-scan Parquet metadata (row groups, schema, compression)
   -diff PATH            Compare schema, shape, null counts, and cell values against another file
   -value_counts         Value counts for categorical/string columns (honors -dropna)
@@ -744,6 +755,7 @@ In-Terminal ASCII Visualizations:
 Row Filtering Flags:
   -qry CONDITIONS       pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -query EXPR           pandas query() expression passed to numexpr
+  -drop_na [COLS]       Drop rows containing NaN (bare for any column, or comma-separated columns)
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)

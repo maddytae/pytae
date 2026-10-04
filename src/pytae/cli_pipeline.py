@@ -151,6 +151,21 @@ class _Pipeline:
             return f"-query: {exc}"
         return None
 
+    def apply_drop_na(self, spec: str | None) -> str | None:
+        """Drop rows containing NaN values. Returns an error message or None."""
+        df = self.dataframe()
+        if not spec:
+            self._df = df.dropna()
+            return None
+        from pytae.cli_parsing import parse_columns, unknown_columns_message
+        cols = parse_columns(spec)
+        available = list(df.columns)
+        unknown = [c for c in cols if c not in available]
+        if unknown:
+            return unknown_columns_message("-drop_na", unknown, available)
+        self._df = df.dropna(subset=cols)
+        return None
+
     def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
         """Apply one -replace_values spec to the current view. Returns an error message or None."""
         df = self.dataframe()

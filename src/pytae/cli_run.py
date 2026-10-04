@@ -314,7 +314,7 @@ def _compute_diff(
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
 # chaining, nothing can follow them except -o clip.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff"})
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff", "glimpse"})
 
 
 def _list_order_names(names, order):
@@ -421,7 +421,18 @@ def _process_path(
     concat_specs = concat_specs or []
     if frames is None:
         chunk_size = getattr(args, "chunk_size", None) or 200_000
-        if str(path) == "-":
+        if str(path).lower() == "clip":
+            try:
+                clip_sep = args.dlim if args.dlim else r"\s+"
+                clip_df = pd.read_clipboard(sep=clip_sep)
+            except Exception as exc:
+                return _fail(parser, batch, f"clipboard error: {exc}")
+            from pytae.readers import DataFrameReader
+            reader = DataFrameReader(clip_df, path="<clipboard>")
+            pipeline = _Pipeline(
+                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+            )
+        elif str(path) == "-":
             data_bytes = sys.stdin.buffer.read()
             try:
                 reader = StdinReader(
@@ -640,6 +651,13 @@ def _process_path(
                 _output_text(info_str, args)
             if is_clip:
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
+        elif op == "glimpse":
+            from pytae.other_utilities import format_glimpse
+            glimpse_str = format_glimpse(pipeline.dataframe())
+            if should_print(idx):
+                _output_text(glimpse_str, args)
+            if is_clip:
+                clip_action = lambda s=glimpse_str: _copy_to_clipboard(s)
         elif op == "meta":
             meta_str = _extract_metadata(path if path is not None else Path("<merged>"), sep=args.dlim, encoding=args.encoding)
             if should_print(idx):
@@ -765,6 +783,12 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "drop_na":
+            drop_na_val = _next_op_val("drop_na", getattr(args, "drop_na", None))
+            err = pipeline.apply_drop_na(drop_na_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "clean_columns":
             cc_val = _next_op_val("clean_columns", args.clean_columns)
             opts = parse_clean_columns_arg(cc_val)

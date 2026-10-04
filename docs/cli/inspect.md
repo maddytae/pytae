@@ -41,6 +41,7 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 | `-nulls [ORDER]` | Print count of missing / NaN values per column | **Yes** (terminal) |
 | `-meta` | Zero-scan Parquet metadata (row groups, compression, schema) | **Yes** (terminal) |
 | `-info` | Pandas `info()` memory and non-null summary | **Yes** (terminal) |
+| `-glimpse` | Transposed column overview with dtypes and inline sample values | **Yes** (terminal) |
 | `-describe` | Pandas `describe()` statistical summary | No (returns DataFrame) |
 | `-pager` | Pipe long outputs through system pager (`$PAGER` or `less`) | Display flag |
 | `-pretty` | Render plain tables with bordered markdown formatting | Display flag |
@@ -333,6 +334,30 @@ Prints columns, non-null counts, dtypes, and memory usage:
 ```bash
 pytae penguins.parquet -info
 ```
+
+### Transposed Summary (`-glimpse`)
+
+Inspired by `dplyr::glimpse()` and Polars, `-glimpse` provides an immediate, transposed view of all columns, displaying row count, column count, dtypes, and an inline preview of first values:
+
+```bash
+pytae penguins.parquet -glimpse
+```
+
+**Output:**
+```text
+Rows: 344
+Columns: 7
+$ species           <str>     'Adelie', 'Adelie', 'Adelie', 'Adelie', 'Adelie...
+$ island            <str>     'Torgersen', 'Torgersen', 'Torgersen', 'Torgers...
+$ bill_length_mm    <float64> 39.1, 39.5, 40.3, NA, 36.7, 39.3, 38.9, 39.2, 3...
+$ bill_depth_mm     <float64> 18.7, 17.4, 18.0, NA, 19.3, 20.6, 17.8, 19.6, 1...
+$ flipper_length_mm <float64> 181.0, 186.0, 195.0, NA, 193.0, 190.0, 181.0, 1...
+$ body_mass_g       <float64> 3750.0, 3800.0, 3250.0, NA, 3450.0, 3650.0, 362...
+$ sex               <str>     'Male', 'Female', 'Female', NA, 'Female', 'Male...
+```
+
+> [!TIP]
+> Unlike `-head`, which wraps across screen lines when dealing with wide tables (20–100+ columns), `-glimpse` guarantees that every column and its data type fit neatly on one line. It is also available in Python via `df.pt.glimpse()`.
 
 ---
 

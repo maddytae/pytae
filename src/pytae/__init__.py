@@ -13,6 +13,8 @@ from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
+    format_glimpse,
+    glimpse,
     handle_missing,
     replace_values,
 )
@@ -104,6 +106,8 @@ __all__ = [
     "pivot",
     "handle_missing",
     "cols",
+    "format_glimpse",
+    "glimpse",
     "clean_columns",
     "replace_values",
     "sql",
