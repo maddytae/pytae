@@ -341,8 +341,12 @@ class _Lit:
 def lit(value: Any) -> _Lit:
     """Mark a value as an explicit literal constant in mutate().
 
-    Prevents literal strings that match column names from being evaluated as column references:
-        df.pt.mutate(source=lit("original"))  # assigns string "original", does not copy column "original"
+    In mutate(), string arguments are evaluated as formulas/column expressions.
+    Passing pt.lit(val) ensures the value is assigned directly as a literal constant
+    rather than evaluated as a column name (avoiding 'name is not defined' errors
+    or accidental column aliasing):
+        df.pt.mutate(status=pt.lit("active"))
+        df.pt.mutate(source=pt.lit("original"))
     """
     return _Lit(value)
 
