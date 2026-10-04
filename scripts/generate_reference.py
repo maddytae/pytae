@@ -52,7 +52,7 @@ TABLE OF CONTENTS
     6.10. How do I inspect metadata without reading data into RAM?
     6.11. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
-    Recipe 1: Master Mutate Recipe (All 10 Features in One Pipeline)
+    Recipe 1: Master Mutate Recipe (All 11 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
     Recipe 3: DuckDB SQL Query with Joining Frames
     Recipe 4: Multi-File Merge, Concat, and Export
@@ -1002,7 +1002,7 @@ To assign an explicit literal constant:
 7. END-TO-END RECIPES & EXAMPLES
 --------------------------------------------------------------------------------
 
-Recipe 1: Master Mutate Recipe (All 10 Capabilities in One Pipeline)
+Recipe 1: Master Mutate Recipe (All 11 Capabilities in One Pipeline)
 --------------------------------------------------------------------------------
 ```python
 import numpy as np
@@ -1059,6 +1059,9 @@ master_df = (
         
         # 10b. Row-level function via lambda df: df.apply(..., axis=1)
         category=lambda df: df.apply(classify_penguin, axis=1),
+        
+        # 11. Literal constant via pt.lit() (prevents accidental column copying or undefined errors)
+        analysis=pt.lit("species"),
         
         by="species",
     )
