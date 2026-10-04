@@ -325,10 +325,10 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
        ```python
        df.pt.mutate(source=pt.lit("tag"), status=pt.lit("active"))
        ```
-       (Note: In the CLI or inside formula expressions, `pt.lit()` is unnecessary because standard
-       inner single quotes already denote string literals: `-mutate "source = 'original'"`).
-       `pt.lit()` marks the value as an explicit literal constant and is unwrapped directly
-       inside `mutate()` without evaluating against DataFrame columns.
+       (Note: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard
+       inner single quotes already define string literals: `-mutate "source = 'original'"`).
+       `pt.lit()` marks the value as an explicit literal constant in Python calls and is unwrapped
+       directly inside `mutate()` without evaluating against DataFrame columns.
 
 
 4.3. pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
@@ -976,7 +976,7 @@ To assign an explicit literal constant:
 1. In Python code: `df.pt.mutate(source=pt.lit("active"))`
    - Clean, linter/IDE-friendly, and avoids awkward nested quotes like `source="'active'"`.
    - Follows standard DataFrame conventions (like Polars `pl.lit` or PySpark `lit`).
-2. In CLI or string expressions: Standard single quotes denote string literals:
+2. In CLI: `pt.lit()` is **never needed in the CLI**. Standard inner single quotes denote string literals:
    ```bash
    pytae data.parquet -mutate "source = 'original'"
    ```
@@ -3389,7 +3389,9 @@ pytae penguins.parquet -mutate @features.txt -head 5
 
 In shell environments:
 - Enclose the entire argument in double quotes: `-mutate "..."`.
-- Inside the expression, use single quotes `'...'` only for string literals.
+- Inside the expression, use single quotes `'...'` for string literals:
+  - Example: `-mutate "status = 'active'"`
+  - **No `pt.lit()` needed**: `pt.lit()` is purely a Python keyword-argument helper and is **never needed in the CLI**. Standard inner single quotes `'...'` already define string literals.
 - Do NOT quote column names:
   - Correct: `mass_kg = body_mass_g / 1000`
   - Incorrect: `mass_kg = 'body_mass_g' / 1000`
@@ -5647,6 +5649,8 @@ In `mutate()`, all string arguments are evaluated as **formulas and column expre
 To assign a literal constant value without awkward nested quotes (`status="'active'"`), wrap it in `pt.lit()` (analogous to Polars `pl.lit` or PySpark `lit`):
 - In Python: `.pt.mutate(status=pt.lit("active"), source=pt.lit("original"))`
 - In expressions: `.pt.mutate(status="'active'", source="'original'")`
+
+> **Note**: `pt.lit()` is purely a Python keyword-argument convenience and is **never needed in the CLI**. In terminal commands, standard inner single quotes are always used: `-mutate "status = 'active'"`.
 
 ```python
 import pandas as pd

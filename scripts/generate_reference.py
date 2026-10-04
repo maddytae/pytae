@@ -333,10 +333,10 @@ Comprehensive Feature Set (The 10 Mutate Capabilities):
        ```python
        df.pt.mutate(source=pt.lit("tag"), status=pt.lit("active"))
        ```
-       (Note: In the CLI or inside formula expressions, `pt.lit()` is unnecessary because standard
-       inner single quotes already denote string literals: `-mutate "source = 'original'"`).
-       `pt.lit()` marks the value as an explicit literal constant and is unwrapped directly
-       inside `mutate()` without evaluating against DataFrame columns.
+       (Note: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard
+       inner single quotes already define string literals: `-mutate "source = 'original'"`).
+       `pt.lit()` marks the value as an explicit literal constant in Python calls and is unwrapped
+       directly inside `mutate()` without evaluating against DataFrame columns.
 
 
 4.3. pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
@@ -984,7 +984,7 @@ To assign an explicit literal constant:
 1. In Python code: `df.pt.mutate(source=pt.lit("active"))`
    - Clean, linter/IDE-friendly, and avoids awkward nested quotes like `source="'active'"`.
    - Follows standard DataFrame conventions (like Polars `pl.lit` or PySpark `lit`).
-2. In CLI or string expressions: Standard single quotes denote string literals:
+2. In CLI: `pt.lit()` is **never needed in the CLI**. Standard inner single quotes denote string literals:
    ```bash
    pytae data.parquet -mutate "source = 'original'"
    ```

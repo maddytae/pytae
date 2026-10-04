@@ -287,7 +287,9 @@ pytae penguins.parquet -mutate @features.txt -head 5
 
 In shell environments:
 - Enclose the entire argument in double quotes: `-mutate "..."`.
-- Inside the expression, use single quotes `'...'` only for string literals.
+- Inside the expression, use single quotes `'...'` for string literals:
+  - Example: `-mutate "status = 'active'"`
+  - **No `pt.lit()` needed**: `pt.lit()` is purely a Python keyword-argument helper and is **never needed in the CLI**. Standard inner single quotes `'...'` already define string literals.
 - Do NOT quote column names:
   - Correct: `mass_kg = body_mass_g / 1000`
   - Incorrect: `mass_kg = 'body_mass_g' / 1000`
