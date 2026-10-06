@@ -18,6 +18,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
   - [Substring Replacement (`exact=false`)](#substring-replacement-exactfalse)
 - [Imputing Missing Values (`-handle_missing`)](#imputing-missing-values--handle_missing)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
+- [Deduplicating Rows (`-dedupe`)](#deduplicating-rows--dedupe)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 
 ---
@@ -30,6 +31,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
 | `-replace_values SPEC` | Cell contents | `old:new` | Swaps values inside cells |
 | `-handle_missing [FILL]` | Cell contents | String value | Imputes `NaN` (defaults to `.` for text, `0` for numeric) |
 | `-dropna [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for all columns, or comma-separated columns) |
+| `-dedupe [COLS]` | Rows | `,` | Drops duplicate rows (across all or specified subset columns) |
 | `-rename OLD:NEW,...` | Column headers | `old:new` | Explicitly renames column names |
 
 ---
@@ -144,6 +146,20 @@ pytae penguins.parquet -dropna "body_mass_g,sex"
 > [!NOTE]
 > - **Top-level `-dropna [COLS]`**: Operates as a row filter, dropping rows containing `NaN` in any column (or specified subset of columns), matching Pandas `df.dropna(subset=...)`.
 > - **Scoped `dropna=bool`**: For operations like `-pivot` and `-agg`, pass `dropna=true` or `dropna=false` inside the spec (e.g. `-pivot "r=species,c=island,dropna=true"` or `-agg "a=mean,dropna=true"`) to control whether `NaN` grouping keys are dropped.
+
+---
+
+## Deduplicating Rows (`-dedupe`)
+
+Drop duplicate rows across intermediate results. Can be run bare to check all columns, or scoped to specific subset column(s):
+
+```bash
+# Deduplicate across all columns
+pytae penguins.parquet -select "species,island" -dedupe
+
+# Deduplicate by specific column(s)
+pytae penguins.parquet -dedupe "species,island"
+```
 
 ---
 

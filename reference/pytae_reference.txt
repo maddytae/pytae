@@ -1286,9 +1286,10 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
-| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
+| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-dedupe`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/agg.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
-| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-dedupe` |
+| **Reshaping (Pure 1-to-1)** | [Reshaping Guide](cli/reshape.md) | `-long` (melt numeric columns), `-wide` (pure 1:1 unmelting) |
+| **2D Pivot Tables** | [2D Pivot Guide](cli/pivot.md) | `-pivot` (Excel-style multi-dimensional aggregation matrices) |
 | **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`, auto-pipe), `clip`, `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
@@ -2185,6 +2186,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
   - [Substring Replacement (`exact=false`)](#substring-replacement-exactfalse)
 - [Imputing Missing Values (`-handle_missing`)](#imputing-missing-values--handle_missing)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
+- [Deduplicating Rows (`-dedupe`)](#deduplicating-rows--dedupe)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 
 ---
@@ -2197,6 +2199,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
 | `-replace_values SPEC` | Cell contents | `old:new` | Swaps values inside cells |
 | `-handle_missing [FILL]` | Cell contents | String value | Imputes `NaN` (defaults to `.` for text, `0` for numeric) |
 | `-dropna [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for all columns, or comma-separated columns) |
+| `-dedupe [COLS]` | Rows | `,` | Drops duplicate rows (across all or specified subset columns) |
 | `-rename OLD:NEW,...` | Column headers | `old:new` | Explicitly renames column names |
 
 ---
@@ -2311,6 +2314,20 @@ pytae penguins.parquet -dropna "body_mass_g,sex"
 > [!NOTE]
 > - **Top-level `-dropna [COLS]`**: Operates as a row filter, dropping rows containing `NaN` in any column (or specified subset of columns), matching Pandas `df.dropna(subset=...)`.
 > - **Scoped `dropna=bool`**: For operations like `-pivot` and `-agg`, pass `dropna=true` or `dropna=false` inside the spec (e.g. `-pivot "r=species,c=island,dropna=true"` or `-agg "a=mean,dropna=true"`) to control whether `NaN` grouping keys are dropped.
+
+---
+
+## Deduplicating Rows (`-dedupe`)
+
+Drop duplicate rows across intermediate results. Can be run bare to check all columns, or scoped to specific subset column(s):
+
+```bash
+# Deduplicate across all columns
+pytae penguins.parquet -select "species,island" -dedupe
+
+# Deduplicate by specific column(s)
+pytae penguins.parquet -dedupe "species,island"
+```
 
 ---
 
@@ -2996,6 +3013,7 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 | `-info` | Pandas `info()` memory and non-null summary | **Yes** (terminal) |
 | `-glimpse` | Transposed column overview with dtypes and inline sample values | **Yes** (terminal) |
 | `-describe` | Pandas `describe()` statistical summary | No (returns DataFrame) |
+| `-value_counts` | Group counts across current working columns (pair with `-select`) | No (returns DataFrame) |
 | `-pager` | Pipe long outputs through system pager (`$PAGER` or `less`) | Display flag |
 | `-pretty` | Render plain tables with bordered markdown formatting | Display flag |
 | `-round N` | Round numeric columns to N decimal places | Display flag |
@@ -4506,11 +4524,11 @@ In terminal shells (bash, zsh):
 ################################################################################
 # FILE: docs/cli/reshape.md
 ################################################################################
-# CLI Feature Guide: Reshaping & Data Organization
+# CLI Feature Guide: Reshaping (Pure 1-to-1: `-long` & `-wide`)
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`), deduplication (`-dedupe`), and row sorting (`-arrange`).
+Pure structural 1-to-1 reshaping between long and wide formats without aggregation.
 
 ---
 
@@ -4523,9 +4541,6 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
   - [2. Explicit Row Index (`r=`)](#2-explicit-row-index-r)
   - [3. Round-Trip Reshaping (`-long` → `-wide`)](#3-round-trip-reshaping--long---wide)
 - [When to Use `-pivot` Instead of `-wide`](#when-to-use--pivot-instead-of--wide)
-- [Frequency Counts (`-value_counts`)](#frequency-counts--value_counts)
-- [Deduplicating Rows (`-dedupe`)](#deduplicating-rows--dedupe)
-- [Sorting Rows (`-arrange`)](#sorting-rows--arrange)
 
 ---
 
@@ -4537,12 +4552,10 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
 |---|---|---|
 | `-long [SPEC]` | Melt numeric columns into rows | `c=` (metric header), `v=` (value header), `r=` (fixed rows) |
 | `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `c=` (header source), `v=` (values), `r=` (row index) |
-| `-value_counts` | Group counts across current working columns | Pair with `-select` |
-| `-dedupe [COLS]` | Drop duplicate rows across all or specified columns | Comma-separated columns |
-| `-arrange SPEC` | Sort rows by column list | `col1,col2 desc`, `-col`, or `[col name] asc` |
 
 > [!IMPORTANT]
 > **`-wide` is strictly for 1-to-1 reshaping without aggregation.** If your data has multiple rows per key combination and requires mathematical summarization (`mean`, `sum`, `count`/`n`), use **[`-pivot`](pivot.md)**.
+> For row deduplication, see **[`-dedupe`](clean_replace.md#deduplicating-rows--dedupe)**; for sorting rows, see **[`-arrange`](arrange.md)**.
 
 ---
 
@@ -4630,67 +4643,6 @@ pytae: error: wide() encountered duplicate entries for index [...] and column '.
 ```
 
 👉 See the complete **[2D Pivot Tables Guide](pivot.md)** for all multi-dimensional aggregation patterns.
-
----
-
-## Frequency Counts (`-value_counts`)
-
-Counts unique combinations across current working columns (pair with `-select`):
-
-```bash
-pytae penguins.parquet -select "species,island" -value_counts
-```
-
-**Output:**
-```text
-  species    island  count
-   Gentoo    Biscoe    124
-Chinstrap     Dream     68
-   Adelie     Dream     56
-   Adelie Torgersen     52
-   Adelie    Biscoe     44
-```
-
----
-
-## Deduplicating Rows (`-dedupe`)
-
-Drops duplicate rows across the intermediate DataFrame. By default it checks all columns, or you can supply specific subset columns:
-
-```bash
-# Deduplicate across all columns
-pytae penguins.parquet -select "species,island" -dedupe
-
-# Deduplicate by specific column(s)
-pytae penguins.parquet -dedupe "species,island"
-```
-
----
-
-## Sorting Rows (`-arrange`)
-
-Sort rows by one or more columns with optional `asc` or `desc` order (defaults to `asc`). Supports leading `-` prefix for descending order, as well as bracket notation for spaced column names:
-
-```bash
-pytae penguins.parquet \
-  -select "species,body_mass_g" \
-  -arrange "body_mass_g desc" \
-  -head 3
-
-# Multiple columns with shorthand prefix:
-pytae penguins.parquet -arrange "species, -body_mass_g" -head 3
-
-# Bracket notation for spaces:
-pytae penguins.parquet -arrange "[bill length mm] desc" -head 3
-```
-
-**Output:**
-```text
-species  body_mass_g
- Gentoo       6300.0
- Gentoo       6050.0
- Gentoo       6000.0
-```
 
 ################################################################################
 # FILE: docs/cli/select.md

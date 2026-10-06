@@ -1,8 +1,8 @@
-# CLI Feature Guide: Reshaping & Data Organization
+# CLI Feature Guide: Reshaping (Pure 1-to-1: `-long` & `-wide`)
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`), deduplication (`-dedupe`), and row sorting (`-arrange`).
+Pure structural 1-to-1 reshaping between long and wide formats without aggregation.
 
 ---
 
@@ -15,9 +15,6 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
   - [2. Explicit Row Index (`r=`)](#2-explicit-row-index-r)
   - [3. Round-Trip Reshaping (`-long` → `-wide`)](#3-round-trip-reshaping--long---wide)
 - [When to Use `-pivot` Instead of `-wide`](#when-to-use--pivot-instead-of--wide)
-- [Frequency Counts (`-value_counts`)](#frequency-counts--value_counts)
-- [Deduplicating Rows (`-dedupe`)](#deduplicating-rows--dedupe)
-- [Sorting Rows (`-arrange`)](#sorting-rows--arrange)
 
 ---
 
@@ -29,12 +26,10 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
 |---|---|---|
 | `-long [SPEC]` | Melt numeric columns into rows | `c=` (metric header), `v=` (value header), `r=` (fixed rows) |
 | `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `c=` (header source), `v=` (values), `r=` (row index) |
-| `-value_counts` | Group counts across current working columns | Pair with `-select` |
-| `-dedupe [COLS]` | Drop duplicate rows across all or specified columns | Comma-separated columns |
-| `-arrange SPEC` | Sort rows by column list | `col1,col2 desc`, `-col`, or `[col name] asc` |
 
 > [!IMPORTANT]
 > **`-wide` is strictly for 1-to-1 reshaping without aggregation.** If your data has multiple rows per key combination and requires mathematical summarization (`mean`, `sum`, `count`/`n`), use **[`-pivot`](pivot.md)**.
+> For row deduplication, see **[`-dedupe`](clean_replace.md#deduplicating-rows--dedupe)**; for sorting rows, see **[`-arrange`](arrange.md)**.
 
 ---
 
@@ -122,64 +117,3 @@ pytae: error: wide() encountered duplicate entries for index [...] and column '.
 ```
 
 👉 See the complete **[2D Pivot Tables Guide](pivot.md)** for all multi-dimensional aggregation patterns.
-
----
-
-## Frequency Counts (`-value_counts`)
-
-Counts unique combinations across current working columns (pair with `-select`):
-
-```bash
-pytae penguins.parquet -select "species,island" -value_counts
-```
-
-**Output:**
-```text
-  species    island  count
-   Gentoo    Biscoe    124
-Chinstrap     Dream     68
-   Adelie     Dream     56
-   Adelie Torgersen     52
-   Adelie    Biscoe     44
-```
-
----
-
-## Deduplicating Rows (`-dedupe`)
-
-Drops duplicate rows across the intermediate DataFrame. By default it checks all columns, or you can supply specific subset columns:
-
-```bash
-# Deduplicate across all columns
-pytae penguins.parquet -select "species,island" -dedupe
-
-# Deduplicate by specific column(s)
-pytae penguins.parquet -dedupe "species,island"
-```
-
----
-
-## Sorting Rows (`-arrange`)
-
-Sort rows by one or more columns with optional `asc` or `desc` order (defaults to `asc`). Supports leading `-` prefix for descending order, as well as bracket notation for spaced column names:
-
-```bash
-pytae penguins.parquet \
-  -select "species,body_mass_g" \
-  -arrange "body_mass_g desc" \
-  -head 3
-
-# Multiple columns with shorthand prefix:
-pytae penguins.parquet -arrange "species, -body_mass_g" -head 3
-
-# Bracket notation for spaces:
-pytae penguins.parquet -arrange "[bill length mm] desc" -head 3
-```
-
-**Output:**
-```text
-species  body_mass_g
- Gentoo       6300.0
- Gentoo       6050.0
- Gentoo       6000.0
-```

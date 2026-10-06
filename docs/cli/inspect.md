@@ -43,6 +43,7 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 | `-info` | Pandas `info()` memory and non-null summary | **Yes** (terminal) |
 | `-glimpse` | Transposed column overview with dtypes and inline sample values | **Yes** (terminal) |
 | `-describe` | Pandas `describe()` statistical summary | No (returns DataFrame) |
+| `-value_counts` | Group counts across current working columns (pair with `-select`) | No (returns DataFrame) |
 | `-pager` | Pipe long outputs through system pager (`$PAGER` or `less`) | Display flag |
 | `-pretty` | Render plain tables with bordered markdown formatting | Display flag |
 | `-round N` | Round numeric columns to N decimal places | Display flag |
