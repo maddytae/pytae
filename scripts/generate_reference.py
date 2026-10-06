@@ -62,10 +62,11 @@ TABLE OF CONTENTS
     Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
 9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
-10. REPOSITORY DIRECTORY TREE
-11. BUILD & CONFIGURATION (pyproject.toml)
-12. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
-13. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
+10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison.md)
+11. REPOSITORY DIRECTORY TREE
+12. BUILD & CONFIGURATION (pyproject.toml)
+13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
+14. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
 
 
@@ -1234,14 +1235,17 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   │   ├── inspect.md
 │   │   ├── multi_file.md
 │   │   ├── mutate.md
+│   │   ├── other_utilities.md
 │   │   ├── pivot.md
 │   │   ├── plotting.md
 │   │   ├── reshape.md
 │   │   ├── select.md
 │   │   └── sql.md
 │   ├── cli.md
+│   ├── comparison.md
 │   ├── library
 │   │   ├── agg.ipynb
+│   │   ├── arrange.ipynb
 │   │   ├── mutate.ipynb
 │   │   ├── other_utilities.ipynb
 │   │   ├── pivot.ipynb
@@ -1415,26 +1419,36 @@ def generate_reference() -> None:
         parts.append("################################################################################")
         parts.append(_format_notebook(nb_path).rstrip() + "\n")
 
-    # Section 10: Repository Directory Tree (from manual_tree)
+    # Section 10: Philosophy & Comparison Rosetta Stone (docs/comparison.md)
+    parts.append("================================================================================")
+    parts.append("10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison.md)")
+    parts.append("================================================================================\n")
+    comp_md = REPO_ROOT / "docs" / "comparison.md"
+    parts.append("################################################################################")
+    parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
+    parts.append("################################################################################")
+    parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    # Section 11: Repository Directory Tree (from manual_tree)
     if manual_tree:
         parts.append("================================================================================")
-        parts.append("10. REPOSITORY DIRECTORY TREE")
+        parts.append("11. REPOSITORY DIRECTORY TREE")
         parts.append(manual_tree.strip())
 
-    # Section 11: pyproject.toml
+    # Section 12: pyproject.toml
     pyproject_path = REPO_ROOT / "pyproject.toml"
     pyproject_content = pyproject_path.read_text(encoding="utf-8").strip()
 
     parts.append("\n================================================================================")
-    parts.append("11. BUILD & CONFIGURATION (pyproject.toml)")
+    parts.append("12. BUILD & CONFIGURATION (pyproject.toml)")
     parts.append("================================================================================\n")
     parts.append("File: pyproject.toml")
     parts.append("----------------------------------------")
     parts.append(pyproject_content)
 
-    # Section 12: Underlying Python Implementation Source Code (src/pytae/)
+    # Section 13: Underlying Python Implementation Source Code (src/pytae/)
     parts.append("\n================================================================================")
-    parts.append("12. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)")
+    parts.append("13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)")
     parts.append("================================================================================\n")
 
     src_dir = REPO_ROOT / "src" / "pytae"
@@ -1446,9 +1460,9 @@ def generate_reference() -> None:
         parts.append("################################################################################")
         parts.append(f.read_text(encoding="utf-8").rstrip() + "\n")
 
-    # Section 13: Test Suite Implementation Source Code (tests/)
+    # Section 14: Test Suite Implementation Source Code (tests/)
     parts.append("================================================================================")
-    parts.append("13. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)")
+    parts.append("14. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)")
     parts.append("================================================================================\n")
 
     test_dir = REPO_ROOT / "tests"
