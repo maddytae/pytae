@@ -32,6 +32,9 @@ from .other_utilities import (
     cols as _cols,
 )
 from .other_utilities import (
+    dedupe as _dedupe,
+)
+from .other_utilities import (
     glimpse as _glimpse,
 )
 from .other_utilities import (
@@ -142,6 +145,29 @@ class PtAccessor:
     ) -> pd.DataFrame:
         """Select the rows with the smallest values of a column, optionally grouped by `by`."""
         return _slice_min(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+
+    def dedupe(
+        self,
+        *cols: str | Sequence[str],
+        keep: str | bool = "first",
+    ) -> pd.DataFrame:
+        """Drop duplicate rows, optionally restricted to specific columns, resetting index.
+
+        Parameters:
+        -----------
+        *cols : str or sequence of str, optional
+            Column name(s) to consider for identifying duplicate rows. If omitted,
+            all columns are used.
+        keep : {'first', 'last', False}, default 'first'
+            Determines which duplicates (if any) to keep.
+
+        Returns:
+        --------
+        pd.DataFrame
+            Deduplicated DataFrame with a reset 0-indexed RangeIndex.
+        """
+        return _dedupe(self._obj, *cols, keep=keep)
+
 
     def agg(
         self,

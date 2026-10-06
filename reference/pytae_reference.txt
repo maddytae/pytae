@@ -2167,13 +2167,13 @@ Drop duplicate rows across the intermediate DataFrame with full control over col
 | `-dedupe` | Bare flag | Drop duplicate rows checking all columns |
 | `-dedupe COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
 
-`-dedupe` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`.
+`-dedupe` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.dedupe(df, *cols)` or `df.pt.dedupe(*cols)`.
 
 ---
 
 ## Deduplicating Across All Columns
 
-Run `-dedupe` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to pandas `df.drop_duplicates()`):
+Run `-dedupe` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.pt.dedupe()` or pandas `df.drop_duplicates()`):
 
 ```bash
 # Keep only unique species and island pairs
@@ -5036,7 +5036,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
 | **Slicing** | `pt.slice_max()`, `pt.slice_min()` | Select extreme top/bottom N rows overall or per group (`by=`) | [library/slice.ipynb](library/slice.ipynb) |
-| **Deduplication** | `df.drop_duplicates()` | Remove duplicate rows across all or specific column subsets | [library/dedupe.ipynb](library/dedupe.ipynb) |
+| **Deduplication** | `pt.dedupe()`, `df.pt.dedupe()` | Remove duplicate rows across all or specific column subsets | [library/dedupe.ipynb](library/dedupe.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -5143,14 +5143,17 @@ pt.slice_min(penguins, "body_mass_g", n=1, by="species")
 
 ### 5. Deduplication — Removing Duplicate Rows
 
-Drop duplicate records across the intermediate DataFrame with full control over column subsets:
+Drop duplicate records across the intermediate DataFrame with full control over column subsets, with automatic 0-indexed RangeIndex reset:
 
 ```python
-# Eliminate duplicates across all selected columns
-penguins.pt.select("species", "island").drop_duplicates().reset_index(drop=True)
+# Eliminate duplicates across all selected columns via accessor
+penguins.pt.select("species", "island").pt.dedupe()
 
 # Restrict uniqueness constraint to specific columns
-penguins.drop_duplicates(subset=["species", "island"]).reset_index(drop=True)
+penguins.pt.dedupe("species", "island")
+
+# Functional style
+pt.dedupe(penguins, "species", "island")
 ```
 
 👉 **Interactive Walkthrough:** [library/dedupe.ipynb](library/dedupe.ipynb)
@@ -5781,13 +5784,13 @@ total_bill    tip  day
 
 Remove duplicate records across the intermediate DataFrame with full control over column subsets.
 
-In pandas, deduplication is performed via `df.drop_duplicates()`, and integrates naturally into `pytae` method chains. In the CLI, the equivalent flag is `-dedupe` (or `-dedupe COLS`).
+`pytae` provides both the method-chaining accessor `df.pt.dedupe(*cols, keep='first')` and the functional verb `pt.dedupe(df, *cols)`. In the CLI, the equivalent flag is `-dedupe` (or `-dedupe COLS`).
 
-| Operation | Pandas / Method Chaining | CLI Equivalent |
+| Operation | Pytae Method Chain | CLI Equivalent |
 |---|---|---|
-| All Columns | `df.drop_duplicates().reset_index(drop=True)` | `-dedupe` |
-| Specific Columns | `df.drop_duplicates(subset=['col1', 'col2']).reset_index(drop=True)` | `-dedupe "col1,col2"` |
-| Keep Last / None | `df.drop_duplicates(keep='last')` | N/A |
+| All Columns | `df.pt.dedupe()` | `-dedupe` |
+| Specific Columns | `df.pt.dedupe('col1', 'col2')` | `-dedupe "col1,col2"` |
+| Keep Last / None | `df.pt.dedupe(keep='last')` | N/A |
 
 ---
 
@@ -5804,37 +5807,35 @@ penguins = pt.sample_data['penguins']
 tips = pt.sample_data['tips']
 ```
 
-## 1. Deduplicating Across All Columns
+## 1. Deduplicating Across All Columns (`.pt.dedupe()`)
 
-Eliminate identical rows across all selected columns:
+Eliminate identical rows across all selected columns. The index is automatically reset:
 
 ```python
 # Keep only unique species and island pairs
 (
     penguins
     .pt.select("species", "island")
-    .drop_duplicates()
-    .reset_index(drop=True)
+    .pt.dedupe()
 )
 ```
 
-## 2. Deduplicating by Specific Identifier Columns (`subset=`)
+## 2. Deduplicating by Specific Identifier Columns
 
-Restrict the uniqueness constraint to specific columns, keeping the first row for each group:
+Pass column names to restrict duplicate checks to specific identifiers, keeping the first matching record for all other columns:
 
 ```python
 # Keep the first recorded penguin for each unique species and island combination
 (
     penguins
     .pt.select("species", "island", "body_mass_g", "sex")
-    .drop_duplicates(subset=["species", "island"])
-    .reset_index(drop=True)
+    .pt.dedupe("species", "island")
 )
 ```
 
 ## 3. Chaining in Pipelines
 
-Deduplication works cleanly between queries, transforms, and sorting:
+`df.pt.dedupe()` flows seamlessly inside multi-step pipelines without dropping out of `.pt`:
 
 ```python
 # Filter heavy penguins -> select columns -> deduplicate -> arrange
@@ -5842,24 +5843,31 @@ Deduplication works cleanly between queries, transforms, and sorting:
     penguins
     .pt.qry("body_mass_g > 4000")
     .pt.select("species", "island")
-    .drop_duplicates()
+    .pt.dedupe()
     .pt.arrange("species", "island")
-    .reset_index(drop=True)
 )
 ```
 
 ## 4. Keeping the Last Record (`keep='last'`)
 
-Pandas allows keeping the last occurrence instead of the first:
+Optionally retain the last occurrence instead of the first:
 
 ```python
 # Retain the last record for each day and time
 (
     tips
     .pt.select("day", "time", "total_bill", "tip")
-    .drop_duplicates(subset=["day", "time"], keep="last")
-    .reset_index(drop=True)
+    .pt.dedupe("day", "time", keep="last")
 )
+```
+
+## 5. Functional Style (`pt.dedupe`)
+
+Available as a standalone function:
+
+```python
+# Functional deduplication
+pt.dedupe(penguins[["species", "island"]])
 ```
 
 ################################################################################
@@ -10236,6 +10244,7 @@ from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
+    dedupe,
     format_glimpse,
     glimpse,
     handle_missing,
@@ -10326,6 +10335,7 @@ __all__ = [
     "arrange",
     "slice_max",
     "slice_min",
+    "dedupe",
     "agg",
     "long",
     "wide",
@@ -10474,6 +10484,9 @@ from .other_utilities import (
     cols as _cols,
 )
 from .other_utilities import (
+    dedupe as _dedupe,
+)
+from .other_utilities import (
     glimpse as _glimpse,
 )
 from .other_utilities import (
@@ -10584,6 +10597,29 @@ class PtAccessor:
     ) -> pd.DataFrame:
         """Select the rows with the smallest values of a column, optionally grouped by `by`."""
         return _slice_min(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+
+    def dedupe(
+        self,
+        *cols: str | Sequence[str],
+        keep: str | bool = "first",
+    ) -> pd.DataFrame:
+        """Drop duplicate rows, optionally restricted to specific columns, resetting index.
+
+        Parameters:
+        -----------
+        *cols : str or sequence of str, optional
+            Column name(s) to consider for identifying duplicate rows. If omitted,
+            all columns are used.
+        keep : {'first', 'last', False}, default 'first'
+            Determines which duplicates (if any) to keep.
+
+        Returns:
+        --------
+        pd.DataFrame
+            Deduplicated DataFrame with a reset 0-indexed RangeIndex.
+        """
+        return _dedupe(self._obj, *cols, keep=keep)
+
 
     def agg(
         self,
@@ -15909,6 +15945,52 @@ def glimpse(df: pd.DataFrame, width: int | None = None) -> pd.DataFrame:
     """
     print(format_glimpse(df, width=width))
     return df
+
+
+def dedupe(
+    df: pd.DataFrame,
+    *cols: str | Sequence[str],
+    keep: str | bool = "first",
+) -> pd.DataFrame:
+    """Drop duplicate rows, optionally restricted to specific columns, resetting index.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input DataFrame.
+    *cols : str or sequence of str, optional
+        Column name(s) to consider for identifying duplicate rows. If omitted,
+        all columns are used.
+    keep : {'first', 'last', False}, default 'first'
+        Determines which duplicates (if any) to keep:
+        - 'first' : Drop duplicates except for the first occurrence.
+        - 'last' : Drop duplicates except for the last occurrence.
+        - False : Drop all duplicates.
+
+    Returns:
+    --------
+    pd.DataFrame
+        Deduplicated DataFrame with a reset 0-indexed RangeIndex.
+    """
+    flat_cols: list[str] = []
+    for c in cols:
+        if isinstance(c, str):
+            flat_cols.append(c)
+        elif isinstance(c, (list, tuple, Sequence)):
+            flat_cols.extend(str(x) for x in c)
+        else:
+            flat_cols.append(str(c))
+
+    subset = flat_cols if flat_cols else None
+    if subset is not None:
+        unknown = [col for col in subset if col not in df.columns]
+        if unknown:
+            raise KeyError(
+                f"dedupe: column(s) {unknown} not found in DataFrame. "
+                f"Available columns: {list(df.columns)}"
+            )
+
+    return df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)
 
 ################################################################################
 # FILE: src/pytae/plotting.py
@@ -26330,3 +26412,29 @@ def test_glimpse_empty_dataframe():
     out_str = pt.format_glimpse(df)
     assert "Rows: 0" in out_str
     assert "Columns: 0" in out_str
+
+
+def test_dedupe_all_columns():
+    df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "x", "y"]})
+    res_func = pt.dedupe(df)
+    res_acc = df.pt.dedupe()
+    expected = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
+    pd.testing.assert_frame_equal(res_func, expected)
+    pd.testing.assert_frame_equal(res_acc, expected)
+
+
+def test_dedupe_subset_columns():
+    df = pd.DataFrame({"id": [1, 1, 2], "val": [10, 20, 30]})
+    res = df.pt.dedupe("id")
+    expected = pd.DataFrame({"id": [1, 2], "val": [10, 30]})
+    pd.testing.assert_frame_equal(res, expected)
+
+    res_last = df.pt.dedupe("id", keep="last")
+    expected_last = pd.DataFrame({"id": [1, 2], "val": [20, 30]})
+    pd.testing.assert_frame_equal(res_last, expected_last)
+
+
+def test_dedupe_unknown_column_raises():
+    df = pd.DataFrame({"a": [1, 2]})
+    with pytest.raises(KeyError, match="dedupe: column\\(s\\) \\['nonexistent'\\] not found"):
+        df.pt.dedupe("nonexistent")

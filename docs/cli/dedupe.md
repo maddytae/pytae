@@ -22,13 +22,13 @@ Drop duplicate rows across the intermediate DataFrame with full control over col
 | `-dedupe` | Bare flag | Drop duplicate rows checking all columns |
 | `-dedupe COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
 
-`-dedupe` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`.
+`-dedupe` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.dedupe(df, *cols)` or `df.pt.dedupe(*cols)`.
 
 ---
 
 ## Deduplicating Across All Columns
 
-Run `-dedupe` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to pandas `df.drop_duplicates()`):
+Run `-dedupe` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.pt.dedupe()` or pandas `df.drop_duplicates()`):
 
 ```bash
 # Keep only unique species and island pairs

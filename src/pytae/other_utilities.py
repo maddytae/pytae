@@ -306,3 +306,49 @@ def glimpse(df: pd.DataFrame, width: int | None = None) -> pd.DataFrame:
     """
     print(format_glimpse(df, width=width))
     return df
+
+
+def dedupe(
+    df: pd.DataFrame,
+    *cols: str | Sequence[str],
+    keep: str | bool = "first",
+) -> pd.DataFrame:
+    """Drop duplicate rows, optionally restricted to specific columns, resetting index.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input DataFrame.
+    *cols : str or sequence of str, optional
+        Column name(s) to consider for identifying duplicate rows. If omitted,
+        all columns are used.
+    keep : {'first', 'last', False}, default 'first'
+        Determines which duplicates (if any) to keep:
+        - 'first' : Drop duplicates except for the first occurrence.
+        - 'last' : Drop duplicates except for the last occurrence.
+        - False : Drop all duplicates.
+
+    Returns:
+    --------
+    pd.DataFrame
+        Deduplicated DataFrame with a reset 0-indexed RangeIndex.
+    """
+    flat_cols: list[str] = []
+    for c in cols:
+        if isinstance(c, str):
+            flat_cols.append(c)
+        elif isinstance(c, (list, tuple, Sequence)):
+            flat_cols.extend(str(x) for x in c)
+        else:
+            flat_cols.append(str(c))
+
+    subset = flat_cols if flat_cols else None
+    if subset is not None:
+        unknown = [col for col in subset if col not in df.columns]
+        if unknown:
+            raise KeyError(
+                f"dedupe: column(s) {unknown} not found in DataFrame. "
+                f"Available columns: {list(df.columns)}"
+            )
+
+    return df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)

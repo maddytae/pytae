@@ -68,7 +68,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
 | **Slicing** | `pt.slice_max()`, `pt.slice_min()` | Select extreme top/bottom N rows overall or per group (`by=`) | [library/slice.ipynb](library/slice.ipynb) |
-| **Deduplication** | `df.drop_duplicates()` | Remove duplicate rows across all or specific column subsets | [library/dedupe.ipynb](library/dedupe.ipynb) |
+| **Deduplication** | `pt.dedupe()`, `df.pt.dedupe()` | Remove duplicate rows across all or specific column subsets | [library/dedupe.ipynb](library/dedupe.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -175,14 +175,17 @@ pt.slice_min(penguins, "body_mass_g", n=1, by="species")
 
 ### 5. Deduplication — Removing Duplicate Rows
 
-Drop duplicate records across the intermediate DataFrame with full control over column subsets:
+Drop duplicate records across the intermediate DataFrame with full control over column subsets, with automatic 0-indexed RangeIndex reset:
 
 ```python
-# Eliminate duplicates across all selected columns
-penguins.pt.select("species", "island").drop_duplicates().reset_index(drop=True)
+# Eliminate duplicates across all selected columns via accessor
+penguins.pt.select("species", "island").pt.dedupe()
 
 # Restrict uniqueness constraint to specific columns
-penguins.drop_duplicates(subset=["species", "island"]).reset_index(drop=True)
+penguins.pt.dedupe("species", "island")
+
+# Functional style
+pt.dedupe(penguins, "species", "island")
 ```
 
 👉 **Interactive Walkthrough:** [library/dedupe.ipynb](library/dedupe.ipynb)

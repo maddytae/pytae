@@ -195,3 +195,30 @@ def test_glimpse_empty_dataframe():
     assert "Columns: 0" in out_str
 
 
+def test_dedupe_all_columns():
+    df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "x", "y"]})
+    res_func = pt.dedupe(df)
+    res_acc = df.pt.dedupe()
+    expected = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
+    pd.testing.assert_frame_equal(res_func, expected)
+    pd.testing.assert_frame_equal(res_acc, expected)
+
+
+def test_dedupe_subset_columns():
+    df = pd.DataFrame({"id": [1, 1, 2], "val": [10, 20, 30]})
+    res = df.pt.dedupe("id")
+    expected = pd.DataFrame({"id": [1, 2], "val": [10, 30]})
+    pd.testing.assert_frame_equal(res, expected)
+
+    res_last = df.pt.dedupe("id", keep="last")
+    expected_last = pd.DataFrame({"id": [1, 2], "val": [20, 30]})
+    pd.testing.assert_frame_equal(res_last, expected_last)
+
+
+def test_dedupe_unknown_column_raises():
+    df = pd.DataFrame({"a": [1, 2]})
+    with pytest.raises(KeyError, match="dedupe: column\\(s\\) \\['nonexistent'\\] not found"):
+        df.pt.dedupe("nonexistent")
+
+
+
