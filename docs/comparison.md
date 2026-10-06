@@ -64,6 +64,12 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 ### 5. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
 - Pytae uses strictly complementary, intuitive English opposites: `long` turns wide tables into tall records; `wide` spreads long records back into headers. Both use identical `c=` (column dimension), `v=` (value column), and `r=` (row identifiers) vocabularies.
 
+### 6. Default Boolean for `dropna`: Non-Destructive `dropna=False`
+- **Pandas Trap (`dropna=True`)**: In Pandas, `df.groupby(..., dropna=True)` drops rows where the grouping keys contain `NaN` or `None` by default! This causes silent data loss in analytical pipelines, hiding unclassified, orphan, or missing data records unless the user explicitly remembers to pass `dropna=False`.
+- **Pytae Design (`dropna=False`)**: Pytae aggregation, window mutation, and pivot verbs (`agg`, `mutate(by=...)`, `pivot`) default to **`dropna=False`**. Missing values (`NaN`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns. Nothing is hidden or discarded silently. If the analyst explicitly wants to discard missing group keys, they specify `dropna=True`.
+- **dplyr Alignment**: This non-destructive default matches R's `dplyr` (which treats `NA` group levels as valid grouping keys by default rather than discarding them).
+- **CLI Consistency**: Top-level `-dropna [COLS]` performs row-level dropping across the dataset (matching `df.dropna(subset=...)`), whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
+
 ---
 
 ## Feature-by-Feature Rosetta Stone
@@ -126,6 +132,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
 |---|---|---|---|---|
 | **Simple Group** | `df.groupby('g')['x'].mean().reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` | `df.pt.agg("g", x="mean")` | `-by g -agg x=mean` |
+| **Keep NA Groups (Default)** | `df.groupby('g', dropna=False)['x'].mean().reset_index()` *(Defaults to dropping NAs!)* | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` *(Keeps NAs by default)* | `df.pt.agg("g", x="mean")` *(Defaults to `dropna=False`, non-destructive)* | `-by g -agg x=mean` *(Preserves `NaN` group)* |
 | **With Row Count**| `df.groupby('g').agg(mean_x=('x', 'mean'), n=('x', 'size')).reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x), n = n())` | `df.pt.agg("g", mean_x="x:mean", n="n")` | `-by g -agg "mean_x=x:mean, n=n"` |
 | **Whole-Table Total**| `df[['x']].agg('mean').to_frame().T` | `summarise(df, mean_x = mean(x))` | `df.pt.agg(None, x="mean")` | `-agg x=mean` |
 
