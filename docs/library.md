@@ -65,7 +65,8 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
-| **Sorting & Slicing** | `pt.arrange()`, `pt.slice_max()`, `pt.slice_min()` | Reorder rows with `-col`/`desc`, select extreme N rows per group `by=` | [library/arrange.ipynb](library/arrange.ipynb) |
+| **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
+| **Slicing** | `pt.slice_max()`, `pt.slice_min()` | Select extreme top/bottom N rows overall or per group (`by=`) | [library/slice.ipynb](library/slice.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -166,7 +167,7 @@ pt.slice_min(penguins, "body_mass_g", n=1, by="species")
 )
 ```
 
-👉 **Interactive Walkthrough:** [library/arrange.ipynb](library/arrange.ipynb)
+👉 **Interactive Walkthroughs:** [library/arrange.ipynb](library/arrange.ipynb) (Sorting) • [library/slice.ipynb](library/slice.ipynb) (Slicing)
 
 ---
 

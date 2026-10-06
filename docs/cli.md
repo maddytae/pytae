@@ -68,12 +68,14 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 |---|---|---|
 | **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-glimpse`, `-meta`, `-pager` |
 | **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
-| **Row Filtering & Slicing** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-dropna`, `-slice_max`, `-slice_min`, intervals `[min, max]`, set membership, comparisons |
+| **Row Filtering** | [Row Filtering Guide](cli/qry.md) | `-qry`, `-dropna`, intervals `[min, max]`, set membership, string matching |
+| **Row Slicing** | [Row Slicing Guide](cli/slice.md) | `-slice_max`, `-slice_min`, top/bottom N rows per group with `-by` |
+| **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
-| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
-| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-dedupe`, `-arrange` |
+| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/agg.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
+| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-dedupe` |
 | **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`, auto-pipe), `clip`, `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |

@@ -1281,12 +1281,14 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 |---|---|---|
 | **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-glimpse`, `-meta`, `-pager` |
 | **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
-| **Row Filtering & Slicing** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-dropna`, `-slice_max`, `-slice_min`, intervals `[min, max]`, set membership, comparisons |
+| **Row Filtering** | [Row Filtering Guide](cli/qry.md) | `-qry`, `-dropna`, intervals `[min, max]`, set membership, string matching |
+| **Row Slicing** | [Row Slicing Guide](cli/slice.md) | `-slice_max`, `-slice_min`, top/bottom N rows per group with `-by` |
+| **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
-| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
-| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-dedupe`, `-arrange` |
+| **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/agg.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
+| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-dedupe` |
 | **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`, auto-pipe), `clip`, `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
@@ -1694,6 +1696,200 @@ pytae flights.parquet -by year -agg "passengers = sum"
 ```
 
 ################################################################################
+# FILE: docs/cli/agg.md
+################################################################################
+# CLI Feature Guide: Aggregations & Grouping
+
+[← Back to CLI Reference Hub](../cli.md)
+
+Group, aggregate, and calculate window statistics using pytae's unified `-by` + `-agg` framework and grouped mutations (`-by` + `-mutate`).
+
+---
+
+## Contents
+
+- [Overview & Differences](#overview--differences)
+- [Group Aggregations (`-by` + `-agg`)](#group-aggregations--by--agg)
+  - [Single Function across Numeric Columns](#single-function-across-numeric-columns)
+  - [Multiple Functions (`"mean,n"`)](#multiple-functions-meann)
+  - [Column-Specific Mapping](#column-specific-mapping)
+  - [Named Outputs (`total = col:aggfunc`)](#named-outputs-total--colaggfunc)
+- [Whole-Table Summaries (Grand Totals)](#whole-table-summaries-grand-totals)
+- [Grouped Transforms (`-by` + `-mutate`)](#grouped-transforms--by--mutate)
+- [Handling Missing Group Keys (`-dropna`)](#handling-missing-group-keys--dropna)
+
+---
+
+## Overview & Differences
+
+| Flag | Group Columns | Numeric Columns | Collapses Rows? | Description |
+|---|---|---|---|---|
+| `-by COLS -agg [SPEC]` | Declared via `-by` | Aggregated | **Yes** | Group summary ($N \to K$ rows) |
+| `-agg [SPEC]` (no `-by`) | None (whole table) | Aggregated | **Yes** | Grand total (1 row) |
+| `-by COLS -mutate "..."` | Declared via `-by` | Evaluated per group | **No** | Window transform without collapsing ($N \to N$ rows) |
+
+---
+
+<a id="group-aggregations--by--agg"></a>
+## Group Aggregations (`-by` + `-agg`)
+
+Specify grouping column(s) with `-by` (or `--by`), and aggregation function(s) with `-agg` (or `--agg`). Defaults to `sum` if `-agg` is given without an argument.
+
+Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `n` (row count), etc.
+
+> [!TIP]
+> **No Need for Pre-`-select`**:
+> You do not need a redundant `-select` to filter columns before aggregating. Target columns can be specified directly in `-agg` (e.g. `-by species -agg body_mass_g=mean` or `-agg "avg = body_mass_g:mean, n = n"`). Only use `-select` if you want to reorder or drop columns *after* aggregation.
+
+### Single Function across Numeric Columns
+
+Average body mass by species (specify the metric directly in `-agg` without a pre-`-select`):
+
+```bash
+pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
+```
+
+**Output:**
+```text
+  species  body_mass_g
+   Adelie       3700.7
+Chinstrap       3733.1
+   Gentoo       5076.0
+```
+
+### Multiple Functions (`"mean,n"`)
+
+Compute mean and sample size simultaneously:
+
+```bash
+pytae penguins.parquet -by species -agg "body_mass_g=mean, n=n" -round 1
+```
+
+**Output:**
+```text
+  species  body_mass_g   n
+   Adelie       3700.7 152
+Chinstrap       3733.1  68
+   Gentoo       5076.0 124
+```
+
+### Column-Specific Mapping
+
+Assign different aggregate functions to specific columns:
+
+```bash
+pytae penguins.parquet \
+  -by species \
+  -agg "body_mass_g = mean, flipper_length_mm = max, n = n" \
+  -round 1
+```
+
+### Named Outputs (`total = col:aggfunc`)
+
+Rename aggregated outputs cleanly using `new_name = col:aggfunc`:
+
+```bash
+pytae penguins.parquet \
+  -by species \
+  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = n" \
+  -round 1
+```
+
+**Output:**
+```text
+  species  avg_mass  max_mass  count
+   Adelie    3700.7    4775.0    152
+Chinstrap    3733.1    4800.0     68
+   Gentoo    5076.0    6300.0    124
+```
+
+### Columns with Spaces (`[col]`)
+
+Columns with spaces can be enclosed in square brackets `[col]` anywhere in `-by` and `-agg`:
+
+```bash
+pytae tips.parquet \
+  -qry "day = ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
+  -rename "total_bill:[total bill]" \
+  -by smoker \
+  -agg "tip = mean, [total bill] = mean, n = n"
+```
+
+**Output:**
+```text
+smoker      tip  total bill  n
+   Yes 3.087719   23.232281 57
+    No 3.225464   20.705876 97
+```
+
+Multiple grouping columns can be passed comma-separated: `-by "species,island"` or `-by "[group a],[group b]"`.
+
+---
+
+## Whole-Table Summaries (Grand Totals)
+
+Omit `-by` to compute a grand total across all rows (producing a 1-row summary):
+
+```bash
+pytae penguins.parquet -agg "body_mass_g = mean, count = n" -round 1
+```
+
+**Output:**
+```text
+  body_mass_g  count
+       4201.8    344
+```
+
+Or compute an aggregation across all numeric columns at once:
+
+```bash
+pytae penguins.parquet -agg mean -round 1
+```
+
+---
+
+<a id="grouped-transforms--by--mutate"></a>
+## Grouped Transforms (`-by` + `-mutate`)
+
+Appends group statistics and window calculations back to every individual row without collapsing the dataset (equivalent to Pandas `transform` or SQL `OVER (PARTITION BY ...)`).
+
+Grouped mutations are evaluated per group by combining `-by` with `-mutate`:
+- Available aggregations in `-mutate`: `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`, `n` (or `n()`).
+- Multiple sequential calculations can be combined in one `-mutate` flag.
+- Custom target column names are supported freely.
+
+```bash
+# Calculate maximum species mass and deviation from maximum without collapsing rows
+pytae penguins.parquet \
+  -select "species,sex,body_mass_g" \
+  -by species \
+  -mutate "max_mass = max(body_mass_g), diff = body_mass_g - max_mass" \
+  -head 4
+```
+
+**Output:**
+```text
+species    sex  body_mass_g  max_mass    diff
+ Adelie   Male       3750.0    4775.0 -1025.0
+ Adelie Female       3800.0    4775.0  -975.0
+ Adelie Female       3250.0    4775.0 -1525.0
+ Adelie    NaN          NaN    4775.0     NaN
+```
+
+For more examples including group counts (`n`), multi-column grouping, and spaced column names, see the [Mutating & Computing Guide](mutate.md#grouped-mutations--by--mutate).
+
+
+---
+
+## Handling Missing Group Keys (`-dropna`)
+
+By default, missing values (`NaN`) in group columns form their own group (`-dropna false`) to prevent silent data loss. To exclude rows with missing group keys:
+
+```bash
+pytae penguins.parquet -by sex -agg mean -dropna true
+```
+
+################################################################################
 # FILE: docs/cli/aggregate.md
 ################################################################################
 # CLI Feature Guide: Aggregations & Grouping
@@ -1885,6 +2081,85 @@ By default, missing values (`NaN`) in group columns form their own group (`-drop
 
 ```bash
 pytae penguins.parquet -by sex -agg mean -dropna true
+```
+
+################################################################################
+# FILE: docs/cli/arrange.md
+################################################################################
+# CLI Feature Guide: Row Sorting (`-arrange`)
+
+[← Back to CLI Reference Hub](../cli.md)
+
+Order DataFrame rows by one or more columns with full support for descending orders (`desc`, `-col`) and bracket notation for columns with spaces.
+
+---
+
+## Contents
+
+- [Overview & Quick Reference](#overview--quick-reference)
+- [Ascending Sort (Default)](#ascending-sort-default)
+- [Descending Sort (`desc`, `-col`)](#descending-sort-desc--col)
+- [Multi-Column Sorting](#multi-column-sorting)
+- [Columns With Spaces (`[col name]`)](#columns-with-spaces-col-name)
+
+---
+
+## Overview & Quick Reference
+
+| Flag | Syntax / Format | Description |
+|---|---|---|
+| `-arrange SPEC` | `col` | Sort ascending (default) |
+| `-arrange SPEC` | `col desc` or `-col` | Sort descending |
+| `-arrange SPEC` | `col1, col2 desc` | Multi-column hierarchical sort |
+| `-arrange SPEC` | `"[col name] desc"` | Sort columns containing spaces |
+
+---
+
+## Ascending Sort (Default)
+
+By default, `-arrange` sorts rows in ascending order:
+
+```bash
+# Sort ascending by body mass
+pytae penguins.parquet -arrange body_mass_g -select "species,island,body_mass_g" -head 5
+```
+
+---
+
+## Descending Sort (`desc`, `-col`)
+
+Specify descending order using trailing `desc` / `descending`, or leading `-`:
+
+```bash
+# Explicit 'desc'
+pytae penguins.parquet -arrange "body_mass_g desc" -select "species,island,body_mass_g" -head 5
+
+# Leading minus shorthand
+pytae penguins.parquet -arrange "-body_mass_g" -select "species,island,body_mass_g" -head 5
+```
+
+---
+
+## Multi-Column Sorting
+
+Pass multiple columns separated by commas:
+
+```bash
+# Species ascending, body mass descending
+pytae penguins.parquet -arrange "species, body_mass_g desc" -select "species,island,body_mass_g" -head 6
+
+# Shorthand notation
+pytae penguins.parquet -arrange "species, -body_mass_g" -select "species,island,body_mass_g" -head 6
+```
+
+---
+
+## Columns With Spaces (`[col name]`)
+
+Columns with spaces are cleanly referenced using square brackets:
+
+```bash
+pytae sales.csv -arrange "[annual revenue] desc" -head 5
 ```
 
 ################################################################################
@@ -4037,6 +4312,198 @@ pytae penguins.parquet -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=
 ```
 
 ################################################################################
+# FILE: docs/cli/qry.md
+################################################################################
+# CLI Feature Guide: Row Filtering & Slicing
+
+[← Back to CLI Reference Hub](../cli.md)
+
+Filter rows using pytae's ergonomic filter expressions (`-qry`), drop missing rows (`-dropna`), or extract extreme rows (`-slice_max`, `-slice_min`).
+
+---
+
+## Contents
+
+- [Overview & Differences](#overview--differences)
+- [Pytae Filtering (`-qry`)](#pytae-filtering--qry)
+  - [Exact Matching](#exact-matching)
+  - [Comparisons (`>`, `<`, `>=`, `<=`, `!=`)](#comparisons)
+  - [Intervals & Ranges (`[start, end]`)](#intervals--ranges)
+  - [List Membership (`['a', 'b']`)](#list-membership)
+  - [Combining Multiple Conditions](#combining-multiple-conditions)
+- [Selecting Extreme Rows (`-slice_max`, `-slice_min`)](#selecting-extreme-rows--slice_max--slice_min)
+- [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
+- [Quoting Best Practices](#quoting-best-practices)
+
+---
+
+## Overview & Differences
+
+| Flag | Category | Key Syntax Highlights |
+|---|---|---|
+| `-qry CONDITIONS` | Row Filter | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, bracketed spaces `[col name]` |
+| `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
+| `-slice_max SPEC` | Row Slicing | Select top N rows by column (`col:N`, `col,N`, or `col,n=N`), group-aware with `-by` |
+| `-slice_min SPEC` | Row Slicing | Select bottom N rows by column (`col:N`, `col,N`, or `col,n=N`), group-aware with `-by` |
+
+---
+
+## Pytae Filtering (`-qry`)
+
+Pytae's `-qry` simplifies row filtering with clean, human-readable syntax.
+
+### Exact Matching
+
+String values inside `-qry` must be enclosed in single quotes `'value'`:
+
+```bash
+pytae penguins.parquet -qry "species = 'Gentoo'" -head 3
+```
+
+**Output:**
+```text
+species island  bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g    sex
+ Gentoo Biscoe            46.1           13.2              211.0       4500.0 Female
+ Gentoo Biscoe            50.0           16.3              230.0       5700.0   Male
+ Gentoo Biscoe            48.7           14.1              210.0       4450.0 Female
+```
+
+<a id="comparisons"></a>
+### Comparisons (`>`, `<`, `>=`, `<=`, `!=`)
+
+```bash
+pytae penguins.parquet -qry "body_mass_g > 5500" -select "species,island,body_mass_g" -head 3
+```
+
+**Output:**
+```text
+species island  body_mass_g
+ Gentoo Biscoe       5700.0
+ Gentoo Biscoe       5700.0
+ Gentoo Biscoe       5550.0
+```
+
+### Intervals & Ranges (`[start, end]`)
+
+Pytae provides a concise interval syntax `col = [min, max]` to filter inclusive ranges without repeating the column name:
+
+```bash
+pytae penguins.parquet -qry "body_mass_g = [3000, 3200]" -select "species,body_mass_g" -head 3
+```
+
+**Output:**
+```text
+species  body_mass_g
+ Adelie       3200.0
+ Adelie       3200.0
+ Adelie       3000.0
+```
+
+### List Membership (`['a', 'b']`)
+
+Match against a set of candidate values:
+
+```bash
+pytae penguins.parquet -qry "species = ['Chinstrap', 'Gentoo']" -select "species,island" -head 3
+```
+
+**Output:**
+```text
+  species island
+Chinstrap  Dream
+Chinstrap  Dream
+Chinstrap  Dream
+```
+
+### Combining Multiple Conditions
+
+Separate independent conditions with commas (evaluated as logical **AND**):
+
+```bash
+pytae penguins.parquet \
+  -qry "species = 'Gentoo', body_mass_g > 5500, island = 'Biscoe'" \
+  -select "species,body_mass_g,sex" \
+  -head 3
+```
+
+**Output:**
+```text
+species  body_mass_g    sex
+ Gentoo       5700.0   Male
+ Gentoo       5700.0   Male
+ Gentoo       5550.0   Male
+```
+
+---
+
+## Selecting Extreme Rows (`-slice_max`, `-slice_min`)
+
+Extract the top or bottom N rows ordered by a specific column. Both verbs are fully group-aware when combined with `-by`.
+
+Supported specification formats:
+- `col:N` (e.g. `body_mass_g:3`)
+- `col,N` (e.g. `body_mass_g,3`)
+- `col,n=N` (e.g. `body_mass_g,n=3`)
+- Default `n=1` if `N` is omitted.
+- Bracketed notation `[col with spaces]:N` is supported.
+
+### Top N Rows Overall
+
+```bash
+pytae penguins.parquet -slice_max "body_mass_g:3" -select "species,island,body_mass_g"
+```
+
+**Output:**
+```text
+species island  body_mass_g
+ Gentoo Biscoe       6300.0
+ Gentoo Biscoe       6050.0
+ Gentoo Biscoe       6000.0
+```
+
+### Bottom N Rows per Group (`-by`)
+
+When combined with `-by`, `slice_min` extracts the smallest N rows within each unique group:
+
+```bash
+pytae penguins.parquet -by species -slice_min "body_mass_g:1" -select "species,body_mass_g"
+```
+
+**Output:**
+```text
+  species  body_mass_g
+   Adelie       2850.0
+Chinstrap       2700.0
+   Gentoo       3950.0
+```
+
+---
+
+## Dropping Missing Values (`-dropna`)
+
+Drop rows with missing values (`NaN`). Can be run bare or scoped to a comma-separated column list:
+
+```bash
+# Drop rows with NaN in any column
+pytae penguins.parquet -dropna
+
+# Drop rows with NaN in specific column(s)
+pytae penguins.parquet -dropna "body_mass_g,sex"
+```
+
+> [!NOTE]
+> For scoped aggregations and pivot tables, pass `dropna=true` inside the operation's spec (e.g., `-agg "a=mean,dropna=true"` or `-pivot "r=species,c=sex,dropna=true"`).
+
+---
+
+## Quoting Best Practices
+
+In terminal shells (bash, zsh):
+- Enclose the entire spec in outer double quotes: `-qry "..."`.
+- Enclose string literals in inner single quotes: `'Gentoo'`.
+- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-slice_max "[bill length mm]:3"`.
+
+################################################################################
 # FILE: docs/cli/reshape.md
 ################################################################################
 # CLI Feature Guide: Reshaping & Data Organization
@@ -4429,6 +4896,123 @@ pytae penguins.parquet \
 ```
 
 ################################################################################
+# FILE: docs/cli/slice.md
+################################################################################
+# CLI Feature Guide: Row Slicing (`-slice_max`, `-slice_min`)
+
+[← Back to CLI Reference Hub](../cli.md)
+
+Extract top or bottom rows by column order, with group awareness via `-by`.
+
+---
+
+## Contents
+
+- [Overview & Quick Reference](#overview--quick-reference)
+- [Top N Rows (`-slice_max`)](#top-n-rows--slice_max)
+- [Bottom N Rows (`-slice_min`)](#bottom-n-rows--slice_min)
+- [Group-Aware Slicing (`-by`)](#group-aware-slicing--by)
+- [Specification Formats (`col:N`, `col,n=N`)](#specification-formats)
+- [Handling Ties & Missing Values](#handling-ties--missing-values)
+
+---
+
+## Overview & Quick Reference
+
+| Flag | Description | Key Syntax |
+|---|---|---|
+| `-slice_max SPEC` | Select rows with largest values of a column | `-slice_max mass`, `-slice_max "mass:3"`, `-slice_max "mass,n=3"` |
+| `-slice_min SPEC` | Select rows with smallest values of a column | `-slice_min mass`, `-slice_min "mass:3"`, `-slice_min "mass,n=3"` |
+| `-by COLS` | Partition rows into groups before slicing | `-by species -slice_max "mass:2"` |
+
+Both commands preserve all columns, reset the index to `0, 1, ...`, and preserve NA grouping categories.
+
+---
+
+## Top N Rows (`-slice_max`)
+
+Extract the rows with the highest values of a target column. If `N` is omitted, defaults to `n=1`:
+
+```bash
+# Top 3 heaviest penguins overall
+pytae penguins.parquet -slice_max "body_mass_g:3" -select "species,island,body_mass_g"
+```
+
+**Output:**
+```text
+species island  body_mass_g
+ Gentoo Biscoe       6300.0
+ Gentoo Biscoe       6050.0
+ Gentoo Biscoe       6000.0
+```
+
+---
+
+## Bottom N Rows (`-slice_min`)
+
+Extract the rows with the lowest values of a target column:
+
+```bash
+# Lightest 3 penguins overall
+pytae penguins.parquet -slice_min "body_mass_g:3" -select "species,island,body_mass_g"
+```
+
+**Output:**
+```text
+  species island  body_mass_g
+Chinstrap  Dream       2700.0
+   Adelie Biscoe       2850.0
+   Adelie  Dream       2850.0
+```
+
+---
+
+## Group-Aware Slicing (`-by`)
+
+When combined with `-by`, `slice_max` and `slice_min` extract top or bottom N rows **within each unique group**:
+
+```bash
+# Heaviest penguin for each species
+pytae penguins.parquet -by species -slice_max "body_mass_g:1" -select "species,island,body_mass_g"
+```
+
+**Output:**
+```text
+  species island  body_mass_g
+   Adelie Biscoe       4775.0
+Chinstrap  Dream       4800.0
+   Gentoo Biscoe       6300.0
+```
+
+```bash
+# Lightest 2 penguins per island
+pytae penguins.parquet -by island -slice_min "body_mass_g:2" -select "island,species,body_mass_g"
+```
+
+---
+
+## Specification Formats
+
+Flexible ways to specify the ranking column and row count:
+- Colon format: `-slice_max "body_mass_g:3"`
+- Comma format: `-slice_max "body_mass_g,3"`
+- Keyword format: `-slice_max "body_mass_g,n=3"`
+- Default `n=1`: `-slice_max body_mass_g`
+- Columns with spaces: wrap in brackets, e.g. `-slice_max "[bill length mm]:3"`
+
+---
+
+## Handling Ties & Missing Values
+
+- By default, rank slicing does not include ties beyond `n` (`with_ties=False`).
+- Missing values (`NaN`) in the ranking column appear at the bottom by default (`na_last=True`).
+- Missing values in grouping columns (`-by`) form their own group without silent row loss. To omit missing groups, chain `-dropna` before slicing:
+
+```bash
+pytae penguins.parquet -dropna sex -by sex -slice_max "body_mass_g:1"
+```
+
+################################################################################
 # FILE: docs/cli/sql.md
 ################################################################################
 # CLI Feature Guide: SQL Engine
@@ -4659,7 +5243,8 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
-| **Sorting & Slicing** | `pt.arrange()`, `pt.slice_max()`, `pt.slice_min()` | Reorder rows with `-col`/`desc`, select extreme N rows per group `by=` | [library/arrange.ipynb](library/arrange.ipynb) |
+| **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
+| **Slicing** | `pt.slice_max()`, `pt.slice_min()` | Select extreme top/bottom N rows overall or per group (`by=`) | [library/slice.ipynb](library/slice.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -4760,7 +5345,7 @@ pt.slice_min(penguins, "body_mass_g", n=1, by="species")
 )
 ```
 
-👉 **Interactive Walkthrough:** [library/arrange.ipynb](library/arrange.ipynb)
+👉 **Interactive Walkthroughs:** [library/arrange.ipynb](library/arrange.ipynb) (Sorting) • [library/slice.ipynb](library/slice.ipynb) (Slicing)
 
 ---
 
@@ -5234,16 +5819,13 @@ smoker       tip  total bill   n
 ################################################################################
 # Notebook: arrange.ipynb
 
-# `arrange` / `slice_max` / `slice_min` — Row Sorting & Slicing
+# `arrange` — Row Sorting & Ordering
 
-`arrange` orders DataFrame rows by one or more columns with full support for descending orders (`desc`, `-col`) and bracket notation for columns with spaces (`[col name]`).
-`slice_max` and `slice_min` select the top or bottom N rows ordered by a column, with complete group awareness via `by=`.
+`arrange` orders DataFrame rows by one or more columns with full support for descending orders (`desc`, `-col`), global `ascending=` overrides, and bracket notation for columns with spaces (`[col name]`).
 
 | Method | Key Params | Purpose |
 |---|---|---|
-| `.pt.arrange(*cols)` | `*cols` (column expressions) | Sort rows ascending / descending |
-| `.pt.slice_max(order_by, n=1, by=None, with_ties=True)` | `order_by`, `n`, `by`, `with_ties` | Select top N rows per group |
-| `.pt.slice_min(order_by, n=1, by=None, with_ties=True)` | `order_by`, `n`, `by`, `with_ties` | Select bottom N rows per group |
+| `.pt.arrange(*cols, ascending=None, na_last=True)` | `*cols`, `ascending`, `na_last` | Sort rows ascending / descending |
 
 ---
 
@@ -5364,72 +5946,9 @@ species  bill length mm
 4     Gentoo            55.1
 ```
 
-## 5. `slice_max()` — Top N Records
+## 5. Functional Style (`pt.arrange`)
 
-Retrieve the rows with the highest values in `order_by`.
-
-```python
-# Top 3 heaviest penguins overall
-penguins.pt.slice_max("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
-```
-Output:
-```text
-species  island  body_mass_g
-0  Gentoo  Biscoe       6300.0
-1  Gentoo  Biscoe       6050.0
-2  Gentoo  Biscoe       6000.0
-```
-
-## 6. `slice_min()` — Bottom N Records
-
-Retrieve the rows with the lowest values in `order_by`.
-
-```python
-# 3 lightest penguins overall
-penguins.pt.slice_min("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
-```
-Output:
-```text
-species  island  body_mass_g
-0  Chinstrap   Dream       2700.0
-1     Adelie  Biscoe       2850.0
-2     Adelie  Biscoe       2850.0
-```
-
-## 7. Group-Aware Slicing (`by=`)
-
-When `by=` is specified, `slice_max` and `slice_min` extract top or bottom N rows **per group**.
-
-```python
-# Top heaviest penguin for each species
-penguins.pt.slice_max("body_mass_g", n=1, by="species").pt.select("species", "island", "body_mass_g")
-```
-Output:
-```text
-species  island  body_mass_g
-0     Adelie  Biscoe       4775.0
-1  Chinstrap   Dream       4800.0
-2     Gentoo  Biscoe       6300.0
-```
-
-```python
-# Lightest 2 penguins per island
-penguins.pt.slice_min("body_mass_g", n=2, by="island").pt.select("island", "species", "body_mass_g")
-```
-Output:
-```text
-island    species  body_mass_g
-0     Biscoe     Adelie       2850.0
-1     Biscoe     Adelie       2850.0
-2      Dream  Chinstrap       2700.0
-3      Dream     Adelie       2900.0
-4  Torgersen     Adelie       2900.0
-5  Torgersen     Adelie       3050.0
-```
-
-## 8. Functional Style (`pt.arrange`, `pt.slice_max`, `pt.slice_min`)
-
-All verbs work equally well as standalone functions taking `df` as their first argument.
+Available as standalone functional verb `pt.arrange(df, ...)`:
 
 ```python
 # Functional arrange
@@ -5443,19 +5962,6 @@ total_bill    tip  day
 1       48.33   9.00  Sat
 2       39.42   7.58  Sat
 3       48.27   6.73  Sat
-```
-
-```python
-# Functional slice_max by group
-pt.slice_max(tips, "tip", n=1, by="day")[["day", "total_bill", "tip"]]
-```
-Output:
-```text
-day  total_bill    tip
-0  Thur       34.30   6.70
-1   Fri       40.17   4.73
-2   Sat       50.81  10.00
-3   Sun       23.17   6.50
 ```
 
 ################################################################################
@@ -9065,6 +9571,114 @@ species
 ```
 
 ################################################################################
+# NOTEBOOK: docs/library/slice.ipynb
+################################################################################
+# Notebook: slice.ipynb
+
+# `slice_max` / `slice_min` — Group-Aware Top & Bottom Slicing
+
+`slice_max` and `slice_min` select the top or bottom N rows ordered by a column, with complete group awareness via `by=`.
+
+| Method | Key Params | Purpose |
+|---|---|---|
+| `.pt.slice_max(col, n=1, by=None, with_ties=False)` | `col`, `n`, `by`, `with_ties` | Select top N rows per group |
+| `.pt.slice_min(col, n=1, by=None, with_ties=False)` | `col`, `n`, `by`, `with_ties` | Select bottom N rows per group |
+
+---
+
+```python
+import sys, os
+_src = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'src'))
+if not os.path.exists(_src): _src = os.path.abspath(os.path.join(os.getcwd(), '..', 'src'))
+if _src not in sys.path: sys.path.insert(0, _src)
+
+import pytae as pt
+
+penguins = pt.sample_data['penguins']
+tips = pt.sample_data['tips']
+```
+
+## 5. `slice_max()` — Top N Records
+
+Retrieve the rows with the highest values in `order_by`.
+
+```python
+# Top 3 heaviest penguins overall
+penguins.pt.slice_max("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
+```
+Output:
+```text
+species  island  body_mass_g
+0  Gentoo  Biscoe       6300.0
+1  Gentoo  Biscoe       6050.0
+2  Gentoo  Biscoe       6000.0
+```
+
+## 6. `slice_min()` — Bottom N Records
+
+Retrieve the rows with the lowest values in `order_by`.
+
+```python
+# 3 lightest penguins overall
+penguins.pt.slice_min("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
+```
+Output:
+```text
+species  island  body_mass_g
+0  Chinstrap   Dream       2700.0
+1     Adelie  Biscoe       2850.0
+2     Adelie  Biscoe       2850.0
+```
+
+## 7. Group-Aware Slicing (`by=`)
+
+When `by=` is specified, `slice_max` and `slice_min` extract top or bottom N rows **per group**.
+
+```python
+# Top heaviest penguin for each species
+penguins.pt.slice_max("body_mass_g", n=1, by="species").pt.select("species", "island", "body_mass_g")
+```
+Output:
+```text
+species  island  body_mass_g
+0     Adelie  Biscoe       4775.0
+1  Chinstrap   Dream       4800.0
+2     Gentoo  Biscoe       6300.0
+```
+
+```python
+# Lightest 2 penguins per island
+penguins.pt.slice_min("body_mass_g", n=2, by="island").pt.select("island", "species", "body_mass_g")
+```
+Output:
+```text
+island    species  body_mass_g
+0     Biscoe     Adelie       2850.0
+1     Biscoe     Adelie       2850.0
+2      Dream  Chinstrap       2700.0
+3      Dream     Adelie       2900.0
+4  Torgersen     Adelie       2900.0
+5  Torgersen     Adelie       3050.0
+```
+
+## Functional Style (`pt.slice_max`, `pt.slice_min`)
+
+Both functions are available as standalone functional verbs `pt.slice_max(df, ...)` and `pt.slice_min(df, ...)`:
+
+```python
+# Functional slice_max by group
+pt.slice_max(tips, "tip", n=1, by="day")[["day", "total_bill", "tip"]]
+```
+Output:
+```text
+day  total_bill    tip
+0  Thur       34.30   6.70
+1   Fri       40.17   4.73
+2   Sat       50.81  10.00
+3   Sun       23.17   6.50
+```
+
+################################################################################
 # NOTEBOOK: docs/library/sql.ipynb
 ################################################################################
 # Notebook: sql.ipynb
@@ -11744,21 +12358,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Computes summary statistics on numeric columns.\n"
             "If -by is omitted, produces a whole-table grand total summary.\n"
-            "Accepts a function name ('mean'), a list ('mean,sum,n'), or mapped expressions ('avg=mean,total=sum')."
+            "Accepts a function name ('mean'), a list ('mean,sum,n'), or mapped expressions ('avg=mean,total=sum').\n"
+            "By default, missing values (NaN) in group columns form their own group (dropna=False) to prevent silent data loss.\n"
+            "To exclude rows with missing group keys, chain -dropna before -agg (e.g. -dropna species -by species -agg mean)."
         ),
         options=[
             "-by <cols> : Grouping column(s) (comma-separated).",
             "mean, sum, median, min, max, std, var : Built-in aggregation functions.",
             "n : Group row count (pure integer).",
             "col = func : Column-specific mapping (e.g. 'total=sum,avg=mean').",
+            "-dropna <cols> : Chain before -agg to exclude missing group keys (pytae preserves NA groups by default).",
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             "pytae penguins.parquet -by \"species,island\" -agg \"mean,sum,n\"",
             "pytae penguins.parquet -agg \"mean,n\"   # Whole-table summary (grand total)",
             "pytae penguins.parquet -by species -agg \"total_mass = body_mass_g:sum, n = n\"",
+            "pytae penguins.parquet -dropna sex -by sex -agg mean   # Drop NA group before aggregating",
         ],
-        see_also=["-by", "-pivot", "-mutate"],
+        see_also=["-by", "-dropna", "-pivot", "-mutate"],
     ),
     "pivot": KeywordHelp(
         name="pivot",
