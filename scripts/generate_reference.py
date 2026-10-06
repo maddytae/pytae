@@ -105,7 +105,7 @@ Key principles:
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
 Installation (PyPI: https://pypi.org/project/pytae/):
-  pip install pytae            # latest release: 3.7.0
+  pip install pytae
   pip install 'pytae[plot]'    # includes matplotlib, scipy
   pip install 'pytae[sql]'     # includes duckdb
 
