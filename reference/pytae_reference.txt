@@ -4516,7 +4516,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
-| **Sorting & Slicing** | `pt.arrange()`, `pt.slice_max()`, `pt.slice_min()` | Reorder rows with `-col`/`desc`, select extreme N rows per group `by=` | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
+| **Sorting & Slicing** | `pt.arrange()`, `pt.slice_max()`, `pt.slice_min()` | Reorder rows with `-col`/`desc`, select extreme N rows per group `by=` | [library/arrange.ipynb](library/arrange.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -4612,6 +4612,8 @@ pt.slice_min(penguins, "body_mass_g", n=1, by="species")
     .pt.slice_max("body_mass_g", n=2, by="species")
 )
 ```
+
+👉 **Interactive Walkthrough:** [library/arrange.ipynb](library/arrange.ipynb)
 
 ---
 
@@ -5078,6 +5080,235 @@ Output:
 smoker       tip  total bill   n
 0    Yes  3.087719   23.232281  57
 1     No  3.225464   20.705876  97
+```
+
+################################################################################
+# NOTEBOOK: docs/library/arrange.ipynb
+################################################################################
+# Notebook: arrange.ipynb
+
+# `arrange` / `slice_max` / `slice_min` — Row Sorting & Slicing
+
+`arrange` orders DataFrame rows by one or more columns with full support for descending orders (`desc`, `-col`) and bracket notation for columns with spaces (`[col name]`).
+`slice_max` and `slice_min` select the top or bottom N rows ordered by a column, with complete group awareness via `by=`.
+
+| Method | Key Params | Purpose |
+|---|---|---|
+| `.pt.arrange(*cols)` | `*cols` (column expressions) | Sort rows ascending / descending |
+| `.pt.slice_max(order_by, n=1, by=None, with_ties=True)` | `order_by`, `n`, `by`, `with_ties` | Select top N rows per group |
+| `.pt.slice_min(order_by, n=1, by=None, with_ties=True)` | `order_by`, `n`, `by`, `with_ties` | Select bottom N rows per group |
+
+---
+
+```python
+import sys, os
+_src = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'src'))
+if not os.path.exists(_src): _src = os.path.abspath(os.path.join(os.getcwd(), '..', 'src'))
+if _src not in sys.path: sys.path.insert(0, _src)
+
+import pytae as pt
+
+penguins = pt.sample_data['penguins']
+tips = pt.sample_data['tips']
+```
+
+## 1. `arrange()` — Basic Sorting
+
+By default, `.pt.arrange()` sorts in ascending order.
+
+```python
+# Sort ascending by body mass
+penguins.pt.arrange("body_mass_g").pt.select("species", "island", "body_mass_g").head(5)
+```
+Output:
+```text
+species     island  body_mass_g
+0  Chinstrap      Dream       2700.0
+1     Adelie     Biscoe       2850.0
+2     Adelie     Biscoe       2850.0
+3     Adelie  Torgersen       2900.0
+4     Adelie      Dream       2900.0
+```
+
+## 2. Descending Order: `desc` keyword and `-` shorthand
+
+Specify descending order either by appending `desc` or prefixing the column name with `-`.
+
+```python
+# Using explicit 'desc'
+penguins.pt.arrange("body_mass_g desc").pt.select("species", "island", "body_mass_g").head(5)
+```
+Output:
+```text
+species  island  body_mass_g
+0  Gentoo  Biscoe       6300.0
+1  Gentoo  Biscoe       6050.0
+2  Gentoo  Biscoe       6000.0
+3  Gentoo  Biscoe       6000.0
+4  Gentoo  Biscoe       5950.0
+```
+
+```python
+# Using leading minus '-' shorthand
+penguins.pt.arrange("-body_mass_g").pt.select("species", "island", "body_mass_g").head(5)
+```
+Output:
+```text
+species  island  body_mass_g
+0  Gentoo  Biscoe       6300.0
+1  Gentoo  Biscoe       6050.0
+2  Gentoo  Biscoe       6000.0
+3  Gentoo  Biscoe       6000.0
+4  Gentoo  Biscoe       5950.0
+```
+
+## 3. Multi-Column Sorting
+
+Pass multiple column specifications either as separate arguments or as a comma-separated string.
+
+```python
+# Multi-column: species ascending, body_mass_g descending
+penguins.pt.arrange("species", "body_mass_g desc").pt.select("species", "island", "body_mass_g").head(6)
+```
+Output:
+```text
+species     island  body_mass_g
+0  Adelie     Biscoe       4775.0
+1  Adelie     Biscoe       4725.0
+2  Adelie  Torgersen       4700.0
+3  Adelie  Torgersen       4675.0
+4  Adelie      Dream       4650.0
+5  Adelie      Dream       4600.0
+```
+
+```python
+# Comma-separated string with shorthand minus
+penguins.pt.arrange("species, -body_mass_g").pt.select("species", "island", "body_mass_g").head(6)
+```
+Output:
+```text
+species     island  body_mass_g
+0  Adelie     Biscoe       4775.0
+1  Adelie     Biscoe       4725.0
+2  Adelie  Torgersen       4700.0
+3  Adelie  Torgersen       4675.0
+4  Adelie      Dream       4650.0
+5  Adelie      Dream       4600.0
+```
+
+## 4. Column Names with Spaces (`[col name]`)
+
+Columns with spaces are cleanly referenced using square brackets `[col name]`.
+
+```python
+# Rename column to include spaces
+spaced_penguins = penguins.rename(columns={"bill_length_mm": "bill length mm"})
+
+# Sort by bracketed column name descending
+spaced_penguins.pt.arrange("[bill length mm] desc").pt.select("species", "[bill length mm]").head(5)
+```
+Output:
+```text
+species  bill length mm
+0     Gentoo            59.6
+1  Chinstrap            58.0
+2     Gentoo            55.9
+3  Chinstrap            55.8
+4     Gentoo            55.1
+```
+
+## 5. `slice_max()` — Top N Records
+
+Retrieve the rows with the highest values in `order_by`.
+
+```python
+# Top 3 heaviest penguins overall
+penguins.pt.slice_max("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
+```
+Output:
+```text
+species  island  body_mass_g
+0  Gentoo  Biscoe       6300.0
+1  Gentoo  Biscoe       6050.0
+2  Gentoo  Biscoe       6000.0
+```
+
+## 6. `slice_min()` — Bottom N Records
+
+Retrieve the rows with the lowest values in `order_by`.
+
+```python
+# 3 lightest penguins overall
+penguins.pt.slice_min("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
+```
+Output:
+```text
+species  island  body_mass_g
+0  Chinstrap   Dream       2700.0
+1     Adelie  Biscoe       2850.0
+2     Adelie  Biscoe       2850.0
+```
+
+## 7. Group-Aware Slicing (`by=`)
+
+When `by=` is specified, `slice_max` and `slice_min` extract top or bottom N rows **per group**.
+
+```python
+# Top heaviest penguin for each species
+penguins.pt.slice_max("body_mass_g", n=1, by="species").pt.select("species", "island", "body_mass_g")
+```
+Output:
+```text
+species  island  body_mass_g
+0     Adelie  Biscoe       4775.0
+1  Chinstrap   Dream       4800.0
+2     Gentoo  Biscoe       6300.0
+```
+
+```python
+# Lightest 2 penguins per island
+penguins.pt.slice_min("body_mass_g", n=2, by="island").pt.select("island", "species", "body_mass_g")
+```
+Output:
+```text
+island    species  body_mass_g
+0     Biscoe     Adelie       2850.0
+1     Biscoe     Adelie       2850.0
+2      Dream  Chinstrap       2700.0
+3      Dream     Adelie       2900.0
+4  Torgersen     Adelie       2900.0
+5  Torgersen     Adelie       3050.0
+```
+
+## 8. Functional Style (`pt.arrange`, `pt.slice_max`, `pt.slice_min`)
+
+All verbs work equally well as standalone functions taking `df` as their first argument.
+
+```python
+# Functional arrange
+top_tips = pt.arrange(tips, "-tip")
+top_tips[["total_bill", "tip", "day"]].head(4)
+```
+Output:
+```text
+total_bill    tip  day
+0       50.81  10.00  Sat
+1       48.33   9.00  Sat
+2       39.42   7.58  Sat
+3       48.27   6.73  Sat
+```
+
+```python
+# Functional slice_max by group
+pt.slice_max(tips, "tip", n=1, by="day")[["day", "total_bill", "tip"]]
+```
+Output:
+```text
+day  total_bill    tip
+0  Thur       34.30   6.70
+1   Fri       40.17   4.73
+2   Sat       50.81  10.00
+3   Sun       23.17   6.50
 ```
 
 ################################################################################
