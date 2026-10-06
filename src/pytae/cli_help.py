@@ -197,21 +197,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Computes summary statistics on numeric columns.\n"
             "If -by is omitted, produces a whole-table grand total summary.\n"
-            "Accepts a function name ('mean'), a list ('mean,sum,n'), or mapped expressions ('avg=mean,total=sum')."
+            "Accepts a function name ('mean'), a list ('mean,sum,n'), or mapped expressions ('avg=mean,total=sum').\n"
+            "By default, missing values (NaN) in group columns form their own group (dropna=False) to prevent silent data loss.\n"
+            "To exclude rows with missing group keys, chain -dropna before -agg (e.g. -dropna species -by species -agg mean)."
         ),
         options=[
             "-by <cols> : Grouping column(s) (comma-separated).",
             "mean, sum, median, min, max, std, var : Built-in aggregation functions.",
             "n : Group row count (pure integer).",
             "col = func : Column-specific mapping (e.g. 'total=sum,avg=mean').",
+            "-dropna <cols> : Chain before -agg to exclude missing group keys (pytae preserves NA groups by default).",
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             "pytae penguins.parquet -by \"species,island\" -agg \"mean,sum,n\"",
             "pytae penguins.parquet -agg \"mean,n\"   # Whole-table summary (grand total)",
             "pytae penguins.parquet -by species -agg \"total_mass = body_mass_g:sum, n = n\"",
+            "pytae penguins.parquet -dropna sex -by sex -agg mean   # Drop NA group before aggregating",
         ],
-        see_also=["-by", "-pivot", "-mutate"],
+        see_also=["-by", "-dropna", "-pivot", "-mutate"],
     ),
     "pivot": KeywordHelp(
         name="pivot",
