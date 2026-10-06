@@ -181,10 +181,21 @@ For more examples including group counts (`n`), multi-column grouping, and space
 
 ---
 
-## Handling Missing Group Keys (`-dropna`)
+## Handling Missing Group Keys (`dropna`)
 
-By default, missing values (`NaN`) in group columns form their own group (`-dropna false`) to prevent silent data loss. To exclude rows with missing group keys:
+By default, missing values (`NaN`) in group columns form their own group (`dropna=false`) to prevent silent data loss:
 
 ```bash
-pytae penguins.parquet -by sex -agg mean -dropna true
+# Keep missing sex as its own group (default)
+pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=false"
+```
+
+To drop rows with missing group keys, either specify `dropna=true` inside the `-agg` mapping or chain the top-level `-dropna` flag:
+
+```bash
+# In-spec dropna=true
+pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true"
+
+# Or chain -dropna beforehand
+pytae penguins.parquet -dropna sex -by sex -agg mean
 ```

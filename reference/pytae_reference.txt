@@ -1885,12 +1885,23 @@ For more examples including group counts (`n`), multi-column grouping, and space
 
 ---
 
-## Handling Missing Group Keys (`-dropna`)
+## Handling Missing Group Keys (`dropna`)
 
-By default, missing values (`NaN`) in group columns form their own group (`-dropna false`) to prevent silent data loss. To exclude rows with missing group keys:
+By default, missing values (`NaN`) in group columns form their own group (`dropna=false`) to prevent silent data loss:
 
 ```bash
-pytae penguins.parquet -by sex -agg mean -dropna true
+# Keep missing sex as its own group (default)
+pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=false"
+```
+
+To drop rows with missing group keys, either specify `dropna=true` inside the `-agg` mapping or chain the top-level `-dropna` flag:
+
+```bash
+# In-spec dropna=true
+pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true"
+
+# Or chain -dropna beforehand
+pytae penguins.parquet -dropna sex -by sex -agg mean
 ```
 
 ################################################################################
@@ -12322,16 +12333,16 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "mean, sum, median, min, max, std, var : Built-in aggregation functions.",
             "n : Group row count (pure integer).",
             "col = func : Column-specific mapping (e.g. 'total=sum,avg=mean').",
-            "-dropna <cols> : Chain before -agg to exclude missing group keys (pytae preserves NA groups by default).",
+            "dropna = bool : In-spec dropna setting (default: false preserves NA groups).",
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             "pytae penguins.parquet -by \"species,island\" -agg \"mean,sum,n\"",
             "pytae penguins.parquet -agg \"mean,n\"   # Whole-table summary (grand total)",
             "pytae penguins.parquet -by species -agg \"total_mass = body_mass_g:sum, n = n\"",
-            "pytae penguins.parquet -dropna sex -by sex -agg mean   # Drop NA group before aggregating",
+            "pytae penguins.parquet -by sex -agg \"body_mass_g = mean, dropna = false\"",
         ],
-        see_also=["-by", "-dropna", "-pivot", "-mutate"],
+        see_also=["-by", "-pivot", "-mutate", "-dropna"],
     ),
     "pivot": KeywordHelp(
         name="pivot",
