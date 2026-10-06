@@ -1284,9 +1284,10 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Row Filtering** | [Row Filtering Guide](cli/qry.md) | `-qry`, `-dropna`, intervals `[min, max]`, set membership, string matching |
 | **Row Slicing** | [Row Slicing Guide](cli/slice.md) | `-slice_max`, `-slice_min`, top/bottom N rows per group with `-by` |
 | **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
+| **Deduplication** | [Deduplication Guide](cli/dedupe.md) | `-dedupe`, drop duplicate rows across all or specific column subsets |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
-| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-dedupe`, `-rename` |
+| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/agg.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
 | **Reshaping (Pure 1-to-1)** | [Reshaping Guide](cli/reshape.md) | `-long` (melt numeric columns), `-wide` (pure 1:1 unmelting) |
 | **2D Pivot Tables** | [2D Pivot Guide](cli/pivot.md) | `-pivot` (Excel-style multi-dimensional aggregation matrices) |
@@ -2186,7 +2187,6 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
   - [Substring Replacement (`exact=false`)](#substring-replacement-exactfalse)
 - [Imputing Missing Values (`-handle_missing`)](#imputing-missing-values--handle_missing)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
-- [Deduplicating Rows (`-dedupe`)](#deduplicating-rows--dedupe)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 
 ---
@@ -2199,7 +2199,6 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
 | `-replace_values SPEC` | Cell contents | `old:new` | Swaps values inside cells |
 | `-handle_missing [FILL]` | Cell contents | String value | Imputes `NaN` (defaults to `.` for text, `0` for numeric) |
 | `-dropna [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for all columns, or comma-separated columns) |
-| `-dedupe [COLS]` | Rows | `,` | Drops duplicate rows (across all or specified subset columns) |
 | `-rename OLD:NEW,...` | Column headers | `old:new` | Explicitly renames column names |
 
 ---
@@ -2317,20 +2316,6 @@ pytae penguins.parquet -dropna "body_mass_g,sex"
 
 ---
 
-## Deduplicating Rows (`-dedupe`)
-
-Drop duplicate rows across intermediate results. Can be run bare to check all columns, or scoped to specific subset column(s):
-
-```bash
-# Deduplicate across all columns
-pytae penguins.parquet -select "species,island" -dedupe
-
-# Deduplicate by specific column(s)
-pytae penguins.parquet -dedupe "species,island"
-```
-
----
-
 ## Column Renaming (`-rename`)
 
 Rename columns explicitly at any point in the pipeline using the `old:new` mapping convention:
@@ -2345,6 +2330,164 @@ pytae dataset.parquet -rename "Status:review_status,Old Name:clean_name"
 hello world       10.5   draft_stage
     bad_val        NaN      approved
         NaN       30.2   draft_stage
+```
+
+################################################################################
+# FILE: docs/cli/dedup.md
+################################################################################
+# CLI Feature Guide: Deduplication (`-dedupe`)
+
+[← Back to CLI Reference Hub](../cli.md)
+
+Drop duplicate rows across the intermediate DataFrame with full control over column subsets.
+
+---
+
+## Contents
+
+- [Overview & Quick Reference](#overview--quick-reference)
+- [Deduplicating Across All Columns](#deduplicating-across-all-columns)
+- [Deduplicating Across Specific Columns](#deduplicating-across-specific-columns)
+- [Chaining in Pipelines](#chaining-in-pipelines)
+
+---
+
+## Overview & Quick Reference
+
+| Flag | Syntax / Format | Description |
+|---|---|---|
+| `-dedupe` | Bare flag | Drop duplicate rows checking all columns |
+| `-dedupe COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
+
+`-dedupe` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`.
+
+---
+
+## Deduplicating Across All Columns
+
+Run `-dedupe` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to pandas `df.drop_duplicates()`):
+
+```bash
+# Keep only unique species and island pairs
+pytae penguins.parquet -select "species,island" -dedupe
+```
+
+**Output:**
+```text
+  species    island
+   Adelie Torgersen
+   Adelie    Biscoe
+   Adelie     Dream
+Chinstrap     Dream
+   Gentoo    Biscoe
+```
+
+---
+
+## Deduplicating Across Specific Columns
+
+Pass column names to restrict duplicate checks to specific identifiers, keeping the first matching record for all other columns:
+
+```bash
+# Deduplicate based on customer identifier, retaining first order
+pytae orders.parquet -dedupe customer_id
+
+# Deduplicate based on composite keys
+pytae penguins.parquet -dedupe "species,island"
+```
+
+---
+
+## Chaining in Pipelines
+
+`-dedupe` operates seamlessly anywhere inside a multi-step pipeline:
+
+```bash
+# Filter rows -> select subset -> deduplicate -> sort -> output
+pytae penguins.parquet \
+  -qry "body_mass_g > 4000" \
+  -select "species,island" \
+  -dedupe \
+  -arrange species
+```
+
+################################################################################
+# FILE: docs/cli/dedupe.md
+################################################################################
+# CLI Feature Guide: Deduplication (`-dedupe`)
+
+[← Back to CLI Reference Hub](../cli.md)
+
+Drop duplicate rows across the intermediate DataFrame with full control over column subsets.
+
+---
+
+## Contents
+
+- [Overview & Quick Reference](#overview--quick-reference)
+- [Deduplicating Across All Columns](#deduplicating-across-all-columns)
+- [Deduplicating Across Specific Columns](#deduplicating-across-specific-columns)
+- [Chaining in Pipelines](#chaining-in-pipelines)
+
+---
+
+## Overview & Quick Reference
+
+| Flag | Syntax / Format | Description |
+|---|---|---|
+| `-dedupe` | Bare flag | Drop duplicate rows checking all columns |
+| `-dedupe COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
+
+`-dedupe` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`.
+
+---
+
+## Deduplicating Across All Columns
+
+Run `-dedupe` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to pandas `df.drop_duplicates()`):
+
+```bash
+# Keep only unique species and island pairs
+pytae penguins.parquet -select "species,island" -dedupe
+```
+
+**Output:**
+```text
+  species    island
+   Adelie Torgersen
+   Adelie    Biscoe
+   Adelie     Dream
+Chinstrap     Dream
+   Gentoo    Biscoe
+```
+
+---
+
+## Deduplicating Across Specific Columns
+
+Pass column names to restrict duplicate checks to specific identifiers, keeping the first matching record for all other columns:
+
+```bash
+# Deduplicate based on customer identifier, retaining first order
+pytae orders.parquet -dedupe customer_id
+
+# Deduplicate based on composite keys
+pytae penguins.parquet -dedupe "species,island"
+```
+
+---
+
+## Chaining in Pipelines
+
+`-dedupe` operates seamlessly anywhere inside a multi-step pipeline:
+
+```bash
+# Filter rows -> select subset -> deduplicate -> sort -> output
+pytae penguins.parquet \
+  -qry "body_mass_g > 4000" \
+  -select "species,island" \
+  -dedupe \
+  -arrange species
 ```
 
 ################################################################################
