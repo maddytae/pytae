@@ -13,8 +13,17 @@ from typing import Any
 
 import pandas as pd
 
-from .agg_df import _UNSET
-from .agg_df import agg_df as _agg_df
+from .agg import _UNSET
+from .agg import agg as _agg
+from .arrange import (
+    arrange as _arrange,
+)
+from .arrange import (
+    slice_max as _slice_max,
+)
+from .arrange import (
+    slice_min as _slice_min,
+)
 from .mutate import mutate as _mutate
 from .other_utilities import (
     clean_columns as _clean_columns,
@@ -42,7 +51,9 @@ class PtAccessor:
     - select: Column selection, slicing, negative exclusion, and type filtering.
     - qry: Row filtering via string expressions, dicts, intervals, and kwargs.
     - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
-    - agg_df / agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
+    - arrange: Order rows by column(s) with inline direction ('desc', '-col').
+    - slice_max / slice_min: Group-aware top/bottom-N row slicing.
+    - agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
     - long / wide: Reshaping (melting to rows and pivoting to columns).
     - sql: DuckDB SQL queries over the DataFrame (as table `data`).
     - clean_columns: Standardizing and normalizing column header names.
@@ -97,7 +108,42 @@ class PtAccessor:
         """
         return _sql(self._obj, query, **frames)
 
-    def agg_df(
+    def arrange(
+        self,
+        *cols: Any,
+        ascending: bool | Sequence[bool] | None = None,
+        na_last: bool = True,
+    ) -> pd.DataFrame:
+        """Order rows by one or more columns, supporting inline direction ('desc', 'asc', '-col')
+        and brackets for spaced column names ('[col with space] desc').
+        """
+        return _arrange(self._obj, *cols, ascending=ascending, na_last=na_last)
+
+    def slice_max(
+        self,
+        col: str,
+        n: int = 1,
+        *,
+        by: str | Sequence[str] | None = None,
+        with_ties: bool = False,
+        na_last: bool = True,
+    ) -> pd.DataFrame:
+        """Select the rows with the largest values of a column, optionally grouped by `by`."""
+        return _slice_max(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+
+    def slice_min(
+        self,
+        col: str,
+        n: int = 1,
+        *,
+        by: str | Sequence[str] | None = None,
+        with_ties: bool = False,
+        na_last: bool = True,
+    ) -> pd.DataFrame:
+        """Select the rows with the smallest values of a column, optionally grouped by `by`."""
+        return _slice_min(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+
+    def agg(
         self,
         by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
         *args: Any,
@@ -109,16 +155,11 @@ class PtAccessor:
         functions ('mean', ['mean', 'n']), column mapping strings with brackets
         ('tip = mean, [total bill] = mean, n = n'), and keyword arguments.
         """
-        return _agg_df(self._obj, by, *args, **kwargs)
+        return _agg(self._obj, by, *args, **kwargs)
 
-    def agg(
-        self,
-        by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
-        *args: Any,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Alias for `df.pt.agg_df()`: aggregate numeric columns grouped by `by` column(s)."""
-        return _agg_df(self._obj, by, *args, **kwargs)
+    def agg_df(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Removed: Use df.pt.agg() instead."""
+        raise AttributeError("df.pt.agg_df() has been removed; use df.pt.agg() instead")
 
     def long(
         self,

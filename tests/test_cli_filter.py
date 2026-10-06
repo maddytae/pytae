@@ -10,17 +10,16 @@ from pytae import cli
 from tests.cli_helpers import _write_csv
 
 
-def test_query_then_select_filters_like_pandas(tmp_path, capsys):
+def test_query_deprecated_raises_helpful_error(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    exit_code = cli.main(
-        [path, "-query", "flt == 'A'", "-select", "keep,val", "-shape"]
-    )
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(2, 2)"
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-query", "flt == 'A'"])
+    assert exc.value.code == 2
+    assert "'-query' has been deprecated; use '-qry' instead" in capsys.readouterr().err
 
 
 def test_qry_without_braces_is_equivalent(tmp_path, capsys):

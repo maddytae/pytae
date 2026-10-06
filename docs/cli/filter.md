@@ -1,8 +1,8 @@
-# CLI Feature Guide: Row Filtering
+# CLI Feature Guide: Row Filtering & Slicing
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Filter rows using pytae's ergonomic filter expressions (`-qry`) or standard Pandas query syntax (`-query`).
+Filter rows using pytae's ergonomic filter expressions (`-qry`), drop missing rows (`-dropna`), or extract extreme rows (`-slice_max`, `-slice_min`).
 
 ---
 
@@ -15,19 +15,20 @@ Filter rows using pytae's ergonomic filter expressions (`-qry`) or standard Pand
   - [Intervals & Ranges (`[start, end]`)](#intervals--ranges)
   - [List Membership (`['a', 'b']`)](#list-membership)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
-- [Pandas Query Expressions (`-query`)](#pandas-query-expressions--query)
-- [Filtering Missing Values (`-dropna`)](#filtering-missing-values--dropna)
+- [Selecting Extreme Rows (`-slice_max`, `-slice_min`)](#selecting-extreme-rows--slice_max--slice_min)
+- [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
 ---
 
 ## Overview & Differences
 
-| Flag | Engine | Key Syntax Highlights |
+| Flag | Category | Key Syntax Highlights |
 |---|---|---|
-| `-qry CONDITIONS` | Pytae `pt.qry()` | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, handles special characters safely |
-| `-query EXPR` | Pandas `df.query()` | Boolean expression string passed to `numexpr` (`col > 10 and other == 'x'`) |
-| `-dropna BOOL` | Group NA drop | Controls whether null/NaN grouping keys are dropped in aggregations, mutations, value counts, and pivots (default: false) |
+| `-qry CONDITIONS` | Row Filter | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, bracketed spaces `[col name]` |
+| `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
+| `-slice_max SPEC` | Row Slicing | Select top N rows by column (`col:N`, `col,N`, or `col,n=N`), group-aware with `-by` |
+| `-slice_min SPEC` | Row Slicing | Select bottom N rows by column (`col:N`, `col,N`, or `col,n=N`), group-aware with `-by` |
 
 ---
 
@@ -119,34 +120,63 @@ species  body_mass_g    sex
 
 ---
 
-## Pandas Query Expressions (`-query`)
+## Selecting Extreme Rows (`-slice_max`, `-slice_min`)
 
-Pass arbitrary Pandas boolean expressions directly via `-query`:
+Extract the top or bottom N rows ordered by a specific column. Both verbs are fully group-aware when combined with `-by`.
+
+Supported specification formats:
+- `col:N` (e.g. `body_mass_g:3`)
+- `col,N` (e.g. `body_mass_g,3`)
+- `col,n=N` (e.g. `body_mass_g,n=3`)
+- Default `n=1` if `N` is omitted.
+- Bracketed notation `[col with spaces]:N` is supported.
+
+### Top N Rows Overall
 
 ```bash
-pytae penguins.parquet \
-  -query "body_mass_g > 5500 and sex == 'Male'" \
-  -select "species,body_mass_g,sex" \
-  -head 3
+pytae penguins.parquet -slice_max "body_mass_g:3" -select "species,island,body_mass_g"
 ```
 
 **Output:**
 ```text
-species  body_mass_g  sex
- Gentoo       5700.0 Male
- Gentoo       5700.0 Male
- Gentoo       5550.0 Male
+species island  body_mass_g
+ Gentoo Biscoe       6300.0
+ Gentoo Biscoe       6050.0
+ Gentoo Biscoe       6000.0
+```
+
+### Bottom N Rows per Group (`-by`)
+
+When combined with `-by`, `slice_min` extracts the smallest N rows within each unique group:
+
+```bash
+pytae penguins.parquet -by species -slice_min "body_mass_g:1" -select "species,body_mass_g"
+```
+
+**Output:**
+```text
+  species  body_mass_g
+   Adelie       2850.0
+Chinstrap       2700.0
+   Gentoo       3950.0
 ```
 
 ---
 
-## Handling Missing Group Keys (`-dropna`)
+## Dropping Missing Values (`-dropna`)
 
-By default (`-dropna false`), missing values (`NaN`) in grouping columns are retained as their own group across aggregations, window mutations, value counts, frequency tables, and pivot tables. To drop rows or categories with missing grouping keys, pass `-dropna true`:
+Drop rows with missing values (`NaN`). Can be run bare or scoped to a comma-separated column list:
 
 ```bash
-pytae penguins.parquet -by sex -agg mean -dropna true
+# Drop rows with NaN in any column
+pytae penguins.parquet -dropna
+
+# Drop rows with NaN in specific column(s)
+pytae penguins.parquet -dropna "body_mass_g,sex"
 ```
+
+> [!NOTE]
+> For scoped aggregations and pivot tables, pass `dropna=true` inside the operation's spec (e.g., `-agg "a=mean,dropna=true"` or `-pivot "r=species,c=sex,dropna=true"`).
 
 ---
 
@@ -155,4 +185,4 @@ pytae penguins.parquet -by sex -agg mean -dropna true
 In terminal shells (bash, zsh):
 - Enclose the entire spec in outer double quotes: `-qry "..."`.
 - Enclose string literals in inner single quotes: `'Gentoo'`.
-- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40`.
+- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-slice_max "[bill length mm]:3"`.

@@ -19,11 +19,12 @@ TABLE OF CONTENTS
     4.1.  pt.qry() / df.pt.qry() — Row Filtering
     4.2.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.3.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
-    4.4.  pt.agg_df() / df.pt.agg_df() / df.pt.agg() — Grouped Aggregation
-    4.5.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
-    4.6.  pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
-    4.7.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
-    4.8.  Other Utilities:
+    4.4.  pt.arrange() / pt.slice_max() / pt.slice_min() — Sorting & Group Slicing
+    4.5.  pt.agg() / df.pt.agg() — Grouped Aggregation
+    4.6.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+    4.7.  pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+    4.8.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
+    4.9.  Other Utilities:
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
           - pt.handle_missing() / df.pt.handle_missing()
@@ -31,7 +32,7 @@ TABLE OF CONTENTS
           - pt.replace_values() / df.pt.replace_values()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
-    4.9.  Plotter — Visualization & Dashboarding (Plotting API)
+    4.10. Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -42,14 +43,14 @@ TABLE OF CONTENTS
     5.7.  Batch Processing, Conversions & Clipboard (-o)
 6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
     6.1.  Why is `-select` before `-agg` redundant?
-    6.2.  Why is `by` required in `pt.agg_df()` but optional in the CLI (`-by`)?
+    6.2.  Why is `by` required in `pt.agg()` but optional in the CLI (`-by`)?
     6.3.  How do I apply custom functions in `mutate()`? (Vectorized vs Series vs Row)
     6.4.  Can row-level functions access newly created columns in the same `mutate()`?
     6.5.  Why does `df.pt.mutate(col=my_func)` fail when `my_func` expects a row?
     6.6.  What is the difference between `wide()` and `pivot()`?
     6.7.  How do negative column exclusions work in `select()` and CLI `-select`?
     6.8.  How do columns with spaces work across expressions?
-    6.9.  Why did `-sort` fail? (Use `-sort_by`)
+    6.9.  Why did `-sort` or `-sort_by` fail? (Use `-arrange`)
     6.10. How do I inspect metadata without reading data into RAM?
     6.11. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
@@ -57,7 +58,7 @@ TABLE OF CONTENTS
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
     Recipe 3: DuckDB SQL Query with Joining Frames
     Recipe 4: Multi-File Merge, Concat, and Export
-    Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -sort_by)
+    Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
 9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
@@ -77,7 +78,7 @@ Key principles:
 1. Dual Calling Convention: Every library verb exists both as a functional 
    function `pt.verb(df, ...)` and as a Pandas DataFrame accessor `df.pt.verb(...)`.
    The accessor enables seamless method chaining with standard Pandas methods:
-   `df.rename(...).pt.qry(...).pt.agg_df(...)`.
+   `df.rename(...).pt.qry(...).pt.agg(...)`.
 2. Unix Pipeline CLI: The command-line tool `pytae` processes operations in 
    the exact order flags are passed on the terminal:
    `pytae data.parquet -qry "..." -mutate "..." -select "..." -head 10`.
@@ -97,7 +98,7 @@ Key principles:
 7. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
    is `wide()`, 2D aggregation is `pivot()`, column selection is `select()`.
 8. Plotting Without Implicit Aggregation (Path A): Plotters focus purely on 
-   visual representation—data should be aggregated explicitly first via `agg_df` 
+   visual representation—data should be aggregated explicitly first via `agg` 
    or `pivot` before plotting, avoiding hidden or surprising aggregations.
 
 
@@ -117,8 +118,10 @@ Top-Level Functions exported by `pytae`:
   - pt.everything() / pt.everything (sentinel for select)
   - pt.qry(df, *args, **kwargs)
   - pt.mutate(df, *args, by=None, dropna=False, observed=True, params=None, **kwargs)
-  - pt.agg_df(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs)
-  - pt.agg(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs) (alias for agg_df)
+  - pt.arrange(df, *cols)
+  - pt.slice_max(df, order_by, n=1, by=None, with_ties=True)
+  - pt.slice_min(df, order_by, n=1, by=None, with_ties=True)
+  - pt.agg(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, c="variable", v="value", index=None)
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
@@ -141,7 +144,9 @@ DataFrame Accessor (`df.pt`):
     df.pt.select(...)
     df.pt.qry(...)
     df.pt.mutate(...)
-    df.pt.agg_df(...)
+    df.pt.arrange(...)
+    df.pt.slice_max(...)
+    df.pt.slice_min(...)
     df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
@@ -417,14 +422,34 @@ Column Order Rules:
   Columns pulled in by contains, regex, or everything() follow original DataFrame order.
 
 
-4.4. pt.agg_df() / df.pt.agg_df() / df.pt.agg() — Grouped Aggregation
+4.4. pt.arrange() / pt.slice_max() / pt.slice_min() — Sorting & Group Slicing
+--------------------------------------------------------------------------------
+Reorder rows or extract extreme records per group.
+
+Signatures:
+  pt.arrange(df: pd.DataFrame, *cols: str) -> pd.DataFrame
+  pt.slice_max(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
+  pt.slice_min(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
+
+Calling Styles:
+  # arrange: ascending (default), descending ("desc" or "-col"), bracketed for spaces
+  df.pt.arrange("species", "body_mass_g desc")
+  df.pt.arrange("species, -body_mass_g")
+  df.pt.arrange("[bill length mm] desc")
+
+  # slice_max / slice_min: top/bottom N rows overall or by group
+  df.pt.slice_max("body_mass_g", n=3)
+  df.pt.slice_min("body_mass_g", n=1, by="species")
+
+
+4.5. pt.agg() / df.pt.agg() — Grouped Aggregation
 --------------------------------------------------------------------------------
 Aggregates numeric columns grouped by explicit `by=` column(s) (or `None` for a 
 whole-table grand total summary). Supports string mapping specifications with bracketed 
 columns `[col]` (matching CLI `-agg`), keyword arguments, or whole-frame aggregations.
 
 Signature:
-  pt.agg_df(
+  pt.agg(
       df: pd.DataFrame,
       by: str | Sequence[str] | None = _UNSET,
       *args: Any,
@@ -477,7 +502,7 @@ Key Rules & Behaviors:
     `dropna=False` by default preserves missing category groups across aggregations.
 
 
-4.5. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+4.6. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
 --------------------------------------------------------------------------------
 Pure structural reshaping between long and wide formats without aggregation.
 
@@ -509,7 +534,7 @@ pt.wide(df, c="variable", v="value", index=None):
     wide = tall.pt.wide(c="metric", v="measurement")
 
 
-4.6. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+4.7. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
 --------------------------------------------------------------------------------
 Full multi-dimensional 2D pivot table and frequency cross-tabulation engine.
 Automatically flattens multi-level column hierarchies to clean 1D string names 
@@ -560,7 +585,7 @@ Examples:
   df.pt.pivot(r=["species", "island"], c="sex", v="body_mass_g", a="median", fill_value=0)
 
 
-4.7. pt.sql() / df.pt.sql() — DuckDB SQL Engine
+4.8. pt.sql() / df.pt.sql() — DuckDB SQL Engine
 --------------------------------------------------------------------------------
 Executes SQL queries directly over in-memory DataFrames using DuckDB.
 Requires: pip install 'pytae[sql]'
@@ -580,7 +605,7 @@ Rules & Features:
     df.pt.sql("@analysis.sql")
 
 
-4.8. Other Utilities
+4.9. Other Utilities
 --------------------------------------------------------------------------------
 - pt.cols(df, ascending=True):
   Returns list of column names.
@@ -624,7 +649,7 @@ Rules & Features:
   Attached directly to pd.DataFrame and pd.Series on import pytae (no pt. or df.pt. needed).
 
 
-4.9. Plotter — Visualization & Dashboarding (Plotting API)
+4.10. Plotter — Visualization & Dashboarding (Plotting API)
 --------------------------------------------------------------------------------
 Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
@@ -740,22 +765,23 @@ Inspection & Summary Flags:
   -glimpse              Transposed column overview with dtypes and sample values (like dplyr/Polars)
   -meta                 Display zero-scan Parquet metadata (row groups, schema, compression)
   -diff PATH            Compare schema, shape, null counts, and cell values against another file
-  -value_counts         Value counts for categorical/string columns (honors -dropna)
-  -unique               Drop duplicate rows and print unique rows
+  -value_counts         Value counts for categorical/string columns (honors dropna in specs)
+  -dedupe [COLS]        Drop duplicate rows across all or specified columns
   -sample [N]           Random sample of N rows (default 5)
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
   -nrows, -limit N      Limit reading to first N rows of file
-  -sort_by SPEC         Sort rows by columns: e.g. -sort_by "col1, col2 asc" or -sort_by "col1 desc"
+  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc", -arrange "col1 desc", or -arrange "-col1"
 
 In-Terminal ASCII Visualizations:
   -freq COL             Render horizontal frequency distribution bars with counts & percentages
   -hist COL[:BINS]      Render in-terminal distribution histogram for a numeric column (default: 10 bins)
 
-Row Filtering Flags:
+Row Filtering & Slicing Flags:
   -qry CONDITIONS       pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
-  -query EXPR           pandas query() expression passed to numexpr
-  -drop_na [COLS]       Drop rows containing NaN (bare for any column, or comma-separated columns)
+  -dropna [COLS]        Drop rows containing NaN (bare for all columns, or comma-separated columns)
+  -slice_max SPEC       Extract top N rows by column (e.g. "body_mass_g:3"), group-aware with -by
+  -slice_min SPEC       Extract bottom N rows by column (e.g. "body_mass_g:1"), group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
@@ -766,14 +792,12 @@ Column Transformation Flags:
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
-  -by, -group_by COLS   Grouping columns for -agg and -mutate (e.g. -by species -agg mean)
-  -agg, -agg_df [SPECS] Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
+  -by, -group_by COLS   Grouping columns for -agg, -mutate, -slice_max, -slice_min (e.g. -by species -agg mean)
+  -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
-  -dropna BOOL          Control NA group handling for -agg, -mutate, -pivot, -wide (true/false, default: false)
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
   -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=n")
-  -crosstab SPECS       Frequency crosstabulation (delegates to -pivot): "index=species, columns=sex"
 
 SQL & Multi-File Flags:
   -sql QUERY            Run DuckDB SQL on table 'data' (or @query.sql)
@@ -901,7 +925,7 @@ Convert files between formats with zero python code via -o:
 
 6.1. Why is `-select` before `-agg` redundant?
 ---------------------------------------------
-In pytae, both the library `agg_df()` and CLI `-agg` directly declare the target columns 
+In pytae, both the library `agg()` and CLI `-agg` directly declare the target columns 
 and their desired aggregations. Writing a redundant `select` or `-select` before `agg` 
 wastes an intermediate DataFrame transformation:
   # REDUNDANT:
@@ -912,9 +936,9 @@ wastes an intermediate DataFrame transformation:
   pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
   df.pt.agg("species", body_mass_g="mean")
 
-6.2. Why is `by` required in `pt.agg_df()` but optional in CLI (`-by`)?
+6.2. Why is `by` required in `pt.agg()` but optional in CLI (`-by`)?
 ----------------------------------------------------------------------
-- In Python library: `pt.agg_df(df, by, ...)` enforces explicit intent. Pass `by="species"` 
+- In Python library: `pt.agg(df, by, ...)` enforces explicit intent. Pass `by="species"` 
   for grouped aggregations, or explicitly pass `by=None` for a whole-table summary (1 row). 
   This prevents accidental whole-table collapses when a user forgets to pass grouping columns.
 - In CLI: Command flags are composable. If `-by` is omitted, `pytae input.parquet -agg mean` 
@@ -974,11 +998,12 @@ To run a row-level function, write: `lambda df: df.apply(my_func, axis=1)`.
 - In kwargs: Python syntax prohibits spaces in keyword arguments. Use dictionary unpacking:
   `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})`.
 
-6.9. Why did `-sort` fail? (Use `-sort_by`)
--------------------------------------------
-The legacy `-sort` flag was retired to prevent ambiguity with pandas `.sort_values`. 
-Use `-sort_by SPEC`, e.g. `pytae data.parquet -sort_by "body_mass_g desc"` or 
-`-sort_by "species, body_mass_g asc"`.
+6.9. Why did `-sort` or `-sort_by` fail? (Use `-arrange`)
+--------------------------------------------------------
+Pytae standardizes strictly on `-arrange` for row ordering across both the Python library 
+and CLI to follow the "one and only one right way" philosophy.
+Use `-arrange SPEC`, e.g. `pytae data.parquet -arrange "body_mass_g desc"`, 
+`-arrange "-body_mass_g"`, or `-arrange "species, [bill length mm] asc"`.
 
 6.10. How do I inspect metadata without reading data into RAM?
 --------------------------------------------------------------
@@ -1143,7 +1168,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2; mar.parquet=m3" \\
       -shape
 ```
 
-Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -sort_by)
+Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
 --------------------------------------------------------------------------------
 ```bash
 # 1. Zero-scan Parquet metadata
@@ -1156,7 +1181,7 @@ pytae penguins.parquet -freq species
 pytae penguins.parquet -hist body_mass_g:8
 
 # 4. Sort and view top rows
-pytae penguins.parquet -sort_by "body_mass_g desc" -head 5
+pytae penguins.parquet -arrange "body_mass_g desc" -head 5
 ```
 
 Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
@@ -1239,7 +1264,8 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │       ├── __main__.py
 │       ├── _text.py
 │       ├── accessor.py
-│       ├── agg_df.py
+│       ├── agg.py
+│       ├── arrange.py
 │       ├── cli.py
 │       ├── cli_parsing.py
 │       ├── cli_pipeline.py
@@ -1281,7 +1307,8 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   ├── cli_helpers.py
 │   ├── conftest.py
 │   ├── test_accessor.py
-│   ├── test_agg_df.py
+│   ├── test_agg.py
+│   ├── test_arrange_slice.py
 │   ├── test_cli_agg.py
 │   ├── test_cli_clean.py
 │   ├── test_cli_enhancements.py

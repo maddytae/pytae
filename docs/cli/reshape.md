@@ -2,7 +2,7 @@
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`), deduplication (`-unique`), and row sorting (`-sort_by`).
+Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`), deduplication (`-dedupe`), and row sorting (`-arrange`).
 
 ---
 
@@ -16,8 +16,8 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
   - [3. Round-Trip Reshaping (`-long` → `-wide`)](#3-round-trip-reshaping--long---wide)
 - [When to Use `-pivot` Instead of `-wide`](#when-to-use--pivot-instead-of--wide)
 - [Frequency Counts (`-value_counts`)](#frequency-counts--value_counts)
-- [Deduplicating Rows (`-unique`)](#deduplicating-rows--unique)
-- [Sorting Rows (`-sort_by`)](#sorting-rows--sort_by)
+- [Deduplicating Rows (`-dedupe`)](#deduplicating-rows--dedupe)
+- [Sorting Rows (`-arrange`)](#sorting-rows--arrange)
 
 ---
 
@@ -30,8 +30,8 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
 | `-long [SPEC]` | Melt numeric columns into rows | `c=` (metric header), `v=` (value header), `r=` (fixed rows) |
 | `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `c=` (header source), `v=` (values), `r=` (row index) |
 | `-value_counts` | Group counts across current working columns | Pair with `-select` |
-| `-unique` | Drop duplicate rows | — |
-| `-sort_by SPEC` | Sort rows by column list | `col1,col2 desc` |
+| `-dedupe [COLS]` | Drop duplicate rows across all or specified columns | Comma-separated columns |
+| `-arrange SPEC` | Sort rows by column list | `col1,col2 desc`, `-col`, or `[col name] asc` |
 
 > [!IMPORTANT]
 > **`-wide` is strictly for 1-to-1 reshaping without aggregation.** If your data has multiple rows per key combination and requires mathematical summarization (`mean`, `sum`, `count`/`n`), use **[`-pivot`](pivot.md)**.
@@ -145,25 +145,35 @@ Chinstrap     Dream     68
 
 ---
 
-## Deduplicating Rows (`-unique`)
+## Deduplicating Rows (`-dedupe`)
 
-Drops duplicate rows across the intermediate DataFrame:
+Drops duplicate rows across the intermediate DataFrame. By default it checks all columns, or you can supply specific subset columns:
 
 ```bash
-pytae penguins.parquet -select "species,island" -unique
+# Deduplicate across all columns
+pytae penguins.parquet -select "species,island" -dedupe
+
+# Deduplicate by specific column(s)
+pytae penguins.parquet -dedupe "species,island"
 ```
 
 ---
 
-## Sorting Rows (`-sort_by`)
+## Sorting Rows (`-arrange`)
 
-Sort rows by one or more columns with optional `asc` or `desc` order (defaults to `asc`):
+Sort rows by one or more columns with optional `asc` or `desc` order (defaults to `asc`). Supports leading `-` prefix for descending order, as well as bracket notation for spaced column names:
 
 ```bash
 pytae penguins.parquet \
   -select "species,body_mass_g" \
-  -sort_by "body_mass_g desc" \
+  -arrange "body_mass_g desc" \
   -head 3
+
+# Multiple columns with shorthand prefix:
+pytae penguins.parquet -arrange "species, -body_mass_g" -head 3
+
+# Bracket notation for spaces:
+pytae penguins.parquet -arrange "[bill length mm] desc" -head 3
 ```
 
 **Output:**

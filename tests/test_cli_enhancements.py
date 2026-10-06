@@ -91,15 +91,15 @@ def test_freq_dropna_default_and_flags(tmp_path, capsys):
     df = pd.DataFrame({"category": ["apple", None, "apple"]})
     path = _write_csv(tmp_path, df)
 
-    # Default is dropna=false: retains NA category
+    # Without -dropna: retains NA category
     exit_code = cli.main([path, "-freq", "category"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "apple" in out
     assert "NaN" in out or "<NA>" in out or "None" in out or "nan" in out
 
-    # Explicit -dropna true: drops NA category
-    exit_code_drop = cli.main([path, "-freq", "category", "-dropna", "true"])
+    # Top-level row-filtering -dropna drops NA rows beforehand
+    exit_code_drop = cli.main([path, "-dropna", "-freq", "category"])
     assert exit_code_drop == 0
     out_drop = capsys.readouterr().out
     assert "apple" in out_drop
@@ -154,7 +154,7 @@ def test_cli_plot_forwards_dropna(tmp_path):
     path = _write_csv(tmp_path, df)
     out_png = tmp_path / "chart.png"
 
-    exit_code = cli.main([path, "-plot", "kind=bar, x=cat, y=val", "-dropna", "true", "-o", str(out_png)])
+    exit_code = cli.main([path, "-plot", "kind=bar, x=cat, y=val, dropna=true", "-o", str(out_png)])
     assert exit_code == 0
     assert out_png.exists()
 

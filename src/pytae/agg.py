@@ -268,7 +268,7 @@ def _agg_df_dict(
         return df_out.reindex(columns=output_cols)
 
 
-def agg_df(
+def agg(
     df: pd.DataFrame,
     by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
     *args: Any,
@@ -447,10 +447,8 @@ def agg_df(
     observed = kwargs.get("observed", True)
 
     if isinstance(agg_types, dict):
+        if "__dropna__" in agg_types:
+            dropna = agg_types.pop("__dropna__")
         return _agg_df_dict(df, group_cols, agg_types, dropna, observed)
     else:
         return _agg_df_list(df, group_cols, agg_types, dropna, observed)
-
-
-# Alias: agg is identical to agg_df
-agg = agg_df

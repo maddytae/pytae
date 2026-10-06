@@ -155,12 +155,21 @@ def test_order_unique_then_shape_uses_deduplicated_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-unique", "-shape"])
+    exit_code = cli.main([path, "-dedupe", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    # One duplicated row is removed by -unique, then -shape reflects the reduced frame.
+    # One duplicated row is removed by -dedupe, then -shape reflects the reduced frame.
     assert "(2, 2)" in out
+
+
+def test_unique_flag_deprecated(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 1]}))
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-unique"])
+    assert exc.value.code == 2
+    assert "'-unique' has been deprecated; use '-dedupe' instead" in capsys.readouterr().err
+
 
 def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
     df = pd.DataFrame(
@@ -186,14 +195,14 @@ def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    # Default is dropna=false: includes NA as its own key, yielding x + NA (2 rows).
+    # Without -dropna: includes NA as its own key, yielding x + NA (2 rows).
     exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "(2, 2)" in out
 
-    # Explicit -dropna true drops the NA key (1 row).
-    exit_code_drop = cli.main([path, "-select", "grp", "-value_counts", "-dropna", "true", "-shape"])
+    # Top-level row-filtering -dropna drops rows with NA (1 row in value_counts).
+    exit_code_drop = cli.main([path, "-dropna", "-select", "grp", "-value_counts", "-shape"])
     out_drop = capsys.readouterr().out
     assert exit_code_drop == 0
     assert "(1, 2)" in out_drop
@@ -241,7 +250,7 @@ def test_value_counts_collision_fails_cleanly(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "columns contain both 'count' and 'n'" in err
 
-def test_order_sort_by_then_shape_uses_sorted_frame(tmp_path, capsys):
+def test_order_arrange_then_shape_uses_sorted_frame(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["b", "a", "c"],
@@ -250,13 +259,13 @@ def test_order_sort_by_then_shape_uses_sorted_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-sort_by", "grp", "-shape"])
+    exit_code = cli.main([path, "-arrange", "grp", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "(3, 2)" in out
 
-def test_sort_by_respects_select_and_descending(tmp_path, capsys):
+def test_arrange_respects_select_and_descending(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["a", "b", "c"],
@@ -266,7 +275,7 @@ def test_sort_by_respects_select_and_descending(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp,val", "-sort_by", "val desc", "-head", "1"])
+    exit_code = cli.main([path, "-select", "grp,val", "-arrange", "val desc", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -274,7 +283,7 @@ def test_sort_by_respects_select_and_descending(tmp_path, capsys):
     assert "b" in out
     assert "3" in out
 
-def test_value_counts_then_sort_by_prints_only_final_table(tmp_path, capsys):
+def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", "x", "y"],
@@ -282,7 +291,7 @@ def test_value_counts_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-sort_by", "count"])
+    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-arrange", "count"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -317,32 +326,38 @@ def test_dtype_optional_name_order(tmp_path, capsys):
     assert cli.main([path, "-dtype", "asc"]) == 0
     assert capsys.readouterr().out.splitlines()[0].startswith("a")
 
-def test_sort_by_default_is_ascending(tmp_path, capsys):
+def test_arrange_default_is_ascending(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a", "c"], "val": [2, 1, 3]}))
 
-    exit_code = cli.main([path, "-sort_by", "val", "-head", "1"])
+    exit_code = cli.main([path, "-arrange", "val", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "a" in out
     assert "1" in out
 
-def test_sort_by_explicit_asc(tmp_path, capsys):
+def test_arrange_explicit_asc(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a"], "val": [2, 1]}))
 
-    exit_code = cli.main([path, "-sort_by", "val asc", "-head", "1"])
+    exit_code = cli.main([path, "-arrange", "val asc", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "a" in out
     assert "1" in out
 
-def test_sort_flag_removed(tmp_path):
+def test_sort_by_flag_deprecated(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-sort_by", "a"])
+    assert exc_info.value.code == 2
+    assert "'-sort_by' has been deprecated; use '-arrange' instead" in capsys.readouterr().err
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-sort", "desc"])
     assert exc_info.value.code == 2
+    assert "'-sort_by' has been deprecated; use '-arrange' instead" in capsys.readouterr().err
 
 def test_cols_rejects_invalid_order(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
@@ -908,7 +923,7 @@ def test_cli_round_preserves_pipeline_precision(tmp_path, capsys):
     # CLI Issue 4: intermediate sort does not corrupt full precision for later agg
     df = pd.DataFrame({"g": ["x", "x"], "v": [0.4, 0.4]})
     path = _write_csv(tmp_path, df)
-    exit_code = cli.main([path, "-round", "0", "-sort_by", "v", "-by", "g", "-agg", "sum"])
+    exit_code = cli.main([path, "-round", "0", "-arrange", "v", "-by", "g", "-agg", "sum"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "1" in out

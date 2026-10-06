@@ -8,7 +8,8 @@ from pathlib import Path
 import pandas as pd
 
 from .accessor import PtAccessor  # noqa: F401  — registers df.pt
-from .agg_df import agg, agg_df
+from .agg import agg
+from .arrange import arrange, slice_max, slice_min
 from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
@@ -99,8 +100,10 @@ __all__ = [
     "select",
     "qry",
     "mutate",
+    "arrange",
+    "slice_max",
+    "slice_min",
     "agg",
-    "agg_df",
     "long",
     "wide",
     "pivot",

@@ -33,7 +33,7 @@ def parse_columns(raw: str) -> list[str]:
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
-    """Parse -sort_by SPEC: a comma-separated column list, optionally ending with
+    """Parse legacy -sort_by SPEC: a comma-separated column list, optionally ending with
     asc or desc as a trailing word (default asc). e.g. "species,body_mass_g desc"."""
     raw = (raw or "").strip()
     if not raw:
@@ -46,6 +46,56 @@ def parse_sort_by(raw: str) -> tuple[list[str], str]:
     if not cols:
         raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
     return cols, order
+
+
+def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
+    """Parse -arrange SPEC: a comma-separated column list with optional asc/desc directions,
+    leading '-', or brackets for spaced columns. e.g. "species, [annual salary] desc".
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
+    from pytae.arrange import _extract_arrange_specs
+    cols, asc_list = _extract_arrange_specs((raw,))
+    if not cols:
+        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
+    return cols, asc_list
+
+
+def parse_slice_spec(raw: str, flag_name: str = "-slice_max") -> tuple[str, int]:
+    """Parse -slice_max/-slice_min SPEC: a column name, optionally followed by ':N', ',N', or ',n=N'.
+    e.g. 'body_mass_g:2', 'body_mass_g,2', 'body_mass_g,n=2', '[annual salary]:5', 'species'.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col', 'col:N', or 'col,n=N'")
+    col: str = ""
+    n: int = 1
+    if ":" in raw:
+        head, _, tail = raw.rpartition(":")
+        if tail.strip().isdigit():
+            col, n = head.strip(), int(tail.strip())
+        else:
+            col = raw
+    elif "," in raw:
+        head, _, tail = raw.rpartition(",")
+        tail_str = tail.strip()
+        if tail_str.startswith("n="):
+            num_part = tail_str[2:].strip()
+            if num_part.isdigit():
+                col, n = head.strip(), int(num_part)
+            else:
+                raise SystemExit(f"{flag_name}: invalid n value '{num_part}'")
+        elif tail_str.isdigit():
+            col, n = head.strip(), int(tail_str)
+        else:
+            col = raw
+    else:
+        col = raw
+    col = _unquote_name(col)
+    if not col:
+        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col', 'col:N', or 'col,n=N'")
+    return col, n
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -291,7 +341,8 @@ def parse_agg(raw: str):
 
     mapped = [_is_mapping(e) for e in entries]
     if all(mapped):
-        out: dict[str, str] = {}
+        out: dict[str, Any] = {}
+        dropna_flag = None
         for entry in entries:
             if "=" in entry:
                 parts = _tokenize(entry, "=", keep_quotes=True, track_brackets=True)
@@ -302,6 +353,9 @@ def parse_agg(raw: str):
                         "-agg: the old 'column=...,aggfunc=...' syntax is retired. "
                         "Use '-by <cols> -agg \"col = aggfunc\"' or '-agg \"total = col:aggfunc\"' instead."
                     )
+                if key.lower() == "dropna":
+                    dropna_flag = parse_bool_text(value)
+                    continue
             elif ":" in entry:
                 raise SystemExit(f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported.")
             else:
@@ -309,6 +363,8 @@ def parse_agg(raw: str):
             if not key or not value:
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             out[key] = value
+        if dropna_flag is not None:
+            out["__dropna__"] = dropna_flag
         return out
     if any(mapped):
         raise SystemExit(

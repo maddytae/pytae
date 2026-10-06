@@ -142,28 +142,58 @@ class _Pipeline:
             return f"-mutate: {exc}"
         return None
 
-    def apply_query(self, expr: str) -> str | None:
-        """Apply one -query expression to the current view. Returns an error message or None."""
-        df = self.dataframe()
-        try:
-            self._df = df.query(expr)
-        except Exception as exc:
-            return f"-query: {exc}"
-        return None
-
-    def apply_drop_na(self, spec: str | None) -> str | None:
+    def apply_dropna(self, spec: str | None) -> str | None:
         """Drop rows containing NaN values. Returns an error message or None."""
         df = self.dataframe()
         if not spec:
-            self._df = df.dropna()
+            self._df = df.dropna().reset_index(drop=True)
             return None
         from pytae.cli_parsing import parse_columns, unknown_columns_message
         cols = parse_columns(spec)
         available = list(df.columns)
         unknown = [c for c in cols if c not in available]
         if unknown:
-            return unknown_columns_message("-drop_na", unknown, available)
-        self._df = df.dropna(subset=cols)
+            return unknown_columns_message("-dropna", unknown, available)
+        self._df = df.dropna(subset=cols).reset_index(drop=True)
+        return None
+
+    def apply_dedupe(self, spec: str | None) -> str | None:
+        """Drop duplicate rows. Returns an error message or None."""
+        df = self.dataframe()
+        if not spec:
+            self._df = df.drop_duplicates().reset_index(drop=True)
+            return None
+        from pytae.cli_parsing import parse_columns, unknown_columns_message
+        cols = parse_columns(spec)
+        available = list(df.columns)
+        unknown = [c for c in cols if c not in available]
+        if unknown:
+            return unknown_columns_message("-dedupe", unknown, available)
+        self._df = df.drop_duplicates(subset=cols).reset_index(drop=True)
+        return None
+
+    def apply_arrange(self, spec: str) -> str | None:
+        """Sort rows by one or more columns with directions. Returns an error message or None."""
+        df = self.dataframe()
+        from pytae.arrange import arrange
+        try:
+            self._df = arrange(df, spec)
+        except Exception as exc:
+            return f"-arrange: {exc}"
+        return None
+
+    def apply_slice(self, spec: str, *, by: list[str] | None = None, is_max: bool = True) -> str | None:
+        """Slice top or bottom N rows by a column, optionally grouped by 'by'."""
+        df = self.dataframe()
+        flag = "-slice_max" if is_max else "-slice_min"
+        from pytae.arrange import slice_max, slice_min
+        from pytae.cli_parsing import parse_slice_spec
+        try:
+            col, n = parse_slice_spec(spec, flag)
+            func = slice_max if is_max else slice_min
+            self._df = func(df, col, n=n, by=by)
+        except Exception as exc:
+            return f"{flag}: {exc}"
         return None
 
     def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:

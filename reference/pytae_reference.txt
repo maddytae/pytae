@@ -11,11 +11,12 @@ TABLE OF CONTENTS
     4.1.  pt.qry() / df.pt.qry() — Row Filtering
     4.2.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.3.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
-    4.4.  pt.agg_df() / df.pt.agg_df() / df.pt.agg() — Grouped Aggregation
-    4.5.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
-    4.6.  pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
-    4.7.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
-    4.8.  Other Utilities:
+    4.4.  pt.arrange() / pt.slice_max() / pt.slice_min() — Sorting & Group Slicing
+    4.5.  pt.agg() / df.pt.agg() — Grouped Aggregation
+    4.6.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+    4.7.  pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+    4.8.  pt.sql() / df.pt.sql() — DuckDB SQL Engine
+    4.9.  Other Utilities:
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
           - pt.handle_missing() / df.pt.handle_missing()
@@ -23,7 +24,7 @@ TABLE OF CONTENTS
           - pt.replace_values() / df.pt.replace_values()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
-    4.9.  Plotter — Visualization & Dashboarding (Plotting API)
+    4.10. Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -34,14 +35,14 @@ TABLE OF CONTENTS
     5.7.  Batch Processing, Conversions & Clipboard (-o)
 6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
     6.1.  Why is `-select` before `-agg` redundant?
-    6.2.  Why is `by` required in `pt.agg_df()` but optional in the CLI (`-by`)?
+    6.2.  Why is `by` required in `pt.agg()` but optional in the CLI (`-by`)?
     6.3.  How do I apply custom functions in `mutate()`? (Vectorized vs Series vs Row)
     6.4.  Can row-level functions access newly created columns in the same `mutate()`?
     6.5.  Why does `df.pt.mutate(col=my_func)` fail when `my_func` expects a row?
     6.6.  What is the difference between `wide()` and `pivot()`?
     6.7.  How do negative column exclusions work in `select()` and CLI `-select`?
     6.8.  How do columns with spaces work across expressions?
-    6.9.  Why did `-sort` fail? (Use `-sort_by`)
+    6.9.  Why did `-sort` or `-sort_by` fail? (Use `-arrange`)
     6.10. How do I inspect metadata without reading data into RAM?
     6.11. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
@@ -49,7 +50,7 @@ TABLE OF CONTENTS
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
     Recipe 3: DuckDB SQL Query with Joining Frames
     Recipe 4: Multi-File Merge, Concat, and Export
-    Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -sort_by)
+    Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
 9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
@@ -69,7 +70,7 @@ Key principles:
 1. Dual Calling Convention: Every library verb exists both as a functional 
    function `pt.verb(df, ...)` and as a Pandas DataFrame accessor `df.pt.verb(...)`.
    The accessor enables seamless method chaining with standard Pandas methods:
-   `df.rename(...).pt.qry(...).pt.agg_df(...)`.
+   `df.rename(...).pt.qry(...).pt.agg(...)`.
 2. Unix Pipeline CLI: The command-line tool `pytae` processes operations in 
    the exact order flags are passed on the terminal:
    `pytae data.parquet -qry "..." -mutate "..." -select "..." -head 10`.
@@ -89,7 +90,7 @@ Key principles:
 7. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
    is `wide()`, 2D aggregation is `pivot()`, column selection is `select()`.
 8. Plotting Without Implicit Aggregation (Path A): Plotters focus purely on 
-   visual representation—data should be aggregated explicitly first via `agg_df` 
+   visual representation—data should be aggregated explicitly first via `agg` 
    or `pivot` before plotting, avoiding hidden or surprising aggregations.
 
 
@@ -109,8 +110,10 @@ Top-Level Functions exported by `pytae`:
   - pt.everything() / pt.everything (sentinel for select)
   - pt.qry(df, *args, **kwargs)
   - pt.mutate(df, *args, by=None, dropna=False, observed=True, params=None, **kwargs)
-  - pt.agg_df(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs)
-  - pt.agg(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs) (alias for agg_df)
+  - pt.arrange(df, *cols)
+  - pt.slice_max(df, order_by, n=1, by=None, with_ties=True)
+  - pt.slice_min(df, order_by, n=1, by=None, with_ties=True)
+  - pt.agg(df, by=_UNSET, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, c="variable", v="value", index=None)
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
@@ -133,7 +136,9 @@ DataFrame Accessor (`df.pt`):
     df.pt.select(...)
     df.pt.qry(...)
     df.pt.mutate(...)
-    df.pt.agg_df(...)
+    df.pt.arrange(...)
+    df.pt.slice_max(...)
+    df.pt.slice_min(...)
     df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
@@ -409,14 +414,34 @@ Column Order Rules:
   Columns pulled in by contains, regex, or everything() follow original DataFrame order.
 
 
-4.4. pt.agg_df() / df.pt.agg_df() / df.pt.agg() — Grouped Aggregation
+4.4. pt.arrange() / pt.slice_max() / pt.slice_min() — Sorting & Group Slicing
+--------------------------------------------------------------------------------
+Reorder rows or extract extreme records per group.
+
+Signatures:
+  pt.arrange(df: pd.DataFrame, *cols: str) -> pd.DataFrame
+  pt.slice_max(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
+  pt.slice_min(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
+
+Calling Styles:
+  # arrange: ascending (default), descending ("desc" or "-col"), bracketed for spaces
+  df.pt.arrange("species", "body_mass_g desc")
+  df.pt.arrange("species, -body_mass_g")
+  df.pt.arrange("[bill length mm] desc")
+
+  # slice_max / slice_min: top/bottom N rows overall or by group
+  df.pt.slice_max("body_mass_g", n=3)
+  df.pt.slice_min("body_mass_g", n=1, by="species")
+
+
+4.5. pt.agg() / df.pt.agg() — Grouped Aggregation
 --------------------------------------------------------------------------------
 Aggregates numeric columns grouped by explicit `by=` column(s) (or `None` for a 
 whole-table grand total summary). Supports string mapping specifications with bracketed 
 columns `[col]` (matching CLI `-agg`), keyword arguments, or whole-frame aggregations.
 
 Signature:
-  pt.agg_df(
+  pt.agg(
       df: pd.DataFrame,
       by: str | Sequence[str] | None = _UNSET,
       *args: Any,
@@ -469,7 +494,7 @@ Key Rules & Behaviors:
     `dropna=False` by default preserves missing category groups across aggregations.
 
 
-4.5. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+4.6. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
 --------------------------------------------------------------------------------
 Pure structural reshaping between long and wide formats without aggregation.
 
@@ -501,7 +526,7 @@ pt.wide(df, c="variable", v="value", index=None):
     wide = tall.pt.wide(c="metric", v="measurement")
 
 
-4.6. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+4.7. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
 --------------------------------------------------------------------------------
 Full multi-dimensional 2D pivot table and frequency cross-tabulation engine.
 Automatically flattens multi-level column hierarchies to clean 1D string names 
@@ -552,7 +577,7 @@ Examples:
   df.pt.pivot(r=["species", "island"], c="sex", v="body_mass_g", a="median", fill_value=0)
 
 
-4.7. pt.sql() / df.pt.sql() — DuckDB SQL Engine
+4.8. pt.sql() / df.pt.sql() — DuckDB SQL Engine
 --------------------------------------------------------------------------------
 Executes SQL queries directly over in-memory DataFrames using DuckDB.
 Requires: pip install 'pytae[sql]'
@@ -572,7 +597,7 @@ Rules & Features:
     df.pt.sql("@analysis.sql")
 
 
-4.8. Other Utilities
+4.9. Other Utilities
 --------------------------------------------------------------------------------
 - pt.cols(df, ascending=True):
   Returns list of column names.
@@ -616,7 +641,7 @@ Rules & Features:
   Attached directly to pd.DataFrame and pd.Series on import pytae (no pt. or df.pt. needed).
 
 
-4.9. Plotter — Visualization & Dashboarding (Plotting API)
+4.10. Plotter — Visualization & Dashboarding (Plotting API)
 --------------------------------------------------------------------------------
 Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
@@ -732,22 +757,23 @@ Inspection & Summary Flags:
   -glimpse              Transposed column overview with dtypes and sample values (like dplyr/Polars)
   -meta                 Display zero-scan Parquet metadata (row groups, schema, compression)
   -diff PATH            Compare schema, shape, null counts, and cell values against another file
-  -value_counts         Value counts for categorical/string columns (honors -dropna)
-  -unique               Drop duplicate rows and print unique rows
+  -value_counts         Value counts for categorical/string columns (honors dropna in specs)
+  -dedupe [COLS]        Drop duplicate rows across all or specified columns
   -sample [N]           Random sample of N rows (default 5)
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
   -nrows, -limit N      Limit reading to first N rows of file
-  -sort_by SPEC         Sort rows by columns: e.g. -sort_by "col1, col2 asc" or -sort_by "col1 desc"
+  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc", -arrange "col1 desc", or -arrange "-col1"
 
 In-Terminal ASCII Visualizations:
   -freq COL             Render horizontal frequency distribution bars with counts & percentages
   -hist COL[:BINS]      Render in-terminal distribution histogram for a numeric column (default: 10 bins)
 
-Row Filtering Flags:
+Row Filtering & Slicing Flags:
   -qry CONDITIONS       pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
-  -query EXPR           pandas query() expression passed to numexpr
-  -drop_na [COLS]       Drop rows containing NaN (bare for any column, or comma-separated columns)
+  -dropna [COLS]        Drop rows containing NaN (bare for all columns, or comma-separated columns)
+  -slice_max SPEC       Extract top N rows by column (e.g. "body_mass_g:3"), group-aware with -by
+  -slice_min SPEC       Extract bottom N rows by column (e.g. "body_mass_g:1"), group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
@@ -758,14 +784,12 @@ Column Transformation Flags:
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
-  -by, -group_by COLS   Grouping columns for -agg and -mutate (e.g. -by species -agg mean)
-  -agg, -agg_df [SPECS] Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
+  -by, -group_by COLS   Grouping columns for -agg, -mutate, -slice_max, -slice_min (e.g. -by species -agg mean)
+  -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
-  -dropna BOOL          Control NA group handling for -agg, -mutate, -pivot, -wide (true/false, default: false)
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
   -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=n")
-  -crosstab SPECS       Frequency crosstabulation (delegates to -pivot): "index=species, columns=sex"
 
 SQL & Multi-File Flags:
   -sql QUERY            Run DuckDB SQL on table 'data' (or @query.sql)
@@ -893,7 +917,7 @@ Convert files between formats with zero python code via -o:
 
 6.1. Why is `-select` before `-agg` redundant?
 ---------------------------------------------
-In pytae, both the library `agg_df()` and CLI `-agg` directly declare the target columns 
+In pytae, both the library `agg()` and CLI `-agg` directly declare the target columns 
 and their desired aggregations. Writing a redundant `select` or `-select` before `agg` 
 wastes an intermediate DataFrame transformation:
   # REDUNDANT:
@@ -904,9 +928,9 @@ wastes an intermediate DataFrame transformation:
   pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
   df.pt.agg("species", body_mass_g="mean")
 
-6.2. Why is `by` required in `pt.agg_df()` but optional in CLI (`-by`)?
+6.2. Why is `by` required in `pt.agg()` but optional in CLI (`-by`)?
 ----------------------------------------------------------------------
-- In Python library: `pt.agg_df(df, by, ...)` enforces explicit intent. Pass `by="species"` 
+- In Python library: `pt.agg(df, by, ...)` enforces explicit intent. Pass `by="species"` 
   for grouped aggregations, or explicitly pass `by=None` for a whole-table summary (1 row). 
   This prevents accidental whole-table collapses when a user forgets to pass grouping columns.
 - In CLI: Command flags are composable. If `-by` is omitted, `pytae input.parquet -agg mean` 
@@ -966,11 +990,12 @@ To run a row-level function, write: `lambda df: df.apply(my_func, axis=1)`.
 - In kwargs: Python syntax prohibits spaces in keyword arguments. Use dictionary unpacking:
   `df.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})`.
 
-6.9. Why did `-sort` fail? (Use `-sort_by`)
--------------------------------------------
-The legacy `-sort` flag was retired to prevent ambiguity with pandas `.sort_values`. 
-Use `-sort_by SPEC`, e.g. `pytae data.parquet -sort_by "body_mass_g desc"` or 
-`-sort_by "species, body_mass_g asc"`.
+6.9. Why did `-sort` or `-sort_by` fail? (Use `-arrange`)
+--------------------------------------------------------
+Pytae standardizes strictly on `-arrange` for row ordering across both the Python library 
+and CLI to follow the "one and only one right way" philosophy.
+Use `-arrange SPEC`, e.g. `pytae data.parquet -arrange "body_mass_g desc"`, 
+`-arrange "-body_mass_g"`, or `-arrange "species, [bill length mm] asc"`.
 
 6.10. How do I inspect metadata without reading data into RAM?
 --------------------------------------------------------------
@@ -1135,7 +1160,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2; mar.parquet=m3" \
       -shape
 ```
 
-Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -sort_by)
+Recipe 5: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
 --------------------------------------------------------------------------------
 ```bash
 # 1. Zero-scan Parquet metadata
@@ -1148,7 +1173,7 @@ pytae penguins.parquet -freq species
 pytae penguins.parquet -hist body_mass_g:8
 
 # 4. Sort and view top rows
-pytae penguins.parquet -sort_by "body_mass_g desc" -head 5
+pytae penguins.parquet -arrange "body_mass_g desc" -head 5
 ```
 
 Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
@@ -1225,7 +1250,7 @@ The `pytae` CLI executes operations sequentially from left to right as an in-mem
    - **Single-file mode** (standard): `pytae <path> [operations...] [output]`
    - **Multi-file mode**: `pytae -file "alias1=path1; alias2=path2" -merge ...` (replaces positional path)
 4. **Terminal vs Non-Terminal Steps**:
-   - Most operations (`-select`, `-qry`, `-mutate`, `-sort_by`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
+   - Most operations (`-select`, `-qry`, `-mutate`, `-arrange`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
    - Non-DataFrame inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`, `-meta`, `-diff`) print summary text and terminate the pipeline (allowing only `-o clip` to copy the output).
 5. **Output Routing**:
    - By default, the terminal displays the final result on stdout.
@@ -1238,7 +1263,7 @@ pytae sales.parquet \
   -qry "region == 'West', revenue > 1000" \
   -mutate "profit_margin = (revenue - cost) / revenue" \
   -select "order_id,region,revenue,profit_margin" \
-  -sort_by "profit_margin desc" \
+  -arrange "profit_margin desc" \
   -o high_margin_west.parquet
 ```
 
@@ -1253,12 +1278,12 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 |---|---|---|
 | **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-glimpse`, `-meta`, `-pager` |
 | **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
-| **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-query`, `-dropna`, intervals `[min, max]`, set membership, comparisons |
+| **Row Filtering & Slicing** | [Row Filtering Guide](cli/filter.md) | `-qry`, `-dropna`, `-slice_max`, `-slice_min`, intervals `[min, max]`, set membership, comparisons |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
-| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-drop_na`, `-rename` |
+| **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/aggregate.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
-| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-unique`, `-sort_by` |
+| **Reshaping & Matrices** | [Reshaping Guide](cli/reshape.md) • [2D Pivot Guide](cli/pivot.md) | `-long` (melt), `-wide` (pure reshape), `-pivot` (2D pivot table), `-value_counts`, `-dedupe`, `-arrange` |
 | **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`, auto-pipe), `clip`, `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
@@ -1310,16 +1335,18 @@ pytae data.parquet -select "-sex,-island"                         # Exclude mult
 ---
 
 <a id="row-filtering"></a>
-### 3. Row Filtering
+### 3. Row Filtering & Slicing
 
-Filter rows using pytae's ergonomic filter syntax (`-qry`) or pandas' query expressions (`-query`). Supports comparison operators, interval checks, string pattern matches, and list memberships.
+Filter rows using pytae's ergonomic filter syntax (`-qry`), drop null rows with `-dropna`, or select top/bottom records using `-slice_max` and `-slice_min`. Supports comparison operators, interval checks, string pattern matches, and list memberships.
 
-- **Primary flags**: `-qry`, `-query`, `-dropna`
+- **Primary flags**: `-qry`, `-dropna`, `-slice_max`, `-slice_min`
 
 ```bash
 pytae data.parquet -qry "species = 'Adelie', body_mass_g > 3500"  # Keyword filtering
 pytae data.parquet -qry "body_mass_g = [3000, 4500]"              # Interval range
-pytae data.parquet -query "body_mass_g > 3500 and island == 'Dream'" # Pandas query
+pytae data.parquet -dropna "body_mass_g,sex"                      # Drop rows with NaNs in specific cols
+pytae data.parquet -slice_max "body_mass_g,n=5"                   # Top 5 heaviest penguins
+pytae data.parquet -by species -slice_max "body_mass_g,n=1"       # Heaviest penguin per species
 ```
 
 👉 See the complete guide: **[Row Filtering Guide](cli/filter.md)**
@@ -1366,7 +1393,7 @@ pytae data.parquet -sql @query.sql                               # Execute query
 
 Standardize messy column headers, substitute cell values, fill missing entries, and rename columns anywhere in the pipeline.
 
-- **Primary flags**: `-clean_columns`, `-replace_values`, `-handle_missing`, `-rename`
+- **Primary flags**: `-clean_columns`, `-replace_values`, `-handle_missing`, `-dropna`, `-rename`
 
 ```bash
 # Clean messy header names (strip, lowercase, replace spaces, deduplicate)
@@ -1409,14 +1436,15 @@ pytae data.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = bod
 
 Pivot tables from long to wide, melt wide tables to long, tally value combinations, deduplicate rows, and sort records.
 
-- **Primary flags**: `-pivot`, `-long`, `-wide`, `-value_counts`, `-unique`, `-sort_by`
+- **Primary flags**: `-pivot`, `-long`, `-wide`, `-value_counts`, `-dedupe`, `-arrange`
 
 ```bash
 pytae data.parquet -pivot "r=Region,c=Year,v=Sales,a=sum"           # 2D Excel-style pivot
 pytae data.parquet -long "c=metric,v=reading"                       # Melt
 pytae data.parquet -wide "c=metric,v=reading"                       # Pure 1:1 reshape
 pytae data.parquet -pivot "r=species,c=island,v=sex,a=n"            # Frequency matrix
-pytae data.parquet -sort_by "body_mass_g desc"
+pytae data.parquet -dedupe "species,island"                         # Drop duplicate rows
+pytae data.parquet -arrange "body_mass_g desc"                      # Sort rows
 ```
 
 👉 See the complete guides: **[Reshaping Guide](cli/reshape.md)** • **[2D Pivot Tables Guide](cli/pivot.md)**
@@ -1449,7 +1477,7 @@ Compare the active pipeline table against another dataset file. Generates a stru
 
 ```bash
 pytae file_v1.parquet -diff file_v2.parquet
-pytae current.csv -query "status == 'active'" -diff baseline.parquet
+pytae current.csv -qry "status == 'active'" -diff baseline.parquet
 ```
 
 👉 See the complete guide: **[Dataset & Schema Diffing Guide](cli/diff.md)**
@@ -1519,23 +1547,23 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-diff PATH` | Inspect | Compare current frame against another file | [cli/diff.md](cli/diff.md) |
 | `-select SPEC` | Select & Filter | Filter, reorder, or exclude columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select.md](cli/select.md) |
 | `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
-| `-query EXPR` | Select & Filter | Filter rows using pandas `df.query()` expression | [cli/filter.md](cli/filter.md) |
-| `-drop_na [COLS]` | Select & Filter | Drop rows containing NaN (bare for any column, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-dropna BOOL` | Select & Filter | Control whether NA grouping keys are dropped in aggregations, mutations, value counts, and pivots (default: false) | [cli/filter.md](cli/filter.md) |
+| `-dropna [COLS]` | Select & Filter | Drop rows containing NaN (bare for all columns, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
+| `-slice_max SPEC` | Select & Filter | Select top N rows by column (`col:N`), group-aware with `-by` | [cli/filter.md](cli/filter.md) |
+| `-slice_min SPEC` | Select & Filter | Select bottom N rows by column (`col:N`), group-aware with `-by` | [cli/filter.md](cli/filter.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
 | `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |
 | `-clean_columns SPEC` | Clean | Clean headers (strip, squeeze, strip_special, fill, case, dedupe) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-replace_values SPEC` | Clean | Replace cell values (`v=mapping`, `c=cols`, `exact=bool`) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-handle_missing [FILL]` | Clean | Fill NAs (`.` for object, `0` for numeric, or custom fill) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-rename OLD:NEW,...` | Clean | Rename columns anywhere in pipeline or during export | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-by COLS` | Aggregate & Transform | Grouping columns for `-agg` and `-mutate` | [cli/aggregate.md](cli/aggregate.md) |
+| `-by COLS` | Aggregate & Transform | Grouping columns for `-agg`, `-mutate`, `-slice_max`, `-slice_min` | [cli/aggregate.md](cli/aggregate.md) |
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pure reshape: long table to wide format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `fill=`) | [cli/pivot.md](cli/pivot.md) |
 | `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/reshape.md](cli/reshape.md) |
-| `-unique` | Reshape | Remove duplicate rows | [cli/reshape.md](cli/reshape.md) |
-| `-sort_by SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` | [cli/reshape.md](cli/reshape.md) |
+| `-dedupe [COLS]` | Reshape | Remove duplicate rows across all or specific columns | [cli/reshape.md](cli/reshape.md) |
+| `-arrange SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` or `-col` prefix | [cli/reshape.md](cli/reshape.md) |
 | `-freq COL` | Visualize | Terminal ASCII frequency distribution bar chart | [cli/inspect.md](cli/inspect.md) |
 | `-hist COL[:BINS]` | Visualize | Terminal ASCII numeric histogram with bin intervals | [cli/inspect.md](cli/inspect.md) |
 | `-plot SPEC` | Visualize | Headless figure plotting (`kind=`, `x=`, `y=`, `by=`) | [cli/plotting.md](cli/plotting.md) |
@@ -1563,7 +1591,8 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Rename columns** | `-rename` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Standardize messy headers** | `-clean_columns` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Filter rows using expressions** | `-qry` | [Row Filtering](cli/filter.md) |
-| **Filter rows using pandas query** | `-query` | [Row Filtering](cli/filter.md) |
+| **Drop rows containing NaN** | `-dropna` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
+| **Top/bottom N rows by column** | `-slice_max`, `-slice_min` | [Row Filtering](cli/filter.md) |
 | **Compute / mutate columns** | `-mutate` | [Mutating & Computing](cli/mutate.md) |
 | **Run SQL queries** | `-sql` | [DuckDB SQL Engine](cli/sql.md) |
 | **Replace cell values** | `-replace_values` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
@@ -1579,8 +1608,8 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Terminal histogram (ASCII)** | `-hist` | [Inspection & Metadata](cli/inspect.md) |
 | **Render and export plot charts** | `-plot`, `-finalize` | [Visualizations & Plotting](cli/plotting.md) |
 | **Read from STDIN / UNIX pipes** | `pytae - [-fmt ...]` | [File I/O & Export](cli/export_io.md) |
-| **Deduplicate rows** | `-unique` | [Reshaping](cli/reshape.md) |
-| **Sort rows** | `-sort_by` | [Reshaping](cli/reshape.md) |
+| **Deduplicate rows** | `-dedupe` | [Reshaping](cli/reshape.md) |
+| **Sort rows** | `-arrange` | [Reshaping](cli/reshape.md) |
 | **Preview rows** | `-head`, `-tail`, `-sample` | [Inspection & Metadata](cli/inspect.md) |
 | **Inspect shape, cols, dtypes, nulls** | `-shape`, `-cols`, `-dtype`, `-nulls`, `-info` | [Inspection & Metadata](cli/inspect.md) |
 | **Fast Parquet metadata check** | `-meta` | [Inspection & Metadata](cli/inspect.md) |
@@ -1654,7 +1683,7 @@ pytae titanic.parquet -freq survived
 pytae diamonds.parquet -by cut -agg price=mean
 
 # Sort by numeric column descending
-pytae mpg.parquet -select "origin,mpg" -sort_by "mpg desc" -head 5
+pytae mpg.parquet -select "origin,mpg" -arrange "mpg desc" -head 5
 
 # Explicit grouping with custom aggregation
 pytae flights.parquet -by year -agg "passengers = sum"
@@ -1876,7 +1905,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
   - [Restricting to Columns (`c=`)](#restricting-to-columns-c)
   - [Substring Replacement (`exact=false`)](#substring-replacement-exactfalse)
 - [Imputing Missing Values (`-handle_missing`)](#imputing-missing-values--handle_missing)
-- [Dropping Missing Values (`-drop_na`)](#dropping-missing-values--drop_na)
+- [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 
 ---
@@ -1888,7 +1917,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
 | `-clean_columns SPEC` | Column headers | `,` / `=` | Standardizes headers (strip, squeeze, fill, case, dedupe) |
 | `-replace_values SPEC` | Cell contents | `old:new` | Swaps values inside cells |
 | `-handle_missing [FILL]` | Cell contents | String value | Imputes `NaN` (defaults to `.` for text, `0` for numeric) |
-| `-drop_na [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for any column, or comma-separated columns) |
+| `-dropna [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for all columns, or comma-separated columns) |
 | `-rename OLD:NEW,...` | Column headers | `old:new` | Explicitly renames column names |
 
 ---
@@ -1987,23 +2016,22 @@ pytae dataset.parquet -handle_missing "UNKNOWN"
 
 ---
 
-## Dropping Missing Values (`-drop_na`)
+## Dropping Missing Values (`-dropna`)
 
 Drop rows containing missing values (`NaN`). Can be run bare to drop rows with `NaN` across any column, or scoped to specific target columns:
 
 ```bash
 # Drop rows with NaN in any column
-pytae penguins.parquet -drop_na
+pytae penguins.parquet -dropna
 
 # Drop rows with NaN in specific column(s)
-pytae penguins.parquet -drop_na body_mass_g
-pytae penguins.parquet -drop_na "body_mass_g,sex"
+pytae penguins.parquet -dropna body_mass_g
+pytae penguins.parquet -dropna "body_mass_g,sex"
 ```
 
 > [!NOTE]
-> **Difference between `-drop_na` and `-dropna`**:
-> - **`-drop_na [cols]`**: Directly drops rows containing `NaN` from the dataset.
-> - **`-dropna true|false`**: Controls whether group-by aggregations (`-by`, `-pivot`) include or drop a category for missing `NaN` keys.
+> - **Top-level `-dropna [COLS]`**: Operates as a row filter, dropping rows containing `NaN` in any column (or specified subset of columns), matching Pandas `df.dropna(subset=...)`.
+> - **Scoped `dropna=bool`**: For operations like `-pivot` and `-agg`, pass `dropna=true` or `dropna=false` inside the spec (e.g. `-pivot "r=species,c=island,dropna=true"` or `-agg "a=mean,dropna=true"`) to control whether `NaN` grouping keys are dropped.
 
 ---
 
@@ -2452,11 +2480,11 @@ Wrote 150000 rows to exports/file2.csv.gz
 ################################################################################
 # FILE: docs/cli/filter.md
 ################################################################################
-# CLI Feature Guide: Row Filtering
+# CLI Feature Guide: Row Filtering & Slicing
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Filter rows using pytae's ergonomic filter expressions (`-qry`) or standard Pandas query syntax (`-query`).
+Filter rows using pytae's ergonomic filter expressions (`-qry`), drop missing rows (`-dropna`), or extract extreme rows (`-slice_max`, `-slice_min`).
 
 ---
 
@@ -2469,19 +2497,20 @@ Filter rows using pytae's ergonomic filter expressions (`-qry`) or standard Pand
   - [Intervals & Ranges (`[start, end]`)](#intervals--ranges)
   - [List Membership (`['a', 'b']`)](#list-membership)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
-- [Pandas Query Expressions (`-query`)](#pandas-query-expressions--query)
-- [Filtering Missing Values (`-dropna`)](#filtering-missing-values--dropna)
+- [Selecting Extreme Rows (`-slice_max`, `-slice_min`)](#selecting-extreme-rows--slice_max--slice_min)
+- [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
 ---
 
 ## Overview & Differences
 
-| Flag | Engine | Key Syntax Highlights |
+| Flag | Category | Key Syntax Highlights |
 |---|---|---|
-| `-qry CONDITIONS` | Pytae `pt.qry()` | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, handles special characters safely |
-| `-query EXPR` | Pandas `df.query()` | Boolean expression string passed to `numexpr` (`col > 10 and other == 'x'`) |
-| `-dropna BOOL` | Group NA drop | Controls whether null/NaN grouping keys are dropped in aggregations, mutations, value counts, and pivots (default: false) |
+| `-qry CONDITIONS` | Row Filter | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, bracketed spaces `[col name]` |
+| `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
+| `-slice_max SPEC` | Row Slicing | Select top N rows by column (`col:N`, `col,N`, or `col,n=N`), group-aware with `-by` |
+| `-slice_min SPEC` | Row Slicing | Select bottom N rows by column (`col:N`, `col,N`, or `col,n=N`), group-aware with `-by` |
 
 ---
 
@@ -2573,34 +2602,63 @@ species  body_mass_g    sex
 
 ---
 
-## Pandas Query Expressions (`-query`)
+## Selecting Extreme Rows (`-slice_max`, `-slice_min`)
 
-Pass arbitrary Pandas boolean expressions directly via `-query`:
+Extract the top or bottom N rows ordered by a specific column. Both verbs are fully group-aware when combined with `-by`.
+
+Supported specification formats:
+- `col:N` (e.g. `body_mass_g:3`)
+- `col,N` (e.g. `body_mass_g,3`)
+- `col,n=N` (e.g. `body_mass_g,n=3`)
+- Default `n=1` if `N` is omitted.
+- Bracketed notation `[col with spaces]:N` is supported.
+
+### Top N Rows Overall
 
 ```bash
-pytae penguins.parquet \
-  -query "body_mass_g > 5500 and sex == 'Male'" \
-  -select "species,body_mass_g,sex" \
-  -head 3
+pytae penguins.parquet -slice_max "body_mass_g:3" -select "species,island,body_mass_g"
 ```
 
 **Output:**
 ```text
-species  body_mass_g  sex
- Gentoo       5700.0 Male
- Gentoo       5700.0 Male
- Gentoo       5550.0 Male
+species island  body_mass_g
+ Gentoo Biscoe       6300.0
+ Gentoo Biscoe       6050.0
+ Gentoo Biscoe       6000.0
+```
+
+### Bottom N Rows per Group (`-by`)
+
+When combined with `-by`, `slice_min` extracts the smallest N rows within each unique group:
+
+```bash
+pytae penguins.parquet -by species -slice_min "body_mass_g:1" -select "species,body_mass_g"
+```
+
+**Output:**
+```text
+  species  body_mass_g
+   Adelie       2850.0
+Chinstrap       2700.0
+   Gentoo       3950.0
 ```
 
 ---
 
-## Handling Missing Group Keys (`-dropna`)
+## Dropping Missing Values (`-dropna`)
 
-By default (`-dropna false`), missing values (`NaN`) in grouping columns are retained as their own group across aggregations, window mutations, value counts, frequency tables, and pivot tables. To drop rows or categories with missing grouping keys, pass `-dropna true`:
+Drop rows with missing values (`NaN`). Can be run bare or scoped to a comma-separated column list:
 
 ```bash
-pytae penguins.parquet -by sex -agg mean -dropna true
+# Drop rows with NaN in any column
+pytae penguins.parquet -dropna
+
+# Drop rows with NaN in specific column(s)
+pytae penguins.parquet -dropna "body_mass_g,sex"
 ```
+
+> [!NOTE]
+> For scoped aggregations and pivot tables, pass `dropna=true` inside the operation's spec (e.g., `-agg "a=mean,dropna=true"` or `-pivot "r=species,c=sex,dropna=true"`).
 
 ---
 
@@ -2609,7 +2667,7 @@ pytae penguins.parquet -by sex -agg mean -dropna true
 In terminal shells (bash, zsh):
 - Enclose the entire spec in outer double quotes: `-qry "..."`.
 - Enclose string literals in inner single quotes: `'Gentoo'`.
-- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40`.
+- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-slice_max "[bill length mm]:3"`.
 
 ################################################################################
 # FILE: docs/cli/inspect.md
@@ -3842,7 +3900,7 @@ pytae penguins.parquet -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`), deduplication (`-unique`), and row sorting (`-sort_by`).
+Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`), deduplication (`-dedupe`), and row sorting (`-arrange`).
 
 ---
 
@@ -3856,8 +3914,8 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
   - [3. Round-Trip Reshaping (`-long` → `-wide`)](#3-round-trip-reshaping--long---wide)
 - [When to Use `-pivot` Instead of `-wide`](#when-to-use--pivot-instead-of--wide)
 - [Frequency Counts (`-value_counts`)](#frequency-counts--value_counts)
-- [Deduplicating Rows (`-unique`)](#deduplicating-rows--unique)
-- [Sorting Rows (`-sort_by`)](#sorting-rows--sort_by)
+- [Deduplicating Rows (`-dedupe`)](#deduplicating-rows--dedupe)
+- [Sorting Rows (`-arrange`)](#sorting-rows--arrange)
 
 ---
 
@@ -3870,8 +3928,8 @@ Pure structural reshaping (`-long`, `-wide`), frequency counts (`-value_counts`)
 | `-long [SPEC]` | Melt numeric columns into rows | `c=` (metric header), `v=` (value header), `r=` (fixed rows) |
 | `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `c=` (header source), `v=` (values), `r=` (row index) |
 | `-value_counts` | Group counts across current working columns | Pair with `-select` |
-| `-unique` | Drop duplicate rows | — |
-| `-sort_by SPEC` | Sort rows by column list | `col1,col2 desc` |
+| `-dedupe [COLS]` | Drop duplicate rows across all or specified columns | Comma-separated columns |
+| `-arrange SPEC` | Sort rows by column list | `col1,col2 desc`, `-col`, or `[col name] asc` |
 
 > [!IMPORTANT]
 > **`-wide` is strictly for 1-to-1 reshaping without aggregation.** If your data has multiple rows per key combination and requires mathematical summarization (`mean`, `sum`, `count`/`n`), use **[`-pivot`](pivot.md)**.
@@ -3985,25 +4043,35 @@ Chinstrap     Dream     68
 
 ---
 
-## Deduplicating Rows (`-unique`)
+## Deduplicating Rows (`-dedupe`)
 
-Drops duplicate rows across the intermediate DataFrame:
+Drops duplicate rows across the intermediate DataFrame. By default it checks all columns, or you can supply specific subset columns:
 
 ```bash
-pytae penguins.parquet -select "species,island" -unique
+# Deduplicate across all columns
+pytae penguins.parquet -select "species,island" -dedupe
+
+# Deduplicate by specific column(s)
+pytae penguins.parquet -dedupe "species,island"
 ```
 
 ---
 
-## Sorting Rows (`-sort_by`)
+## Sorting Rows (`-arrange`)
 
-Sort rows by one or more columns with optional `asc` or `desc` order (defaults to `asc`):
+Sort rows by one or more columns with optional `asc` or `desc` order (defaults to `asc`). Supports leading `-` prefix for descending order, as well as bracket notation for spaced column names:
 
 ```bash
 pytae penguins.parquet \
   -select "species,body_mass_g" \
-  -sort_by "body_mass_g desc" \
+  -arrange "body_mass_g desc" \
   -head 3
+
+# Multiple columns with shorthand prefix:
+pytae penguins.parquet -arrange "species, -body_mass_g" -head 3
+
+# Bracket notation for spaces:
+pytae penguins.parquet -arrange "[bill length mm] desc" -head 3
 ```
 
 **Output:**
@@ -4395,12 +4463,13 @@ pytae -file "customers.csv=c; orders.parquet=o" \
   - [1. Row Filtering (`qry`)](#1-row-filtering--qry)
   - [2. Column Selection (`select`)](#2-column-selection--select)
   - [3. Feature Engineering (`mutate`)](#3-feature-engineering--mutate)
-  - [4. Pure Reshaping (`long`, `wide`)](#4-pure-reshaping--long-wide)
-  - [5. 2D Pivot Tables (`pivot`)](#5-2d-pivot-tables--pivot)
-  - [6. Aggregation (`agg`)](#6-aggregation--agg)
-  - [7. DuckDB SQL Engine (`sql`)](#7-duckdb-sql-engine--sql)
-  - [8. Plotting (`Plotter` & `df.pt.plot`)](#8-plotting--plotter)
-  - [9. Utilities & Cleaning](#9-utilities--cleaning)
+  - [4. Sorting & Slicing (`arrange`, `slice_max`, `slice_min`)](#4-sorting--slicing--arrange-slice_max-slice_min)
+  - [5. Pure Reshaping (`long`, `wide`)](#5-pure-reshaping--long-wide)
+  - [6. 2D Pivot Tables (`pivot`)](#6-2d-pivot-tables--pivot)
+  - [7. Aggregation (`agg`)](#7-aggregation--agg)
+  - [8. DuckDB SQL Engine (`sql`)](#8-duckdb-sql-engine--sql)
+  - [9. Plotting (`Plotter` & `df.pt.plot`)](#9-plotting--plotter)
+  - [10. Utilities & Cleaning](#10-utilities--cleaning)
 - [Bundled Sample Datasets](#sample-datasets)
 - [Syntax & Convention Cheat Sheet](#syntax-conventions)
 
@@ -4426,6 +4495,7 @@ penguins = pt.sample("penguins")
     .pt.qry("body_mass_g > 3000, species == 'Gentoo'")
     .pt.select("species", "island", "bill_length_mm", "body_mass_g")
     .pt.mutate(mass_kg="body_mass_g / 1000")
+    .pt.arrange("mass_kg desc")
     .pt.agg(["species", "island"], a=["mean", "n"])
 )
 
@@ -4446,6 +4516,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
+| **Sorting & Slicing** | `pt.arrange()`, `pt.slice_max()`, `pt.slice_min()` | Reorder rows with `-col`/`desc`, select extreme N rows per group `by=` | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -4520,7 +4591,31 @@ pt.mutate(df, avg_val="mean(val)", by="group", dropna=True)
 
 ---
 
-### 4. Pure Reshaping — `long()` & `wide()`
+### 4. Sorting & Slicing — `arrange()`, `slice_max()`, `slice_min()`
+
+Order rows or retrieve the top/bottom records with group awareness:
+
+```python
+# Reorder rows: asc, desc, leading minus, and brackets for spaces
+pt.arrange(penguins, "species", "body_mass_g desc")
+pt.arrange(penguins, "-body_mass_g")
+pt.arrange(penguins, "[bill length mm] desc")
+
+# Top / bottom N records overall or within groups
+pt.slice_max(penguins, "body_mass_g", n=3)
+pt.slice_min(penguins, "body_mass_g", n=1, by="species")
+
+# Method chaining
+(
+    penguins
+    .pt.arrange("species, -body_mass_g")
+    .pt.slice_max("body_mass_g", n=2, by="species")
+)
+```
+
+---
+
+### 5. Pure Reshaping — `long()` & `wide()`
 
 Reshape between long and wide formats using consistent `c=` (column dimension), `v=` (value column), and `r=` (row identifiers) parameter roles:
 
@@ -4536,7 +4631,7 @@ wide = pt.wide(tall, c="feature", v="reading")
 
 ---
 
-### 5. 2D Pivot Tables — `pivot()`
+### 6. 2D Pivot Tables — `pivot()`
 
 Excel-style 2D pivot table engine with the intuitive `r, c, v, a` vocabulary. Guarantees flat 1D column names and automatically resets index to `RangeIndex(0, 1, 2, ...)`:
 
@@ -4555,7 +4650,7 @@ pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", 
 
 ---
 
-### 6. Aggregation — `agg()`
+### 7. Aggregation — `agg()`
 
 Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts. Supports string mapping specifications with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, and whole-frame functions:
 
@@ -4572,7 +4667,7 @@ pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summ
 
 ---
 
-### 7. DuckDB SQL Engine — `sql()`
+### 8. DuckDB SQL Engine — `sql()`
 
 Execute SQL queries directly over in-memory DataFrames using DuckDB (`pip install "pytae[sql]"`). The source DataFrame is queryable as table `data`, and additional frames can be registered as keyword arguments:
 
@@ -4592,8 +4687,8 @@ pt.sql(orders, """
 
 ---
 
-<a id="8-plotting--plotter"></a>
-### 8. Plotting — `Plotter` & `df.pt.plot()`
+<a id="9-plotting--plotter"></a>
+### 9. Plotting — `Plotter` & `df.pt.plot()`
 
 Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, small-multiples grid faceting, and direct accessor chaining via `df.pt.plot()`:
 
@@ -4619,7 +4714,7 @@ p.finalize(consolidate_legends=True)
 
 ---
 
-### 9. Utilities & Cleaning
+### 10. Utilities & Cleaning
 
 Essential tabular utilities for everyday manipulation:
 
@@ -8878,7 +8973,8 @@ sex    class_name  survival_rate_pct  total_passengers
 │       ├── __main__.py
 │       ├── _text.py
 │       ├── accessor.py
-│       ├── agg_df.py
+│       ├── agg.py
+│       ├── arrange.py
 │       ├── cli.py
 │       ├── cli_parsing.py
 │       ├── cli_pipeline.py
@@ -8920,7 +9016,8 @@ sex    class_name  survival_rate_pct  total_passengers
 │   ├── cli_helpers.py
 │   ├── conftest.py
 │   ├── test_accessor.py
-│   ├── test_agg_df.py
+│   ├── test_agg.py
+│   ├── test_arrange_slice.py
 │   ├── test_cli_agg.py
 │   ├── test_cli_clean.py
 │   ├── test_cli_enhancements.py
@@ -9046,7 +9143,8 @@ from pathlib import Path
 import pandas as pd
 
 from .accessor import PtAccessor  # noqa: F401  — registers df.pt
-from .agg_df import agg, agg_df
+from .agg import agg
+from .arrange import arrange, slice_max, slice_min
 from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
@@ -9137,8 +9235,10 @@ __all__ = [
     "select",
     "qry",
     "mutate",
+    "arrange",
+    "slice_max",
+    "slice_min",
     "agg",
-    "agg_df",
     "long",
     "wide",
     "pivot",
@@ -9266,8 +9366,17 @@ from typing import Any
 
 import pandas as pd
 
-from .agg_df import _UNSET
-from .agg_df import agg_df as _agg_df
+from .agg import _UNSET
+from .agg import agg as _agg
+from .arrange import (
+    arrange as _arrange,
+)
+from .arrange import (
+    slice_max as _slice_max,
+)
+from .arrange import (
+    slice_min as _slice_min,
+)
 from .mutate import mutate as _mutate
 from .other_utilities import (
     clean_columns as _clean_columns,
@@ -9295,7 +9404,9 @@ class PtAccessor:
     - select: Column selection, slicing, negative exclusion, and type filtering.
     - qry: Row filtering via string expressions, dicts, intervals, and kwargs.
     - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
-    - agg_df / agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
+    - arrange: Order rows by column(s) with inline direction ('desc', '-col').
+    - slice_max / slice_min: Group-aware top/bottom-N row slicing.
+    - agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
     - long / wide: Reshaping (melting to rows and pivoting to columns).
     - sql: DuckDB SQL queries over the DataFrame (as table `data`).
     - clean_columns: Standardizing and normalizing column header names.
@@ -9350,7 +9461,42 @@ class PtAccessor:
         """
         return _sql(self._obj, query, **frames)
 
-    def agg_df(
+    def arrange(
+        self,
+        *cols: Any,
+        ascending: bool | Sequence[bool] | None = None,
+        na_last: bool = True,
+    ) -> pd.DataFrame:
+        """Order rows by one or more columns, supporting inline direction ('desc', 'asc', '-col')
+        and brackets for spaced column names ('[col with space] desc').
+        """
+        return _arrange(self._obj, *cols, ascending=ascending, na_last=na_last)
+
+    def slice_max(
+        self,
+        col: str,
+        n: int = 1,
+        *,
+        by: str | Sequence[str] | None = None,
+        with_ties: bool = False,
+        na_last: bool = True,
+    ) -> pd.DataFrame:
+        """Select the rows with the largest values of a column, optionally grouped by `by`."""
+        return _slice_max(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+
+    def slice_min(
+        self,
+        col: str,
+        n: int = 1,
+        *,
+        by: str | Sequence[str] | None = None,
+        with_ties: bool = False,
+        na_last: bool = True,
+    ) -> pd.DataFrame:
+        """Select the rows with the smallest values of a column, optionally grouped by `by`."""
+        return _slice_min(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+
+    def agg(
         self,
         by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
         *args: Any,
@@ -9362,16 +9508,11 @@ class PtAccessor:
         functions ('mean', ['mean', 'n']), column mapping strings with brackets
         ('tip = mean, [total bill] = mean, n = n'), and keyword arguments.
         """
-        return _agg_df(self._obj, by, *args, **kwargs)
+        return _agg(self._obj, by, *args, **kwargs)
 
-    def agg(
-        self,
-        by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
-        *args: Any,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Alias for `df.pt.agg_df()`: aggregate numeric columns grouped by `by` column(s)."""
-        return _agg_df(self._obj, by, *args, **kwargs)
+    def agg_df(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Removed: Use df.pt.agg() instead."""
+        raise AttributeError("df.pt.agg_df() has been removed; use df.pt.agg() instead")
 
     def long(
         self,
@@ -9541,7 +9682,7 @@ class PtAccessor:
         return plotter
 
 ################################################################################
-# FILE: src/pytae/agg_df.py
+# FILE: src/pytae/agg.py
 ################################################################################
 from __future__ import annotations
 
@@ -9813,7 +9954,7 @@ def _agg_df_dict(
         return df_out.reindex(columns=output_cols)
 
 
-def agg_df(
+def agg(
     df: pd.DataFrame,
     by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
     *args: Any,
@@ -9992,13 +10133,289 @@ def agg_df(
     observed = kwargs.get("observed", True)
 
     if isinstance(agg_types, dict):
+        if "__dropna__" in agg_types:
+            dropna = agg_types.pop("__dropna__")
         return _agg_df_dict(df, group_cols, agg_types, dropna, observed)
     else:
         return _agg_df_list(df, group_cols, agg_types, dropna, observed)
 
+################################################################################
+# FILE: src/pytae/arrange.py
+################################################################################
+"""Row-ordering and group-aware top-N row slicing verbs: arrange, slice_max, slice_min."""
 
-# Alias: agg is identical to agg_df
-agg = agg_df
+from __future__ import annotations
+
+import difflib
+from collections.abc import Sequence
+from typing import Any
+
+import pandas as pd
+
+from pytae._text import tokenize as _tokenize
+from pytae._text import unquote_name as _unquote_name
+
+
+def _parse_col_order(
+    token: str,
+    default_asc: bool = True,
+    available_cols: set[str] | None = None,
+) -> tuple[str, bool]:
+    """Parse a single column token, e.g. 'species', 'body_mass_g desc', '-body_mass_g',
+    '[annual salary] desc', '-[annual salary]'.
+    """
+    token = token.strip()
+    if available_cols and token in available_cols:
+        return token, default_asc
+
+    asc = default_asc
+    if token.startswith("-") and len(token) > 1:
+        asc = False
+        token = token[1:].strip()
+    elif token.startswith("+") and len(token) > 1:
+        asc = True
+        token = token[1:].strip()
+    else:
+        lower = token.lower()
+        for suffix, direction in [
+            (" descending", False),
+            (" desc", False),
+            (" ascending", True),
+            (" asc", True),
+        ]:
+            if lower.endswith(suffix):
+                asc = direction
+                token = token[: len(token) - len(suffix)].strip()
+                break
+
+    token = _unquote_name(token)
+    return token, asc
+
+
+def _extract_arrange_specs(
+    cols_args: tuple[Any, ...],
+    ascending: bool | Sequence[bool] | None = None,
+    available_cols: set[str] | None = None,
+) -> tuple[list[str], list[bool]]:
+    """Extract (columns, ascending_list) from positional args or comma-separated strings."""
+    raw_tokens: list[str] = []
+    for arg in cols_args:
+        if isinstance(arg, (list, tuple)):
+            for item in arg:
+                if isinstance(item, str):
+                    raw_tokens.extend(_tokenize(item, ",", track_brackets=True))
+                else:
+                    raw_tokens.append(str(item))
+        elif isinstance(arg, str):
+            raw_tokens.extend(_tokenize(arg, ",", track_brackets=True))
+        else:
+            raw_tokens.append(str(arg))
+
+    parsed_cols: list[str] = []
+    parsed_asc: list[bool] = []
+
+    for idx, token in enumerate(raw_tokens):
+        token_clean = token.strip()
+        if not token_clean:
+            continue
+        default_dir = True
+        if ascending is not None:
+            if isinstance(ascending, (list, tuple)):
+                default_dir = bool(ascending[idx]) if idx < len(ascending) else True
+            else:
+                default_dir = bool(ascending)
+
+        col_name, col_dir = _parse_col_order(token_clean, default_dir, available_cols)
+        parsed_cols.append(col_name)
+        parsed_asc.append(col_dir)
+
+    return parsed_cols, parsed_asc
+
+
+def arrange(
+    df: pd.DataFrame,
+    *cols: Any,
+    ascending: bool | Sequence[bool] | None = None,
+    na_last: bool = True,
+) -> pd.DataFrame:
+    """Order rows by one or more columns, supporting inline direction ('desc', 'asc', '-col')
+    and brackets for spaced column names ('[col with space] desc').
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    *cols : str | Sequence[str]
+        Column specifications. Can be passed as separate arguments
+        (e.g. ``"species", "body_mass_g desc"``), a single comma-separated string
+        (e.g. ``"species, body_mass_g desc"``), or with bracket notation for spaces
+        (e.g. ``"[department code], [annual salary] desc"``). Leading '-' signifies descending.
+    ascending : bool | Sequence[bool] | None, default None
+        Global ascending direction override for columns that do not specify an inline direction.
+    na_last : bool, default True
+        If True, missing values (NaN) appear at the end; if False, at the beginning.
+
+    Returns
+    -------
+    pd.DataFrame
+        Sorted DataFrame with a clean standard RangeIndex.
+    """
+    if not cols:
+        return df.copy().reset_index(drop=True)
+
+    available = list(df.columns)
+    available_set = set(available)
+
+    sort_cols, sort_asc = _extract_arrange_specs(cols, ascending, available_set)
+    if not sort_cols:
+        return df.copy().reset_index(drop=True)
+
+    unknown = [c for c in sort_cols if c not in available_set]
+    if unknown:
+        hints = []
+        for u in unknown:
+            matches = difflib.get_close_matches(str(u), [str(c) for c in available], n=1, cutoff=0.6)
+            if matches:
+                hints.append(f"'{u}' (did you mean '{matches[0]}')")
+            else:
+                hints.append(f"'{u}'")
+        raise KeyError(
+            f"arrange: column(s) {', '.join(hints)} not found in DataFrame. Available columns: {available}"
+        )
+
+    na_position = "last" if na_last else "first"
+    sorted_df = df.sort_values(by=sort_cols, ascending=sort_asc, na_position=na_position)
+    return sorted_df.reset_index(drop=True)
+
+
+def slice_max(
+    df: pd.DataFrame,
+    col: str,
+    n: int = 1,
+    *,
+    by: str | Sequence[str] | None = None,
+    with_ties: bool = False,
+    na_last: bool = True,
+) -> pd.DataFrame:
+    """Select the rows with the largest values of a column, optionally grouped by one or more columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    col : str
+        The column to rank by.
+    n : int, default 1
+        Number of rows to return (per group if `by` is specified).
+    by : str | Sequence[str] | None, default None
+        Column(s) to group by before slicing.
+    with_ties : bool, default False
+        If True, keeps all rows tied for the n-th value.
+    na_last : bool, default True
+        If True, missing values are excluded from the top-N ranking.
+
+    Returns
+    -------
+    pd.DataFrame
+        Sliced DataFrame with all original columns and a clean RangeIndex.
+    """
+    return _slice_ordered(df, col, n=n, by=by, ascending=False, with_ties=with_ties, na_last=na_last, verb="slice_max")
+
+
+def slice_min(
+    df: pd.DataFrame,
+    col: str,
+    n: int = 1,
+    *,
+    by: str | Sequence[str] | None = None,
+    with_ties: bool = False,
+    na_last: bool = True,
+) -> pd.DataFrame:
+    """Select the rows with the smallest values of a column, optionally grouped by one or more columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    col : str
+        The column to rank by.
+    n : int, default 1
+        Number of rows to return (per group if `by` is specified).
+    by : str | Sequence[str] | None, default None
+        Column(s) to group by before slicing.
+    with_ties : bool, default False
+        If True, keeps all rows tied for the n-th value.
+    na_last : bool, default True
+        If True, missing values are excluded from the bottom-N ranking.
+
+    Returns
+    -------
+    pd.DataFrame
+        Sliced DataFrame with all original columns and a clean RangeIndex.
+    """
+    return _slice_ordered(df, col, n=n, by=by, ascending=True, with_ties=with_ties, na_last=na_last, verb="slice_min")
+
+
+def _slice_ordered(
+    df: pd.DataFrame,
+    col: str,
+    n: int,
+    *,
+    by: str | Sequence[str] | None,
+    ascending: bool,
+    with_ties: bool,
+    na_last: bool,
+    verb: str,
+) -> pd.DataFrame:
+    clean_col = _unquote_name(col.strip())
+    if clean_col not in df.columns:
+        matches = difflib.get_close_matches(str(clean_col), [str(c) for c in df.columns], n=1, cutoff=0.6)
+        hint = f" (did you mean '{matches[0]}'?)" if matches else ""
+        raise KeyError(f"{verb}: column '{clean_col}' not found in DataFrame{hint}. Available columns: {list(df.columns)}")
+
+    if n <= 0:
+        return df.iloc[0:0].copy()
+
+    by_cols: list[str] = []
+    if by is not None:
+        if isinstance(by, str):
+            by_cols = [_unquote_name(c.strip()) for c in _tokenize(by, ",", track_brackets=True) if c.strip()]
+        else:
+            by_cols = [_unquote_name(str(c).strip()) for c in by]
+
+        unknown_by = [c for c in by_cols if c not in df.columns]
+        if unknown_by:
+            raise KeyError(f"{verb}: grouping column(s) {unknown_by} not found in DataFrame. Available columns: {list(df.columns)}")
+
+    na_position = "last" if na_last else "first"
+
+    if with_ties:
+        if by_cols:
+            ranks = df.groupby(by_cols, observed=False)[clean_col].rank(
+                method="min", ascending=ascending, na_option="bottom" if na_last else "top"
+            )
+            filtered = df[ranks <= n]
+            sort_order = by_cols + [clean_col]
+            sort_asc = [True] * len(by_cols) + [ascending]
+            res = filtered.sort_values(by=sort_order, ascending=sort_asc, na_position=na_position)
+        else:
+            ranks = df[clean_col].rank(
+                method="min", ascending=ascending, na_option="bottom" if na_last else "top"
+            )
+            filtered = df[ranks <= n]
+            res = filtered.sort_values(by=clean_col, ascending=ascending, na_position=na_position)
+        return res.reset_index(drop=True)
+
+    if by_cols:
+        sort_order = by_cols + [clean_col]
+        sort_asc = [True] * len(by_cols) + [ascending]
+        sorted_df = df.sort_values(by=sort_order, ascending=sort_asc, na_position=na_position)
+        res = sorted_df.groupby(by_cols, as_index=False, observed=False, sort=False).head(n)
+        return res.reset_index(drop=True)
+    else:
+        sorted_df = df.sort_values(by=clean_col, ascending=ascending, na_position=na_position)
+        res = sorted_df.head(n)
+        return res.reset_index(drop=True)
 
 ################################################################################
 # FILE: src/pytae/cli.py
@@ -10018,7 +10435,6 @@ import pandas as pd
 
 from pytae.cli_parsing import (
     expand_paths,
-    parse_bool_text,
     parse_concat_arg,
     parse_file_arg,
     parse_fraction,
@@ -10077,15 +10493,16 @@ _CLI_FLAGS = {
     "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
     "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
-    "-unique", "--unique", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
-    "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
+    "-dedupe", "--dedupe", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
+    "-arrange", "--arrange", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
+    "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
-    "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
-    "-drop_na", "--drop_na", "-glimpse", "--glimpse",
+    "-handle_missing", "--handle_missing",
+    "-dropna", "--dropna", "-glimpse", "--glimpse",
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
-    "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
+    "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
-    "-file", "--file", "-query", "--query", "-qry", "--qry", "-mutate", "--mutate",
+    "-file", "--file", "-qry", "--qry", "-mutate", "--mutate",
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
     "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
     "-pager", "--pager", "-round", "--round", "-h", "--help",
@@ -10206,8 +10623,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="render horizontal frequency bars with counts and percentages for a categorical column")
     parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
                          help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
-    parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
-                         help="drop duplicate rows and print unique rows")
+    parser.add_argument("-dedupe", "--dedupe", dest="dedupe", nargs="?", const="", default=None,
+                         metavar="COLS", action=_OrderedValue,
+                         help="drop duplicate rows, optionally restricted to specific columns, e.g. -dedupe or -dedupe \"col1,col2\"")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
     parser.add_argument("-seed", "--seed", dest="seed", type=int, default=None, metavar="N",
@@ -10215,13 +10633,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-frac", "--frac", dest="frac", type=parse_fraction, default=None, metavar="P",
                          help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
                               "requires -sample and overrides its N")
-    parser.add_argument("-sort_by", "--sort_by", dest="sort_by", default=None, metavar="SPEC",
+    parser.add_argument("-arrange", "--arrange", dest="arrange", default=None, metavar="SPEC",
                          action=_OrderedStore,
-                         help="sort rows by a comma-separated column list, optionally ending with "
-                              "asc or desc (default: asc), e.g. species,body_mass_g desc")
+                         help="sort rows by one or more columns with direction, e.g. -arrange \"species,mass desc\" or -arrange \"-mass\"")
+    parser.add_argument("-slice_max", "--slice_max", dest="slice_max", default=None, metavar="SPEC",
+                         action=_OrderedStore,
+                         help="slice top N rows by column (optionally with -by), e.g. -slice_max mass or -slice_max \"mass,n=3\"")
+    parser.add_argument("-slice_min", "--slice_min", dest="slice_min", default=None, metavar="SPEC",
+                         action=_OrderedStore,
+                         help="slice bottom N rows by column (optionally with -by), e.g. -slice_min mass or -slice_min \"mass,n=3\"")
     parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
-                              "Used by -agg and -mutate.")
+                              "Used by -agg, -mutate, -slice_max, -slice_min.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
@@ -10229,7 +10652,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
                               "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
                               'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"')
-    parser.add_argument("-agg", "--agg", "-agg_df", "--agg_df", dest="agg", nargs="?", const="sum", default=None,
+    parser.add_argument("-agg", "--agg", dest="agg", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
                          help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
                               "without -by, computes a whole-table summary (grand total). "
@@ -10239,10 +10662,10 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
-    parser.add_argument("-drop_na", "--drop_na", dest="drop_na", nargs="?", const="", default=None,
+    parser.add_argument("-dropna", "--dropna", dest="dropna", nargs="?", const="", default=None,
                          metavar="COLS", action=_OrderedValue,
-                         help="drop rows containing NaN (bare -drop_na drops rows with any NaN; "
-                              "-drop_na \"col1,col2\" drops rows where specified columns are NaN)")
+                         help="drop rows containing NaN (bare -dropna drops rows with any NaN; "
+                              "-dropna \"col1,col2\" drops rows where specified columns are NaN)")
     parser.add_argument("-clean_columns", "--clean_columns", dest="clean_columns", action=_OrderedStore,
                          metavar="KEY=VALUE,...",
                          help="clean column header names, in order strip -> strip_special -> squeeze -> "
@@ -10264,10 +10687,6 @@ def build_parser() -> argparse.ArgumentParser:
                          help="2-D pivot table (pytae pivot()); r=row_cols (optional), c=col_cols "
                               "(optional), v=value_cols (required), a=aggfunc (default sum; n=size), "
                               "dropna=false (default), fill_value=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
-    parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=None,
-                         metavar="BOOL",
-                         help="for -agg, -mutate, -value_counts, -freq, -pivot, -plot (default: false): "
-                              "include NA keys when false; set true to drop NA keys; accepts true or false")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
                               "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
@@ -10292,8 +10711,6 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
                               "requires -merge, -concat, or -sql as the first operation, and can't be "
                               "combined with the positional path")
-    parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
-                         help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
                          help="filter rows at this point in the pipeline using pytae qry(); conditions like "
                               "\"col = 'val', col > 5\"")
@@ -10355,6 +10772,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
+        if any(e in ("-query", "--query") for e in extras):
+            parser.error("'-query' has been deprecated; use '-qry' instead")
+        if any(e in ("-unique", "--unique") for e in extras):
+            parser.error("'-unique' has been deprecated; use '-dedupe' instead")
+        if any(e in ("-sort_by", "--sort_by", "-sort", "--sort") for e in extras):
+            parser.error("'-sort_by' has been deprecated; use '-arrange' instead")
+        if any(e in ("-drop_na", "--drop_na") for e in extras):
+            parser.error("'-drop_na' has been consolidated; use '-dropna' instead")
+        if any(e in ("-agg_df", "--agg_df") for e in extras):
+            parser.error("'-agg_df' has been removed; use '-agg' instead")
         if any(e in ("-to_clip", "--to_clip") for e in extras):
             parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
         if any(e in ("-convert", "--convert") for e in extras):
@@ -10437,27 +10864,29 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
-                         args.value_counts, args.unique, args.freq is not None, args.hist is not None,
-                         args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
+                         args.value_counts, args.dedupe is not None, args.freq is not None, args.hist is not None,
+                         args.head is not None, args.tail is not None, args.sample is not None,
+                         args.arrange is not None, args.slice_max is not None, args.slice_min is not None,
+                         args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
-                         args.select, args.qry, args.query, args.sql, args.replace_values,
+                         args.select, args.qry, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
                          args.meta, args.diff is not None, args.plot is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
-                     args.value_counts, args.unique, args.freq is not None, args.hist is not None,
-                     args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
+                     args.value_counts, args.dedupe is not None, args.freq is not None, args.hist is not None,
+                     args.head is not None, args.tail is not None, args.sample is not None,
+                     args.arrange is not None, args.slice_max is not None, args.slice_min is not None,
+                     args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                      args.long is not None, args.wide is not None, args.pivot is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-dedupe/-sample/-arrange/"
+                     "-slice_max/-slice_min/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
-    if args.by is not None and args.agg is None and not args.mutate:
-        parser.error("-by requires -agg or -mutate")
+    if args.by is not None and args.agg is None and not args.mutate and args.slice_max is None and args.slice_min is None:
+        parser.error("-by requires -agg, -mutate, -slice_max, or -slice_min")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
@@ -10465,7 +10894,6 @@ def main(argv: list[str] | None = None) -> int:
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     mutate_specs = list(args.mutate or [])
-    query_specs = list(args.query or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
     merge_specs = [parse_merge_arg(raw) for raw in (args.merge or [])]
@@ -10486,7 +10914,7 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                qry_specs=qry_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
@@ -10526,7 +10954,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                    qry_specs=qry_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs)
         except UnicodeError as exc:
             failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
@@ -10577,7 +11005,7 @@ def parse_columns(raw: str) -> list[str]:
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
-    """Parse -sort_by SPEC: a comma-separated column list, optionally ending with
+    """Parse legacy -sort_by SPEC: a comma-separated column list, optionally ending with
     asc or desc as a trailing word (default asc). e.g. "species,body_mass_g desc"."""
     raw = (raw or "").strip()
     if not raw:
@@ -10590,6 +11018,56 @@ def parse_sort_by(raw: str) -> tuple[list[str], str]:
     if not cols:
         raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
     return cols, order
+
+
+def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
+    """Parse -arrange SPEC: a comma-separated column list with optional asc/desc directions,
+    leading '-', or brackets for spaced columns. e.g. "species, [annual salary] desc".
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
+    from pytae.arrange import _extract_arrange_specs
+    cols, asc_list = _extract_arrange_specs((raw,))
+    if not cols:
+        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
+    return cols, asc_list
+
+
+def parse_slice_spec(raw: str, flag_name: str = "-slice_max") -> tuple[str, int]:
+    """Parse -slice_max/-slice_min SPEC: a column name, optionally followed by ':N', ',N', or ',n=N'.
+    e.g. 'body_mass_g:2', 'body_mass_g,2', 'body_mass_g,n=2', '[annual salary]:5', 'species'.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col', 'col:N', or 'col,n=N'")
+    col: str = ""
+    n: int = 1
+    if ":" in raw:
+        head, _, tail = raw.rpartition(":")
+        if tail.strip().isdigit():
+            col, n = head.strip(), int(tail.strip())
+        else:
+            col = raw
+    elif "," in raw:
+        head, _, tail = raw.rpartition(",")
+        tail_str = tail.strip()
+        if tail_str.startswith("n="):
+            num_part = tail_str[2:].strip()
+            if num_part.isdigit():
+                col, n = head.strip(), int(num_part)
+            else:
+                raise SystemExit(f"{flag_name}: invalid n value '{num_part}'")
+        elif tail_str.isdigit():
+            col, n = head.strip(), int(tail_str)
+        else:
+            col = raw
+    else:
+        col = raw
+    col = _unquote_name(col)
+    if not col:
+        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col', 'col:N', or 'col,n=N'")
+    return col, n
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -10835,7 +11313,8 @@ def parse_agg(raw: str):
 
     mapped = [_is_mapping(e) for e in entries]
     if all(mapped):
-        out: dict[str, str] = {}
+        out: dict[str, Any] = {}
+        dropna_flag = None
         for entry in entries:
             if "=" in entry:
                 parts = _tokenize(entry, "=", keep_quotes=True, track_brackets=True)
@@ -10846,6 +11325,9 @@ def parse_agg(raw: str):
                         "-agg: the old 'column=...,aggfunc=...' syntax is retired. "
                         "Use '-by <cols> -agg \"col = aggfunc\"' or '-agg \"total = col:aggfunc\"' instead."
                     )
+                if key.lower() == "dropna":
+                    dropna_flag = parse_bool_text(value)
+                    continue
             elif ":" in entry:
                 raise SystemExit(f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported.")
             else:
@@ -10853,6 +11335,8 @@ def parse_agg(raw: str):
             if not key or not value:
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             out[key] = value
+        if dropna_flag is not None:
+            out["__dropna__"] = dropna_flag
         return out
     if any(mapped):
         raise SystemExit(
@@ -11397,28 +11881,58 @@ class _Pipeline:
             return f"-mutate: {exc}"
         return None
 
-    def apply_query(self, expr: str) -> str | None:
-        """Apply one -query expression to the current view. Returns an error message or None."""
-        df = self.dataframe()
-        try:
-            self._df = df.query(expr)
-        except Exception as exc:
-            return f"-query: {exc}"
-        return None
-
-    def apply_drop_na(self, spec: str | None) -> str | None:
+    def apply_dropna(self, spec: str | None) -> str | None:
         """Drop rows containing NaN values. Returns an error message or None."""
         df = self.dataframe()
         if not spec:
-            self._df = df.dropna()
+            self._df = df.dropna().reset_index(drop=True)
             return None
         from pytae.cli_parsing import parse_columns, unknown_columns_message
         cols = parse_columns(spec)
         available = list(df.columns)
         unknown = [c for c in cols if c not in available]
         if unknown:
-            return unknown_columns_message("-drop_na", unknown, available)
-        self._df = df.dropna(subset=cols)
+            return unknown_columns_message("-dropna", unknown, available)
+        self._df = df.dropna(subset=cols).reset_index(drop=True)
+        return None
+
+    def apply_dedupe(self, spec: str | None) -> str | None:
+        """Drop duplicate rows. Returns an error message or None."""
+        df = self.dataframe()
+        if not spec:
+            self._df = df.drop_duplicates().reset_index(drop=True)
+            return None
+        from pytae.cli_parsing import parse_columns, unknown_columns_message
+        cols = parse_columns(spec)
+        available = list(df.columns)
+        unknown = [c for c in cols if c not in available]
+        if unknown:
+            return unknown_columns_message("-dedupe", unknown, available)
+        self._df = df.drop_duplicates(subset=cols).reset_index(drop=True)
+        return None
+
+    def apply_arrange(self, spec: str) -> str | None:
+        """Sort rows by one or more columns with directions. Returns an error message or None."""
+        df = self.dataframe()
+        from pytae.arrange import arrange
+        try:
+            self._df = arrange(df, spec)
+        except Exception as exc:
+            return f"-arrange: {exc}"
+        return None
+
+    def apply_slice(self, spec: str, *, by: list[str] | None = None, is_max: bool = True) -> str | None:
+        """Slice top or bottom N rows by a column, optionally grouped by 'by'."""
+        df = self.dataframe()
+        flag = "-slice_max" if is_max else "-slice_min"
+        from pytae.arrange import slice_max, slice_min
+        from pytae.cli_parsing import parse_slice_spec
+        try:
+            col, n = parse_slice_spec(spec, flag)
+            func = slice_max if is_max else slice_min
+            self._df = func(df, col, n=n, by=by)
+        except Exception as exc:
+            return f"{flag}: {exc}"
         return None
 
     def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
@@ -11638,7 +12152,7 @@ from typing import Any
 
 import pandas as pd
 
-from pytae.agg_df import agg_df
+from pytae.agg import agg
 from pytae.cli_parsing import (
     parse_agg,
     parse_clean_columns_arg,
@@ -11646,12 +12160,11 @@ from pytae.cli_parsing import (
     parse_kv_spec,
     parse_long_arg,
     parse_pivot_arg,
-    parse_sort_by,
     parse_wide_arg,
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
-from pytae.other_utilities import clean_columns, handle_missing, safe_reset_index
+from pytae.other_utilities import clean_columns, handle_missing
 from pytae.readers import (
     DataFrameReader,
     StdinReader,
@@ -12039,7 +12552,6 @@ def _process_path(
     select_specs: list[tuple[list[str], dict]],
     qry_specs: list[list[tuple[str, Any]]],
     mutate_specs: list[str],
-    query_specs: list[str],
     sql_specs: list[str],
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
     rename_specs: list[dict[str, str]],
@@ -12127,7 +12639,6 @@ def _process_path(
     select_iter = iter(select_specs)
     qry_iter = iter(qry_specs)
     mutate_iter = iter(mutate_specs)
-    query_iter = iter(query_specs)
     sql_iter = iter(sql_specs)
     replace_iter = iter(replace_specs)
     rename_iter = iter(rename_specs)
@@ -12170,12 +12681,7 @@ def _process_path(
                 df_cur = pipeline.dataframe()
                 if any(c not in df_cur.columns for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
-            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False if args.dropna is None else args.dropna)
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "query":
-            err = pipeline.apply_query(next(query_iter))
+            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -12345,14 +12851,12 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "unique":
-            source_df = safe_reset_index(pipeline.dataframe())
-            unique_df = source_df.drop_duplicates().reset_index(drop=True)
-            pipeline._df = unique_df
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(unique_df, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=unique_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "dedupe":
+            dedupe_val = _next_op_val("dedupe", getattr(args, "dedupe", None))
+            err = pipeline.apply_dedupe(dedupe_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "head":
             head_val = _next_op_val("head", args.head)
             df = pipeline.head(head_val)
@@ -12377,21 +12881,35 @@ def _process_path(
                 _output_text(_format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
                 clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "sort_by":
-            source_df = safe_reset_index(pipeline.dataframe())
-            pipeline._df = source_df
-            sort_by_arg = _next_op_val("sort_by", args.sort_by)
-            sort_cols, order = parse_sort_by(sort_by_arg)
-            if any(c not in source_df.columns for c in sort_cols):
-                return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
-            ascending = order != "desc"
-            sorted_df = source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True)
-            pipeline._df = sorted_df
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(sorted_df, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=sorted_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op in ("agg", "agg_df"):
+        elif op == "arrange":
+            arrange_val = _next_op_val("arrange", getattr(args, "arrange", None))
+            err = pipeline.apply_arrange(arrange_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "slice_max":
+            by_cols = parse_columns(args.by) if args.by else None
+            if by_cols:
+                df_cur = pipeline.dataframe()
+                if any(c not in df_cur.columns for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            slice_val = _next_op_val("slice_max", getattr(args, "slice_max", None))
+            err = pipeline.apply_slice(slice_val, by=by_cols, is_max=True)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "slice_min":
+            by_cols = parse_columns(args.by) if args.by else None
+            if by_cols:
+                df_cur = pipeline.dataframe()
+                if any(c not in df_cur.columns for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            slice_val = _next_op_val("slice_min", getattr(args, "slice_min", None))
+            err = pipeline.apply_slice(slice_val, by=by_cols, is_max=False)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "agg":
             agg_val = _next_op_val("agg", args.agg)
             if isinstance(agg_val, str):
                 parse_agg(agg_val)
@@ -12400,7 +12918,7 @@ def _process_path(
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                result = agg_df(df_cur, by_cols, agg_val, dropna=False if args.dropna is None else args.dropna)
+                result = agg(df_cur, by_cols, agg_val, dropna=False)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result
@@ -12416,9 +12934,9 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "drop_na":
-            drop_na_val = _next_op_val("drop_na", getattr(args, "drop_na", None))
-            err = pipeline.apply_drop_na(drop_na_val)
+        elif op == "dropna":
+            dropna_val = _next_op_val("dropna", getattr(args, "dropna", None))
+            err = pipeline.apply_dropna(dropna_val)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -16930,20 +17448,27 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 import pytae as pt
 
 
-def test_pt_accessor_select_then_agg_df():
+def test_pt_accessor_select_then_agg():
     penguins = pt.sample("penguins")
     out = (
         penguins
-        .pt.agg_df(["species", "island"], a=["mean", "n"])
+        .pt.agg(["species", "island"], a=["mean", "n"])
     )
     assert list(out.columns)[:3] == ["species", "island", "n"]
 
 
-def test_pandas_rename_then_pt_agg_df():
+def test_pandas_rename_then_pt_agg():
     df = pd.DataFrame({"g": ["a", "a", "b"], "v": [1, 2, 3]})
-    out = df.rename(columns={"g": "grp", "v": "val"}).pt.agg_df("grp", a=["sum", "n"])
+    out = df.rename(columns={"g": "grp", "v": "val"}).pt.agg("grp", a=["sum", "n"])
     assert list(out.columns) == ["grp", "n", "val"]
     assert out.loc[out["grp"] == "a", "val"].iloc[0] == 3
+
+
+def test_pt_accessor_agg_df_deprecated():
+    import pytest
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
+    with pytest.raises(AttributeError, match="df.pt.agg_df.*removed; use df.pt.agg"):
+        df.pt.agg_df("g")
 
 
 def test_pt_select_then_pandas_head():
@@ -16953,7 +17478,7 @@ def test_pt_select_then_pandas_head():
     assert len(out) == 3
 
 ################################################################################
-# FILE: tests/test_agg_df.py
+# FILE: tests/test_agg.py
 ################################################################################
 import os
 import sys
@@ -16974,7 +17499,7 @@ def test_agg_df_sum():
     }
     df = pd.DataFrame(data)
 
-    result = pt.agg_df(df, "category", a=["sum"])
+    result = pt.agg(df, "category", a=["sum"])
     expected_df = pd.DataFrame(data).groupby("category").sum().reset_index()
     pd.testing.assert_frame_equal(result, expected_df)
 
@@ -16988,7 +17513,7 @@ def test_all_agg():
     df["id"] = df["id"].replace("", np.nan)
 
     # Default dropna=False keeps NA groups
-    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"])
+    result = pt.agg(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"])
 
     expected_df = (
         df.groupby(["id", "country"], dropna=False)
@@ -17013,7 +17538,7 @@ def test_all_agg_drop_na():
     })
     df["id"] = df["id"].replace("", np.nan)
 
-    result = pt.agg_df(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"], dropna=True)
+    result = pt.agg(df, ["id", "country"], a=["sum", "min", "mean", "min", "max", "n"], dropna=True)
 
     expected_df = (
         df.groupby(["id", "country"], dropna=True)
@@ -17033,12 +17558,12 @@ def test_all_agg_drop_na():
 def test_agg_df_raises_when_n_collides_with_real_column():
     df = pd.DataFrame({"g": ["x", "x", "y"], "n": [1, 2, 3], "v": [10, 20, 30]})
     with pytest.raises(ValueError, match="already has a numeric column named 'n'"):
-        pt.agg_df(df, "g", ["sum", "n"])
+        pt.agg(df, "g", ["sum", "n"])
 
 
 def test_agg_df_column_kwargs():
     df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30], "v2": [1, 2, 3]})
-    res = df.pt.agg_df("grp", v1="mean", v2="max", count="n")
+    res = df.pt.agg("grp", v1="mean", v2="max", count="n")
     assert list(res.columns) == ["grp", "v1", "v2", "count"]
     assert list(res["v1"]) == [15.0, 30.0]
     assert list(res["v2"]) == [2, 3]
@@ -17048,31 +17573,31 @@ def test_agg_df_column_kwargs():
 def test_agg_df_rejects_dictionary():
     df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30]})
     with pytest.raises(TypeError, match=r"agg\(\) no longer accepts dictionaries"):
-        pt.agg_df(df, "grp", {"v1": "mean"})
+        pt.agg(df, "grp", {"v1": "mean"})
     with pytest.raises(TypeError, match=r"agg\(\) no longer accepts dictionaries"):
-        df.pt.agg_df("grp", a={"v1": "mean"})
+        df.pt.agg("grp", a={"v1": "mean"})
     with pytest.raises(TypeError, match=r"agg\(\) no longer accepts dictionaries"):
-        pt.agg_df(df, {"grp": "mean"})
+        pt.agg(df, {"grp": "mean"})
 
 
 def test_agg_df_missing_by_raises():
     df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30]})
     with pytest.raises(TypeError, match="missing required argument: 'by'"):
-        df.pt.agg_df()
+        df.pt.agg()
 
 
 def test_agg_df_aggfunc_as_by_raises_helpful_error():
     df = pd.DataFrame({"grp": ["A", "A", "B"], "v1": [10, 20, 30]})
     with pytest.raises(ValueError, match="is a known aggregation function"):
-        df.pt.agg_df("mean")
+        df.pt.agg("mean")
     with pytest.raises(ValueError, match="looks like an aggregation list"):
-        df.pt.agg_df(["mean", "n"])
+        df.pt.agg(["mean", "n"])
 
 
 def test_agg_df_unknown_group_column_raises():
     df = pd.DataFrame({"species": ["A", "B"], "val": [1, 2]})
     with pytest.raises(KeyError, match=r"group column 'speceis' not found in DataFrame \(did you mean 'species'\?\)"):
-        df.pt.agg_df("speceis", "mean")
+        df.pt.agg("speceis", "mean")
 
 
 def test_agg_df_numeric_group_by():
@@ -17081,7 +17606,7 @@ def test_agg_df_numeric_group_by():
         "sales": [100.0, 200.0, 300.0],
         "units": [10, 20, 30],
     })
-    res = df.pt.agg_df("year", a=["sum", "n"])
+    res = df.pt.agg("year", a=["sum", "n"])
     assert list(res.columns) == ["year", "n", "sales", "units"]
     assert list(res["year"]) == [2023, 2024]
     assert list(res["sales"]) == [300.0, 300.0]
@@ -17094,7 +17619,7 @@ def test_agg_df_whole_table_summary():
         "sales": [100.0, 200.0, 300.0],
         "units": [10, 20, 30],
     })
-    res = df.pt.agg_df(None, a=["sum", "mean", "n"])
+    res = df.pt.agg(None, a=["sum", "mean", "n"])
     assert len(res) == 1
     assert list(res.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
     assert res["n"].iloc[0] == 3
@@ -17109,7 +17634,7 @@ def test_agg_df_string_spec_with_brackets():
         "total bill": [10.0, 20.0, 30.0],
     })
     # 1. Single string spec with brackets
-    res1 = df.pt.agg_df("[smoker status]", "[tip amount] = mean, [total bill] = mean, n = n")
+    res1 = df.pt.agg("[smoker status]", "[tip amount] = mean, [total bill] = mean, n = n")
     assert list(res1.columns) == ["smoker status", "tip amount", "total bill", "n"]
     assert list(res1["smoker status"]) == ["No", "Yes"]
     assert list(res1["tip amount"]) == [3.0, 3.0]
@@ -17117,27 +17642,27 @@ def test_agg_df_string_spec_with_brackets():
     assert list(res1["n"]) == [1, 2]
 
     # 2. Multiple positional string specs
-    res2 = df.pt.agg_df("[smoker status]", "[tip amount] = mean", "[total bill] = mean", "n = n")
+    res2 = df.pt.agg("[smoker status]", "[tip amount] = mean", "[total bill] = mean", "n = n")
     pd.testing.assert_frame_equal(res1, res2)
 
     # 3. Passed via keyword a=
-    res3 = df.pt.agg_df("[smoker status]", a="[tip amount] = mean, [total bill] = mean, n = n")
+    res3 = df.pt.agg("[smoker status]", a="[tip amount] = mean, [total bill] = mean, n = n")
     pd.testing.assert_frame_equal(res1, res3)
 
     # 4. Mixed string spec and kwargs
-    res4 = df.pt.agg_df("[smoker status]", "[total bill] = mean", **{"tip amount": "mean", "n": "n"})
+    res4 = df.pt.agg("[smoker status]", "[total bill] = mean", **{"tip amount": "mean", "n": "n"})
     assert list(res4.columns) == ["smoker status", "total bill", "tip amount", "n"]
     assert list(res4["total bill"]) == [30.0, 15.0]
 
     # 5. Named aggregation with brackets in output and source
-    res5 = df.pt.agg_df("[smoker status]", "[avg bill] = [total bill]:mean, [bill sum] = [total bill]:sum, [count] = n")
+    res5 = df.pt.agg("[smoker status]", "[avg bill] = [total bill]:mean, [bill sum] = [total bill]:sum, [count] = n")
     assert list(res5.columns) == ["smoker status", "avg bill", "bill sum", "count"]
     assert list(res5["avg bill"]) == [30.0, 15.0]
     assert list(res5["bill sum"]) == [30.0, 30.0]
     assert list(res5["count"]) == [1, 2]
 
     # 6. Whole-table summary with string mapping
-    res6 = df.pt.agg_df(None, "[avg bill] = [total bill]:mean, [count] = n")
+    res6 = df.pt.agg(None, "[avg bill] = [total bill]:mean, [count] = n")
     assert len(res6) == 1
     assert list(res6.columns) == ["avg bill", "count"]
     assert res6["avg bill"].iloc[0] == 20.0
@@ -17146,12 +17671,12 @@ def test_agg_df_string_spec_with_brackets():
 
 def test_agg_df_whole_frame_string_spec():
     df = pd.DataFrame({"g": ["a", "a", "b"], "v1": [1.0, 3.0, 5.0], "v2": [2.0, 4.0, 6.0]})
-    res = df.pt.agg_df("g", "mean, n")
+    res = df.pt.agg("g", "mean, n")
     assert list(res.columns) == ["g", "n", "v1", "v2"]
     assert list(res["n"]) == [2, 1]
     assert list(res["v1"]) == [2.0, 5.0]
 
-    res_multi = df.pt.agg_df("g", "mean", "n")
+    res_multi = df.pt.agg("g", "mean", "n")
     pd.testing.assert_frame_equal(res, res_multi)
 
 
@@ -17162,7 +17687,7 @@ def test_agg_df_user_pipeline_tips():
         .pt.qry(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
         .pt.select("smoker", "tip", "total_bill")
         .rename(columns={"total_bill": "total bill"})
-        .pt.agg_df("smoker", "tip = mean, [total bill] = mean, n = n")
+        .pt.agg("smoker", "tip = mean, [total bill] = mean, n = n")
     )
     assert list(res.columns) == ["smoker", "tip", "total bill", "n"]
     assert len(res) == 2
@@ -17173,17 +17698,17 @@ def test_agg_df_user_pipeline_tips():
 def test_agg_df_string_spec_errors():
     df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
     with pytest.raises(ValueError, match="agg\\(\\):"):
-        df.pt.agg_df("g", "invalid syntax without equals and not known agg")
+        df.pt.agg("g", "invalid syntax without equals and not known agg")
     with pytest.raises(ValueError, match="cannot mix whole-frame aggregation"):
-        df.pt.agg_df("g", "mean", v="sum")
+        df.pt.agg("g", "mean", v="sum")
     with pytest.raises(TypeError, match="multiple values for aggregation spec"):
-        df.pt.agg_df("g", "mean", a="sum")
+        df.pt.agg("g", "mean", a="sum")
 
 
 def test_agg_df_multi_agg_column_flattening_preserves_underscores():
     # Lib Issue 1: multi-agg flattening preserves leading/trailing underscores
     df = pd.DataFrame({"g": ["a", "b"], "_x": [1, 2], "y_": [3, 4]})
-    res = df.pt.agg_df("g", ["mean", "sum"])
+    res = df.pt.agg("g", ["mean", "sum"])
     assert "_x_mean" in res.columns
     assert "_x_sum" in res.columns
     assert "y__mean" in res.columns
@@ -17194,10 +17719,10 @@ def test_agg_df_group_by_n_with_count_n_raises():
     # Lib Issue 2: grouping by 'n' and requesting 'n' raises collision error
     df = pd.DataFrame({"n": ["a", "a", "b"], "v": [1.0, 2.0, 4.0]})
     with pytest.raises(ValueError, match="collides with group column 'n'|already has a group column named 'n'"):
-        df.pt.agg_df("n", ["mean", "n"])
+        df.pt.agg("n", ["mean", "n"])
 
     with pytest.raises(ValueError, match="collides with group column 'n'|already has a group column named 'n'"):
-        df.pt.agg_df("n", v="mean", n="n")
+        df.pt.agg("n", v="mean", n="n")
 
 
 def test_agg_df_output_name_collides_with_group_col():
@@ -17236,6 +17761,134 @@ def test_agg_df_comma_separated_by_string():
 
 if __name__ == "__main__":
     pytest.main()
+
+################################################################################
+# FILE: tests/test_arrange_slice.py
+################################################################################
+import os
+import sys
+
+import pandas as pd
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
+import pytae as pt
+from pytae import cli
+from tests.cli_helpers import _write_csv
+
+
+def test_library_arrange_basic_and_directions():
+    df = pd.DataFrame({
+        "grp": ["b", "a", "b", "a"],
+        "val": [10, 20, 30, 40],
+        "cost": [100, 50, 200, 150],
+    })
+
+    # Default asc
+    res1 = df.pt.arrange("grp", "val")
+    assert list(res1["grp"]) == ["a", "a", "b", "b"]
+    assert list(res1["val"]) == [20, 40, 10, 30]
+
+    # Mixed directions
+    res2 = df.pt.arrange("grp asc", "val desc")
+    assert list(res2["grp"]) == ["a", "a", "b", "b"]
+    assert list(res2["val"]) == [40, 20, 30, 10]
+
+    # Leading '-'
+    res3 = df.pt.arrange("-grp", "val")
+    assert list(res3["grp"]) == ["b", "b", "a", "a"]
+    assert list(res3["val"]) == [10, 30, 20, 40]
+
+    # pt.arrange standalone function
+    res4 = pt.arrange(df, "val desc")
+    assert list(res4["val"]) == [40, 30, 20, 10]
+
+
+def test_library_arrange_bracket_spaced_columns():
+    df = pd.DataFrame({
+        "first name": ["Charlie", "Alice", "Bob"],
+        "annual salary": [50000, 70000, 60000],
+    })
+
+    res = df.pt.arrange("[annual salary] desc")
+    assert list(res["first name"]) == ["Alice", "Bob", "Charlie"]
+    assert list(res["annual salary"]) == [70000, 60000, 50000]
+
+    # Comma string with brackets
+    res2 = df.pt.arrange("[annual salary] asc, [first name]")
+    assert list(res2["first name"]) == ["Charlie", "Bob", "Alice"]
+
+
+def test_library_slice_max_and_slice_min():
+    df = pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
+        "body_mass_g": [3000, 4000, 3500, 5000, 5500],
+    })
+
+    # Global slice_max
+    top1 = df.pt.slice_max("body_mass_g", n=1)
+    assert len(top1) == 1
+    assert top1["body_mass_g"].iloc[0] == 5500
+
+    # Grouped slice_max
+    top_per_grp = df.pt.slice_max("body_mass_g", n=1, by="species")
+    assert len(top_per_grp) == 2
+    assert set(top_per_grp["body_mass_g"]) == {4000, 5500}
+
+    # Grouped slice_min
+    bot_per_grp = df.pt.slice_min("body_mass_g", n=1, by="species")
+    assert len(bot_per_grp) == 2
+    assert set(bot_per_grp["body_mass_g"]) == {3000, 5000}
+
+    # Standalone function pt.slice_max and pt.slice_min
+    assert pt.slice_max(df, "body_mass_g", n=2).iloc[0]["body_mass_g"] == 5500
+    assert pt.slice_min(df, "body_mass_g", n=2).iloc[0]["body_mass_g"] == 3000
+
+
+def test_cli_arrange_and_slice(tmp_path, capsys):
+    df = pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
+        "body_mass_g": [3000, 4000, 3500, 5000, 5500],
+    })
+    path = _write_csv(tmp_path, df)
+
+    # -arrange with direction
+    exit_code = cli.main([path, "-arrange", "body_mass_g desc", "-head", "1"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "5500" in out
+
+    # -slice_max with -by
+    exit_code = cli.main([path, "-by", "species", "-slice_max", "body_mass_g,n=1", "-shape"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "(2, 2)" in out
+
+    # -slice_min with -by
+    exit_code = cli.main([path, "-by", "species", "-slice_min", "body_mass_g,n=1", "-shape"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "(2, 2)" in out
+
+
+def test_cli_dedupe_and_dropna(tmp_path, capsys):
+    df = pd.DataFrame({
+        "a": [1, 1, 2, None],
+        "b": [10, 20, 30, 40],
+    })
+    path = _write_csv(tmp_path, df)
+
+    # Bare -dedupe drops duplicate rows
+    exit_code = cli.main([path, "-dedupe", "a", "-shape"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "(3, 2)" in out
+
+    # -dropna drops rows with missing values
+    exit_code = cli.main([path, "-dropna", "a", "-shape"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "(3, 2)" in out
 
 ################################################################################
 # FILE: tests/test_cli_agg.py
@@ -17284,17 +17937,23 @@ def test_order_agg_dropna_default_and_flags(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    # Default is dropna=false: keeps the NA grouping key, so both groups remain (2 rows).
+    # Default dropna is false: keeps NA grouping key (2 groups).
     exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "(2, 2)" in out
 
-    # Explicit -dropna true drops the NA grouping key (1 row).
-    exit_code_drop = cli.main([path, "-by", "grp", "-agg", "sum", "-dropna", "true", "-shape"])
+    # Scoped dropna=true inside -agg drops the NA grouping key (1 group).
+    exit_code_drop = cli.main([path, "-by", "grp", "-agg", "v1 = sum, dropna=true", "-shape"])
     out_drop = capsys.readouterr().out
     assert exit_code_drop == 0
     assert "(1, 2)" in out_drop
+
+    # Top-level row-filtering -dropna drops NA rows beforehand
+    exit_code_row = cli.main([path, "-dropna", "grp", "-by", "grp", "-agg", "sum", "-shape"])
+    out_row = capsys.readouterr().out
+    assert exit_code_row == 0
+    assert "(1, 2)" in out_row
 
 
 def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
@@ -17380,10 +18039,10 @@ def test_by_requires_agg_or_mutate(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
-    assert "requires -agg or -mutate" in capsys.readouterr().err
+    assert "requires -agg, -mutate, -slice_max, or -slice_min" in capsys.readouterr().err
 
 
-def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
+def test_agg_then_arrange_prints_only_final_table(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["b", "a", "a"],
@@ -17392,7 +18051,7 @@ def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-sort_by", "grp"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-arrange", "grp"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -17762,15 +18421,15 @@ def test_freq_dropna_default_and_flags(tmp_path, capsys):
     df = pd.DataFrame({"category": ["apple", None, "apple"]})
     path = _write_csv(tmp_path, df)
 
-    # Default is dropna=false: retains NA category
+    # Without -dropna: retains NA category
     exit_code = cli.main([path, "-freq", "category"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "apple" in out
     assert "NaN" in out or "<NA>" in out or "None" in out or "nan" in out
 
-    # Explicit -dropna true: drops NA category
-    exit_code_drop = cli.main([path, "-freq", "category", "-dropna", "true"])
+    # Top-level row-filtering -dropna drops NA rows beforehand
+    exit_code_drop = cli.main([path, "-dropna", "-freq", "category"])
     assert exit_code_drop == 0
     out_drop = capsys.readouterr().out
     assert "apple" in out_drop
@@ -17825,7 +18484,7 @@ def test_cli_plot_forwards_dropna(tmp_path):
     path = _write_csv(tmp_path, df)
     out_png = tmp_path / "chart.png"
 
-    exit_code = cli.main([path, "-plot", "kind=bar, x=cat, y=val", "-dropna", "true", "-o", str(out_png)])
+    exit_code = cli.main([path, "-plot", "kind=bar, x=cat, y=val, dropna=true", "-o", str(out_png)])
     assert exit_code == 0
     assert out_png.exists()
 
@@ -17853,17 +18512,16 @@ from pytae import cli
 from tests.cli_helpers import _write_csv
 
 
-def test_query_then_select_filters_like_pandas(tmp_path, capsys):
+def test_query_deprecated_raises_helpful_error(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    exit_code = cli.main(
-        [path, "-query", "flt == 'A'", "-select", "keep,val", "-shape"]
-    )
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(2, 2)"
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-query", "flt == 'A'"])
+    assert exc.value.code == 2
+    assert "'-query' has been deprecated; use '-qry' instead" in capsys.readouterr().err
 
 
 def test_qry_without_braces_is_equivalent(tmp_path, capsys):
@@ -18152,12 +18810,21 @@ def test_order_unique_then_shape_uses_deduplicated_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-unique", "-shape"])
+    exit_code = cli.main([path, "-dedupe", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    # One duplicated row is removed by -unique, then -shape reflects the reduced frame.
+    # One duplicated row is removed by -dedupe, then -shape reflects the reduced frame.
     assert "(2, 2)" in out
+
+
+def test_unique_flag_deprecated(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 1]}))
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-unique"])
+    assert exc.value.code == 2
+    assert "'-unique' has been deprecated; use '-dedupe' instead" in capsys.readouterr().err
+
 
 def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
     df = pd.DataFrame(
@@ -18183,14 +18850,14 @@ def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    # Default is dropna=false: includes NA as its own key, yielding x + NA (2 rows).
+    # Without -dropna: includes NA as its own key, yielding x + NA (2 rows).
     exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "(2, 2)" in out
 
-    # Explicit -dropna true drops the NA key (1 row).
-    exit_code_drop = cli.main([path, "-select", "grp", "-value_counts", "-dropna", "true", "-shape"])
+    # Top-level row-filtering -dropna drops rows with NA (1 row in value_counts).
+    exit_code_drop = cli.main([path, "-dropna", "-select", "grp", "-value_counts", "-shape"])
     out_drop = capsys.readouterr().out
     assert exit_code_drop == 0
     assert "(1, 2)" in out_drop
@@ -18238,7 +18905,7 @@ def test_value_counts_collision_fails_cleanly(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "columns contain both 'count' and 'n'" in err
 
-def test_order_sort_by_then_shape_uses_sorted_frame(tmp_path, capsys):
+def test_order_arrange_then_shape_uses_sorted_frame(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["b", "a", "c"],
@@ -18247,13 +18914,13 @@ def test_order_sort_by_then_shape_uses_sorted_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-sort_by", "grp", "-shape"])
+    exit_code = cli.main([path, "-arrange", "grp", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "(3, 2)" in out
 
-def test_sort_by_respects_select_and_descending(tmp_path, capsys):
+def test_arrange_respects_select_and_descending(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["a", "b", "c"],
@@ -18263,7 +18930,7 @@ def test_sort_by_respects_select_and_descending(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp,val", "-sort_by", "val desc", "-head", "1"])
+    exit_code = cli.main([path, "-select", "grp,val", "-arrange", "val desc", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -18271,7 +18938,7 @@ def test_sort_by_respects_select_and_descending(tmp_path, capsys):
     assert "b" in out
     assert "3" in out
 
-def test_value_counts_then_sort_by_prints_only_final_table(tmp_path, capsys):
+def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", "x", "y"],
@@ -18279,7 +18946,7 @@ def test_value_counts_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-sort_by", "count"])
+    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-arrange", "count"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -18314,32 +18981,38 @@ def test_dtype_optional_name_order(tmp_path, capsys):
     assert cli.main([path, "-dtype", "asc"]) == 0
     assert capsys.readouterr().out.splitlines()[0].startswith("a")
 
-def test_sort_by_default_is_ascending(tmp_path, capsys):
+def test_arrange_default_is_ascending(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a", "c"], "val": [2, 1, 3]}))
 
-    exit_code = cli.main([path, "-sort_by", "val", "-head", "1"])
+    exit_code = cli.main([path, "-arrange", "val", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "a" in out
     assert "1" in out
 
-def test_sort_by_explicit_asc(tmp_path, capsys):
+def test_arrange_explicit_asc(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a"], "val": [2, 1]}))
 
-    exit_code = cli.main([path, "-sort_by", "val asc", "-head", "1"])
+    exit_code = cli.main([path, "-arrange", "val asc", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "a" in out
     assert "1" in out
 
-def test_sort_flag_removed(tmp_path):
+def test_sort_by_flag_deprecated(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-sort_by", "a"])
+    assert exc_info.value.code == 2
+    assert "'-sort_by' has been deprecated; use '-arrange' instead" in capsys.readouterr().err
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-sort", "desc"])
     assert exc_info.value.code == 2
+    assert "'-sort_by' has been deprecated; use '-arrange' instead" in capsys.readouterr().err
 
 def test_cols_rejects_invalid_order(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
@@ -18905,7 +19578,7 @@ def test_cli_round_preserves_pipeline_precision(tmp_path, capsys):
     # CLI Issue 4: intermediate sort does not corrupt full precision for later agg
     df = pd.DataFrame({"g": ["x", "x"], "v": [0.4, 0.4]})
     path = _write_csv(tmp_path, df)
-    exit_code = cli.main([path, "-round", "0", "-sort_by", "v", "-by", "g", "-agg", "sum"])
+    exit_code = cli.main([path, "-round", "0", "-arrange", "v", "-by", "g", "-agg", "sum"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "1" in out
@@ -19414,35 +20087,42 @@ def test_cli_glimpse(capsys):
     assert "$ body_mass_g" in captured.out
 
 
-def test_cli_drop_na_all_columns(capsys):
+def test_cli_dropna_all_columns(capsys):
     # Dropping all NaNs reduces rows from 344 to 333
-    ret = main([PENGUINS_PATH, "-drop_na", "-shape"])
+    ret = main([PENGUINS_PATH, "-dropna", "-shape"])
     assert ret == 0
     captured = capsys.readouterr()
     assert "(333, 7)" in captured.out
 
 
-def test_cli_drop_na_specific_columns(capsys):
+def test_cli_dropna_specific_columns(capsys):
     # Dropping rows with missing body_mass_g reduces rows from 344 to 342
-    ret = main([PENGUINS_PATH, "-drop_na", "body_mass_g", "-shape"])
+    ret = main([PENGUINS_PATH, "-dropna", "body_mass_g", "-shape"])
     assert ret == 0
     captured = capsys.readouterr()
     assert "(342, 7)" in captured.out
 
 
-def test_cli_drop_na_chained_with_agg(capsys):
-    ret = main([PENGUINS_PATH, "-drop_na", "body_mass_g", "-by", "species", "-agg", "count=n"])
+def test_cli_dropna_chained_with_agg(capsys):
+    ret = main([PENGUINS_PATH, "-dropna", "body_mass_g", "-by", "species", "-agg", "count=n"])
     assert ret == 0
     captured = capsys.readouterr()
     assert "Adelie    151" in captured.out
     assert "Gentoo    123" in captured.out
 
 
-def test_cli_drop_na_unknown_column(capsys):
+def test_cli_dropna_unknown_column(capsys):
     with pytest.raises(SystemExit):
-        main([PENGUINS_PATH, "-drop_na", "nonexistent_col"])
+        main([PENGUINS_PATH, "-dropna", "nonexistent_col"])
     captured = capsys.readouterr()
     assert "Column 'nonexistent_col' does not exist" in captured.err or "unknown column" in captured.err.lower()
+
+
+def test_cli_drop_na_deprecated(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main([PENGUINS_PATH, "-drop_na"])
+    assert exc.value.code == 2
+    assert "'-drop_na' has been consolidated; use '-dropna' instead" in capsys.readouterr().err
 
 
 def test_cli_auto_pipe_detection(monkeypatch, capsys):
@@ -19708,7 +20388,7 @@ _DOC_EXAMPLES = [
     ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
     ("titanic.parquet", ["-freq", "survived"]),
     ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
-    ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
+    ("mpg.parquet", ["-select", "origin,mpg", "-arrange", "mpg desc", "-head", "5"]),
     ("flights.parquet", ["-wide", "c=month,v=passengers,r=year", "-head", "5"]),
 ]
 

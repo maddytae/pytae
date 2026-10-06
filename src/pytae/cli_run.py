@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from pytae.agg_df import agg_df
+from pytae.agg import agg
 from pytae.cli_parsing import (
     parse_agg,
     parse_clean_columns_arg,
@@ -19,12 +19,11 @@ from pytae.cli_parsing import (
     parse_kv_spec,
     parse_long_arg,
     parse_pivot_arg,
-    parse_sort_by,
     parse_wide_arg,
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
-from pytae.other_utilities import clean_columns, handle_missing, safe_reset_index
+from pytae.other_utilities import clean_columns, handle_missing
 from pytae.readers import (
     DataFrameReader,
     StdinReader,
@@ -412,7 +411,6 @@ def _process_path(
     select_specs: list[tuple[list[str], dict]],
     qry_specs: list[list[tuple[str, Any]]],
     mutate_specs: list[str],
-    query_specs: list[str],
     sql_specs: list[str],
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
     rename_specs: list[dict[str, str]],
@@ -500,7 +498,6 @@ def _process_path(
     select_iter = iter(select_specs)
     qry_iter = iter(qry_specs)
     mutate_iter = iter(mutate_specs)
-    query_iter = iter(query_specs)
     sql_iter = iter(sql_specs)
     replace_iter = iter(replace_specs)
     rename_iter = iter(rename_specs)
@@ -543,12 +540,7 @@ def _process_path(
                 df_cur = pipeline.dataframe()
                 if any(c not in df_cur.columns for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
-            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False if args.dropna is None else args.dropna)
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "query":
-            err = pipeline.apply_query(next(query_iter))
+            err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -718,14 +710,12 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "unique":
-            source_df = safe_reset_index(pipeline.dataframe())
-            unique_df = source_df.drop_duplicates().reset_index(drop=True)
-            pipeline._df = unique_df
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(unique_df, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=unique_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "dedupe":
+            dedupe_val = _next_op_val("dedupe", getattr(args, "dedupe", None))
+            err = pipeline.apply_dedupe(dedupe_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "head":
             head_val = _next_op_val("head", args.head)
             df = pipeline.head(head_val)
@@ -750,21 +740,35 @@ def _process_path(
                 _output_text(_format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
                 clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "sort_by":
-            source_df = safe_reset_index(pipeline.dataframe())
-            pipeline._df = source_df
-            sort_by_arg = _next_op_val("sort_by", args.sort_by)
-            sort_cols, order = parse_sort_by(sort_by_arg)
-            if any(c not in source_df.columns for c in sort_cols):
-                return _fail(parser, batch, unknown_columns_message("-sort_by", sort_cols, list(source_df.columns)))
-            ascending = order != "desc"
-            sorted_df = source_df.sort_values(by=sort_cols, ascending=ascending).reset_index(drop=True)
-            pipeline._df = sorted_df
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(sorted_df, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=sorted_df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op in ("agg", "agg_df"):
+        elif op == "arrange":
+            arrange_val = _next_op_val("arrange", getattr(args, "arrange", None))
+            err = pipeline.apply_arrange(arrange_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "slice_max":
+            by_cols = parse_columns(args.by) if args.by else None
+            if by_cols:
+                df_cur = pipeline.dataframe()
+                if any(c not in df_cur.columns for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            slice_val = _next_op_val("slice_max", getattr(args, "slice_max", None))
+            err = pipeline.apply_slice(slice_val, by=by_cols, is_max=True)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "slice_min":
+            by_cols = parse_columns(args.by) if args.by else None
+            if by_cols:
+                df_cur = pipeline.dataframe()
+                if any(c not in df_cur.columns for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            slice_val = _next_op_val("slice_min", getattr(args, "slice_min", None))
+            err = pipeline.apply_slice(slice_val, by=by_cols, is_max=False)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "agg":
             agg_val = _next_op_val("agg", args.agg)
             if isinstance(agg_val, str):
                 parse_agg(agg_val)
@@ -773,7 +777,7 @@ def _process_path(
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                result = agg_df(df_cur, by_cols, agg_val, dropna=False if args.dropna is None else args.dropna)
+                result = agg(df_cur, by_cols, agg_val, dropna=False)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result
@@ -789,9 +793,9 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "drop_na":
-            drop_na_val = _next_op_val("drop_na", getattr(args, "drop_na", None))
-            err = pipeline.apply_drop_na(drop_na_val)
+        elif op == "dropna":
+            dropna_val = _next_op_val("dropna", getattr(args, "dropna", None))
+            err = pipeline.apply_dropna(dropna_val)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

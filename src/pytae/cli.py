@@ -13,7 +13,6 @@ import pandas as pd
 
 from pytae.cli_parsing import (
     expand_paths,
-    parse_bool_text,
     parse_concat_arg,
     parse_file_arg,
     parse_fraction,
@@ -72,15 +71,16 @@ _CLI_FLAGS = {
     "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
     "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
-    "-unique", "--unique", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
-    "-sort_by", "--sort_by", "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
+    "-dedupe", "--dedupe", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
+    "-arrange", "--arrange", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
+    "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
-    "-agg_df", "--agg_df", "-handle_missing", "--handle_missing",
-    "-drop_na", "--drop_na", "-glimpse", "--glimpse",
+    "-handle_missing", "--handle_missing",
+    "-dropna", "--dropna", "-glimpse", "--glimpse",
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
-    "-dropna", "--dropna", "-o", "--output", "-out_dir", "--out_dir",
+    "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
-    "-file", "--file", "-query", "--query", "-qry", "--qry", "-mutate", "--mutate",
+    "-file", "--file", "-qry", "--qry", "-mutate", "--mutate",
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
     "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
     "-pager", "--pager", "-round", "--round", "-h", "--help",
@@ -201,8 +201,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="render horizontal frequency bars with counts and percentages for a categorical column")
     parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
                          help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
-    parser.add_argument("-unique", "--unique", dest="unique", action=_OrderedFlag,
-                         help="drop duplicate rows and print unique rows")
+    parser.add_argument("-dedupe", "--dedupe", dest="dedupe", nargs="?", const="", default=None,
+                         metavar="COLS", action=_OrderedValue,
+                         help="drop duplicate rows, optionally restricted to specific columns, e.g. -dedupe or -dedupe \"col1,col2\"")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
     parser.add_argument("-seed", "--seed", dest="seed", type=int, default=None, metavar="N",
@@ -210,13 +211,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-frac", "--frac", dest="frac", type=parse_fraction, default=None, metavar="P",
                          help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
                               "requires -sample and overrides its N")
-    parser.add_argument("-sort_by", "--sort_by", dest="sort_by", default=None, metavar="SPEC",
+    parser.add_argument("-arrange", "--arrange", dest="arrange", default=None, metavar="SPEC",
                          action=_OrderedStore,
-                         help="sort rows by a comma-separated column list, optionally ending with "
-                              "asc or desc (default: asc), e.g. species,body_mass_g desc")
+                         help="sort rows by one or more columns with direction, e.g. -arrange \"species,mass desc\" or -arrange \"-mass\"")
+    parser.add_argument("-slice_max", "--slice_max", dest="slice_max", default=None, metavar="SPEC",
+                         action=_OrderedStore,
+                         help="slice top N rows by column (optionally with -by), e.g. -slice_max mass or -slice_max \"mass,n=3\"")
+    parser.add_argument("-slice_min", "--slice_min", dest="slice_min", default=None, metavar="SPEC",
+                         action=_OrderedStore,
+                         help="slice bottom N rows by column (optionally with -by), e.g. -slice_min mass or -slice_min \"mass,n=3\"")
     parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
-                              "Used by -agg and -mutate.")
+                              "Used by -agg, -mutate, -slice_max, -slice_min.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
@@ -224,7 +230,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
                               "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
                               'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"')
-    parser.add_argument("-agg", "--agg", "-agg_df", "--agg_df", dest="agg", nargs="?", const="sum", default=None,
+    parser.add_argument("-agg", "--agg", dest="agg", nargs="?", const="sum", default=None,
                          metavar="AGGFUNC", action=_OrderedValue,
                          help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
                               "without -by, computes a whole-table summary (grand total). "
@@ -234,10 +240,10 @@ def build_parser() -> argparse.ArgumentParser:
                          metavar="FILL", action=_OrderedValue,
                          help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
                               "columns, 0 for numeric columns")
-    parser.add_argument("-drop_na", "--drop_na", dest="drop_na", nargs="?", const="", default=None,
+    parser.add_argument("-dropna", "--dropna", dest="dropna", nargs="?", const="", default=None,
                          metavar="COLS", action=_OrderedValue,
-                         help="drop rows containing NaN (bare -drop_na drops rows with any NaN; "
-                              "-drop_na \"col1,col2\" drops rows where specified columns are NaN)")
+                         help="drop rows containing NaN (bare -dropna drops rows with any NaN; "
+                              "-dropna \"col1,col2\" drops rows where specified columns are NaN)")
     parser.add_argument("-clean_columns", "--clean_columns", dest="clean_columns", action=_OrderedStore,
                          metavar="KEY=VALUE,...",
                          help="clean column header names, in order strip -> strip_special -> squeeze -> "
@@ -259,10 +265,6 @@ def build_parser() -> argparse.ArgumentParser:
                          help="2-D pivot table (pytae pivot()); r=row_cols (optional), c=col_cols "
                               "(optional), v=value_cols (required), a=aggfunc (default sum; n=size), "
                               "dropna=false (default), fill_value=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
-    parser.add_argument("-dropna", "--dropna", dest="dropna", type=parse_bool_text, default=None,
-                         metavar="BOOL",
-                         help="for -agg, -mutate, -value_counts, -freq, -pivot, -plot (default: false): "
-                              "include NA keys when false; set true to drop NA keys; accepts true or false")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
                               "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
@@ -287,8 +289,6 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
                               "requires -merge, -concat, or -sql as the first operation, and can't be "
                               "combined with the positional path")
-    parser.add_argument("-query", "--query", dest="query", action=_OrderedAppend, default=None, metavar="EXPR",
-                         help="filter rows at this point in the pipeline using pandas query(), e.g. \"col > 5\"")
     parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
                          help="filter rows at this point in the pipeline using pytae qry(); conditions like "
                               "\"col = 'val', col > 5\"")
@@ -350,6 +350,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
+        if any(e in ("-query", "--query") for e in extras):
+            parser.error("'-query' has been deprecated; use '-qry' instead")
+        if any(e in ("-unique", "--unique") for e in extras):
+            parser.error("'-unique' has been deprecated; use '-dedupe' instead")
+        if any(e in ("-sort_by", "--sort_by", "-sort", "--sort") for e in extras):
+            parser.error("'-sort_by' has been deprecated; use '-arrange' instead")
+        if any(e in ("-drop_na", "--drop_na") for e in extras):
+            parser.error("'-drop_na' has been consolidated; use '-dropna' instead")
+        if any(e in ("-agg_df", "--agg_df") for e in extras):
+            parser.error("'-agg_df' has been removed; use '-agg' instead")
         if any(e in ("-to_clip", "--to_clip") for e in extras):
             parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
         if any(e in ("-convert", "--convert") for e in extras):
@@ -432,27 +442,29 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
-                         args.value_counts, args.unique, args.freq is not None, args.hist is not None,
-                         args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                         args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
+                         args.value_counts, args.dedupe is not None, args.freq is not None, args.hist is not None,
+                         args.head is not None, args.tail is not None, args.sample is not None,
+                         args.arrange is not None, args.slice_max is not None, args.slice_min is not None,
+                         args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
-                         args.select, args.qry, args.query, args.sql, args.replace_values,
+                         args.select, args.qry, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
                          args.meta, args.diff is not None, args.plot is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
-                     args.value_counts, args.unique, args.freq is not None, args.hist is not None,
-                     args.head is not None, args.tail is not None, args.sample is not None, args.sort_by is not None,
-                     args.agg is not None, args.handle_missing is not None, args.drop_na is not None,
+                     args.value_counts, args.dedupe is not None, args.freq is not None, args.hist is not None,
+                     args.head is not None, args.tail is not None, args.sample is not None,
+                     args.arrange is not None, args.slice_max is not None, args.slice_min is not None,
+                     args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                      args.long is not None, args.wide is not None, args.pivot is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-unique/-sample/-sort_by/"
-                     "-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-dedupe/-sample/-arrange/"
+                     "-slice_max/-slice_min/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
-    if args.by is not None and args.agg is None and not args.mutate:
-        parser.error("-by requires -agg or -mutate")
+    if args.by is not None and args.agg is None and not args.mutate and args.slice_max is None and args.slice_min is None:
+        parser.error("-by requires -agg, -mutate, -slice_max, or -slice_min")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
@@ -460,7 +472,6 @@ def main(argv: list[str] | None = None) -> int:
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
     mutate_specs = list(args.mutate or [])
-    query_specs = list(args.query or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
     merge_specs = [parse_merge_arg(raw) for raw in (args.merge or [])]
@@ -481,7 +492,7 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                qry_specs=qry_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
@@ -521,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    qry_specs=qry_specs, mutate_specs=mutate_specs, query_specs=query_specs, sql_specs=sql_specs,
+                                    qry_specs=qry_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs)
         except UnicodeError as exc:
             failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))

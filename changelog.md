@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.8.0] - 2026-10-05
+
+### Added
+- **Row Sorting Verb (`arrange`)**:
+  - Added `pt.arrange(df, *cols)` / `df.pt.arrange(*cols)` in the Python library and `-arrange SPEC` in the CLI.
+  - Supports column reordering with explicit direction (`asc`, `desc`), leading minus shorthand (`-col`), and bracket notation `[col name]` for column names containing spaces.
+- **Group-Aware Slicing Verbs (`slice_max`, `slice_min`)**:
+  - Added `pt.slice_max(df, order_by, n=1, by=...)` / `df.pt.slice_max(...)` and `pt.slice_min(...)` / `df.pt.slice_min(...)`.
+  - Added CLI flags `-slice_max SPEC` and `-slice_min SPEC` supporting `col:N`, `col,N`, `col,n=N`, and bracket notation `[col name]:N`.
+  - Fully group-aware when combined with `-by` (or `by=...` in Python), returning the top/bottom records within each group.
+- **Top-Level `-dropna [COLS]` in CLI**:
+  - Consolidated row-filtering missing value drops to `-dropna [COLS]` matching pandas `df.dropna(subset=...)`.
+  - Scoped `dropna=bool` remains supported inside `-pivot` and `-agg` specs.
+- **Deduplication Flag (`-dedupe`)**:
+  - Added CLI flag `-dedupe [COLS]` to drop duplicate rows across the intermediate DataFrame (or a specific column subset).
+
+### Deprecated & Removed ("One and Only One Right Way")
+- **`agg_df` $\rightarrow$ `agg`**:
+  - Removed `df.pt.agg_df()` in favor of `df.pt.agg()` and `pt.agg()`. `df.pt.agg_df()` raises an explicit, helpful `AttributeError`.
+  - Removed CLI `-agg_df` in favor of canonical `-agg`. Passing `-agg_df` yields a fatal CLI error pointing to `-agg`.
+- **`-query` $\rightarrow$ `-qry`**:
+  - Removed CLI `-query`. Passing `-query` raises an informative error pointing to `-qry`.
+- **`-sort_by` / `-sort` $\rightarrow$ `-arrange`**:
+  - Removed CLI `-sort_by` and `-sort`. Passing either raises an informative error pointing to `-arrange`.
+- **`-unique` $\rightarrow$ `-dedupe`**:
+  - Removed CLI `-unique`. Passing `-unique` raises an informative error pointing to `-dedupe`.
+- **`-drop_na` $\rightarrow$ `-dropna`**:
+  - Removed CLI `-drop_na`. Passing `-drop_na` raises an informative error pointing to `-dropna`.
+
 ## [3.7.3] - 2026-10-04
 
 ### Added

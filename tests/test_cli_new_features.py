@@ -20,35 +20,42 @@ def test_cli_glimpse(capsys):
     assert "$ body_mass_g" in captured.out
 
 
-def test_cli_drop_na_all_columns(capsys):
+def test_cli_dropna_all_columns(capsys):
     # Dropping all NaNs reduces rows from 344 to 333
-    ret = main([PENGUINS_PATH, "-drop_na", "-shape"])
+    ret = main([PENGUINS_PATH, "-dropna", "-shape"])
     assert ret == 0
     captured = capsys.readouterr()
     assert "(333, 7)" in captured.out
 
 
-def test_cli_drop_na_specific_columns(capsys):
+def test_cli_dropna_specific_columns(capsys):
     # Dropping rows with missing body_mass_g reduces rows from 344 to 342
-    ret = main([PENGUINS_PATH, "-drop_na", "body_mass_g", "-shape"])
+    ret = main([PENGUINS_PATH, "-dropna", "body_mass_g", "-shape"])
     assert ret == 0
     captured = capsys.readouterr()
     assert "(342, 7)" in captured.out
 
 
-def test_cli_drop_na_chained_with_agg(capsys):
-    ret = main([PENGUINS_PATH, "-drop_na", "body_mass_g", "-by", "species", "-agg", "count=n"])
+def test_cli_dropna_chained_with_agg(capsys):
+    ret = main([PENGUINS_PATH, "-dropna", "body_mass_g", "-by", "species", "-agg", "count=n"])
     assert ret == 0
     captured = capsys.readouterr()
     assert "Adelie    151" in captured.out
     assert "Gentoo    123" in captured.out
 
 
-def test_cli_drop_na_unknown_column(capsys):
+def test_cli_dropna_unknown_column(capsys):
     with pytest.raises(SystemExit):
-        main([PENGUINS_PATH, "-drop_na", "nonexistent_col"])
+        main([PENGUINS_PATH, "-dropna", "nonexistent_col"])
     captured = capsys.readouterr()
     assert "Column 'nonexistent_col' does not exist" in captured.err or "unknown column" in captured.err.lower()
+
+
+def test_cli_drop_na_deprecated(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main([PENGUINS_PATH, "-drop_na"])
+    assert exc.value.code == 2
+    assert "'-drop_na' has been consolidated; use '-dropna' instead" in capsys.readouterr().err
 
 
 def test_cli_auto_pipe_detection(monkeypatch, capsys):

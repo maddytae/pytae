@@ -37,7 +37,7 @@ _DOC_EXAMPLES = [
     ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
     ("titanic.parquet", ["-freq", "survived"]),
     ("diamonds.parquet", ["-select", "cut,price", "-by", "cut", "-agg", "mean"]),
-    ("mpg.parquet", ["-select", "origin,mpg", "-sort_by", "mpg desc", "-head", "5"]),
+    ("mpg.parquet", ["-select", "origin,mpg", "-arrange", "mpg desc", "-head", "5"]),
     ("flights.parquet", ["-wide", "c=month,v=passengers,r=year", "-head", "5"]),
 ]
 

@@ -17,7 +17,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
   - [Restricting to Columns (`c=`)](#restricting-to-columns-c)
   - [Substring Replacement (`exact=false`)](#substring-replacement-exactfalse)
 - [Imputing Missing Values (`-handle_missing`)](#imputing-missing-values--handle_missing)
-- [Dropping Missing Values (`-drop_na`)](#dropping-missing-values--drop_na)
+- [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 
 ---
@@ -29,7 +29,7 @@ Standardize messy column headers (`-clean_columns`), replace cell values (`-repl
 | `-clean_columns SPEC` | Column headers | `,` / `=` | Standardizes headers (strip, squeeze, fill, case, dedupe) |
 | `-replace_values SPEC` | Cell contents | `old:new` | Swaps values inside cells |
 | `-handle_missing [FILL]` | Cell contents | String value | Imputes `NaN` (defaults to `.` for text, `0` for numeric) |
-| `-drop_na [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for any column, or comma-separated columns) |
+| `-dropna [COLS]` | Rows | `,` | Drops rows with `NaN` (bare for all columns, or comma-separated columns) |
 | `-rename OLD:NEW,...` | Column headers | `old:new` | Explicitly renames column names |
 
 ---
@@ -128,23 +128,22 @@ pytae dataset.parquet -handle_missing "UNKNOWN"
 
 ---
 
-## Dropping Missing Values (`-drop_na`)
+## Dropping Missing Values (`-dropna`)
 
 Drop rows containing missing values (`NaN`). Can be run bare to drop rows with `NaN` across any column, or scoped to specific target columns:
 
 ```bash
 # Drop rows with NaN in any column
-pytae penguins.parquet -drop_na
+pytae penguins.parquet -dropna
 
 # Drop rows with NaN in specific column(s)
-pytae penguins.parquet -drop_na body_mass_g
-pytae penguins.parquet -drop_na "body_mass_g,sex"
+pytae penguins.parquet -dropna body_mass_g
+pytae penguins.parquet -dropna "body_mass_g,sex"
 ```
 
 > [!NOTE]
-> **Difference between `-drop_na` and `-dropna`**:
-> - **`-drop_na [cols]`**: Directly drops rows containing `NaN` from the dataset.
-> - **`-dropna true|false`**: Controls whether group-by aggregations (`-by`, `-pivot`) include or drop a category for missing `NaN` keys.
+> - **Top-level `-dropna [COLS]`**: Operates as a row filter, dropping rows containing `NaN` in any column (or specified subset of columns), matching Pandas `df.dropna(subset=...)`.
+> - **Scoped `dropna=bool`**: For operations like `-pivot` and `-agg`, pass `dropna=true` or `dropna=false` inside the spec (e.g. `-pivot "r=species,c=island,dropna=true"` or `-agg "a=mean,dropna=true"`) to control whether `NaN` grouping keys are dropped.
 
 ---
 

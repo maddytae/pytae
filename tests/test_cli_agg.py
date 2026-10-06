@@ -42,17 +42,23 @@ def test_order_agg_dropna_default_and_flags(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    # Default is dropna=false: keeps the NA grouping key, so both groups remain (2 rows).
+    # Default dropna is false: keeps NA grouping key (2 groups).
     exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "(2, 2)" in out
 
-    # Explicit -dropna true drops the NA grouping key (1 row).
-    exit_code_drop = cli.main([path, "-by", "grp", "-agg", "sum", "-dropna", "true", "-shape"])
+    # Scoped dropna=true inside -agg drops the NA grouping key (1 group).
+    exit_code_drop = cli.main([path, "-by", "grp", "-agg", "v1 = sum, dropna=true", "-shape"])
     out_drop = capsys.readouterr().out
     assert exit_code_drop == 0
     assert "(1, 2)" in out_drop
+
+    # Top-level row-filtering -dropna drops NA rows beforehand
+    exit_code_row = cli.main([path, "-dropna", "grp", "-by", "grp", "-agg", "sum", "-shape"])
+    out_row = capsys.readouterr().out
+    assert exit_code_row == 0
+    assert "(1, 2)" in out_row
 
 
 def test_group_by_agg_bare_aggfunc_keeps_source_column_name(tmp_path, capsys):
@@ -138,10 +144,10 @@ def test_by_requires_agg_or_mutate(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
-    assert "requires -agg or -mutate" in capsys.readouterr().err
+    assert "requires -agg, -mutate, -slice_max, or -slice_min" in capsys.readouterr().err
 
 
-def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
+def test_agg_then_arrange_prints_only_final_table(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["b", "a", "a"],
@@ -150,7 +156,7 @@ def test_agg_then_sort_by_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-sort_by", "grp"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "sum", "-arrange", "grp"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
