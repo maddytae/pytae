@@ -109,7 +109,7 @@ pytae current.parquet -diff baseline.parquet
 
 ### Guides & Specifications
 - **Architecture & Rosetta Stone**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison.md)
-- **Library API Guide**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) • [Other Utilities Guide](https://github.com/maddytae/pytae/blob/master/docs/library/other_utilities.md)
+- **Library API Guide**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md)
 - **CLI Reference Hub**: [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md)
 - **CLI Feature Guides**:
   - [Row Filtering & Slicing](https://github.com/maddytae/pytae/blob/master/docs/cli/filter.md) (`-qry`, `-dropna`, `-slice_max`, `-slice_min`)
