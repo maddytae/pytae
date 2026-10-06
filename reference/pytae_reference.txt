@@ -4522,7 +4522,11 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
-| **Utilities** | `glimpse`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
+| **Utilities** | `glimpse`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) • [Guide](library/other_utilities.md) |
+
+---
+
+👉 **Philosophical Design & Comparison:** See **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Rationale)](comparison.md)** for detailed naming rationales and side-by-side syntax comparisons.
 
 ---
 
@@ -4728,7 +4732,7 @@ pt.handle_missing(df, fillna="NA")                                    # Impute m
 penguins.to_clip()                                                    # Copy DataFrame to clipboard
 ```
 
-👉 **Interactive Walkthrough:** [library/other_utilities.ipynb](library/other_utilities.ipynb)
+👉 **Interactive Walkthrough:** [library/other_utilities.ipynb](library/other_utilities.ipynb) • **Feature Guide:** [library/other_utilities.md](library/other_utilities.md)
 
 ---
 
