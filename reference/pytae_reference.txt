@@ -9598,13 +9598,17 @@ penguins = pt.sample_data['penguins']
 tips = pt.sample_data['tips']
 ```
 
-## 5. `slice_max()` — Top N Records
+## 1. `slice_max()` — Top N Records
 
-Retrieve the rows with the highest values in `order_by`.
+Retrieve the rows with the highest values in `col`.
 
 ```python
 # Top 3 heaviest penguins overall
-penguins.pt.slice_max("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
+(
+    penguins
+    .pt.slice_max("body_mass_g", n=3)
+    .pt.select("species", "island", "body_mass_g")
+)
 ```
 Output:
 ```text
@@ -9614,13 +9618,17 @@ species  island  body_mass_g
 2  Gentoo  Biscoe       6000.0
 ```
 
-## 6. `slice_min()` — Bottom N Records
+## 2. `slice_min()` — Bottom N Records
 
-Retrieve the rows with the lowest values in `order_by`.
+Retrieve the rows with the lowest values in `col`.
 
 ```python
 # 3 lightest penguins overall
-penguins.pt.slice_min("body_mass_g", n=3).pt.select("species", "island", "body_mass_g")
+(
+    penguins
+    .pt.slice_min("body_mass_g", n=3)
+    .pt.select("species", "island", "body_mass_g")
+)
 ```
 Output:
 ```text
@@ -9630,13 +9638,17 @@ species  island  body_mass_g
 2     Adelie  Biscoe       2850.0
 ```
 
-## 7. Group-Aware Slicing (`by=`)
+## 3. Group-Aware Slicing (`by=`)
 
 When `by=` is specified, `slice_max` and `slice_min` extract top or bottom N rows **per group**.
 
 ```python
 # Top heaviest penguin for each species
-penguins.pt.slice_max("body_mass_g", n=1, by="species").pt.select("species", "island", "body_mass_g")
+(
+    penguins
+    .pt.slice_max("body_mass_g", n=1, by="species")
+    .pt.select("species", "island", "body_mass_g")
+)
 ```
 Output:
 ```text
@@ -9648,7 +9660,11 @@ species  island  body_mass_g
 
 ```python
 # Lightest 2 penguins per island
-penguins.pt.slice_min("body_mass_g", n=2, by="island").pt.select("island", "species", "body_mass_g")
+(
+    penguins
+    .pt.slice_min("body_mass_g", n=2, by="island")
+    .pt.select("island", "species", "body_mass_g")
+)
 ```
 Output:
 ```text
@@ -9661,7 +9677,7 @@ island    species  body_mass_g
 5  Torgersen     Adelie       3050.0
 ```
 
-## Functional Style (`pt.slice_max`, `pt.slice_min`)
+## 4. Functional Style (`pt.slice_max`, `pt.slice_min`)
 
 Both functions are available as standalone functional verbs `pt.slice_max(df, ...)` and `pt.slice_min(df, ...)`:
 
