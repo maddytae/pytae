@@ -36,3 +36,24 @@ def test_pt_select_then_pandas_head():
     out = penguins.pt.select("species", "body_mass_g").head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
+
+
+def test_pt_accessor_safe_reset_index():
+    df = pd.DataFrame({"a": [1, 2]}, index=pd.Index(["x", "y"], name="idx"))
+    res = df.pt.safe_reset_index()
+    assert list(res.columns) == ["idx", "a"]
+    assert list(res["idx"]) == ["x", "y"]
+
+
+def test_pt_accessor_to_clip(monkeypatch):
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    clip_called = []
+
+    def mock_to_clipboard(self, *args, **kwargs):
+        clip_called.append((args, kwargs))
+
+    monkeypatch.setattr(pd.DataFrame, "to_clipboard", mock_to_clipboard)
+    df.pt.to_clip()
+    assert len(clip_called) == 1
+    assert clip_called[0][1].get("index") is False
+

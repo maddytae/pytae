@@ -158,6 +158,8 @@ DataFrame Accessor (`df.pt`):
     df.pt.glimpse(...)
     df.pt.clean_columns(...)
     df.pt.replace_values(...)
+    df.pt.safe_reset_index(...)
+    df.pt.to_clip(...)
     df.pt.plot(...)
 
 Clipboard Methods (attached directly to Pandas on import pytae):
@@ -428,9 +430,9 @@ Column Order Rules:
 Reorder rows or extract extreme records per group.
 
 Signatures:
-  pt.arrange(df: pd.DataFrame, *cols: str) -> pd.DataFrame
-  pt.slice_max(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
-  pt.slice_min(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
+  pt.arrange(df: pd.DataFrame, *cols: str | Sequence[str], ascending: bool | Sequence[bool] | None = None, na_last: bool = True) -> pd.DataFrame
+  pt.slice_max(df: pd.DataFrame, col: str, n: int = 1, *, by: str | Sequence[str] | None = None, with_ties: bool = False, na_last: bool = True) -> pd.DataFrame
+  pt.slice_min(df: pd.DataFrame, col: str, n: int = 1, *, by: str | Sequence[str] | None = None, with_ties: bool = False, na_last: bool = True) -> pd.DataFrame
 
 Calling Styles:
   # arrange: ascending (default), descending ("desc" or "-col"), bracketed for spaces
@@ -641,13 +643,13 @@ Rules & Features:
   c:      scoped column name or list of columns (default None = entire DataFrame)
   exact:  True = exact match of cell value; False = substring replacement (regex)
 
-- safe_reset_index(df):
+- pt.safe_reset_index(df) / df.pt.safe_reset_index():
   Safely resets DataFrame index, raising an informative ValueError if an index level name collides
   with an existing column to prevent ambiguous duplicate headers.
 
-- df.to_clip() / s.to_clip():
+- df.to_clip() / s.to_clip() / df.pt.to_clip():
   Copies DataFrame or Series to system clipboard as tab-separated values without index.
-  Attached directly to pd.DataFrame and pd.Series on import pytae (no pt. or df.pt. needed).
+  Attached directly to pd.DataFrame and pd.Series on import pytae (also accessible via df.pt.to_clip()).
 
 
 4.10. Plotter — Visualization & Dashboarding (Plotting API)

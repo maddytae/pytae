@@ -247,7 +247,7 @@ def _slice_ordered(
 
     if with_ties:
         if by_cols:
-            ranks = df.groupby(by_cols, observed=False)[clean_col].rank(
+            ranks = df.groupby(by_cols, observed=False, dropna=False)[clean_col].rank(
                 method="min", ascending=ascending, na_option="bottom" if na_last else "top"
             )
             filtered = df[ranks <= n]
@@ -266,7 +266,7 @@ def _slice_ordered(
         sort_order = by_cols + [clean_col]
         sort_asc = [True] * len(by_cols) + [ascending]
         sorted_df = df.sort_values(by=sort_order, ascending=sort_asc, na_position=na_position)
-        res = sorted_df.groupby(by_cols, as_index=False, observed=False, sort=False).head(n)
+        res = sorted_df.groupby(by_cols, as_index=False, observed=False, sort=False, dropna=False).head(n)
         return res.reset_index(drop=True)
     else:
         sorted_df = df.sort_values(by=clean_col, ascending=ascending, na_position=na_position)

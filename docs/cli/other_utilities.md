@@ -27,10 +27,10 @@ Essential utilities, convenience flags, pipeline modifiers, and miscellaneous co
 | `-dlim STR` | Input I/O | Delimiter string (e.g. `","`, `"\t"`, `"|"`) | Custom delimiter for CSV/text files (overrides autodetection) |
 | `-encoding STR` | Input I/O | Encoding name (e.g. `"utf-8"`, `"latin1"`) | File character encoding |
 | `-o clip` | Output I/O | Sentinel `clip` | Copies final pipeline DataFrame directly to system clipboard as TSV |
-| `-pretty` | Formatting | Flag | Formats numbers with thousands commas (`1,000,000`) in terminal output |
+| `-pretty` | Formatting | Flag | Formats terminal tables with Markdown borders (`df.to_markdown()`) |
 | `-round N` | Formatting | Integer decimals (e.g. `2`) | Rounds floating-point numbers to N decimal places |
-| `-pager` | Output | Flag | Displays terminal output through a scrollable system pager (`less`) |
-| `-progress` | Diagnostics | Flag | Displays progress bar for large file operations |
+| `-pager` | Output | Flag | Displays terminal output through an interactive pager (`pydoc.pager`) |
+| `-progress` | Diagnostics | Flag | Displays live row count and percentage progress status during file operations |
 | `-version` / `--version` | Meta | Flag | Displays pytae version information and exits |
 | `-h` / `--help` | Meta | Flag | Displays full CLI flags usage and documentation |
 
@@ -82,13 +82,13 @@ pytae penguins.parquet \
 
 ## Formatting & Visual Modifiers (`-pretty`, `-round`)
 
-Control numeric formatting on stdout without modifying underlying data:
+Control numeric and table formatting on stdout without modifying underlying data:
 
 ```bash
 # Round floating-point averages to 2 decimals
 pytae penguins.parquet -by species -agg "mean=body_mass_g:mean" -round 2
 
-# Add comma thousand-separators to large counts and numbers
+# Render output as a clean GitHub-flavored Markdown bordered table
 pytae sales.parquet -by region -agg "total=revenue:sum" -pretty
 ```
 
@@ -96,7 +96,7 @@ pytae sales.parquet -by region -agg "total=revenue:sum" -pretty
 
 ## Execution Progress (`-progress`)
 
-Enable real-time progress reporting when parsing, processing, or exporting large datasets:
+Enable live row-count status reporting (`reading... X/Y rows (Z%)` / `writing... X/Y rows (Z%)`) when parsing, processing, or exporting large datasets:
 
 ```bash
 pytae raw_events.csv -progress -o lake_events.parquet
@@ -106,7 +106,7 @@ pytae raw_events.csv -progress -o lake_events.parquet
 
 ## Terminal Paging (`-pager`)
 
-When viewing wide tables or hundreds of inspection rows on terminal, pipe through the interactive pager without manually appending `| less`:
+When viewing wide tables or hundreds of inspection rows on terminal, pipe through the interactive pager (`pydoc.pager`) without manually appending `| less`:
 
 ```bash
 pytae transactions.parquet -describe -pager

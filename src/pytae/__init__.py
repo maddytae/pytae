@@ -18,6 +18,7 @@ from .other_utilities import (
     glimpse,
     handle_missing,
     replace_values,
+    safe_reset_index,
 )
 from .qry import qry
 from .select import everything, select
@@ -113,6 +114,7 @@ __all__ = [
     "glimpse",
     "clean_columns",
     "replace_values",
+    "safe_reset_index",
     "sql",
     "everything",
     "PtAccessor",

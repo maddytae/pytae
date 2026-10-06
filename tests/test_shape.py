@@ -74,6 +74,15 @@ def test_wide_rejects_aggregation_arguments():
         df.pt.wide(c="country", v="balance", agg="mean")
 
 
+def test_wide_disallows_none_values():
+    """wide() requires an explicit value column `v` and disallows v=None."""
+    df = pd.DataFrame({"id": ["a", "b"], "balance": [10, 20], "country": ["sg", "cn"]})
+    with pytest.raises(ValueError, match=r"wide\(\): value column 'v' cannot be None"):
+        pt.wide(df, c="country", v=None)
+
+
+
+
 def test_long_raises_when_no_numeric_columns():
     df = pd.DataFrame({"a": ["x", "y"], "b": ["p", "q"]})
     with pytest.raises(ValueError, match="no numeric columns to melt"):

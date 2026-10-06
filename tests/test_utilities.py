@@ -30,7 +30,7 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     assert copied["index"] is False
 
     assert not hasattr(pt, "to_clip")
-    assert not hasattr(df.pt, "to_clip")
+    assert hasattr(df.pt, "to_clip")
 
     copied_series: dict[str, Any] = {}
     monkeypatch.setattr(pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True))

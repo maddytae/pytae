@@ -166,13 +166,14 @@ def wide(
         v = kwargs.pop("vals")
 
     c = _unquote_name(c)
-    if v is not None:
-        v = _unquote_name(v)
+    if v is None:
+        raise ValueError("wide(): value column 'v' cannot be None. Specify the column to spread via v= (e.g. v='value').")
+    v = _unquote_name(v)
     if c == v:
         raise ValueError(f"wide(): 'c' and 'v' cannot be the same column ('{c}')")
     if c not in df.columns:
         raise KeyError(f"wide(): columns 'c' column '{c}' not found in DataFrame")
-    if v is not None and v not in df.columns:
+    if v not in df.columns:
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
     if index is None:

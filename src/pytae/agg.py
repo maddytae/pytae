@@ -61,13 +61,13 @@ def _agg_df_list(
 
     if has_n and "n" in numeric_cols:
         raise ValueError(
-            "agg_df: cannot compute 'n' (row count) because the input already has a "
+            "agg(): cannot compute 'n' (row count) because the input already has a "
             "numeric column named 'n'; rename that column first, or use the kwargs form "
             "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
         )
     if has_n and "n" in group_cols:
         raise ValueError(
-            "agg_df: cannot compute 'n' (row count) because the input already has a "
+            "agg(): cannot compute 'n' (row count) because the input already has a "
             "group column named 'n'; rename that column first, or use the kwargs form "
             "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
         )
@@ -98,15 +98,15 @@ def _agg_df_list(
         non_group_cols = [c for i, c in enumerate(flattened) if i >= len(group_cols)]
         for col in non_group_cols:
             if col in group_cols:
-                raise ValueError(f"agg_df: output column name '{col}' collides with group column '{col}'")
+                raise ValueError(f"agg(): output column name '{col}' collides with group column '{col}'")
         if len(non_group_cols) != len(set(non_group_cols)):
             counts: dict[str, int] = {}
             for col in non_group_cols:
                 counts[col] = counts.get(col, 0) + 1
             dups = [col for col, count in counts.items() if count > 1]
-            raise ValueError(f"agg_df: output column name '{dups[0]}' is duplicated in aggregation output")
+            raise ValueError(f"agg(): output column name '{dups[0]}' is duplicated in aggregation output")
         if has_n and "n" in non_group_cols:
-            raise ValueError("agg_df: output column name 'n' collides with count column 'n'")
+            raise ValueError("agg(): output column name 'n' collides with count column 'n'")
 
         grouped_df.columns = flattened
 

@@ -266,6 +266,15 @@ class PtAccessor:
         """
         return _glimpse(self._obj, width=width)
 
+    def to_clip(self) -> None:
+        """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
+        return self._obj.to_clipboard(index=False)
+
+    def safe_reset_index(self) -> pd.DataFrame:
+        """Reset index, ensuring no index level name collides with existing columns."""
+        from .other_utilities import safe_reset_index as _safe_reset_index
+        return _safe_reset_index(self._obj)
+
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Create a pytae Plotter pre-loaded with this DataFrame.
 

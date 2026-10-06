@@ -150,6 +150,8 @@ DataFrame Accessor (`df.pt`):
     df.pt.glimpse(...)
     df.pt.clean_columns(...)
     df.pt.replace_values(...)
+    df.pt.safe_reset_index(...)
+    df.pt.to_clip(...)
     df.pt.plot(...)
 
 Clipboard Methods (attached directly to Pandas on import pytae):
@@ -420,9 +422,9 @@ Column Order Rules:
 Reorder rows or extract extreme records per group.
 
 Signatures:
-  pt.arrange(df: pd.DataFrame, *cols: str) -> pd.DataFrame
-  pt.slice_max(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
-  pt.slice_min(df: pd.DataFrame, order_by: str, n: int = 1, by: str | Sequence[str] | None = None, with_ties: bool = True) -> pd.DataFrame
+  pt.arrange(df: pd.DataFrame, *cols: str | Sequence[str], ascending: bool | Sequence[bool] | None = None, na_last: bool = True) -> pd.DataFrame
+  pt.slice_max(df: pd.DataFrame, col: str, n: int = 1, *, by: str | Sequence[str] | None = None, with_ties: bool = False, na_last: bool = True) -> pd.DataFrame
+  pt.slice_min(df: pd.DataFrame, col: str, n: int = 1, *, by: str | Sequence[str] | None = None, with_ties: bool = False, na_last: bool = True) -> pd.DataFrame
 
 Calling Styles:
   # arrange: ascending (default), descending ("desc" or "-col"), bracketed for spaces
@@ -633,13 +635,13 @@ Rules & Features:
   c:      scoped column name or list of columns (default None = entire DataFrame)
   exact:  True = exact match of cell value; False = substring replacement (regex)
 
-- safe_reset_index(df):
+- pt.safe_reset_index(df) / df.pt.safe_reset_index():
   Safely resets DataFrame index, raising an informative ValueError if an index level name collides
   with an existing column to prevent ambiguous duplicate headers.
 
-- df.to_clip() / s.to_clip():
+- df.to_clip() / s.to_clip() / df.pt.to_clip():
   Copies DataFrame or Series to system clipboard as tab-separated values without index.
-  Attached directly to pd.DataFrame and pd.Series on import pytae (no pt. or df.pt. needed).
+  Attached directly to pd.DataFrame and pd.Series on import pytae (also accessible via df.pt.to_clip()).
 
 
 4.10. Plotter — Visualization & Dashboarding (Plotting API)
@@ -3571,10 +3573,10 @@ Essential utilities, convenience flags, pipeline modifiers, and miscellaneous co
 | `-dlim STR` | Input I/O | Delimiter string (e.g. `","`, `"\t"`, `"|"`) | Custom delimiter for CSV/text files (overrides autodetection) |
 | `-encoding STR` | Input I/O | Encoding name (e.g. `"utf-8"`, `"latin1"`) | File character encoding |
 | `-o clip` | Output I/O | Sentinel `clip` | Copies final pipeline DataFrame directly to system clipboard as TSV |
-| `-pretty` | Formatting | Flag | Formats numbers with thousands commas (`1,000,000`) in terminal output |
+| `-pretty` | Formatting | Flag | Formats terminal tables with Markdown borders (`df.to_markdown()`) |
 | `-round N` | Formatting | Integer decimals (e.g. `2`) | Rounds floating-point numbers to N decimal places |
-| `-pager` | Output | Flag | Displays terminal output through a scrollable system pager (`less`) |
-| `-progress` | Diagnostics | Flag | Displays progress bar for large file operations |
+| `-pager` | Output | Flag | Displays terminal output through an interactive pager (`pydoc.pager`) |
+| `-progress` | Diagnostics | Flag | Displays live row count and percentage progress status during file operations |
 | `-version` / `--version` | Meta | Flag | Displays pytae version information and exits |
 | `-h` / `--help` | Meta | Flag | Displays full CLI flags usage and documentation |
 
@@ -3626,13 +3628,13 @@ pytae penguins.parquet \
 
 ## Formatting & Visual Modifiers (`-pretty`, `-round`)
 
-Control numeric formatting on stdout without modifying underlying data:
+Control numeric and table formatting on stdout without modifying underlying data:
 
 ```bash
 # Round floating-point averages to 2 decimals
 pytae penguins.parquet -by species -agg "mean=body_mass_g:mean" -round 2
 
-# Add comma thousand-separators to large counts and numbers
+# Render output as a clean GitHub-flavored Markdown bordered table
 pytae sales.parquet -by region -agg "total=revenue:sum" -pretty
 ```
 
@@ -3640,7 +3642,7 @@ pytae sales.parquet -by region -agg "total=revenue:sum" -pretty
 
 ## Execution Progress (`-progress`)
 
-Enable real-time progress reporting when parsing, processing, or exporting large datasets:
+Enable live row-count status reporting (`reading... X/Y rows (Z%)` / `writing... X/Y rows (Z%)`) when parsing, processing, or exporting large datasets:
 
 ```bash
 pytae raw_events.csv -progress -o lake_events.parquet
@@ -3650,7 +3652,7 @@ pytae raw_events.csv -progress -o lake_events.parquet
 
 ## Terminal Paging (`-pager`)
 
-When viewing wide tables or hundreds of inspection rows on terminal, pipe through the interactive pager without manually appending `| less`:
+When viewing wide tables or hundreds of inspection rows on terminal, pipe through the interactive pager (`pydoc.pager`) without manually appending `| less`:
 
 ```bash
 pytae transactions.parquet -describe -pager
@@ -9697,6 +9699,7 @@ from .other_utilities import (
     glimpse,
     handle_missing,
     replace_values,
+    safe_reset_index,
 )
 from .qry import qry
 from .select import everything, select
@@ -9792,6 +9795,7 @@ __all__ = [
     "glimpse",
     "clean_columns",
     "replace_values",
+    "safe_reset_index",
     "sql",
     "everything",
     "PtAccessor",
@@ -10163,6 +10167,15 @@ class PtAccessor:
         """
         return _glimpse(self._obj, width=width)
 
+    def to_clip(self) -> None:
+        """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
+        return self._obj.to_clipboard(index=False)
+
+    def safe_reset_index(self) -> pd.DataFrame:
+        """Reset index, ensuring no index level name collides with existing columns."""
+        from .other_utilities import safe_reset_index as _safe_reset_index
+        return _safe_reset_index(self._obj)
+
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Create a pytae Plotter pre-loaded with this DataFrame.
 
@@ -10291,13 +10304,13 @@ def _agg_df_list(
 
     if has_n and "n" in numeric_cols:
         raise ValueError(
-            "agg_df: cannot compute 'n' (row count) because the input already has a "
+            "agg(): cannot compute 'n' (row count) because the input already has a "
             "numeric column named 'n'; rename that column first, or use the kwargs form "
             "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
         )
     if has_n and "n" in group_cols:
         raise ValueError(
-            "agg_df: cannot compute 'n' (row count) because the input already has a "
+            "agg(): cannot compute 'n' (row count) because the input already has a "
             "group column named 'n'; rename that column first, or use the kwargs form "
             "(e.g. df.pt.agg(by='...', n_col='n')) to pick a different count-column name."
         )
@@ -10328,15 +10341,15 @@ def _agg_df_list(
         non_group_cols = [c for i, c in enumerate(flattened) if i >= len(group_cols)]
         for col in non_group_cols:
             if col in group_cols:
-                raise ValueError(f"agg_df: output column name '{col}' collides with group column '{col}'")
+                raise ValueError(f"agg(): output column name '{col}' collides with group column '{col}'")
         if len(non_group_cols) != len(set(non_group_cols)):
             counts: dict[str, int] = {}
             for col in non_group_cols:
                 counts[col] = counts.get(col, 0) + 1
             dups = [col for col, count in counts.items() if count > 1]
-            raise ValueError(f"agg_df: output column name '{dups[0]}' is duplicated in aggregation output")
+            raise ValueError(f"agg(): output column name '{dups[0]}' is duplicated in aggregation output")
         if has_n and "n" in non_group_cols:
-            raise ValueError("agg_df: output column name 'n' collides with count column 'n'")
+            raise ValueError("agg(): output column name 'n' collides with count column 'n'")
 
         grouped_df.columns = flattened
 
@@ -10935,7 +10948,7 @@ def _slice_ordered(
 
     if with_ties:
         if by_cols:
-            ranks = df.groupby(by_cols, observed=False)[clean_col].rank(
+            ranks = df.groupby(by_cols, observed=False, dropna=False)[clean_col].rank(
                 method="min", ascending=ascending, na_option="bottom" if na_last else "top"
             )
             filtered = df[ranks <= n]
@@ -10954,7 +10967,7 @@ def _slice_ordered(
         sort_order = by_cols + [clean_col]
         sort_asc = [True] * len(by_cols) + [ascending]
         sorted_df = df.sort_values(by=sort_order, ascending=sort_asc, na_position=na_position)
-        res = sorted_df.groupby(by_cols, as_index=False, observed=False, sort=False).head(n)
+        res = sorted_df.groupby(by_cols, as_index=False, observed=False, sort=False, dropna=False).head(n)
         return res.reset_index(drop=True)
     else:
         sorted_df = df.sort_values(by=clean_col, ascending=ascending, na_position=na_position)
@@ -17492,13 +17505,14 @@ def wide(
         v = kwargs.pop("vals")
 
     c = _unquote_name(c)
-    if v is not None:
-        v = _unquote_name(v)
+    if v is None:
+        raise ValueError("wide(): value column 'v' cannot be None. Specify the column to spread via v= (e.g. v='value').")
+    v = _unquote_name(v)
     if c == v:
         raise ValueError(f"wide(): 'c' and 'v' cannot be the same column ('{c}')")
     if c not in df.columns:
         raise KeyError(f"wide(): columns 'c' column '{c}' not found in DataFrame")
-    if v is not None and v not in df.columns:
+    if v not in df.columns:
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
     if index is None:

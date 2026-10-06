@@ -122,3 +122,45 @@ def test_cli_dedupe_and_dropna(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(3, 2)" in out
+
+
+def test_slice_with_nan_by_keys():
+    """Verify that rows with NaN in grouping keys are not dropped by slice_max/min."""
+    df = pd.DataFrame({
+        "group": ["A", "A", None, None],
+        "val": [10, 20, 100, 200],
+    })
+    # slice_max with ties=False
+    res_max = pt.slice_max(df, "val", n=1, by="group")
+    assert len(res_max) == 2
+    assert set(res_max["val"]) == {20, 200}
+    assert res_max["group"].isna().sum() == 1
+
+    # slice_min with ties=False
+    res_min = pt.slice_min(df, "val", n=1, by="group")
+    assert len(res_min) == 2
+    assert set(res_min["val"]) == {10, 100}
+    assert res_min["group"].isna().sum() == 1
+
+    # slice_max with ties=True
+    df_ties = pd.DataFrame({
+        "group": ["A", "A", None, None],
+        "val": [20, 20, 200, 200],
+    })
+    res_max_ties = pt.slice_max(df_ties, "val", n=1, by="group", with_ties=True)
+    assert len(res_max_ties) == 4
+
+
+def test_slice_edge_cases():
+    df = pd.DataFrame({
+        "val": [10, 20, None],
+    })
+    # n <= 0 returns empty DataFrame
+    res = pt.slice_max(df, "val", n=0)
+    assert len(res) == 0
+    assert list(res.columns) == ["val"]
+
+    # na_last=False puts NaN at top for slice_max
+    res_na_first = pt.slice_max(df, "val", n=1, na_last=False)
+    assert pd.isna(res_na_first["val"].iloc[0])
+
