@@ -1229,25 +1229,29 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ├── contributing.md
 ├── docs
 │   ├── cli
-│   │   ├── aggregate.md
+│   │   ├── agg.md
+│   │   ├── arrange.md
 │   │   ├── clean_replace.md
+│   │   ├── dedupe.md
 │   │   ├── diff.md
 │   │   ├── export_io.md
-│   │   ├── filter.md
 │   │   ├── inspect.md
 │   │   ├── multi_file.md
 │   │   ├── mutate.md
 │   │   ├── other_utilities.md
 │   │   ├── pivot.md
 │   │   ├── plotting.md
+│   │   ├── qry.md
 │   │   ├── reshape.md
 │   │   ├── select.md
+│   │   ├── slice.md
 │   │   └── sql.md
 │   ├── cli.md
 │   ├── comparison.md
 │   ├── library
 │   │   ├── agg.ipynb
 │   │   ├── arrange.ipynb
+│   │   ├── dedupe.ipynb
 │   │   ├── mutate.ipynb
 │   │   ├── other_utilities.ipynb
 │   │   ├── pivot.ipynb
@@ -1255,6 +1259,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   │   ├── qry.ipynb
 │   │   ├── reshape.ipynb
 │   │   ├── select.ipynb
+│   │   ├── slice.ipynb
 │   │   └── sql.ipynb
 │   └── library.md
 ├── pyproject.toml

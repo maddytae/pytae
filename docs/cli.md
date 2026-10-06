@@ -144,7 +144,7 @@ pytae data.parquet -slice_max "body_mass_g,n=5"                   # Top 5 heavie
 pytae data.parquet -by species -slice_max "body_mass_g,n=1"       # Heaviest penguin per species
 ```
 
-👉 See the complete guide: **[Row Filtering Guide](cli/filter.md)**
+👉 See the complete guide: **[Row Filtering Guide](cli/qry.md)**
 
 ---
 
@@ -222,7 +222,7 @@ pytae data.parquet -agg mean  # Whole-table grand summary
 pytae data.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass"  # Grouped transform
 ```
 
-👉 See the complete guide: **[Aggregations & Grouping Guide](cli/aggregate.md)**
+👉 See the complete guide: **[Aggregations & Grouping Guide](cli/agg.md)**
 
 ---
 
@@ -341,24 +341,24 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-round N` | Inspect | Round floating-point numbers to N decimal places | [cli/inspect.md](cli/inspect.md) |
 | `-diff PATH` | Inspect | Compare current frame against another file | [cli/diff.md](cli/diff.md) |
 | `-select SPEC` | Select & Filter | Filter, reorder, or exclude columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select.md](cli/select.md) |
-| `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
+| `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/qry.md](cli/qry.md) |
 | `-dropna [COLS]` | Select & Filter | Drop rows containing NaN (bare for all columns, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-slice_max SPEC` | Select & Filter | Select top N rows by column (`col:N`), group-aware with `-by` | [cli/filter.md](cli/filter.md) |
-| `-slice_min SPEC` | Select & Filter | Select bottom N rows by column (`col:N`), group-aware with `-by` | [cli/filter.md](cli/filter.md) |
+| `-slice_max SPEC` | Select & Filter | Select top N rows by column (`col:N`), group-aware with `-by` | [cli/slice.md](cli/slice.md) |
+| `-slice_min SPEC` | Select & Filter | Select bottom N rows by column (`col:N`), group-aware with `-by` | [cli/slice.md](cli/slice.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
 | `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |
 | `-clean_columns SPEC` | Clean | Clean headers (strip, squeeze, strip_special, fill, case, dedupe) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-replace_values SPEC` | Clean | Replace cell values (`v=mapping`, `c=cols`, `exact=bool`) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-handle_missing [FILL]` | Clean | Fill NAs (`.` for object, `0` for numeric, or custom fill) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-rename OLD:NEW,...` | Clean | Rename columns anywhere in pipeline or during export | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-by COLS` | Aggregate & Transform | Grouping columns for `-agg`, `-mutate`, `-slice_max`, `-slice_min` | [cli/aggregate.md](cli/aggregate.md) |
-| `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/aggregate.md](cli/aggregate.md) |
+| `-by COLS` | Aggregate & Transform | Grouping columns for `-agg`, `-mutate`, `-slice_max`, `-slice_min` | [cli/agg.md](cli/agg.md) |
+| `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/agg.md](cli/agg.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pure reshape: long table to wide format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `fill=`) | [cli/pivot.md](cli/pivot.md) |
-| `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/reshape.md](cli/reshape.md) |
-| `-dedupe [COLS]` | Reshape | Remove duplicate rows across all or specific columns | [cli/reshape.md](cli/reshape.md) |
-| `-arrange SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` or `-col` prefix | [cli/reshape.md](cli/reshape.md) |
+| `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/inspect.md](cli/inspect.md) |
+| `-dedupe [COLS]` | Reshape | Remove duplicate rows across all or specific columns | [cli/dedupe.md](cli/dedupe.md) |
+| `-arrange SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` or `-col` prefix | [cli/arrange.md](cli/arrange.md) |
 | `-freq COL` | Visualize | Terminal ASCII frequency distribution bar chart | [cli/inspect.md](cli/inspect.md) |
 | `-hist COL[:BINS]` | Visualize | Terminal ASCII numeric histogram with bin intervals | [cli/inspect.md](cli/inspect.md) |
 | `-plot SPEC` | Visualize | Headless figure plotting (`kind=`, `x=`, `y=`, `by=`) | [cli/plotting.md](cli/plotting.md) |
@@ -385,20 +385,22 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Pick, reorder, or exclude columns** | `-select` | [Column Selection](cli/select.md) |
 | **Rename columns** | `-rename` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Standardize messy headers** | `-clean_columns` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
-| **Filter rows using expressions** | `-qry` | [Row Filtering](cli/filter.md) |
+| **Filter rows using expressions** | `-qry` | [Row Filtering](cli/qry.md) |
 | **Drop rows containing NaN** | `-dropna` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
-| **Top/bottom N rows by column** | `-slice_max`, `-slice_min` | [Row Filtering](cli/filter.md) |
+| **Top/bottom N rows by column** | `-slice_max`, `-slice_min` | [Row Slicing](cli/slice.md) |
+| **Sort rows** | `-arrange` | [Row Sorting](cli/arrange.md) |
+| **Deduplicate rows** | `-dedupe` | [Deduplication](cli/dedupe.md) |
 | **Compute / mutate columns** | `-mutate` | [Mutating & Computing](cli/mutate.md) |
 | **Run SQL queries** | `-sql` | [DuckDB SQL Engine](cli/sql.md) |
 | **Replace cell values** | `-replace_values` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Impute missing values (NA)** | `-handle_missing` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
-| **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
-| **Whole-table summary** | `-agg` | [Aggregations & Grouping](cli/aggregate.md) |
+| **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/agg.md) |
+| **Whole-table summary** | `-agg` | [Aggregations & Grouping](cli/agg.md) |
 | **2D Excel pivot table (r, c, v, a)** | `-pivot` | [2D Pivot Tables](cli/pivot.md) |
 | **Unpivot / melt (wide → long)** | `-long` | [Reshaping](cli/reshape.md) |
 | **Pure reshape (long → wide)** | `-wide` | [Reshaping](cli/reshape.md) |
 | **Contingency matrix / frequency pivot** | `-pivot "..., a=n"` | [2D Pivot Tables](cli/pivot.md) |
-| **Frequency distribution** | `-value_counts` | [Reshaping](cli/reshape.md) |
+| **Frequency distribution** | `-value_counts` | [Inspection & Metadata](cli/inspect.md) |
 | **Terminal frequency bars (ASCII)** | `-freq` | [Inspection & Metadata](cli/inspect.md) |
 | **Terminal histogram (ASCII)** | `-hist` | [Inspection & Metadata](cli/inspect.md) |
 | **Render and export plot charts** | `-plot`, `-finalize` | [Visualizations & Plotting](cli/plotting.md) |
