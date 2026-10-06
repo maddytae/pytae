@@ -11,7 +11,7 @@ Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, fe
 1. **Python Library & DataFrame Accessor (`df.pt`)**: Expressive, chainable verbs (`qry`, `select`, `mutate`, `arrange`, `slice_max`, `slice_min`, `agg`, `long`, `wide`, `pivot`, `sql`, `plot`) on standard Pandas DataFrames.
 2. **Unix Pipeline CLI (`pytae`)**: Inspect, filter, transform, aggregate, diff, and export files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`) from the terminal with zero boilerplate.
 
-👉 **New to Pytae?** Check out **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Naming Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison.md)**.
+👉 **New to Pytae?** Check out **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Naming Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)**.
 
 ---
 
@@ -108,7 +108,7 @@ pytae current.parquet -diff baseline.parquet
 ## Documentation Directory
 
 ### Guides & Specifications
-- **Architecture & Rosetta Stone**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison.md)
+- **Architecture & Rosetta Stone**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
 - **Library API Guide**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md)
 - **CLI Reference Hub**: [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md)
 - **CLI Feature Guides**:

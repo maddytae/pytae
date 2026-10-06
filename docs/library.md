@@ -78,7 +78,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 
 ---
 
-👉 **Philosophical Design & Comparison:** See **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Rationale)](comparison.md)** for detailed naming rationales and side-by-side syntax comparisons.
+👉 **Philosophical Design & Comparison:** See **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Rationale)](comparison_to_pandas_and_dplyr.md)** for detailed naming rationales and side-by-side syntax comparisons.
 
 ---
 

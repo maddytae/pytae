@@ -62,7 +62,7 @@ TABLE OF CONTENTS
     Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
 9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
-10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison.md)
+10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -1247,7 +1247,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   │   ├── slice.md
 │   │   └── sql.md
 │   ├── cli.md
-│   ├── comparison.md
+│   ├── comparison_to_pandas_and_dplyr.md
 │   ├── library
 │   │   ├── agg.ipynb
 │   │   ├── arrange.ipynb
@@ -1426,11 +1426,11 @@ def generate_reference() -> None:
         parts.append("################################################################################")
         parts.append(_format_notebook(nb_path).rstrip() + "\n")
 
-    # Section 10: Philosophy & Comparison Rosetta Stone (docs/comparison.md)
+    # Section 10: Philosophy & Comparison Rosetta Stone (docs/comparison_to_pandas_and_dplyr.md)
     parts.append("================================================================================")
-    parts.append("10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison.md)")
+    parts.append("10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)")
     parts.append("================================================================================\n")
-    comp_md = REPO_ROOT / "docs" / "comparison.md"
+    comp_md = REPO_ROOT / "docs" / "comparison_to_pandas_and_dplyr.md"
     parts.append("################################################################################")
     parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
     parts.append("################################################################################")

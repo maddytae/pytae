@@ -54,7 +54,7 @@ TABLE OF CONTENTS
     Recipe 6: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
 9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
-10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison.md)
+10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -5046,7 +5046,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 
 ---
 
-👉 **Philosophical Design & Comparison:** See **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Rationale)](comparison.md)** for detailed naming rationales and side-by-side syntax comparisons.
+👉 **Philosophical Design & Comparison:** See **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Rationale)](comparison_to_pandas_and_dplyr.md)** for detailed naming rationales and side-by-side syntax comparisons.
 
 ---
 
@@ -9834,11 +9834,11 @@ sex    class_name  survival_rate_pct  total_passengers
 ```
 
 ================================================================================
-10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison.md)
+10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
 ================================================================================
 
 ################################################################################
-# FILE: docs/comparison.md
+# FILE: docs/comparison_to_pandas_and_dplyr.md
 ################################################################################
 # Pytae Comparison & Philosophy: Pytae vs. Pandas vs. dplyr
 
@@ -10040,7 +10040,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 │   │   ├── slice.md
 │   │   └── sql.md
 │   ├── cli.md
-│   ├── comparison.md
+│   ├── comparison_to_pandas_and_dplyr.md
 │   ├── library
 │   │   ├── agg.ipynb
 │   │   ├── arrange.ipynb
