@@ -114,14 +114,23 @@ pytae transactions.parquet -describe -pager
 
 ---
 
-## Version & Help (`-version`, `--help`)
+## Version & Help (`-version`, `-help`)
 
-Inspect version or access full command-line help:
+Inspect version, access full command-line help, or query dedicated keyword help:
 
 ```bash
 # Check version
 pytae -version
 
 # Full command-line reference
-pytae --help
+pytae -help
+
+# Keyword-specific help with focused syntax, options, and copy-pasteable examples:
+pytae -help sql
+pytae -help mutate
+pytae -help qry
+pytae -help agg
+pytae -help pivot
+pytae -help select
 ```
+

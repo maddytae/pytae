@@ -44,3 +44,30 @@ def test_parse_rename_conflicting_mappings():
     assert "conflicting mappings for 'col'" in str(exc_info.value)
 
 
+def test_cli_keyword_help(capsys):
+    from pytae.cli import main
+
+    # test `pytae -help sql`
+    code = main(["-help", "sql"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "PYTAE CLI KEYWORD HELP: -sql" in out
+    assert "FLAG:     -sql, --sql QUERY" in out
+    assert "select species" in out
+
+    # test `pytae -h mutate`
+    code = main(["-h", "mutate"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "PYTAE CLI KEYWORD HELP: -mutate" in out
+    assert "mass_kg = body_mass_g / 1000" in out
+
+    # test unknown keyword fallback
+    code = main(["-help", "nonexistent_keyword"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "No dedicated help topic for keyword 'nonexistent_keyword'" in out
+    assert "Available keywords with help:" in out
+
+
+

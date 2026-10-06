@@ -347,6 +347,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+
+    # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
+    if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
+        from pytae.cli_help import get_keyword_help
+        topic = raw_argv[1]
+        msg = get_keyword_help(topic)
+        print(msg)
+        return 0
+
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
