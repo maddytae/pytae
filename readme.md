@@ -137,6 +137,7 @@ Run any interactive walkthrough directly:
 - **Feature Engineering**: [`mutate.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/mutate.ipynb)
 - **Sorting**: [`arrange.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/arrange.ipynb)
 - **Slicing**: [`slice.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/slice.ipynb)
+- **Deduplication**: [`dedupe.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/dedupe.ipynb)
 - **Pure Reshaping**: [`reshape.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/reshape.ipynb)
 - **2D Pivot Tables**: [`pivot.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/pivot.ipynb)
 - **Aggregation**: [`agg.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/agg.ipynb)

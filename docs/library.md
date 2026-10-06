@@ -13,12 +13,13 @@
   - [2. Column Selection (`select`)](#2-column-selection--select)
   - [3. Feature Engineering (`mutate`)](#3-feature-engineering--mutate)
   - [4. Sorting & Slicing (`arrange`, `slice_max`, `slice_min`)](#4-sorting--slicing--arrange-slice_max-slice_min)
-  - [5. Pure Reshaping (`long`, `wide`)](#5-pure-reshaping--long-wide)
-  - [6. 2D Pivot Tables (`pivot`)](#6-2d-pivot-tables--pivot)
-  - [7. Aggregation (`agg`)](#7-aggregation--agg)
-  - [8. DuckDB SQL Engine (`sql`)](#8-duckdb-sql-engine--sql)
-  - [9. Plotting (`Plotter` & `df.pt.plot`)](#9-plotting--plotter)
-  - [10. Utilities & Cleaning](#10-utilities--cleaning)
+  - [5. Deduplication (`drop_duplicates`)](#5-deduplication--removing-duplicate-rows)
+  - [6. Pure Reshaping (`long`, `wide`)](#6-pure-reshaping--long-wide)
+  - [7. 2D Pivot Tables (`pivot`)](#7-2d-pivot-tables--pivot)
+  - [8. Aggregation (`agg`)](#8-aggregation--agg)
+  - [9. DuckDB SQL Engine (`sql`)](#9-duckdb-sql-engine--sql)
+  - [10. Plotting (`Plotter` & `df.pt.plot`)](#10-plotting--plotter)
+  - [11. Utilities & Cleaning](#11-utilities--cleaning)
 - [Bundled Sample Datasets](#sample-datasets)
 - [Syntax & Convention Cheat Sheet](#syntax-conventions)
 
@@ -67,6 +68,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
 | **Slicing** | `pt.slice_max()`, `pt.slice_min()` | Select extreme top/bottom N rows overall or per group (`by=`) | [library/slice.ipynb](library/slice.ipynb) |
+| **Deduplication** | `df.drop_duplicates()` | Remove duplicate rows across all or specific column subsets | [library/dedupe.ipynb](library/dedupe.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -171,7 +173,23 @@ pt.slice_min(penguins, "body_mass_g", n=1, by="species")
 
 ---
 
-### 5. Pure Reshaping — `long()` & `wide()`
+### 5. Deduplication — Removing Duplicate Rows
+
+Drop duplicate records across the intermediate DataFrame with full control over column subsets:
+
+```python
+# Eliminate duplicates across all selected columns
+penguins.pt.select("species", "island").drop_duplicates().reset_index(drop=True)
+
+# Restrict uniqueness constraint to specific columns
+penguins.drop_duplicates(subset=["species", "island"]).reset_index(drop=True)
+```
+
+👉 **Interactive Walkthrough:** [library/dedupe.ipynb](library/dedupe.ipynb)
+
+---
+
+### 6. Pure Reshaping — `long()` & `wide()`
 
 Reshape between long and wide formats using consistent `c=` (column dimension), `v=` (value column), and `r=` (row identifiers) parameter roles:
 
@@ -187,7 +205,7 @@ wide = pt.wide(tall, c="feature", v="reading")
 
 ---
 
-### 6. 2D Pivot Tables — `pivot()`
+### 7. 2D Pivot Tables — `pivot()`
 
 Excel-style 2D pivot table engine with the intuitive `r, c, v, a` vocabulary. Guarantees flat 1D column names and automatically resets index to `RangeIndex(0, 1, 2, ...)`:
 
@@ -206,7 +224,7 @@ pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", 
 
 ---
 
-### 7. Aggregation — `agg()`
+### 8. Aggregation — `agg()`
 
 Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts. Supports string mapping specifications with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, and whole-frame functions:
 
@@ -223,7 +241,7 @@ pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summ
 
 ---
 
-### 8. DuckDB SQL Engine — `sql()`
+### 9. DuckDB SQL Engine — `sql()`
 
 Execute SQL queries directly over in-memory DataFrames using DuckDB (`pip install "pytae[sql]"`). The source DataFrame is queryable as table `data`, and additional frames can be registered as keyword arguments:
 
@@ -243,8 +261,8 @@ pt.sql(orders, """
 
 ---
 
-<a id="9-plotting--plotter"></a>
-### 9. Plotting — `Plotter` & `df.pt.plot()`
+<a id="10-plotting--plotter"></a>
+### 10. Plotting — `Plotter` & `df.pt.plot()`
 
 Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, small-multiples grid faceting, and direct accessor chaining via `df.pt.plot()`:
 
@@ -270,7 +288,7 @@ p.finalize(consolidate_legends=True)
 
 ---
 
-### 10. Utilities & Cleaning
+### 11. Utilities & Cleaning
 
 Essential tabular utilities for everyday manipulation:
 
