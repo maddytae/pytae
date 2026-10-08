@@ -217,7 +217,7 @@ def test_dedupe_subset_columns():
 
 def test_dedupe_unknown_column_raises():
     df = pd.DataFrame({"a": [1, 2]})
-    with pytest.raises(KeyError, match="dedupe: column\\(s\\) \\['nonexistent'\\] not found"):
+    with pytest.raises(KeyError, match=r"(dedupe|distinct): column\(s\) \['nonexistent'\] not found"):
         df.pt.dedupe("nonexistent")
 
 

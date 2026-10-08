@@ -144,7 +144,7 @@ def test_by_requires_agg_or_mutate(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
-    assert "requires -agg, -mutate, -slice_max, or -slice_min" in capsys.readouterr().err
+    assert "requires -agg, -mutate, -pick" in capsys.readouterr().err
 
 
 def test_agg_then_arrange_prints_only_final_table(tmp_path, capsys):

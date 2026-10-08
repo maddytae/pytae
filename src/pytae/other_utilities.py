@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from pytae._text import unquote_name as _unquote_name
+
 
 def to_clip(df: pd.DataFrame | pd.Series) -> None:
     """Copy the DataFrame or Series to the system clipboard (tab-separated, no index)."""
@@ -308,20 +310,21 @@ def glimpse(df: pd.DataFrame, width: int | None = None) -> pd.DataFrame:
     return df
 
 
-def dedupe(
+def distinct(
     df: pd.DataFrame,
-    *cols: str | Sequence[str],
+    *cols: Any,
     keep: str | bool = "first",
 ) -> pd.DataFrame:
-    """Drop duplicate rows, optionally restricted to specific columns, resetting index.
+    """Drop duplicate rows, optionally restricted to specific key columns, resetting index.
 
     Parameters:
     -----------
     df : pd.DataFrame
         Input DataFrame.
-    *cols : str or sequence of str, optional
-        Column name(s) to consider for identifying duplicate rows. If omitted,
-        all columns are used.
+    *cols : str
+        Column names to consider for identifying duplicate rows as positional arguments
+        (e.g. df.pt.distinct('species', 'island')). If omitted, all columns are used.
+        Lists are not accepted; pass column names as separate arguments.
     keep : {'first', 'last', False}, default 'first'
         Determines which duplicates (if any) to keep:
         - 'first' : Drop duplicates except for the first occurrence.
@@ -331,24 +334,42 @@ def dedupe(
     Returns:
     --------
     pd.DataFrame
-        Deduplicated DataFrame with a reset 0-indexed RangeIndex.
+        Distinct DataFrame with a reset 0-indexed RangeIndex.
     """
-    flat_cols: list[str] = []
+    valid_cols: list[str] = []
     for c in cols:
-        if isinstance(c, str):
-            flat_cols.append(c)
-        elif isinstance(c, (list, tuple, Sequence)):
-            flat_cols.extend(str(x) for x in c)
-        else:
-            flat_cols.append(str(c))
-
-    subset = flat_cols if flat_cols else None
-    if subset is not None:
-        unknown = [col for col in subset if col not in df.columns]
-        if unknown:
+        if isinstance(c, (list, tuple, Sequence)) and not isinstance(c, str):
+            raise TypeError(
+                "distinct() takes column names as positional arguments: df.pt.distinct('col1', 'col2'). "
+                "Lists are not accepted."
+            )
+        if not isinstance(c, str):
+            raise TypeError(f"distinct() column names must be strings, got {type(c).__name__}: {c!r}")
+        clean = _unquote_name(c.strip())
+        if clean not in df.columns:
             raise KeyError(
-                f"dedupe: column(s) {unknown} not found in DataFrame. "
+                f"distinct: column(s) ['{clean}'] not found in DataFrame. "
                 f"Available columns: {list(df.columns)}"
             )
+        valid_cols.append(clean)
 
+    subset = valid_cols if valid_cols else None
     return df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)
+
+
+def dedupe(
+    df: pd.DataFrame,
+    *cols: Any,
+    keep: str | bool = "first",
+) -> pd.DataFrame:
+    """Deprecated alias for distinct(). Use distinct() or df.pt.distinct() instead."""
+    import warnings
+    warnings.warn(
+        "dedupe() is deprecated; use distinct() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    # For backward compatibility, if a single list/tuple was passed to dedupe, unpack it
+    if len(cols) == 1 and isinstance(cols[0], (list, tuple)):
+        return distinct(df, *cols[0], keep=keep)
+    return distinct(df, *cols, keep=keep)

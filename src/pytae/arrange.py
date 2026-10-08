@@ -144,16 +144,18 @@ def arrange(
     return sorted_df.reset_index(drop=True)
 
 
-def slice_max(
+def pick(
     df: pd.DataFrame,
     col: str,
-    n: int = 1,
+    n: int | None = None,
+    prop: float | None = None,
+    order: str = "max",
     *,
-    by: str | Sequence[str] | None = None,
     with_ties: bool = False,
     na_last: bool = True,
+    **kwargs: Any,
 ) -> pd.DataFrame:
-    """Select the rows with the largest values of a column, optionally grouped by one or more columns.
+    """Select the rows with the largest (or smallest) values of a column, inheriting grouping set via `pt.by()` or `.pt.by()`.
 
     Parameters
     ----------
@@ -161,63 +163,79 @@ def slice_max(
         Input DataFrame.
     col : str
         The column to rank by.
-    n : int, default 1
-        Number of rows to return (per group if `by` is specified).
-    by : str | Sequence[str] | None, default None
-        Column(s) to group by before slicing.
+    n : int | None, default None
+        Number of rows to return (per group if grouped). Defaults to 1 if neither `n` nor `prop` is given.
+    prop : float | None, default None
+        Proportion of rows to return between 0 and 1 (per group if grouped).
+    order : {'max', 'min'}, default 'max'
+        Whether to pick highest ('max') or lowest ('min') values.
     with_ties : bool, default False
         If True, keeps all rows tied for the n-th value.
     na_last : bool, default True
-        If True, missing values are excluded from the top-N ranking.
+        If True, missing values are excluded from the ranking.
 
     Returns
     -------
     pd.DataFrame
-        Sliced DataFrame with all original columns and a clean RangeIndex.
+        Picked DataFrame with all original columns and a clean RangeIndex.
     """
-    return _slice_ordered(df, col, n=n, by=by, ascending=False, with_ties=with_ties, na_last=na_last, verb="slice_max")
+    if "by" in kwargs or "_by" in kwargs:
+        raise TypeError("pick() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+    if kwargs:
+        raise TypeError(f"pick() got unexpected keyword argument(s): {list(kwargs.keys())}")
+
+    clean_order = order.strip().lower() if isinstance(order, str) else ""
+    if clean_order not in ("max", "min"):
+        raise ValueError(f"pick: order must be 'max' or 'min', got {order!r}")
+    ascending = (clean_order == "min")
+    res = _slice_ordered(
+        df, col, n=n, prop=prop, ascending=ascending, with_ties=with_ties, na_last=na_last, verb="pick"
+    )
+    if "_pt_by" in df.attrs:
+        del df.attrs["_pt_by"]
+    if "_pt_by" in res.attrs:
+        del res.attrs["_pt_by"]
+    return res
+
+
+def slice_max(
+    df: pd.DataFrame,
+    col: str,
+    n: int | None = None,
+    prop: float | None = None,
+    *,
+    with_ties: bool = False,
+    na_last: bool = True,
+    **kwargs: Any,
+) -> pd.DataFrame:
+    """Deprecated alias for `pick(..., order='max')`."""
+    import warnings
+    warnings.warn("slice_max() is deprecated; use pick() instead.", DeprecationWarning, stacklevel=2)
+    return pick(df, col, n=n, prop=prop, order="max", with_ties=with_ties, na_last=na_last, **kwargs)
 
 
 def slice_min(
     df: pd.DataFrame,
     col: str,
-    n: int = 1,
+    n: int | None = None,
+    prop: float | None = None,
     *,
-    by: str | Sequence[str] | None = None,
     with_ties: bool = False,
     na_last: bool = True,
+    **kwargs: Any,
 ) -> pd.DataFrame:
-    """Select the rows with the smallest values of a column, optionally grouped by one or more columns.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame.
-    col : str
-        The column to rank by.
-    n : int, default 1
-        Number of rows to return (per group if `by` is specified).
-    by : str | Sequence[str] | None, default None
-        Column(s) to group by before slicing.
-    with_ties : bool, default False
-        If True, keeps all rows tied for the n-th value.
-    na_last : bool, default True
-        If True, missing values are excluded from the bottom-N ranking.
-
-    Returns
-    -------
-    pd.DataFrame
-        Sliced DataFrame with all original columns and a clean RangeIndex.
-    """
-    return _slice_ordered(df, col, n=n, by=by, ascending=True, with_ties=with_ties, na_last=na_last, verb="slice_min")
+    """Deprecated alias for `pick(..., order='min')`."""
+    import warnings
+    warnings.warn("slice_min() is deprecated; use pick(..., order='min') instead.", DeprecationWarning, stacklevel=2)
+    return pick(df, col, n=n, prop=prop, order="min", with_ties=with_ties, na_last=na_last, **kwargs)
 
 
 def _slice_ordered(
     df: pd.DataFrame,
     col: str,
-    n: int,
+    n: int | None = None,
+    prop: float | None = None,
     *,
-    by: str | Sequence[str] | None,
     ascending: bool,
     with_ties: bool,
     na_last: bool,
@@ -229,21 +247,59 @@ def _slice_ordered(
         hint = f" (did you mean '{matches[0]}'?)" if matches else ""
         raise KeyError(f"{verb}: column '{clean_col}' not found in DataFrame{hint}. Available columns: {list(df.columns)}")
 
-    if n <= 0:
-        return df.iloc[0:0].copy()
+    if n is not None and prop is not None:
+        raise ValueError(f"{verb}: specify either 'n' or 'prop', not both")
 
-    by_cols: list[str] = []
-    if by is not None:
-        if isinstance(by, str):
-            by_cols = [_unquote_name(c.strip()) for c in _tokenize(by, ",", track_brackets=True) if c.strip()]
-        else:
-            by_cols = [_unquote_name(str(c).strip()) for c in by]
+    if n is None and prop is None:
+        n = 1
 
+    if prop is not None:
+        if not (0 < prop <= 1):
+            raise ValueError(f"{verb}: 'prop' must be between 0 and 1, got {prop}")
+
+    by_cols: list[str] = list(df.attrs["_pt_by"]) if "_pt_by" in df.attrs else []
+    if by_cols:
         unknown_by = [c for c in by_cols if c not in df.columns]
         if unknown_by:
             raise KeyError(f"{verb}: grouping column(s) {unknown_by} not found in DataFrame. Available columns: {list(df.columns)}")
 
     na_position = "last" if na_last else "first"
+
+    if prop is not None:
+        if by_cols:
+            sort_order = by_cols + [clean_col]
+            sort_asc = [True] * len(by_cols) + [ascending]
+            sorted_df = df.sort_values(by=sort_order, ascending=sort_asc, na_position=na_position)
+            if with_ties:
+                ranks = sorted_df.groupby(by_cols, observed=False, dropna=False)[clean_col].rank(
+                    method="min", ascending=ascending, na_option="bottom" if na_last else "top"
+                )
+                counts = sorted_df.groupby(by_cols, observed=False, dropna=False)[clean_col].transform("count")
+                cutoff = (counts * prop).astype(int).clip(lower=1)
+                res = sorted_df[ranks <= cutoff]
+            else:
+                counts = sorted_df.groupby(by_cols, observed=False, dropna=False)[clean_col].transform("count")
+                cutoff = (counts * prop).astype(int).clip(lower=1)
+                row_nums = sorted_df.groupby(by_cols, observed=False, dropna=False).cumcount() + 1
+                res = sorted_df[row_nums <= cutoff]
+            return res.reset_index(drop=True)
+        else:
+            sorted_df = df.sort_values(by=clean_col, ascending=ascending, na_position=na_position)
+            total_valid = int(sorted_df[clean_col].count()) if na_last else len(sorted_df)
+            k = max(1, int(total_valid * prop))
+            if with_ties:
+                ranks = sorted_df[clean_col].rank(
+                    method="min", ascending=ascending, na_option="bottom" if na_last else "top"
+                )
+                res = sorted_df[ranks <= k]
+            else:
+                res = sorted_df.head(k)
+            return res.reset_index(drop=True)
+
+    # When n is specified
+    assert n is not None
+    if n <= 0:
+        return df.iloc[0:0].copy()
 
     if with_ties:
         if by_cols:

@@ -99,7 +99,7 @@ Because `-diff` runs as part of the pipeline, you can filter or transform the le
 ```bash
 # Compare only active records against baseline
 pytae incoming.parquet \
-  -qry "status = 'ACTIVE'" \
+  -filter "status = 'ACTIVE'" \
   -select "user_id,email,balance" \
   -diff baseline.parquet
 ```

@@ -15,6 +15,7 @@ from pytae.cli_parsing import (
     expand_paths,
     parse_concat_arg,
     parse_file_arg,
+    parse_filter,
     parse_fraction,
     parse_list_order,
     parse_merge_arg,
@@ -72,7 +73,7 @@ _CLI_FLAGS = {
     "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
     "-dedupe", "--dedupe", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
-    "-arrange", "--arrange", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
+    "-arrange", "--arrange", "-pick", "--pick", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
     "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-handle_missing", "--handle_missing",
@@ -201,9 +202,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="render horizontal frequency bars with counts and percentages for a categorical column")
     parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
                          help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
-    parser.add_argument("-dedupe", "--dedupe", dest="dedupe", nargs="?", const="", default=None,
+    parser.add_argument("-distinct", "--distinct", "-dedupe", "--dedupe", dest="distinct", nargs="?", const="", default=None,
                          metavar="COLS", action=_OrderedValue,
-                         help="drop duplicate rows, optionally restricted to specific columns, e.g. -dedupe or -dedupe \"col1,col2\"")
+                         help="drop duplicate rows, optionally restricted to specific columns, e.g. -distinct or -distinct \"col1,col2\"")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
     parser.add_argument("-seed", "--seed", dest="seed", type=int, default=None, metavar="N",
@@ -214,15 +215,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-arrange", "--arrange", dest="arrange", default=None, metavar="SPEC",
                          action=_OrderedStore,
                          help="sort rows by one or more columns with direction, e.g. -arrange \"species,mass desc\" or -arrange \"-mass\"")
+    parser.add_argument("-pick", "--pick", dest="pick", default=None, metavar="SPEC",
+                         action=_OrderedStore,
+                         help="pick top/bottom rows by column, e.g. -pick \"mass,n=3\" or -pick \"mass,prop=0.1,order=min\"")
     parser.add_argument("-slice_max", "--slice_max", dest="slice_max", default=None, metavar="SPEC",
                          action=_OrderedStore,
-                         help="slice top N rows by column (optionally with -by), e.g. -slice_max mass or -slice_max \"mass,n=3\"")
+                         help="deprecated alias for -pick (order=max)")
     parser.add_argument("-slice_min", "--slice_min", dest="slice_min", default=None, metavar="SPEC",
                          action=_OrderedStore,
-                         help="slice bottom N rows by column (optionally with -by), e.g. -slice_min mass or -slice_min \"mass,n=3\"")
+                         help="deprecated alias for -pick (order=min)")
     parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
-                              "Used by -agg, -mutate, -slice_max, -slice_min.")
+                              "Used by -agg, -mutate, -pick.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
                          help="cap the number of rows loaded (default: no cap)")
     parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
@@ -289,8 +293,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
                               "requires -merge, -concat, or -sql as the first operation, and can't be "
                               "combined with the positional path")
-    parser.add_argument("-qry", "--qry", dest="qry", action=_OrderedAppend, default=None, metavar="CONDITIONS",
-                         help="filter rows at this point in the pipeline using pytae qry(); conditions like "
+    parser.add_argument("-filter", "--filter", "-qry", "--qry", dest="filter", action=_OrderedAppend, default=None, metavar="CONDITIONS",
+                         help="filter rows at this point in the pipeline using pytae filter(); conditions like "
                               "\"col = 'val', col > 5\"")
     parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
@@ -452,35 +456,35 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("the following arguments are required: path")
 
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
-                         args.value_counts, args.dedupe is not None, args.freq is not None, args.hist is not None,
+                         args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
                          args.head is not None, args.tail is not None, args.sample is not None,
                          args.arrange is not None, args.slice_max is not None, args.slice_min is not None,
                          args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
-                         args.select, args.qry, args.sql, args.replace_values,
+                         args.select, args.filter, args.sql, args.replace_values,
                          args.rename, args.clean_columns is not None, args.merge, args.concat,
                          args.meta, args.diff is not None, args.plot is not None])
 
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
-                     args.value_counts, args.dedupe is not None, args.freq is not None, args.hist is not None,
+                     args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
                      args.head is not None, args.tail is not None, args.sample is not None,
-                     args.arrange is not None, args.slice_max is not None, args.slice_min is not None,
+                     args.arrange is not None, args.pick is not None, args.slice_max is not None, args.slice_min is not None,
                      args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                      args.long is not None, args.wide is not None, args.pivot is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-dedupe/-sample/-arrange/"
-                     "-slice_max/-slice_min/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
+                     "-pick/-slice_max/-slice_min/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
-    if args.by is not None and args.agg is None and not args.mutate and args.slice_max is None and args.slice_min is None:
-        parser.error("-by requires -agg, -mutate, -slice_max, or -slice_min")
+    if args.by is not None and args.agg is None and not args.mutate and args.pick is None and args.slice_max is None and args.slice_min is None:
+        parser.error("-by requires -agg, -mutate, -pick, -slice_max, or -slice_min")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
     rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-    qry_specs = [parse_qry(raw) for raw in (args.qry or [])]
+    filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
     mutate_specs = list(args.mutate or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
@@ -502,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeError as exc:
                 parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
         failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                qry_specs=qry_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
+                                filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                 replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
                                 merge_specs=merge_specs, concat_specs=concat_specs)
         return 1 if failed else 0
@@ -542,7 +546,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {path} ==")
         try:
             failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                    qry_specs=qry_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
+                                    filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs)
         except UnicodeError as exc:
             failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))

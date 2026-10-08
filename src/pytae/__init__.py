@@ -9,12 +9,15 @@ import pandas as pd
 
 from .accessor import PtAccessor  # noqa: F401  — registers df.pt
 from .agg import agg
-from .arrange import arrange, slice_max, slice_min
+from .arrange import arrange, pick, slice_max, slice_min
+from .by import by, ungroup
+from .filter import filter
 from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
     dedupe,
+    distinct,
     format_glimpse,
     glimpse,
     handle_missing,
@@ -100,11 +103,16 @@ __all__ = [
     "plot",
     "finalize",
     "select",
+    "filter",
     "qry",
+    "by",
+    "ungroup",
     "mutate",
     "arrange",
+    "pick",
     "slice_max",
     "slice_min",
+    "distinct",
     "dedupe",
     "agg",
     "long",

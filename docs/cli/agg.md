@@ -38,8 +38,9 @@ Specify grouping column(s) with `-by` (or `--by`), and aggregation function(s) w
 Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `n` (row count), etc.
 
 > [!TIP]
-> **No Need for Pre-`-select`**:
-> You do not need a redundant `-select` to filter columns before aggregating. Target columns can be specified directly in `-agg` (e.g. `-by species -agg body_mass_g=mean` or `-agg "avg = body_mass_g:mean, n = n"`). Only use `-select` if you want to reorder or drop columns *after* aggregation.
+> **Column Scoping in Aggregations**:
+> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g=mean, n=n"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
+> - **Bulk aggregations & column pruning**: When using bulk functions (e.g. `-agg mean` across all numeric columns) or working with wide files where you want to load only relevant columns into RAM, using `-select` beforehand (e.g. `-select "species,contains=mass" -by species -agg mean`) is completely valid and recommended for performance.
 
 ### Single Function across Numeric Columns
 
@@ -109,7 +110,7 @@ Columns with spaces can be enclosed in square brackets `[col]` anywhere in `-by`
 
 ```bash
 pytae tips.parquet \
-  -qry "day = ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
+  -filter "day = ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
   -rename "total_bill:[total bill]" \
   -by smoker \
   -agg "tip = mean, [total bill] = mean, n = n"

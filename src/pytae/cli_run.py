@@ -409,14 +409,15 @@ def _process_path(
     *,
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
-    qry_specs: list[list[tuple[str, Any]]],
-    mutate_specs: list[str],
-    sql_specs: list[str],
-    replace_specs: list[tuple[list[str] | None, dict[str, str], bool]],
-    rename_specs: list[dict[str, str]],
+    filter_specs: list[list[tuple[str, Any]]] | None = None,
+    mutate_specs: list[str] | None = None,
+    sql_specs: list[str] | None = None,
+    replace_specs: list[tuple[list[str] | None, dict[str, str], bool]] | None = None,
+    rename_specs: list[dict[str, str]] | None = None,
     frames: dict[str, pd.DataFrame] | None = None,
     merge_specs: list[dict] | None = None,
     concat_specs: list[dict] | None = None,
+    qry_specs: list[list[tuple[str, Any]]] | None = None,
 ) -> bool:
     """Run every requested display/export/-agg action against one file, or (when frames
     is given, i.e. -file/-merge mode) against named in-memory frames instead. Returns True
@@ -496,13 +497,13 @@ def _process_path(
         return fallback
 
     select_iter = iter(select_specs)
-    qry_iter = iter(qry_specs)
-    mutate_iter = iter(mutate_specs)
-    sql_iter = iter(sql_specs)
-    replace_iter = iter(replace_specs)
-    rename_iter = iter(rename_specs)
-    merge_iter = iter(merge_specs)
-    concat_iter = iter(concat_specs)
+    filter_iter = iter(filter_specs if filter_specs is not None else (qry_specs or []))
+    mutate_iter = iter(mutate_specs or [])
+    sql_iter = iter(sql_specs or [])
+    replace_iter = iter(replace_specs or [])
+    rename_iter = iter(rename_specs or [])
+    merge_iter = iter(merge_specs or [])
+    concat_iter = iter(concat_specs or [])
 
     def should_print(idx: int) -> bool:
         return emit_stdout and idx == last_idx
@@ -529,8 +530,8 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op == "qry":
-            err = pipeline.apply_qry(next(qry_iter))
+        elif op in ("filter", "qry"):
+            err = pipeline.apply_filter(next(filter_iter), flag_name=f"-{op}")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -710,9 +711,9 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op == "dedupe":
-            dedupe_val = _next_op_val("dedupe", getattr(args, "dedupe", None))
-            err = pipeline.apply_dedupe(dedupe_val)
+        elif op in ("distinct", "dedupe"):
+            distinct_val = _next_op_val(op, getattr(args, op, None))
+            err = pipeline.apply_distinct(distinct_val)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -746,6 +747,17 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "pick":
+            by_cols = parse_columns(args.by) if args.by else None
+            if by_cols:
+                df_cur = pipeline.dataframe()
+                if any(c not in df_cur.columns for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            pick_val = _next_op_val("pick", getattr(args, "pick", None))
+            err = pipeline.apply_pick(pick_val, by=by_cols, flag="-pick")
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "slice_max":
             by_cols = parse_columns(args.by) if args.by else None
             if by_cols:
@@ -753,7 +765,7 @@ def _process_path(
                 if any(c not in df_cur.columns for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             slice_val = _next_op_val("slice_max", getattr(args, "slice_max", None))
-            err = pipeline.apply_slice(slice_val, by=by_cols, is_max=True)
+            err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_max")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -764,7 +776,7 @@ def _process_path(
                 if any(c not in df_cur.columns for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             slice_val = _next_op_val("slice_min", getattr(args, "slice_min", None))
-            err = pipeline.apply_slice(slice_val, by=by_cols, is_max=False)
+            err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_min")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -777,7 +789,9 @@ def _process_path(
             if by_cols and any(c not in df_cur.columns for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
             try:
-                result = agg(df_cur, by_cols, agg_val, dropna=False)
+                from pytae.by import by as _by
+                work_df = _by(df_cur.copy(deep=False), *by_cols) if by_cols else df_cur
+                result = agg(work_df, agg_val, dropna=False)
             except Exception as e:
                 return _fail(parser, batch, str(e))
             pipeline._df = result

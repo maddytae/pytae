@@ -10,8 +10,9 @@ import pandas as pd
 
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
+from pytae.filter import filter
 from pytae.mutate import mutate
-from pytae.other_utilities import replace_values, safe_reset_index
+from pytae.other_utilities import distinct, replace_values, safe_reset_index
 from pytae.qry import qry
 from pytae.select import select
 
@@ -100,17 +101,21 @@ class _Pipeline:
         self._df = df.rename(columns=mapping)
         return None
 
-    def apply_qry(self, conditions: list[tuple[str, Any]] | dict) -> str | None:
-        """Apply one -qry spec to the current view. Returns an error message or None."""
+    def apply_filter(self, conditions: list[tuple[str, Any]] | dict, flag_name: str = "-filter") -> str | None:
+        """Apply one -filter (or -qry) spec to the current view. Returns an error message or None."""
         df = self.dataframe()
         try:
             if isinstance(conditions, list):
-                self._df = qry(df, conditions)
+                self._df = filter(df, conditions)
             else:
-                self._df = qry(df, **conditions)
+                self._df = filter(df, **conditions)
         except Exception as exc:
-            return f"-qry: {exc}"
+            return f"{flag_name}: {exc}"
         return None
+
+    def apply_qry(self, conditions: list[tuple[str, Any]] | dict) -> str | None:
+        """Deprecated alias for apply_filter."""
+        return self.apply_filter(conditions, flag_name="-qry")
 
     def apply_mutate(
         self, spec: str, by: list[str] | None = None, dropna: bool = False
@@ -135,9 +140,11 @@ class _Pipeline:
             return "-mutate: '@name' local-variable references are library-only (pt.mutate() from Python), not available on the CLI"
         df = self.dataframe()
         try:
+            from pytae.by import by as _by
             from pytae.mutate import parse_mutate_spec
             parsed = parse_mutate_spec(raw_spec)
-            self._df = mutate(df, parsed, by=by, dropna=dropna)
+            work_df = _by(df.copy(deep=False), *by) if by else df
+            self._df = mutate(work_df, parsed, dropna=dropna)
         except Exception as exc:
             return f"-mutate: {exc}"
         return None
@@ -157,7 +164,7 @@ class _Pipeline:
         self._df = df.dropna(subset=cols).reset_index(drop=True)
         return None
 
-    def apply_dedupe(self, spec: str | None) -> str | None:
+    def apply_distinct(self, spec: str | None) -> str | None:
         """Drop duplicate rows. Returns an error message or None."""
         df = self.dataframe()
         if not spec:
@@ -168,9 +175,13 @@ class _Pipeline:
         available = list(df.columns)
         unknown = [c for c in cols if c not in available]
         if unknown:
-            return unknown_columns_message("-dedupe", unknown, available)
+            return unknown_columns_message("-distinct", unknown, available)
         self._df = df.drop_duplicates(subset=cols).reset_index(drop=True)
         return None
+
+    def apply_dedupe(self, spec: str | None) -> str | None:
+        """Deprecated alias for apply_distinct."""
+        return self.apply_distinct(spec)
 
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""
@@ -182,19 +193,24 @@ class _Pipeline:
             return f"-arrange: {exc}"
         return None
 
-    def apply_slice(self, spec: str, *, by: list[str] | None = None, is_max: bool = True) -> str | None:
-        """Slice top or bottom N rows by a column, optionally grouped by 'by'."""
+    def apply_pick(self, spec: str, *, by: list[str] | None = None, flag: str = "-pick") -> str | None:
+        """Pick top or bottom rows by a column, optionally grouped by 'by'."""
         df = self.dataframe()
-        flag = "-slice_max" if is_max else "-slice_min"
-        from pytae.arrange import slice_max, slice_min
-        from pytae.cli_parsing import parse_slice_spec
+        from pytae.arrange import pick
+        from pytae.by import by as _by
+        from pytae.cli_parsing import parse_pick_spec
         try:
-            col, n = parse_slice_spec(spec, flag)
-            func = slice_max if is_max else slice_min
-            self._df = func(df, col, n=n, by=by)
+            col, n, prop, order = parse_pick_spec(spec, flag)
+            work_df = _by(df.copy(deep=False), *by) if by else df
+            self._df = pick(work_df, col, n=n, prop=prop, order=order)
         except Exception as exc:
             return f"{flag}: {exc}"
         return None
+
+    def apply_slice(self, spec: str, *, by: list[str] | None = None, is_max: bool = True) -> str | None:
+        """Deprecated alias for apply_pick."""
+        flag = "-slice_max" if is_max else "-slice_min"
+        return self.apply_pick(spec, by=by, flag=flag)
 
     def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
         """Apply one -replace_values spec to the current view. Returns an error message or None."""
@@ -366,12 +382,15 @@ class _OrderedValue(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None) -> None:
         val = self.const if values is None else values
         setattr(namespace, self.dest, val)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        flag_name = option_string.lstrip("-") if option_string else self.dest
+        namespace.op_order = getattr(namespace, "op_order", []) + [flag_name]
         op_values = getattr(namespace, "_op_values", None)
         if op_values is None:
             op_values = {}
             setattr(namespace, "_op_values", op_values)
-        op_values.setdefault(self.dest, []).append(val)
+        op_values.setdefault(flag_name, []).append(val)
+        if flag_name != self.dest:
+            op_values.setdefault(self.dest, []).append(val)
 
 
 class _OrderedStore(argparse.Action):
@@ -379,12 +398,15 @@ class _OrderedStore(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None) -> None:
         setattr(namespace, self.dest, values)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        flag_name = option_string.lstrip("-") if option_string else self.dest
+        namespace.op_order = getattr(namespace, "op_order", []) + [flag_name]
         op_values = getattr(namespace, "_op_values", None)
         if op_values is None:
             op_values = {}
             setattr(namespace, "_op_values", op_values)
-        op_values.setdefault(self.dest, []).append(values)
+        op_values.setdefault(flag_name, []).append(values)
+        if flag_name != self.dest:
+            op_values.setdefault(self.dest, []).append(values)
 
 
 class _OrderedAppend(argparse.Action):
@@ -395,4 +417,5 @@ class _OrderedAppend(argparse.Action):
         items = [] if items is None else list(items)
         items.append(values)
         setattr(namespace, self.dest, items)
-        namespace.op_order = getattr(namespace, "op_order", []) + [self.dest]
+        flag_name = option_string.lstrip("-") if option_string else self.dest
+        namespace.op_order = getattr(namespace, "op_order", []) + [flag_name]

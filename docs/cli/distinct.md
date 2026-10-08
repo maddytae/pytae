@@ -1,4 +1,4 @@
-# CLI Feature Guide: Deduplication (`-dedupe`)
+# CLI Feature Guide: Distinct Rows (`-distinct`)
 
 [← Back to CLI Reference Hub](../cli.md)
 
@@ -19,20 +19,23 @@ Drop duplicate rows across the intermediate DataFrame with full control over col
 
 | Flag | Syntax / Format | Description |
 |---|---|---|
-| `-dedupe` | Bare flag | Drop duplicate rows checking all columns |
-| `-dedupe COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
+| `-distinct` | Bare flag | Drop duplicate rows checking all columns |
+| `-distinct COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
 
-`-dedupe` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.dedupe(df, *cols)` or `df.pt.dedupe(*cols)`.
+`-distinct` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.distinct(df, *cols)` or `df.pt.distinct(*cols)`.
+
+> [!NOTE]
+> `-dedupe` is preserved as a backward-compatible alias pointing to `-distinct`.
 
 ---
 
 ## Deduplicating Across All Columns
 
-Run `-dedupe` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.pt.dedupe()` or pandas `df.drop_duplicates()`):
+Run `-distinct` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.pt.distinct()` or pandas `df.drop_duplicates()`):
 
 ```bash
 # Keep only unique species and island pairs
-pytae penguins.parquet -select "species,island" -dedupe
+pytae penguins.parquet -select "species,island" -distinct
 ```
 
 **Output:**
@@ -53,23 +56,23 @@ Pass column names to restrict duplicate checks to specific identifiers, keeping 
 
 ```bash
 # Deduplicate based on customer identifier, retaining first order
-pytae orders.parquet -dedupe customer_id
+pytae orders.parquet -distinct customer_id
 
 # Deduplicate based on composite keys
-pytae penguins.parquet -dedupe "species,island"
+pytae penguins.parquet -distinct "species,island"
 ```
 
 ---
 
 ## Chaining in Pipelines
 
-`-dedupe` operates seamlessly anywhere inside a multi-step pipeline:
+`-distinct` operates seamlessly anywhere inside a multi-step pipeline:
 
 ```bash
-# Filter rows -> select subset -> deduplicate -> sort -> output
+# Filter rows -> select subset -> distinct -> sort -> output
 pytae penguins.parquet \
-  -qry "body_mass_g > 4000" \
+  -filter "body_mass_g > 4000" \
   -select "species,island" \
-  -dedupe \
+  -distinct \
   -arrange species
 ```

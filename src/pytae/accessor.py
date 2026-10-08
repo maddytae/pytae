@@ -17,13 +17,13 @@ from .agg import _UNSET
 from .agg import agg as _agg
 from .arrange import (
     arrange as _arrange,
-)
-from .arrange import (
+    pick as _pick,
     slice_max as _slice_max,
-)
-from .arrange import (
     slice_min as _slice_min,
 )
+from .by import by as _by
+from .by import ungroup as _ungroup
+from .filter import filter as _filter
 from .mutate import mutate as _mutate
 from .other_utilities import (
     clean_columns as _clean_columns,
@@ -33,6 +33,9 @@ from .other_utilities import (
 )
 from .other_utilities import (
     dedupe as _dedupe,
+)
+from .other_utilities import (
+    distinct as _distinct,
 )
 from .other_utilities import (
     glimpse as _glimpse,
@@ -78,19 +81,41 @@ class PtAccessor:
         """
         return _select(self._obj, *args, **kwargs)
 
-    def qry(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Filter rows using human-readable conditions, dicts, or kwargs.
+    def by(self, *cols: Any) -> pd.DataFrame:
+        """Set active grouping columns on the DataFrame for downstream operations.
 
-        Supports comparisons ('>', '<=', '=='), intervals ('[min, max]'), set
+        Downstream verbs such as .pt.mutate(), .pt.agg(), .pt.slice_max(), and
+        .pt.slice_min() will automatically inherit these grouping columns.
+
+        Parameters:
+        -----------
+        *cols : str
+            Column names to group by as positional arguments (e.g. df.pt.by('species', 'island')).
+            Lists or non-string arguments are not accepted.
+        """
+        return _by(self._obj, *cols)
+
+    def ungroup(self) -> pd.DataFrame:
+        """Clear active grouping columns from the DataFrame."""
+        return _ungroup(self._obj)
+
+    def filter(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Filter rows using human-readable conditions, dicts, callables, or kwargs.
+
+        Supports bare callables/lambdas (e.g. df.pt.filter(lambda d: d['mass'] > 4000)),
+        comparisons ('>', '<=', '=='), intervals ('[min, max]'), set
         membership (['a', 'b']), string operations ('startswith', 'contains'),
         and safe handling of column names with spaces.
         """
+        return _filter(self._obj, *args, **kwargs)
+
+    def qry(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Deprecated: Use df.pt.filter() instead."""
         return _qry(self._obj, *args, **kwargs)
 
     def mutate(
         self,
         *args: Any,
-        by: str | Sequence[str] | None = None,
         dropna: bool = False,
         observed: bool = True,
         **kwargs: Any,
@@ -98,10 +123,12 @@ class PtAccessor:
         """Create or overwrite columns using formulas, callables, or grouped window transforms.
 
         Expressions evaluate sequentially via pandas eval() with automatic fallback.
-        When `by=` is given, aggregations (mean, sum, n, etc.) evaluate per group and broadcast
-        back to each row without collapsing the dataset.
+        Inherits active grouping if set via `df.pt.by(...)`. Aggregations (mean, sum, n, etc.)
+        evaluate per group and broadcast back to each row without collapsing the dataset.
         """
-        return _mutate(self._obj, *args, by=by, dropna=dropna, observed=observed, **kwargs)
+        if "by" in kwargs or "_by" in kwargs:
+            raise TypeError("df.pt.mutate() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
+        return _mutate(self._obj, *args, dropna=dropna, observed=observed, **kwargs)
 
     def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
         """Run DuckDB SQL queries over this DataFrame (registered as table `data`).
@@ -122,66 +149,106 @@ class PtAccessor:
         """
         return _arrange(self._obj, *cols, ascending=ascending, na_last=na_last)
 
+    def pick(
+        self,
+        col: str,
+        n: int | None = None,
+        prop: float | None = None,
+        order: str = "max",
+        *,
+        with_ties: bool = False,
+        na_last: bool = True,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Select top (or bottom) rows by column, inheriting grouping set via `df.pt.by(...)`."""
+        if "by" in kwargs or "_by" in kwargs:
+            raise TypeError("df.pt.pick() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
+        if kwargs:
+            raise TypeError(f"df.pt.pick() got unexpected keyword argument(s): {list(kwargs.keys())}")
+        return _pick(self._obj, col, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
+
     def slice_max(
         self,
         col: str,
-        n: int = 1,
+        n: int | None = None,
+        prop: float | None = None,
         *,
-        by: str | Sequence[str] | None = None,
         with_ties: bool = False,
         na_last: bool = True,
+        **kwargs: Any,
     ) -> pd.DataFrame:
-        """Select the rows with the largest values of a column, optionally grouped by `by`."""
-        return _slice_max(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+        """Deprecated alias for `pick(..., order='max')`."""
+        import warnings
+        warnings.warn(".pt.slice_max() is deprecated; use .pt.pick() instead.", DeprecationWarning, stacklevel=2)
+        return self.pick(col, n=n, prop=prop, order="max", with_ties=with_ties, na_last=na_last, **kwargs)
 
     def slice_min(
         self,
         col: str,
-        n: int = 1,
+        n: int | None = None,
+        prop: float | None = None,
         *,
-        by: str | Sequence[str] | None = None,
         with_ties: bool = False,
         na_last: bool = True,
+        **kwargs: Any,
     ) -> pd.DataFrame:
-        """Select the rows with the smallest values of a column, optionally grouped by `by`."""
-        return _slice_min(self._obj, col, n=n, by=by, with_ties=with_ties, na_last=na_last)
+        """Deprecated alias for `pick(..., order='min')`."""
+        import warnings
+        warnings.warn(".pt.slice_min() is deprecated; use .pt.pick(..., order='min') instead.", DeprecationWarning, stacklevel=2)
+        return self.pick(col, n=n, prop=prop, order="min", with_ties=with_ties, na_last=na_last, **kwargs)
 
-    def dedupe(
+    def distinct(
         self,
-        *cols: str | Sequence[str],
+        *cols: Any,
         keep: str | bool = "first",
     ) -> pd.DataFrame:
         """Drop duplicate rows, optionally restricted to specific columns, resetting index.
 
         Parameters:
         -----------
-        *cols : str or sequence of str, optional
-            Column name(s) to consider for identifying duplicate rows. If omitted,
-            all columns are used.
+        *cols : str
+            Column name(s) to consider for identifying duplicate rows as positional arguments.
+            If omitted, all columns are used.
         keep : {'first', 'last', False}, default 'first'
             Determines which duplicates (if any) to keep.
 
         Returns:
         --------
         pd.DataFrame
-            Deduplicated DataFrame with a reset 0-indexed RangeIndex.
+            Distinct DataFrame with a reset 0-indexed RangeIndex.
         """
+        return _distinct(self._obj, *cols, keep=keep)
+
+    def dedupe(
+        self,
+        *cols: Any,
+        keep: str | bool = "first",
+    ) -> pd.DataFrame:
+        """Deprecated alias for df.pt.distinct(). Use df.pt.distinct() instead."""
         return _dedupe(self._obj, *cols, keep=keep)
 
 
     def agg(
         self,
-        by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
         *args: Any,
         **kwargs: Any,
     ) -> pd.DataFrame:
-        """Aggregate numeric columns grouped by explicit `by` column(s).
+        """Aggregate numeric columns, inheriting grouping set via active `df.pt.by(...)`.
 
-        Pass `by=None` for a whole-table summary (1 row). Supports whole-frame
-        functions ('mean', ['mean', 'n']), column mapping strings with brackets
+        When no active grouping is set, computes a whole-table summary (1 row). Supports
+        whole-frame functions ('mean', ['mean', 'n']), column mapping strings with brackets
         ('tip = mean, [total bill] = mean, n = n'), and keyword arguments.
+        Automatically clears active grouping context upon completion.
         """
-        return _agg(self._obj, by, *args, **kwargs)
+        if "group_by" in kwargs or "by" in kwargs or "_by" in kwargs:
+            raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
+
+        result = _agg(self._obj, *args, **kwargs)
+        if "_pt_by" in self._obj.attrs:
+            del self._obj.attrs["_pt_by"]
+        if "_pt_by" in result.attrs:
+            del result.attrs["_pt_by"]
+        return result
 
     def agg_df(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
         """Removed: Use df.pt.agg() instead."""

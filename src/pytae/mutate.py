@@ -468,70 +468,37 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
 def mutate(
     df: pd.DataFrame,
     *args: Any,
-    by: str | Sequence[str] | None = None,
     dropna: bool = False,
     observed: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
     Create or overwrite columns using string expressions (`"col = expr"` or `col="expr"`),
-    callables (`col=callable`), or dictionaries. Each evaluated in order via pandas eval() —
-    no lambda needed for plain arithmetic/boolean column assignments.
+    callables (`col=callable`), or dictionaries. Each evaluated in order via pandas eval().
 
     Parameters:
     -----------
     df : pd.DataFrame
-        The DataFrame to mutate columns on.
+        The DataFrame to mutate columns on. Inherits active grouping if set via `pt.by()` or `.pt.by()`.
     *args : str or dict
         Positional expressions:
         - String expression(s), e.g. "bmi = body_mass_g / bill_length_mm ** 2".
         - File path prefixed with '@' (e.g. "@transforms.txt").
         - Dictionary of column expressions, e.g. {"bmi": "body_mass_g / 1000"}.
-    by : str or sequence of str, optional
-        Grouping column(s) across which to evaluate the mutations (like dplyr's `.by` or
-        pandas transform/window operations). When specified, aggregations (e.g. `mean(x)`,
-        `sum(x)`, `n`) and window expressions (e.g. `x - mean(x)`) are evaluated per group
-        and broadcast back to each row without collapsing the DataFrame.
     dropna : bool, default False
-        Whether to drop NA groups when grouping with `by=`. Defaults to False.
+        Whether to drop NA groups when evaluating grouped window transformations. Defaults to False.
     observed : bool, default True
-        Whether to observe categorical levels when grouping with `by=`.
+        Whether to observe categorical levels when evaluating grouped window transformations.
     params : dict, optional
         Explicit dictionary of parameters/variables to make available for `@name` references.
         Can also be passed via `_params=`.
     **kwargs : Any
         Column expressions or callables passed as keyword arguments,
         e.g. `df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", rank=1)`.
-
-    Returns:
-    --------
-    pd.DataFrame
-        A copy of df with each key assigned the result of its expression,
-        applied in order.
-
-    Examples:
-    ---------
-    >>> import pandas as pd
-    >>> import pytae as pt
-    >>> df = pd.DataFrame({'body_mass_g': [3000.0, 4000.0], 'bill_length_mm': [30.0, 40.0]})
-    >>> df.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2")
-       body_mass_g  bill_length_mm       bmi
-    0       3000.0            30.0  3.333333
-    1       4000.0            40.0  2.500000
-
-    >>> # Grouped mutation: compute group mean and deviation without collapsing rows
-    >>> tips = pt.sample("tips")
-    >>> tips.pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n", by="day").head(3)
-
-    >>> # Handling missing groups: dropna=False (default) computes on NA group; dropna=True sets NaN
-    >>> sample = pd.DataFrame({'grp': ['A', 'A', None, None], 'val': [10.0, 20.0, 30.0, 50.0]})
-    >>> sample.pt.mutate("avg = mean(val)", by="grp")
-       grp   val   avg
-    0    A  10.0  15.0
-    1    A  20.0  15.0
-    2  NaN  30.0  40.0
-    3  NaN  50.0  40.0
     """
+    if "by" in kwargs or "_by" in kwargs:
+        raise TypeError("mutate() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+
     _here = inspect.currentframe()
     caller_frame = None if _here is None else _here.f_back
     del _here
@@ -545,18 +512,11 @@ def mutate(
     global_dict = caller_frame.f_globals if caller_frame is not None else {}
     del caller_frame  # avoid holding a reference cycle via the frame object
 
-    by = kwargs.pop("by", by)
     dropna = kwargs.pop("dropna", dropna)
     observed = kwargs.pop("observed", observed)
 
-    by_cols: list[str] | None = None
-    if by is not None:
-        if isinstance(by, str):
-            by_cols = [_unquote_name(c.strip()) for c in by.split(",") if c.strip()]
-        elif isinstance(by, (list, tuple, set)):
-            by_cols = [_unquote_name(c) for c in by]
-        else:
-            raise TypeError(f"mutate(): by must be a column name or sequence of names, got {type(by).__name__}")
+    by_cols: list[str] | None = list(df.attrs["_pt_by"]) if "_pt_by" in df.attrs else None
+    if by_cols is not None:
         all_cols = list(df.columns)
         for col in by_cols:
             if col not in df.columns:

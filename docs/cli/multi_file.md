@@ -27,7 +27,7 @@ Load, join, stack, and query multiple disparate datasets in a unified pipeline u
 While standard `pytae` operations process a single positional file path, `-file` switches the CLI into multi-file mode:
 - `-file` replaces the positional path entirely.
 - The pipeline must begin with either `-merge`, `-concat`, or `-sql`.
-- Subsequent steps (`-qry`, `-select`, `-mutate`, `-agg`, `-o`) operate on the combined result.
+- Subsequent steps (`-filter`, `-select`, `-mutate`, `-agg`, `-o`) operate on the combined result.
 
 ---
 

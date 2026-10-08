@@ -209,7 +209,7 @@ pytae penguins.parquet -shape
 Chain after filtering to count matching rows:
 
 ```bash
-pytae penguins.parquet -qry "species == 'Gentoo'" -shape
+pytae penguins.parquet -filter "species == 'Gentoo'" -shape
 ```
 
 **Output:**

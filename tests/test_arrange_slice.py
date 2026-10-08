@@ -64,12 +64,12 @@ def test_library_slice_max_and_slice_min():
     assert top1["body_mass_g"].iloc[0] == 5500
 
     # Grouped slice_max
-    top_per_grp = df.pt.slice_max("body_mass_g", n=1, by="species")
+    top_per_grp = df.pt.by("species").pt.slice_max("body_mass_g", n=1)
     assert len(top_per_grp) == 2
     assert set(top_per_grp["body_mass_g"]) == {4000, 5500}
 
     # Grouped slice_min
-    bot_per_grp = df.pt.slice_min("body_mass_g", n=1, by="species")
+    bot_per_grp = df.pt.by("species").pt.slice_min("body_mass_g", n=1)
     assert len(bot_per_grp) == 2
     assert set(bot_per_grp["body_mass_g"]) == {3000, 5000}
 
@@ -131,13 +131,13 @@ def test_slice_with_nan_by_keys():
         "val": [10, 20, 100, 200],
     })
     # slice_max with ties=False
-    res_max = pt.slice_max(df, "val", n=1, by="group")
+    res_max = pt.slice_max(pt.by(df, "group"), "val", n=1)
     assert len(res_max) == 2
     assert set(res_max["val"]) == {20, 200}
     assert res_max["group"].isna().sum() == 1
 
     # slice_min with ties=False
-    res_min = pt.slice_min(df, "val", n=1, by="group")
+    res_min = pt.slice_min(pt.by(df, "group"), "val", n=1)
     assert len(res_min) == 2
     assert set(res_min["val"]) == {10, 100}
     assert res_min["group"].isna().sum() == 1
@@ -147,7 +147,7 @@ def test_slice_with_nan_by_keys():
         "group": ["A", "A", None, None],
         "val": [20, 20, 200, 200],
     })
-    res_max_ties = pt.slice_max(df_ties, "val", n=1, by="group", with_ties=True)
+    res_max_ties = pt.slice_max(pt.by(df_ties, "group"), "val", n=1, with_ties=True)
     assert len(res_max_ties) == 4
 
 
@@ -163,4 +163,51 @@ def test_slice_edge_cases():
     # na_last=False puts NaN at top for slice_max
     res_na_first = pt.slice_max(df, "val", n=1, na_last=False)
     assert pd.isna(res_na_first["val"].iloc[0])
+
+
+def test_slice_prop():
+    df = pd.DataFrame({
+        "group": ["A"] * 10 + ["B"] * 20,
+        "val": list(range(10)) + list(range(20)),
+    })
+    # Overall 10% of 30 is 3
+    res_top = pt.slice_max(df, "val", prop=0.1)
+    assert len(res_top) == 3
+    assert list(res_top["val"]) == [19, 18, 17]
+
+    # Grouped 10%: A gets 1 row (10 * 0.1), B gets 2 rows (20 * 0.1)
+    res_grp = pt.slice_max(pt.by(df, "group"), "val", prop=0.1)
+    assert len(res_grp) == 3
+    assert list(res_grp[res_grp["group"] == "A"]["val"]) == [9]
+    assert list(res_grp[res_grp["group"] == "B"]["val"]) == [19, 18]
+
+    # slice_min with prop
+    res_min_grp = pt.slice_min(pt.by(df, "group"), "val", prop=0.1)
+    assert list(res_min_grp[res_min_grp["group"] == "A"]["val"]) == [0]
+    assert list(res_min_grp[res_min_grp["group"] == "B"]["val"]) == [0, 1]
+
+    # Error if both n and prop given
+    import pytest
+    with pytest.raises(ValueError, match="specify either 'n' or 'prop'"):
+        pt.slice_max(df, "val", n=2, prop=0.1)
+
+
+def test_cli_slice_syntax_and_prop(tmp_path, capsys):
+    from pytae import cli
+    df = pd.DataFrame({"x": list(range(100)), "grp": ["g1"] * 50 + ["g2"] * 50})
+    path = str(tmp_path / "data.parquet")
+    df.to_parquet(path)
+
+    # col,n=N
+    assert cli.main([path, "-slice_max", "x,n=5", "-shape"]) == 0
+    assert "(5, 2)" in capsys.readouterr().out
+
+    # col,prop=P
+    assert cli.main([path, "-slice_max", "x,prop=0.1", "-shape"]) == 0
+    assert "(10, 2)" in capsys.readouterr().out
+
+    # bare col defaults to n=1
+    assert cli.main([path, "-slice_max", "x", "-shape"]) == 0
+    assert "(1, 2)" in capsys.readouterr().out
+
 

@@ -42,11 +42,12 @@ penguins = pt.sample("penguins")
 # 1. Accessor chain: seamless integration with pandas
 (
     penguins
-    .pt.qry("body_mass_g > 3000, species == 'Gentoo'")
+    .pt.filter("body_mass_g > 3000, species == 'Gentoo'")
     .pt.select("species", "island", "bill_length_mm", "body_mass_g")
     .pt.mutate(mass_kg="body_mass_g / 1000")
     .pt.arrange("mass_kg desc")
-    .pt.agg(["species", "island"], a=["mean", "n"])
+    .pt.by("species", "island")
+    .pt.agg(a=["mean", "n"])
 )
 
 # 2. Function style: standalone calls
@@ -63,12 +64,12 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 
 | Module | Verbs / API | Description | Interactive Notebook |
 |---|---|---|---|
-| **Filtering** | `pt.qry()`, `df.pt.qry()` | Clean filters via expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/qry.ipynb](library/qry.ipynb) |
+| **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.ipynb](library/filter.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
-| **Slicing** | `pt.slice_max()`, `pt.slice_min()` | Select extreme top/bottom N rows overall or per group (`by=`) | [library/slice.ipynb](library/slice.ipynb) |
-| **Deduplication** | `pt.dedupe()`, `df.pt.dedupe()` | Remove duplicate rows across all or specific column subsets | [library/dedupe.ipynb](library/dedupe.ipynb) |
+| **Picking Rows** | `pt.pick()`, `df.pt.pick()` | Select extreme top/bottom N rows or proportion overall or per group (`by=`, `order='max'/'min'`) | [library/pick.ipynb](library/pick.ipynb) |
+| **Distinct Rows** | `pt.distinct()`, `df.pt.distinct()` | Remove duplicate rows across all or specific column subsets | [library/distinct.ipynb](library/distinct.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
@@ -85,22 +86,25 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 <a id="functional-areas"></a>
 ## Functional Areas at a Glance
 
-### 1. Row Filtering — `qry()`
+### 1. Row Filtering — `filter()`
 
-Filter rows using intuitive string expressions, python dictionaries, or keyword arguments. Safely handles column names with spaces without awkward escaping:
+Filter rows using intuitive callables/lambdas, string expressions, python dictionaries, or keyword arguments. Safely handles column names with spaces without awkward escaping:
 
 ```python
+# Bare callables / lambdas
+penguins.pt.filter(lambda d: d["body_mass_g"] > 4000)
+
 # String expressions (handles spaced names directly)
-penguins.pt.qry("body_mass_g > 3500, species == 'Adelie'")
+penguins.pt.filter("body_mass_g > 3500, species == 'Adelie'")
 
 # Plain dictionary syntax
-df.pt.qry({"bill length mm": "> 40", "island": "Biscoe"})
+df.pt.filter({"bill length mm": "> 40", "island": "Biscoe"})
 
 # Keyword arguments with intervals and string operators
-pt.qry(penguins, body_mass_g="[3000, 4500]", species=("startswith", "Ad"))
+pt.filter(penguins, body_mass_g="[3000, 4500]", species=("startswith", "Ad"))
 ```
 
-👉 **Interactive Walkthrough:** [library/qry.ipynb](library/qry.ipynb)
+👉 **Interactive Walkthrough:** [library/filter.ipynb](library/filter.ipynb)
 
 ---
 
@@ -147,7 +151,7 @@ pt.mutate(df, avg_val="mean(val)", by="group", dropna=True)
 
 ---
 
-### 4. Sorting & Slicing — `arrange()`, `slice_max()`, `slice_min()`
+### 4. Sorting & Picking Extreme Rows — `arrange()` & `pick()`
 
 Order rows or retrieve the top/bottom records with group awareness:
 
@@ -157,38 +161,40 @@ pt.arrange(penguins, "species", "body_mass_g desc")
 pt.arrange(penguins, "-body_mass_g")
 pt.arrange(penguins, "[bill length mm] desc")
 
-# Top / bottom N records overall or within groups
-pt.slice_max(penguins, "body_mass_g", n=3)
-pt.slice_min(penguins, "body_mass_g", n=1, by="species")
+# Pick top / bottom records overall or within groups
+pt.pick(penguins, "body_mass_g", n=3)                 # Top 3 (default order="max")
+pt.pick(penguins, "body_mass_g", n=1, order="min")    # Lightest penguin
+pt.pick(penguins, "body_mass_g", prop=0.1)            # Top 10%
 
-# Method chaining
+# Method chaining with group context
 (
     penguins
     .pt.arrange("species, -body_mass_g")
-    .pt.slice_max("body_mass_g", n=2, by="species")
+    .pt.by("species")
+    .pt.pick("body_mass_g", n=2)
 )
 ```
 
-👉 **Interactive Walkthroughs:** [library/arrange.ipynb](library/arrange.ipynb) (Sorting) • [library/slice.ipynb](library/slice.ipynb) (Slicing)
+👉 **Interactive Walkthroughs:** [library/arrange.ipynb](library/arrange.ipynb) (Sorting) • [library/pick.ipynb](library/pick.ipynb) (Picking Rows)
 
 ---
 
-### 5. Deduplication — Removing Duplicate Rows
+### 5. Distinct Rows — Removing Duplicate Rows
 
 Drop duplicate records across the intermediate DataFrame with full control over column subsets, with automatic 0-indexed RangeIndex reset:
 
 ```python
 # Eliminate duplicates across all selected columns via accessor
-penguins.pt.select("species", "island").pt.dedupe()
+penguins.pt.select("species", "island").pt.distinct()
 
-# Restrict uniqueness constraint to specific columns
-penguins.pt.dedupe("species", "island")
+# Restrict uniqueness constraint to specific columns (positional arguments only)
+penguins.pt.distinct("species", "island")
 
 # Functional style
-pt.dedupe(penguins, "species", "island")
+pt.distinct(penguins, "species", "island")
 ```
 
-👉 **Interactive Walkthrough:** [library/dedupe.ipynb](library/dedupe.ipynb)
+👉 **Interactive Walkthrough:** [library/distinct.ipynb](library/distinct.ipynb)
 
 ---
 
@@ -227,11 +233,21 @@ pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", 
 
 ---
 
-### 8. Aggregation — `agg()`
+### 8. Grouping & Aggregation — `by()`, `ungroup()`, `agg()`
 
-Groups by explicit `by=` column(s) (or `None` for a whole-table summary) and aggregates numeric columns, with `n` aliasing row counts. Supports string mapping specifications with bracketed columns `[col]` (matching CLI `-agg`), keyword arguments, and whole-frame functions:
+Set grouping context with `.pt.by(*cols)` which flows into subsequent `.pt.mutate()`, `.pt.agg()`, and `.pt.pick()`. Clear grouping at any time using `.pt.ungroup()`. Calling `.pt.agg()` automatically clears the active grouping upon completion:
 
 ```python
+# Grouped aggregation via pipeline chaining
+penguins.pt.by("species", "island").pt.agg("mean")
+
+# Grouped window mutation inheriting active grouping
+penguins.pt.by("species").pt.mutate("mean_mass = mean(body_mass_g), diff = body_mass_g - mean_mass")
+
+# Clear grouping explicitly
+penguins.pt.by("species").pt.ungroup()
+
+# Direct functional agg
 pt.agg(penguins, "species", "mean")                           # Mean of all numeric columns per species
 pt.agg(penguins, ["species", "island"], ["mean", "sum", "n"]) # Multi-column grouping
 pt.agg(penguins, "species", body_mass_g="mean", count="n")    # Column-specific aggregations
@@ -332,7 +348,7 @@ flights  = pt.sample("flights")
 |---|---|---|
 | **Copy to Clipboard** | `df.to_clip()` in Python; `-o clip` in CLI | `df.head().to_clip()` |
 | **Mapping vs. Assignment** | `:` maps old to new; `=` assigns values | `pt.replace_values(df, {"old": "new"})` vs `pt.mutate(col="expr")` |
-| **Spaced Columns (Filter)** | Enclose in brackets `[col]` | `df.pt.qry("[bill length mm] > 40")` |
+| **Spaced Columns (Filter)** | Enclose in brackets `[col]` | `df.pt.filter("[bill length mm] > 40")` |
 | **Spaced Columns (Select)** | Enclose in brackets `[col]` | `df.pt.select("species", "[body mass g]")` |
 | **Spaced Columns (Create)** | String assignment `[col] = ...` (or `**{...}`) | `df.pt.mutate("[body mass kg] = body_mass_g / 1000")` |
 | **Spaced Columns (Agg)** | String mapping `"[col] = func, n = n"` | `df.pt.agg("smoker", "tip = mean, [total bill] = mean, n = n")` |

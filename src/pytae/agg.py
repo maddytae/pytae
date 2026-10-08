@@ -270,105 +270,26 @@ def _agg_df_dict(
 
 def agg(
     df: pd.DataFrame,
-    by: str | Sequence[str] | None = _UNSET,  # type: ignore[assignment]
     *args: Any,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """Aggregate a DataFrame grouped by explicit `by` column(s).
+    """Aggregate numeric columns in a DataFrame, inheriting grouping set via `pt.by()` or `.pt.by()`.
 
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        The pandas DataFrame to aggregate.
-    by : str, Sequence[str], or None
-        Grouping column name(s). Pass None to perform a whole-table summary (grand total, 1 row).
-        Can be passed positionally as the first argument or via keyword `by=` / `group_by=`.
-    *args : str or list of str
-        Aggregation specification(s):
-        - Column mapping string(s) (e.g., 'tip = mean, [total bill] = mean, n = n' or
-          'tip = mean', '[total bill] = mean', 'n = n'). Brackets [...] enclose columns with spaces.
-        - Whole-frame aggregation function(s) applied to all numeric columns:
-          - If str (e.g., 'mean', or 'mean, n'): Apply to all numeric columns.
-          - If list (e.g., ['mean', 'n']): Apply listed aggregations. 'n' computes group row counts.
-    **kwargs :
-        - Column aggregations passed as keyword arguments (e.g. df.pt.agg('species', body_mass_g='mean', count='n')).
-          Keys with value 'n' specify the output column name for group row counts.
-          Supports named aggregations like total='v1:sum'.
-        - a (str or list, optional): Whole-frame or mapping aggregation function(s) when passed as keyword `a=`.
-        - dropna (bool): Whether to drop NA values in groupby. Defaults to False.
-        - observed (bool): Whether to show only observed values for categorical groupby columns. Defaults to True.
-
-    Returns:
-    --------
-    pd.DataFrame
-        Aggregated DataFrame with group columns, count 'n' (if requested), and aggregated metrics.
+    When not grouped, computes a whole-table summary (1 row). Supports whole-frame
+    functions ('mean', ['mean', 'n']), column mapping strings with brackets
+    ('tip = mean, [total bill] = mean, n = n'), and keyword arguments.
+    Automatically clears active grouping context upon completion.
     """
-    if "group_by" in kwargs:
-        if "by" in kwargs or by is not _UNSET:
-            raise TypeError("agg() got multiple values for argument 'by'/'group_by'")
-        by = kwargs.pop("group_by")
-    elif "by" in kwargs:
-        if by is not _UNSET:
-            raise TypeError("agg() got multiple values for argument 'by'")
-        by = kwargs.pop("by")
+    if "group_by" in kwargs or "by" in kwargs or "_by" in kwargs:
+        raise TypeError("agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
 
-    if by is _UNSET:
-        raise TypeError(
-            "agg() missing required argument: 'by'. "
-            "Specify grouping column(s) as first argument (e.g. df.pt.agg('species', 'mean')), "
-            "or None for whole-table summary (e.g. df.pt.agg(None, 'mean'))."
-        )
-
-    if isinstance(by, dict):
-        raise TypeError(
-            "agg() no longer accepts dictionaries. Pass column aggregations as string mapping "
-            "(e.g. df.pt.agg('by_col', 'col = mean, n = n')) or keyword arguments: "
-            "df.pt.agg('by_col', body_mass_g='mean', count='n')."
-        )
-
-    # Check if user mistakenly passed an aggregation name as 'by'
-    if isinstance(by, str):
-        clean_by = _unquote_name(by)
-        if clean_by in df.columns:
-            by = clean_by
-        else:
-            tokens = [_unquote_name(t.strip()) for t in _tokenize(by, ",", keep_quotes=True, track_brackets=True) if t.strip()]
-            if len(tokens) > 1:
-                by = tokens
-            else:
-                if by.lower() in _KNOWN_AGGS:
-                    raise ValueError(
-                        f"agg(): '{by}' is not a column in DataFrame, but is a known aggregation function. "
-                        "The first argument to agg() must be 'by' (group column(s), or None for whole-table summary). "
-                        f"Did you mean: df.pt.agg(None, {by!r}) or df.pt.agg(by='col', a={by!r})?"
-                    )
-                close = difflib.get_close_matches(clean_by, df.columns, n=1)
-                hint = f" (did you mean '{close[0]}'?)" if close else ""
-                raise KeyError(f"agg(): group column '{by}' not found in DataFrame{hint}")
-
-    if isinstance(by, (list, tuple)):
-        by = [_unquote_name(x) if isinstance(x, str) else x for x in by]
-        if by and all(isinstance(x, str) and x.lower() in _KNOWN_AGGS for x in by) and not any(x in df.columns for x in by):
-            raise ValueError(
-                f"agg(): {list(by)!r} looks like an aggregation list, but the first argument to agg() must be 'by' "
-                "(group column(s), or None for whole-table summary). "
-                f"Did you mean: df.pt.agg(None, {list(by)!r}) or df.pt.agg(by='col', a={list(by)!r})?"
-            )
-        for col in by:
-            if col not in df.columns:
-                close = difflib.get_close_matches(str(col), df.columns, n=1)
-                hint = f" (did you mean '{close[0]}'?)" if close else ""
-                raise KeyError(f"agg(): group column '{col}' not found in DataFrame{hint}")
-
-
-    if by is None:
-        group_cols: list[str] = []
-    elif isinstance(by, str):
-        group_cols = [by]
-    elif isinstance(by, (list, tuple)):
-        group_cols = list(by)
-    else:
-        raise TypeError(f"'by' must be a column name (str), list of column names, or None, got {type(by).__name__}")
+    # Inherit grouping from df.attrs['_pt_by']
+    group_cols: list[str] = list(df.attrs["_pt_by"]) if "_pt_by" in df.attrs else []
+    for col in group_cols:
+        if col not in df.columns:
+            close = difflib.get_close_matches(str(col), df.columns, n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"agg(): group column '{col}' not found in DataFrame{hint}")
 
     # Extract aggregation spec
     col_kwargs = {k: v for k, v in kwargs.items() if k not in ("dropna", "observed", "a")}

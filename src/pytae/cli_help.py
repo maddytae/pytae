@@ -43,15 +43,15 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae -file "sales.parquet=s; stores.parquet=st" -sql "select s.*, st.city from s join st using (store_id)"',
             'pytae sales.parquet -sql @queries/quarterly_report.sql -o report.csv',
         ],
-        see_also=["-qry", "-agg", "-pivot", "-file"],
+        see_also=["-filter", "-agg", "-pivot", "-file"],
     ),
-    "qry": KeywordHelp(
-        name="qry",
-        flag="-qry, --qry CONDITIONS",
-        syntax="pytae <path> -qry \"<CONDITIONS>\"",
+    "filter": KeywordHelp(
+        name="filter",
+        flag="-filter, --filter CONDITIONS",
+        syntax="pytae <path> -filter \"<CONDITIONS>\"",
         summary="Filter DataFrame rows using expressions, interval bounds, and string checks.",
         description=(
-            "Filters rows at this point in the pipeline using pytae qry().\n"
+            "Filters rows at this point in the pipeline using pytae filter().\n"
             "Supports equality ('==', '='), inequality ('>', '<=', '!='), interval notation [a, b],\n"
             "string matching (startswith, contains, regex), and column names with spaces."
         ),
@@ -64,12 +64,29 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "[col with spaces] > 50 : Bracket notation for column names containing spaces.",
         ],
         examples=[
-            "pytae penguins.parquet -qry \"species == 'Gentoo', body_mass_g > 5000\"",
-            "pytae penguins.parquet -qry \"body_mass_g = [4000, 5000]\" -shape",
-            "pytae penguins.parquet -qry \"island in ['Biscoe', 'Dream']\"",
-            "pytae data.csv -qry \"[customer name] = 'Acme Corp'\"",
+            "pytae penguins.parquet -filter \"species == 'Gentoo', body_mass_g > 5000\"",
+            "pytae penguins.parquet -filter \"body_mass_g = [4000, 5000]\" -shape",
+            "pytae penguins.parquet -filter \"island in ['Biscoe', 'Dream']\"",
+            "pytae data.csv -filter \"[customer name] = 'Acme Corp'\"",
         ],
         see_also=["-sql", "-select", "-dropna"],
+    ),
+    "qry": KeywordHelp(
+        name="qry",
+        flag="-qry, --qry CONDITIONS",
+        syntax="pytae <path> -qry \"<CONDITIONS>\"",
+        summary="Filter DataFrame rows (deprecated: use -filter).",
+        description=(
+            "Deprecated alias for -filter. Filters rows using pytae filter()."
+        ),
+        options=[
+            "col = 'val' : Exact match (single quotes for string literals).",
+            "col > 100 : Numeric comparison.",
+        ],
+        examples=[
+            "pytae penguins.parquet -qry \"species == 'Gentoo', body_mass_g > 5000\"",
+        ],
+        see_also=["-filter", "-sql", "-select"],
     ),
     "select": KeywordHelp(
         name="select",
@@ -145,46 +162,75 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -arrange \"species, -body_mass_g\"",
             "pytae penguins.parquet -arrange \"island, bill_length_mm asc\"",
         ],
-        see_also=["-slice_max", "-slice_min", "-head"],
+        see_also=["-pick", "-head"],
+    ),
+    "pick": KeywordHelp(
+        name="pick",
+        flag="-pick, --pick SPEC",
+        syntax="pytae <path> [-by <cols>] -pick \"<col>[,n=N|,prop=P][,order=max|min]\"",
+        summary="Pick top or bottom rows ordered by a column, optionally grouped by column(s).",
+        description=(
+            "Selects rows with the highest (order=max, default) or lowest (order=min) values of a column.\n"
+            "When paired with -by, extracts extreme rows or proportions per group."
+        ),
+        options=[
+            "col : Column to rank by (defaults to n=1, order=max).",
+            "col,n=N : Extract N rows (e.g. 'body_mass_g,n=3').",
+            "col,prop=P : Extract proportion of rows (e.g. 'body_mass_g,prop=0.1').",
+            "order=max|min : Whether to pick highest ('max', default) or lowest ('min') values.",
+            "-by <cols> : Grouping column(s) to partition by before picking.",
+        ],
+        examples=[
+            "pytae penguins.parquet -pick body_mass_g",
+            "pytae penguins.parquet -pick \"body_mass_g,n=5\"",
+            "pytae penguins.parquet -pick \"body_mass_g,n=3,order=min\"",
+            "pytae penguins.parquet -pick \"body_mass_g,prop=0.1\"",
+            "pytae penguins.parquet -by species -pick \"body_mass_g,n=2\"",
+        ],
+        see_also=["-arrange", "-head", "-tail"],
     ),
     "slice_max": KeywordHelp(
         name="slice_max",
         flag="-slice_max, --slice_max SPEC",
-        syntax="pytae <path> [-by <cols>] -slice_max \"<col>[,n=N]\"",
-        summary="Slice top N rows with the largest values, optionally grouped by column(s).",
+        syntax="pytae <path> [-by <cols>] -slice_max \"<col>[,n=N|,prop=P]\"",
+        summary="Slice top rows with the largest values (deprecated alias for -pick).",
         description=(
             "Selects rows with the highest values of a target column.\n"
-            "When paired with -by, extracts the top N rows per group."
+            "Deprecated: use -pick instead."
         ),
         options=[
             "col : Column to rank by (defaults to n=1).",
             "col,n=N : Extract the top N rows (e.g. 'body_mass_g,n=3').",
+            "col,prop=P : Extract the top proportion of rows (e.g. 'body_mass_g,prop=0.1').",
             "-by <cols> : Grouping column(s) to partition by before slicing.",
         ],
         examples=[
             "pytae penguins.parquet -slice_max body_mass_g",
             "pytae penguins.parquet -slice_max \"body_mass_g,n=5\"",
+            "pytae penguins.parquet -slice_max \"body_mass_g,prop=0.1\"",
             "pytae penguins.parquet -by species -slice_max \"body_mass_g,n=2\"",
         ],
-        see_also=["-slice_min", "-arrange", "-head"],
+        see_also=["-pick", "-arrange", "-head"],
     ),
     "slice_min": KeywordHelp(
         name="slice_min",
         flag="-slice_min, --slice_min SPEC",
-        syntax="pytae <path> [-by <cols>] -slice_min \"<col>[,n=N]\"",
-        summary="Slice bottom N rows with the smallest values, optionally grouped by column(s).",
+        syntax="pytae <path> [-by <cols>] -slice_min \"<col>[,n=N|,prop=P]\"",
+        summary="Slice bottom rows with the smallest values, optionally grouped by column(s).",
         description=(
             "Selects rows with the lowest values of a target column.\n"
-            "When paired with -by, extracts the bottom N rows per group."
+            "When paired with -by, extracts the bottom N rows or proportion per group."
         ),
         options=[
             "col : Column to rank by (defaults to n=1).",
             "col,n=N : Extract bottom N rows (e.g. 'body_mass_g,n=3').",
+            "col,prop=P : Extract bottom proportion of rows (e.g. 'body_mass_g,prop=0.1').",
             "-by <cols> : Grouping column(s) to partition by before slicing.",
         ],
         examples=[
             "pytae penguins.parquet -slice_min body_mass_g",
             "pytae penguins.parquet -slice_min \"body_mass_g,n=3\"",
+            "pytae penguins.parquet -slice_min \"body_mass_g,prop=0.1\"",
             "pytae penguins.parquet -by species -slice_min \"body_mass_g,n=1\"",
         ],
         see_also=["-slice_max", "-arrange", "-tail"],
@@ -611,10 +657,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-dropna", "-nulls"],
     ),
-    "dedupe": KeywordHelp(
-        name="dedupe",
-        flag="-dedupe, --dedupe [COLS]",
-        syntax="pytae <path> -dedupe [\"col1,col2\"]",
+    "distinct": KeywordHelp(
+        name="distinct",
+        flag="-distinct, --distinct [COLS]",
+        syntax="pytae <path> -distinct [\"col1,col2\"]",
         summary="Drop duplicate rows (across all or specific columns).",
         description="Drops duplicate records, keeping the first occurrence.",
         options=[
@@ -622,10 +668,26 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "\"col1,col2\" : Deduplicate restricted to specified subset of columns.",
         ],
         examples=[
-            "pytae data.csv -dedupe",
-            "pytae data.csv -dedupe customer_id",
+            "pytae penguins.parquet -select \"species,island\" -distinct",
+            "pytae penguins.parquet -distinct \"species,island\" -head 5",
         ],
-        see_also=["-dropna", "-qry"],
+        see_also=["-dropna", "-filter"],
+    ),
+    "dedupe": KeywordHelp(
+        name="dedupe",
+        flag="-dedupe, --dedupe [COLS]",
+        syntax="pytae <path> -dedupe [\"col1,col2\"]",
+        summary="Drop duplicate rows (deprecated: use -distinct).",
+        description="Deprecated alias for -distinct. Drops duplicate records, keeping the first occurrence.",
+        options=[
+            "Bare flag : Deduplicate across all columns.",
+            "\"col1,col2\" : Deduplicate restricted to specified subset of columns.",
+        ],
+        examples=[
+            "pytae penguins.parquet -select \"species,island\" -dedupe",
+            "pytae penguins.parquet -dedupe \"species,island\" -head 5",
+        ],
+        see_also=["-distinct", "-dropna", "-filter"],
     ),
     "pretty": KeywordHelp(
         name="pretty",

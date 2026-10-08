@@ -312,9 +312,8 @@ def test_mutate_bracketed_columns():
 
 def test_mutate_grouped_single_col():
     df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
-    res = df.pt.mutate(
+    res = df.pt.by("grp").pt.mutate(
         "avg = mean(val), diff = val - avg, total = sum(val), cnt = n, cnt2 = n()",
-        by="grp",
     )
     assert list(res["avg"]) == [15.0, 15.0, 60.0]
     assert list(res["diff"]) == [-5.0, 5.0, 0.0]
@@ -329,41 +328,41 @@ def test_mutate_grouped_multi_col():
         "g2": ["x", "x", "y", "x"],
         "val": [10.0, 30.0, 5.0, 100.0],
     })
-    res1 = df.pt.mutate("m = mean(val), cnt = n", by=["g1", "g2"])
+    res1 = df.pt.by("g1", "g2").pt.mutate("m = mean(val), cnt = n")
     assert list(res1["m"]) == [20.0, 20.0, 5.0, 100.0]
     assert list(res1["cnt"]) == [2, 2, 1, 1]
 
-    # Comma-separated string by="g1, g2"
-    res2 = df.pt.mutate("m = mean(val)", by="g1, g2")
+    # Positional pt.by with multiple columns
+    res2 = pt.mutate(pt.by(df, "g1", "g2"), "m = mean(val)")
     assert list(res2["m"]) == [20.0, 20.0, 5.0, 100.0]
 
 
 def test_mutate_grouped_spaced_brackets():
     df = pd.DataFrame({"group code": ["a", "a", "b"], "total bill": [10.0, 30.0, 50.0]})
-    res = df.pt.mutate("[diff bill] = [total bill] - mean([total bill])", by="group code")
+    res = df.pt.by("group code").pt.mutate("[diff bill] = [total bill] - mean([total bill])")
     assert list(res["diff bill"]) == [-10.0, 10.0, 0.0]
 
 
 def test_mutate_grouped_dropna_observed():
     df = pd.DataFrame({"grp": ["a", None, "a"], "val": [10.0, 50.0, 30.0]})
     # Default is dropna=False: computes on the NA group
-    res_default = df.pt.mutate("m = mean(val)", by="grp")
+    res_default = df.pt.by("grp").pt.mutate("m = mean(val)")
     assert res_default["m"].iloc[1] == 50.0
     assert res_default["m"].iloc[0] == 20.0
     assert res_default["m"].iloc[2] == 20.0
 
-    res_dropna = df.pt.mutate("m = mean(val)", by="grp", dropna=True)
+    res_dropna = df.pt.by("grp").pt.mutate("m = mean(val)", dropna=True)
     assert pd.isna(res_dropna["m"].iloc[1])
     assert res_dropna["m"].iloc[0] == 20.0
     assert res_dropna["m"].iloc[2] == 20.0
 
-    res_keepna = df.pt.mutate("m = mean(val)", by="grp", dropna=False)
+    res_keepna = df.pt.by("grp").pt.mutate("m = mean(val)", dropna=False)
     assert res_keepna["m"].iloc[1] == 50.0
 
 
 def test_mutate_grouped_duplicate_index():
     df = pd.DataFrame({"grp": ["a", "b", "a"], "val": [10.0, 50.0, 30.0]}, index=[0, 1, 0])
-    res = df.pt.mutate("m = mean(val)", by="grp")
+    res = df.pt.by("grp").pt.mutate("m = mean(val)")
     assert list(res["m"]) == [20.0, 50.0, 20.0]
     assert list(res.index) == [0, 1, 0]
 
@@ -371,18 +370,20 @@ def test_mutate_grouped_duplicate_index():
 def test_mutate_grouped_functional_and_callable():
     df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
     # Functional pt.mutate
-    res1 = pt.mutate(df, "avg = mean(val)", by="grp")
+    res1 = pt.mutate(pt.by(df, "grp"), "avg = mean(val)")
     assert list(res1["avg"]) == [15.0, 15.0, 60.0]
 
     # Callable inside grouped mutate
-    res2 = df.pt.mutate(half_mean=lambda g: g["val"].mean() / 2, by="grp")
+    res2 = df.pt.by("grp").pt.mutate(half_mean=lambda g: g["val"].mean() / 2)
     assert list(res2["half_mean"]) == [7.5, 7.5, 30.0]
 
 
-def test_mutate_grouped_unknown_col():
+def test_mutate_rejects_by_arg():
     df = pd.DataFrame({"grp": ["a", "b"], "val": [1, 2]})
-    with pytest.raises(KeyError, match="grouping column 'grp_typo' not found"):
-        df.pt.mutate("m = mean(val)", by="grp_typo")
+    with pytest.raises(TypeError, match="df.pt.mutate\\(\\) does not accept 'by'"):
+        df.pt.mutate("m = mean(val)", by="grp")
+    with pytest.raises(TypeError, match="mutate\\(\\) does not accept 'by'"):
+        pt.mutate(df, "m = mean(val)", by="grp")
 
 
 def test_mutate_coalesce_scalar_broadcast():
@@ -434,7 +435,7 @@ def test_mutate_grouped_callable_sees_original_index():
     # Lib Issue 17: callable sees original index in grouped mutate
     s = pd.Series([100, 200, 300], index=[10, 20, 30])
     df = pd.DataFrame({"g": ["a", "b", "a"], "x": [1, 2, 3]}, index=[10, 20, 30])
-    res = df.pt.mutate(y=lambda d: d["x"] + s.reindex(d.index), by="g")
+    res = df.pt.by("g").pt.mutate(y=lambda d: d["x"] + s.reindex(d.index))
     assert list(res["y"]) == [101, 202, 303]
     assert list(res.index) == [10, 20, 30]
 
@@ -449,7 +450,7 @@ def test_mutate_scalar_if_else_and_case_when():
     assert df2.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
 
     df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
-    assert df3.pt.mutate(y="if_else(n > 1, 1, 0)", by="g")["y"].tolist() == [1, 1, 0]
+    assert df3.pt.by("g").pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 0]
 
 
 def test_mutate_lit_constant_when_column_exists():
@@ -484,10 +485,10 @@ def test_mutate_lit_constant_when_column_exists():
     assert list(res_pos["source"]) == ["original", "original"]
 
     # Grouped mutation with pt.lit()
-    res_grp = df.pt.mutate(source=pt.lit("original"), by="val")
+    res_grp = df.pt.by("val").pt.mutate(source=pt.lit("original"))
     assert list(res_grp["source"]) == ["original", "original"]
 
-    res_grp_str = df.pt.mutate("source = pt.lit('original')", by="val")
+    res_grp_str = df.pt.by("val").pt.mutate("source = pt.lit('original')")
     assert list(res_grp_str["source"]) == ["original", "original"]
 
     # Non-string literals

@@ -29,7 +29,7 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
 
 > [!IMPORTANT]
 > **`-wide` is strictly for 1-to-1 reshaping without aggregation.** If your data has multiple rows per key combination and requires mathematical summarization (`mean`, `sum`, `count`/`n`), use **[`-pivot`](pivot.md)**.
-> For row deduplication, see **[`-dedupe`](clean_replace.md#deduplicating-rows--dedupe)**; for sorting rows, see **[`-arrange`](arrange.md)**.
+> For row deduplication, see **[`-distinct`](distinct.md)**; for sorting rows, see **[`-arrange`](arrange.md)**.
 
 ---
 

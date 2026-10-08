@@ -68,10 +68,10 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 |---|---|---|
 | **Inspection & Metadata** | [Inspection & Metadata Guide](cli/inspect.md) | `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-describe`, `-info`, `-glimpse`, `-meta`, `-pager` |
 | **Column Selection** | [Column Selection Guide](cli/select.md) | `-select`, slices `a:b`, negative `-col`/`~col`, `exclude=`, `contains=`, `startswith=`, `regex=`, `dtype=numeric` |
-| **Row Filtering** | [Row Filtering Guide](cli/qry.md) | `-qry`, `-dropna`, intervals `[min, max]`, set membership, string matching |
-| **Row Slicing** | [Row Slicing Guide](cli/slice.md) | `-slice_max`, `-slice_min`, top/bottom N rows per group with `-by` |
+| **Row Filtering** | [Row Filtering Guide](cli/filter.md) | `-filter`, `-dropna`, intervals `[min, max]`, set membership, string matching |
+| **Row Slicing / Picking** | [Row Picking Guide](cli/pick.md) | `-pick`, top/bottom N rows or proportion per group with `-by` |
 | **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
-| **Deduplication** | [Deduplication Guide](cli/dedupe.md) | `-dedupe`, drop duplicate rows across all or specific column subsets |
+| **Distinct Rows** | [Distinct Rows Guide](cli/distinct.md) | `-distinct`, drop duplicate rows across all or specific column subsets |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
@@ -132,19 +132,20 @@ pytae data.parquet -select "-sex,-island"                         # Exclude mult
 <a id="row-filtering"></a>
 ### 3. Row Filtering & Slicing
 
-Filter rows using pytae's ergonomic filter syntax (`-qry`), drop null rows with `-dropna`, or select top/bottom records using `-slice_max` and `-slice_min`. Supports comparison operators, interval checks, string pattern matches, and list memberships.
+Filter rows using pytae's ergonomic filter syntax (`-filter`), drop null rows with `-dropna`, or pick top/bottom records using `-pick`. Supports comparison operators, interval checks, string pattern matches, and list memberships.
 
-- **Primary flags**: `-qry`, `-dropna`, `-slice_max`, `-slice_min`
+- **Primary flags**: `-filter`, `-dropna`, `-pick`
 
 ```bash
-pytae data.parquet -qry "species = 'Adelie', body_mass_g > 3500"  # Keyword filtering
-pytae data.parquet -qry "body_mass_g = [3000, 4500]"              # Interval range
+pytae data.parquet -filter "species = 'Adelie', body_mass_g > 3500"  # Filtering
+pytae data.parquet -filter "body_mass_g = [3000, 4500]"              # Interval range
 pytae data.parquet -dropna "body_mass_g,sex"                      # Drop rows with NaNs in specific cols
-pytae data.parquet -slice_max "body_mass_g,n=5"                   # Top 5 heaviest penguins
-pytae data.parquet -by species -slice_max "body_mass_g,n=1"       # Heaviest penguin per species
+pytae data.parquet -pick "body_mass_g,n=5"                         # Top 5 heaviest penguins
+pytae data.parquet -by species -pick body_mass_g                   # Heaviest penguin per species
+pytae data.parquet -pick "body_mass_g,n=3,order=min"               # 3 lightest penguins
 ```
 
-👉 See the complete guide: **[Row Filtering Guide](cli/qry.md)**
+👉 See the complete guides: **[Row Filtering Guide](cli/filter.md)** • **[Row Picking Guide](cli/pick.md)**
 
 ---
 
@@ -231,14 +232,14 @@ pytae data.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = bod
 
 Pivot tables from long to wide, melt wide tables to long, tally value combinations, deduplicate rows, and sort records.
 
-- **Primary flags**: `-pivot`, `-long`, `-wide`, `-value_counts`, `-dedupe`, `-arrange`
+- **Primary flags**: `-pivot`, `-long`, `-wide`, `-value_counts`, `-distinct`, `-arrange`
 
 ```bash
 pytae data.parquet -pivot "r=Region,c=Year,v=Sales,a=sum"           # 2D Excel-style pivot
 pytae data.parquet -long "c=metric,v=reading"                       # Melt
 pytae data.parquet -wide "c=metric,v=reading"                       # Pure 1:1 reshape
 pytae data.parquet -pivot "r=species,c=island,v=sex,a=n"            # Frequency matrix
-pytae data.parquet -dedupe "species,island"                         # Drop duplicate rows
+pytae data.parquet -distinct "species,island"                       # Drop duplicate rows
 pytae data.parquet -arrange "body_mass_g desc"                      # Sort rows
 ```
 
@@ -341,23 +342,22 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-round N` | Inspect | Round floating-point numbers to N decimal places | [cli/inspect.md](cli/inspect.md) |
 | `-diff PATH` | Inspect | Compare current frame against another file | [cli/diff.md](cli/diff.md) |
 | `-select SPEC` | Select & Filter | Filter, reorder, or exclude columns (names, slices, negative prefixes `-col`/`~col`, `exclude=`, regex, dtype) | [cli/select.md](cli/select.md) |
-| `-qry CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/qry.md](cli/qry.md) |
+| `-filter CONDITIONS` | Select & Filter | Filter rows using pytae keyword syntax and intervals | [cli/filter.md](cli/filter.md) |
 | `-dropna [COLS]` | Select & Filter | Drop rows containing NaN (bare for all columns, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-slice_max SPEC` | Select & Filter | Select top N rows by column (`col:N`), group-aware with `-by` | [cli/slice.md](cli/slice.md) |
-| `-slice_min SPEC` | Select & Filter | Select bottom N rows by column (`col:N`), group-aware with `-by` | [cli/slice.md](cli/slice.md) |
+| `-pick SPEC` | Select & Filter | Pick top or bottom rows by column (`col,n=N`, `col,prop=P`, `order=max|min`), group-aware with `-by` | [cli/pick.md](cli/pick.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
 | `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |
 | `-clean_columns SPEC` | Clean | Clean headers (strip, squeeze, strip_special, fill, case, dedupe) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-replace_values SPEC` | Clean | Replace cell values (`v=mapping`, `c=cols`, `exact=bool`) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-handle_missing [FILL]` | Clean | Fill NAs (`.` for object, `0` for numeric, or custom fill) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-rename OLD:NEW,...` | Clean | Rename columns anywhere in pipeline or during export | [cli/clean_replace.md](cli/clean_replace.md) |
-| `-by COLS` | Aggregate & Transform | Grouping columns for `-agg`, `-mutate`, `-slice_max`, `-slice_min` | [cli/agg.md](cli/agg.md) |
+| `-by COLS` | Aggregate & Transform | Grouping columns for `-agg`, `-mutate`, `-pick` | [cli/agg.md](cli/agg.md) |
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/agg.md](cli/agg.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pure reshape: long table to wide format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `fill=`) | [cli/pivot.md](cli/pivot.md) |
 | `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/inspect.md](cli/inspect.md) |
-| `-dedupe [COLS]` | Reshape | Remove duplicate rows across all or specific columns | [cli/dedupe.md](cli/dedupe.md) |
+| `-distinct [COLS]` | Reshape | Remove duplicate rows across all or specific columns | [cli/distinct.md](cli/distinct.md) |
 | `-arrange SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` or `-col` prefix | [cli/arrange.md](cli/arrange.md) |
 | `-freq COL` | Visualize | Terminal ASCII frequency distribution bar chart | [cli/inspect.md](cli/inspect.md) |
 | `-hist COL[:BINS]` | Visualize | Terminal ASCII numeric histogram with bin intervals | [cli/inspect.md](cli/inspect.md) |
@@ -385,11 +385,11 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Pick, reorder, or exclude columns** | `-select` | [Column Selection](cli/select.md) |
 | **Rename columns** | `-rename` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Standardize messy headers** | `-clean_columns` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
-| **Filter rows using expressions** | `-qry` | [Row Filtering](cli/qry.md) |
+| **Filter rows using expressions** | `-filter` | [Row Filtering](cli/filter.md) |
 | **Drop rows containing NaN** | `-dropna` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Top/bottom N rows by column** | `-slice_max`, `-slice_min` | [Row Slicing](cli/slice.md) |
 | **Sort rows** | `-arrange` | [Row Sorting](cli/arrange.md) |
-| **Deduplicate rows** | `-dedupe` | [Deduplication](cli/dedupe.md) |
+| **Deduplicate rows** | `-distinct` | [Distinct Rows](cli/distinct.md) |
 | **Compute / mutate columns** | `-mutate` | [Mutating & Computing](cli/mutate.md) |
 | **Run SQL queries** | `-sql` | [DuckDB SQL Engine](cli/sql.md) |
 | **Replace cell values** | `-replace_values` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
@@ -405,7 +405,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Terminal histogram (ASCII)** | `-hist` | [Inspection & Metadata](cli/inspect.md) |
 | **Render and export plot charts** | `-plot`, `-finalize` | [Visualizations & Plotting](cli/plotting.md) |
 | **Read from STDIN / UNIX pipes** | `pytae - [-fmt ...]` | [File I/O & Export](cli/export_io.md) |
-| **Deduplicate rows** | `-dedupe` | [Reshaping](cli/reshape.md) |
+| **Distinct rows** | `-distinct` | [Reshaping](cli/reshape.md) |
 | **Sort rows** | `-arrange` | [Reshaping](cli/reshape.md) |
 | **Preview rows** | `-head`, `-tail`, `-sample` | [Inspection & Metadata](cli/inspect.md) |
 | **Inspect shape, cols, dtypes, nulls** | `-shape`, `-cols`, `-dtype`, `-nulls`, `-info` | [Inspection & Metadata](cli/inspect.md) |

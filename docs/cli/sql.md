@@ -73,7 +73,7 @@ Run analytical window functions such as `ROW_NUMBER()`, `RANK()`, or running tot
 # Top 2 heaviest penguins per species
 pytae penguins.parquet \
   -sql "select species, body_mass_g, row_number() over (partition by species order by body_mass_g desc) as rnk from data where body_mass_g is not null" \
-  -qry "rnk <= 2"
+  -filter "rnk <= 2"
 ```
 
 **Output:**

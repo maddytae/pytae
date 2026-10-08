@@ -62,40 +62,72 @@ def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
     return cols, asc_list
 
 
-def parse_slice_spec(raw: str, flag_name: str = "-slice_max") -> tuple[str, int]:
-    """Parse -slice_max/-slice_min SPEC: a column name, optionally followed by ':N', ',N', or ',n=N'.
-    e.g. 'body_mass_g:2', 'body_mass_g,2', 'body_mass_g,n=2', '[annual salary]:5', 'species'.
+def parse_pick_spec(raw: str, flag_name: str = "-pick") -> tuple[str, int | None, float | None, str]:
+    """Parse -pick SPEC.
+
+    Canonical syntax:
+      - 'col,n=N'             e.g. 'body_mass_g,n=3' (order=max by default)
+      - 'col,n=N,order=min'   e.g. 'body_mass_g,n=3,order=min'
+      - 'col,prop=P'         e.g. 'body_mass_g,prop=0.1'
+      - 'col'                e.g. 'body_mass_g' (defaults to n=1, order=max)
+      - bracketed spaced names: '[bill length mm],n=3'
     """
     raw = (raw or "").strip()
     if not raw:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col', 'col:N', or 'col,n=N'")
-    col: str = ""
-    n: int = 1
-    if ":" in raw:
-        head, _, tail = raw.rpartition(":")
-        if tail.strip().isdigit():
-            col, n = head.strip(), int(tail.strip())
-        else:
-            col = raw
-    elif "," in raw:
-        head, _, tail = raw.rpartition(",")
-        tail_str = tail.strip()
-        if tail_str.startswith("n="):
-            num_part = tail_str[2:].strip()
-            if num_part.isdigit():
-                col, n = head.strip(), int(num_part)
-            else:
-                raise SystemExit(f"{flag_name}: invalid n value '{num_part}'")
-        elif tail_str.isdigit():
-            col, n = head.strip(), int(tail_str)
-        else:
-            col = raw
-    else:
-        col = raw
-    col = _unquote_name(col)
+        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
+    if not tokens:
+        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
+
+    col_raw = tokens[0]
+    col = _unquote_name(col_raw)
     if not col:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col', 'col:N', or 'col,n=N'")
-    return col, n
+        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
+
+    n: int | None = None
+    prop: float | None = None
+    order: str = "min" if "min" in flag_name.lower() else "max"
+
+    if len(tokens) == 1:
+        return col, 1, None, order
+
+    for param in tokens[1:]:
+        if param.startswith("n="):
+            val_str = param[2:].strip()
+            if not val_str.isdigit() or int(val_str) <= 0:
+                raise SystemExit(f"{flag_name}: invalid n value '{val_str}'; must be a positive integer")
+            if n is not None or prop is not None:
+                raise SystemExit(f"{flag_name}: specify either n= or prop= once")
+            n = int(val_str)
+        elif param.startswith("prop="):
+            val_str = param[5:].strip()
+            try:
+                p_val = float(val_str)
+                if not (0 < p_val <= 1):
+                    raise ValueError
+            except ValueError:
+                raise SystemExit(f"{flag_name}: invalid prop value '{val_str}'; must be a number between 0 and 1")
+            if n is not None or prop is not None:
+                raise SystemExit(f"{flag_name}: specify either n= or prop= once")
+            prop = p_val
+        elif param.startswith("order="):
+            ord_val = param[6:].strip().lower()
+            if ord_val not in ("max", "min"):
+                raise SystemExit(f"{flag_name}: invalid order value '{ord_val}'; must be 'max' or 'min'")
+            order = ord_val
+        else:
+            raise SystemExit(f"{flag_name}: unrecognized parameter '{param}'; expected 'n=N', 'prop=P', or 'order=max|min'")
+
+    if n is None and prop is None:
+        n = 1
+    return col, n, prop, order
+
+
+def parse_slice_spec(raw: str, flag_name: str = "-slice_max") -> tuple[str, int | None, float | None]:
+    """Deprecated parser alias for parse_pick_spec."""
+    col, n, prop, _ = parse_pick_spec(raw, flag_name=flag_name)
+    return col, n, prop
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -267,8 +299,8 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
     return entries
 
 
-def parse_qry(raw: str) -> list[tuple[str, Any]]:
-    """Parse -qry conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
+def parse_filter(raw: str) -> list[tuple[str, Any]]:
+    """Parse -filter conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
     "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") and bare string
     values (e.g. "species = Adelie") are also accepted."""
@@ -279,10 +311,10 @@ def parse_qry(raw: str) -> list[tuple[str, Any]]:
     for key_raw, value_raw in _split_qry_entries(stripped):
         key = _unquote_name(key_raw)
         if not key:
-            raise SystemExit("invalid --qry conditions: empty column name")
+            raise SystemExit("invalid --filter conditions: empty column name")
         val_strip = value_raw.strip()
         if not val_strip:
-            raise SystemExit(f"invalid --qry conditions: '{key}' has no value")
+            raise SystemExit(f"invalid --filter conditions: '{key}' has no value")
 
         # Check interval syntax: e.g. [3000, 4500], (3000, 4500), [a, c), (a, c]
         m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
@@ -309,13 +341,18 @@ def parse_qry(raw: str) -> list[tuple[str, Any]]:
             value = ast.literal_eval(val_strip)
         except (ValueError, SyntaxError) as exc:
             raise SystemExit(
-                f"invalid --qry conditions: value for '{key}' ('{val_strip}') must be quoted "
+                f"invalid --filter conditions: value for '{key}' ('{val_strip}') must be quoted "
                 "(e.g. 'Male') or a valid literal (number/tuple/list)"
             ) from exc
         conditions.append((key, value))
     if not conditions:
-        raise SystemExit("-qry expects keyword entries, e.g. \"col = ('>', 5)\" or \"col > 5\" (quotes around column name optional)")
+        raise SystemExit("-filter expects keyword entries, e.g. \"col = ('>', 5)\" or \"col > 5\" (quotes around column name optional)")
     return conditions
+
+
+def parse_qry(raw: str) -> list[tuple[str, Any]]:
+    """Deprecated alias for parse_filter."""
+    return parse_filter(raw)
 
 
 def parse_agg(raw: str):
