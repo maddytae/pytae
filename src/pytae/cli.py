@@ -71,7 +71,7 @@ _CLI_FLAGS = {
     "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
     "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
-    "-dedupe", "--dedupe", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
+    "-distinct", "--distinct", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
     "-arrange", "--arrange", "-pick", "--pick", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
     "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
@@ -201,9 +201,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="render horizontal frequency bars with counts and percentages for a categorical column")
     parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
                          help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
-    parser.add_argument("-distinct", "--distinct", "-dedupe", "--dedupe", dest="distinct", nargs="?", const="", default=None,
-                         metavar="COLS", action=_OrderedValue,
-                         help="drop duplicate rows, optionally restricted to specific columns, e.g. -distinct or -distinct \"col1,col2\"")
+    parser.add_argument("-distinct", "--distinct", dest="distinct", nargs="?", const="", default=None,
+                         metavar="SPEC", action=_OrderedValue,
+                         help="drop duplicate rows, optionally restricted to specific columns and keep mode, e.g. -distinct, -distinct \"col1,col2\", or -distinct \"keep=last\"")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
     parser.add_argument("-seed", "--seed", dest="seed", type=int, default=None, metavar="N",
@@ -366,7 +366,9 @@ def main(argv: list[str] | None = None) -> int:
         if any(e in ("-query", "--query") for e in extras):
             parser.error("'-query' has been deprecated; use '-qry' instead")
         if any(e in ("-unique", "--unique") for e in extras):
-            parser.error("'-unique' has been deprecated; use '-dedupe' instead")
+            parser.error("'-unique' has been removed; use '-distinct' instead")
+        if any(e in ("-dedupe", "--dedupe") for e in extras):
+            parser.error("'-dedupe' has been removed; use '-distinct' instead")
         if any(e in ("-sort_by", "--sort_by", "-sort", "--sort") for e in extras):
             parser.error("'-sort_by' has been deprecated; use '-arrange' instead")
         if any(e in ("-drop_na", "--drop_na") for e in extras):

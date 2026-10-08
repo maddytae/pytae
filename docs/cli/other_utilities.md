@@ -289,5 +289,6 @@ pytae -help sql
 pytae -help reshape
 pytae -help arrange
 pytae -help slice
-pytae -help dedupe
+pytae -help distinct
 ```
+

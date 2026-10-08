@@ -166,21 +166,20 @@ class _Pipeline:
     def apply_distinct(self, spec: str | None) -> str | None:
         """Drop duplicate rows. Returns an error message or None."""
         df = self.dataframe()
-        if not spec:
-            self._df = df.drop_duplicates().reset_index(drop=True)
-            return None
-        from pytae.cli_parsing import parse_columns, unknown_columns_message
-        cols = parse_columns(spec)
-        available = list(df.columns)
-        unknown = [c for c in cols if c not in available]
-        if unknown:
-            return unknown_columns_message("-distinct", unknown, available)
-        self._df = df.drop_duplicates(subset=cols).reset_index(drop=True)
+        from pytae.cli_parsing import parse_distinct_spec, unknown_columns_message
+        try:
+            cols, keep = parse_distinct_spec(spec)
+        except SystemExit as exc:
+            return str(exc)
+        if cols:
+            available = list(df.columns)
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-distinct", unknown, available)
+            self._df = df.drop_duplicates(subset=cols, keep=keep).reset_index(drop=True)
+        else:
+            self._df = df.drop_duplicates(keep=keep).reset_index(drop=True)
         return None
-
-    def apply_dedupe(self, spec: str | None) -> str | None:
-        """Deprecated alias for apply_distinct."""
-        return self.apply_distinct(spec)
 
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""

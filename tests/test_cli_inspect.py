@@ -155,20 +155,28 @@ def test_order_unique_then_shape_uses_deduplicated_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-dedupe", "-shape"])
+    exit_code = cli.main([path, "-distinct", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    # One duplicated row is removed by -dedupe, then -shape reflects the reduced frame.
+    # One duplicated row is removed by -distinct, then -shape reflects the reduced frame.
     assert "(2, 2)" in out
 
 
-def test_unique_flag_deprecated(tmp_path, capsys):
+def test_unique_flag_removed(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 1]}))
     with pytest.raises(SystemExit) as exc:
         cli.main([path, "-unique"])
     assert exc.value.code == 2
-    assert "'-unique' has been deprecated; use '-dedupe' instead" in capsys.readouterr().err
+    assert "'-unique' has been removed; use '-distinct' instead" in capsys.readouterr().err
+
+
+def test_dedupe_flag_removed(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 1]}))
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-dedupe"])
+    assert exc.value.code == 2
+    assert "'-dedupe' has been removed; use '-distinct' instead" in capsys.readouterr().err
 
 
 def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):

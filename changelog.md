@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.8.2] - 2026-10-07
+
+### Added
+- **`keep` Control in CLI `-distinct`**:
+  - `-distinct` now supports `keep=` spec tokens: `keep=first` (default), `keep=last`, and `keep=false` (or `keep=none`).
+  - Examples: `pytae penguins.parquet -distinct "species,island,keep=last"` or `pytae events.parquet -distinct "keep=last"`.
+
+### Removed & Breaking Changes ("One and Only One Right Way")
+- **Removed `dedupe` Backward Compatibility**:
+  - The legacy `dedupe` function (`pt.dedupe`), DataFrame accessor method (`df.pt.dedupe`), and CLI flag (`-dedupe`) have been completely removed without backward compatibility.
+  - Passing `-dedupe` on the CLI produces an immediate clear error directing users to `-distinct`.
+  - Canonical deduplication is strictly `pt.distinct()` / `df.pt.distinct()` / `-distinct`.
+
 ## [3.8.1] - 2026-10-07
 
 ### Added

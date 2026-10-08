@@ -22,7 +22,7 @@ TABLE OF CONTENTS
     4.4.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
     4.6.  pt.pick() / df.pt.pick() — Extreme Row Slicing (formerly slice_max/min)
-    4.7.  pt.distinct() / df.pt.distinct() — Deduplication (formerly dedupe)
+    4.7.  pt.distinct() / df.pt.distinct() — Deduplication
     4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
     4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
@@ -130,7 +130,7 @@ Top-Level Functions exported by `pytae`:
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)  [slice_max/slice_min are deprecated aliases]
-  - pt.distinct(df, *cols, keep="first")  [dedupe is maintained as deprecated alias]
+  - pt.distinct(df, *cols, keep="first")
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, c="variable", v="value", index=None)
@@ -158,7 +158,7 @@ DataFrame Accessor (`df.pt`):
     df.pt.mutate(...)
     df.pt.arrange(...)
     df.pt.pick(...)      # [df.pt.slice_max / df.pt.slice_min are deprecated aliases]
-    df.pt.distinct(...)  # [df.pt.dedupe is deprecated alias]
+    df.pt.distinct(...)
     df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
@@ -489,16 +489,16 @@ Calling Styles:
 --------------------------------------------------------------------------------
 Removes duplicate rows across all columns or a specified subset of columns.
 Resets the index cleanly to a standard RangeIndex(0, 1, 2, ...).
-(Note: `dedupe` is maintained as a deprecated alias).
 
 Signature:
-  pt.distinct(df: pd.DataFrame, *cols: str | Sequence[str], keep: str = "first") -> pd.DataFrame
-  df.pt.distinct(*cols: str | Sequence[str], keep: str = "first") -> pd.DataFrame
+  pt.distinct(df: pd.DataFrame, *cols: str, keep: str | bool = "first") -> pd.DataFrame
+  df.pt.distinct(*cols: str, keep: str | bool = "first") -> pd.DataFrame
 
 Calling Styles:
-  df.pt.distinct()                        # Deduplicate across all columns
+  df.pt.distinct()                        # Deduplicate across all columns (keep="first")
   df.pt.distinct("species", "island")     # Deduplicate on subset of columns
   df.pt.distinct(keep="last")             # Keep last occurrence
+  df.pt.distinct("species", keep=False)   # Drop all duplicate occurrences
 
 
 4.8. pt.agg() / df.pt.agg() — Grouped Aggregation
@@ -708,7 +708,7 @@ Inspection & Summary Flags:
   -meta                 Display zero-scan Parquet metadata
   -diff PATH            Compare schema, shape, null counts against another file
   -value_counts         Value counts for categorical/string columns
-  -distinct [COLS]      Drop duplicate rows across all or specified columns (-dedupe is deprecated alias)
+  -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -sample [N]           Random sample of N rows (default 5)
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
@@ -822,13 +822,12 @@ its own new line:
 ```
 This ensures readable git diffs, clean execution tracebacks, and syntactic consistency.
 
-6.4. What are the key verb deprecations (filter, pick, distinct)?
+6.4. What are the key canonical verbs (filter, pick, distinct)?
 -----------------------------------------------------------------
-Pytae v3.9 standardizes on modern naming:
+Pytae standardizes on canonical modern naming:
 - `pt.filter()` / `df.pt.filter()` / `-filter`: Replaces `qry`
 - `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min`
-- `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Replaces `dedupe`
-Deprecated aliases emit clear DeprecationWarnings while continuing to function for backwards compatibility.
+- `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------

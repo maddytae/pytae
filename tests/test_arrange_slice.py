@@ -104,15 +104,15 @@ def test_cli_arrange_and_slice(tmp_path, capsys):
     assert "(2, 2)" in out
 
 
-def test_cli_dedupe_and_dropna(tmp_path, capsys):
+def test_cli_distinct_and_dropna(tmp_path, capsys):
     df = pd.DataFrame({
         "a": [1, 1, 2, None],
         "b": [10, 20, 30, 40],
     })
     path = _write_csv(tmp_path, df)
 
-    # Bare -dedupe drops duplicate rows
-    exit_code = cli.main([path, "-dedupe", "a", "-shape"])
+    # -distinct drops duplicate rows
+    exit_code = cli.main([path, "-distinct", "a", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(3, 2)" in out

@@ -711,8 +711,8 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op in ("distinct", "dedupe"):
-            distinct_val = _next_op_val(op, getattr(args, op, None))
+        elif op == "distinct":
+            distinct_val = _next_op_val("distinct", getattr(args, "distinct", None))
             err = pipeline.apply_distinct(distinct_val)
             if err:
                 return _fail(parser, batch, err)

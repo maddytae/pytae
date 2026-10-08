@@ -16,7 +16,6 @@ from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
-    dedupe,
     distinct,
     format_glimpse,
     glimpse,
@@ -113,7 +112,6 @@ __all__ = [
     "slice_max",
     "slice_min",
     "distinct",
-    "dedupe",
     "agg",
     "long",
     "wide",

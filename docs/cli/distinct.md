@@ -19,13 +19,12 @@ Drop duplicate rows across the intermediate DataFrame with full control over col
 
 | Flag | Syntax / Format | Description |
 |---|---|---|
-| `-distinct` | Bare flag | Drop duplicate rows checking all columns |
+| `-distinct` | Bare flag | Drop duplicate rows checking all columns (`keep=first`) |
 | `-distinct COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
+| `-distinct "...keep=last"` | `keep=last` | Keep last occurrence instead of first |
+| `-distinct "...keep=false"` | `keep=false` or `keep=none` | Drop all duplicate occurrences |
 
-`-distinct` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.distinct(df, *cols)` or `df.pt.distinct(*cols)`.
-
-> [!NOTE]
-> `-dedupe` is preserved as a backward-compatible alias pointing to `-distinct`.
+`-distinct` keeps unique combinations and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.distinct(df, *cols, keep="first")` or `df.pt.distinct(*cols, keep="first")`.
 
 ---
 
@@ -35,7 +34,7 @@ Run `-distinct` as a bare flag to eliminate identical rows across the entire wor
 
 ```bash
 # Keep only unique species and island pairs
-pytae penguins.parquet -select "species,island" -distinct
+pytae penguins.parquet -distinct "species,island"
 ```
 
 **Output:**
@@ -50,9 +49,26 @@ Chinstrap     Dream
 
 ---
 
+## Controlling Which Duplicates to Keep (`keep=`)
+
+Use `keep=` within the `-distinct` argument to control duplicate retention:
+
+```bash
+# Keep the last occurrence of each unique customer
+pytae orders.parquet -distinct "customer_id,keep=last"
+
+# Drop all duplicates (keep only rows that appeared exactly once)
+pytae orders.parquet -distinct "customer_id,keep=false"
+
+# Keep last duplicate across all columns
+pytae events.parquet -distinct "keep=last"
+```
+
+---
+
 ## Deduplicating Across Specific Columns
 
-Pass column names to restrict duplicate checks to specific identifiers, keeping the first matching record for all other columns:
+Pass column names to restrict duplicate checks to specific identifiers, keeping the matching record for all other columns:
 
 ```bash
 # Deduplicate based on customer identifier, retaining first order
@@ -61,6 +77,7 @@ pytae orders.parquet -distinct customer_id
 # Deduplicate based on composite keys
 pytae penguins.parquet -distinct "species,island"
 ```
+
 
 ---
 

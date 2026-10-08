@@ -31,9 +31,6 @@ from .other_utilities import (
     cols as _cols,
 )
 from .other_utilities import (
-    dedupe as _dedupe,
-)
-from .other_utilities import (
     distinct as _distinct,
 )
 from .other_utilities import (
@@ -217,15 +214,6 @@ class PtAccessor:
             Distinct DataFrame with a reset 0-indexed RangeIndex.
         """
         return _distinct(self._obj, *cols, keep=keep)
-
-    def dedupe(
-        self,
-        *cols: Any,
-        keep: str | bool = "first",
-    ) -> pd.DataFrame:
-        """Deprecated alias for df.pt.distinct(). Use df.pt.distinct() instead."""
-        return _dedupe(self._obj, *cols, keep=keep)
-
 
     def agg(
         self,

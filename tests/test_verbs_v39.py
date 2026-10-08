@@ -74,6 +74,46 @@ def test_distinct_rejects_lists():
         df.pt.distinct(["a", "b"])
 
 
+def test_distinct_keep_options():
+    df = pd.DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
+    # keep='first' (default)
+    res_first = df.pt.distinct("a", keep="first")
+    assert list(res_first["b"]) == [10, 30]
+
+    # keep='last'
+    res_last = df.pt.distinct("a", keep="last")
+    assert list(res_last["b"]) == [20, 30]
+
+    # keep=False
+    res_false = df.pt.distinct("a", keep=False)
+    assert list(res_false["b"]) == [30]
+
+
+def test_cli_distinct_keep(tmp_path, capsys):
+    from pytae import cli
+    df = pd.DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
+    path = str(tmp_path / "test.csv")
+    df.to_csv(path, index=False)
+
+    # -distinct with keep=last
+    assert cli.main([path, "-distinct", "a,keep=last", "-shape"]) == 0
+    assert "(2, 2)" in capsys.readouterr().out
+
+    # -distinct with keep=false
+    assert cli.main([path, "-distinct", "a,keep=false", "-shape"]) == 0
+    assert "(1, 2)" in capsys.readouterr().out
+
+    # -distinct keep=last across all columns
+    assert cli.main([path, "-distinct", "keep=last", "-shape"]) == 0
+    assert "(3, 2)" in capsys.readouterr().out
+
+    # -distinct invalid keep value
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-distinct", "keep=invalid"])
+    assert exc.value.code == 2
+    assert "invalid keep value" in capsys.readouterr().err
+
+
 # ==============================================================================
 # 3. Tests for by() and ungroup()
 # ==============================================================================

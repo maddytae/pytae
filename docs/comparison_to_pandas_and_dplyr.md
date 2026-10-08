@@ -60,8 +60,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 ### 2. `distinct` instead of `dedupe`, `unique`, or `drop_duplicates`
 - **Why `distinct`?** `distinct` is the universally recognized term in SQL (`SELECT DISTINCT`) and dplyr (`distinct()`). It clearly describes returning unique, deduplicated rows.
 - **Why not `unique`?** In Pandas, `.unique()` is a Series method returning a 1D numpy array of scalar values, not a DataFrame. Using `unique` would conflate scalar distinct values with row deduplication.
-- **Strict `*args` Only**: Following "one and only one way", `df.pt.distinct(*cols)` takes key columns strictly as `*args` (`df.pt.distinct("species", "island")`), rejecting nested lists with a clear `TypeError`.
-- **CLI Alignment**: The CLI uses `-distinct "species,island"`. (The legacy `-dedupe` is preserved as a backward-compatible alias).
+- **CLI Alignment**: The CLI uses `-distinct "species,island"`, with optional `keep=first|last|false` control.
 
 ### 3. `by` and `ungroup` for Scoped Grouping
 - **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and produces multi-level index outputs upon aggregation.

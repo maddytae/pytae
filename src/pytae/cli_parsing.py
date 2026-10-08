@@ -31,6 +31,40 @@ def parse_columns(raw: str) -> list[str]:
         return [_unquote_name(c.strip()) for c in tokens if c.strip()]
 
 
+def parse_distinct_spec(raw: str | None) -> tuple[list[str], str | bool]:
+    """Parse -distinct SPEC into (cols, keep).
+
+    Canonical syntax:
+      - Bare flag / "": all columns, keep='first'
+      - "col1,col2": subset of columns, keep='first'
+      - "keep=last": all columns, keep='last'
+      - "keep=false" or "keep=none": all columns, keep=False (drop all duplicates)
+      - "col1,col2,keep=last": subset of columns, keep='last'
+    """
+    if not raw or not raw.strip():
+        return [], "first"
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
+    cols: list[str] = []
+    keep: str | bool = "first"
+
+    for token in tokens:
+        if token.startswith("keep="):
+            val = token[len("keep="):].strip().strip("'\"").lower()
+            if val in ("first", "last"):
+                keep = val
+            elif val in ("false", "none"):
+                keep = False
+            else:
+                raise SystemExit(
+                    f"-distinct: invalid keep value '{val}'. Expected 'first', 'last', 'false', or 'none'"
+                )
+        else:
+            cols.append(_unquote_name(token))
+
+    return cols, keep
+
+
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
     """Parse legacy -sort_by SPEC: a comma-separated column list, optionally ending with

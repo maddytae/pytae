@@ -14,7 +14,7 @@ TABLE OF CONTENTS
     4.4.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
     4.6.  pt.pick() / df.pt.pick() — Extreme Row Slicing (formerly slice_max/min)
-    4.7.  pt.distinct() / df.pt.distinct() — Deduplication (formerly dedupe)
+    4.7.  pt.distinct() / df.pt.distinct() — Deduplication
     4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
     4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
@@ -122,7 +122,7 @@ Top-Level Functions exported by `pytae`:
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)  [slice_max/slice_min are deprecated aliases]
-  - pt.distinct(df, *cols, keep="first")  [dedupe is maintained as deprecated alias]
+  - pt.distinct(df, *cols, keep="first")
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, c="variable", v="value", index=None)
@@ -150,7 +150,7 @@ DataFrame Accessor (`df.pt`):
     df.pt.mutate(...)
     df.pt.arrange(...)
     df.pt.pick(...)      # [df.pt.slice_max / df.pt.slice_min are deprecated aliases]
-    df.pt.distinct(...)  # [df.pt.dedupe is deprecated alias]
+    df.pt.distinct(...)
     df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
@@ -481,16 +481,16 @@ Calling Styles:
 --------------------------------------------------------------------------------
 Removes duplicate rows across all columns or a specified subset of columns.
 Resets the index cleanly to a standard RangeIndex(0, 1, 2, ...).
-(Note: `dedupe` is maintained as a deprecated alias).
 
 Signature:
-  pt.distinct(df: pd.DataFrame, *cols: str | Sequence[str], keep: str = "first") -> pd.DataFrame
-  df.pt.distinct(*cols: str | Sequence[str], keep: str = "first") -> pd.DataFrame
+  pt.distinct(df: pd.DataFrame, *cols: str, keep: str | bool = "first") -> pd.DataFrame
+  df.pt.distinct(*cols: str, keep: str | bool = "first") -> pd.DataFrame
 
 Calling Styles:
-  df.pt.distinct()                        # Deduplicate across all columns
+  df.pt.distinct()                        # Deduplicate across all columns (keep="first")
   df.pt.distinct("species", "island")     # Deduplicate on subset of columns
   df.pt.distinct(keep="last")             # Keep last occurrence
+  df.pt.distinct("species", keep=False)   # Drop all duplicate occurrences
 
 
 4.8. pt.agg() / df.pt.agg() — Grouped Aggregation
@@ -700,7 +700,7 @@ Inspection & Summary Flags:
   -meta                 Display zero-scan Parquet metadata
   -diff PATH            Compare schema, shape, null counts against another file
   -value_counts         Value counts for categorical/string columns
-  -distinct [COLS]      Drop duplicate rows across all or specified columns (-dedupe is deprecated alias)
+  -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -sample [N]           Random sample of N rows (default 5)
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
@@ -812,13 +812,12 @@ its own new line:
 ```
 This ensures readable git diffs, clean execution tracebacks, and syntactic consistency.
 
-6.4. What are the key verb deprecations (filter, pick, distinct)?
+6.4. What are the key canonical verbs (filter, pick, distinct)?
 -----------------------------------------------------------------
-Pytae v3.9 standardizes on modern naming:
+Pytae standardizes on canonical modern naming:
 - `pt.filter()` / `df.pt.filter()` / `-filter`: Replaces `qry`
 - `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min`
-- `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Replaces `dedupe`
-Deprecated aliases emit clear DeprecationWarnings while continuing to function for backwards compatibility.
+- `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------
@@ -2156,13 +2155,12 @@ Drop duplicate rows across the intermediate DataFrame with full control over col
 
 | Flag | Syntax / Format | Description |
 |---|---|---|
-| `-distinct` | Bare flag | Drop duplicate rows checking all columns |
+| `-distinct` | Bare flag | Drop duplicate rows checking all columns (`keep=first`) |
 | `-distinct COLS` | Comma-separated list | Drop duplicate rows based on specified subset of columns |
+| `-distinct "...keep=last"` | `keep=last` | Keep last occurrence instead of first |
+| `-distinct "...keep=false"` | `keep=false` or `keep=none` | Drop all duplicate occurrences |
 
-`-distinct` keeps the first occurrence of each unique combination and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.distinct(df, *cols)` or `df.pt.distinct(*cols)`.
-
-> [!NOTE]
-> `-dedupe` is preserved as a backward-compatible alias pointing to `-distinct`.
+`-distinct` keeps unique combinations and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.distinct(df, *cols, keep="first")` or `df.pt.distinct(*cols, keep="first")`.
 
 ---
 
@@ -2172,7 +2170,7 @@ Run `-distinct` as a bare flag to eliminate identical rows across the entire wor
 
 ```bash
 # Keep only unique species and island pairs
-pytae penguins.parquet -select "species,island" -distinct
+pytae penguins.parquet -distinct "species,island"
 ```
 
 **Output:**
@@ -2187,9 +2185,26 @@ Chinstrap     Dream
 
 ---
 
+## Controlling Which Duplicates to Keep (`keep=`)
+
+Use `keep=` within the `-distinct` argument to control duplicate retention:
+
+```bash
+# Keep the last occurrence of each unique customer
+pytae orders.parquet -distinct "customer_id,keep=last"
+
+# Drop all duplicates (keep only rows that appeared exactly once)
+pytae orders.parquet -distinct "customer_id,keep=false"
+
+# Keep last duplicate across all columns
+pytae events.parquet -distinct "keep=last"
+```
+
+---
+
 ## Deduplicating Across Specific Columns
 
-Pass column names to restrict duplicate checks to specific identifiers, keeping the first matching record for all other columns:
+Pass column names to restrict duplicate checks to specific identifiers, keeping the matching record for all other columns:
 
 ```bash
 # Deduplicate based on customer identifier, retaining first order
@@ -2198,6 +2213,7 @@ pytae orders.parquet -distinct customer_id
 # Deduplicate based on composite keys
 pytae penguins.parquet -distinct "species,island"
 ```
+
 
 ---
 
@@ -3868,7 +3884,7 @@ pytae -help sql
 pytae -help reshape
 pytae -help arrange
 pytae -help slice
-pytae -help dedupe
+pytae -help distinct
 ```
 
 ################################################################################
@@ -10056,8 +10072,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 ### 2. `distinct` instead of `dedupe`, `unique`, or `drop_duplicates`
 - **Why `distinct`?** `distinct` is the universally recognized term in SQL (`SELECT DISTINCT`) and dplyr (`distinct()`). It clearly describes returning unique, deduplicated rows.
 - **Why not `unique`?** In Pandas, `.unique()` is a Series method returning a 1D numpy array of scalar values, not a DataFrame. Using `unique` would conflate scalar distinct values with row deduplication.
-- **Strict `*args` Only**: Following "one and only one way", `df.pt.distinct(*cols)` takes key columns strictly as `*args` (`df.pt.distinct("species", "island")`), rejecting nested lists with a clear `TypeError`.
-- **CLI Alignment**: The CLI uses `-distinct "species,island"`. (The legacy `-dedupe` is preserved as a backward-compatible alias).
+- **CLI Alignment**: The CLI uses `-distinct "species,island"`, with optional `keep=first|last|false` control.
 
 ### 3. `by` and `ungroup` for Scoped Grouping
 - **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and produces multi-level index outputs upon aggregation.
@@ -10334,7 +10349,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.8.1"
+version = "3.8.2"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -10431,7 +10446,6 @@ from .mutate import lit, mutate
 from .other_utilities import (
     clean_columns,
     cols,
-    dedupe,
     distinct,
     format_glimpse,
     glimpse,
@@ -10528,7 +10542,6 @@ __all__ = [
     "slice_max",
     "slice_min",
     "distinct",
-    "dedupe",
     "agg",
     "long",
     "wide",
@@ -10674,9 +10687,6 @@ from .other_utilities import (
 )
 from .other_utilities import (
     cols as _cols,
-)
-from .other_utilities import (
-    dedupe as _dedupe,
 )
 from .other_utilities import (
     distinct as _distinct,
@@ -10862,15 +10872,6 @@ class PtAccessor:
             Distinct DataFrame with a reset 0-indexed RangeIndex.
         """
         return _distinct(self._obj, *cols, keep=keep)
-
-    def dedupe(
-        self,
-        *cols: Any,
-        keep: str | bool = "first",
-    ) -> pd.DataFrame:
-        """Deprecated alias for df.pt.distinct(). Use df.pt.distinct() instead."""
-        return _dedupe(self._obj, *cols, keep=keep)
-
 
     def agg(
         self,
@@ -11940,7 +11941,7 @@ _CLI_FLAGS = {
     "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
     "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
-    "-dedupe", "--dedupe", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
+    "-distinct", "--distinct", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
     "-arrange", "--arrange", "-pick", "--pick", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
     "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
@@ -12070,9 +12071,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="render horizontal frequency bars with counts and percentages for a categorical column")
     parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
                          help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
-    parser.add_argument("-distinct", "--distinct", "-dedupe", "--dedupe", dest="distinct", nargs="?", const="", default=None,
-                         metavar="COLS", action=_OrderedValue,
-                         help="drop duplicate rows, optionally restricted to specific columns, e.g. -distinct or -distinct \"col1,col2\"")
+    parser.add_argument("-distinct", "--distinct", dest="distinct", nargs="?", const="", default=None,
+                         metavar="SPEC", action=_OrderedValue,
+                         help="drop duplicate rows, optionally restricted to specific columns and keep mode, e.g. -distinct, -distinct \"col1,col2\", or -distinct \"keep=last\"")
     parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
                          action=_OrderedValue, help="print N randomly sampled rows (default 5)")
     parser.add_argument("-seed", "--seed", dest="seed", type=int, default=None, metavar="N",
@@ -12235,7 +12236,9 @@ def main(argv: list[str] | None = None) -> int:
         if any(e in ("-query", "--query") for e in extras):
             parser.error("'-query' has been deprecated; use '-qry' instead")
         if any(e in ("-unique", "--unique") for e in extras):
-            parser.error("'-unique' has been deprecated; use '-dedupe' instead")
+            parser.error("'-unique' has been removed; use '-distinct' instead")
+        if any(e in ("-dedupe", "--dedupe") for e in extras):
+            parser.error("'-dedupe' has been removed; use '-distinct' instead")
         if any(e in ("-sort_by", "--sort_by", "-sort", "--sort") for e in extras):
             parser.error("'-sort_by' has been deprecated; use '-arrange' instead")
         if any(e in ("-drop_na", "--drop_na") for e in extras):
@@ -13091,35 +13094,24 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "distinct": KeywordHelp(
         name="distinct",
-        flag="-distinct, --distinct [COLS]",
-        syntax="pytae <path> -distinct [\"col1,col2\"]",
-        summary="Drop duplicate rows (across all or specific columns).",
-        description="Drops duplicate records, keeping the first occurrence.",
+        flag="-distinct, --distinct [SPEC]",
+        syntax="pytae <path> -distinct [\"col1,col2[,keep=first|last|false]\"]",
+        summary="Drop duplicate rows (across all or specific columns, with keep control).",
+        description="Drops duplicate records, with configurable duplicate retention (first, last, or drop all).",
         options=[
-            "Bare flag : Deduplicate across all columns.",
+            "Bare flag : Deduplicate across all columns (default keep=first).",
             "\"col1,col2\" : Deduplicate restricted to specified subset of columns.",
+            "keep=first : Keep first occurrence of duplicates (default).",
+            "keep=last : Keep last occurrence of duplicates.",
+            "keep=false / keep=none : Drop all occurrences of duplicates.",
         ],
         examples=[
             "pytae penguins.parquet -select \"species,island\" -distinct",
-            "pytae penguins.parquet -distinct \"species,island\" -head 5",
+            "pytae penguins.parquet -distinct \"species,island\"",
+            "pytae penguins.parquet -distinct \"species,island,keep=last\"",
+            "pytae penguins.parquet -distinct \"keep=last\"",
         ],
         see_also=["-dropna", "-filter"],
-    ),
-    "dedupe": KeywordHelp(
-        name="dedupe",
-        flag="-dedupe, --dedupe [COLS]",
-        syntax="pytae <path> -dedupe [\"col1,col2\"]",
-        summary="Drop duplicate rows (deprecated: use -distinct).",
-        description="Deprecated alias for -distinct. Drops duplicate records, keeping the first occurrence.",
-        options=[
-            "Bare flag : Deduplicate across all columns.",
-            "\"col1,col2\" : Deduplicate restricted to specified subset of columns.",
-        ],
-        examples=[
-            "pytae penguins.parquet -select \"species,island\" -dedupe",
-            "pytae penguins.parquet -dedupe \"species,island\" -head 5",
-        ],
-        see_also=["-distinct", "-dropna", "-filter"],
     ),
     "pretty": KeywordHelp(
         name="pretty",
@@ -13267,6 +13259,40 @@ def parse_columns(raw: str) -> list[str]:
     except (ValueError, SyntaxError):
         tokens = _tokenize(raw, ",", track_brackets=True)
         return [_unquote_name(c.strip()) for c in tokens if c.strip()]
+
+
+def parse_distinct_spec(raw: str | None) -> tuple[list[str], str | bool]:
+    """Parse -distinct SPEC into (cols, keep).
+
+    Canonical syntax:
+      - Bare flag / "": all columns, keep='first'
+      - "col1,col2": subset of columns, keep='first'
+      - "keep=last": all columns, keep='last'
+      - "keep=false" or "keep=none": all columns, keep=False (drop all duplicates)
+      - "col1,col2,keep=last": subset of columns, keep='last'
+    """
+    if not raw or not raw.strip():
+        return [], "first"
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
+    cols: list[str] = []
+    keep: str | bool = "first"
+
+    for token in tokens:
+        if token.startswith("keep="):
+            val = token[len("keep="):].strip().strip("'\"").lower()
+            if val in ("first", "last"):
+                keep = val
+            elif val in ("false", "none"):
+                keep = False
+            else:
+                raise SystemExit(
+                    f"-distinct: invalid keep value '{val}'. Expected 'first', 'last', 'false', or 'none'"
+                )
+        else:
+            cols.append(_unquote_name(token))
+
+    return cols, keep
 
 
 
@@ -14208,21 +14234,20 @@ class _Pipeline:
     def apply_distinct(self, spec: str | None) -> str | None:
         """Drop duplicate rows. Returns an error message or None."""
         df = self.dataframe()
-        if not spec:
-            self._df = df.drop_duplicates().reset_index(drop=True)
-            return None
-        from pytae.cli_parsing import parse_columns, unknown_columns_message
-        cols = parse_columns(spec)
-        available = list(df.columns)
-        unknown = [c for c in cols if c not in available]
-        if unknown:
-            return unknown_columns_message("-distinct", unknown, available)
-        self._df = df.drop_duplicates(subset=cols).reset_index(drop=True)
+        from pytae.cli_parsing import parse_distinct_spec, unknown_columns_message
+        try:
+            cols, keep = parse_distinct_spec(spec)
+        except SystemExit as exc:
+            return str(exc)
+        if cols:
+            available = list(df.columns)
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-distinct", unknown, available)
+            self._df = df.drop_duplicates(subset=cols, keep=keep).reset_index(drop=True)
+        else:
+            self._df = df.drop_duplicates(keep=keep).reset_index(drop=True)
         return None
-
-    def apply_dedupe(self, spec: str | None) -> str | None:
-        """Deprecated alias for apply_distinct."""
-        return self.apply_distinct(spec)
 
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""
@@ -15177,8 +15202,8 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
-        elif op in ("distinct", "dedupe"):
-            distinct_val = _next_op_val(op, getattr(args, op, None))
+        elif op == "distinct":
+            distinct_val = _next_op_val("distinct", getattr(args, "distinct", None))
             err = pipeline.apply_distinct(distinct_val)
             if err:
                 return _fail(parser, batch, err)
@@ -16702,24 +16727,6 @@ def distinct(
 
     subset = valid_cols if valid_cols else None
     return df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)
-
-
-def dedupe(
-    df: pd.DataFrame,
-    *cols: Any,
-    keep: str | bool = "first",
-) -> pd.DataFrame:
-    """Deprecated alias for distinct(). Use distinct() or df.pt.distinct() instead."""
-    import warnings
-    warnings.warn(
-        "dedupe() is deprecated; use distinct() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # For backward compatibility, if a single list/tuple was passed to dedupe, unpack it
-    if len(cols) == 1 and isinstance(cols[0], (list, tuple)):
-        return distinct(df, *cols[0], keep=keep)
-    return distinct(df, *cols, keep=keep)
 
 ################################################################################
 # FILE: src/pytae/plotting.py
@@ -20246,15 +20253,15 @@ def test_cli_arrange_and_slice(tmp_path, capsys):
     assert "(2, 2)" in out
 
 
-def test_cli_dedupe_and_dropna(tmp_path, capsys):
+def test_cli_distinct_and_dropna(tmp_path, capsys):
     df = pd.DataFrame({
         "a": [1, 1, 2, None],
         "b": [10, 20, 30, 40],
     })
     path = _write_csv(tmp_path, df)
 
-    # Bare -dedupe drops duplicate rows
-    exit_code = cli.main([path, "-dedupe", "a", "-shape"])
+    # -distinct drops duplicate rows
+    exit_code = cli.main([path, "-distinct", "a", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(3, 2)" in out
@@ -21272,20 +21279,28 @@ def test_order_unique_then_shape_uses_deduplicated_frame(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-dedupe", "-shape"])
+    exit_code = cli.main([path, "-distinct", "-shape"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    # One duplicated row is removed by -dedupe, then -shape reflects the reduced frame.
+    # One duplicated row is removed by -distinct, then -shape reflects the reduced frame.
     assert "(2, 2)" in out
 
 
-def test_unique_flag_deprecated(tmp_path, capsys):
+def test_unique_flag_removed(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 1]}))
     with pytest.raises(SystemExit) as exc:
         cli.main([path, "-unique"])
     assert exc.value.code == 2
-    assert "'-unique' has been deprecated; use '-dedupe' instead" in capsys.readouterr().err
+    assert "'-unique' has been removed; use '-distinct' instead" in capsys.readouterr().err
+
+
+def test_dedupe_flag_removed(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 1]}))
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-dedupe"])
+    assert exc.value.code == 2
+    assert "'-dedupe' has been removed; use '-distinct' instead" in capsys.readouterr().err
 
 
 def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
@@ -26881,30 +26896,40 @@ def test_glimpse_empty_dataframe():
     assert "Columns: 0" in out_str
 
 
-def test_dedupe_all_columns():
+def test_distinct_all_columns():
     df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "x", "y"]})
-    res_func = pt.dedupe(df)
-    res_acc = df.pt.dedupe()
+    res_func = pt.distinct(df)
+    res_acc = df.pt.distinct()
     expected = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
     pd.testing.assert_frame_equal(res_func, expected)
     pd.testing.assert_frame_equal(res_acc, expected)
 
 
-def test_dedupe_subset_columns():
+def test_distinct_subset_columns():
     df = pd.DataFrame({"id": [1, 1, 2], "val": [10, 20, 30]})
-    res = df.pt.dedupe("id")
+    res = df.pt.distinct("id")
     expected = pd.DataFrame({"id": [1, 2], "val": [10, 30]})
     pd.testing.assert_frame_equal(res, expected)
 
-    res_last = df.pt.dedupe("id", keep="last")
+    res_last = df.pt.distinct("id", keep="last")
     expected_last = pd.DataFrame({"id": [1, 2], "val": [20, 30]})
     pd.testing.assert_frame_equal(res_last, expected_last)
 
+    res_false = df.pt.distinct("id", keep=False)
+    expected_false = pd.DataFrame({"id": [2], "val": [30]})
+    pd.testing.assert_frame_equal(res_false, expected_false)
 
-def test_dedupe_unknown_column_raises():
+
+def test_distinct_unknown_column_raises():
     df = pd.DataFrame({"a": [1, 2]})
-    with pytest.raises(KeyError, match=r"(dedupe|distinct): column\(s\) \['nonexistent'\] not found"):
-        df.pt.dedupe("nonexistent")
+    with pytest.raises(KeyError, match=r"distinct: column\(s\) \['nonexistent'\] not found"):
+        df.pt.distinct("nonexistent")
+
+
+def test_dedupe_removed():
+    df = pd.DataFrame({"a": [1, 2]})
+    assert not hasattr(pt, "dedupe")
+    assert not hasattr(df.pt, "dedupe")
 
 ################################################################################
 # FILE: tests/test_verbs_v39.py
@@ -26983,6 +27008,46 @@ def test_distinct_rejects_lists():
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
     with pytest.raises(TypeError, match="distinct\\(\\) takes column names as positional arguments.*Lists are not accepted"):
         df.pt.distinct(["a", "b"])
+
+
+def test_distinct_keep_options():
+    df = pd.DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
+    # keep='first' (default)
+    res_first = df.pt.distinct("a", keep="first")
+    assert list(res_first["b"]) == [10, 30]
+
+    # keep='last'
+    res_last = df.pt.distinct("a", keep="last")
+    assert list(res_last["b"]) == [20, 30]
+
+    # keep=False
+    res_false = df.pt.distinct("a", keep=False)
+    assert list(res_false["b"]) == [30]
+
+
+def test_cli_distinct_keep(tmp_path, capsys):
+    from pytae import cli
+    df = pd.DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
+    path = str(tmp_path / "test.csv")
+    df.to_csv(path, index=False)
+
+    # -distinct with keep=last
+    assert cli.main([path, "-distinct", "a,keep=last", "-shape"]) == 0
+    assert "(2, 2)" in capsys.readouterr().out
+
+    # -distinct with keep=false
+    assert cli.main([path, "-distinct", "a,keep=false", "-shape"]) == 0
+    assert "(1, 2)" in capsys.readouterr().out
+
+    # -distinct keep=last across all columns
+    assert cli.main([path, "-distinct", "keep=last", "-shape"]) == 0
+    assert "(3, 2)" in capsys.readouterr().out
+
+    # -distinct invalid keep value
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-distinct", "keep=invalid"])
+    assert exc.value.code == 2
+    assert "invalid keep value" in capsys.readouterr().err
 
 
 # ==============================================================================

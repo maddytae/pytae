@@ -355,21 +355,3 @@ def distinct(
 
     subset = valid_cols if valid_cols else None
     return df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)
-
-
-def dedupe(
-    df: pd.DataFrame,
-    *cols: Any,
-    keep: str | bool = "first",
-) -> pd.DataFrame:
-    """Deprecated alias for distinct(). Use distinct() or df.pt.distinct() instead."""
-    import warnings
-    warnings.warn(
-        "dedupe() is deprecated; use distinct() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # For backward compatibility, if a single list/tuple was passed to dedupe, unpack it
-    if len(cols) == 1 and isinstance(cols[0], (list, tuple)):
-        return distinct(df, *cols[0], keep=keep)
-    return distinct(df, *cols, keep=keep)
