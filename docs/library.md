@@ -12,7 +12,7 @@
   - [1. Row Filtering (`qry`)](#1-row-filtering--qry)
   - [2. Column Selection (`select`)](#2-column-selection--select)
   - [3. Feature Engineering (`mutate`)](#3-feature-engineering--mutate)
-  - [4. Sorting & Slicing (`arrange`, `slice_max`, `slice_min`)](#4-sorting--slicing--arrange-slice_max-slice_min)
+  - [4. Sorting & Picking (`arrange`, `pick`)](#4-sorting--picking-extreme-rows--arrange--pick)
   - [5. Deduplication (`drop_duplicates`)](#5-deduplication--removing-duplicate-rows)
   - [6. Pure Reshaping (`long`, `wide`)](#6-pure-reshaping--long-wide)
   - [7. 2D Pivot Tables (`pivot`)](#7-2d-pivot-tables--pivot)

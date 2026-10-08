@@ -387,7 +387,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Standardize messy headers** | `-clean_columns` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Filter rows using expressions** | `-filter` | [Row Filtering](cli/filter.md) |
 | **Drop rows containing NaN** | `-dropna` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
-| **Top/bottom N rows by column** | `-slice_max`, `-slice_min` | [Row Slicing](cli/slice.md) |
+| **Top/bottom N rows by column** | `-pick` | [Row Picking](cli/pick.md) |
 | **Sort rows** | `-arrange` | [Row Sorting](cli/arrange.md) |
 | **Deduplicate rows** | `-distinct` | [Distinct Rows](cli/distinct.md) |
 | **Compute / mutate columns** | `-mutate` | [Mutating & Computing](cli/mutate.md) |
