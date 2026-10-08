@@ -1063,7 +1063,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ################################################################################
 # pytae — CLI Reference & Architecture Hub
 
-The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.qry()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
+The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
 
 ---
 
@@ -1097,13 +1097,13 @@ The `pytae` CLI provides high-performance command-line data processing for tabul
 
 The `pytae` CLI executes operations sequentially from left to right as an in-memory pipeline:
 
-1. **Flag Order Is the Pipeline**: Flags are evaluated in the order written. For instance, `-qry ... -select ... -agg ...` filters rows first, narrows columns second, and aggregates the remaining columns third.
+1. **Flag Order Is the Pipeline**: Flags are evaluated in the order written. For instance, `-filter ... -select ... -agg ...` filters rows first, narrows columns second, and aggregates the remaining columns third.
 2. **State Handoff**: Each transformation step passes its resulting DataFrame to the next step.
 3. **Execution Modes**:
    - **Single-file mode** (standard): `pytae <path> [operations...] [output]`
    - **Multi-file mode**: `pytae -file "alias1=path1; alias2=path2" -merge ...` (replaces positional path)
 4. **Terminal vs Non-Terminal Steps**:
-   - Most operations (`-select`, `-qry`, `-mutate`, `-arrange`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
+   - Most operations (`-select`, `-filter`, `-mutate`, `-arrange`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
    - Non-DataFrame inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`, `-meta`, `-diff`) print summary text and terminate the pipeline (allowing only `-o clip` to copy the output).
 5. **Output Routing**:
    - By default, the terminal displays the final result on stdout.
@@ -1113,12 +1113,13 @@ The `pytae` CLI executes operations sequentially from left to right as an in-mem
 ```bash
 # Example multi-step pipeline: filter rows -> compute column -> pick subset -> export
 pytae sales.parquet \
-  -qry "region == 'West', revenue > 1000" \
+  -filter "region == 'West', revenue > 1000" \
   -mutate "profit_margin = (revenue - cost) / revenue" \
   -select "order_id,region,revenue,profit_margin" \
   -arrange "profit_margin desc" \
   -o high_margin_west.parquet
 ```
+
 
 ---
 
@@ -1336,7 +1337,7 @@ Compare the active pipeline table against another dataset file. Generates a stru
 
 ```bash
 pytae file_v1.parquet -diff file_v2.parquet
-pytae current.csv -qry "status == 'active'" -diff baseline.parquet
+pytae current.csv -filter "status == 'active'" -diff baseline.parquet
 ```
 
 👉 See the complete guide: **[Dataset & Schema Diffing Guide](cli/diff.md)**
@@ -1487,11 +1488,11 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 When arguments contain spaces, special operators, or commas, wrap the entire specification in double quotes `""`:
 ```bash
 pytae data.parquet -select "bill length mm,species"
-pytae data.parquet -qry "body_mass_g > 3500, species = 'Adelie'"
+pytae data.parquet -filter "body_mass_g > 3500, species = 'Adelie'"
 ```
 
 ### 2. Assignment vs Mapping
-- **`=` is used for assignment**: Creating columns in `-mutate` (`"mass_kg = body_mass_g / 1000"`) or filtering in `-qry` (`"species = 'Adelie'"`).
+- **`=` is used for assignment**: Creating columns in `-mutate` (`"mass_kg = body_mass_g / 1000"`) or filtering in `-filter` (`"species = 'Adelie'"`).
 - **`:` is used for translation mappings**: Renaming in `-rename` (`"old_name:new_name"`) or replacement mappings in `-replace_values` (`"v='old:new'"`).
 
 ### 3. Bracketed Column Names
@@ -1528,7 +1529,7 @@ python -c "import pytae; pytae.sample_data['flights'].to_parquet('flights.parque
 
 ```bash
 # Filter and aggregate
-pytae penguins.parquet -qry "species = 'Adelie'" -by species -agg mean
+pytae penguins.parquet -filter "species = 'Adelie'" -by species -agg mean
 
 # Two-way frequency pivot matrix
 pytae penguins.parquet -pivot "r=species,c=island,v=sex,a=n"
@@ -3876,14 +3877,14 @@ pytae -help
 
 # Keyword-focused help with syntax and copy-pasteable examples
 pytae -help agg
-pytae -help qry
+pytae -help filter
 pytae -help mutate
 pytae -help select
 pytae -help pivot
 pytae -help sql
 pytae -help reshape
 pytae -help arrange
-pytae -help slice
+pytae -help pick
 pytae -help distinct
 ```
 
@@ -4878,11 +4879,11 @@ pytae -file "customers.csv=c; orders.parquet=o" \
 - [Calling Paradigms: Accessor vs. Function](#calling-paradigms)
 - [Master Modules & Notebooks Directory](#modules-directory)
 - [Functional Areas at a Glance](#functional-areas)
-  - [1. Row Filtering (`qry`)](#1-row-filtering--qry)
+  - [1. Row Filtering (`filter`)](#1-row-filtering--filter)
   - [2. Column Selection (`select`)](#2-column-selection--select)
   - [3. Feature Engineering (`mutate`)](#3-feature-engineering--mutate)
   - [4. Sorting & Picking (`arrange`, `pick`)](#4-sorting--picking-extreme-rows--arrange--pick)
-  - [5. Deduplication (`drop_duplicates`)](#5-deduplication--removing-duplicate-rows)
+  - [5. Deduplication (`distinct`)](#5-distinct-rows--removing-duplicate-rows)
   - [6. Pure Reshaping (`long`, `wide`)](#6-pure-reshaping--long-wide)
   - [7. 2D Pivot Tables (`pivot`)](#7-2d-pivot-tables--pivot)
   - [8. Aggregation (`agg`)](#8-aggregation--agg)
@@ -5231,14 +5232,14 @@ flights  = pt.sample("flights")
 
 # `agg` — Reference
 
-`agg` aggregates numeric columns with explicit grouping via `by=` (or whole-table summary when `by=None`).
+`agg` aggregates numeric columns with grouping inherited from standalone `pt.by()` (or computes a whole-table summary when no grouping is set).
 
 ### Calling Styles
 
-1. **Explicit group with simple aggregation**: `.pt.agg('species', 'mean')` or `.pt.agg('species', ['sum', 'mean', 'n'])`
-2. **Keyword column mappings**: `.pt.agg('species', count='n', bill_length_mm='mean', body_mass_g=['sum', 'mean'])`
-3. **Named output columns**: `.pt.agg('species', total='body_mass_g:sum')`
-4. **Whole-table summary**: `.pt.agg(None, 'mean')`
+1. **Grouped aggregation**: `df.pt.by("species").pt.agg("mean")` or `df.pt.by("species").pt.agg(["sum", "mean", "n"])
+2. **Keyword column mappings**: `df.pt.by("species").pt.agg(count="n", bill_length_mm="mean", body_mass_g=["sum", "mean"])
+3. **Named output columns**: `df.pt.by("species").pt.agg(total="body_mass_g:sum")
+4. **Whole-table summary**: `df.pt.agg("mean")` (computes grand totals across the entire table)
 
 ---
 
@@ -5464,7 +5465,7 @@ Because  operations return DataFrames, you can chain them seamlessly with standa
 ```python
 (
     penguins
-    .pt.qry('body_mass_g > 3000')
+    .pt.filter('body_mass_g > 3000')
     .pt.select('species', 'sex', 'body_mass_g')
     .pt.by('species', 'sex')
     .pt.agg(a=['mean', 'max', 'n'])
@@ -5543,7 +5544,7 @@ smoker   avg bill  total tip  table count
 (
     tips
     .rename(columns={'total_bill': 'total bill'})
-    .pt.qry("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
+    .pt.filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
     .pt.select('smoker', 'tip', '[total bill]')
     .pt.by('smoker')
     .pt.agg("tip = mean, [total bill] = mean, n = n")
@@ -5820,7 +5821,7 @@ species     island  body_mass_g     sex
 # Filter heavy penguins -> select columns -> deduplicate -> arrange
 (
     penguins
-    .pt.qry("body_mass_g > 4000")
+    .pt.filter("body_mass_g > 4000")
     .pt.select("species", "island")
     .pt.distinct()
     .pt.arrange("species", "island")
@@ -7017,13 +7018,13 @@ body mass g  bill length mm       bmi
 ```
 
 ## Real-world pipeline: mutate → filter → select
-`mutate()` chains like any other pytae method — filter on a column you just derived with `qry()`.
+`mutate()` chains like any other pytae method — filter on a column you just derived with `filter()`.
 
 ```python
 (
     penguins
     .pt.mutate(bmi='body_mass_g / bill_length_mm ** 2')
-    .pt.qry(bmi='> 2')
+    .pt.filter(bmi='> 2')
     .pt.select('species', 'island', 'body_mass_g', 'bill_length_mm', 'bmi')
     .sample(10)
 )
@@ -7515,7 +7516,7 @@ master_df = (
         **{"mass lbs": "mass_kg * 2.20462"},
         heavy_lbs="[mass lbs] > 9.5",
         
-        # 9. Grouped window transforms via by= without collapsing rows
+        # 9. Grouped window transforms via standalone pt.by() without collapsing rows
         species_avg_mass="mean(mass_kg)",
         mass_diff="mass_kg - species_avg_mass",
         group_size="n",
@@ -7733,7 +7734,7 @@ species     island  bill_length_mm  bill_depth_mm  flipper_length_mm  \
 # Non-destructive: returns self, allowing inspection mid-pipeline
 (
     penguins
-    .pt.qry("body_mass_g > 4000")
+    .pt.filter("body_mass_g > 4000")
     .pt.glimpse()
     .pt.select("species", "island", "body_mass_g")
     .head(3)
@@ -8432,7 +8433,7 @@ tips = pt.sample("tips")
 # 1.1 DataFrame Accessor: single subplot without mosaic, chained directly from wrangling
 (
     tips
-    .pt.qry("total_bill > 10")
+    .pt.filter("total_bill > 10")
     .pt.by("day", "sex")
     .pt.agg(total_bill="mean")
     .pt.plot(
@@ -8759,7 +8760,7 @@ Output:
 
 ## 5. End-to-End Pipelines: Mixing pandas, pytae, and Multi-Panel Mosaics
 
-Because `pytae` methods return standard pandas DataFrames, you can freely mix standard pandas operations (`.dropna()`, `.rename()`, `.sort_values()`, `.query()`) with `pytae` verbs (`.pt.mutate()`, `.pt.qry()`, `.pt.select()`) in a single chained pipeline that ends directly in a multi-panel mosaic dashboard.
+Because `pytae` methods return standard pandas DataFrames, you can freely mix standard pandas operations (`.dropna()`, `.rename()`, `.sort_values()`, `.query()`) with `pytae` verbs (`.pt.mutate()`, `.pt.filter()`, `.pt.select()`) in a single chained pipeline that ends directly in a multi-panel mosaic dashboard.
 
 ```python
 # 5.1 Continuous Accessor Chain: pandas + pytae + mosaic dashboard
@@ -8770,7 +8771,7 @@ wrangle_penguins = (
     # 2. pytae: Feature engineering (compute ratio and scaled mass)
     .pt.mutate(bill_ratio="bill_length_mm / bill_depth_mm", mass_kg="body_mass_g / 1000")
     # 3. pytae: Expressive filter
-    .pt.qry("mass_kg > 3.0")
+    .pt.filter("mass_kg > 3.0")
     # 4. pandas: Sort observations
     .sort_values("body_mass_g", ascending=False)
 )
@@ -9503,7 +9504,7 @@ bill_length_mm  bill_depth_mm  flipper_length_mm
 # Columns containing 'bill' or 'flipper' in name, used in a full chain ;  behaviour here is | and not &
 (
     penguins
-    .pt.qry(species=['Adelie', 'Gentoo'])
+    .pt.filter(species=['Adelie', 'Gentoo'])
     .pt.select('species', 'island', contains=['bill', 'flipper'])
     .pt.by('species', 'island')
     .pt.agg(a=['mean', 'n'])
@@ -10078,7 +10079,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and produces multi-level index outputs upon aggregation.
 - In Pytae, `.pt.by(*cols)` sets an active grouping context directly on the DataFrame that flows naturally into downstream operations:
   - `.pt.mutate()` applies window calculations grouped by those columns.
-  - `.pt.slice_max()` / `.pt.slice_min()` slices top/bottom rows per group.
+  - `.pt.pick()` slices top/bottom rows per group (`order='max'` or `'min'`).
   - `.pt.agg()` aggregates per group and automatically clears the grouping context upon completion.
 - **Strict `*args` Only**: `df.pt.by("species", "island")` requires `*args`. Nested lists (`df.pt.by(["species"])`) and `df.pt.by(None)` are strictly rejected with helpful errors directing users to `df.pt.ungroup()`.
 - **Precedence**: If a second `.pt.by()` is called, it cleanly overwrites the previous grouping context.
@@ -10096,7 +10097,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 
 ### 7. Default Boolean for `dropna`: Non-Destructive `dropna=False`
 - **Pandas Trap (`dropna=True`)**: In Pandas, `df.groupby(..., dropna=True)` drops rows where the grouping keys contain `NaN` or `None` by default! This causes silent data loss in analytical pipelines, hiding unclassified, orphan, or missing data records unless the user explicitly remembers to pass `dropna=False`.
-- **Pytae Design (`dropna=False`)**: Pytae aggregation, window mutation, and pivot verbs (`agg`, `mutate(by=...)`, `pivot`) default to **`dropna=False`**. Missing values (`NaN`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns. Nothing is hidden or discarded silently. If the analyst explicitly wants to discard missing group keys, they specify `dropna=True`.
+- **Pytae Design (`dropna=False`)**: Pytae aggregation, window mutation, and pivot verbs (`agg`, `mutate`, `pivot`) default to **`dropna=False`**. Missing values (`NaN`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns. Nothing is hidden or discarded silently. If the analyst explicitly wants to discard missing group keys, they specify `dropna=True`.
 - **dplyr Alignment**: This non-destructive default matches R's `dplyr` (which treats `NA` group levels as valid grouping keys by default rather than discarding them).
 - **CLI Consistency**: Top-level `-dropna [COLS]` performs row-level dropping across the dataset (matching `df.dropna(subset=...)`), whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
 

@@ -66,7 +66,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and produces multi-level index outputs upon aggregation.
 - In Pytae, `.pt.by(*cols)` sets an active grouping context directly on the DataFrame that flows naturally into downstream operations:
   - `.pt.mutate()` applies window calculations grouped by those columns.
-  - `.pt.slice_max()` / `.pt.slice_min()` slices top/bottom rows per group.
+  - `.pt.pick()` slices top/bottom rows per group (`order='max'` or `'min'`).
   - `.pt.agg()` aggregates per group and automatically clears the grouping context upon completion.
 - **Strict `*args` Only**: `df.pt.by("species", "island")` requires `*args`. Nested lists (`df.pt.by(["species"])`) and `df.pt.by(None)` are strictly rejected with helpful errors directing users to `df.pt.ungroup()`.
 - **Precedence**: If a second `.pt.by()` is called, it cleanly overwrites the previous grouping context.
@@ -84,7 +84,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 
 ### 7. Default Boolean for `dropna`: Non-Destructive `dropna=False`
 - **Pandas Trap (`dropna=True`)**: In Pandas, `df.groupby(..., dropna=True)` drops rows where the grouping keys contain `NaN` or `None` by default! This causes silent data loss in analytical pipelines, hiding unclassified, orphan, or missing data records unless the user explicitly remembers to pass `dropna=False`.
-- **Pytae Design (`dropna=False`)**: Pytae aggregation, window mutation, and pivot verbs (`agg`, `mutate(by=...)`, `pivot`) default to **`dropna=False`**. Missing values (`NaN`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns. Nothing is hidden or discarded silently. If the analyst explicitly wants to discard missing group keys, they specify `dropna=True`.
+- **Pytae Design (`dropna=False`)**: Pytae aggregation, window mutation, and pivot verbs (`agg`, `mutate`, `pivot`) default to **`dropna=False`**. Missing values (`NaN`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns. Nothing is hidden or discarded silently. If the analyst explicitly wants to discard missing group keys, they specify `dropna=True`.
 - **dplyr Alignment**: This non-destructive default matches R's `dplyr` (which treats `NA` group levels as valid grouping keys by default rather than discarding them).
 - **CLI Consistency**: Top-level `-dropna [COLS]` performs row-level dropping across the dataset (matching `df.dropna(subset=...)`), whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
 

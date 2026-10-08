@@ -281,14 +281,15 @@ pytae -help
 
 # Keyword-focused help with syntax and copy-pasteable examples
 pytae -help agg
-pytae -help qry
+pytae -help filter
 pytae -help mutate
 pytae -help select
 pytae -help pivot
 pytae -help sql
 pytae -help reshape
 pytae -help arrange
-pytae -help slice
+pytae -help pick
 pytae -help distinct
 ```
+
 

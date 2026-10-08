@@ -9,7 +9,7 @@ Thank you for your interest in contributing to `pytae`! This document outlines o
 When contributing code, designing new features, or refactoring existing modules in `pytae`, adhere to the following principles:
 
 ### 1. Be generous in what you accept, but strictly honest when ambiguous
-- **Generous in input**: Accept flexible, ergonomic inputs where the intent is unambiguous—strings or sequences of strings (e.g. `by="species,island"` or `by=["species", "island"]`, `r="a,b"`, `select("x, y")`), brackets for spaced names (`[total bill]`), case-insensitivity where natural, and well-documented aliases (`by=` for `group_by=`, `a=` for `aggfunc=`, `r=` for `rows=`, `n` for row counts).
+- **Generous in input**: Accept flexible, ergonomic inputs where the intent is unambiguous—strings or sequences of strings (e.g. `r="a,b"`, `select("x, y")`), brackets for spaced names (`[total bill]`), case-insensitivity where natural, and well-documented aliases (`a=` for `aggfunc=`, `r=` for `rows=`, `n` for row counts). Standalone grouping (`pt.by("species", "island")`) takes column names as positional `*args`.
 - **Strictly honest when ambiguous**: When inputs collide, contradict, or produce ambiguous results, **fail fast with a clear, descriptive error**.
   - **No silent renaming or magical suffixes**: Never silently invent artificial names like `col_1`, `year_col`, or `1_1` to work around collisions. If an index name collides with a column name during `reset_index()`, or a pivoted column name collides with an index column, raise a `ValueError`.
   - **No silent fallback guessing**: If an explicit stylesheet, palette, or column reference cannot be resolved or is invalid, raise a `ValueError` or `KeyError` rather than guessing or silently ignoring the instruction.
@@ -22,10 +22,16 @@ When contributing code, designing new features, or refactoring existing modules 
   - `wide()` is **strictly for pure 1-to-1 structural unmelting** without aggregation.
   - `pivot()` is for **Excel-style 2D aggregation matrices** across dimensions (`r, c, v, a`).
   - `long()` is for melting columns to rows.
-  - `agg()` is for grouped summaries (`by=`) collapsing $N \to K$ rows.
+  - `by()` sets an active, scoped grouping context on the DataFrame.
+  - `ungroup()` clears active grouping.
+  - `agg()` is for grouped summaries collapsing $N \to K$ rows (or whole-table summaries).
   - `mutate()` is for feature engineering and window calculations preserving $N \to N$ rows.
-  - `qry()` is for row filtering.
+  - `filter()` is for row filtering.
+  - `pick()` is for extreme top/bottom row selection (`order='max'` or `'min'`).
+  - `distinct()` is for row deduplication.
+  - `arrange()` is for row sorting.
   - `select()` is for column selection and reordering.
+
 
 ### 3. Predictable, flat data structures
 - DataFrames produced by `pytae` operations should be clean and immediately usable:
@@ -39,7 +45,7 @@ When contributing code, designing new features, or refactoring existing modules 
   - `dropna=False` by default across all operations (`pivot`, `wide`, `agg`, `mutate`, `freq`, `value_counts`, and plotting), preserving missing categories unless explicitly excluded via `dropna=True`.
 - Vocabulary is shared across Python and CLI:
   - `r`, `c`, `v`, `a` in `pt.pivot(...)` match `r=`, `c=`, `v=`, `a=` in `-pivot "..."`.
-  - `[Column Name]` bracketed quoting works identically across `qry()`, `select()`, `mutate()`, `agg()`, `-sql`, and CLI flags.
+  - `[Column Name]` bracketed quoting works identically across `filter()`, `select()`, `mutate()`, `agg()`, `-sql`, and CLI flags.
 
 ### 5. Immutability & Side-Effect Free Chaining
 - Accessor calls on `df.pt.<verb>(...)` must never mutate the caller's DataFrame in place. Always return a new or copied DataFrame.

@@ -1,6 +1,6 @@
 # pytae — CLI Reference & Architecture Hub
 
-The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.qry()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
+The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
 
 ---
 
@@ -34,13 +34,13 @@ The `pytae` CLI provides high-performance command-line data processing for tabul
 
 The `pytae` CLI executes operations sequentially from left to right as an in-memory pipeline:
 
-1. **Flag Order Is the Pipeline**: Flags are evaluated in the order written. For instance, `-qry ... -select ... -agg ...` filters rows first, narrows columns second, and aggregates the remaining columns third.
+1. **Flag Order Is the Pipeline**: Flags are evaluated in the order written. For instance, `-filter ... -select ... -agg ...` filters rows first, narrows columns second, and aggregates the remaining columns third.
 2. **State Handoff**: Each transformation step passes its resulting DataFrame to the next step.
 3. **Execution Modes**:
    - **Single-file mode** (standard): `pytae <path> [operations...] [output]`
    - **Multi-file mode**: `pytae -file "alias1=path1; alias2=path2" -merge ...` (replaces positional path)
 4. **Terminal vs Non-Terminal Steps**:
-   - Most operations (`-select`, `-qry`, `-mutate`, `-arrange`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
+   - Most operations (`-select`, `-filter`, `-mutate`, `-arrange`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
    - Non-DataFrame inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`, `-meta`, `-diff`) print summary text and terminate the pipeline (allowing only `-o clip` to copy the output).
 5. **Output Routing**:
    - By default, the terminal displays the final result on stdout.
@@ -50,12 +50,13 @@ The `pytae` CLI executes operations sequentially from left to right as an in-mem
 ```bash
 # Example multi-step pipeline: filter rows -> compute column -> pick subset -> export
 pytae sales.parquet \
-  -qry "region == 'West', revenue > 1000" \
+  -filter "region == 'West', revenue > 1000" \
   -mutate "profit_margin = (revenue - cost) / revenue" \
   -select "order_id,region,revenue,profit_margin" \
   -arrange "profit_margin desc" \
   -o high_margin_west.parquet
 ```
+
 
 ---
 
@@ -273,7 +274,7 @@ Compare the active pipeline table against another dataset file. Generates a stru
 
 ```bash
 pytae file_v1.parquet -diff file_v2.parquet
-pytae current.csv -qry "status == 'active'" -diff baseline.parquet
+pytae current.csv -filter "status == 'active'" -diff baseline.parquet
 ```
 
 👉 See the complete guide: **[Dataset & Schema Diffing Guide](cli/diff.md)**
@@ -424,11 +425,11 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 When arguments contain spaces, special operators, or commas, wrap the entire specification in double quotes `""`:
 ```bash
 pytae data.parquet -select "bill length mm,species"
-pytae data.parquet -qry "body_mass_g > 3500, species = 'Adelie'"
+pytae data.parquet -filter "body_mass_g > 3500, species = 'Adelie'"
 ```
 
 ### 2. Assignment vs Mapping
-- **`=` is used for assignment**: Creating columns in `-mutate` (`"mass_kg = body_mass_g / 1000"`) or filtering in `-qry` (`"species = 'Adelie'"`).
+- **`=` is used for assignment**: Creating columns in `-mutate` (`"mass_kg = body_mass_g / 1000"`) or filtering in `-filter` (`"species = 'Adelie'"`).
 - **`:` is used for translation mappings**: Renaming in `-rename` (`"old_name:new_name"`) or replacement mappings in `-replace_values` (`"v='old:new'"`).
 
 ### 3. Bracketed Column Names
@@ -465,7 +466,7 @@ python -c "import pytae; pytae.sample_data['flights'].to_parquet('flights.parque
 
 ```bash
 # Filter and aggregate
-pytae penguins.parquet -qry "species = 'Adelie'" -by species -agg mean
+pytae penguins.parquet -filter "species = 'Adelie'" -by species -agg mean
 
 # Two-way frequency pivot matrix
 pytae penguins.parquet -pivot "r=species,c=island,v=sex,a=n"
