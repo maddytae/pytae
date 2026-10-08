@@ -12,9 +12,8 @@ from pytae._text import unquote_name as _unquote_name
 def by(df: pd.DataFrame, *cols: Any) -> pd.DataFrame:
     """Set active grouping columns on the DataFrame for downstream operations.
 
-    Downstream operations such as .pt.mutate(), .pt.agg(), .pt.slice_max(), and
-    .pt.slice_min() will automatically inherit these grouping columns unless
-    explicitly overridden.
+    Downstream operations such as .pt.mutate(), .pt.agg(), and .pt.pick()
+    will automatically inherit these grouping columns.
 
     Parameters
     ----------
@@ -27,7 +26,7 @@ def by(df: pd.DataFrame, *cols: Any) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        The DataFrame with active grouping context set on .attrs['_pt_by'].
+        A shallow copy of the DataFrame with active grouping context set on .attrs['_pt_by'].
     """
     if not cols:
         raise ValueError("df.pt.by() takes at least one column name as positional arguments: df.pt.by('col1', 'col2'). To clear grouping, use df.pt.ungroup().")
@@ -54,8 +53,9 @@ def by(df: pd.DataFrame, *cols: Any) -> pd.DataFrame:
             raise KeyError(f"df.pt.by(): column '{clean}' not found in DataFrame. Available columns: {list(df.columns)}")
         valid_cols.append(clean)
 
-    df.attrs["_pt_by"] = tuple(valid_cols)
-    return df
+    out = df.copy(deep=False)
+    out.attrs = {**df.attrs, "_pt_by": tuple(valid_cols)}
+    return out
 
 
 def ungroup(df: pd.DataFrame) -> pd.DataFrame:
@@ -69,9 +69,9 @@ def ungroup(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        The DataFrame with active grouping context removed.
+        A shallow copy of the DataFrame with active grouping context removed.
     """
-    if "_pt_by" in df.attrs:
-        del df.attrs["_pt_by"]
-    return df
+    out = df.copy(deep=False)
+    out.attrs = {k: v for k, v in df.attrs.items() if k != "_pt_by"}
+    return out
 

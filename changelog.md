@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.8.1] - 2026-10-07
+
+### Added
+- **Standalone Grouping Verbs (`pt.by()`, `pt.ungroup()`)**:
+  - Introduced standalone `pt.by(df, *cols)` / `df.pt.by(*cols)` and `pt.ungroup(df)` / `df.pt.ungroup()`.
+  - Non-destructive execution: returns a shallow copy with isolated grouping metadata, preserving the input DataFrame unchanged.
+- **Modernized Canonical Verbs (`filter`, `pick`, `distinct`)**:
+  - `pt.filter()` / `df.pt.filter()` and CLI `-filter`: Canonical row filtering verb (with backwards-compatible `qry` deprecation alias).
+  - `pt.pick()` / `df.pt.pick()` and CLI `-pick`: Canonical extreme row selection with `order='max'` and `order='min'` (with `slice_max`/`slice_min` deprecation aliases).
+  - `pt.distinct()` / `df.pt.distinct()` and CLI `-distinct`: Canonical row deduplication verb (with `dedupe` deprecation alias).
+- **Parquet & I/O Grouping Isolation**:
+  - Automatic stripping of `_pt_by` metadata on write and read boundaries to prevent accidental grouping persistence across file serialization.
+
+### Changed & Deprecated ("One and Only One Right Way")
+- **Disallowed `by=` in Verbs**:
+  - Verbs (`mutate`, `pick`, `agg`, `slice_max`, `slice_min`) strictly reject `by=` arguments with an explicit `TypeError` instructing users to use `pt.by(...)` or `.pt.by(...)`.
+  - Terminal/collapsing verbs (`agg`) and slicing verbs (`pick`) automatically clear active grouping on output.
+- **Notebook Multi-Line Pipeline Standards**:
+  - All interactive documentation notebooks standardized so every chained method call starts on its own line.
+
 ## [3.8.0] - 2026-10-05
 
 ### Added

@@ -12,8 +12,7 @@ from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
 from pytae.filter import filter
 from pytae.mutate import mutate
-from pytae.other_utilities import distinct, replace_values, safe_reset_index
-from pytae.qry import qry
+from pytae.other_utilities import replace_values, safe_reset_index
 from pytae.select import select
 
 

@@ -117,7 +117,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -select \"contains=bill, species\"",
             "pytae penguins.parquet -select \"dtype=numeric\"",
         ],
-        see_also=["-cols", "-qry", "-clean_columns"],
+        see_also=["-cols", "-filter", "-clean_columns"],
     ),
     "mutate": KeywordHelp(
         name="mutate",
@@ -216,10 +216,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="slice_min",
         flag="-slice_min, --slice_min SPEC",
         syntax="pytae <path> [-by <cols>] -slice_min \"<col>[,n=N|,prop=P]\"",
-        summary="Slice bottom rows with the smallest values, optionally grouped by column(s).",
+        summary="Slice bottom rows with the smallest values (deprecated alias for -pick).",
         description=(
             "Selects rows with the lowest values of a target column.\n"
-            "When paired with -by, extracts the bottom N rows or proportion per group."
+            "Deprecated: use -pick with order=min instead (e.g. -pick \"col,n=N,order=min\")."
         ),
         options=[
             "col : Column to rank by (defaults to n=1).",
@@ -233,7 +233,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -slice_min \"body_mass_g,prop=0.1\"",
             "pytae penguins.parquet -by species -slice_min \"body_mass_g,n=1\"",
         ],
-        see_also=["-slice_max", "-arrange", "-tail"],
+        see_also=["-pick", "-arrange", "-tail"],
     ),
     "agg": KeywordHelp(
         name="agg",
@@ -335,10 +335,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="by",
         flag="-by, --by, -group_by COLUMNS",
         syntax="pytae <path> -by <COLUMNS> [operation]",
-        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -slice_max, -slice_min).",
+        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -pick).",
         description=(
             "Partitions the dataset by one or more columns for subsequent operations.\n"
-            "Works with -agg, window -mutate, and -slice_max / -slice_min."
+            "Works with -agg, window -mutate, and -pick."
         ),
         options=[
             "col : Single grouping column.",
@@ -348,10 +348,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             "pytae penguins.parquet -by \"species,island\" -agg \"mean,n\"",
-            "pytae penguins.parquet -by species -slice_max \"body_mass_g,n=2\"",
+            "pytae penguins.parquet -by species -pick \"body_mass_g,n=2\"",
             "pytae penguins.parquet -by species -mutate \"avg = mean(body_mass_g)\"",
         ],
-        see_also=["-agg", "-mutate", "-slice_max", "-slice_min"],
+        see_also=["-agg", "-mutate", "-pick"],
     ),
     "clean_columns": KeywordHelp(
         name="clean_columns",

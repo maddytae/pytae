@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import difflib
-from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
 
-from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import parse_agg as _parse_agg
 
@@ -370,6 +368,9 @@ def agg(
     if isinstance(agg_types, dict):
         if "__dropna__" in agg_types:
             dropna = agg_types.pop("__dropna__")
-        return _agg_df_dict(df, group_cols, agg_types, dropna, observed)
+        res = _agg_df_dict(df, group_cols, agg_types, dropna, observed)
     else:
-        return _agg_df_list(df, group_cols, agg_types, dropna, observed)
+        res = _agg_df_list(df, group_cols, agg_types, dropna, observed)
+    if "_pt_by" in res.attrs:
+        del res.attrs["_pt_by"]
+    return res

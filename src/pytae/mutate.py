@@ -4,7 +4,6 @@ import ast
 import difflib
 import inspect
 import re
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -505,7 +504,7 @@ def mutate(
     while caller_frame is not None:
         # skip pytae internals (df.pt.mutate() sits in the accessor)
         name = caller_frame.f_globals.get("__name__") or ""
-        if not name.startswith("pytae"):
+        if name != "pytae" and not name.startswith("pytae."):
             break
         caller_frame = caller_frame.f_back
     local_dict = caller_frame.f_locals.copy() if caller_frame is not None else {}

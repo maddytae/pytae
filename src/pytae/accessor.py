@@ -13,13 +13,12 @@ from typing import Any
 
 import pandas as pd
 
-from .agg import _UNSET
 from .agg import agg as _agg
 from .arrange import (
     arrange as _arrange,
+)
+from .arrange import (
     pick as _pick,
-    slice_max as _slice_max,
-    slice_min as _slice_min,
 )
 from .by import by as _by
 from .by import ungroup as _ungroup
@@ -84,8 +83,8 @@ class PtAccessor:
     def by(self, *cols: Any) -> pd.DataFrame:
         """Set active grouping columns on the DataFrame for downstream operations.
 
-        Downstream verbs such as .pt.mutate(), .pt.agg(), .pt.slice_max(), and
-        .pt.slice_min() will automatically inherit these grouping columns.
+        Downstream verbs such as .pt.mutate(), .pt.agg(), and .pt.pick()
+        will automatically inherit these grouping columns.
 
         Parameters:
         -----------
@@ -244,8 +243,6 @@ class PtAccessor:
             raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
 
         result = _agg(self._obj, *args, **kwargs)
-        if "_pt_by" in self._obj.attrs:
-            del self._obj.attrs["_pt_by"]
         if "_pt_by" in result.attrs:
             del result.attrs["_pt_by"]
         return result

@@ -4905,7 +4905,7 @@ penguins = pt.sample("penguins")
 
 # 2. Function style: standalone calls
 subset = pt.select(penguins, "species", contains="bill")
-summary = pt.agg(subset, "species", "mean")
+summary = pt.agg(pt.by(subset, "species"), "mean")
 ```
 
 ---
@@ -4919,13 +4919,13 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 |---|---|---|---|
 | **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.ipynb](library/filter.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
-| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
+| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
-| **Picking Rows** | `pt.pick()`, `df.pt.pick()` | Select extreme top/bottom N rows or proportion overall or per group (`by=`, `order='max'/'min'`) | [library/pick.ipynb](library/pick.ipynb) |
+| **Picking Rows** | `pt.pick()`, `df.pt.pick()` | Select extreme top/bottom N rows or proportion overall or per group via `pt.by()` (`order='max'/'min'`) | [library/pick.ipynb](library/pick.ipynb) |
 | **Distinct Rows** | `pt.distinct()`, `df.pt.distinct()` | Remove duplicate rows across all or specific column subsets | [library/distinct.ipynb](library/distinct.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
-| **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
+| **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
 | **Utilities** | `glimpse`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
@@ -4993,11 +4993,11 @@ pt.mutate(penguins, tier="case_when((body_mass_g >= 4500, 'large'), (body_mass_g
 pt.mutate(df, contact="coalesce(mobile, home_phone, work_phone, 'N/A')")
 pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
 
-# Grouped window calculations without collapsing rows
-pt.mutate(penguins, avg_mass="mean(body_mass_g)", diff="body_mass_g - avg_mass", n="n", by="species")
+# Grouped window calculations without collapsing rows (inherited from standalone pt.by)
+pt.mutate(pt.by(penguins, "species"), avg_mass="mean(body_mass_g)", diff="body_mass_g - avg_mass", n="n")
 
 # Control NA grouping with dropna (dropna=False by default calculates on NA group; dropna=True fills NaN)
-pt.mutate(df, avg_val="mean(val)", by="group", dropna=True)
+pt.mutate(pt.by(df, "group"), avg_val="mean(val)", dropna=True)
 ```
 
 👉 **Interactive Walkthrough:** [library/mutate.ipynb](library/mutate.ipynb)
@@ -10658,13 +10658,12 @@ from typing import Any
 
 import pandas as pd
 
-from .agg import _UNSET
 from .agg import agg as _agg
 from .arrange import (
     arrange as _arrange,
+)
+from .arrange import (
     pick as _pick,
-    slice_max as _slice_max,
-    slice_min as _slice_min,
 )
 from .by import by as _by
 from .by import ungroup as _ungroup
@@ -10729,8 +10728,8 @@ class PtAccessor:
     def by(self, *cols: Any) -> pd.DataFrame:
         """Set active grouping columns on the DataFrame for downstream operations.
 
-        Downstream verbs such as .pt.mutate(), .pt.agg(), .pt.slice_max(), and
-        .pt.slice_min() will automatically inherit these grouping columns.
+        Downstream verbs such as .pt.mutate(), .pt.agg(), and .pt.pick()
+        will automatically inherit these grouping columns.
 
         Parameters:
         -----------
@@ -10889,8 +10888,6 @@ class PtAccessor:
             raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
 
         result = _agg(self._obj, *args, **kwargs)
-        if "_pt_by" in self._obj.attrs:
-            del self._obj.attrs["_pt_by"]
         if "_pt_by" in result.attrs:
             del result.attrs["_pt_by"]
         return result
@@ -11081,12 +11078,10 @@ class PtAccessor:
 from __future__ import annotations
 
 import difflib
-from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
 
-from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import parse_agg as _parse_agg
 
@@ -11450,9 +11445,12 @@ def agg(
     if isinstance(agg_types, dict):
         if "__dropna__" in agg_types:
             dropna = agg_types.pop("__dropna__")
-        return _agg_df_dict(df, group_cols, agg_types, dropna, observed)
+        res = _agg_df_dict(df, group_cols, agg_types, dropna, observed)
     else:
-        return _agg_df_list(df, group_cols, agg_types, dropna, observed)
+        res = _agg_df_list(df, group_cols, agg_types, dropna, observed)
+    if "_pt_by" in res.attrs:
+        del res.attrs["_pt_by"]
+    return res
 
 ################################################################################
 # FILE: src/pytae/arrange.py
@@ -11650,8 +11648,6 @@ def pick(
     res = _slice_ordered(
         df, col, n=n, prop=prop, ascending=ascending, with_ties=with_ties, na_last=na_last, verb="pick"
     )
-    if "_pt_by" in df.attrs:
-        del df.attrs["_pt_by"]
     if "_pt_by" in res.attrs:
         del res.attrs["_pt_by"]
     return res
@@ -11805,9 +11801,8 @@ from pytae._text import unquote_name as _unquote_name
 def by(df: pd.DataFrame, *cols: Any) -> pd.DataFrame:
     """Set active grouping columns on the DataFrame for downstream operations.
 
-    Downstream operations such as .pt.mutate(), .pt.agg(), .pt.slice_max(), and
-    .pt.slice_min() will automatically inherit these grouping columns unless
-    explicitly overridden.
+    Downstream operations such as .pt.mutate(), .pt.agg(), and .pt.pick()
+    will automatically inherit these grouping columns.
 
     Parameters
     ----------
@@ -11820,7 +11815,7 @@ def by(df: pd.DataFrame, *cols: Any) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        The DataFrame with active grouping context set on .attrs['_pt_by'].
+        A shallow copy of the DataFrame with active grouping context set on .attrs['_pt_by'].
     """
     if not cols:
         raise ValueError("df.pt.by() takes at least one column name as positional arguments: df.pt.by('col1', 'col2'). To clear grouping, use df.pt.ungroup().")
@@ -11847,8 +11842,9 @@ def by(df: pd.DataFrame, *cols: Any) -> pd.DataFrame:
             raise KeyError(f"df.pt.by(): column '{clean}' not found in DataFrame. Available columns: {list(df.columns)}")
         valid_cols.append(clean)
 
-    df.attrs["_pt_by"] = tuple(valid_cols)
-    return df
+    out = df.copy(deep=False)
+    out.attrs = {**df.attrs, "_pt_by": tuple(valid_cols)}
+    return out
 
 
 def ungroup(df: pd.DataFrame) -> pd.DataFrame:
@@ -11862,11 +11858,11 @@ def ungroup(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        The DataFrame with active grouping context removed.
+        A shallow copy of the DataFrame with active grouping context removed.
     """
-    if "_pt_by" in df.attrs:
-        del df.attrs["_pt_by"]
-    return df
+    out = df.copy(deep=False)
+    out.attrs = {k: v for k, v in df.attrs.items() if k != "_pt_by"}
+    return out
 
 ################################################################################
 # FILE: src/pytae/cli.py
@@ -11893,7 +11889,6 @@ from pytae.cli_parsing import (
     parse_list_order,
     parse_merge_arg,
     parse_positive_int,
-    parse_qry,
     parse_rename,
     parse_replace_values_arg,
     parse_select_spec,
@@ -12554,7 +12549,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -select \"contains=bill, species\"",
             "pytae penguins.parquet -select \"dtype=numeric\"",
         ],
-        see_also=["-cols", "-qry", "-clean_columns"],
+        see_also=["-cols", "-filter", "-clean_columns"],
     ),
     "mutate": KeywordHelp(
         name="mutate",
@@ -12653,10 +12648,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="slice_min",
         flag="-slice_min, --slice_min SPEC",
         syntax="pytae <path> [-by <cols>] -slice_min \"<col>[,n=N|,prop=P]\"",
-        summary="Slice bottom rows with the smallest values, optionally grouped by column(s).",
+        summary="Slice bottom rows with the smallest values (deprecated alias for -pick).",
         description=(
             "Selects rows with the lowest values of a target column.\n"
-            "When paired with -by, extracts the bottom N rows or proportion per group."
+            "Deprecated: use -pick with order=min instead (e.g. -pick \"col,n=N,order=min\")."
         ),
         options=[
             "col : Column to rank by (defaults to n=1).",
@@ -12670,7 +12665,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -slice_min \"body_mass_g,prop=0.1\"",
             "pytae penguins.parquet -by species -slice_min \"body_mass_g,n=1\"",
         ],
-        see_also=["-slice_max", "-arrange", "-tail"],
+        see_also=["-pick", "-arrange", "-tail"],
     ),
     "agg": KeywordHelp(
         name="agg",
@@ -12772,10 +12767,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="by",
         flag="-by, --by, -group_by COLUMNS",
         syntax="pytae <path> -by <COLUMNS> [operation]",
-        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -slice_max, -slice_min).",
+        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -pick).",
         description=(
             "Partitions the dataset by one or more columns for subsequent operations.\n"
-            "Works with -agg, window -mutate, and -slice_max / -slice_min."
+            "Works with -agg, window -mutate, and -pick."
         ),
         options=[
             "col : Single grouping column.",
@@ -12785,10 +12780,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             "pytae penguins.parquet -by \"species,island\" -agg \"mean,n\"",
-            "pytae penguins.parquet -by species -slice_max \"body_mass_g,n=2\"",
+            "pytae penguins.parquet -by species -pick \"body_mass_g,n=2\"",
             "pytae penguins.parquet -by species -mutate \"avg = mean(body_mass_g)\"",
         ],
-        see_also=["-agg", "-mutate", "-slice_max", "-slice_min"],
+        see_also=["-agg", "-mutate", "-pick"],
     ),
     "clean_columns": KeywordHelp(
         name="clean_columns",
@@ -14059,8 +14054,7 @@ from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _select_unknown_names, unknown_columns_message
 from pytae.filter import filter
 from pytae.mutate import mutate
-from pytae.other_utilities import distinct, replace_values, safe_reset_index
-from pytae.qry import qry
+from pytae.other_utilities import replace_values, safe_reset_index
 from pytae.select import select
 
 
@@ -15450,7 +15444,7 @@ import ast
 import difflib
 import operator
 import re
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
@@ -15748,7 +15742,6 @@ import ast
 import difflib
 import inspect
 import re
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -16249,7 +16242,7 @@ def mutate(
     while caller_frame is not None:
         # skip pytae internals (df.pt.mutate() sits in the accessor)
         name = caller_frame.f_globals.get("__name__") or ""
-        if not name.startswith("pytae"):
+        if name != "pytae" and not name.startswith("pytae."):
             break
         caller_frame = caller_frame.f_back
     local_dict = caller_frame.f_locals.copy() if caller_frame is not None else {}
@@ -17943,9 +17936,11 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
 from __future__ import annotations
 
 from typing import Any
+
 import pandas as pd
 
-from .filter import filter, ops, str_ops, unary_ops, _parse_filter_string as _parse_qry_string
+from .filter import _parse_filter_string as _parse_qry_string
+from .filter import filter, ops, str_ops, unary_ops
 
 
 def qry(
@@ -18065,7 +18060,10 @@ class ParquetReader:
     def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
                      chunk_size: int | None = None) -> pd.DataFrame:
         if not progress and nrows is None:
-            return pd.read_parquet(self.path, columns=columns)
+            df = pd.read_parquet(self.path, columns=columns)
+            if "_pt_by" in df.attrs:
+                del df.attrs["_pt_by"]
+            return df
         total = self._pf.metadata.num_rows
         limit = total if nrows is None else min(nrows, total)
         csize = chunk_size or self.chunk_size
@@ -18082,9 +18080,15 @@ class ParquetReader:
         if progress:
             print()
         if parts:
-            return pd.concat(parts, ignore_index=True)
+            res = pd.concat(parts, ignore_index=True)
+            if "_pt_by" in res.attrs:
+                del res.attrs["_pt_by"]
+            return res
         empty = self._empty()
-        return empty[columns] if columns else empty
+        res = empty[columns] if columns else empty
+        if "_pt_by" in res.attrs:
+            del res.attrs["_pt_by"]
+        return res
 
 
 class CsvReader:
@@ -18663,6 +18667,9 @@ def write_dataframe(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool | None = None,
 ) -> None:
+    if "_pt_by" in df.attrs:
+        df = df.copy(deep=False)
+        df.attrs = {k: v for k, v in df.attrs.items() if k != "_pt_by"}
     if index is None:
         index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
     suffix, compression = _split_path_suffixes(dest)
@@ -27012,12 +27019,13 @@ def test_by_chains_into_mutate():
 def test_by_chains_into_agg_and_clears_grouping():
     df = _sample_df()
     # df.pt.by("species").pt.agg("mean")
-    res = df.pt.by("species").pt.agg("mean")
+    grouped = df.pt.by("species")
+    res = grouped.pt.agg("mean")
     assert "_pt_by" not in res.attrs
     assert len(res) == 3
     assert list(res["species"]) == ["Adelie", "Chinstrap", "Gentoo"]
 
-    # Verify grouping is cleared
+    # Verify input df was never mutated
     assert "_pt_by" not in df.attrs
 
 
@@ -27025,13 +27033,35 @@ def test_by_overwritten_by_second_by():
     df = _sample_df()
     df_by = df.pt.by("species").pt.by("island")
     assert df_by.attrs["_pt_by"] == ("island",)
+    assert "_pt_by" not in df.attrs
 
 
 def test_ungroup_clears_by():
     df = _sample_df()
-    df.pt.by("species", "island")
-    assert "_pt_by" in df.attrs
-    df.pt.ungroup()
+    grouped = df.pt.by("species", "island")
+    assert "_pt_by" in grouped.attrs
+    assert "_pt_by" not in df.attrs
+    ungrouped = grouped.pt.ungroup()
+    assert "_pt_by" not in ungrouped.attrs
+
+
+def test_by_non_destructive_input_isolation():
+    df = _sample_df()
+    grouped = pt.by(df, "species")
+    assert grouped is not df
+    assert "_pt_by" in grouped.attrs
+    assert "_pt_by" not in df.attrs
+
+    # Functional agg does not touch input attrs, clears on output
+    res = pt.agg(grouped, "mean")
+    assert "_pt_by" not in res.attrs
+    assert "_pt_by" in grouped.attrs
+    assert "_pt_by" not in df.attrs
+
+    # pick does not touch input attrs, clears on output
+    res_pick = pt.pick(grouped, "mass", n=1)
+    assert "_pt_by" not in res_pick.attrs
+    assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
 
 
@@ -27041,3 +27071,5 @@ def test_by_chains_into_slice_max():
     assert len(res) == 3
     # Check max per species
     assert set(res["mass"]) == {4200, 5200, 3900}
+    assert "_pt_by" not in res.attrs
+    assert "_pt_by" not in df.attrs

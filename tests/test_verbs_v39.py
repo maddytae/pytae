@@ -108,12 +108,13 @@ def test_by_chains_into_mutate():
 def test_by_chains_into_agg_and_clears_grouping():
     df = _sample_df()
     # df.pt.by("species").pt.agg("mean")
-    res = df.pt.by("species").pt.agg("mean")
+    grouped = df.pt.by("species")
+    res = grouped.pt.agg("mean")
     assert "_pt_by" not in res.attrs
     assert len(res) == 3
     assert list(res["species"]) == ["Adelie", "Chinstrap", "Gentoo"]
 
-    # Verify grouping is cleared
+    # Verify input df was never mutated
     assert "_pt_by" not in df.attrs
 
 
@@ -121,13 +122,35 @@ def test_by_overwritten_by_second_by():
     df = _sample_df()
     df_by = df.pt.by("species").pt.by("island")
     assert df_by.attrs["_pt_by"] == ("island",)
+    assert "_pt_by" not in df.attrs
 
 
 def test_ungroup_clears_by():
     df = _sample_df()
-    df.pt.by("species", "island")
-    assert "_pt_by" in df.attrs
-    df.pt.ungroup()
+    grouped = df.pt.by("species", "island")
+    assert "_pt_by" in grouped.attrs
+    assert "_pt_by" not in df.attrs
+    ungrouped = grouped.pt.ungroup()
+    assert "_pt_by" not in ungrouped.attrs
+
+
+def test_by_non_destructive_input_isolation():
+    df = _sample_df()
+    grouped = pt.by(df, "species")
+    assert grouped is not df
+    assert "_pt_by" in grouped.attrs
+    assert "_pt_by" not in df.attrs
+
+    # Functional agg does not touch input attrs, clears on output
+    res = pt.agg(grouped, "mean")
+    assert "_pt_by" not in res.attrs
+    assert "_pt_by" in grouped.attrs
+    assert "_pt_by" not in df.attrs
+
+    # pick does not touch input attrs, clears on output
+    res_pick = pt.pick(grouped, "mass", n=1)
+    assert "_pt_by" not in res_pick.attrs
+    assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
 
 
@@ -137,4 +160,6 @@ def test_by_chains_into_slice_max():
     assert len(res) == 3
     # Check max per species
     assert set(res["mass"]) == {4200, 5200, 3900}
+    assert "_pt_by" not in res.attrs
+    assert "_pt_by" not in df.attrs
 

@@ -52,7 +52,7 @@ penguins = pt.sample("penguins")
 
 # 2. Function style: standalone calls
 subset = pt.select(penguins, "species", contains="bill")
-summary = pt.agg(subset, "species", "mean")
+summary = pt.agg(pt.by(subset, "species"), "mean")
 ```
 
 ---
@@ -66,13 +66,13 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 |---|---|---|---|
 | **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.ipynb](library/filter.ipynb) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
-| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, grouped transforms `by=`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
+| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
 | **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
-| **Picking Rows** | `pt.pick()`, `df.pt.pick()` | Select extreme top/bottom N rows or proportion overall or per group (`by=`, `order='max'/'min'`) | [library/pick.ipynb](library/pick.ipynb) |
+| **Picking Rows** | `pt.pick()`, `df.pt.pick()` | Select extreme top/bottom N rows or proportion overall or per group via `pt.by()` (`order='max'/'min'`) | [library/pick.ipynb](library/pick.ipynb) |
 | **Distinct Rows** | `pt.distinct()`, `df.pt.distinct()` | Remove duplicate rows across all or specific column subsets | [library/distinct.ipynb](library/distinct.ipynb) |
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
-| **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped by explicit `by=` column(s) (`n` for row counts), or `None` for whole table | [library/agg.ipynb](library/agg.ipynb) |
+| **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.ipynb](library/agg.ipynb) |
 | **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
 | **Utilities** | `glimpse`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
@@ -140,11 +140,11 @@ pt.mutate(penguins, tier="case_when((body_mass_g >= 4500, 'large'), (body_mass_g
 pt.mutate(df, contact="coalesce(mobile, home_phone, work_phone, 'N/A')")
 pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')")
 
-# Grouped window calculations without collapsing rows
-pt.mutate(penguins, avg_mass="mean(body_mass_g)", diff="body_mass_g - avg_mass", n="n", by="species")
+# Grouped window calculations without collapsing rows (inherited from standalone pt.by)
+pt.mutate(pt.by(penguins, "species"), avg_mass="mean(body_mass_g)", diff="body_mass_g - avg_mass", n="n")
 
 # Control NA grouping with dropna (dropna=False by default calculates on NA group; dropna=True fills NaN)
-pt.mutate(df, avg_val="mean(val)", by="group", dropna=True)
+pt.mutate(pt.by(df, "group"), avg_val="mean(val)", dropna=True)
 ```
 
 👉 **Interactive Walkthrough:** [library/mutate.ipynb](library/mutate.ipynb)

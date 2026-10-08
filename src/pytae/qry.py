@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from typing import Any
+
 import pandas as pd
 
-from .filter import filter, ops, str_ops, unary_ops, _parse_filter_string as _parse_qry_string
+from .filter import _parse_filter_string as _parse_qry_string
+from .filter import filter, ops, str_ops, unary_ops
 
 
 def qry(

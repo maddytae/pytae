@@ -20,7 +20,6 @@ from pytae.cli_parsing import (
     parse_list_order,
     parse_merge_arg,
     parse_positive_int,
-    parse_qry,
     parse_rename,
     parse_replace_values_arg,
     parse_select_spec,

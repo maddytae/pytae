@@ -95,7 +95,10 @@ class ParquetReader:
     def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
                      chunk_size: int | None = None) -> pd.DataFrame:
         if not progress and nrows is None:
-            return pd.read_parquet(self.path, columns=columns)
+            df = pd.read_parquet(self.path, columns=columns)
+            if "_pt_by" in df.attrs:
+                del df.attrs["_pt_by"]
+            return df
         total = self._pf.metadata.num_rows
         limit = total if nrows is None else min(nrows, total)
         csize = chunk_size or self.chunk_size
@@ -112,9 +115,15 @@ class ParquetReader:
         if progress:
             print()
         if parts:
-            return pd.concat(parts, ignore_index=True)
+            res = pd.concat(parts, ignore_index=True)
+            if "_pt_by" in res.attrs:
+                del res.attrs["_pt_by"]
+            return res
         empty = self._empty()
-        return empty[columns] if columns else empty
+        res = empty[columns] if columns else empty
+        if "_pt_by" in res.attrs:
+            del res.attrs["_pt_by"]
+        return res
 
 
 class CsvReader:
@@ -693,6 +702,9 @@ def write_dataframe(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool | None = None,
 ) -> None:
+    if "_pt_by" in df.attrs:
+        df = df.copy(deep=False)
+        df.attrs = {k: v for k, v in df.attrs.items() if k != "_pt_by"}
     if index is None:
         index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
     suffix, compression = _split_path_suffixes(dest)

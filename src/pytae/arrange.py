@@ -191,8 +191,6 @@ def pick(
     res = _slice_ordered(
         df, col, n=n, prop=prop, ascending=ascending, with_ties=with_ties, na_last=na_last, verb="pick"
     )
-    if "_pt_by" in df.attrs:
-        del df.attrs["_pt_by"]
     if "_pt_by" in res.attrs:
         del res.attrs["_pt_by"]
     return res

@@ -4,7 +4,7 @@ import ast
 import difflib
 import operator
 import re
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
