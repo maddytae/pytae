@@ -355,3 +355,140 @@ def distinct(
 
     subset = valid_cols if valid_cols else None
     return df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)
+
+
+def freq(
+    df: pd.DataFrame,
+    col: str | None = None,
+    *,
+    dropna: bool = False,
+) -> pd.DataFrame:
+    """Compute a frequency table with ASCII distribution bars and percentages for a column.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input DataFrame.
+    col : str, optional
+        Column name to inspect. Required unless `df` has only a single column.
+    dropna : bool, default False
+        Whether to exclude NA/null values from the frequency counts.
+
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame with columns `[col, 'Count', 'Distribution']`.
+    """
+    if col is None or (isinstance(col, str) and not col.strip()):
+        if len(df.columns) == 1:
+            target_col = str(df.columns[0])
+        else:
+            raise ValueError("freq() requires a column name (or a single-column DataFrame)")
+    else:
+        target_col = _unquote_name(str(col).strip())
+
+    if target_col not in df.columns:
+        raise KeyError(
+            f"freq: column '{target_col}' not found in DataFrame. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    counts = df[target_col].value_counts(dropna=dropna)
+    total = counts.sum()
+    max_cnt = counts.max() if not counts.empty else 1
+    bar_max_width = 20
+    data = []
+    for category, count in counts.items():
+        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        data.append({target_col: str(category), "Count": count, "Distribution": dist_str})
+    return pd.DataFrame(data, columns=[target_col, "Count", "Distribution"])
+
+
+def hist(
+    df: pd.DataFrame,
+    col: str | None = None,
+    bins: int = 10,
+) -> pd.DataFrame:
+    """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input DataFrame.
+    col : str, optional
+        Column name or `'col:bins'` specification (e.g. `'body_mass_g'` or `'body_mass_g:10'`).
+        Required unless `df` has only a single column.
+    bins : int, default 10
+        Number of equal-width bins (overridden if `:bins` or `,bins=` is specified in `col`).
+
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame with columns `['Range', 'Count', 'Distribution']`.
+    """
+    raw = col.strip() if isinstance(col, str) else ""
+    target_col: str | None = None
+
+    if ":" in raw:
+        col_part, _, b_str = raw.rpartition(":")
+        if col_part.strip() and b_str.strip() and col_part.strip() not in df.columns:
+            target_col = _unquote_name(col_part.strip())
+            try:
+                bins = int(b_str.strip())
+            except ValueError as exc:
+                raise ValueError(f"hist: invalid bins value '{b_str.strip()}'; must be a positive integer") from exc
+        elif col_part.strip() in df.columns and b_str.strip().isdigit():
+            target_col = col_part.strip()
+            bins = int(b_str.strip())
+        else:
+            target_col = _unquote_name(raw)
+    elif "," in raw and "bins=" in raw:
+        col_part, _, b_part = raw.partition(",")
+        target_col = _unquote_name(col_part.strip())
+        b_str = b_part.replace("bins=", "").strip()
+        try:
+            bins = int(b_str)
+        except ValueError as exc:
+            raise ValueError(f"hist: invalid bins value '{b_str}'; must be a positive integer") from exc
+    elif raw:
+        target_col = _unquote_name(raw)
+    elif col is not None and not isinstance(col, str):
+        target_col = str(col)
+    else:
+        if len(df.columns) == 1:
+            target_col = str(df.columns[0])
+        else:
+            raise ValueError("hist() requires a column name (e.g. 'mass' or 'mass:10')")
+
+    if not isinstance(bins, int) or isinstance(bins, bool) or bins <= 0:
+        raise ValueError(f"hist: bins must be a positive integer, got {bins!r}")
+
+    if target_col not in df.columns:
+        raise KeyError(
+            f"hist: column '{target_col}' not found in DataFrame. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    s = pd.to_numeric(df[target_col], errors="coerce").dropna()
+    if s.empty:
+        return pd.DataFrame(columns=["Range", "Count", "Distribution"])
+
+    cut_series = pd.cut(s, bins=bins, include_lowest=True)
+    counts = cut_series.value_counts(sort=False)
+    total = len(s)
+    max_cnt = counts.max() if not counts.empty else 1
+    bar_max_width = 20
+    data = []
+    for interval, count in counts.items():
+        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        left_fmt = f"{interval.left:.2f}".rstrip("0").rstrip(".")
+        right_fmt = f"{interval.right:.2f}".rstrip("0").rstrip(".")
+        range_str = f"[{left_fmt}, {right_fmt}]"
+        data.append({"Range": range_str, "Count": count, "Distribution": dist_str})
+    return pd.DataFrame(data, columns=["Range", "Count", "Distribution"])

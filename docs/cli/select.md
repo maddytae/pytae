@@ -44,17 +44,25 @@ pytae penguins.parquet -select "species,island,body_mass_g" -head 3
 ```
 
 **Output:**
-```text
-species    island  body_mass_g
- Adelie Torgersen       3750.0
- Adelie Torgersen       3800.0
- Adelie Torgersen       3250.0
-```
+
+| species   | island    |   body_mass_g |
+|:----------|:----------|--------------:|
+| Adelie    | Torgersen |          3750 |
+| Adelie    | Torgersen |          3800 |
+| Adelie    | Torgersen |          3250 |
 
 Reorder columns on the fly:
 ```bash
 pytae penguins.parquet -select "body_mass_g,species" -head 3
 ```
+
+**Output:**
+
+|   body_mass_g | species   |
+|--------------:|:----------|
+|          3750 | Adelie    |
+|          3800 | Adelie    |
+|          3250 | Adelie    |
 
 ---
 
@@ -69,14 +77,28 @@ Prefix a column name with `-` or `~` to exclude it:
 
 ```bash
 pytae penguins.parquet -select "-species" -head 3
-# Or using tilde:
-pytae penguins.parquet -select "~island" -head 3
 ```
+
+**Output:**
+
+| island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
+|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
+| Torgersen |             39.1 |            18.7 |                 181 |          3750 | Male   |
+| Torgersen |             39.5 |            17.4 |                 186 |          3800 | Female |
+| Torgersen |             40.3 |            18   |                 195 |          3250 | Female |
 
 Multiple negated columns can be combined in quotes:
 ```bash
 pytae penguins.parquet -select "-species, -island, -sex" -head 3
 ```
+
+**Output:**
+
+|   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g |
+|-----------------:|----------------:|--------------------:|--------------:|
+|             39.1 |            18.7 |                 181 |          3750 |
+|             39.5 |            17.4 |                 186 |          3800 |
+|             40.3 |            18   |                 195 |          3250 |
 
 ### Negated Slices (`-start:end`)
 
@@ -85,13 +107,28 @@ Exclude a contiguous range of columns:
 pytae penguins.parquet -select "-bill_length_mm:flipper_length_mm" -head 3
 ```
 
+**Output:**
+
+| species   | island    |   body_mass_g | sex    |
+|:----------|:----------|--------------:|:-------|
+| Adelie    | Torgersen |          3750 | Male   |
+| Adelie    | Torgersen |          3800 | Female |
+| Adelie    | Torgersen |          3250 | Female |
+
 ### Keyword Exclusion (`exclude=`)
 
 Use the `exclude=` parameter to exclude one or more columns:
 ```bash
 pytae penguins.parquet -select "exclude=species" -head 3
-pytae penguins.parquet -select "exclude=[species, island]" -head 3
 ```
+
+**Output:**
+
+| island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
+|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
+| Torgersen |             39.1 |            18.7 |                 181 |          3750 | Male   |
+| Torgersen |             39.5 |            17.4 |                 186 |          3800 | Female |
+| Torgersen |             40.3 |            18   |                 195 |          3250 | Female |
 
 ---
 
@@ -104,12 +141,12 @@ pytae penguins.parquet -select "bill_length_mm:body_mass_g" -head 3
 ```
 
 **Output:**
-```text
- bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g
-           39.1           18.7              181.0       3750.0
-           39.5           17.4              186.0       3800.0
-           40.3           18.0              195.0       3250.0
-```
+
+|   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g |
+|-----------------:|----------------:|--------------------:|--------------:|
+|             39.1 |            18.7 |                 181 |          3750 |
+|             39.5 |            17.4 |                 186 |          3800 |
+|             40.3 |            18   |                 195 |          3250 |
 
 ---
 
@@ -131,18 +168,26 @@ pytae penguins.parquet -select "contains=bill" -head 3
 ```
 
 **Output:**
-```text
- bill_length_mm  bill_depth_mm
-           39.1           18.7
-           39.5           17.4
-           40.3           18.0
-```
+
+|   bill_length_mm |   bill_depth_mm |
+|-----------------:|----------------:|
+|             39.1 |            18.7 |
+|             39.5 |            17.4 |
+|             40.3 |            18   |
 
 ### Combining names with pattern tokens
 
 ```bash
 pytae penguins.parquet -select "species,contains=bill" -head 3
 ```
+
+**Output:**
+
+| species   |   bill_length_mm |   bill_depth_mm |
+|:----------|-----------------:|----------------:|
+| Adelie    |             39.1 |            18.7 |
+| Adelie    |             39.5 |            17.4 |
+| Adelie    |             40.3 |            18   |
 
 ---
 
@@ -164,12 +209,12 @@ pytae penguins.parquet -select "dtype=numeric" -head 3
 ```
 
 **Output:**
-```text
- bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g
-           39.1           18.7              181.0       3750.0
-           39.5           17.4              186.0       3800.0
-           40.3           18.0              195.0       3250.0
-```
+
+|   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g |
+|-----------------:|----------------:|--------------------:|--------------:|
+|             39.1 |            18.7 |                 181 |          3750 |
+|             39.5 |            17.4 |                 186 |          3800 |
+|             40.3 |            18   |                 195 |          3250 |
 
 ---
 
@@ -183,12 +228,12 @@ pytae penguins.parquet -select "dtype=numeric" -select "-bill_depth_mm" -head 3
 ```
 
 **Output:**
-```text
- bill_length_mm  flipper_length_mm  body_mass_g
-           39.1              181.0       3750.0
-           39.5              186.0       3800.0
-           40.3              195.0       3250.0
-```
+
+|   bill_length_mm |   flipper_length_mm |   body_mass_g |
+|-----------------:|--------------------:|--------------:|
+|             39.1 |                 181 |          3750 |
+|             39.5 |                 186 |          3800 |
+|             40.3 |                 195 |          3250 |
 
 ```bash
 # Narrowing output columns after an aggregation
@@ -197,3 +242,11 @@ pytae penguins.parquet \
   -agg "avg_mass = body_mass_g:mean, total = n" \
   -select "species,avg_mass"
 ```
+
+**Output:**
+
+| species   |   avg_mass |
+|:----------|-----------:|
+| Adelie    |    3700.66 |
+| Chinstrap |    3733.09 |
+| Gentoo    |    5076.02 |

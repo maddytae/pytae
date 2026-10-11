@@ -61,12 +61,12 @@ pytae -file "emp.parquet=emp; dept.csv=dept" \
 ```
 
 **Output:**
-```text
- id    name        dept  salary
-  1   Alice Engineering   95000
-  2     Bob   Marketing   75000
-  3 Charlie       Sales   82000
-```
+
+|   id | name    | dept        |   salary |
+|-----:|:--------|:------------|---------:|
+|    1 | Alice   | Engineering |    95000 |
+|    2 | Bob     | Marketing   |    75000 |
+|    3 | Charlie | Sales       |    82000 |
 
 ### Different Join Keys (`left:right`)
 
@@ -84,6 +84,14 @@ pytae -file "customers.parquet=c; orders.csv=o" \
 # Left outer join
 pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,how=left"
 ```
+
+**Output:**
+
+| id | val_a | val_b |
+|---:|:---|---:|
+| 1 | x | 10.0 |
+| 2 | y | 20.0 |
+| 3 | z | NaN |
 
 ### Validating Joins (`validate=one_to_one`)
 
@@ -129,13 +137,21 @@ pytae -file "customers.csv=c; orders.parquet=o" \
     select
       c.name,
       count(o.order_id) as total_orders,
-      sum(o.amount) as total_spent
+      coalesce(sum(o.amount), 0) as total_spent
     from c
     left join o on c.customer_id = o.customer_id
     group by c.name
     order by total_spent desc
   "
 ```
+
+**Output:**
+
+| name | total_orders | total_spent |
+|:---|---:|---:|
+| Alice | 2 | 400.0 |
+| Bob | 1 | 300.0 |
+| Charlie | 0 | 0.0 |
 
 ---
 

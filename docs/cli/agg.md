@@ -51,12 +51,12 @@ pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
 ```
 
 **Output:**
-```text
-  species  body_mass_g
-   Adelie       3700.7
-Chinstrap       3733.1
-   Gentoo       5076.0
-```
+
+| species   |   body_mass_g |
+|:----------|--------------:|
+| Adelie    |        3700.7 |
+| Chinstrap |        3733.1 |
+| Gentoo    |        5076   |
 
 ### Multiple Functions (`"mean,n"`)
 
@@ -67,12 +67,12 @@ pytae penguins.parquet -by species -agg "body_mass_g=mean, n=n" -round 1
 ```
 
 **Output:**
-```text
-  species  body_mass_g   n
-   Adelie       3700.7 152
-Chinstrap       3733.1  68
-   Gentoo       5076.0 124
-```
+
+| species   |   body_mass_g |   n |
+|:----------|--------------:|----:|
+| Adelie    |        3700.7 | 152 |
+| Chinstrap |        3733.1 |  68 |
+| Gentoo    |        5076   | 124 |
 
 ### Column-Specific Mapping
 
@@ -84,6 +84,14 @@ pytae penguins.parquet \
   -agg "body_mass_g = mean, flipper_length_mm = max, n = n" \
   -round 1
 ```
+
+**Output:**
+
+| species | body_mass_g | flipper_length_mm | n |
+|:---|---:|---:|---:|
+| Adelie | 3700.7 | 210.0 | 152 |
+| Chinstrap | 3733.1 | 212.0 | 68 |
+| Gentoo | 5076.0 | 231.0 | 124 |
 
 ### Named Outputs (`total = col:aggfunc`)
 
@@ -97,12 +105,12 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-  species  avg_mass  max_mass  count
-   Adelie    3700.7    4775.0    152
-Chinstrap    3733.1    4800.0     68
-   Gentoo    5076.0    6300.0    124
-```
+
+| species   |   avg_mass |   max_mass |   count |
+|:----------|-----------:|-----------:|--------:|
+| Adelie    |     3700.7 |       4775 |     152 |
+| Chinstrap |     3733.1 |       4800 |      68 |
+| Gentoo    |     5076   |       6300 |     124 |
 
 ### Columns with Spaces (`[col]`)
 
@@ -117,11 +125,11 @@ pytae tips.parquet \
 ```
 
 **Output:**
-```text
-smoker      tip  total bill  n
-   Yes 3.087719   23.232281 57
-    No 3.225464   20.705876 97
-```
+
+| smoker   |     tip |   total |   bill |   n |
+|:---------|--------:|--------:|-------:|----:|
+| Yes      | 3.08772 | 23.2323 |     57 | nan |
+| No       | 3.22546 | 20.7059 |     97 | nan |
 
 Multiple grouping columns can be passed comma-separated: `-by "species,island"` or `-by "[group a],[group b]"`.
 
@@ -136,16 +144,22 @@ pytae penguins.parquet -agg "body_mass_g = mean, count = n" -round 1
 ```
 
 **Output:**
-```text
-  body_mass_g  count
-       4201.8    344
-```
+
+|   body_mass_g |   count |
+|--------------:|--------:|
+|        4201.8 |     344 |
 
 Or compute an aggregation across all numeric columns at once:
 
 ```bash
 pytae penguins.parquet -agg mean -round 1
 ```
+
+**Output:**
+
+| bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g |
+|---:|---:|---:|---:|
+| 43.9 | 17.2 | 200.9 | 4201.8 |
 
 ---
 
@@ -169,13 +183,13 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-species    sex  body_mass_g  max_mass    diff
- Adelie   Male       3750.0    4775.0 -1025.0
- Adelie Female       3800.0    4775.0  -975.0
- Adelie Female       3250.0    4775.0 -1525.0
- Adelie    NaN          NaN    4775.0     NaN
-```
+
+| species   | sex    |   body_mass_g |   max_mass |   diff |
+|:----------|:-------|--------------:|-----------:|-------:|
+| Adelie    | Male   |          3750 |       4775 |  -1025 |
+| Adelie    | Female |          3800 |       4775 |   -975 |
+| Adelie    | Female |          3250 |       4775 |  -1525 |
+| Adelie    | nan    |           nan |       4775 |    nan |
 
 For more examples including group counts (`n`), multi-column grouping, and spaced column names, see the [Mutating & Computing Guide](mutate.md#grouped-mutations--by--mutate).
 
@@ -188,15 +202,39 @@ By default, missing values (`NaN`) in group columns form their own group (`dropn
 
 ```bash
 # Keep missing sex as its own group (default)
-pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=false"
+pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=false" -round 1
 ```
+
+**Output:**
+
+| sex | body_mass_g |
+|:---|---:|
+| Female | 3862.3 |
+| Male | 4545.7 |
+| NaN | 4005.6 |
 
 To drop rows with missing group keys, either specify `dropna=true` inside the `-agg` mapping or chain the top-level `-dropna` flag:
 
 ```bash
 # In-spec dropna=true
-pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true"
-
-# Or chain -dropna beforehand
-pytae penguins.parquet -dropna sex -by sex -agg mean
+pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true" -round 1
 ```
+
+**Output:**
+
+| sex | body_mass_g |
+|:---|---:|
+| Female | 3862.3 |
+| Male | 4545.7 |
+
+```bash
+# Or chain -dropna beforehand
+pytae penguins.parquet -dropna sex -by sex -agg mean -round 1
+```
+
+**Output:**
+
+| sex | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g |
+|:---|---:|---:|---:|---:|
+| Female | 42.1 | 16.4 | 197.4 | 3862.3 |
+| Male | 45.9 | 17.9 | 204.5 | 4545.7 |

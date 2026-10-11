@@ -54,12 +54,12 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-   island  Adelie  Chinstrap  Gentoo
-   Biscoe  3709.7        NaN  5076.0
-    Dream  3688.4     3733.1     NaN
-Torgersen  3706.4        NaN     NaN
-```
+
+| island    |   Adelie |   Chinstrap |   Gentoo |
+|:----------|---------:|------------:|---------:|
+| Biscoe    |   3709.7 |       nan   |     5076 |
+| Dream     |   3688.4 |      3733.1 |      nan |
+| Torgersen |   3706.4 |       nan   |      nan |
 
 ### 2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)
 
@@ -70,12 +70,12 @@ pytae penguins.parquet -pivot "r=island,c=species,a=n"
 ```
 
 **Output:**
-```text
-   island  Adelie  Chinstrap  Gentoo
-   Biscoe      44          0     124
-    Dream      56         68       0
-Torgersen      52          0       0
-```
+
+| island    |   Adelie |   Chinstrap |   Gentoo |
+|:----------|---------:|------------:|---------:|
+| Biscoe    |       44 |           0 |      124 |
+| Dream     |       56 |          68 |        0 |
+| Torgersen |       52 |           0 |        0 |
 
 ### 3. Vertical Summary Table (`r=`, `v=`)
 
@@ -86,11 +86,11 @@ pytae sales.parquet -pivot "r=Region,v=Sales,a=sum"
 ```
 
 **Output:**
-```text
-Region   Sales
-  East  4500.0
-  West  3350.0
-```
+
+| Region   |   Sales |
+|:---------|--------:|
+| East     |    4500 |
+| West     |    3350 |
 
 ### 4. Horizontal Summary Table (`c=`, `v=`)
 
@@ -101,10 +101,10 @@ pytae sales.parquet -pivot "c=Year,v=Sales,a=sum"
 ```
 
 **Output:**
-```text
-  2022    2023    2024
-2100.0  2600.0  3150.0
-```
+
+|   2022 |   2023 |   2024 |
+|-------:|-------:|-------:|
+|   2100 |   2600 |   3150 |
 
 ### 5. Grand Total Summary (`v=`)
 
@@ -131,12 +131,12 @@ pytae sales.parquet -pivot "r=Region,Store,c=Year,v=Sales,a=sum"
 ```
 
 **Output:**
-```text
-Region   Store   2023   2024
-  East Store A  700.0  850.0
-  East Store B  800.0  950.0
-  West Store C  900.0 1100.0
-```
+
+| Region   | Store   |   2023 |   2024 |
+|:---------|:--------|-------:|-------:|
+| Store    | A       |    700 |    850 |
+| Store    | B       |    800 |    950 |
+| Store    | C       |    900 |   1100 |
 
 Both `Region` and `Store` appear as clean leading columns without any MultiIndex row complexity.
 
@@ -151,11 +151,11 @@ pytae sales.parquet -pivot "r=Region,c=Year,v=Sales,Profit,a=sum"
 ```
 
 **Output:**
-```text
-Region  Profit_2023  Profit_2024  Sales_2023  Sales_2024
-  East         90.0        120.0       700.0       850.0
-  West        110.0        150.0       900.0      1100.0
-```
+
+| Region   |   Profit_2023 |   Profit_2024 |   Sales_2023 |   Sales_2024 |
+|:---------|--------------:|--------------:|-------------:|-------------:|
+| East     |            90 |           120 |          700 |          850 |
+| West     |           110 |           150 |          900 |         1100 |
 
 Column names are automatically flattened into intuitive strings (`Metric_Col`), completely avoiding Pandas MultiIndex tuples.
 
@@ -170,6 +170,14 @@ pytae penguins.parquet \
   -pivot "r=island,c=species,v=body_mass_g,a=mean,fill=0" \
   -round 1
 ```
+
+**Output:**
+
+| island    |   Adelie |   Chinstrap |   Gentoo |
+|:----------|---------:|------------:|---------:|
+| Biscoe    |   3709.7 |         0   |   5076   |
+| Dream     |   3688.4 |      3733.1 |      0   |
+| Torgersen |   3706.4 |         0   |      0   |
 
 ---
 

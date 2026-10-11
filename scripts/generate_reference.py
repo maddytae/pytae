@@ -30,6 +30,8 @@ TABLE OF CONTENTS
     4.12. Other Utilities:
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
+          - pt.freq() / df.pt.freq()
+          - pt.hist() / df.pt.hist()
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
           - pt.replace_values() / df.pt.replace_values()
@@ -58,8 +60,9 @@ TABLE OF CONTENTS
     6.11. Why did `-sort` or `-sort_by` fail? (Use `-arrange`)
     6.12. How do I inspect metadata without reading data into RAM?
     6.13. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
+    6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
-    Recipe 1: Master Mutate Recipe (All 11 Features in One Pipeline)
+    Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
     Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
     Recipe 4: DuckDB SQL Query with Joining Frames
@@ -128,6 +131,7 @@ Top-Level Functions exported by `pytae`:
   - pt.by(df, *cols)
   - pt.ungroup(df)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
+  - pt.lit(val)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)  [slice_max/slice_min are deprecated aliases]
   - pt.distinct(df, *cols, keep="first")
@@ -139,6 +143,8 @@ Top-Level Functions exported by `pytae`:
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
   - pt.cols(df, ascending=True)
   - pt.glimpse(df, width=None)
+  - pt.freq(df, col=None, *, dropna=False)
+  - pt.hist(df, col=None, bins=10)
   - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False)
   - pt.replace_values(df, v: dict, c=None, exact=True)
   - pt.safe_reset_index(df)
@@ -167,6 +173,8 @@ DataFrame Accessor (`df.pt`):
     df.pt.handle_missing(...)
     df.pt.cols(...)
     df.pt.glimpse(...)
+    df.pt.freq(...)
+    df.pt.hist(...)
     df.pt.clean_columns(...)
     df.pt.replace_values(...)
     df.pt.safe_reset_index(...)
@@ -318,7 +326,7 @@ Calling Styles:
   5. Callables / Lambdas:
      df.pt.mutate(is_heavy=lambda d: d["body_mass_g"] > 4000)
 
-Comprehensive Feature Set (The 11 Mutate Capabilities):
+Comprehensive Feature Set (The 12 Mutate Capabilities):
   1. Normal Mutate: Standard arithmetic and boolean derivations.
   2. Sequential Chaining: Later expressions can reference columns created earlier 
      in the SAME mutate() call:
@@ -346,7 +354,7 @@ Comprehensive Feature Set (The 11 Mutate Capabilities):
      Enclose spaced column names in brackets `[body mass g]` or backticks:
      df.pt.mutate(ratio="[body mass g] / [bill length mm]")
   9. Grouped Window Transforms (Inherited from `pt.by()`, `dropna=False`, `observed=True`):
-     Evaluates aggregations per group and broadcasts back to each row without collapsing rows (N -> N):
+     Evaluates aggregations per group via fast vectorized `GroupBy.transform()` and broadcasts back to each row without collapsing rows (N -> N):
      - Injected Aggregations: mean(x), sum(x), median(x), min(x), max(x), std(x), var(x), n (or n())
      - Example:
        (
@@ -378,6 +386,11 @@ Comprehensive Feature Set (The 11 Mutate Capabilities):
        To assign an explicit literal constant value in Python kwargs without awkward nested quotes,
        use `pt.lit()`:
        df.pt.mutate(source=pt.lit("tag"), status=pt.lit("active"))
+   12. Multi-Column Transforms (`[prefix](col1, col2)[suffix] = expr`):
+       Apply the same formula across multiple columns at once using parenthesized target specs and `_` as the current column placeholder:
+       - In-place overwrite: `df.pt.mutate("(rev, cost) = _ * 1.08")`
+       - Suffix/prefix new columns: `df.pt.mutate("(rev, cost)_usd = _ * 1.08")` or `df.pt.mutate("norm_(rev, cost) = _ / max(_)")`
+       - Pattern & dtype selectors: `df.pt.mutate("(startswith=bill_) = _ / 10")` or `df.pt.by("species").pt.mutate("z_(dtype=numeric) = (_ - mean(_)) / std(_)")` (automatically excludes active grouping columns).
 
 
 4.4. pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
@@ -629,7 +642,11 @@ Rules & Features:
 - pt.cols(df, ascending=True):
   Returns list of column names (ascending=True for A-Z, False for Z-A, None for file order).
 - pt.glimpse(df, width=None) / df.pt.glimpse(width=None):
-  Prints transposed overview of DataFrame columns, dtypes, and sample values.
+  Prints transposed overview of DataFrame columns, dtypes, and sample values (returns self).
+- pt.freq(df, col=None, *, dropna=False) / df.pt.freq(col=None, *, dropna=False):
+  Computes frequency distribution DataFrame with counts, percentages, and ASCII bars.
+- pt.hist(df, col=None, bins=10) / df.pt.hist(col=None, bins=10):
+  Computes numeric histogram DataFrame with bin intervals, counts, and ASCII bars; accepts "col:bins" shorthand.
 - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True):
   Sanitizes missing values with type-safe defaults.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
@@ -726,7 +743,7 @@ Row Filtering & Slicing Flags:
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
-  -mutate SPEC          Create/overwrite columns ("new_col = expression")
+  -mutate SPEC          Create/overwrite columns ("new_col = expr" or multi-column "[prefix](col1, col2)[suffix] = expr" using _ placeholder)
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
   -replace_values SPEC  Replace values: "v='old:new', c='col', exact=True"
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
@@ -868,11 +885,18 @@ For Parquet files, use `-meta` or inspection flags (`-shape`, `-cols`, `-dtype`,
 -----------------------------------------------------------------------
 In Python kwargs: `df.pt.mutate(source=pt.lit("active"))` to prevent evaluation as a column reference.
 
+6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
+---------------------------------------------------------------------------------------------------------
+Use parenthesized target syntax `[prefix](target_cols)[suffix] = expr` with `_` as the current column placeholder:
+- In-place: `df.pt.mutate("(rev, cost, tax) = _ * 1.08")`
+- New columns (suffix/prefix): `df.pt.mutate("(rev, cost)_usd = _ * 1.08")` or `df.pt.mutate("norm_(rev, cost) = _ / max(_)")`
+- Selectors & grouped: `df.pt.by("species").pt.mutate("z_(dtype=numeric) = (_ - mean(_)) / std(_)")`
+
 
 7. END-TO-END RECIPES & EXAMPLES
 --------------------------------------------------------------------------------
 
-Recipe 1: Master Mutate Recipe (All 11 Capabilities in One Pipeline)
+Recipe 1: Master Mutate Recipe (All 12 Capabilities in One Pipeline)
 --------------------------------------------------------------------------------
 ```python
 import numpy as np
@@ -894,6 +918,9 @@ master_df = (
     penguins
     .pt.by("species")
     .pt.mutate(
+        # 12. Multi-column transform creating new _cm columns via _ placeholder
+        "(bill_length_mm, bill_depth_mm)_cm = _ / 10",
+
         # 1. Normal mutate: standard arithmetic derivation
         bill_ratio="bill_length_mm / bill_depth_mm",
         mass_kg="body_mass_g / 1000",
@@ -1085,18 +1112,18 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   ├── cli.md
 │   ├── comparison_to_pandas_and_dplyr.md
 │   ├── library
-│   │   ├── agg.ipynb
-│   │   ├── arrange.ipynb
-│   │   ├── distinct.ipynb
-│   │   ├── filter.ipynb
-│   │   ├── mutate.ipynb
-│   │   ├── other_utilities.ipynb
-│   │   ├── pick.ipynb
-│   │   ├── pivot.ipynb
+│   │   ├── agg.md
+│   │   ├── arrange.md
+│   │   ├── distinct.md
+│   │   ├── filter.md
+│   │   ├── mutate.md
+│   │   ├── other_utilities.md
+│   │   ├── pick.md
+│   │   ├── pivot.md
 │   │   ├── plotting.ipynb
-│   │   ├── reshape.ipynb
-│   │   ├── select.ipynb
-│   │   └── sql.ipynb
+│   │   ├── reshape.md
+│   │   ├── select.md
+│   │   └── sql.md
 │   └── library.md
 ├── pyproject.toml
 ├── readme.md
@@ -1248,9 +1275,9 @@ def generate_reference() -> None:
         parts.append("################################################################################")
         parts.append(f.read_text(encoding="utf-8").rstrip() + "\n")
 
-    # Section 9: Interactive Library Notebook Walkthroughs (docs/library/ & docs/library.md)
+    # Section 9: Library Feature Guides & Walkthroughs (docs/library/ & docs/library.md)
     parts.append("================================================================================")
-    parts.append("9. INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)")
+    parts.append("9. LIBRARY FEATURE GUIDES & WALKTHROUGHS (docs/library/ & docs/library.md)")
     parts.append("================================================================================\n")
     lib_md = REPO_ROOT / "docs" / "library.md"
     parts.append("################################################################################")
@@ -1258,13 +1285,22 @@ def generate_reference() -> None:
     parts.append("################################################################################")
     parts.append(lib_md.read_text(encoding="utf-8").rstrip() + "\n")
 
-    nb_files = sorted((REPO_ROOT / "docs" / "library").glob("*.ipynb"))
-    for nb_path in nb_files:
-        rel_path = nb_path.relative_to(REPO_ROOT)
+    lib_docs = sorted(
+        list((REPO_ROOT / "docs" / "library").glob("*.md"))
+        + list((REPO_ROOT / "docs" / "library").glob("*.ipynb")),
+        key=lambda p: p.stem,
+    )
+    for doc_path in lib_docs:
+        rel_path = doc_path.relative_to(REPO_ROOT)
         parts.append("################################################################################")
-        parts.append(f"# NOTEBOOK: {rel_path}")
-        parts.append("################################################################################")
-        parts.append(_format_notebook(nb_path).rstrip() + "\n")
+        if doc_path.suffix == ".ipynb":
+            parts.append(f"# NOTEBOOK: {rel_path}")
+            parts.append("################################################################################")
+            parts.append(_format_notebook(doc_path).rstrip() + "\n")
+        else:
+            parts.append(f"# FILE: {rel_path}")
+            parts.append("################################################################################")
+            parts.append(doc_path.read_text(encoding="utf-8").rstrip() + "\n")
 
     # Section 10: Philosophy & Comparison Rosetta Stone (docs/comparison_to_pandas_and_dplyr.md)
     parts.append("================================================================================")

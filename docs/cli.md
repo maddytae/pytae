@@ -73,7 +73,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Row Slicing / Picking** | [Row Picking Guide](cli/pick.md) | `-pick`, top/bottom N rows or proportion per group with `-by` |
 | **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
 | **Distinct Rows** | [Distinct Rows Guide](cli/distinct.md) | `-distinct`, drop duplicate rows across all or specific column subsets |
-| **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
+| **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, multi-column transforms (`(col1, col2) = _ * 2`), arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
 | **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/agg.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
@@ -99,11 +99,18 @@ Quickly peek at data, inspect dimensions, data types, missing value distribution
 - **Modifiers**: `-seed`, `-frac`, `-pretty`, `-round`
 
 ```bash
-pytae data.parquet -head 5           # View first 5 rows
-pytae data.parquet -meta             # Sub-millisecond Parquet metadata (codecs, row groups)
-pytae data.parquet -nulls desc       # Null counts sorted from most to least
-pytae data.parquet -describe -pager  # Paginated statistical summary
+pytae penguins.parquet -head 5           # View first 5 rows
 ```
+
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+| Adelie | Torgersen | NaN | NaN | NaN | NaN | NaN |
+| Adelie | Torgersen | 36.7 | 19.3 | 193.0 | 3450.0 | Female |
 
 👉 See the complete guide: **[Inspection & Metadata Guide](cli/inspect.md)**
 
@@ -119,12 +126,16 @@ Narrow, reorder, or exclude columns using exact names, negative prefixes (`-col`
 - **Negative selection**: `-col`, `~col`, `-start:end`, `exclude=col`
 
 ```bash
-pytae data.parquet -select "species,island,body_mass_g"           # Explicit column order
-pytae data.parquet -select "-species"                             # Exclude column directly in -select
-pytae data.parquet -select "species:bill_length_mm"               # Contiguous column slice
-pytae data.parquet -select "contains=bill,dtype=numeric"          # Pattern union
-pytae data.parquet -select "-sex,-island"                         # Exclude multiple columns
+pytae penguins.parquet -select "species,island,body_mass_g" -head 3
 ```
+
+**Output:**
+
+| species | island | body_mass_g |
+|:---|:---|---:|
+| Adelie | Torgersen | 3750.0 |
+| Adelie | Torgersen | 3800.0 |
+| Adelie | Torgersen | 3250.0 |
 
 👉 See the complete guide: **[Column Selection Guide](cli/select.md)**
 
@@ -138,13 +149,16 @@ Filter rows using pytae's ergonomic filter syntax (`-filter`), drop null rows wi
 - **Primary flags**: `-filter`, `-dropna`, `-pick`
 
 ```bash
-pytae data.parquet -filter "species = 'Adelie', body_mass_g > 3500"  # Filtering
-pytae data.parquet -filter "body_mass_g = [3000, 4500]"              # Interval range
-pytae data.parquet -dropna "body_mass_g,sex"                      # Drop rows with NaNs in specific cols
-pytae data.parquet -pick "body_mass_g,n=5"                         # Top 5 heaviest penguins
-pytae data.parquet -by species -pick body_mass_g                   # Heaviest penguin per species
-pytae data.parquet -pick "body_mass_g,n=3,order=min"               # 3 lightest penguins
+pytae penguins.parquet -filter "species = 'Adelie', body_mass_g > 3500" -head 3
 ```
+
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 39.3 | 20.6 | 190.0 | 3650.0 | Male |
 
 👉 See the complete guides: **[Row Filtering Guide](cli/filter.md)** • **[Row Picking Guide](cli/pick.md)**
 
@@ -153,16 +167,22 @@ pytae data.parquet -pick "body_mass_g,n=3,order=min"               # 3 lightest 
 <a id="feature-engineering-mutation"></a>
 ### 4. Feature Engineering & Mutation
 
-Create new columns or overwrite existing ones using arithmetic, boolean expressions, vectorized helpers, or external specification files.
+Create new columns or overwrite existing ones using arithmetic, multi-column transforms (`(col1, col2) = _ * 2`), boolean expressions, vectorized helpers, or external specification files.
 
 - **Primary flags**: `-mutate`
 - **Functional helpers**: `if_else()`, `case_when()`, `coalesce()`, `map()`
 
 ```bash
-pytae data.parquet -mutate "mass_kg = body_mass_g / 1000"
-pytae data.parquet -mutate "tier = if_else(body_mass_g > 4000, 'Heavy', 'Light')"
-pytae data.parquet -mutate @features.txt                          # Load specs from file
+pytae penguins.parquet -mutate "mass_kg = body_mass_g / 1000" -select "species,body_mass_g,mass_kg" -head 3
 ```
+
+**Output:**
+
+| species | body_mass_g | mass_kg |
+|:---|---:|---:|
+| Adelie | 3750.0 | 3.75 |
+| Adelie | 3800.0 | 3.80 |
+| Adelie | 3250.0 | 3.25 |
 
 👉 See the complete guide: **[Mutating & Computing Guide](cli/mutate.md)**
 
@@ -177,9 +197,16 @@ Run ad-hoc ANSI SQL queries directly against tabular datasets using DuckDB. Scan
 - **Target table**: The active view is always queryable as table `data`.
 
 ```bash
-pytae data.parquet -sql "select species, avg(body_mass_g) as avg_mass from data group by species"
-pytae data.parquet -sql @query.sql                               # Execute query from file
+pytae penguins.parquet -sql "select species, round(avg(body_mass_g), 2) as avg_mass from data group by species"
 ```
+
+**Output:**
+
+| species | avg_mass |
+|:---|---:|
+| Gentoo | 5076.02 |
+| Adelie | 3700.66 |
+| Chinstrap | 3733.09 |
 
 👉 See the complete guide: **[DuckDB SQL Engine Guide](cli/sql.md)**
 
@@ -193,18 +220,17 @@ Standardize messy column headers, substitute cell values, fill missing entries, 
 - **Primary flags**: `-clean_columns`, `-replace_values`, `-handle_missing`, `-dropna`, `-rename`
 
 ```bash
-# Clean messy header names (strip, lowercase, replace spaces, deduplicate)
-pytae data.parquet -clean_columns "strip,squeeze,strip_special,fill,case=lower,dedupe"
-
-# Replace cell values across columns
-pytae data.parquet -replace_values "v='old:new',c='category'"
-
 # Impute missing values (. for text, 0 for numeric)
-pytae data.parquet -handle_missing
-
-# Rename columns
-pytae data.parquet -rename "old_col:new_col"
+pytae penguins.parquet -handle_missing -head 3
 ```
+
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
 
 👉 See the complete guide: **[Data Cleaning & Value Replacement Guide](cli/clean_replace.md)**
 
@@ -218,11 +244,16 @@ Perform automated or explicit group summaries, or append group-level statistics 
 - **Primary flags**: `-by` (group columns), `-agg` (aggregation functions / mappings), `-mutate` (grouped window transforms)
 
 ```bash
-pytae data.parquet -by species -agg mean
-pytae data.parquet -by species -agg "avg_mass = body_mass_g:mean"
-pytae data.parquet -agg mean  # Whole-table grand summary
-pytae data.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass"  # Grouped transform
+pytae penguins.parquet -by species -agg mean -round 2
 ```
+
+**Output:**
+
+| species | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g |
+|:---|---:|---:|---:|---:|
+| Adelie | 38.79 | 18.35 | 189.95 | 3700.66 |
+| Chinstrap | 48.83 | 18.42 | 195.82 | 3733.09 |
+| Gentoo | 47.50 | 14.98 | 217.19 | 5076.02 |
 
 👉 See the complete guide: **[Aggregations & Grouping Guide](cli/agg.md)**
 
@@ -236,13 +267,16 @@ Pivot tables from long to wide, melt wide tables to long, tally value combinatio
 - **Primary flags**: `-pivot`, `-long`, `-wide`, `-value_counts`, `-distinct`, `-arrange`
 
 ```bash
-pytae data.parquet -pivot "r=Region,c=Year,v=Sales,a=sum"           # 2D Excel-style pivot
-pytae data.parquet -long "c=metric,v=reading"                       # Melt
-pytae data.parquet -wide "c=metric,v=reading"                       # Pure 1:1 reshape
-pytae data.parquet -pivot "r=species,c=island,v=sex,a=n"            # Frequency matrix
-pytae data.parquet -distinct "species,island"                       # Drop duplicate rows
-pytae data.parquet -arrange "body_mass_g desc"                      # Sort rows
+pytae penguins.parquet -pivot "r=species,c=island,v=sex,a=n"
 ```
+
+**Output:**
+
+| species | Biscoe | Dream | Torgersen |
+|:---|---:|---:|---:|
+| Adelie | 44 | 56 | 52 |
+| Chinstrap | 0 | 68 | 0 |
+| Gentoo | 124 | 0 | 0 |
 
 👉 See the complete guides: **[Reshaping Guide](cli/reshape.md)** • **[2D Pivot Tables Guide](cli/pivot.md)**
 
@@ -256,9 +290,15 @@ Render instant terminal ASCII histograms and frequency bar distributions, or exp
 - **Primary flags**: `-freq`, `-hist`, `-plot`, `-finalize`
 
 ```bash
-pytae penguins.parquet -freq species                             # Terminal ASCII bar chart
-pytae penguins.parquet -hist "body_mass_g:15"                    # Terminal ASCII histogram (15 bins)
-pytae penguins.parquet -by species -agg "mass=body_mass_g:mean" -plot "kind=bar, x=species, y=mass" -o chart.png
+pytae penguins.parquet -freq species
+```
+
+**Output:**
+```text
+  species  Count                 Distribution
+   Adelie    152 ████████████████████ (44.2%)
+   Gentoo    124     ████████████████ (36.0%)
+Chinstrap     68            █████████ (19.8%)
 ```
 
 👉 See the complete guide: **[Visualizations & Plotting Guide](cli/plotting.md)**
@@ -464,25 +504,98 @@ python -c "import pytae; pytae.sample_data['flights'].to_parquet('flights.parque
 
 ### Quick Commands with Sample Datasets
 
+Filter and aggregate:
 ```bash
-# Filter and aggregate
-pytae penguins.parquet -filter "species = 'Adelie'" -by species -agg mean
-
-# Two-way frequency pivot matrix
-pytae penguins.parquet -pivot "r=species,c=island,v=sex,a=n"
-
-# Grouped mutation without collapsing rows
-pytae tips.parquet -select "day,total_bill,tip" -by day -mutate "avg_tip = mean(tip), diff = tip - avg_tip"
-
-# Terminal frequency bar chart
-pytae titanic.parquet -freq survived
-
-# Aggregate numeric metrics per cut
-pytae diamonds.parquet -by cut -agg price=mean
-
-# Sort by numeric column descending
-pytae mpg.parquet -select "origin,mpg" -arrange "mpg desc" -head 5
-
-# Explicit grouping with custom aggregation
-pytae flights.parquet -by year -agg "passengers = sum"
+pytae penguins.parquet -filter "species = 'Adelie'" -by species -agg mean -round 2
 ```
+
+**Output:**
+
+| species | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g |
+|:---|---:|---:|---:|---:|
+| Adelie | 38.79 | 18.35 | 189.95 | 3700.66 |
+
+Two-way frequency pivot matrix:
+```bash
+pytae penguins.parquet -pivot "r=species,c=island,v=sex,a=n"
+```
+
+**Output:**
+
+| species | Biscoe | Dream | Torgersen |
+|:---|---:|---:|---:|
+| Adelie | 44 | 56 | 52 |
+| Chinstrap | 0 | 68 | 0 |
+| Gentoo | 124 | 0 | 0 |
+
+Grouped mutation without collapsing rows:
+```bash
+pytae tips.parquet -select "day,total_bill,tip" -by day -mutate "avg_tip = mean(tip), diff = tip - avg_tip" -head 5 -round 2
+```
+
+**Output:**
+
+| day | total_bill | tip | avg_tip | diff |
+|:---|---:|---:|---:|---:|
+| Sun | 16.99 | 1.01 | 3.26 | -2.25 |
+| Sun | 10.34 | 1.66 | 3.26 | -1.59 |
+| Sun | 21.01 | 3.50 | 3.26 | 0.24 |
+| Sun | 23.68 | 3.31 | 3.26 | 0.05 |
+| Sun | 24.59 | 3.61 | 3.26 | 0.35 |
+
+Terminal frequency bar chart:
+```bash
+pytae titanic.parquet -freq survived
+```
+
+**Output:**
+```text
+survived  Count                 Distribution
+       0    549 ████████████████████ (61.6%)
+       1    342         ████████████ (38.4%)
+```
+
+Aggregate numeric metrics per cut:
+```bash
+pytae diamonds.parquet -by cut -agg price=mean -round 2
+```
+
+**Output:**
+
+| cut | price |
+|:---|---:|
+| Ideal | 3457.54 |
+| Premium | 4584.26 |
+| Very Good | 3981.76 |
+| Good | 3928.86 |
+| Fair | 4358.76 |
+
+Sort by numeric column descending:
+```bash
+pytae mpg.parquet -select "origin,mpg" -arrange "mpg desc" -head 5
+```
+
+**Output:**
+
+| origin | mpg |
+|:---|---:|
+| japan | 46.6 |
+| japan | 44.6 |
+| europe | 44.3 |
+| europe | 44.0 |
+| europe | 43.4 |
+
+Explicit grouping with custom aggregation:
+```bash
+pytae flights.parquet -by year -agg "passengers = sum" -head 5
+```
+
+**Output:**
+
+| year | passengers |
+|---:|---:|
+| 1949 | 1520 |
+| 1950 | 1676 |
+| 1951 | 2042 |
+| 1952 | 2364 |
+| 1953 | 2700 |

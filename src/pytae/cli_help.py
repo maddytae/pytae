@@ -122,21 +122,27 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "mutate": KeywordHelp(
         name="mutate",
         flag="-mutate, --mutate SPEC",
-        syntax="pytae <path> -mutate \"<col1 = expr1, col2 = expr2>\"",
-        summary="Create, modify, or engineer columns using vectorized expressions or grouped window transforms.",
+        syntax="pytae <path> -mutate \"<col1 = expr1, (colA, colB) = _ * 2>\"",
+        summary="Create, modify, or engineer columns using vectorized expressions, multi-column transforms, or grouped window transforms.",
         description=(
             "Evaluates column assignments sequentially from left to right.\n"
             "Expressions support standard arithmetic, boolean logic, pandas Series methods,\n"
-            "and window aggregations when combined with -by (e.g. -by species -mutate \"avg = mean(mass)\")."
+            "multi-column transforms via '(col1, col2) = expr' or '(startswith=prefix) = expr' using '_' as the column placeholder,\n"
+            "and vectorized window aggregations when combined with -by (e.g. -by species -mutate \"avg = mean(mass)\")."
         ),
         options=[
-            "new_col = expr : Define new column calculated from existing columns.",
+            "new_col = expr : Define or overwrite a column calculated from existing columns.",
+            "(col1, col2) = expr : Transform multiple columns in-place using '_' as the column placeholder.",
+            "(col1, col2)_suffix = expr : Create new columns with a suffix (or prefix_(col1, col2)) without overwriting originals.",
+            "(startswith=..., dtype=numeric) = expr : Apply an expression across columns matched by select() predicates.",
             "[col with spaces] : Target or reference column headers that contain spaces.",
-            "-by <col> : Evaluate window aggregations (mean, sum, min, max, std, n) per group without collapsing rows.",
+            "-by <col> : Evaluate window aggregations (mean, sum, min, max, std, var, n) per group without collapsing rows.",
         ],
         examples=[
             "pytae penguins.parquet -mutate \"mass_kg = body_mass_g / 1000\" -head 3",
-            "pytae penguins.parquet -mutate \"bill_ratio = bill_length_mm / bill_depth_mm\"",
+            "pytae penguins.parquet -mutate \"(bill_length_mm, bill_depth_mm) = _ / 10\"",
+            "pytae penguins.parquet -mutate \"(startswith=bill_)_cm = _ / 10\"",
+            "pytae penguins.parquet -by species -mutate \"(dtype=numeric) = (_ - mean(_)) / std(_)\"",
             "pytae penguins.parquet -by species -mutate \"avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass\"",
             "pytae penguins.parquet -mutate \"source = '2024_survey'\"",
         ],

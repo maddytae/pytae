@@ -36,6 +36,16 @@ By default, `-arrange` sorts rows in ascending order:
 pytae penguins.parquet -arrange body_mass_g -select "species,island,body_mass_g" -head 5
 ```
 
+**Output:**
+
+| species | island | body_mass_g |
+|:---|:---|---:|
+| Chinstrap | Dream | 2700.0 |
+| Adelie | Biscoe | 2850.0 |
+| Adelie | Biscoe | 2850.0 |
+| Adelie | Torgersen | 2900.0 |
+| Adelie | Dream | 2900.0 |
+
 ---
 
 ## Descending Sort (`desc`, `-col`)
@@ -49,6 +59,16 @@ pytae penguins.parquet -arrange "body_mass_g desc" -select "species,island,body_
 # Leading minus shorthand
 pytae penguins.parquet -arrange "-body_mass_g" -select "species,island,body_mass_g" -head 5
 ```
+
+**Output:**
+
+| species | island | body_mass_g |
+|:---|:---|---:|
+| Gentoo | Biscoe | 6300.0 |
+| Gentoo | Biscoe | 6050.0 |
+| Gentoo | Biscoe | 6000.0 |
+| Gentoo | Biscoe | 6000.0 |
+| Gentoo | Biscoe | 5950.0 |
 
 ---
 
@@ -64,6 +84,17 @@ pytae penguins.parquet -arrange "species, body_mass_g desc" -select "species,isl
 pytae penguins.parquet -arrange "species, -body_mass_g" -select "species,island,body_mass_g" -head 6
 ```
 
+**Output:**
+
+| species | island | body_mass_g |
+|:---|:---|---:|
+| Adelie | Biscoe | 4775.0 |
+| Adelie | Biscoe | 4725.0 |
+| Adelie | Torgersen | 4700.0 |
+| Adelie | Torgersen | 4675.0 |
+| Adelie | Dream | 4650.0 |
+| Adelie | Dream | 4600.0 |
+
 ---
 
 ## Columns With Spaces (`[col name]`)
@@ -73,3 +104,13 @@ Columns with spaces are cleanly referenced using square brackets:
 ```bash
 pytae sales.csv -arrange "[annual revenue] desc" -head 5
 ```
+
+**Output:**
+
+| annual revenue | region |
+|---:|:---|
+| 450000 | Central |
+| 310000 | East |
+| 180000 | Pacific |
+| 120000 | North |
+| 95000 | West |

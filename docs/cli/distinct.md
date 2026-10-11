@@ -38,14 +38,14 @@ pytae penguins.parquet -distinct "species,island"
 ```
 
 **Output:**
-```text
-  species    island
-   Adelie Torgersen
-   Adelie    Biscoe
-   Adelie     Dream
-Chinstrap     Dream
-   Gentoo    Biscoe
-```
+
+| species   | island    |
+|:----------|:----------|
+| Adelie    | Torgersen |
+| Adelie    | Biscoe    |
+| Adelie    | Dream     |
+| Chinstrap | Dream     |
+| Gentoo    | Biscoe    |
 
 ---
 
@@ -71,13 +71,19 @@ pytae events.parquet -distinct "keep=last"
 Pass column names to restrict duplicate checks to specific identifiers, keeping the matching record for all other columns:
 
 ```bash
-# Deduplicate based on customer identifier, retaining first order
-pytae orders.parquet -distinct customer_id
-
 # Deduplicate based on composite keys
 pytae penguins.parquet -distinct "species,island"
 ```
 
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Biscoe | 37.8 | 18.3 | 174.0 | 3400.0 | Female |
+| Adelie | Dream | 39.5 | 16.7 | 178.0 | 3250.0 | Female |
+| Chinstrap | Dream | 46.5 | 17.9 | 192.0 | 3500.0 | Female |
+| Gentoo | Biscoe | 46.1 | 13.2 | 211.0 | 4500.0 | Female |
 
 ---
 
@@ -93,3 +99,13 @@ pytae penguins.parquet \
   -distinct \
   -arrange species
 ```
+
+**Output:**
+
+| species | island |
+|:---|:---|
+| Adelie | Torgersen |
+| Adelie | Dream |
+| Adelie | Biscoe |
+| Chinstrap | Dream |
+| Gentoo | Biscoe |

@@ -27,7 +27,7 @@ def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
             continue
         # Support '=' as primary assignment operator (ignoring ==, <=, >=, !=)
         m_eq = re.match(
-            r"^((?:[^\x22\x27\[\]=]|\x22[^\x22]*\x22|\x27[^\x27]*\x27|\[[^\]]*\])+?)(?<![<>!=])=(?!=)(.+)$",
+            r"^((?:[^\x22\x27\[\]()=]|\x22[^\x22]*\x22|\x27[^\x27]*\x27|\[[^\]]*\]|\([^)]*\))+?)(?<![<>!=])=(?!=)(.+)$",
             raw_entry,
         )
         if m_eq:
@@ -408,6 +408,156 @@ class _RowCount(int):
         return int(self)
 
 
+class _CallableSeries(pd.Series):
+    """Series of group row counts that can also be called as n() to match dplyr/polars conventions."""
+
+    def __call__(self) -> pd.Series:
+        return self
+
+
+_VECTORIZABLE_HELPERS = {
+    "mean", "sum", "median", "min", "max", "std", "var", "n",
+    "if_else", "case_when", "coalesce", "map", "lit", "abs", "round",
+}
+
+
+def _is_vectorizable_grouped_expr(expr: str, known_cols: set[str]) -> bool:
+    """Return True if a string expression can be safely evaluated in vectorized mode
+    across all groups at once using GroupBy.transform()."""
+    try:
+        safe_expr, _ = _rewrite_fallback_col_refs(expr, known_cols)
+        rewritten, _ = _strip_at_refs(safe_expr)
+        tree = ast.parse(rewritten, mode="eval")
+    except SyntaxError:
+        return False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if (
+                node.attr == "lit"
+                and isinstance(node.value, ast.Name)
+                and node.value.id in ("pt", "pytae")
+            ):
+                continue
+            if node.attr in ("str", "dt"):
+                continue
+            if (
+                isinstance(node.value, ast.Attribute)
+                and node.value.attr in ("str", "dt")
+            ):
+                continue
+            return False
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                if node.func.id not in _VECTORIZABLE_HELPERS:
+                    return False
+            elif isinstance(node.func, ast.Attribute):
+                if (
+                    node.func.attr == "lit"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in ("pt", "pytae")
+                ):
+                    continue
+                if (
+                    isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr in ("str", "dt")
+                ):
+                    continue
+                return False
+            else:
+                return False
+    return True
+
+
+class _GroupContext:
+    """Caches grouping structures on a RangeIndex DataFrame for fast vectorized transforms."""
+
+    def __init__(self, work_df: pd.DataFrame, by_cols: list[str], *, dropna: bool, observed: bool):
+        self.work_df = work_df
+        self.by_cols = by_cols
+        self.dropna = dropna
+        self.observed = observed
+        self._gb = work_df.groupby(by_cols, dropna=dropna, observed=observed)
+        self._grouper = getattr(self._gb, "_grouper", None)
+        self._n_series: _CallableSeries | None = None
+        if dropna:
+            mask = work_df[by_cols].isna().any(axis=1)
+            self.na_mask: pd.Series | None = mask if mask.any() else None
+        else:
+            self.na_mask = None
+
+    def transform(self, s: Any, func_name: str) -> Any:
+        if isinstance(s, pd.Series):
+            if self._grouper is not None:
+                try:
+                    return s.groupby(self._grouper).transform(func_name)
+                except Exception:
+                    pass
+            keys = [self.work_df[c] for c in self.by_cols]
+            return s.groupby(keys, dropna=self.dropna, observed=self.observed).transform(func_name)
+        return getattr(np, func_name)(s)
+
+    def row_counts(self) -> _CallableSeries:
+        if self._n_series is None:
+            sz = self._gb[self.by_cols[0]].transform("size")
+            self._n_series = _CallableSeries(sz, index=self.work_df.index)
+        return self._n_series
+
+
+def _eval_grouped_vectorized(
+    work_df: pd.DataFrame,
+    expr: str,
+    local_dict: dict,
+    global_dict: dict,
+    grp_ctx: _GroupContext,
+) -> pd.Series:
+    """Evaluate a grouped mutate expression in one vectorized pass across work_df."""
+    known_cols = set(work_df.columns)
+    safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
+    rewritten, at_names = _strip_at_refs(safe_expr)
+    namespace = {**global_dict, **local_dict}
+    namespace["map"] = _map_values
+    namespace["if_else"] = _if_else
+    namespace["case_when"] = _case_when
+    namespace["coalesce"] = _coalesce
+    namespace["lit"] = lambda val: val.value if isinstance(val, _Lit) else val
+
+    class _PtLitHolder:
+        lit = staticmethod(lambda val: val.value if isinstance(val, _Lit) else val)
+
+    if "pt" not in namespace:
+        namespace["pt"] = _PtLitHolder
+
+    for fn in ("mean", "sum", "median", "min", "max", "std", "var"):
+        namespace[fn] = lambda s, _fn=fn: grp_ctx.transform(s, _fn)
+
+    if "n" not in work_df.columns:
+        namespace["n"] = grp_ctx.row_counts()
+
+    namespace.update({col: work_df[col] for col in work_df.columns if col.isidentifier()})
+    for alias, orig_col in col_map.items():
+        namespace[alias] = work_df[orig_col]
+    for name in at_names:
+        if name in local_dict:
+            namespace[name] = local_dict[name]
+        elif name in global_dict:
+            namespace[name] = global_dict[name]
+        else:
+            raise UndefinedVariableError(f"local variable '{name}' is not defined")
+
+    val = eval(_compile_fallback(rewritten), namespace)  # noqa: S307
+    if isinstance(val, pd.Series):
+        res = val
+    elif getattr(val, "ndim", 0) == 0:
+        res = pd.Series([val] * len(work_df), index=work_df.index)
+    else:
+        res = pd.Series(val, index=work_df.index)
+
+    if grp_ctx.na_mask is not None:
+        res = res.mask(grp_ctx.na_mask, np.nan)
+    return res
+
+
 def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
     """out.eval(expr), resolving @local_var references against the scope that
     called mutate() rather than mutate()'s own frame — mutate() sits between
@@ -464,6 +614,129 @@ def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
         return eval(_compile_fallback(rewritten), namespace)  # noqa: S307 - spec is developer-authored, same trust as pandas eval
 
 
+_SELECT_KEYS = {
+    "dtype",
+    "exclude",
+    "contains",
+    "startswith",
+    "endswith",
+    "regex",
+    "exclude_dtype",
+}
+
+
+def _replace_underscore_placeholder(expr: str, col_name: str) -> str:
+    """Replace standalone `_` identifier tokens (outside quotes and brackets) with `col_name`
+    (or `[col_name]` if `col_name` is not a valid Python identifier)."""
+    replacement = col_name if col_name.isidentifier() else f"[{col_name}]"
+    out_chars: list[str] = []
+    quote: str | None = None
+    i, n = 0, len(expr)
+    while i < n:
+        ch = expr[i]
+        if quote is not None:
+            out_chars.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out_chars.append(expr[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            out_chars.append(ch)
+            i += 1
+            continue
+        if ch in "`[":
+            close_ch = "`" if ch == "`" else "]"
+            j = expr.find(close_ch, i + 1)
+            if j != -1:
+                out_chars.append(expr[i : j + 1])
+                i = j + 1
+                continue
+        if ch == "_":
+            prev_ch = expr[i - 1] if i > 0 else ""
+            next_ch = expr[i + 1] if i + 1 < n else ""
+            prev_is_ident = prev_ch.isalnum() or prev_ch in ("_", "@", ".")
+            next_is_ident = next_ch.isalnum() or next_ch == "_"
+            if not prev_is_ident and not next_is_ident:
+                out_chars.append(replacement)
+                i += 1
+                continue
+        out_chars.append(ch)
+        i += 1
+    return "".join(out_chars)
+
+
+def _resolve_multi_target_cols(
+    df: pd.DataFrame, inner_spec: str, by_cols: list[str] | None
+) -> list[str]:
+    """Resolve inner specification of `(col1, col2)` or `(startswith=bill_)` using pt.select()."""
+    from pytae.select import select as _select_fn
+
+    tokens = [t.strip() for t in _tokenize(inner_spec, ",", track_brackets=True) if t.strip()]
+    if not tokens:
+        raise ValueError("invalid mutate multi-column target: empty '()' specification")
+
+    names: list[str] = []
+    kwargs: dict[str, Any] = {}
+    for token in tokens:
+        if "=" in token:
+            k, _, v = token.partition("=")
+            k, v = k.strip(), _unquote_name(v.strip())
+            if k in _SELECT_KEYS:
+                if not v:
+                    raise ValueError(f"mutate multi-column selector '{k}=' requires a value")
+                if k in kwargs:
+                    prev = kwargs[k]
+                    kwargs[k] = (prev if isinstance(prev, list) else [prev]) + [v]
+                else:
+                    kwargs[k] = v
+                continue
+        names.append(token if ":" in token or token.startswith(("-", "~")) else _unquote_name(token))
+
+    selected_df = _select_fn(df, *names, **kwargs)
+    matched = [str(c) for c in selected_df.columns]
+    if by_cols and kwargs and not names:
+        matched = [c for c in matched if c not in by_cols]
+    if not matched:
+        raise ValueError(f"mutate: multi-column selector '({inner_spec})' matched no columns")
+    return matched
+
+
+def _parse_mutate_spec_entries(raw: str) -> list[tuple[str, str, bool]]:
+    """Like parse_mutate_spec(), but returns an ordered list of (key, expr, is_bracketed)
+    tuples so repeated multi-column keys are preserved and bracket-quoted single column names
+    with parentheses (e.g. `[rev (usd)]`) are distinguished from `(col1, col2)`."""
+    stripped = raw.strip()
+    if (stripped.startswith("'") and stripped.endswith("'")) or (stripped.startswith('"') and stripped.endswith('"')):
+        stripped = stripped[1:-1].strip()
+    if stripped.startswith("@"):
+        path = stripped[1:].strip()
+        if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+            path = path[1:-1].strip()
+        file_path = Path(path)
+        if not file_path.is_file():
+            raise FileNotFoundError(f"mutate spec file not found: '{path}'")
+        stripped = file_path.read_text(encoding="utf-8").strip()
+    entries: list[tuple[str, str, bool]] = []
+    for key_raw, expr_raw in _split_mutate_entries(stripped):
+        raw_k = key_raw.strip()
+        is_bracketed = raw_k.startswith("[") and raw_k.endswith("]")
+        key = _unquote_name(key_raw)
+        if not key:
+            raise ValueError("invalid mutate spec: empty column name")
+        expr = expr_raw.strip()
+        if not expr:
+            raise ValueError(f"invalid mutate spec: '{key}' has no expression")
+        entries.append((key, expr, is_bracketed))
+    if not entries:
+        raise ValueError('mutate expects entries like "col = expr"')
+    return entries
+
+
 def mutate(
     df: pd.DataFrame,
     *args: Any,
@@ -473,6 +746,7 @@ def mutate(
 ) -> pd.DataFrame:
     """
     Create or overwrite columns using string expressions (`"col = expr"` or `col="expr"`),
+    multi-column expressions (`"(col1, col2) = _ * 1.08"` or `"(startswith=bill_) = _ / 10"`),
     callables (`col=callable`), or dictionaries. Each evaluated in order via pandas eval().
 
     Parameters:
@@ -481,7 +755,8 @@ def mutate(
         The DataFrame to mutate columns on. Inherits active grouping if set via `pt.by()` or `.pt.by()`.
     *args : str or dict
         Positional expressions:
-        - String expression(s), e.g. "bmi = body_mass_g / bill_length_mm ** 2".
+        - String expression(s), e.g. "bmi = body_mass_g / bill_length_mm ** 2"
+          or "(rev, cost) = _ * 1.08".
         - File path prefixed with '@' (e.g. "@transforms.txt").
         - Dictionary of column expressions, e.g. {"bmi": "body_mass_g / 1000"}.
     dropna : bool, default False
@@ -530,12 +805,13 @@ def mutate(
     if params is not None:
         local_dict.update(params)
 
-    expressions: dict[str, Any] = {}
+    spec_entries: list[tuple[str, Any, bool]] = []
     for arg in args:
         if isinstance(arg, str):
-            expressions.update(parse_mutate_spec(arg))
+            spec_entries.extend(_parse_mutate_spec_entries(arg))
         elif isinstance(arg, dict):
-            expressions.update(arg)
+            for k, v in arg.items():
+                spec_entries.append((str(k), v, False))
         elif callable(arg):
             raise TypeError(
                 "mutate() expects callables as keyword arguments with the column name, "
@@ -548,58 +824,109 @@ def mutate(
             )
 
     if kwargs:
-        expressions.update(kwargs)
+        for k, v in kwargs.items():
+            spec_entries.append((k, v, False))
 
-    if not expressions:
+    if not spec_entries:
         raise ValueError(
             "mutate() expects at least one expression, e.g. df.pt.mutate('col = expr') "
             "or df.pt.mutate(col='expr')"
         )
 
     out = df.copy()
-    for col, expr in expressions.items():
-        try:
-            if by_cols is None:
-                if isinstance(expr, _Lit):
-                    out[col] = expr.value
-                elif callable(expr):
-                    out[col] = expr(out)
-                elif isinstance(expr, str):
-                    out[col] = _eval(out, expr, local_dict, global_dict)
-                else:
-                    out[col] = expr
-            else:
-                work_df = out.copy(deep=False)
-                work_df["__pt_pos__"] = np.arange(len(out))
-                pieces = []
-                for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
-                    pos = group_df["__pt_pos__"].to_numpy()
-                    clean_group = group_df.drop(columns=["__pt_pos__"])
+    vec_work_df: pd.DataFrame | None = None
+    grp_ctx: _GroupContext | None = None
+
+    for raw_col, raw_expr, is_bracketed in spec_entries:
+        m_multi = (
+            re.match(r"^([^()]*)\(([^()]*)\)([^()]*)$", raw_col)
+            if not is_bracketed and isinstance(raw_expr, str) and raw_col not in out.columns
+            else None
+        )
+        if m_multi:
+            prefix, inner_spec, suffix = m_multi.groups()
+            target_cols = _resolve_multi_target_cols(out, inner_spec, by_cols)
+            expanded_pairs: list[tuple[str, Any]] = [
+                (f"{prefix}{tc}{suffix}", _replace_underscore_placeholder(raw_expr, tc))
+                for tc in target_cols
+            ]
+        else:
+            expanded_pairs = [(raw_col, raw_expr)]
+
+        for col, expr in expanded_pairs:
+            try:
+                if by_cols is None:
                     if isinstance(expr, _Lit):
-                        val = expr.value
+                        out[col] = expr.value
                     elif callable(expr):
-                        val = expr(clean_group)
+                        out[col] = expr(out)
                     elif isinstance(expr, str):
-                        val = _eval(clean_group, expr, local_dict, global_dict)
+                        out[col] = _eval(out, expr, local_dict, global_dict)
                     else:
-                        val = expr
-                    if isinstance(val, pd.Series):
-                        pieces.append(pd.Series(val.to_numpy(), index=pos))
-                    else:
-                        pieces.append(pd.Series(val, index=pos))
-                if pieces:
-                    combined = pd.concat(pieces).sort_index().reindex(np.arange(len(out)))
-                    out[col] = combined.array
+                        out[col] = expr
                 else:
-                    out[col] = pd.Series(index=out.index, dtype=float)
-        except NameError as exc:  # UndefinedVariableError (pandas) and plain NameError (fallback)
-            parts = str(exc).split("'")
-            missing = parts[1] if len(parts) > 1 else ""
-            close = difflib.get_close_matches(missing, list(out.columns), n=1) if missing else []
-            hint = (
-                f" (did you mean '{close[0]}'?)"
-                if close
-                else f" (if you intended a string literal, quote it like '{missing}')"
-            )
-            raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
+                    if len(out) > 0 and not callable(expr) and (
+                        not isinstance(expr, str) or _is_vectorizable_grouped_expr(expr, set(out.columns))
+                    ):
+                        if vec_work_df is None:
+                            vec_work_df = out.reset_index(drop=True)
+                        if grp_ctx is None:
+                            grp_ctx = _GroupContext(vec_work_df, by_cols, dropna=dropna, observed=observed)
+                        if isinstance(expr, _Lit):
+                            res_s = pd.Series([expr.value] * len(vec_work_df), index=vec_work_df.index)
+                            if grp_ctx.na_mask is not None:
+                                res_s = res_s.mask(grp_ctx.na_mask, np.nan)
+                        elif isinstance(expr, str):
+                            res_s = _eval_grouped_vectorized(vec_work_df, expr, local_dict, global_dict, grp_ctx)
+                        else:
+                            res_s = pd.Series(
+                                [expr] * len(vec_work_df) if getattr(expr, "ndim", 0) == 0 else expr,
+                                index=vec_work_df.index,
+                            )
+                            if grp_ctx.na_mask is not None:
+                                res_s = res_s.mask(grp_ctx.na_mask, np.nan)
+                        vec_work_df[col] = res_s
+                        out[col] = res_s.array
+                        if col in by_cols:
+                            grp_ctx = None
+                    else:
+                        work_df = out.copy(deep=False)
+                        work_df["__pt_pos__"] = np.arange(len(out))
+                        pieces = []
+                        for _, group_df in work_df.groupby(by_cols, dropna=dropna, observed=observed):
+                            pos = group_df["__pt_pos__"].to_numpy()
+                            clean_group = group_df.drop(columns=["__pt_pos__"])
+                            if isinstance(expr, _Lit):
+                                val = expr.value
+                            elif callable(expr):
+                                val = expr(clean_group)
+                            elif isinstance(expr, str):
+                                val = _eval(clean_group, expr, local_dict, global_dict)
+                            else:
+                                val = expr
+                            if isinstance(val, pd.Series):
+                                pieces.append(pd.Series(val.to_numpy(), index=pos))
+                            else:
+                                pieces.append(pd.Series(val, index=pos))
+                        if pieces:
+                            combined = pd.concat(pieces).sort_index().reindex(np.arange(len(out)))
+                            out[col] = combined.array
+                        else:
+                            out[col] = pd.Series(index=out.index, dtype=float)
+                        if vec_work_df is not None:
+                            vec_work_df[col] = pd.Series(out[col].array, index=vec_work_df.index)
+                        if col in by_cols:
+                            grp_ctx = None
+            except NameError as exc:  # UndefinedVariableError (pandas) and plain NameError (fallback)
+                parts = str(exc).split("'")
+                missing = parts[1] if len(parts) > 1 else ""
+                close = difflib.get_close_matches(missing, list(out.columns), n=1) if missing else []
+                hint = (
+                    f" (did you mean '{close[0]}'?)"
+                    if close
+                    else f" (if you intended a string literal, quote it like '{missing}')"
+                )
+                raise KeyError(f"mutate: '{col}': {exc}{hint}") from exc
     return out
+
+

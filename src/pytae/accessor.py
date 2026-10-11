@@ -32,14 +32,10 @@ from .other_utilities import (
 )
 from .other_utilities import (
     distinct as _distinct,
-)
-from .other_utilities import (
+    freq as _freq,
     glimpse as _glimpse,
-)
-from .other_utilities import (
     handle_missing as _handle_missing,
-)
-from .other_utilities import (
+    hist as _hist,
     replace_values as _replace_values,
 )
 from .qry import qry as _qry
@@ -343,6 +339,17 @@ class PtAccessor:
         Returns the original DataFrame for method chaining.
         """
         return _glimpse(self._obj, width=width)
+
+    def freq(self, col: str | None = None, *, dropna: bool = False) -> pd.DataFrame:
+        """Compute a frequency table with ASCII distribution bars and percentages for a column."""
+        return _freq(self._obj, col=col, dropna=dropna)
+
+    def hist(self, col: str | None = None, bins: int = 10) -> pd.DataFrame:
+        """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column.
+
+        Supports `'col'`, `'col:bins'` (e.g. `'body_mass_g:10'`), or `bins=10`.
+        """
+        return _hist(self._obj, col=col, bins=bins)
 
     def to_clip(self) -> None:
         """Copy the DataFrame to the system clipboard (tab-separated, no index)."""

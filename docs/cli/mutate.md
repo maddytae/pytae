@@ -11,6 +11,7 @@ Compute new columns or overwrite existing columns with mathematical formulas, ra
 - [Overview & Rules](#overview--rules)
 - [Basic Arithmetic & Unit Conversion](#basic-arithmetic--unit-conversion)
 - [Defining Multiple Columns](#defining-multiple-columns)
+- [Multi-Column Transforms (`(col1, col2) = _ * 2`)](#multi-column-transforms-col1-col2---2)
 - [Boolean Indicators & Flags](#boolean-indicators--flags)
 - [Conditional Logic with `if_else`](#conditional-logic-with-if_else)
 - [Multi-Tiered Branching with `case_when`](#multi-tiered-branching-with-case_when)
@@ -34,6 +35,7 @@ Key Rules:
 1. Column names inside the expression must remain **unquoted** so they resolve as variables: `mass_kg = body_mass_g / 1000`.
 2. Wrap column names containing spaces in brackets: `[bmi] = [body mass g] / ([bill length mm] ** 2)`.
 3. Separate multiple new column definitions with commas: `"col1 = a + b, col2 = a * 2"`.
+4. Transform multiple columns at once using `(col1, col2) = expr` (or selector predicates like `(startswith=bill_) = expr`) with `_` as the current column placeholder.
 
 ---
 
@@ -49,12 +51,12 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-species  body_mass_g  mass_kg
- Adelie       3750.0     3.75
- Adelie       3800.0     3.80
- Adelie       3250.0     3.25
-```
+
+| species   |   body_mass_g |   mass_kg |
+|:----------|--------------:|----------:|
+| Adelie    |          3750 |      3.75 |
+| Adelie    |          3800 |      3.8  |
+| Adelie    |          3250 |      3.25 |
 
 ---
 
@@ -71,12 +73,91 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-species  mass_kg  bill_ratio
- Adelie     3.75        2.09
- Adelie     3.80        2.27
- Adelie     3.25        2.24
+
+| species   |   mass_kg |   bill_ratio |
+|:----------|----------:|-------------:|
+| Adelie    |      3.75 |         2.09 |
+| Adelie    |      3.8  |         2.27 |
+| Adelie    |      3.25 |         2.24 |
+
+---
+
+## Multi-Column Transforms (`(col1, col2) = _ * 2`)
+
+Apply the same formula across multiple columns simultaneously using parentheses `(...)` on the left-hand side and `_` as the placeholder for each matched column (the `pytae` equivalent of R `dplyr::across()`):
+
+```bash
+# Convert multiple bill columns in-place from mm to cm
+pytae penguins.parquet \
+  -mutate "(bill_length_mm, bill_depth_mm) = _ / 10" \
+  -select "species,bill_length_mm,bill_depth_mm" \
+  -head 3
 ```
+
+**Output:**
+
+| species   |   bill_length_mm |   bill_depth_mm |
+|:----------|-----------------:|----------------:|
+| Adelie    |             3.91 |            1.87 |
+| Adelie    |             3.95 |            1.74 |
+| Adelie    |             4.03 |            1.8  |
+
+### Creating New Columns with a Suffix or Prefix
+
+Attach a suffix after `)` or a prefix before `(` to create new columns instead of overwriting the originals:
+
+```bash
+# Creates bill_length_mm_cm and bill_depth_mm_cm
+pytae penguins.parquet \
+  -mutate "(bill_length_mm, bill_depth_mm)_cm = _ / 10" \
+  -select "bill_length_mm,bill_length_mm_cm,bill_depth_mm,bill_depth_mm_cm" \
+  -head 3
+```
+
+**Output:**
+
+|   bill_length_mm |   bill_length_mm_cm |   bill_depth_mm |   bill_depth_mm_cm |
+|-----------------:|--------------------:|----------------:|-------------------:|
+|             39.1 |                3.91 |            18.7 |               1.87 |
+|             39.5 |                3.95 |            17.4 |               1.74 |
+|             40.3 |                4.03 |            18   |               1.8  |
+
+### Using `select()` Predicates Inside `(...)`
+
+Any [`select`](select.md) criteria (`startswith=`, `endswith=`, `contains=`, `regex=`, `dtype=numeric`, or slices `start:end`) can be used inside `(...)`:
+
+```bash
+# Scale all columns starting with 'bill_'
+pytae penguins.parquet \
+  -mutate "(startswith=bill_) = _ / 10" \
+  -select "species,bill_length_mm,bill_depth_mm" \
+  -head 3
+```
+
+**Output:**
+
+| species   |   bill_length_mm |   bill_depth_mm |
+|:----------|-----------------:|----------------:|
+| Adelie    |             3.91 |            1.87 |
+| Adelie    |             3.95 |            1.74 |
+| Adelie    |             4.03 |            1.8  |
+
+```bash
+# Group-wise z-score standardization across all numeric columns
+pytae penguins.parquet \
+  -by species \
+  -mutate "(dtype=numeric) = (_ - mean(_)) / std(_)" \
+  -round 2 \
+  -head 3
+```
+
+**Output:**
+
+| species   | island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
+|:----------|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
+| Adelie    | Torgersen |             0.12 |            0.29 |               -0.99 |          0.11 | Male   |
+| Adelie    | Torgersen |             0.27 |           -0.78 |               -0.19 |          0.22 | Female |
+| Adelie    | Torgersen |             0.57 |           -0.28 |                1.25 |         -0.98 | Female |
 
 ---
 
@@ -92,12 +173,12 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-species  body_mass_g  is_heavy
- Adelie       3750.0     False
- Adelie       3800.0     False
- Adelie       3250.0     False
-```
+
+| species   |   body_mass_g | is_heavy   |
+|:----------|--------------:|:-----------|
+| Adelie    |          3750 | False      |
+| Adelie    |          3800 | False      |
+| Adelie    |          3250 | False      |
 
 ---
 
@@ -118,14 +199,14 @@ pytae tips.parquet \
 ```
 
 **Output:**
-```text
- total_bill  tip generous
-      16.99 1.01       No
-      10.34 1.66       No
-      21.01 3.50      Yes
-      23.68 3.31      Yes
-      24.59 3.61      Yes
-```
+
+|   total_bill |   tip | generous   |
+|-------------:|------:|:-----------|
+|        16.99 |  1.01 | No         |
+|        10.34 |  1.66 | No         |
+|        21.01 |  3.5  | Yes        |
+|        23.68 |  3.31 | Yes        |
+|        24.59 |  3.61 | Yes        |
 
 ### Example 2: Fallback to an Existing Column or Floor Value
 
@@ -140,14 +221,14 @@ pytae tips.parquet \
 ```
 
 **Output:**
-```text
- total_bill  tip  adj_tip
-      16.99 1.01     2.00
-      10.34 1.66     2.00
-      21.01 3.50     3.50
-      23.68 3.31     3.31
-      24.59 3.61     3.61
-```
+
+|   total_bill |   tip |   adj_tip |
+|-------------:|------:|----------:|
+|        16.99 |  1.01 |      2    |
+|        10.34 |  1.66 |      2    |
+|        21.01 |  3.5  |      3.5  |
+|        23.68 |  3.31 |      3.31 |
+|        24.59 |  3.61 |      3.61 |
 
 ### Example 3: Compound Conditions with `and` / `or`
 
@@ -161,14 +242,14 @@ pytae tips.parquet \
 ```
 
 **Output:**
-```text
- total_bill  tip high_spender
-      16.99 1.01     Standard
-      10.34 1.66     Standard
-      21.01 3.50         High
-      23.68 3.31         High
-      24.59 3.61         High
-```
+
+|   total_bill |   tip | high_spender   |
+|-------------:|------:|:---------------|
+|        16.99 |  1.01 | Standard       |
+|        10.34 |  1.66 | Standard       |
+|        21.01 |  3.5  | High           |
+|        23.68 |  3.31 | High           |
+|        24.59 |  3.61 | High           |
 
 ---
 
@@ -185,15 +266,15 @@ pytae tips.parquet \
 ```
 
 **Output:**
-```text
- total_bill   tier
-      16.99 Medium
-      10.34    Low
-      21.01 Medium
-      23.68 Medium
-      24.59 Medium
-      25.29   High
-```
+
+|   total_bill | tier   |
+|-------------:|:-------|
+|        16.99 | Medium |
+|        10.34 | Low    |
+|        21.01 | Medium |
+|        23.68 | Medium |
+|        24.59 | Medium |
+|        25.29 | High   |
 
 ---
 
@@ -204,6 +285,14 @@ If column names have spaces or hyphens, wrap them in square brackets:
 ```bash
 pytae dataset.csv -mutate "[total weight] = [body mass g] + [extra weight]"
 ```
+
+**Output:**
+
+| body mass g | extra weight | total weight |
+|---:|---:|---:|
+| 3000 | 500 | 3500 |
+| 4000 | 200 | 4200 |
+| 5000 | 300 | 5300 |
 
 ---
 
@@ -225,14 +314,14 @@ pytae tips.parquet \
 ```
 
 **Output:**
-```text
-day  total_bill  tip  avg_tip  diff  cnt
-Sun       16.99 1.01     3.26 -2.25   76
-Sun       10.34 1.66     3.26 -1.60   76
-Sun       21.01 3.50     3.26  0.24   76
-Sun       23.68 3.31     3.26  0.05   76
-Sun       24.59 3.61     3.26  0.35   76
-```
+
+| day   |   total_bill |   tip |   avg_tip |   diff |   cnt |
+|:------|-------------:|------:|----------:|-------:|------:|
+| Sun   |        16.99 |  1.01 |      3.26 |  -2.25 |    76 |
+| Sun   |        10.34 |  1.66 |      3.26 |  -1.6  |    76 |
+| Sun   |        21.01 |  3.5  |      3.26 |   0.24 |    76 |
+| Sun   |        23.68 |  3.31 |      3.26 |   0.05 |    76 |
+| Sun   |        24.59 |  3.61 |      3.26 |   0.35 |    76 |
 
 ### Injected Aggregation Helpers
 
@@ -254,14 +343,32 @@ pytae tips.parquet \
   -round 2
 ```
 
+**Output:**
+
+| day   | time   |   total bill |   tip |   avg bill |   diff |
+|:------|:-------|-------------:|------:|-----------:|-------:|
+| Sun   | Dinner |        16.99 |  1.01 |      21.41 |  -4.42 |
+| Sun   | Dinner |        10.34 |  1.66 |      21.41 | -11.07 |
+| Sun   | Dinner |        21.01 |  3.5  |      21.41 |  -0.4  |
+| Sun   | Dinner |        23.68 |  3.31 |      21.41 |   2.27 |
+| Sun   | Dinner |        24.59 |  3.61 |      21.41 |   3.18 |
+
 ### Missing Groups with `-dropna`
 
-By default (`-dropna false`), rows containing `NA` in grouping columns are treated as their own distinct group so that no data is silently discarded. Pass `-dropna true` to exclude `NA` groups from calculation (assigning them `NaN` in the newly created columns):
+By default, rows containing `NA` in grouping columns are treated as their own distinct group so that no data is silently discarded. Chain `-dropna <col>` to exclude missing groups prior to calculation:
 
 ```bash
-# Exclude NA groups from group calculation (they receive NaN)
-pytae data.parquet -by category -dropna true -mutate "avg_val = mean(val)"
+# Drop rows with NaN in grouping column prior to calculation
+pytae penguins.parquet -dropna sex -by sex -mutate "avg_mass = mean(body_mass_g)" -select "sex,body_mass_g,avg_mass" -head 3 -round 1
 ```
+
+**Output:**
+
+| sex | body_mass_g | avg_mass |
+|:---|---:|---:|
+| Male | 3750.0 | 4545.7 |
+| Female | 3800.0 | 3862.3 |
+| Female | 3250.0 | 3862.3 |
 
 ---
 
@@ -278,8 +385,18 @@ flipper_to_mass = flipper_length_mm / mass_kg
 
 Run via:
 ```bash
-pytae penguins.parquet -mutate @features.txt -head 5
+pytae penguins.parquet -mutate @features.txt -select "species,mass_kg,bill_ratio,flipper_to_mass" -head 5
 ```
+
+**Output:**
+
+| species   |   mass_kg |   bill_ratio |   flipper_to_mass |
+|:----------|----------:|-------------:|------------------:|
+| Adelie    |      3.75 |         2.09 |             48.27 |
+| Adelie    |      3.8  |         2.27 |             48.95 |
+| Adelie    |      3.25 |         2.24 |             60    |
+| Adelie    |    nan    |       nan    |            nan    |
+| Adelie    |      3.45 |         1.9  |             55.94 |
 
 ---
 

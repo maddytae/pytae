@@ -47,12 +47,12 @@ pytae penguins.parquet -filter "species = 'Gentoo'" -head 3
 ```
 
 **Output:**
-```text
-species island  bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g    sex
- Gentoo Biscoe            46.1           13.2              211.0       4500.0 Female
- Gentoo Biscoe            50.0           16.3              230.0       5700.0   Male
- Gentoo Biscoe            48.7           14.1              210.0       4450.0 Female
-```
+
+| species   | island   |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
+|:----------|:---------|-----------------:|----------------:|--------------------:|--------------:|:-------|
+| Gentoo    | Biscoe   |             46.1 |            13.2 |                 211 |          4500 | Female |
+| Gentoo    | Biscoe   |             50   |            16.3 |                 230 |          5700 | Male   |
+| Gentoo    | Biscoe   |             48.7 |            14.1 |                 210 |          4450 | Female |
 
 <a id="comparisons"></a>
 ### Comparisons (`>`, `<`, `>=`, `<=`, `!=`)
@@ -62,12 +62,12 @@ pytae penguins.parquet -filter "body_mass_g > 5500" -select "species,island,body
 ```
 
 **Output:**
-```text
-species island  body_mass_g
- Gentoo Biscoe       5700.0
- Gentoo Biscoe       5700.0
- Gentoo Biscoe       5550.0
-```
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Gentoo    | Biscoe   |          5700 |
+| Gentoo    | Biscoe   |          5700 |
+| Gentoo    | Biscoe   |          5550 |
 
 ### Intervals & Ranges (`[start, end]`)
 
@@ -78,12 +78,12 @@ pytae penguins.parquet -filter "body_mass_g = [3000, 3200]" -select "species,bod
 ```
 
 **Output:**
-```text
-species  body_mass_g
- Adelie       3200.0
- Adelie       3200.0
- Adelie       3000.0
-```
+
+| species   |   body_mass_g |
+|:----------|--------------:|
+| Adelie    |          3200 |
+| Adelie    |          3200 |
+| Adelie    |          3000 |
 
 ### List Membership (`['a', 'b']`)
 
@@ -94,12 +94,12 @@ pytae penguins.parquet -filter "species = ['Chinstrap', 'Gentoo']" -select "spec
 ```
 
 **Output:**
-```text
-  species island
-Chinstrap  Dream
-Chinstrap  Dream
-Chinstrap  Dream
-```
+
+| species   | island   |
+|:----------|:---------|
+| Chinstrap | Dream    |
+| Chinstrap | Dream    |
+| Chinstrap | Dream    |
 
 ### Combining Multiple Conditions
 
@@ -113,12 +113,12 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-species  body_mass_g    sex
- Gentoo       5700.0   Male
- Gentoo       5700.0   Male
- Gentoo       5550.0   Male
-```
+
+| species   |   body_mass_g | sex   |
+|:----------|--------------:|:------|
+| Gentoo    |          5700 | Male  |
+| Gentoo    |          5700 | Male  |
+| Gentoo    |          5550 | Male  |
 
 ---
 
@@ -140,12 +140,12 @@ pytae penguins.parquet -pick "body_mass_g,n=3" -select "species,island,body_mass
 ```
 
 **Output:**
-```text
-species island  body_mass_g
- Gentoo Biscoe       6300.0
- Gentoo Biscoe       6050.0
- Gentoo Biscoe       6000.0
-```
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Gentoo    | Biscoe   |          6300 |
+| Gentoo    | Biscoe   |          6050 |
+| Gentoo    | Biscoe   |          6000 |
 
 ### Bottom N Rows per Group (`-by`)
 
@@ -156,12 +156,12 @@ pytae penguins.parquet -by species -pick "body_mass_g,n=1,order=min" -select "sp
 ```
 
 **Output:**
-```text
-  species  body_mass_g
-   Adelie       2850.0
-Chinstrap       2700.0
-   Gentoo       3950.0
-```
+
+| species   |   body_mass_g |
+|:----------|--------------:|
+| Adelie    |          2850 |
+| Chinstrap |          2700 |
+| Gentoo    |          3950 |
 
 ---
 
@@ -171,11 +171,29 @@ Drop rows with missing values (`NaN`). Can be run bare or scoped to a comma-sepa
 
 ```bash
 # Drop rows with NaN in any column
-pytae penguins.parquet -dropna
-
-# Drop rows with NaN in specific column(s)
-pytae penguins.parquet -dropna "body_mass_g,sex"
+pytae penguins.parquet -dropna -head 3
 ```
+
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+
+```bash
+# Drop rows with NaN in specific column(s)
+pytae penguins.parquet -dropna "body_mass_g,sex" -head 3
+```
+
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
 
 > [!NOTE]
 > For scoped aggregations and pivot tables, pass `dropna=true` inside the operation's spec (e.g., `-agg "a=mean,dropna=true"` or `-pivot "r=species,c=sex,dropna=true"`).

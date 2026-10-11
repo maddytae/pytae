@@ -98,13 +98,29 @@ Apply replacements only to selected columns:
 pytae dataset.parquet -replace_values "c='Status',v='draft_stage:in_review'"
 ```
 
+**Output:**
+
+| Old Name | Score % | Status |
+|:---|---:|:---|
+| hello world | 10.5 | in_review |
+| bad_val | NaN | approved |
+| NaN | 30.2 | in_review |
+
 ### Substring Replacement (`exact=false`)
 
-Replace substrings anywhere inside cell text:
+Replace substrings anywhere inside string/text columns:
 
 ```bash
-pytae dataset.parquet -replace_values "v='_stage:_pending',exact=false"
+pytae dataset.parquet -replace_values "c='Status',v='_stage:_pending',exact=false"
 ```
+
+**Output:**
+
+| Old Name | Score % | Status |
+|:---|---:|:---|
+| hello world | 10.5 | draft_pending |
+| bad_val | NaN | approved |
+| NaN | 30.2 | draft_pending |
 
 ---
 
@@ -119,12 +135,12 @@ pytae dataset.parquet -handle_missing "UNKNOWN"
 ```
 
 **Output:**
-```text
-  Old Name    Score %      Status
- hello world     10.5 draft_stage
-     bad_val      0.0    approved
-     UNKNOWN     30.2 draft_stage
-```
+
+| Old Name | Score % | Status |
+|:---|---:|:---|
+| hello world | 10.5 | draft_stage |
+| bad_val | 0.0 | approved |
+| UNKNOWN | 30.2 | draft_stage |
 
 ---
 
@@ -134,11 +150,25 @@ Drop rows containing missing values (`NaN`). Can be run bare to drop rows with `
 
 ```bash
 # Drop rows with NaN in any column
-pytae penguins.parquet -dropna
+pytae penguins.parquet -dropna -head 3
+```
 
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+
+```bash
 # Drop rows with NaN in specific column(s)
-pytae penguins.parquet -dropna body_mass_g
-pytae penguins.parquet -dropna "body_mass_g,sex"
+pytae penguins.parquet -dropna "body_mass_g,sex" -shape
+```
+
+**Output:**
+```text
+(333, 7)
 ```
 
 > [!NOTE]

@@ -109,6 +109,8 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
 |---|---|---|---|---|
 | **Formulas** | `df.assign(y=df['a'] / df['b'])` | `mutate(df, y = a / b)` | `df.pt.mutate(y="a / b")` | `-mutate "y = a / b"` |
+| **Multi-Column (`across`)** | `df[['a', 'b']] = df[['a', 'b']] * 1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08))` | `df.pt.mutate("(a, b) = _ * 1.08")` | `-mutate "(a, b) = _ * 1.08"` |
+| **Multi-Column + Suffix** | `for c in ['a','b']: df[f'{c}_usd'] = df[c]*1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08, .names="{.col}_usd"))` | `df.pt.mutate("(a, b)_usd = _ * 1.08")` | `-mutate "(a, b)_usd = _ * 1.08"` |
 | **Sequential** | Requires multiple `.assign()` or statements | `mutate(df, a=1, b=a*2)` | `df.pt.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
 | **If-Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `if_else(x > 0, 'pos', 'neg')` | `df.pt.mutate(flag="if_else(x > 0, 'pos', 'neg')")` | `-mutate "flag=if_else(x > 0, 'pos', 'neg')"` |
 | **Grouped Window** | `df.groupby('g')['x'].transform('mean')` | `df %>% group_by(g) %>% mutate(m = mean(x))` | `df.pt.by("g").pt.mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
@@ -185,6 +187,8 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | Operation | Pandas | dplyr / tibble (R) | Pytae (`df.pt`) | Pytae CLI |
 |---|---|---|---|---|
 | **Transposed View** | `df.info()` or `df.T.head()` | `glimpse(df)` | `df.pt.glimpse()` | `-glimpse` |
+| **ASCII Freq Bars** | `df['c'].value_counts(dropna=False)` | `count(df, c)` | `df.pt.freq("c")` | `-freq c` |
+| **ASCII Histogram** | `pd.cut(df['x'], 10).value_counts()` | `hist(df$x)` | `df.pt.hist("x:10")` | `-hist x:10` |
 | **Sorted Column List**| `sorted(df.columns)` | `names(df)` | `df.pt.cols()` | `-cols asc` |
 | **Copy to Clipboard**| `df.to_clipboard(index=False)` | `clipr::write_clip(df)` | `df.to_clip()` | `-o clip` |
 

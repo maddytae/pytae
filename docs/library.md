@@ -49,7 +49,15 @@ penguins = pt.sample("penguins")
     .pt.by("species", "island")
     .pt.agg(a=["mean", "n"])
 )
+```
 
+**Output:**
+
+| species | island | n | bill_length_mm | body_mass_g | mass_kg |
+|:---|:---|---:|---:|---:|---:|
+| Gentoo | Biscoe | 123 | 47.5049 | 5076.02 | 5.07602 |
+
+```python
 # 2. Function style: standalone calls
 subset = pt.select(penguins, "species", contains="bill")
 summary = pt.agg(pt.by(subset, "species"), "mean")
@@ -58,24 +66,24 @@ summary = pt.agg(pt.by(subset, "species"), "mean")
 ---
 
 <a id="modules-directory"></a>
-## Master Modules & Notebooks Directory
+## Master Modules & Feature Guides Directory
 
-Detailed guides with step-by-step walkthroughs, outputs, and edge cases are maintained as runnable Jupyter notebooks in [`docs/library/`](library/):
+Detailed guides with step-by-step walkthroughs, outputs, and edge cases are maintained in [`docs/library/`](library/):
 
-| Module | Verbs / API | Description | Interactive Notebook |
+| Module | Verbs / API | Description | Feature Guide |
 |---|---|---|---|
-| **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.ipynb](library/filter.ipynb) |
-| **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.ipynb](library/select.ipynb) |
-| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.ipynb](library/mutate.ipynb) |
-| **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.ipynb](library/arrange.ipynb) |
-| **Picking Rows** | `pt.pick()`, `df.pt.pick()` | Select extreme top/bottom N rows or proportion overall or per group via `pt.by()` (`order='max'/'min'`) | [library/pick.ipynb](library/pick.ipynb) |
-| **Distinct Rows** | `pt.distinct()`, `df.pt.distinct()` | Remove duplicate rows across all or specific column subsets | [library/distinct.ipynb](library/distinct.ipynb) |
-| **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.ipynb](library/reshape.ipynb) |
-| **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.ipynb](library/pivot.ipynb) |
-| **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.ipynb](library/agg.ipynb) |
-| **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.ipynb](library/sql.ipynb) |
+| **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.md](library/filter.md) |
+| **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.md](library/select.md) |
+| **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, multi-column transforms (`(col1, col2) = _ * 2`), window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.md](library/mutate.md) |
+| **Sorting** | `pt.arrange()`, `df.pt.arrange()` | Reorder rows with `-col`/`desc`, inline directions, bracket notation for spaces | [library/arrange.md](library/arrange.md) |
+| **Picking Rows** | `pt.pick()`, `df.pt.pick()` | Select extreme top/bottom N rows or proportion overall or per group via `pt.by()` (`order='max'/'min'`) | [library/pick.md](library/pick.md) |
+| **Distinct Rows** | `pt.distinct()`, `df.pt.distinct()` | Remove duplicate rows across all or specific column subsets | [library/distinct.md](library/distinct.md) |
+| **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.md](library/reshape.md) |
+| **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.md](library/pivot.md) |
+| **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.md](library/agg.md) |
+| **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.md](library/sql.md) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
-| **Utilities** | `glimpse`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.ipynb](library/other_utilities.ipynb) |
+| **Utilities** | `glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, ASCII frequency bars & histograms, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.md](library/other_utilities.md) |
 
 ---
 
@@ -104,7 +112,7 @@ df.pt.filter({"bill length mm": "> 40", "island": "Biscoe"})
 pt.filter(penguins, body_mass_g="[3000, 4500]", species=("startswith", "Ad"))
 ```
 
-👉 **Interactive Walkthrough:** [library/filter.ipynb](library/filter.ipynb)
+👉 **Complete Guide:** [library/filter.md](library/filter.md)
 
 ---
 
@@ -122,7 +130,7 @@ pt.select(penguins, contains="bill", dtype="numeric")  # Pattern union
 pt.select(penguins, exclude_dtype="numeric")          # Invert selection
 ```
 
-👉 **Interactive Walkthrough:** [library/select.ipynb](library/select.ipynb)
+👉 **Complete Guide:** [library/select.md](library/select.md)
 
 ---
 
@@ -143,11 +151,17 @@ pt.mutate(penguins, code="map(species, {'Adelie': 'A', 'Gentoo': 'G'}, 'Other')"
 # Grouped window calculations without collapsing rows (inherited from standalone pt.by)
 pt.mutate(pt.by(penguins, "species"), avg_mass="mean(body_mass_g)", diff="body_mass_g - avg_mass", n="n")
 
+# Multi-column transforms using (col1, col2) and _ placeholder (in-place, suffix/prefix, or selectors)
+penguins.pt.mutate("(bill_length_mm, bill_depth_mm) = _ / 10")
+penguins.pt.mutate("(bill_length_mm, bill_depth_mm)_cm = _ / 10")
+penguins.pt.mutate("(startswith=bill_) = _ / 10")
+penguins.pt.by("species").pt.mutate("z_(dtype=numeric) = (_ - mean(_)) / std(_)")
+
 # Control NA grouping with dropna (dropna=False by default calculates on NA group; dropna=True fills NaN)
 pt.mutate(pt.by(df, "group"), avg_val="mean(val)", dropna=True)
 ```
 
-👉 **Interactive Walkthrough:** [library/mutate.ipynb](library/mutate.ipynb)
+👉 **Complete Guide:** [library/mutate.md](library/mutate.md)
 
 ---
 
@@ -175,7 +189,7 @@ pt.pick(penguins, "body_mass_g", prop=0.1)            # Top 10%
 )
 ```
 
-👉 **Interactive Walkthroughs:** [library/arrange.ipynb](library/arrange.ipynb) (Sorting) • [library/pick.ipynb](library/pick.ipynb) (Picking Rows)
+👉 **Complete Guides:** [library/arrange.md](library/arrange.md) (Sorting) • [library/pick.md](library/pick.md) (Picking Rows)
 
 ---
 
@@ -194,7 +208,7 @@ penguins.pt.distinct("species", "island")
 pt.distinct(penguins, "species", "island")
 ```
 
-👉 **Interactive Walkthrough:** [library/distinct.ipynb](library/distinct.ipynb)
+👉 **Complete Guide:** [library/distinct.md](library/distinct.md)
 
 ---
 
@@ -210,7 +224,7 @@ tall = pt.long(penguins, c="feature", v="reading")
 wide = pt.wide(tall, c="feature", v="reading")
 ```
 
-👉 **Interactive Walkthrough:** [library/reshape.ipynb](library/reshape.ipynb)
+👉 **Complete Guide:** [library/reshape.md](library/reshape.md)
 
 ---
 
@@ -229,7 +243,7 @@ pt.pivot(penguins, r="island", c="species", a="n")
 pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", fill_value=0)
 ```
 
-👉 **Interactive Walkthrough:** [library/pivot.ipynb](library/pivot.ipynb)
+👉 **Complete Guide:** [library/pivot.md](library/pivot.md)
 
 ---
 
@@ -256,7 +270,7 @@ pt.agg(penguins, "species", total="body_mass_g:sum")          # Named aggregatio
 pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summary (no grouping)
 ```
 
-👉 **Interactive Walkthrough:** [library/agg.ipynb](library/agg.ipynb)
+👉 **Complete Guide:** [library/agg.md](library/agg.md)
 
 ---
 
@@ -276,7 +290,7 @@ pt.sql(orders, """
 """, customers=df_customers)
 ```
 
-👉 **Interactive Walkthrough:** [library/sql.ipynb](library/sql.ipynb)
+👉 **Complete Guide:** [library/sql.md](library/sql.md)
 
 ---
 
@@ -313,13 +327,15 @@ Essential tabular utilities for everyday manipulation:
 
 ```python
 penguins.pt.glimpse()                                                 # Transposed column overview (returns self)
+penguins.pt.freq("species")                                           # Frequency distribution DataFrame with ASCII bars
+penguins.pt.hist("body_mass_g:10")                                    # Numeric histogram DataFrame with ASCII bars
 pt.clean_columns(df, strip=True, fill="_", case="lower", dedupe=True) # Normalize headers
 pt.replace_values(df, {"old": "new"}, c="col_a", exact=True)          # Replace cell values
 pt.handle_missing(df, fillna="NA")                                    # Impute missing values
 penguins.to_clip()                                                    # Copy DataFrame to clipboard
 ```
 
-👉 **Interactive Walkthrough Notebook:** [library/other_utilities.ipynb](library/other_utilities.ipynb)
+👉 **Complete Guide:** [library/other_utilities.md](library/other_utilities.md)
 
 ---
 
@@ -348,6 +364,7 @@ flights  = pt.sample("flights")
 |---|---|---|
 | **Copy to Clipboard** | `df.to_clip()` in Python; `-o clip` in CLI | `df.head().to_clip()` |
 | **Mapping vs. Assignment** | `:` maps old to new; `=` assigns values | `pt.replace_values(df, {"old": "new"})` vs `pt.mutate(col="expr")` |
+| **Multi-Column (Mutate)** | Parentheses `(col1, col2)` + `_` placeholder | `df.pt.mutate("(rev, cost)_usd = _ * 1.08")` |
 | **Spaced Columns (Filter)** | Enclose in brackets `[col]` | `df.pt.filter("[bill length mm] > 40")` |
 | **Spaced Columns (Select)** | Enclose in brackets `[col]` | `df.pt.select("species", "[body mass g]")` |
 | **Spaced Columns (Create)** | String assignment `[col] = ...` (or `**{...}`) | `df.pt.mutate("[body mass kg] = body_mass_g / 1000")` |

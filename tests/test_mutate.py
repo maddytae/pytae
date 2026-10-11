@@ -496,6 +496,74 @@ def test_mutate_lit_constant_when_column_exists():
     assert list(res_num["source"]) == [42, 42]
 
 
+def test_mutate_grouped_vectorized_all_stats():
+    df = pd.DataFrame({
+        "grp": ["a", "a", "a", "b", "b"],
+        "val": [10.0, 20.0, 30.0, 100.0, 200.0],
+        "name": ["alice", "bob", "charlie", "dave", "eve"],
+    })
+    res = df.pt.by("grp").pt.mutate(
+        "avg = mean(val), tot = sum(val), med = median(val), "
+        "lo = min(val), hi = max(val), sd = std(val), vr = var(val), "
+        "cnt = n, cnt_fn = n(), upper_name = name.str.upper()"
+    )
+    assert list(res["avg"]) == [20.0, 20.0, 20.0, 150.0, 150.0]
+    assert list(res["tot"]) == [60.0, 60.0, 60.0, 300.0, 300.0]
+    assert list(res["med"]) == [20.0, 20.0, 20.0, 150.0, 150.0]
+    assert list(res["lo"]) == [10.0, 10.0, 10.0, 100.0, 100.0]
+    assert list(res["hi"]) == [30.0, 30.0, 30.0, 200.0, 200.0]
+    assert list(res["cnt"]) == [3, 3, 3, 2, 2]
+    assert list(res["cnt_fn"]) == [3, 3, 3, 2, 2]
+    assert list(res["upper_name"]) == ["ALICE", "BOB", "CHARLIE", "DAVE", "EVE"]
 
 
+def test_mutate_grouped_fallback_series_method():
+    # Expressions calling custom Series methods like .cumsum() fall back to per-group evaluation
+    df = pd.DataFrame({"grp": ["a", "a", "b", "b"], "val": [1, 2, 10, 20]})
+    res = df.pt.by("grp").pt.mutate("cs = val.cumsum()")
+    assert list(res["cs"]) == [1, 3, 10, 30]
+
+
+def test_mutate_multi_col_in_place_and_chaining():
+    df = pd.DataFrame({"rev": [100.0, 200.0], "cost": [40.0, 80.0], "tax": [10.0, 20.0]})
+    res = df.pt.mutate("(rev, cost, tax) = _ * 1.5, profit = rev - cost - tax")
+    assert list(res["rev"]) == [150.0, 300.0]
+    assert list(res["cost"]) == [60.0, 120.0]
+    assert list(res["tax"]) == [15.0, 30.0]
+    assert list(res["profit"]) == [75.0, 150.0]
+
+
+def test_mutate_multi_col_suffix_and_prefix():
+    df = pd.DataFrame({"rev": [100.0, 200.0], "cost": [50.0, 100.0]})
+    res_suf = df.pt.mutate("(rev, cost)_usd = _ * 1.08")
+    assert list(res_suf["rev"]) == [100.0, 200.0]
+    assert list(res_suf["rev_usd"]) == [pytest.approx(108.0), pytest.approx(216.0)]
+    assert list(res_suf["cost_usd"]) == [pytest.approx(54.0), pytest.approx(108.0)]
+
+    res_pre = df.pt.mutate("norm_(rev, cost) = _ / max(_)")
+    assert list(res_pre["norm_rev"]) == [0.5, 1.0]
+    assert list(res_pre["norm_cost"]) == [0.5, 1.0]
+
+
+def test_mutate_multi_col_selectors_and_grouped():
+    df = pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Gentoo", "Gentoo"],
+        "bill_length_mm": [30.0, 50.0, 40.0, 60.0],
+        "bill_depth_mm": [10.0, 20.0, 15.0, 25.0],
+    })
+    res_sw = df.pt.mutate("(startswith=bill_) = _ / 10")
+    assert list(res_sw["bill_length_mm"]) == [3.0, 5.0, 4.0, 6.0]
+    assert list(res_sw["bill_depth_mm"]) == [1.0, 2.0, 1.5, 2.5]
+
+    # Grouped dtype=numeric selector (automatically excludes grouping columns)
+    res_grp = df.pt.by("species").pt.mutate("(dtype=numeric) = _ - mean(_)")
+    assert list(res_grp["bill_length_mm"]) == [-10.0, 10.0, -10.0, 10.0]
+    assert list(res_grp["bill_depth_mm"]) == [-5.0, 5.0, -5.0, 5.0]
+
+
+def test_mutate_multi_col_spaced_columns():
+    df = pd.DataFrame({"col a": [10, 20], "col b": [30, 40]})
+    res = df.pt.mutate("([col a], [col b]) = _ + 5")
+    assert list(res["col a"]) == [15, 25]
+    assert list(res["col b"]) == [35, 45]
 

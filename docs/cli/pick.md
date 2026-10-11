@@ -42,12 +42,12 @@ pytae penguins.parquet -pick "body_mass_g,n=3" -select "species,island,body_mass
 ```
 
 **Output:**
-```text
-species island  body_mass_g
- Gentoo Biscoe       6300.0
- Gentoo Biscoe       6050.0
- Gentoo Biscoe       6000.0
-```
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Gentoo    | Biscoe   |          6300 |
+| Gentoo    | Biscoe   |          6050 |
+| Gentoo    | Biscoe   |          6000 |
 
 ---
 
@@ -61,12 +61,12 @@ pytae penguins.parquet -pick "body_mass_g,n=3,order=min" -select "species,island
 ```
 
 **Output:**
-```text
-  species island  body_mass_g
-Chinstrap  Dream       2700.0
-   Adelie Biscoe       2850.0
-   Adelie  Dream       2850.0
-```
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Chinstrap | Dream    |          2700 |
+| Adelie    | Biscoe   |          2850 |
+| Adelie    | Dream    |          2850 |
 
 ---
 
@@ -76,8 +76,18 @@ Select a fraction of rows (e.g. `prop=0.1` for top 10%):
 
 ```bash
 # Top 10% heaviest penguins overall
-pytae penguins.parquet -pick "body_mass_g,prop=0.1" -select "species,island,body_mass_g"
+pytae penguins.parquet -pick "body_mass_g,prop=0.1" -select "species,island,body_mass_g" -head 5
 ```
+
+**Output:**
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Gentoo    | Biscoe   |          6300 |
+| Gentoo    | Biscoe   |          6050 |
+| Gentoo    | Biscoe   |          6000 |
+| Gentoo    | Biscoe   |          6000 |
+| Gentoo    | Biscoe   |          5950 |
 
 ---
 
@@ -91,20 +101,44 @@ pytae penguins.parquet -by species -pick body_mass_g -select "species,island,bod
 ```
 
 **Output:**
-```text
-  species island  body_mass_g
-   Adelie Biscoe       4775.0
-Chinstrap  Dream       4800.0
-   Gentoo Biscoe       6300.0
-```
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Adelie    | Biscoe   |          4775 |
+| Chinstrap | Dream    |          4800 |
+| Gentoo    | Biscoe   |          6300 |
 
 ```bash
 # Lightest 2 penguins per island
 pytae penguins.parquet -by island -pick "body_mass_g,n=2,order=min" -select "island,species,body_mass_g"
-
-# Top 20% heaviest penguins within each species
-pytae penguins.parquet -by species -pick "body_mass_g,prop=0.2" -select "species,island,body_mass_g"
 ```
+
+**Output:**
+
+| island    | species   |   body_mass_g |
+|:----------|:----------|--------------:|
+| Biscoe    | Adelie    |          2850 |
+| Biscoe    | Adelie    |          2850 |
+| Dream     | Chinstrap |          2700 |
+| Dream     | Adelie    |          2900 |
+| Torgersen | Adelie    |          2900 |
+| Torgersen | Adelie    |          3050 |
+
+```bash
+# Top 20% heaviest penguins within each species
+pytae penguins.parquet -by species -pick "body_mass_g,prop=0.2" -select "species,island,body_mass_g" -head 6
+```
+
+**Output:**
+
+| species   | island    |   body_mass_g |
+|:----------|:----------|--------------:|
+| Adelie    | Biscoe    |          4775 |
+| Adelie    | Biscoe    |          4725 |
+| Adelie    | Torgersen |          4700 |
+| Adelie    | Torgersen |          4675 |
+| Adelie    | Dream     |          4650 |
+| Adelie    | Dream     |          4600 |
 
 ---
 
@@ -126,5 +160,12 @@ The canonical, unified syntax:
 - Missing values in grouping columns (`-by`) form their own group without silent row loss. To omit missing groups, chain `-dropna` before picking:
 
 ```bash
-pytae penguins.parquet -dropna sex -by sex -pick body_mass_g
+pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,species,body_mass_g"
 ```
+
+**Output:**
+
+| sex    | species   |   body_mass_g |
+|:-------|:----------|--------------:|
+| Female | Gentoo    |          5200 |
+| Male   | Gentoo    |          6300 |

@@ -165,6 +165,20 @@ pytae logs.csv -replace_values "exact=false,WARN:WARNING" -head 3
 Fills text NaN with a visible marker (default `.`) and numeric NaN with `0`:
 ```bash
 pytae penguins.parquet -handle_missing -head 5
+```
+
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+| Adelie | Torgersen | 0.0 | 0.0 | 0.0 | 0.0 | . |
+| Adelie | Torgersen | 36.7 | 19.3 | 193.0 | 3450.0 | Female |
+
+Custom string marker:
+```bash
 pytae penguins.parquet -handle_missing "Unknown" -head 5
 ```
 
@@ -181,6 +195,14 @@ pytae penguins.parquet -dropna "sex,body_mass_g"
 ```bash
 pytae penguins.parquet -rename "body_mass_g:mass,flipper_length_mm:flipper" -head 3
 ```
+
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper | mass | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
 
 ---
 

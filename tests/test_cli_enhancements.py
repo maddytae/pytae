@@ -168,3 +168,41 @@ def test_cli_plot_error_clean_exit(tmp_path):
     assert exc.value.code == 2
 
 
+def test_library_freq_and_hist():
+    import pytae as pt
+
+    df = pd.DataFrame({
+        "species": ["Adelie", "Adelie", "Gentoo", None],
+        "body_mass_g": [3000, 3200, 4000, 5000],
+    })
+
+    # df.pt.freq("species") retains NA by default (dropna=False)
+    f_all = df.pt.freq("species")
+    assert list(f_all.columns) == ["species", "Count", "Distribution"]
+    assert f_all["Count"].sum() == 4
+    assert "█" in f_all["Distribution"].iloc[0]
+
+    # dropna=True excludes NA
+    f_drop = pt.freq(df, "species", dropna=True)
+    assert f_drop["Count"].sum() == 3
+
+    # Single-column DataFrame omits column name
+    f_single = df[["species"]].pt.freq()
+    assert list(f_single.columns) == ["species", "Count", "Distribution"]
+
+    # df.pt.hist("body_mass_g:4") and bins kwarg
+    h1 = df.pt.hist("body_mass_g:4")
+    assert list(h1.columns) == ["Range", "Count", "Distribution"]
+    assert len(h1) == 4
+    assert h1["Count"].sum() == 4
+
+    h2 = pt.hist(df, "body_mass_g", bins=4)
+    assert h1.equals(h2)
+
+    # Error cases
+    with pytest.raises(KeyError, match="not found"):
+        df.pt.freq("missing_col")
+    with pytest.raises(KeyError, match="not found"):
+        df.pt.hist("missing_col:5")
+    with pytest.raises(ValueError, match="positive integer"):
+        df.pt.hist("body_mass_g:0")

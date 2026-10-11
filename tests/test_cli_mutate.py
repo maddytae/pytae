@@ -158,3 +158,17 @@ def test_mutate_by_unknown_column_cli(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "-by: unknown column" in err
 
+
+def test_mutate_multi_col_cli(tmp_path, capsys):
+    df = pd.DataFrame({"rev": [10, 20], "cost": [4, 8]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([
+        path,
+        "-mutate", "(rev, cost)_2x = _ * 2, profit = rev_2x - cost_2x",
+        "-select", "rev_2x,cost_2x,profit",
+    ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "20" in out and "40" in out
+    assert "12" in out and "24" in out

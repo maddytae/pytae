@@ -45,18 +45,27 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-species       variable  value
- Adelie bill_length_mm   39.1
- Adelie bill_length_mm   39.5
- Adelie bill_length_mm   40.3
- Adelie bill_length_mm    NaN
-```
+
+| species   | variable       |   value |
+|:----------|:---------------|--------:|
+| Adelie    | bill_length_mm |    39.1 |
+| Adelie    | bill_length_mm |    39.5 |
+| Adelie    | bill_length_mm |    40.3 |
+| Adelie    | bill_length_mm |   nan   |
 
 Customize column names with `c=` and `v=`:
 ```bash
 pytae penguins.parquet -long "c=metric,v=measurement" -head 4
 ```
+
+**Output:**
+
+| species   | island    | sex    | metric         |   measurement |
+|:----------|:----------|:-------|:---------------|--------------:|
+| Adelie    | Torgersen | Male   | bill_length_mm |          39.1 |
+| Adelie    | Torgersen | Female | bill_length_mm |          39.5 |
+| Adelie    | Torgersen | Female | bill_length_mm |          40.3 |
+| Adelie    | Torgersen | nan    | bill_length_mm |         nan   |
 
 ---
 
@@ -73,12 +82,12 @@ pytae flights.parquet -wide "c=month,v=passengers" -head 3
 ```
 
 **Output:**
-```text
-year  Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep  Oct  Nov  Dec
-1949  112  118  132  129  121  135  148  148  136  119  104  118
-1950  115  126  141  135  125  149  170  170  158  133  114  140
-1951  145  150  178  163  172  178  199  199  184  162  146  166
-```
+
+|   year |   Jan |   Feb |   Mar |   Apr |   May |   Jun |   Jul |   Aug |   Sep |   Oct |   Nov |   Dec |
+|-------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|
+|   1949 |   112 |   118 |   132 |   129 |   121 |   135 |   148 |   148 |   136 |   119 |   104 |   118 |
+|   1950 |   115 |   126 |   141 |   135 |   125 |   149 |   170 |   170 |   158 |   133 |   114 |   140 |
+|   1951 |   145 |   150 |   178 |   163 |   172 |   178 |   199 |   199 |   184 |   162 |   146 |   166 |
 
 ### 2. Explicit Row Index (`r=`)
 
@@ -88,15 +97,31 @@ By default, all columns other than `c` and `v` serve as row identifiers. Use `r=
 pytae flights.parquet -wide "r=year,c=month,v=passengers" -head 3
 ```
 
+**Output:**
+
+|   year |   Jan |   Feb |   Mar |   Apr |   May |   Jun |   Jul |   Aug |   Sep |   Oct |   Nov |   Dec |
+|-------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|------:|
+|   1949 |   112 |   118 |   132 |   129 |   121 |   135 |   148 |   148 |   136 |   119 |   104 |   118 |
+|   1950 |   115 |   126 |   141 |   135 |   125 |   149 |   170 |   170 |   158 |   133 |   114 |   140 |
+|   1951 |   145 |   150 |   178 |   163 |   172 |   178 |   199 |   199 |   184 |   162 |   146 |   166 |
+
 ### 3. Round-Trip Reshaping (`-long` → `-wide`)
 
 Because `-long` and `-wide` are strict 1-to-1 bijections, you can melt and immediately un-melt back to the original tabular structure:
 
 ```bash
-pytae data.parquet \
+pytae items.parquet \
   -long "c=variable,v=value" \
   -wide "c=variable,v=value"
 ```
+
+**Output:**
+
+| id | val1 | val2 |
+|:---|---:|---:|
+| row1 | 10.0 | 100.0 |
+| row2 | 20.0 | 200.0 |
+| row3 | 30.0 | 300.0 |
 
 ---
 

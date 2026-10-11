@@ -51,9 +51,16 @@ Gentoo       124  ████████████████     (36.0%)
 Chinstrap     68  █████████            (19.8%)
 ```
 
-Respects `-dropna` (defaults to `false` to retain NA; set `true` to exclude):
+Respects `-dropna` (excludes missing categories from the count and distribution):
 ```bash
-pytae penguins.parquet -freq sex -dropna true
+pytae penguins.parquet -dropna sex -freq sex
+```
+
+**Output:**
+```text
+   sex  Count                 Distribution
+  Male    168 ████████████████████ (50.5%)
+Female    165 ████████████████████ (49.5%)
 ```
 
 ---

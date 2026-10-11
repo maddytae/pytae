@@ -101,12 +101,12 @@ pytae penguins.parquet -head 3
 ```
 
 **Output:**
-```text
-species    island  bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g    sex
- Adelie Torgersen            39.1           18.7              181.0       3750.0   Male
- Adelie Torgersen            39.5           17.4              186.0       3800.0 Female
- Adelie Torgersen            40.3           18.0              195.0       3250.0 Female
-```
+
+| species   | island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
+|:----------|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
+| Adelie    | Torgersen |             39.1 |            18.7 |                 181 |          3750 | Male   |
+| Adelie    | Torgersen |             39.5 |            17.4 |                 186 |          3800 | Female |
+| Adelie    | Torgersen |             40.3 |            18   |                 195 |          3250 | Female |
 
 ### Last N rows (`-tail`)
 
@@ -115,12 +115,12 @@ pytae penguins.parquet -tail 3
 ```
 
 **Output:**
-```text
-species island  bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g    sex
- Gentoo Biscoe            50.4           15.7              222.0       5750.0   Male
- Gentoo Biscoe            45.2           14.8              212.0       5200.0 Female
- Gentoo Biscoe            49.9           16.1              213.0       5400.0   Male
-```
+
+| species   | island   |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
+|:----------|:---------|-----------------:|----------------:|--------------------:|--------------:|:-------|
+| Gentoo    | Biscoe   |             50.4 |            15.7 |                 222 |          5750 | Male   |
+| Gentoo    | Biscoe   |             45.2 |            14.8 |                 212 |          5200 | Female |
+| Gentoo    | Biscoe   |             49.9 |            16.1 |                 213 |          5400 | Male   |
 
 ### Random rows with reproducible seed (`-sample`)
 
@@ -129,12 +129,12 @@ pytae penguins.parquet -sample 3 -seed 42
 ```
 
 **Output:**
-```text
-  species island  bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g    sex
-Chinstrap  Dream            50.9           19.1              196.0       3550.0   Male
-Chinstrap  Dream            45.2           17.8              198.0       3950.0 Female
-   Gentoo Biscoe            46.5           13.5              210.0       4550.0 Female
-```
+
+| species   | island   |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
+|:----------|:---------|-----------------:|----------------:|--------------------:|--------------:|:-------|
+| Chinstrap | Dream    |             50.9 |            19.1 |                 196 |          3550 | Male   |
+| Chinstrap | Dream    |             45.2 |            17.8 |                 198 |          3950 | Female |
+| Gentoo    | Biscoe   |             46.5 |            13.5 |                 210 |          4550 | Female |
 
 ### Sample a percentage (`-frac`)
 
@@ -266,15 +266,16 @@ pytae penguins.parquet -dtype
 ```
 
 **Output:**
-```text
-species                  str
-island                   str
-bill_length_mm       float64
-bill_depth_mm        float64
-flipper_length_mm    float64
-body_mass_g          float64
-sex                      str
-```
+
+| Column | Dtype |
+|:---|:---|
+| species | str |
+| island | str |
+| bill_length_mm | float64 |
+| bill_depth_mm | float64 |
+| flipper_length_mm | float64 |
+| body_mass_g | float64 |
+| sex | str |
 
 ### Missing Value Counts (`-nulls`)
 
@@ -283,20 +284,33 @@ pytae penguins.parquet -nulls
 ```
 
 **Output:**
-```text
-species               0
-island                0
-bill_length_mm        2
-bill_depth_mm         2
-flipper_length_mm     2
-body_mass_g           2
-sex                  11
-```
+
+| Column | Nulls |
+|:---|---:|
+| species | 0 |
+| island | 0 |
+| bill_length_mm | 2 |
+| bill_depth_mm | 2 |
+| flipper_length_mm | 2 |
+| body_mass_g | 2 |
+| sex | 11 |
 
 Sort by column name descending:
 ```bash
 pytae penguins.parquet -nulls desc
 ```
+
+**Output:**
+
+| Column | Nulls |
+|:---|---:|
+| species | 0 |
+| sex | 11 |
+| island | 0 |
+| flipper_length_mm | 2 |
+| body_mass_g | 2 |
+| bill_length_mm | 2 |
+| bill_depth_mm | 2 |
 
 ---
 
@@ -311,17 +325,17 @@ pytae penguins.parquet -describe -round 1
 ```
 
 **Output:**
-```text
-       bill_length_mm  bill_depth_mm  flipper_length_mm  body_mass_g
-count           342.0          342.0              342.0        342.0
-mean             43.9           17.2              200.9       4201.8
-std               5.5            2.0               14.1        802.0
-min              32.1           13.1              172.0       2700.0
-25%              39.2           15.6              190.0       3550.0
-50%              44.4           17.3              197.0       4050.0
-75%              48.5           18.7              213.0       4750.0
-max              59.6           21.5              231.0       6300.0
-```
+
+| Stat | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g |
+|:---|---:|---:|---:|---:|
+| count | 342.0 | 342.0 | 342.0 | 342.0 |
+| mean | 43.9 | 17.2 | 200.9 | 4201.8 |
+| std | 5.5 | 2.0 | 14.1 | 802.0 |
+| min | 32.1 | 13.1 | 172.0 | 2700.0 |
+| 25% | 39.2 | 15.6 | 190.0 | 3550.0 |
+| 50% | 44.4 | 17.3 | 197.0 | 4050.0 |
+| 75% | 48.5 | 18.7 | 213.0 | 4750.0 |
+| max | 59.6 | 21.5 | 231.0 | 6300.0 |
 
 Because `-describe` returns a DataFrame, it can be filtered, rounded, or exported:
 ```bash
@@ -334,6 +348,24 @@ Prints columns, non-null counts, dtypes, and memory usage:
 
 ```bash
 pytae penguins.parquet -info
+```
+
+**Output:**
+```text
+<class 'pandas.DataFrame'>
+RangeIndex: 344 entries, 0 to 343
+Data columns (total 7 columns):
+ #   Column             Non-Null Count  Dtype  
+---  ------             --------------  -----  
+ 0   species            344 non-null    str    
+ 1   island             344 non-null    str    
+ 2   bill_length_mm     342 non-null    float64
+ 3   bill_depth_mm      342 non-null    float64
+ 4   flipper_length_mm  342 non-null    float64
+ 5   body_mass_g        342 non-null    float64
+ 6   sex                333 non-null    str    
+dtypes: float64(4), str(3)
+memory usage: 24.9 KB
 ```
 
 ### Transposed Summary (`-glimpse`)
@@ -383,6 +415,14 @@ Renders tables with bordered markdown layout:
 pytae penguins.parquet -head 3 -pretty
 ```
 
+**Output:**
+
+| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
+|:---|:---|---:|---:|---:|---:|:---|
+| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
+| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
+| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+
 ### Rounding Decimals (`-round`)
 
 Rounds all floating-point numbers across the printed output or clipboard:
@@ -390,6 +430,12 @@ Rounds all floating-point numbers across the printed output or clipboard:
 ```bash
 pytae penguins.parquet -agg body_mass_g=mean -round 2
 ```
+
+**Output:**
+
+| body_mass_g |
+|---:|
+| 4201.75 |
 
 ---
 

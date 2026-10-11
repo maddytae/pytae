@@ -100,12 +100,14 @@ pytae current.parquet -diff baseline.parquet
 | **Pick Rows** | `.pt.pick(...)` | `-pick "..."` | `df.pt.pick("mass", n=3, order="max")` |
 | **Select Columns** | `.pt.select(...)` | `-select "..."` | `df.pt.select("species", contains="bill", "-temp")`|
 | **Mutate Columns** | `.pt.mutate(...)` | `-mutate "..."` | `df.pt.mutate(ratio="[bill length] / [bill depth]")` |
+| **Multi-Col Mutate** | `.pt.mutate("(...) = ...")` | `-mutate "(...) = ..."` | `df.pt.mutate("(rev, cost)_usd = _ * 1.08")` |
 | **Grouped Summary**| `.pt.agg(...)` | `-by ... -agg "..."` | `df.pt.by("species").pt.agg(avg_mass="mass:mean", n="n")` |
 | **2D Pivot Table** | `.pt.pivot(...)` | `-pivot "..."` | `df.pt.pivot(r="island", c="species", v="mass", a="mean")` |
 | **Pure Reshape** | `.pt.long()`, `.pt.wide()`| `-long`, `-wide` | `df.pt.wide(c="metric", v="val", index="id")` |
 | **Distinct Rows** | `.pt.distinct(*cols)`| `-distinct [COLS]` | `df.pt.distinct("species", "island")` |
 | **DuckDB SQL** | `.pt.sql("...")` | `-sql "..."` | `df.pt.sql("select * from data order by 1")` |
 | **Glimpse Table** | `.pt.glimpse()` | `-glimpse` | `df.pt.glimpse()` |
+| **ASCII Freq & Hist**| `.pt.freq()`, `.pt.hist()` | `-freq`, `-hist` | `df.pt.freq("species")`, `df.pt.hist("mass:10")` |
 | **Copy to Clipboard**| `df.to_clip()` | `-o clip` | `df.head().to_clip()` |
 
 ---
@@ -135,20 +137,20 @@ pytae current.parquet -diff baseline.parquet
   - [Multi-File Pipelines](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) (`-file`, `-merge`, `-concat`)
   - [Other Utilities & Modifiers](https://github.com/maddytae/pytae/blob/master/docs/cli/other_utilities.md) (`-nrows`, `-limit`, `-dlim`, `-encoding`, `-pretty`, `-round`, `-pager`, `-progress`)
 
-### Interactive Jupyter Notebook Tutorials (`docs/library/`)
-Run any interactive walkthrough directly:
-- **Filtering**: [`filter.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/filter.ipynb)
-- **Selection**: [`select.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/select.ipynb)
-- **Feature Engineering**: [`mutate.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/mutate.ipynb)
-- **Sorting**: [`arrange.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/arrange.ipynb)
-- **Picking Rows**: [`pick.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/pick.ipynb)
-- **Distinct Rows**: [`distinct.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/distinct.ipynb)
-- **Pure Reshaping**: [`reshape.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/reshape.ipynb)
-- **2D Pivot Tables**: [`pivot.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/pivot.ipynb)
-- **Aggregation**: [`agg.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/agg.ipynb)
-- **DuckDB SQL**: [`sql.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/sql.ipynb)
-- **Plotting**: [`plotting.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/plotting.ipynb)
-- **Other Utilities**: [`other_utilities.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/other_utilities.ipynb)
+### Library Feature Guides (`docs/library/`)
+Explore step-by-step Python API guides with inline outputs:
+- **Filtering**: [`filter.md`](https://github.com/maddytae/pytae/blob/master/docs/library/filter.md)
+- **Selection**: [`select.md`](https://github.com/maddytae/pytae/blob/master/docs/library/select.md)
+- **Feature Engineering**: [`mutate.md`](https://github.com/maddytae/pytae/blob/master/docs/library/mutate.md)
+- **Sorting**: [`arrange.md`](https://github.com/maddytae/pytae/blob/master/docs/library/arrange.md)
+- **Picking Rows**: [`pick.md`](https://github.com/maddytae/pytae/blob/master/docs/library/pick.md)
+- **Distinct Rows**: [`distinct.md`](https://github.com/maddytae/pytae/blob/master/docs/library/distinct.md)
+- **Pure Reshaping**: [`reshape.md`](https://github.com/maddytae/pytae/blob/master/docs/library/reshape.md)
+- **2D Pivot Tables**: [`pivot.md`](https://github.com/maddytae/pytae/blob/master/docs/library/pivot.md)
+- **Aggregation**: [`agg.md`](https://github.com/maddytae/pytae/blob/master/docs/library/agg.md)
+- **DuckDB SQL**: [`sql.md`](https://github.com/maddytae/pytae/blob/master/docs/library/sql.md)
+- **Plotting (Interactive Notebook)**: [`plotting.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/plotting.ipynb)
+- **Other Utilities**: [`other_utilities.md`](https://github.com/maddytae/pytae/blob/master/docs/library/other_utilities.md)
 
 ---
 

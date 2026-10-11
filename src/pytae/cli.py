@@ -297,9 +297,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"col = 'val', col > 5\"")
     parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
                          help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
-                              "\"new_col = expression\" entries, comma-separated, quoting the key optional; "
+                              "\"new_col = expression\" or multi-column \"(col1, col2) = _ * 2\" entries, comma-separated; "
                               "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
-                              "\"bmi = body_mass_g / bill_length_mm ** 2\"")
+                              "\"bmi = body_mass_g / bill_length_mm ** 2\" or \"(startswith=bill_) = _ / 10\"")
     parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
                          help="run a SQL query (via duckdb) against the current view at this point in "
                               "the pipeline; the view is queryable as table `data`; standard SQL identifier "

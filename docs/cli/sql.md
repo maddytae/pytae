@@ -37,12 +37,12 @@ pytae penguins.parquet -sql "select species, island, body_mass_g from data where
 ```
 
 **Output:**
-```text
-species island  body_mass_g
- Gentoo Biscoe       5700.0
- Gentoo Biscoe       5700.0
- Gentoo Biscoe       5550.0
-```
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Gentoo    | Biscoe   |          5700 |
+| Gentoo    | Biscoe   |          5700 |
+| Gentoo    | Biscoe   |          5550 |
 
 ---
 
@@ -56,12 +56,12 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-  species  count  avg_mass
-   Gentoo    124    5076.0
-Chinstrap     68    3733.1
-   Adelie    152    3700.7
-```
+
+| species   |   count |   avg_mass |
+|:----------|--------:|-----------:|
+| Gentoo    |     124 |     5076   |
+| Chinstrap |      68 |     3733.1 |
+| Adelie    |     152 |     3700.7 |
 
 ---
 
@@ -77,15 +77,15 @@ pytae penguins.parquet \
 ```
 
 **Output:**
-```text
-  species  body_mass_g  rnk
-   Adelie       4775.0    1
-   Adelie       4725.0    2
-Chinstrap       4800.0    1
-Chinstrap       4550.0    2
-   Gentoo       6300.0    1
-   Gentoo       6050.0    2
-```
+
+| species   |   body_mass_g |   rnk |
+|:----------|--------------:|------:|
+| Adelie    |          4775 |     1 |
+| Adelie    |          4725 |     2 |
+| Chinstrap |          4800 |     1 |
+| Chinstrap |          4550 |     2 |
+| Gentoo    |          6300 |     1 |
+| Gentoo    |          6050 |     2 |
 
 ---
 
@@ -104,6 +104,14 @@ pytae penguins.parquet -sql "
   select * from summary order by avg_mass desc
 "
 ```
+
+**Output:**
+
+| species   |   avg_mass |
+|:----------|-----------:|
+| Gentoo    |    5076.02 |
+| Chinstrap |    3733.09 |
+| Adelie    |    3700.66 |
 
 ---
 
@@ -141,6 +149,16 @@ Execute via:
 pytae penguins.parquet -sql @analysis.sql
 ```
 
+**Output:**
+
+| species | island | total_penguins | mean_weight |
+|:---|:---|---:|---:|
+| Gentoo | Biscoe | 119 | 5092.44 |
+| Chinstrap | Dream | 68 | 3733.09 |
+| Adelie | Biscoe | 44 | 3709.66 |
+| Adelie | Torgersen | 47 | 3708.51 |
+| Adelie | Dream | 55 | 3701.36 |
+
 ---
 
 ## Multi-File SQL Joins
@@ -149,5 +167,13 @@ In `-file` mode, combine disparate datasets using standard SQL `JOIN`:
 
 ```bash
 pytae -file "customers.csv=c; orders.parquet=o" \
-  -sql "select c.customer_id, c.name, count(o.order_id) as num_orders, sum(o.amount) as total_spent from c left join o on c.customer_id = o.customer_id group by c.customer_id, c.name"
+  -sql "select c.customer_id, c.name, count(o.order_id) as num_orders, sum(o.amount) as total_spent from c left join o on c.customer_id = o.customer_id group by c.customer_id, c.name order by c.customer_id"
 ```
+
+**Output:**
+
+| customer_id | name | num_orders | total_spent |
+|---:|:---|---:|---:|
+| 1 | Alice | 2 | 400.0 |
+| 2 | Bob | 1 | 300.0 |
+| 3 | Charlie | 0 | NaN |
