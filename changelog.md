@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.8.3] - 2026-10-11
+
+### Added
+- **Multi-Column Transformations in `mutate` (`(col1, col2) = ...`)**:
+  - Support transforming multiple columns simultaneously in both Python library `pt.mutate()` / `df.pt.mutate()` and CLI `-mutate`.
+  - Placeholder `_` represents the current column being transformed:
+    - In-place mutation: `(bill_length_mm, bill_depth_mm) = _ / 10`
+    - Suffix / prefix column generation: `(bill_length_mm, bill_depth_mm)_cm = _ / 10`
+    - Dynamic column selector predicates: `(startswith=bill_) = _ / 10`, `(dtype=numeric) = (_ - mean(_)) / std(_)`
+- **Isolated Documentation Testing & Automation Tool**:
+  - Added `scripts/update_doc_outputs.py` for headless execution in isolated temporary environments with pre-loaded sample datasets (`penguins`, `tips`, `titanic`, `diamonds`, `mpg`, `flights`).
+  - Automatic conversion of tabular DataFrame outputs into native GitHub-Flavored Markdown (GFM) scrollable tables (`| col1 | col2 | ... |`).
+  - Full output parity across all 31 Markdown documentation files in `docs/` and `docs/cli/`.
+
+### Deprecations & Compatibility Status
+- **`qry` Support**: `pt.qry()`, `df.pt.qry()`, and CLI `-qry` remain fully supported as backwards-compatible aliases for `filter()`, issuing a `DeprecationWarning` directing users to `filter`.
+
 ## [3.8.2] - 2026-10-07
 
 ### Added

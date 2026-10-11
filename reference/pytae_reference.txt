@@ -10523,7 +10523,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.8.2"
+version = "3.8.3"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
