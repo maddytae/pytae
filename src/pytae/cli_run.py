@@ -530,8 +530,8 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op in ("filter", "qry"):
-            err = pipeline.apply_filter(next(filter_iter), flag_name=f"-{op}")
+        elif op == "filter":
+            err = pipeline.apply_filter(next(filter_iter), flag_name="-filter")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

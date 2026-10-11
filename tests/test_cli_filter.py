@@ -17,45 +17,45 @@ def test_query_deprecated_raises_helpful_error(tmp_path, capsys):
     )
 
     with pytest.raises(SystemExit) as exc:
-        cli.main([path, "-query", "flt == 'A'"])
+        cli.main([path, "-qry", "flt == 'A'"])
     assert exc.value.code == 2
-    assert "'-query' has been deprecated; use '-qry' instead" in capsys.readouterr().err
+    assert "'-qry' has been removed; use '-filter' instead" in capsys.readouterr().err
 
 
-def test_qry_without_braces_is_equivalent(tmp_path, capsys):
+def test_filter_without_braces_is_equivalent(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    exit_code = cli.main([path, "-qry", "'flt' = 'A'", "-shape"])
+    exit_code = cli.main([path, "-filter", "'flt' = 'A'", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 3)"
 
 
-def test_qry_column_key_quoting_is_optional(tmp_path, capsys):
+def test_filter_column_key_quoting_is_optional(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    cli.main([path, "-qry", "flt='A'", "-shape"])
+    cli.main([path, "-filter", "flt='A'", "-shape"])
     unquoted = capsys.readouterr().out.strip()
 
-    cli.main([path, "-qry", "'flt'='A'", "-shape"])
+    cli.main([path, "-filter", "'flt'='A'", "-shape"])
     quoted = capsys.readouterr().out.strip()
 
     assert unquoted == quoted == "(2, 3)"
 
 
-def test_qry_unquoted_string_value_errors(tmp_path):
+def test_filter_unquoted_string_value_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"flt": ["A", "B"]}))
 
     with pytest.raises(SystemExit, match="must be quoted"):
-        cli.main([path, "-qry", "flt=A", "-shape"])
+        cli.main([path, "-filter", "flt=A", "-shape"])
 
 
-def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
+def test_filter_column_not_in_select_still_filters(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "keep": [1, 2, 3],
@@ -68,7 +68,7 @@ def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
     exit_code = cli.main(
         [
             path,
-            "-qry",
+            "-filter",
             "flt = 'A'",
             "-select",
             "'keep','val'",
@@ -81,7 +81,7 @@ def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
     assert "(2, 2)" in out
 
 
-def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monkeypatch):
+def test_filter_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"month": [202606, 202607, 202607], "value": [1, 2, 3]}))
 
     copied = {}
@@ -91,7 +91,7 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-qry", "month = 202607", "-o", "clip"])
+    exit_code = cli.main([path, "-filter", "month = 202607", "-o", "clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -102,49 +102,49 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
     )
 
 
-def test_qry_direct_comparison(tmp_path, capsys):
+def test_filter_direct_comparison(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
-    exit_code = cli.main([path, "-qry", "body_mass_g > 3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g > 3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
 
-def test_qry_colon_raises_error(tmp_path):
+def test_filter_colon_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
     with pytest.raises(SystemExit, match="use '='"):
-        cli.main([path, "-qry", "body_mass_g: > 3500", "-shape"])
+        cli.main([path, "-filter", "body_mass_g: > 3500", "-shape"])
 
 
-def test_qry_equals_separator(tmp_path, capsys):
+def test_filter_equals_separator(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
     # col= > val
-    exit_code = cli.main([path, "-qry", "body_mass_g= > 3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g= > 3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
     # col=>val
-    exit_code = cli.main([path, "-qry", "body_mass_g=>3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g=>3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
     # col = > val
-    exit_code = cli.main([path, "-qry", "body_mass_g = > 3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g = > 3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
     # col = val
-    exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
 
 
-def test_qry_cli_bracket_interval(tmp_path, capsys):
+def test_filter_cli_bracket_interval(tmp_path, capsys):
     # CLI Issue 3: -qry "body_mass_g = [3000, 3200]" treats as interval
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 3100, 3200, 4000]}))
-    exit_code = cli.main([path, "-qry", "body_mass_g = [3000, 3200]", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g = [3000, 3200]", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 1)"
 

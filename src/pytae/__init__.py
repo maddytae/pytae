@@ -25,7 +25,6 @@ from .other_utilities import (
     replace_values,
     safe_reset_index,
 )
-from .qry import qry
 from .select import everything, select
 from .sql import sql
 
@@ -105,7 +104,6 @@ __all__ = [
     "finalize",
     "select",
     "filter",
-    "qry",
     "by",
     "ungroup",
     "mutate",

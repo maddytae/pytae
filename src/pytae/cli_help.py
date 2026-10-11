@@ -71,23 +71,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-sql", "-select", "-dropna"],
     ),
-    "qry": KeywordHelp(
-        name="qry",
-        flag="-qry, --qry CONDITIONS",
-        syntax="pytae <path> -qry \"<CONDITIONS>\"",
-        summary="Filter DataFrame rows (deprecated: use -filter).",
-        description=(
-            "Deprecated alias for -filter. Filters rows using pytae filter()."
-        ),
-        options=[
-            "col = 'val' : Exact match (single quotes for string literals).",
-            "col > 100 : Numeric comparison.",
-        ],
-        examples=[
-            "pytae penguins.parquet -qry \"species == 'Gentoo', body_mass_g > 5000\"",
-        ],
-        see_also=["-filter", "-sql", "-select"],
-    ),
     "select": KeywordHelp(
         name="select",
         flag="-select, --select SPEC",
@@ -588,7 +571,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=[],
         examples=[
             "pytae penguins.parquet -shape",
-            "pytae penguins.parquet -qry \"species == 'Gentoo'\" -shape",
+            "pytae penguins.parquet -filter \"species == 'Gentoo'\" -shape",
         ],
         see_also=["-head", "-cols", "-meta"],
     ),
@@ -743,8 +726,10 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-sort": "arrange",
     "sort_by": "arrange",
     "-sort_by": "arrange",
-    "query": "qry",
-    "-query": "qry",
+    "qry": "filter",
+    "-qry": "filter",
+    "query": "filter",
+    "-query": "filter",
 }
 
 

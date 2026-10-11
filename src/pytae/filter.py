@@ -148,17 +148,17 @@ def filter(
                     cond_pairs.append((str(item[0]), item[1]))
                 else:
                     raise TypeError(
-                        f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
+                        f"filter() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
                     )
         else:
             raise TypeError(
-                f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
+                f"filter() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
             )
     for col, cond in kwargs.items():
         cond_pairs.append((col, cond))
 
     if not cond_pairs:
-        raise ValueError("qry() expects at least one condition (e.g. df.pt.filter('col > 5000') or df.pt.filter(col='> 5000'))")
+        raise ValueError("filter() expects at least one condition (e.g. df.pt.filter('col > 5000') or df.pt.filter(col='> 5000'))")
 
     normalized_conditions: list[tuple[str, Any]] = []
     for col, cond in cond_pairs:
@@ -277,18 +277,3 @@ def filter(
             out = out.loc[out[col] == cond]
 
     return out
-
-
-def qry(
-    df: pd.DataFrame,
-    *args: Any,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Deprecated alias for filter(). Use filter() or df.pt.filter() instead."""
-    import warnings
-    warnings.warn(
-        "qry() is deprecated and will be removed in a future release; use filter() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return filter(df, *args, **kwargs)

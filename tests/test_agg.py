@@ -188,7 +188,7 @@ def test_agg_df_user_pipeline_tips():
     tips = pt.sample("tips")
     res = (
         tips
-        .pt.qry(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
+        .pt.filter(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
         .pt.select("smoker", "tip", "total_bill")
         .rename(columns={"total_bill": "total bill"})
         .pt.by("smoker")

@@ -112,10 +112,6 @@ class _Pipeline:
             return f"{flag_name}: {exc}"
         return None
 
-    def apply_qry(self, conditions: list[tuple[str, Any]] | dict) -> str | None:
-        """Deprecated alias for apply_filter."""
-        return self.apply_filter(conditions, flag_name="-qry")
-
     def apply_mutate(
         self, spec: str, by: list[str] | None = None, dropna: bool = False
     ) -> str | None:

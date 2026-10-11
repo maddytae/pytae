@@ -80,7 +80,7 @@ _CLI_FLAGS = {
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
     "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
-    "-file", "--file", "-qry", "--qry", "-mutate", "--mutate",
+    "-file", "--file", "-filter", "--filter", "-mutate", "--mutate",
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
     "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
     "-pager", "--pager", "-round", "--round", "-h", "--help",
@@ -292,7 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
                               "requires -merge, -concat, or -sql as the first operation, and can't be "
                               "combined with the positional path")
-    parser.add_argument("-filter", "--filter", "-qry", "--qry", dest="filter", action=_OrderedAppend, default=None, metavar="CONDITIONS",
+    parser.add_argument("-filter", "--filter", dest="filter", action=_OrderedAppend, default=None, metavar="CONDITIONS",
                          help="filter rows at this point in the pipeline using pytae filter(); conditions like "
                               "\"col = 'val', col > 5\"")
     parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
@@ -363,8 +363,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
-        if any(e in ("-query", "--query") for e in extras):
-            parser.error("'-query' has been deprecated; use '-qry' instead")
+        if any(e in ("-query", "--query", "-qry", "--qry") for e in extras):
+            parser.error("'-qry' has been removed; use '-filter' instead")
         if any(e in ("-unique", "--unique") for e in extras):
             parser.error("'-unique' has been removed; use '-distinct' instead")
         if any(e in ("-dedupe", "--dedupe") for e in extras):

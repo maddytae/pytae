@@ -14,12 +14,8 @@ from typing import Any
 import pandas as pd
 
 from .agg import agg as _agg
-from .arrange import (
-    arrange as _arrange,
-)
-from .arrange import (
-    pick as _pick,
-)
+from .arrange import arrange as _arrange
+from .arrange import pick as _pick
 from .by import by as _by
 from .by import ungroup as _ungroup
 from .filter import filter as _filter
@@ -32,13 +28,22 @@ from .other_utilities import (
 )
 from .other_utilities import (
     distinct as _distinct,
+)
+from .other_utilities import (
     freq as _freq,
+)
+from .other_utilities import (
     glimpse as _glimpse,
+)
+from .other_utilities import (
     handle_missing as _handle_missing,
+)
+from .other_utilities import (
     hist as _hist,
+)
+from .other_utilities import (
     replace_values as _replace_values,
 )
-from .qry import qry as _qry
 from .select import select as _select
 from .sql import sql as _sql
 
@@ -47,7 +52,7 @@ from .sql import sql as _sql
 class PtAccessor:
     """Pandas DataFrame accessor (`df.pt`) providing ergonomic tabular verbs:
     - select: Column selection, slicing, negative exclusion, and type filtering.
-    - qry: Row filtering via string expressions, dicts, intervals, and kwargs.
+    - filter: Row filtering via string expressions, dicts, intervals, and kwargs.
     - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
     - arrange: Order rows by column(s) with inline direction ('desc', '-col').
     - slice_max / slice_min: Group-aware top/bottom-N row slicing.
@@ -100,10 +105,6 @@ class PtAccessor:
         and safe handling of column names with spaces.
         """
         return _filter(self._obj, *args, **kwargs)
-
-    def qry(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Deprecated: Use df.pt.filter() instead."""
-        return _qry(self._obj, *args, **kwargs)
 
     def mutate(
         self,

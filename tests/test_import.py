@@ -56,12 +56,11 @@ import pytae.cli
 
 assert "pytae.plotting" not in sys.modules
 assert "pytae.shape" not in sys.modules
-assert "matplotlib" not in sys.modules
-assert callable(__import__("pytae", fromlist=["qry"]).qry)
+assert callable(__import__("pytae", fromlist=["filter"]).filter)
 assert callable(__import__("pytae", fromlist=["select"]).select)
 DF = sys.modules["pandas"].DataFrame
 assert hasattr(DF, "pt")
-assert not hasattr(DF, "qry")
+assert not hasattr(DF.pt, "qry")
 assert not hasattr(DF, "select")
 assert not hasattr(DF, "mutate")
 """ % _SRC

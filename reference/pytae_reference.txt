@@ -10629,7 +10629,6 @@ from .other_utilities import (
     replace_values,
     safe_reset_index,
 )
-from .qry import qry
 from .select import everything, select
 from .sql import sql
 
@@ -10709,7 +10708,6 @@ __all__ = [
     "finalize",
     "select",
     "filter",
-    "qry",
     "by",
     "ungroup",
     "mutate",
@@ -10851,12 +10849,8 @@ from typing import Any
 import pandas as pd
 
 from .agg import agg as _agg
-from .arrange import (
-    arrange as _arrange,
-)
-from .arrange import (
-    pick as _pick,
-)
+from .arrange import arrange as _arrange
+from .arrange import pick as _pick
 from .by import by as _by
 from .by import ungroup as _ungroup
 from .filter import filter as _filter
@@ -10869,13 +10863,22 @@ from .other_utilities import (
 )
 from .other_utilities import (
     distinct as _distinct,
+)
+from .other_utilities import (
     freq as _freq,
+)
+from .other_utilities import (
     glimpse as _glimpse,
+)
+from .other_utilities import (
     handle_missing as _handle_missing,
+)
+from .other_utilities import (
     hist as _hist,
+)
+from .other_utilities import (
     replace_values as _replace_values,
 )
-from .qry import qry as _qry
 from .select import select as _select
 from .sql import sql as _sql
 
@@ -10884,7 +10887,7 @@ from .sql import sql as _sql
 class PtAccessor:
     """Pandas DataFrame accessor (`df.pt`) providing ergonomic tabular verbs:
     - select: Column selection, slicing, negative exclusion, and type filtering.
-    - qry: Row filtering via string expressions, dicts, intervals, and kwargs.
+    - filter: Row filtering via string expressions, dicts, intervals, and kwargs.
     - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
     - arrange: Order rows by column(s) with inline direction ('desc', '-col').
     - slice_max / slice_min: Group-aware top/bottom-N row slicing.
@@ -10937,10 +10940,6 @@ class PtAccessor:
         and safe handling of column names with spaces.
         """
         return _filter(self._obj, *args, **kwargs)
-
-    def qry(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Deprecated: Use df.pt.filter() instead."""
-        return _qry(self._obj, *args, **kwargs)
 
     def mutate(
         self,
@@ -12136,7 +12135,7 @@ _CLI_FLAGS = {
     "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
     "-o", "--output", "-out_dir", "--out_dir",
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
-    "-file", "--file", "-qry", "--qry", "-mutate", "--mutate",
+    "-file", "--file", "-filter", "--filter", "-mutate", "--mutate",
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
     "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
     "-pager", "--pager", "-round", "--round", "-h", "--help",
@@ -12348,7 +12347,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
                               "requires -merge, -concat, or -sql as the first operation, and can't be "
                               "combined with the positional path")
-    parser.add_argument("-filter", "--filter", "-qry", "--qry", dest="filter", action=_OrderedAppend, default=None, metavar="CONDITIONS",
+    parser.add_argument("-filter", "--filter", dest="filter", action=_OrderedAppend, default=None, metavar="CONDITIONS",
                          help="filter rows at this point in the pipeline using pytae filter(); conditions like "
                               "\"col = 'val', col > 5\"")
     parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
@@ -12419,8 +12418,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
-        if any(e in ("-query", "--query") for e in extras):
-            parser.error("'-query' has been deprecated; use '-qry' instead")
+        if any(e in ("-query", "--query", "-qry", "--qry") for e in extras):
+            parser.error("'-qry' has been removed; use '-filter' instead")
         if any(e in ("-unique", "--unique") for e in extras):
             parser.error("'-unique' has been removed; use '-distinct' instead")
         if any(e in ("-dedupe", "--dedupe") for e in extras):
@@ -12691,23 +12690,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae data.csv -filter \"[customer name] = 'Acme Corp'\"",
         ],
         see_also=["-sql", "-select", "-dropna"],
-    ),
-    "qry": KeywordHelp(
-        name="qry",
-        flag="-qry, --qry CONDITIONS",
-        syntax="pytae <path> -qry \"<CONDITIONS>\"",
-        summary="Filter DataFrame rows (deprecated: use -filter).",
-        description=(
-            "Deprecated alias for -filter. Filters rows using pytae filter()."
-        ),
-        options=[
-            "col = 'val' : Exact match (single quotes for string literals).",
-            "col > 100 : Numeric comparison.",
-        ],
-        examples=[
-            "pytae penguins.parquet -qry \"species == 'Gentoo', body_mass_g > 5000\"",
-        ],
-        see_also=["-filter", "-sql", "-select"],
     ),
     "select": KeywordHelp(
         name="select",
@@ -13209,7 +13191,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=[],
         examples=[
             "pytae penguins.parquet -shape",
-            "pytae penguins.parquet -qry \"species == 'Gentoo'\" -shape",
+            "pytae penguins.parquet -filter \"species == 'Gentoo'\" -shape",
         ],
         see_also=["-head", "-cols", "-meta"],
     ),
@@ -13364,8 +13346,10 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-sort": "arrange",
     "sort_by": "arrange",
     "-sort_by": "arrange",
-    "query": "qry",
-    "-query": "qry",
+    "qry": "filter",
+    "-qry": "filter",
+    "query": "filter",
+    "-query": "filter",
 }
 
 
@@ -13724,7 +13708,7 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
 
 
 def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
-    """Split a -qry body into raw (key, value) text pairs on top-level commas and equals,
+    """Split a -filter body into raw (key, value) text pairs on top-level commas and equals,
     respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
     aren't mistaken for entry or key/value separators. Direct comparisons like
     'col > 5' or assignments like 'col = > 3500' or 'col = 3500' are accepted."""
@@ -13750,8 +13734,8 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
         # If colon was used, give a helpful error
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
         if len(pieces) >= 2:
-            raise SystemExit(f"invalid -qry condition '{raw_entry}': use '=' (e.g. -qry 'species = Adelie'). Colon ':' is not supported.")
-        raise SystemExit(f"invalid -qry conditions: missing '=' in entry '{raw_entry}'")
+            raise SystemExit(f"invalid -filter condition '{raw_entry}': use '=' (e.g. -filter 'species = Adelie'). Colon ':' is not supported.")
+        raise SystemExit(f"invalid -filter conditions: missing '=' in entry '{raw_entry}'")
     return entries
 
 
@@ -14371,10 +14355,6 @@ class _Pipeline:
         except Exception as exc:
             return f"{flag_name}: {exc}"
         return None
-
-    def apply_qry(self, conditions: list[tuple[str, Any]] | dict) -> str | None:
-        """Deprecated alias for apply_filter."""
-        return self.apply_filter(conditions, flag_name="-qry")
 
     def apply_mutate(
         self, spec: str, by: list[str] | None = None, dropna: bool = False
@@ -15213,8 +15193,8 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op in ("filter", "qry"):
-            err = pipeline.apply_filter(next(filter_iter), flag_name=f"-{op}")
+        elif op == "filter":
+            err = pipeline.apply_filter(next(filter_iter), flag_name="-filter")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -15805,17 +15785,17 @@ def filter(
                     cond_pairs.append((str(item[0]), item[1]))
                 else:
                     raise TypeError(
-                        f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
+                        f"filter() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
                     )
         else:
             raise TypeError(
-                f"qry() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
+                f"filter() expects filter conditions as strings, dicts, or keyword arguments, got {type(arg).__name__}."
             )
     for col, cond in kwargs.items():
         cond_pairs.append((col, cond))
 
     if not cond_pairs:
-        raise ValueError("qry() expects at least one condition (e.g. df.pt.filter('col > 5000') or df.pt.filter(col='> 5000'))")
+        raise ValueError("filter() expects at least one condition (e.g. df.pt.filter('col > 5000') or df.pt.filter(col='> 5000'))")
 
     normalized_conditions: list[tuple[str, Any]] = []
     for col, cond in cond_pairs:
@@ -15934,21 +15914,6 @@ def filter(
             out = out.loc[out[col] == cond]
 
     return out
-
-
-def qry(
-    df: pd.DataFrame,
-    *args: Any,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Deprecated alias for filter(). Use filter() or df.pt.filter() instead."""
-    import warnings
-    warnings.warn(
-        "qry() is deprecated and will be removed in a future release; use filter() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return filter(df, *args, **kwargs)
 
 ################################################################################
 # FILE: src/pytae/mutate.py
@@ -18590,38 +18555,6 @@ def finalize(plotter: Plotter | None = None, **kwargs) -> Plotter:
     return plotter.finalize(**kwargs)
 
 ################################################################################
-# FILE: src/pytae/qry.py
-################################################################################
-"""Deprecated module: row filtering via qry(). Use pytae.filter instead."""
-
-from __future__ import annotations
-
-from typing import Any
-
-import pandas as pd
-
-from .filter import _parse_filter_string as _parse_qry_string
-from .filter import filter, ops, str_ops, unary_ops
-
-
-def qry(
-    df: pd.DataFrame,
-    *args: Any,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Deprecated alias for filter(). Use filter() or df.pt.filter() instead."""
-    import warnings
-    warnings.warn(
-        "qry() is deprecated; use filter() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return filter(df, *args, **kwargs)
-
-
-__all__ = ["qry", "ops", "str_ops", "unary_ops", "_parse_qry_string"]
-
-################################################################################
 # FILE: src/pytae/readers.py
 ################################################################################
 """Format-specific readers exposing a uniform metadata/inspection API.
@@ -20719,7 +20652,7 @@ def test_agg_df_user_pipeline_tips():
     tips = pt.sample("tips")
     res = (
         tips
-        .pt.qry(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
+        .pt.filter(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
         .pt.select("smoker", "tip", "total_bill")
         .rename(columns={"total_bill": "total bill"})
         .pt.by("smoker")
@@ -21682,45 +21615,45 @@ def test_query_deprecated_raises_helpful_error(tmp_path, capsys):
     )
 
     with pytest.raises(SystemExit) as exc:
-        cli.main([path, "-query", "flt == 'A'"])
+        cli.main([path, "-qry", "flt == 'A'"])
     assert exc.value.code == 2
-    assert "'-query' has been deprecated; use '-qry' instead" in capsys.readouterr().err
+    assert "'-qry' has been removed; use '-filter' instead" in capsys.readouterr().err
 
 
-def test_qry_without_braces_is_equivalent(tmp_path, capsys):
+def test_filter_without_braces_is_equivalent(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    exit_code = cli.main([path, "-qry", "'flt' = 'A'", "-shape"])
+    exit_code = cli.main([path, "-filter", "'flt' = 'A'", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 3)"
 
 
-def test_qry_column_key_quoting_is_optional(tmp_path, capsys):
+def test_filter_column_key_quoting_is_optional(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    cli.main([path, "-qry", "flt='A'", "-shape"])
+    cli.main([path, "-filter", "flt='A'", "-shape"])
     unquoted = capsys.readouterr().out.strip()
 
-    cli.main([path, "-qry", "'flt'='A'", "-shape"])
+    cli.main([path, "-filter", "'flt'='A'", "-shape"])
     quoted = capsys.readouterr().out.strip()
 
     assert unquoted == quoted == "(2, 3)"
 
 
-def test_qry_unquoted_string_value_errors(tmp_path):
+def test_filter_unquoted_string_value_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"flt": ["A", "B"]}))
 
     with pytest.raises(SystemExit, match="must be quoted"):
-        cli.main([path, "-qry", "flt=A", "-shape"])
+        cli.main([path, "-filter", "flt=A", "-shape"])
 
 
-def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
+def test_filter_column_not_in_select_still_filters(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "keep": [1, 2, 3],
@@ -21733,7 +21666,7 @@ def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
     exit_code = cli.main(
         [
             path,
-            "-qry",
+            "-filter",
             "flt = 'A'",
             "-select",
             "'keep','val'",
@@ -21746,7 +21679,7 @@ def test_qry_column_not_in_select_still_filters(tmp_path, capsys):
     assert "(2, 2)" in out
 
 
-def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monkeypatch):
+def test_filter_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"month": [202606, 202607, 202607], "value": [1, 2, 3]}))
 
     copied = {}
@@ -21756,7 +21689,7 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-qry", "month = 202607", "-o", "clip"])
+    exit_code = cli.main([path, "-filter", "month = 202607", "-o", "clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -21767,49 +21700,49 @@ def test_qry_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, monk
     )
 
 
-def test_qry_direct_comparison(tmp_path, capsys):
+def test_filter_direct_comparison(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
-    exit_code = cli.main([path, "-qry", "body_mass_g > 3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g > 3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
 
-def test_qry_colon_raises_error(tmp_path):
+def test_filter_colon_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
     with pytest.raises(SystemExit, match="use '='"):
-        cli.main([path, "-qry", "body_mass_g: > 3500", "-shape"])
+        cli.main([path, "-filter", "body_mass_g: > 3500", "-shape"])
 
 
-def test_qry_equals_separator(tmp_path, capsys):
+def test_filter_equals_separator(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
     # col= > val
-    exit_code = cli.main([path, "-qry", "body_mass_g= > 3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g= > 3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
     # col=>val
-    exit_code = cli.main([path, "-qry", "body_mass_g=>3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g=>3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
     # col = > val
-    exit_code = cli.main([path, "-qry", "body_mass_g = > 3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g = > 3500", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
     # col = val
-    exit_code = cli.main([path, "-qry", "body_mass_g = 4000", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g = 4000", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
 
 
-def test_qry_cli_bracket_interval(tmp_path, capsys):
+def test_filter_cli_bracket_interval(tmp_path, capsys):
     # CLI Issue 3: -qry "body_mass_g = [3000, 3200]" treats as interval
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 3100, 3200, 4000]}))
-    exit_code = cli.main([path, "-qry", "body_mass_g = [3000, 3200]", "-shape"])
+    exit_code = cli.main([path, "-filter", "body_mass_g = [3000, 3200]", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 1)"
 
@@ -23595,7 +23528,7 @@ def sample_dataset_dir(tmp_path_factory):
 
 # Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
-    ("penguins.parquet", ["-qry", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
+    ("penguins.parquet", ["-filter", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
     ("penguins.parquet", ["-pivot", "r=species,c=island,v=sex,a=n"]),
     ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
     ("titanic.parquet", ["-freq", "survived"]),
@@ -23871,17 +23804,17 @@ def test_select_caret_pattern_is_not_implicit_regex(tmp_path):
         cli.main([path, "-select", "^bill", "-cols"])
     assert exc_info.value.code == 2
 
-def test_select_then_qry_on_dropped_column_errors(tmp_path, capsys):
+def test_select_then_filter_on_dropped_column_errors(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-select", "keep,val", "-qry", "flt = 'A'", "-shape"])
+        cli.main([path, "-select", "keep,val", "-filter", "flt = 'A'", "-shape"])
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
-    assert "-qry" in err
+    assert "-filter" in err
     assert "flt" in err
 
 def test_select_runs_after_merge(tmp_path, capsys):
@@ -23967,13 +23900,13 @@ def test_select_cli_negative_after_agg(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
 
 
-def test_select_cli_negative_after_qry(tmp_path, capsys):
+def test_select_cli_negative_after_filter(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
     )
 
-    exit_code = cli.main([path, "-qry", "flt = 'A'", "-select", "-flt", "-cols"])
+    exit_code = cli.main([path, "-filter", "flt = 'A'", "-select", "-flt", "-cols"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]
 
@@ -24257,12 +24190,11 @@ import pytae.cli
 
 assert "pytae.plotting" not in sys.modules
 assert "pytae.shape" not in sys.modules
-assert "matplotlib" not in sys.modules
-assert callable(__import__("pytae", fromlist=["qry"]).qry)
+assert callable(__import__("pytae", fromlist=["filter"]).filter)
 assert callable(__import__("pytae", fromlist=["select"]).select)
 DF = sys.modules["pandas"].DataFrame
 assert hasattr(DF, "pt")
-assert not hasattr(DF, "qry")
+assert not hasattr(DF.pt, "qry")
 assert not hasattr(DF, "select")
 assert not hasattr(DF, "mutate")
 """ % _SRC
@@ -26311,316 +26243,6 @@ def test_plotter_remap_coord_pandas2_and_3():
     mock_cols_pd3.get_loc.side_effect = lambda k: ["x", 0, "g"].index(k)
     assert _remap_coord_if_needed(mock_cols_pd3, 0) == 1
     assert _remap_coord_if_needed(mock_cols_pd3, "x") == "x"
-
-################################################################################
-# FILE: tests/test_qry.py
-################################################################################
-import os
-import sys
-
-import pandas as pd
-import pytest
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-
-import pytae as pt
-from pytae.cli_parsing import parse_qry
-
-
-def _df():
-    return pd.DataFrame(
-        {
-            "species": ["Adelie", "Gentoo", "Chinstrap", "Adelie"],
-            "body_mass_g": [74125, 271425, 119925, 89100],
-            "code": ["A 1", "B 2", "C 3", "D 4"],
-        }
-    )
-
-
-def test_qry_equality():
-    result = pt.qry(_df(), species="Adelie")
-    assert list(result.index) == [0, 3]
-
-
-def test_qry_list_membership():
-    result = pt.qry(_df(), species=["Adelie", "Gentoo"])
-    assert list(result["species"]) == ["Adelie", "Gentoo", "Adelie"]
-
-
-def test_qry_in_and_not_in():
-    df = _df()
-    assert list(pt.qry(df, species=("in", ["Gentoo"]))["species"]) == ["Gentoo"]
-    assert list(pt.qry(df, species=("not in", ["Adelie", "Gentoo"]))["species"]) == ["Chinstrap"]
-
-
-def test_qry_comparison():
-    result = pt.qry(_df(), body_mass_g="> 81500")
-    assert list(result["species"]) == ["Gentoo", "Chinstrap", "Adelie"]
-
-
-def test_qry_interval():
-    result = pt.qry(_df(), body_mass_g="(85000,100000)")
-    assert list(result["species"]) == ["Adelie"]
-    assert result["body_mass_g"].iloc[0] == 89100
-
-
-def test_qry_does_not_mutate_original():
-    df = _df()
-    pt.qry(df, species="Adelie")
-    assert len(df) == 4
-
-
-def test_qry_in_requires_list():
-    with pytest.raises(ValueError, match="must be a list"):
-        pt.qry(_df(), species=("in", "Adelie"))
-
-
-def test_qry_unknown_column_suggests_typo():
-    with pytest.raises(KeyError, match=r"unknown column 'speceis' \(did you mean 'species'\?\)"):
-        pt.qry(_df(), speceis="Adelie")
-
-
-def test_qry_startswith():
-    result = pt.qry(_df(), species=("startswith", "Ad"))
-    assert list(result["species"]) == ["Adelie", "Adelie"]
-
-
-def test_qry_endswith():
-    result = pt.qry(_df(), code=("endswith", "3"))
-    assert list(result["species"]) == ["Chinstrap"]
-
-
-def test_qry_contains():
-    result = pt.qry(_df(), species=("contains", "in"))
-    assert list(result["species"]) == ["Chinstrap"]
-
-
-def test_qry_regex():
-    result = pt.qry(_df(), code=("regex", r"^[AB]"))
-    assert list(result["species"]) == ["Adelie", "Gentoo"]
-
-
-def test_qry_startswith_accepts_list_of_prefixes():
-    result = pt.qry(_df(), species=("startswith", ["Ad", "Ge"]))
-    assert list(result["species"]) == ["Adelie", "Gentoo", "Adelie"]
-
-
-def test_qry_string_op_on_non_string_column_raises_clear_error():
-    with pytest.raises(ValueError, match="needs a string column"):
-        pt.qry(_df(), body_mass_g=("startswith", "1"))
-
-
-def test_qry_isna():
-    df = _df()
-    df.loc[0, "species"] = None
-    result = pt.qry(df, species=("isna",))
-    assert len(result) == 1
-    assert result.index[0] == 0
-
-
-def test_qry_notna():
-    df = _df()
-    df.loc[0, "species"] = None
-    result = pt.qry(df, species=("notna",))
-    assert list(result["species"]) == ["Gentoo", "Chinstrap", "Adelie"]
-
-
-def test_qry_string_op_treats_missing_as_no_match():
-    df = _df()
-    df.loc[0, "species"] = None
-    result = pt.qry(df, species=("startswith", "Ad"))
-    assert list(result["species"]) == ["Adelie"]
-
-
-def test_qry_unsupported_tuple_operator_lists_string_ops():
-    with pytest.raises(ValueError, match="startswith"):
-        pt.qry(_df(), species=("badop", "x"))
-
-
-def test_qry_unsupported_unary_operator():
-    with pytest.raises(ValueError, match="Unsupported 1-element tuple operator"):
-        pt.qry(_df(), species=("badop",))
-
-
-def test_qry_accepts_positional_dict_and_string():
-    df = _df()
-    res_dict = pt.qry(df, {"species": "Adelie"})
-    assert list(res_dict.index) == [0, 3]
-
-    res_str = df.pt.qry("body_mass_g > 100000")
-    assert list(res_str["species"]) == ["Gentoo", "Chinstrap"]
-
-
-def test_qry_rejects_invalid_positional_type():
-    df = _df()
-    with pytest.raises(TypeError, match=r"qry\(\) expects filter conditions as strings, dicts, or keyword arguments"):
-        pt.qry(df, 123)
-    with pytest.raises(TypeError, match=r"qry\(\) expects filter conditions as strings, dicts, or keyword arguments"):
-        df.pt.qry(["species = Adelie"])
-
-
-def test_qry_empty_conditions_raises():
-    df = _df()
-    with pytest.raises(ValueError, match=r"qry\(\) expects at least one condition"):
-        df.pt.qry()
-
-
-def test_qry_spaced_column_name_string_and_dict():
-    df = pd.DataFrame(
-        {
-            "bill length mm": [35.0, 42.0, 51.0],
-            "body mass g": [3000, 4500, 3200],
-            "species": ["Adelie", "Gentoo", "Chinstrap"],
-        }
-    )
-    # String condition with spaces in column name (no dict unpacking!)
-    res_str = df.pt.qry("bill length mm > 40")
-    assert list(res_str["species"]) == ["Gentoo", "Chinstrap"]
-
-    # Plain dict with spaces in column name (no **kwargs unpacking!)
-    res_dict = df.pt.qry({"bill length mm": "> 40"})
-    assert list(res_dict["species"]) == ["Gentoo", "Chinstrap"]
-
-
-def test_qry_mixed_strings_dicts_and_kwargs():
-    df = pd.DataFrame(
-        {
-            "bill length mm": [35.0, 42.0, 51.0],
-            "body mass g": [3000, 4500, 3200],
-            "species": ["Adelie", "Gentoo", "Chinstrap"],
-        }
-    )
-    res = df.pt.qry("bill length mm > 40", {"body mass g": "> 4000"}, species="Gentoo")
-    assert len(res) == 1
-    assert res.iloc[0]["species"] == "Gentoo"
-
-
-def test_qry_multiple_conditions_on_same_column():
-    df = pd.DataFrame(
-        {
-            "mass": [2000, 3500, 4500, 6000],
-        }
-    )
-    # Comma-separated in single string
-    res1 = df.pt.qry("mass > 3000, mass < 5000")
-    assert list(res1["mass"]) == [3500, 4500]
-
-    # Multiple string args
-    res2 = df.pt.qry("mass > 3000", "mass < 5000")
-    assert list(res2["mass"]) == [3500, 4500]
-
-
-def test_qry_kwargs_operator():
-    df = _df()
-    res = df.pt.qry(body_mass_g="> 100000")
-    assert list(res["species"]) == ["Gentoo", "Chinstrap"]
-
-
-def test_qry_kwargs_tuple():
-    df = _df()
-    res = df.pt.qry(body_mass_g=(">", 100000))
-    assert list(res["species"]) == ["Gentoo", "Chinstrap"]
-
-
-def test_qry_kwargs_equality():
-    df = _df()
-    res = df.pt.qry(species="Adelie")
-    assert list(res.index) == [0, 3]
-
-
-def test_parse_qry_cli():
-    res1 = parse_qry("body_mass_g= > 100000")
-    res2 = parse_qry("body_mass_g=>100000")
-    res3 = parse_qry("body_mass_g = > 100000")
-    res4 = parse_qry("body_mass_g = 74125")
-    assert res1 == [("body_mass_g", (">", 100000))]
-    assert res2 == [("body_mass_g", (">", 100000))]
-    assert res3 == [("body_mass_g", (">", 100000))]
-    assert res4 == [("body_mass_g", 74125)]
-
-
-def test_qry_bracketed_columns():
-    df = pd.DataFrame({
-        "species": ["Adelie", "Gentoo"],
-        "body mass g": [3500, 5000],
-    })
-    res1 = df.pt.qry("[body mass g] > 4000")
-    assert list(res1["species"]) == ["Gentoo"]
-
-    res2 = df.pt.qry("[species] == 'Adelie'")
-    assert list(res2["species"]) == ["Adelie"]
-
-    res3 = df.pt.qry({"[body mass g]": "> 4000"})
-    assert list(res3["species"]) == ["Gentoo"]
-
-    parsed = parse_qry("[body mass g] > 4000, [species] = 'Gentoo'")
-    assert parsed == [("body mass g", (">", 4000)), ("species", "Gentoo")]
-
-
-def test_qry_interval_string_spec():
-    # Lib Issue 3
-    df = pd.DataFrame({"mass": [2000, 3500, 4000, 4500, 6000]})
-    res_bracket = df.pt.qry("mass = [3500, 4500]")
-    assert list(res_bracket["mass"]) == [3500, 4000, 4500]
-
-    res_paren = df.pt.qry("mass = (3500, 4500)")
-    assert list(res_paren["mass"]) == [4000]
-
-
-def test_qry_large_int_precision():
-    # Lib Issue 4: integers > 2**53 do not get collapsed by float cast
-    val = 2**53 + 1
-    df = pd.DataFrame({"id": [2**53, val, 2**53 + 2]})
-    res_eq = df.pt.qry(id=("==", val))
-    assert list(res_eq["id"]) == [val]
-
-    res_str = df.pt.qry(f"id == {val}")
-    assert list(res_str["id"]) == [val]
-
-    res_gt = df.pt.qry(id=(">", 2**53))
-    assert list(res_gt["id"]) == [2**53 + 1, 2**53 + 2]
-
-
-def test_qry_bare_string_comparison():
-    # Lib Issue 8
-    df = pd.DataFrame({"species": ["Adelie", "Gentoo", "Chinstrap"]})
-    res = df.pt.qry("species == Adelie")
-    assert list(res["species"]) == ["Adelie"]
-
-
-def test_qry_string_interval_spaces():
-    # Lib Issue 9: spaces in interval bounds are stripped
-    df = pd.DataFrame({"name": ["a", "b", "c", "m", "aa"]})
-    res1 = df.pt.qry(name="[a, c)")
-    assert list(res1["name"]) == ["a", "b", "aa"]
-
-    res2 = df.pt.qry(name="(a, c]")
-    assert list(res2["name"]) == ["b", "c", "aa"]
-
-
-def test_qry_parenthesized_string_without_comma_is_equality():
-    # Lib Issue 10: parenthesized/bracketed string without comma falls through to equality
-    df = pd.DataFrame({"x": ["(abc)", "def", "[xyz]"]})
-    res1 = df.pt.qry("x = (abc)")
-    assert list(res1["x"]) == ["(abc)"]
-
-    res2 = df.pt.qry("x = [xyz]")
-    assert list(res2["x"]) == ["[xyz]"]
-
-
-def test_parse_qry_multiple_conditions_on_same_column():
-    # CLI Issue 1: multiple predicates on same column kept in order
-    conditions = parse_qry("body_mass_g >= 3000, body_mass_g <= 4500")
-    assert conditions == [("body_mass_g", (">=", 3000)), ("body_mass_g", ("<=", 4500))]
-
-
-def test_qry_numeric_interval_invalid_bounds():
-    df = pd.DataFrame({"mass": [2000, 3000, 4000]})
-    with pytest.raises(ValueError, match="interval lower bound for numeric column 'mass' must be a number"):
-        df.pt.qry("mass = [abc, 4000]")
-
-    with pytest.raises(ValueError, match="interval upper bound for numeric column 'mass' must be a number"):
-        df.pt.qry("mass = [2000, xyz]")
 
 ################################################################################
 # FILE: tests/test_readers.py

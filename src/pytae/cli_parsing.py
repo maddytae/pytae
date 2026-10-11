@@ -302,7 +302,7 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
 
 
 def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
-    """Split a -qry body into raw (key, value) text pairs on top-level commas and equals,
+    """Split a -filter body into raw (key, value) text pairs on top-level commas and equals,
     respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
     aren't mistaken for entry or key/value separators. Direct comparisons like
     'col > 5' or assignments like 'col = > 3500' or 'col = 3500' are accepted."""
@@ -328,8 +328,8 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
         # If colon was used, give a helpful error
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
         if len(pieces) >= 2:
-            raise SystemExit(f"invalid -qry condition '{raw_entry}': use '=' (e.g. -qry 'species = Adelie'). Colon ':' is not supported.")
-        raise SystemExit(f"invalid -qry conditions: missing '=' in entry '{raw_entry}'")
+            raise SystemExit(f"invalid -filter condition '{raw_entry}': use '=' (e.g. -filter 'species = Adelie'). Colon ':' is not supported.")
+        raise SystemExit(f"invalid -filter conditions: missing '=' in entry '{raw_entry}'")
     return entries
 
 

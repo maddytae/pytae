@@ -195,17 +195,17 @@ def test_select_caret_pattern_is_not_implicit_regex(tmp_path):
         cli.main([path, "-select", "^bill", "-cols"])
     assert exc_info.value.code == 2
 
-def test_select_then_qry_on_dropped_column_errors(tmp_path, capsys):
+def test_select_then_filter_on_dropped_column_errors(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-select", "keep,val", "-qry", "flt = 'A'", "-shape"])
+        cli.main([path, "-select", "keep,val", "-filter", "flt = 'A'", "-shape"])
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
-    assert "-qry" in err
+    assert "-filter" in err
     assert "flt" in err
 
 def test_select_runs_after_merge(tmp_path, capsys):
@@ -291,13 +291,13 @@ def test_select_cli_negative_after_agg(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "n"]
 
 
-def test_select_cli_negative_after_qry(tmp_path, capsys):
+def test_select_cli_negative_after_filter(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
     )
 
-    exit_code = cli.main([path, "-qry", "flt = 'A'", "-select", "-flt", "-cols"])
+    exit_code = cli.main([path, "-filter", "flt = 'A'", "-select", "-flt", "-cols"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]
 

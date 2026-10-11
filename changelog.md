@@ -16,8 +16,11 @@ All notable changes to this project are documented in this file.
   - Automatic conversion of tabular DataFrame outputs into native GitHub-Flavored Markdown (GFM) scrollable tables (`| col1 | col2 | ... |`).
   - Full output parity across all 31 Markdown documentation files in `docs/` and `docs/cli/`.
 
-### Deprecations & Compatibility Status
-- **`qry` Support**: `pt.qry()`, `df.pt.qry()`, and CLI `-qry` remain fully supported as backwards-compatible aliases for `filter()`, issuing a `DeprecationWarning` directing users to `filter`.
+### Removed & Breaking Changes ("One and Only One Right Way")
+- **Removed `qry` from Library and CLI**:
+  - `pt.qry()`, `df.pt.qry()`, and module `pytae.qry` have been completely removed.
+  - The CLI `-qry` / `--qry` flag has been removed. Passing `-qry` now produces an immediate clear error directing users to `-filter`.
+  - Canonical row filtering is strictly `pt.filter()` / `df.pt.filter()` / `-filter`.
 
 ## [3.8.2] - 2026-10-07
 
