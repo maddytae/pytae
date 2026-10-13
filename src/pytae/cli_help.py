@@ -706,6 +706,27 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-pretty", "-agg"],
     ),
+    "time": KeywordHelp(
+        name="time",
+        flag="-time, --time [N]",
+        syntax="pytae <path> [operations] -time [N]",
+        summary="Measure and print pipeline execution time over 1 or N runs.",
+        description=(
+            "Measures wall-clock execution time of the full CLI pipeline.\n"
+            "- Bare '-time' (or '-time 1') runs the pipeline once and prints the elapsed time.\n"
+            "- '-time N' (e.g. '-time 10') executes the full pipeline N times (printing normal output\n"
+            "  on the first run) and reports average, minimum, maximum, and total execution time."
+        ),
+        options=[
+            "Bare flag : Run once and report elapsed time.",
+            "N : Positive integer number of benchmark runs (reports avg, min, max, and total).",
+        ],
+        examples=[
+            "pytae penguins.parquet -shape -time",
+            "pytae penguins.parquet -by species -agg mean -time 10",
+        ],
+        see_also=["-progress"],
+    ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries

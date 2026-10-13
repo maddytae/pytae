@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.8.4] - 2026-10-12
+
+### Added
+- **CLI Pipeline Timing & Benchmarking (`-time [N]` / `--time [N]`)**:
+  - Bare `-time` (or `-time 1`) runs the pipeline once, prints normal output, and appends `Elapsed (1 run): <ms> ms`.
+  - `-time N` (e.g., `-time 10` or `-time 1000`) runs the pipeline `N` times (printing normal stdout on the first run and suppressing duplicate stdout on runs `2..=N`) and prints `Elapsed (N runs): avg <ms> ms | min <ms> ms | max <ms> ms | total <ms> ms`.
+  - Added dedicated CLI keyword help (`pytae -h time`).
+
 ## [3.8.3] - 2026-10-11
 
 ### Added

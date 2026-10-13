@@ -82,7 +82,7 @@ _CLI_FLAGS = {
     "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
     "-file", "--file", "-filter", "--filter", "-mutate", "--mutate",
     "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
-    "-concat", "--concat", "-progress", "--progress", "-pretty", "--pretty",
+    "-concat", "--concat", "-progress", "--progress", "-time", "--time", "-pretty", "--pretty",
     "-pager", "--pager", "-round", "--round", "-h", "--help",
     "-fmt", "--fmt", "-freq", "--freq", "-hist", "--hist",
     "-plot", "--plot", "-finalize", "--finalize",
@@ -109,6 +109,28 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
                     continue
             else:
                 out.append("--progress=200000")
+                i += 1
+                continue
+        elif arg in ("-time", "--time"):
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                try:
+                    int(nxt)
+                    out.append(arg)
+                    out.append(nxt)
+                    i += 2
+                    continue
+                except ValueError:
+                    if nxt.startswith("-") or _is_path_like(nxt) or nxt == "clip":
+                        out.append("--time=1")
+                        i += 1
+                        continue
+                    out.append(arg)
+                    out.append(nxt)
+                    i += 2
+                    continue
+            else:
+                out.append("--time=1")
                 i += 1
                 continue
         elif arg in ("-select", "--select") and "=" not in arg:
@@ -339,6 +361,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-progress", "--progress", nargs="?", const=200_000, type=parse_positive_int,
                          default=None, metavar="N",
                          help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
+    parser.add_argument("-time", "--time", dest="time", nargs="?", const=1, type=parse_positive_int,
+                         default=None, metavar="N",
+                         help="measure and print pipeline execution time (default: 1 run; optional N runs the pipeline N times and reports avg/min/max/total)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
                          help="render tables as a bordered markdown table instead of plain pandas text")
     parser.add_argument("-pager", "--pager", action="store_true",
@@ -347,6 +372,30 @@ def build_parser() -> argparse.ArgumentParser:
                          help="round numeric columns to N decimal places before printing/copying; "
                               "non-numeric columns are left unchanged")
     return parser
+
+
+def _format_duration_ms(secs: float) -> str:
+    ms = secs * 1000.0
+    if secs >= 1.0:
+        return f"{ms:.2f} ms ({secs:.3f} s)"
+    return f"{ms:.2f} ms"
+
+
+def _format_timing_summary(durations: list[float]) -> str:
+    n = len(durations)
+    if n <= 1:
+        d = durations[0] if durations else 0.0
+        return f"Elapsed (1 run): {_format_duration_ms(d)}"
+    total = sum(durations)
+    avg = total / n
+    mn = min(durations)
+    mx = max(durations)
+    return (
+        f"Elapsed ({n} runs): avg {_format_duration_ms(avg)} | "
+        f"min {_format_duration_ms(mn)} | "
+        f"max {_format_duration_ms(mx)} | "
+        f"total {_format_duration_ms(total)}"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -492,68 +541,94 @@ def main(argv: list[str] | None = None) -> int:
     merge_specs = [parse_merge_arg(raw) for raw in (args.merge or [])]
     concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
 
-    if args.file is not None:
-        frames: dict[str, pd.DataFrame] = {}
-        for entry in parse_file_arg(args.file):
-            entry_path = Path(entry["path"])
-            if not entry_path.exists():
-                parser.error(f"-file: file not found: {entry_path}")
-            try:
-                reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000)
-            except ValueError as exc:
-                parser.error(f"-file: {exc}")
-            try:
-                frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
-            except UnicodeError as exc:
-                parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
-        failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
-                                replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
-                                merge_specs=merge_specs, concat_specs=concat_specs)
-        return 1 if failed else 0
+    paths: list[Path] = []
+    batch = False
+    if args.file is None:
+        if not raw_paths:
+            parser.error("the following arguments are required: path")
+        paths = expand_paths(raw_paths)
+        batch = len(paths) > 1
 
-    if not raw_paths:
-        parser.error("the following arguments are required: path")
-    paths = expand_paths(raw_paths)
-    batch = len(paths) > 1
-
-    if batch and args.output is not None:
-        if is_clip:
-            parser.error("-o clip cannot be used with multiple matched files")
-        if out_target is not None and out_target.lower() not in _FORMAT_SHORTHANDS:
-            parser.error(
-                "-o/--output with multiple matched files requires a format (e.g. '-o csv' or '-o parquet'), "
-                "not a single file path"
-            )
-        assert out_target is not None
-        fmt = out_target.lower()
-        ext = ".parquet" if fmt == "pq" else f".{fmt}"
-        dest_map: dict[Path, Path] = {}
-        for p in paths:
-            clean_name = p.name[:-3] if p.name.lower().endswith(".gz") else p.name
-            dest_name = f"{Path(clean_name).stem}{ext}"
-            dest = (args.out_dir / dest_name).resolve() if args.out_dir is not None else p.with_name(dest_name).resolve()
-            if dest in dest_map:
+        if batch and args.output is not None:
+            if is_clip:
+                parser.error("-o clip cannot be used with multiple matched files")
+            if out_target is not None and out_target.lower() not in _FORMAT_SHORTHANDS:
                 parser.error(
-                    f"-o {out_target}: multiple input files resolve to the same destination path '{dest}': "
-                    f"'{dest_map[dest]}' and '{p}'"
+                    "-o/--output with multiple matched files requires a format (e.g. '-o csv' or '-o parquet'), "
+                    "not a single file path"
                 )
-            dest_map[dest] = p
+            assert out_target is not None
+            fmt = out_target.lower()
+            ext = ".parquet" if fmt == "pq" else f".{fmt}"
+            dest_map: dict[Path, Path] = {}
+            for p in paths:
+                clean_name = p.name[:-3] if p.name.lower().endswith(".gz") else p.name
+                dest_name = f"{Path(clean_name).stem}{ext}"
+                dest = (args.out_dir / dest_name).resolve() if args.out_dir is not None else p.with_name(dest_name).resolve()
+                if dest in dest_map:
+                    parser.error(
+                        f"-o {out_target}: multiple input files resolve to the same destination path '{dest}': "
+                        f"'{dest_map[dest]}' and '{p}'"
+                    )
+                dest_map[dest] = p
 
-    exit_code = 0
-
-    for path in paths:
-        if batch:
-            print(f"== {path} ==")
-        try:
-            failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
+    def _execute_once() -> int:
+        if args.file is not None:
+            frames: dict[str, pd.DataFrame] = {}
+            for entry in parse_file_arg(args.file):
+                entry_path = Path(entry["path"])
+                if not entry_path.exists():
+                    parser.error(f"-file: file not found: {entry_path}")
+                try:
+                    reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000)
+                except ValueError as exc:
+                    parser.error(f"-file: {exc}")
+                try:
+                    frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
+                except UnicodeError as exc:
+                    parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
+            failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
                                     filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
-                                    replace_specs=replace_specs, rename_specs=rename_specs)
-        except UnicodeError as exc:
-            failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
-        if failed:
-            exit_code = 1
+                                    replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
+                                    merge_specs=merge_specs, concat_specs=concat_specs)
+            return 1 if failed else 0
 
+        code = 0
+        for path in paths:
+            if batch:
+                print(f"== {path} ==")
+            try:
+                failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
+                                        filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
+                                        replace_specs=replace_specs, rename_specs=rename_specs)
+            except UnicodeError as exc:
+                failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
+            if failed:
+                code = 1
+        return code
+
+    if args.time is None:
+        return _execute_once()
+
+    import contextlib
+    import io as _io
+    import time as _time
+
+    runs = args.time
+    durations: list[float] = []
+    exit_code = 0
+    for run_idx in range(runs):
+        t0 = _time.perf_counter()
+        if run_idx == 0:
+            exit_code = _execute_once()
+        else:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                exit_code = _execute_once()
+        durations.append(_time.perf_counter() - t0)
+        if exit_code != 0:
+            break
+    if exit_code == 0:
+        print(_format_timing_summary(durations))
     return exit_code
 
 

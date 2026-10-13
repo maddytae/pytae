@@ -955,6 +955,46 @@ def test_cli_expand_paths_literal_bracket_file(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(1, 2)"
 
 
+def test_cli_time_single_and_multi_runs(tmp_path, capsys):
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    path = _write_csv(tmp_path, df)
+
+    # 1. Bare -time (1 run)
+    exit_code = cli.main([path, "-shape", "-time"])
+    assert exit_code == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) == 2
+    assert lines[0] == "(3, 2)"
+    assert lines[1].startswith("Elapsed (1 run): ") and " ms" in lines[1]
+
+    # 2. Bare -time before path
+    exit_code2 = cli.main(["-time", path, "-shape"])
+    assert exit_code2 == 0
+    out2 = capsys.readouterr().out
+    assert "(3, 2)" in out2
+    assert "Elapsed (1 run): " in out2
+
+    # 3. -time 5 (5 runs, output emitted once)
+    exit_code5 = cli.main([path, "-shape", "-time", "5"])
+    assert exit_code5 == 0
+    lines5 = capsys.readouterr().out.strip().splitlines()
+    assert len(lines5) == 2
+    assert lines5[0] == "(3, 2)"
+    assert lines5[1].startswith("Elapsed (5 runs): avg ")
+    assert " | min " in lines5[1] and " | max " in lines5[1] and " | total " in lines5[1]
+
+    # 4. Invalid -time 0
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-shape", "-time", "0"])
+    assert exc.value.code == 2
+    assert "must be > 0" in capsys.readouterr().err
+
+    # 5. -h time
+    exit_help = cli.main(["-h", "time"])
+    assert exit_help == 0
+    assert "PYTAE CLI KEYWORD HELP: -time" in capsys.readouterr().out
+
+
 
 
 
