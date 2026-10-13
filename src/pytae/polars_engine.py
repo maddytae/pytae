@@ -364,3 +364,283 @@ def mutate_polars(df: pl.DataFrame, parsed_spec: dict[str, str], by: list[str] |
         expr = _ast_to_polars_expr(parsed, set(cur.columns), col_map, by=by)
         cur = cur.with_columns(expr.alias(col_name))
     return cur
+
+
+def pick_polars(
+    df: pl.DataFrame,
+    col: str,
+    n: int | None = None,
+    prop: float | None = None,
+    order: str = "max",
+    by: list[str] | None = None,
+) -> pl.DataFrame:
+    """Select the rows with the largest (or smallest) values of a column, optionally grouped by 'by'."""
+    clean_col = _unquote_name(col.strip())
+    if clean_col not in df.columns:
+        raise KeyError(f"pick: column '{clean_col}' not found in DataFrame. Available columns: {list(df.columns)}")
+
+    if n is not None and prop is not None:
+        raise ValueError("pick: specify either 'n' or 'prop', not both")
+
+    if n is None and prop is None:
+        n = 1
+
+    clean_order = order.strip().lower() if isinstance(order, str) else "max"
+    if clean_order not in ("max", "min"):
+        raise ValueError(f"pick: order must be 'max' or 'min', got {order!r}")
+    is_desc = (clean_order == "max")
+
+    if prop is not None:
+        if not (0 < prop <= 1):
+            raise ValueError(f"pick: 'prop' must be between 0 and 1, got {prop}")
+
+    if by:
+        unknown_by = [c for c in by if c not in df.columns]
+        if unknown_by:
+            raise KeyError(f"pick: grouping column(s) {unknown_by} not found in DataFrame")
+
+        sort_cols = by + [clean_col]
+        sort_desc = [False] * len(by) + [is_desc]
+        sorted_df = df.sort(sort_cols, descending=sort_desc, nulls_last=True)
+
+        if prop is not None:
+            valid_cnt = pl.col(clean_col).drop_nulls().len().over(by)
+            cutoff = (valid_cnt * prop).floor().cast(pl.Int64).clip(lower_bound=1)
+            row_nr = pl.int_range(1, pl.len() + 1).over(by)
+            return sorted_df.filter(row_nr <= cutoff)
+
+        assert n is not None
+        if n <= 0:
+            return df.head(0)
+        return sorted_df.group_by(by, maintain_order=True).head(n)
+
+    sorted_df = df.sort(clean_col, descending=is_desc, nulls_last=True)
+    if prop is not None:
+        valid_cnt = sorted_df.select(pl.col(clean_col).drop_nulls().len()).item()
+        k = max(1, int(valid_cnt * prop))
+        return sorted_df.head(k)
+
+    assert n is not None
+    if n <= 0:
+        return df.head(0)
+    return sorted_df.head(n)
+
+
+def value_counts_polars(
+    df: pl.DataFrame,
+    cols: list[str] | None = None,
+    dropna: bool = False,
+) -> pl.DataFrame:
+    """Compute value counts across specified or all columns in a Polars DataFrame."""
+    target_cols = cols if cols is not None else list(df.columns)
+    if "count" in target_cols and "n" in target_cols:
+        raise ValueError("-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers")
+
+    count_name = "count" if "count" not in target_cols else "n"
+
+    work_df = df
+    if dropna:
+        work_df = work_df.drop_nulls(subset=target_cols)
+
+    return work_df.group_by(target_cols).len().rename({"len": count_name}).sort(count_name, descending=True)
+
+
+def long_polars(
+    df: pl.DataFrame,
+    cols: str | Sequence[str] | None = None,
+    id_vars: str | Sequence[str] | None = None,
+    c: str = "variable",
+    v: str = "value",
+    **kwargs: Any,
+) -> pl.DataFrame:
+    """Unpivot a Polars DataFrame from wide to long format."""
+    if cols is None:
+        cols = kwargs.pop("values", kwargs.pop("value_vars", None))
+    if id_vars is None:
+        id_vars = kwargs.pop("by", kwargs.pop("id", None))
+    if c == "variable":
+        c = kwargs.pop("var_name", c)
+    if v == "value":
+        v = kwargs.pop("value_name", v)
+
+    all_cols = list(df.columns)
+
+    def _norm_spec(spec: str | Sequence[str] | None, param_name: str) -> list[str] | None:
+        if spec is None:
+            return None
+        if isinstance(spec, str):
+            from pytae._text import tokenize as _tok
+            items = [_unquote_name(item.strip()) for item in _tok(spec, ",", keep_quotes=True, track_brackets=True) if item.strip()]
+        elif isinstance(spec, (list, tuple, set)):
+            items = [_unquote_name(item) if isinstance(item, str) else item for item in spec]
+        else:
+            raise TypeError(f"{param_name} must be a column name or sequence of names, got {type(spec).__name__}")
+        for item in items:
+            if item not in df.columns:
+                import difflib
+                close = difflib.get_close_matches(str(item), [str(col) for col in all_cols], n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"long(): {param_name} column '{item}' not found in DataFrame{hint}")
+        return items
+
+    melt_cols = _norm_spec(cols, "cols")
+    keep_ids = _norm_spec(id_vars, "id_vars")
+
+    if melt_cols is not None and keep_ids is not None:
+        overlap = set(melt_cols).intersection(keep_ids)
+        if overlap:
+            raise ValueError(f"long(): column(s) {sorted(overlap)} cannot appear in both 'cols' and 'id_vars'")
+
+    if melt_cols is not None:
+        if keep_ids is None:
+            keep_ids = [col for col in all_cols if col not in melt_cols]
+    elif keep_ids is not None:
+        melt_cols = [col for col in all_cols if col not in keep_ids]
+        if not melt_cols:
+            raise ValueError("long(): no columns left to melt after keeping id_vars")
+    else:
+        numeric_cols = [col for col, dtype in df.schema.items() if dtype.is_numeric()]
+        if not numeric_cols:
+            raise ValueError(
+                "long(): no numeric columns to melt. "
+                "Specify columns to melt via cols= (e.g. df.pt.long(cols=['q1', 'q2'])) "
+                "or id_vars= (e.g. df.pt.long(id_vars=['id']))."
+            )
+        melt_cols = numeric_cols
+        keep_ids = [col for col in all_cols if col not in melt_cols]
+
+    if c == v:
+        raise ValueError(f"long(): output variable column 'c' ({c!r}) and value column 'v' ({v!r}) cannot have the same name")
+    if c in keep_ids:
+        raise ValueError(f"long(): output variable column 'c' ({c!r}) collides with kept id column(s)")
+    if v in keep_ids:
+        raise ValueError(f"long(): output value column 'v' ({v!r}) collides with kept id column(s)")
+    if v in melt_cols:
+        raise ValueError(f"long(): output value column 'v' ({v!r}) collides with melted column(s)")
+
+    return df.unpivot(on=melt_cols, index=keep_ids, variable_name=c, value_name=v)
+
+
+def wide_polars(
+    df: pl.DataFrame,
+    c: str = "variable",
+    v: str = "value",
+    index: str | Sequence[str] | None = None,
+    **kwargs: Any,
+) -> pl.DataFrame:
+    """Reshape a long Polars DataFrame into wide format (1-to-1 pivot)."""
+    for bad_arg in ("a", "agg", "aggfunc", "dropna"):
+        if bad_arg in kwargs:
+            raise ValueError(
+                f"wide() does not support '{bad_arg}'. wide() is strictly for 1-to-1 reshaping "
+                "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
+            )
+
+    if "cols" in kwargs and c == "variable":
+        c = kwargs.pop("cols")
+    elif "col" in kwargs and c == "variable":
+        c = kwargs.pop("col")
+    elif "columns" in kwargs and c == "variable":
+        c = kwargs.pop("columns")
+
+    if "values" in kwargs and v == "value":
+        v = kwargs.pop("values")
+    elif "val" in kwargs and v == "value":
+        v = kwargs.pop("val")
+    elif "vals" in kwargs and v == "value":
+        v = kwargs.pop("vals")
+
+    c = _unquote_name(c)
+    if v is None:
+        raise ValueError("wide(): value column 'v' cannot be None. Specify the column to spread via v= (e.g. v='value').")
+    v = _unquote_name(v)
+    if c == v:
+        raise ValueError(f"wide(): 'c' and 'v' cannot be the same column ('{c}')")
+    if c not in df.columns:
+        raise KeyError(f"wide(): columns 'c' column '{c}' not found in DataFrame")
+    if v not in df.columns:
+        raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
+
+    if index is None:
+        index = kwargs.pop("r", kwargs.pop("rows", kwargs.pop("by", kwargs.pop("id_vars", None))))
+
+    if index is not None:
+        if isinstance(index, str):
+            from pytae._text import tokenize as _tok
+            index_cols = [_unquote_name(col.strip()) for col in _tok(index, ",", keep_quotes=True, track_brackets=True) if col.strip()]
+        else:
+            index_cols = [_unquote_name(col) if isinstance(col, str) else col for col in index]
+        for col in index_cols:
+            if col not in df.columns:
+                raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
+        if c in index_cols:
+            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in index columns")
+        if v is not None and v in index_cols:
+            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in index columns")
+    else:
+        index_cols = [col for col in df.columns if col not in [c, v]]
+
+    try:
+        return df.pivot(
+            on=c,
+            index=index_cols if index_cols else None,
+            values=v,
+            sort_columns=True,
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
+            "wide() is strictly for 1-to-1 reshaping without aggregation. "
+            "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
+        ) from exc
+
+
+def handle_missing_polars(
+    df: pl.DataFrame,
+    fillna: str | None = ".",
+    numeric_fill: Any = 0,
+    cols: Sequence[str] | None = None,
+) -> pl.DataFrame:
+    """Fill missing values in a Polars DataFrame with type-appropriate defaults."""
+    target_cols = set(cols) if cols is not None else set(df.columns)
+    exprs: list[pl.Expr] = []
+
+    for c in df.columns:
+        if c not in target_cols:
+            exprs.append(pl.col(c))
+            continue
+
+        dtype = df.schema[c]
+        if dtype.is_numeric():
+            if numeric_fill == "mean":
+                exprs.append(pl.col(c).fill_null(pl.col(c).mean()))
+            elif numeric_fill == "median":
+                exprs.append(pl.col(c).fill_null(pl.col(c).median()))
+            elif numeric_fill is not None:
+                exprs.append(pl.col(c).fill_null(numeric_fill))
+            else:
+                exprs.append(pl.col(c))
+        elif dtype == pl.String:
+            fill_str = str(fillna) if fillna is not None else "."
+            exprs.append(pl.col(c).fill_null(fill_str).str.strip_chars())
+        elif dtype == pl.Categorical:
+            fill_str = str(fillna) if fillna is not None else "."
+            exprs.append(pl.col(c).cast(pl.String).fill_null(fill_str).cast(pl.Categorical))
+        else:
+            exprs.append(pl.col(c))
+
+    return df.with_columns(exprs)
+
+
+def clean_columns_polars(df: pl.DataFrame, **opts: Any) -> pl.DataFrame:
+    """Clean column header names in a Polars DataFrame."""
+    from pytae.other_utilities import clean_column_names
+    old_cols = list(df.columns)
+    new_cols = clean_column_names(old_cols, **opts)
+    if new_cols == old_cols:
+        return df
+    if len(set(new_cols)) < len(new_cols):
+        raise ValueError("clean_columns resulted in duplicate column names; set dedupe=True to auto-disambiguate")
+    mapping = dict(zip(old_cols, new_cols))
+    return df.rename(mapping)
+

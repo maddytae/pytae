@@ -514,7 +514,7 @@ def _process_path(
             return
         df = _apply_round(pipeline.dataframe(), args.round_ndigits)
         if should_print(idx):
-            print(_format_table(df, pretty=args.pretty))
+            _output_text(_format_table(df, pretty=args.pretty), args)
         if is_clip:
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
@@ -671,28 +671,33 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=diff_str: _copy_to_clipboard(s)
         elif op == "value_counts":
-            source_df = pipeline.dataframe()
-            value_count_cols = list(source_df.columns)
-
-            if "count" in value_count_cols and "n" in value_count_cols:
+            avail_cols = pipeline.columns()
+            if "count" in avail_cols and "n" in avail_cols:
                 return _fail(parser, batch, "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers")
-
+            dropna_val = False if args.dropna is None else args.dropna
             try:
-                if len(value_count_cols) == 1:
-                    col = value_count_cols[0]
-                    count_name = "count" if col != "count" else "n"
-                    result = source_df[col].value_counts(dropna=False if args.dropna is None else args.dropna).rename(count_name).reset_index()
-                    result.columns = [col, count_name]
-                else:
-                    count_name = "count" if "count" not in value_count_cols else "n"
-                    result = source_df.value_counts(subset=value_count_cols, dropna=False if args.dropna is None else args.dropna).rename(count_name).reset_index()
-            except Exception as exc:
+                from pytae.polars_engine import value_counts_polars
+                pl_res = value_counts_polars(pipeline.polars_frame(), cols=avail_cols, dropna=dropna_val)
+                pipeline._pldf = pl_res
+                pipeline._df = None
+            except ValueError as exc:
                 return _fail(parser, batch, str(exc))
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+            except Exception:
+                source_df = pipeline.dataframe()
+                try:
+                    if len(avail_cols) == 1:
+                        col = avail_cols[0]
+                        count_name = "count" if col != "count" else "n"
+                        result = source_df[col].value_counts(dropna=dropna_val).rename(count_name).reset_index()
+                        result.columns = [col, count_name]
+                    else:
+                        count_name = "count" if "count" not in avail_cols else "n"
+                        result = source_df.value_counts(subset=avail_cols, dropna=dropna_val).rename(count_name).reset_index()
+                    pipeline._df = result
+                    pipeline._pldf = None
+                except Exception as exc:
+                    return _fail(parser, batch, str(exc))
+            emit_frame(idx)
         elif op == "freq":
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
             source_df = pipeline.dataframe()
@@ -802,12 +807,16 @@ def _process_path(
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "handle_missing":
             hm_val = _next_op_val("handle_missing", args.handle_missing)
-            result = handle_missing(pipeline.dataframe(), fillna=hm_val)
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+            try:
+                from pytae.polars_engine import handle_missing_polars
+                pl_res = handle_missing_polars(pipeline.polars_frame(), fillna=hm_val)
+                pipeline._pldf = pl_res
+                pipeline._df = None
+            except Exception:
+                result = handle_missing(pipeline.dataframe(), fillna=hm_val)
+                pipeline._df = result
+                pipeline._pldf = None
+            emit_frame(idx)
         elif op == "dropna":
             dropna_val = _next_op_val("dropna", getattr(args, "dropna", None))
             err = pipeline.apply_dropna(dropna_val)
@@ -817,53 +826,71 @@ def _process_path(
         elif op == "clean_columns":
             cc_val = _next_op_val("clean_columns", args.clean_columns)
             opts = parse_clean_columns_arg(cc_val)
-            result = clean_columns(pipeline.dataframe(), **opts)
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+            try:
+                from pytae.polars_engine import clean_columns_polars
+                pl_res = clean_columns_polars(pipeline.polars_frame(), **opts)
+                pipeline._pldf = pl_res
+                pipeline._df = None
+            except Exception:
+                result = clean_columns(pipeline.dataframe(), **opts)
+                pipeline._df = result
+                pipeline._pldf = None
+            emit_frame(idx)
         elif op == "long":
             from pytae.shape import long as long_fn
-            source_df = pipeline.dataframe()
             long_val = _next_op_val("long", args.long)
             long_kwargs = parse_long_arg(long_val)
             cols_arg = long_kwargs.get("cols")
+            avail_cols = pipeline.columns()
             if cols_arg:
                 cols_list = parse_columns(cols_arg) if isinstance(cols_arg, str) else list(cols_arg)
-                missing = [c for c in cols_list if c not in source_df.columns]
+                missing = [c for c in cols_list if c not in avail_cols]
                 if missing:
-                    return _fail(parser, batch, unknown_columns_message("-long", missing, list(source_df.columns)))
+                    return _fail(parser, batch, unknown_columns_message("-long", missing, avail_cols))
             try:
-                result = long_fn(source_df, **long_kwargs)
+                from pytae.polars_engine import long_polars
+                pl_res = long_polars(pipeline.polars_frame(), **long_kwargs)
+                pipeline._pldf = pl_res
+                pipeline._df = None
             except (KeyError, ValueError) as exc:
                 return _fail(parser, batch, str(exc))
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+            except Exception:
+                source_df = pipeline.dataframe()
+                try:
+                    result = long_fn(source_df, **long_kwargs)
+                    pipeline._df = result
+                    pipeline._pldf = None
+                except (KeyError, ValueError) as exc:
+                    return _fail(parser, batch, str(exc))
+            emit_frame(idx)
         elif op == "wide":
             from pytae.shape import wide as wide_fn
-            source_df = pipeline.dataframe()
             wide_val = _next_op_val("wide", args.wide)
             wide_kwargs = parse_wide_arg(wide_val)
             to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
             by_cols = wide_kwargs.get("by") or wide_kwargs.get("index") or wide_kwargs.get("r") or wide_kwargs.get("rows")
             if by_cols:
                 to_check.extend(parse_columns(by_cols) if isinstance(by_cols, str) else list(by_cols))
-            missing = [c for c in to_check if c not in source_df.columns]
+            avail_cols = pipeline.columns()
+            missing = [c for c in to_check if c not in avail_cols]
             if missing:
-                return _fail(parser, batch, unknown_columns_message("-wide", missing, list(source_df.columns)))
+                return _fail(parser, batch, unknown_columns_message("-wide", missing, avail_cols))
             try:
-                result = wide_fn(source_df, **wide_kwargs)
+                from pytae.polars_engine import wide_polars
+                pl_res = wide_polars(pipeline.polars_frame(), **wide_kwargs)
+                pipeline._pldf = pl_res
+                pipeline._df = None
             except (KeyError, ValueError) as exc:
                 return _fail(parser, batch, str(exc))
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+            except Exception:
+                source_df = pipeline.dataframe()
+                try:
+                    result = wide_fn(source_df, **wide_kwargs)
+                    pipeline._df = result
+                    pipeline._pldf = None
+                except (KeyError, ValueError) as exc:
+                    return _fail(parser, batch, str(exc))
+            emit_frame(idx)
         elif op == "pivot":
             from pytae.shape import pivot as pivot_fn
             pivot_val = _next_op_val("pivot", getattr(args, "pivot", None))
@@ -892,10 +919,7 @@ def _process_path(
                     pipeline._pldf = None
                 except Exception as exc:
                     return _fail(parser, batch, str(exc))
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(pipeline.dataframe(), args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=pipeline.dataframe(): _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+            emit_frame(idx)
         elif op == "plot":
             plot_spec = _next_op_val("plot", getattr(args, "plot", None))
             plot_kwargs = parse_kv_spec(plot_spec, flag="-plot")

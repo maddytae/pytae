@@ -508,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
                          args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
                          args.head is not None, args.tail is not None, args.sample is not None,
-                         args.arrange is not None, args.slice_max is not None, args.slice_min is not None,
+                         args.arrange is not None, args.pick is not None, args.slice_max is not None, args.slice_min is not None,
                          args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
                          args.select, args.filter, args.sql, args.replace_values,

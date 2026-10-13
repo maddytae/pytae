@@ -11,6 +11,12 @@ from pytae.polars_engine import (
     rename_polars,
     pivot_polars,
     mutate_polars,
+    pick_polars,
+    value_counts_polars,
+    long_polars,
+    wide_polars,
+    handle_missing_polars,
+    clean_columns_polars,
 )
 
 
@@ -184,3 +190,88 @@ def test_cli_end_to_end_polars_pipeline(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "East" in out
     assert "West" in out
+
+
+def test_pick_polars():
+    df = pl.DataFrame({
+        "grp": ["A", "A", "A", "B", "B", "B"],
+        "val": [10, 30, 20, 5, 40, 15],
+    })
+    # Ungrouped max
+    res_max = pick_polars(df, "val", n=2, order="max")
+    assert res_max["val"].to_list() == [40, 30]
+
+    # Ungrouped min
+    res_min = pick_polars(df, "val", n=2, order="min")
+    assert res_min["val"].to_list() == [5, 10]
+
+    # Grouped max
+    res_grp_max = pick_polars(df, "val", n=1, order="max", by=["grp"])
+    assert res_grp_max["grp"].to_list() == ["A", "B"]
+    assert res_grp_max["val"].to_list() == [30, 40]
+
+    # Prop
+    res_prop = pick_polars(df, "val", prop=0.5, order="max")
+    assert len(res_prop) == 3
+
+
+def test_value_counts_polars():
+    df = pl.DataFrame({
+        "item": ["apple", "banana", "apple", "cherry", None, "banana", "apple"],
+        "count": [1, 2, 1, 3, 4, 2, 1],
+    })
+    # Single column
+    res = value_counts_polars(df.select("item"), dropna=True)
+    assert res.columns == ["item", "count"]
+    assert res["item"].to_list() == ["apple", "banana", "cherry"]
+    assert res["count"].to_list() == [3, 2, 1]
+
+    # With existing 'count' column, count header becomes 'n'
+    res_with_count = value_counts_polars(df, dropna=True)
+    assert "n" in res_with_count.columns
+
+    # Both count and n columns collision
+    df_collision = pl.DataFrame({"count": [1], "n": [2]})
+    with pytest.raises(ValueError, match="columns contain both 'count' and 'n'"):
+        value_counts_polars(df_collision)
+
+
+def test_long_and_wide_polars():
+    df = pl.DataFrame({
+        "id": [1, 2],
+        "q1": [10, 20],
+        "q2": [30, 40],
+    })
+    # Long (unpivot)
+    long_res = long_polars(df, cols=["q1", "q2"], id_vars=["id"])
+    assert long_res.columns == ["id", "variable", "value"]
+    assert len(long_res) == 4
+
+    # Wide (1-to-1 pivot)
+    wide_res = wide_polars(long_res, c="variable", v="value", index="id")
+    assert wide_res.columns == ["id", "q1", "q2"]
+    assert wide_res["q1"].to_list() == [10, 20]
+    assert wide_res["q2"].to_list() == [30, 40]
+
+
+def test_handle_missing_polars():
+    df = pl.DataFrame({
+        "s": [" hello ", None, "world "],
+        "n": [10.0, None, 30.0],
+        "b": [True, None, False],
+    })
+    res = handle_missing_polars(df, fillna=".")
+    assert res["s"].to_list() == ["hello", ".", "world"]
+    assert res["n"].to_list() == [10.0, 0.0, 30.0]
+    # Boolean untouched
+    assert res["b"].to_list() == [True, None, False]
+
+
+def test_clean_columns_polars():
+    df = pl.DataFrame({
+        "  col a  ": [1],
+        "col   b": [2],
+    })
+    res = clean_columns_polars(df, strip=True, squeeze=True, fill="_", case="lower")
+    assert res.columns == ["col_a", "col_b"]
+

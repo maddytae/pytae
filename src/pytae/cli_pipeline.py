@@ -291,18 +291,35 @@ class _Pipeline:
 
     def apply_pick(self, spec: str, *, by: list[str] | None = None, flag: str = "-pick") -> str | None:
         """Pick top or bottom rows by a column, optionally grouped by 'by'."""
-        df = self.dataframe()
-        from pytae.arrange import pick
-        from pytae.by import by as _by
-        from pytae.cli_parsing import parse_pick_spec
+        from pytae.cli_parsing import parse_pick_spec, unknown_columns_message
         try:
             col, n, prop, order = parse_pick_spec(spec, flag)
-            work_df = _by(df.copy(deep=False), *by) if by else df
-            self._df = pick(work_df, col, n=n, prop=prop, order=order)
-            self._pldf = None
-        except Exception as exc:
-            return f"{flag}: {exc}"
-        return None
+        except SystemExit as exc:
+            return str(exc)
+        available = self._available_columns()
+        clean_col = _unquote_name(col.strip())
+        if clean_col not in available:
+            return unknown_columns_message(flag, [clean_col], available)
+        if by:
+            unknown_by = [c for c in by if c not in available]
+            if unknown_by:
+                return unknown_columns_message("-by", unknown_by, available)
+        try:
+            from pytae.polars_engine import pick_polars
+            self._pldf = pick_polars(self.polars_frame(), clean_col, n=n, prop=prop, order=order, by=by)
+            self._df = None
+            return None
+        except Exception:
+            df = self.dataframe()
+            from pytae.arrange import pick
+            from pytae.by import by as _by
+            try:
+                work_df = _by(df.copy(deep=False), *by) if by else df
+                self._df = pick(work_df, clean_col, n=n, prop=prop, order=order)
+                self._pldf = None
+            except Exception as exc:
+                return f"{flag}: {exc}"
+            return None
 
     def apply_slice(self, spec: str, *, by: list[str] | None = None, is_max: bool = True) -> str | None:
         """Deprecated alias for apply_pick."""
