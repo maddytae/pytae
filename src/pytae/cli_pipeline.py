@@ -55,16 +55,49 @@ class _Pipeline:
         self._nrows = nrows
         self._progress = progress
         self._chunk_size = chunk_size
-        self._df: pd.DataFrame | None = None
+        self._pandas_df: pd.DataFrame | None = None
+        self._pldf: Any | None = None
         self._pending_exact: list[str] | None = None
         self._frames: dict[str, pd.DataFrame] = frames or {}
 
+    @property
+    def _df(self) -> pd.DataFrame | None:
+        return self._pandas_df
+
+    @_df.setter
+    def _df(self, value: pd.DataFrame | None) -> None:
+        self._pandas_df = value
+        if value is not None:
+            self._pldf = None
+
     def _available_columns(self) -> list[str]:
+        if self._pldf is not None:
+            return list(self._pldf.columns)
         if self._df is not None:
             return list(self._df.columns)
         if self._pending_exact is not None:
             return list(self._pending_exact)
         return list(self._reader.columns())
+
+    def polars_frame(self):
+        if self._pldf is None:
+            if self._df is not None:
+                import polars as pl
+                self._pldf = pl.from_pandas(self._df)
+            elif self._reader is not None:
+                try:
+                    self._pldf = self._reader.to_polars(
+                        columns=self._pending_exact, nrows=self._nrows
+                    )
+                    self._pending_exact = None
+                except Exception:
+                    df = self.dataframe()
+                    import polars as pl
+                    self._pldf = pl.from_pandas(df)
+            else:
+                import polars as pl
+                self._pldf = pl.DataFrame()
+        return self._pldf
 
     def apply_select(self, names: list[str], kwargs: dict) -> str | None:
         """Apply one -select spec to the current view. Returns an error message or None."""
@@ -74,7 +107,8 @@ class _Pipeline:
             return unknown_columns_message("-select", unknown, available)
 
         needs_frame = (
-            self._df is not None
+            self._pldf is not None
+            or self._df is not None
             or bool(kwargs)
             or any(":" in token for token in names)
             or any(token.startswith(("-", "~")) for token in names)
@@ -83,12 +117,19 @@ class _Pipeline:
             self._pending_exact = [_unquote_name(n) for n in names]
             return None
 
-        df = self._df if self._df is not None else self.dataframe()
         try:
-            self._df = select(df, *names, **kwargs)
-        except (ValueError, KeyError) as exc:
-            return f"-select: {exc}"
-        return None
+            from pytae.polars_engine import select_polars
+            self._pldf = select_polars(self.polars_frame(), names, kwargs)
+            self._df = None
+            return None
+        except Exception:
+            df = self.dataframe()
+            try:
+                self._df = select(df, *names, **kwargs)
+                self._pldf = None
+            except (ValueError, KeyError) as exc:
+                return f"-select: {exc}"
+            return None
 
     def apply_rename(self, mapping: dict[str, str]) -> str | None:
         """Apply one -rename mapping to the current view. Returns an error message or None."""
@@ -96,21 +137,41 @@ class _Pipeline:
         unknown = [c for c in mapping if c not in available]
         if unknown:
             return unknown_columns_message("-rename", unknown, available)
-        df = self.dataframe()
-        self._df = df.rename(columns=mapping)
-        return None
+        try:
+            from pytae.polars_engine import rename_polars
+            self._pldf = rename_polars(self.polars_frame(), mapping)
+            self._df = None
+            return None
+        except Exception:
+            df = self.dataframe()
+            self._df = df.rename(columns=mapping)
+            self._pldf = None
+            return None
 
     def apply_filter(self, conditions: list[tuple[str, Any]] | dict, flag_name: str = "-filter") -> str | None:
         """Apply one -filter (or -qry) spec to the current view. Returns an error message or None."""
-        df = self.dataframe()
+        available = self._available_columns()
+        cond_cols = [c for c, _ in (conditions if isinstance(conditions, list) else conditions.items())]
+        unknown = [c for c in cond_cols if c not in available]
+        if unknown:
+            return unknown_columns_message(flag_name, unknown, available)
+
         try:
-            if isinstance(conditions, list):
-                self._df = filter(df, conditions)
-            else:
-                self._df = filter(df, **conditions)
-        except Exception as exc:
-            return f"{flag_name}: {exc}"
-        return None
+            from pytae.polars_engine import filter_polars
+            self._pldf = filter_polars(self.polars_frame(), conditions)
+            self._df = None
+            return None
+        except Exception:
+            df = self.dataframe()
+            try:
+                if isinstance(conditions, list):
+                    self._df = filter(df, conditions)
+                else:
+                    self._df = filter(df, **conditions)
+                self._pldf = None
+            except Exception as exc:
+                return f"{flag_name}: {exc}"
+            return None
 
     def apply_mutate(
         self, spec: str, by: list[str] | None = None, dropna: bool = False
@@ -133,59 +194,100 @@ class _Pipeline:
                 return f"-mutate: failed to read spec file '{path}': {exc}"
         if re.search(r"@\w", _mask_quoted(raw_spec)):
             return "-mutate: '@name' local-variable references are library-only (pt.mutate() from Python), not available on the CLI"
+        from pytae.mutate import parse_mutate_spec
+        try:
+            parsed = parse_mutate_spec(raw_spec)
+        except Exception as exc:
+            return f"-mutate: {exc}"
+
+        try:
+            from pytae.polars_engine import mutate_polars
+            self._pldf = mutate_polars(self.polars_frame(), parsed, by=by)
+            self._df = None
+            return None
+        except Exception:
+            pass
+
         df = self.dataframe()
         try:
             from pytae.by import by as _by
-            from pytae.mutate import parse_mutate_spec
-            parsed = parse_mutate_spec(raw_spec)
             work_df = _by(df.copy(deep=False), *by) if by else df
             self._df = mutate(work_df, parsed, dropna=dropna)
+            self._pldf = None
         except Exception as exc:
             return f"-mutate: {exc}"
         return None
 
     def apply_dropna(self, spec: str | None) -> str | None:
         """Drop rows containing NaN values. Returns an error message or None."""
-        df = self.dataframe()
         if not spec:
-            self._df = df.dropna().reset_index(drop=True)
-            return None
+            try:
+                from pytae.polars_engine import dropna_polars
+                self._pldf = dropna_polars(self.polars_frame())
+                self._df = None
+                return None
+            except Exception:
+                self._df = self.dataframe().dropna().reset_index(drop=True)
+                self._pldf = None
+                return None
         from pytae.cli_parsing import parse_columns, unknown_columns_message
         cols = parse_columns(spec)
-        available = list(df.columns)
+        available = self._available_columns()
         unknown = [c for c in cols if c not in available]
         if unknown:
             return unknown_columns_message("-dropna", unknown, available)
-        self._df = df.dropna(subset=cols).reset_index(drop=True)
-        return None
+        try:
+            from pytae.polars_engine import dropna_polars
+            self._pldf = dropna_polars(self.polars_frame(), cols=cols)
+            self._df = None
+            return None
+        except Exception:
+            self._df = self.dataframe().dropna(subset=cols).reset_index(drop=True)
+            self._pldf = None
+            return None
 
     def apply_distinct(self, spec: str | None) -> str | None:
         """Drop duplicate rows. Returns an error message or None."""
-        df = self.dataframe()
         from pytae.cli_parsing import parse_distinct_spec, unknown_columns_message
         try:
             cols, keep = parse_distinct_spec(spec)
         except SystemExit as exc:
             return str(exc)
+        available = self._available_columns()
         if cols:
-            available = list(df.columns)
             unknown = [c for c in cols if c not in available]
             if unknown:
                 return unknown_columns_message("-distinct", unknown, available)
-            self._df = df.drop_duplicates(subset=cols, keep=keep).reset_index(drop=True)
-        else:
-            self._df = df.drop_duplicates(keep=keep).reset_index(drop=True)
-        return None
+        try:
+            from pytae.polars_engine import distinct_polars
+            self._pldf = distinct_polars(self.polars_frame(), cols=cols, keep=keep)
+            self._df = None
+            return None
+        except Exception:
+            df = self.dataframe()
+            if cols:
+                self._df = df.drop_duplicates(subset=cols, keep=keep).reset_index(drop=True)
+            else:
+                self._df = df.drop_duplicates(keep=keep).reset_index(drop=True)
+            self._pldf = None
+            return None
 
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""
-        df = self.dataframe()
-        from pytae.arrange import arrange
         try:
-            self._df = arrange(df, spec)
-        except Exception as exc:
-            return f"-arrange: {exc}"
-        return None
+            from pytae.polars_engine import arrange_polars
+            self._pldf = arrange_polars(self.polars_frame(), spec)
+            self._df = None
+            return None
+        except Exception:
+            df = self.dataframe()
+            from pytae.arrange import arrange
+            try:
+                self._df = arrange(df, spec)
+                self._pldf = None
+            except Exception as exc:
+                return f"-arrange: {exc}"
+            return None
 
     def apply_pick(self, spec: str, *, by: list[str] | None = None, flag: str = "-pick") -> str | None:
         """Pick top or bottom rows by a column, optionally grouped by 'by'."""
@@ -197,6 +299,7 @@ class _Pipeline:
             col, n, prop, order = parse_pick_spec(spec, flag)
             work_df = _by(df.copy(deep=False), *by) if by else df
             self._df = pick(work_df, col, n=n, prop=prop, order=order)
+            self._pldf = None
         except Exception as exc:
             return f"{flag}: {exc}"
         return None
@@ -216,6 +319,7 @@ class _Pipeline:
                 return unknown_columns_message("-replace_values", unknown, available)
         try:
             self._df = replace_values(df, v=mapping, c=cols, exact=exact)
+            self._pldf = None
         except Exception as exc:
             return f"-replace_values: {exc}"
         return None
@@ -261,6 +365,7 @@ class _Pipeline:
                     con.register("data", self.dataframe())
             try:
                 self._df = con.sql(normalized_query).df()
+                self._pldf = None
             except Exception as exc:
                 return f"-sql: {exc}"
         finally:
@@ -293,26 +398,35 @@ class _Pipeline:
         return True
 
     def dataframe(self) -> pd.DataFrame:
-        if self._df is None:
-            df = self._reader.to_dataframe(
-                columns=self._pending_exact, nrows=self._nrows, progress=self._progress,
-                chunk_size=self._chunk_size,
-            )
-            self._df = df
-        return self._df
+        if self._pandas_df is None:
+            if self._pldf is not None:
+                self._pandas_df = self._pldf.to_pandas()
+            else:
+                df = self._reader.to_dataframe(
+                    columns=self._pending_exact, nrows=self._nrows, progress=self._progress,
+                    chunk_size=self._chunk_size,
+                )
+                self._pandas_df = df
+        return self._pandas_df
 
     def columns(self) -> list[str]:
+        if self._pldf is not None:
+            return list(self._pldf.columns)
         if self._df is not None:
             return list(self._df.columns)
         return self._available_columns()
 
     def dtypes(self) -> pd.Series:
+        if self._pldf is not None:
+            return self.dataframe().dtypes
         if self._df is not None:
             return self._df.dtypes
         dtypes = self._reader.dtypes()
         return dtypes[self._pending_exact] if self._pending_exact is not None else dtypes
 
     def shape(self) -> tuple[int, int]:
+        if self._pldf is not None:
+            return self._pldf.shape
         if self._df is not None:
             return self._df.shape
         rows = self._reader.shape()[0]
@@ -320,6 +434,10 @@ class _Pipeline:
         return (rows, cols)
 
     def head(self, n: int) -> pd.DataFrame:
+        if self._pldf is not None:
+            self._pldf = self._pldf.head(n)
+            self._df = None
+            return self.dataframe()
         if self._df is None:
             if self._nrows is not None:
                 df = self.dataframe().head(n)
@@ -333,6 +451,10 @@ class _Pipeline:
         return df
 
     def tail(self, n: int) -> pd.DataFrame:
+        if self._pldf is not None:
+            self._pldf = self._pldf.tail(n)
+            self._df = None
+            return self.dataframe()
         if self._df is None:
             if self._nrows is not None:
                 df = self.dataframe().tail(n)
@@ -356,6 +478,7 @@ class _Pipeline:
             sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
         sampled = sampled.reset_index(drop=True)
         self._df = sampled
+        self._pldf = None
         return sampled
 
 

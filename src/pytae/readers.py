@@ -125,6 +125,10 @@ class ParquetReader:
             del res.attrs["_pt_by"]
         return res
 
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+        return pl.read_parquet(self.path, columns=columns, n_rows=nrows)
+
 
 class CsvReader:
     def __init__(
@@ -230,6 +234,18 @@ class CsvReader:
             _print_progress(done, total, "reading")
         print()
         return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=columns or [])
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+        return pl.read_csv(
+            self.path,
+            separator=self.sep,
+            columns=columns,
+            n_rows=nrows,
+            encoding=self.encoding or "utf8",
+            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+            truncate_ragged_lines=True,
+        )
 
 
 class TxtReader:
@@ -339,6 +355,18 @@ class TxtReader:
         print()
         return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=columns or [])
 
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+        return pl.read_csv(
+            self.path,
+            separator=self.sep,
+            columns=columns,
+            n_rows=nrows,
+            encoding=self.encoding or "utf8",
+            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+            truncate_ragged_lines=True,
+        )
+
 
 class SasReader:
     """Reads .sas7bdat files. Row count/columns come from the file header,
@@ -398,6 +426,10 @@ class SasReader:
             print()
         df = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
         return df[columns] if columns else df
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+        return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
 
 
 class JsonlReader:
@@ -495,6 +527,18 @@ class JsonlReader:
         df = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
         return df[columns] if columns else df
 
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+        try:
+            df = pl.read_ndjson(self.path)
+            if nrows is not None:
+                df = df.head(nrows)
+            if columns is not None:
+                df = df.select(columns)
+            return df
+        except Exception:
+            return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+
 
 class StdinReader:
     """Reader for data piped via STDIN, buffered in memory."""
@@ -566,6 +610,10 @@ class StdinReader:
             out = out.iloc[:nrows]
         return out
 
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+        return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+
 
 class DataFrameReader:
     """Reader wrapping an in-memory DataFrame (e.g. from clipboard or memory)."""
@@ -602,6 +650,15 @@ class DataFrameReader:
         if nrows is not None:
             out = out.iloc[:nrows]
         return out
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+        df = pl.from_pandas(self._df)
+        if nrows is not None:
+            df = df.head(nrows)
+        if columns is not None:
+            df = df.select(columns)
+        return df
 
 
 _READERS = {

@@ -538,9 +538,9 @@ def _process_path(
         elif op == "mutate":
             by_cols = parse_columns(args.by) if args.by else None
             if by_cols:
-                df_cur = pipeline.dataframe()
-                if any(c not in df_cur.columns for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False)
             if err:
                 return _fail(parser, batch, err)
@@ -750,9 +750,9 @@ def _process_path(
         elif op == "pick":
             by_cols = parse_columns(args.by) if args.by else None
             if by_cols:
-                df_cur = pipeline.dataframe()
-                if any(c not in df_cur.columns for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             pick_val = _next_op_val("pick", getattr(args, "pick", None))
             err = pipeline.apply_pick(pick_val, by=by_cols, flag="-pick")
             if err:
@@ -761,9 +761,9 @@ def _process_path(
         elif op == "slice_max":
             by_cols = parse_columns(args.by) if args.by else None
             if by_cols:
-                df_cur = pipeline.dataframe()
-                if any(c not in df_cur.columns for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             slice_val = _next_op_val("slice_max", getattr(args, "slice_max", None))
             err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_max")
             if err:
@@ -772,9 +772,9 @@ def _process_path(
         elif op == "slice_min":
             by_cols = parse_columns(args.by) if args.by else None
             if by_cols:
-                df_cur = pipeline.dataframe()
-                if any(c not in df_cur.columns for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             slice_val = _next_op_val("slice_min", getattr(args, "slice_min", None))
             err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_min")
             if err:
@@ -784,10 +784,11 @@ def _process_path(
             agg_val = _next_op_val("agg", args.agg)
             if isinstance(agg_val, str):
                 parse_agg(agg_val)
-            df_cur = pipeline.dataframe()
             by_cols = parse_columns(args.by) if args.by else None
-            if by_cols and any(c not in df_cur.columns for c in by_cols):
-                return _fail(parser, batch, unknown_columns_message("-by", by_cols, list(df_cur.columns)))
+            avail_cols = pipeline.columns()
+            if by_cols and any(c not in avail_cols for c in by_cols):
+                return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
+            df_cur = pipeline.dataframe()
             try:
                 from pytae.by import by as _by
                 work_df = _by(df_cur.copy(deep=False), *by_cols) if by_cols else df_cur
@@ -865,7 +866,6 @@ def _process_path(
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "pivot":
             from pytae.shape import pivot as pivot_fn
-            source_df = pipeline.dataframe()
             pivot_val = _next_op_val("pivot", getattr(args, "pivot", None))
             pivot_kwargs = parse_pivot_arg(pivot_val)
             if "dropna" not in pivot_kwargs:
@@ -875,18 +875,27 @@ def _process_path(
                 val = pivot_kwargs.get(k)
                 if val:
                     to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))
-            missing = [col for col in to_check if col not in source_df.columns]
+            available_cols = pipeline.columns()
+            missing = [col for col in to_check if col not in available_cols]
             if missing:
-                return _fail(parser, batch, unknown_columns_message("-pivot", missing, list(source_df.columns)))
+                return _fail(parser, batch, unknown_columns_message("-pivot", missing, available_cols))
             try:
-                result = pivot_fn(source_df, **pivot_kwargs)
-            except Exception as exc:
-                return _fail(parser, batch, str(exc))
-            pipeline._df = result
+                from pytae.polars_engine import pivot_polars
+                pl_res = pivot_polars(pipeline.polars_frame(), **pivot_kwargs)
+                pipeline._pldf = pl_res
+                pipeline._df = None
+            except Exception:
+                source_df = pipeline.dataframe()
+                try:
+                    result = pivot_fn(source_df, **pivot_kwargs)
+                    pipeline._df = result
+                    pipeline._pldf = None
+                except Exception as exc:
+                    return _fail(parser, batch, str(exc))
             if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(pipeline.dataframe(), args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=pipeline.dataframe(): _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "plot":
             plot_spec = _next_op_val("plot", getattr(args, "plot", None))
             plot_kwargs = parse_kv_spec(plot_spec, flag="-plot")
