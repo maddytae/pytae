@@ -9,7 +9,6 @@ A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including
 ## Contents
 
 - [The Core Philosophy: "One and Only One Right Way"](#the-core-philosophy-one-and-only-one-right-way)
-- [The Core Philosophy: "One and Only One Right Way"](#the-core-philosophy-one-and-only-one-right-way)
 - [Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`?](#naming-rationale-why-filter-distinct-by-arrange)
 - [Feature-by-Feature Rosetta Stone](#feature-by-feature-rosetta-stone)
   - [1. Row Filtering](#1-row-filtering)
@@ -55,7 +54,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
   - **Set Membership & Operators**: lists `['A', 'B']`, tuples `('startswith', 'Ad')`.
   - **Spaced Columns**: bracketed column names `"[bill length mm] > 40"` without backticks.
   - **Dictionary Syntax**: `{"col": "> 5"}` or keyword arguments.
-- **CLI Alignment**: The CLI uses `-filter "expr"`. (The legacy `-qry` is preserved as a backward-compatible alias).
+- **CLI Alignment**: The CLI uses `-filter "expr"`. (The legacy `-qry` has been deprecated in favor of canonical `-filter`).
 
 ### 2. `distinct` instead of `dedupe`, `unique`, or `drop_duplicates`
 - **Why `distinct`?** `distinct` is the universally recognized term in SQL (`SELECT DISTINCT`) and dplyr (`distinct()`). It clearly describes returning unique, deduplicated rows.

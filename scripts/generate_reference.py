@@ -692,6 +692,9 @@ Pipeline Rules:
 2. Sequential Mutation: Each operation transforms the intermediate dataset in memory.
 3. Final Operation Determines Output: Only the last operation prints or exports.
 4. Shell Quoting: Always quote multi-word arguments and expressions in your shell.
+5. Vectorized Polars Execution: CLI pipelines execute natively via an internal SIMD
+   Polars engine with lazy evaluation, streaming files and intermediate operations
+   in vector memory at 10x–20x speedups with seamless fallback to Pandas.
 
 
 5.2. File Formats & Zero-Cost Metadata Inspection

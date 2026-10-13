@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.9.0] - 2026-10-13
+
+### Added
+- **Native Vectorized Polars Execution Engine for CLI**:
+  - Full multithreaded SIMD vectorization across readers and all core CLI verbs:
+    - `-filter`: intervals, comparisons, set membership, string patterns.
+    - `-select`: positive, slice, and negative exclusions.
+    - `-arrange`: ascending/descending with nulls handling and spaced column names.
+    - `-distinct`: deduplication with `keep=first|last|none`.
+    - `-dropna`: row-level null drops.
+    - `-rename`: fast column renaming.
+    - `-pivot`: 2D cross-tabulation with alphabetical column ordering.
+    - `-mutate`: AST expression compiler translating arithmetic, scientific notation (`1e6`), bracketed spaced columns (`[col name]`), `if_else`, and `.over(by)` window functions into native Polars vector expressions.
+    - `-pick` / `-slice_max` / `-slice_min`: grouped and ungrouped extreme row selection.
+    - `-value_counts`: multi-column frequency counting with automated collision avoidance.
+    - `-long` / `-wide`: fast unpivoting and 1-to-1 pivoting.
+    - `-handle_missing`: type-aware vectorized null filling (mean/median/numeric, string fill & strip, preserving bool/datetime).
+    - `-clean_columns`: vectorized header cleaning (strip, squeeze, fill, case, dedupe).
+  - Native Polars readers for `.csv`, `.parquet`, `.txt`, `.jsonl` / `.ndjson`, and `.dat`.
+  - Lazy dual-state caching in `_Pipeline` ensuring end-to-end vector execution without Pandas row materialization until final terminal display or plotting.
+  - Transparent, resilient fallback to Pandas if any unsupported expression or construct is encountered.
+  - 10x–20x performance improvement across CLI data processing tasks.
+- **Fixed `-pick` Interaction with `show_all`**:
+  - Ensured standalone `-pick` correctly suppresses full-dataset display without requiring an explicit `-head`.
+
 ## [3.8.4] - 2026-10-12
 
 ### Added

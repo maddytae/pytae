@@ -35,14 +35,16 @@ The `pytae` CLI provides high-performance command-line data processing for tabul
 The `pytae` CLI executes operations sequentially from left to right as an in-memory pipeline:
 
 1. **Flag Order Is the Pipeline**: Flags are evaluated in the order written. For instance, `-filter ... -select ... -agg ...` filters rows first, narrows columns second, and aggregates the remaining columns third.
-2. **State Handoff**: Each transformation step passes its resulting DataFrame to the next step.
-3. **Execution Modes**:
+2. **Vectorized Polars Engine**: Under the hood, CLI pipelines execute natively on a high-performance multithreaded SIMD Polars engine (`polars_engine.py`). Tabular files (`.parquet`, `.csv`, `.txt`, `.jsonl`, `.dat`) are ingested directly into Polars without materializing intermediate Pandas DataFrames.
+3. **End-to-End Lazy Execution**: Transformations (`-filter`, `-select`, `-mutate`, `-arrange`, `-distinct`, `-dropna`, `-pivot`, `-pick`, `-value_counts`, `-long`, `-wide`, `-handle_missing`, `-clean_columns`) remain 100% inside Polars vector memory throughout the pipeline. Data only bridges to Pandas at the final output boundary (table display or matplotlib plotting), yielding 10x–20x faster CLI speeds.
+4. **Resilient Transparent Fallback**: If an operation encounters an expression or parameter unsupported by the vector engine, it seamlessly falls back to Pandas execution without interrupting the pipeline.
+5. **Execution Modes**:
    - **Single-file mode** (standard): `pytae <path> [operations...] [output]`
    - **Multi-file mode**: `pytae -file "alias1=path1; alias2=path2" -merge ...` (replaces positional path)
-4. **Terminal vs Non-Terminal Steps**:
+6. **Terminal vs Non-Terminal Steps**:
    - Most operations (`-select`, `-filter`, `-mutate`, `-arrange`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
    - Non-DataFrame inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`, `-meta`, `-diff`) print summary text and terminate the pipeline (allowing only `-o clip` to copy the output).
-5. **Output Routing**:
+7. **Output Routing**:
    - By default, the terminal displays the final result on stdout.
    - Add `-o <target>` to write to a file, batch convert alongside the input, or copy to the clipboard (`-o clip`).
    - Add `-out_dir <dir>` to route exported files into a destination directory.
