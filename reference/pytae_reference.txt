@@ -10136,8 +10136,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 │   │   ├── pivot.md
 │   │   ├── plotting.ipynb
 │   │   ├── reshape.md
-│   │   ├── select.md
-│   │   └── sql.md
+│   │   └── select.md
 │   └── library.md
 ├── pyproject.toml
 ├── readme.md

@@ -1112,8 +1112,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   │   ├── pivot.md
 │   │   ├── plotting.ipynb
 │   │   ├── reshape.md
-│   │   ├── select.md
-│   │   └── sql.md
+│   │   └── select.md
 │   └── library.md
 ├── pyproject.toml
 ├── readme.md
