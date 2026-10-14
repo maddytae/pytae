@@ -418,6 +418,55 @@ def test_pivot_polars_whole_table_and_c_only():
     assert res_c["2021"].to_list() == [300.0]
 
 
+def test_pivot_polars_optional_v_and_fill_aliases():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West", "West", "East"],
+        "year": [2020, 2021, 2020, 2020, 2020],
+        "quarter": ["Q1", "Q1", "Q2", "Q2", "Q2"],
+        "sales": [10.0, 20.0, 30.0, 40.0, 50.0],
+    })
+
+    # 2D contingency table with v omitted
+    res_2d = pivot_polars(df, r="region", c="year")
+    assert res_2d.columns == ["region", "2020", "2021"]
+    assert res_2d["region"].to_list() == ["East", "West"]
+    assert res_2d["2020"].to_list() == [2, 2]
+    assert res_2d["2021"].to_list() == [1, 0]  # unobserved combination defaults to 0
+
+    # 1D row frequency table with v omitted
+    res_1d = pivot_polars(df, r="region,quarter")
+    assert res_1d.columns == ["region", "quarter", "n"]
+    assert res_1d["n"].to_list() == [2, 1, 2]
+
+    # 1D col frequency table with v omitted
+    res_c = pivot_polars(df, c="year")
+    assert res_c.columns == ["2020", "2021"]
+    assert res_c["2020"].to_list() == [4]
+    assert res_c["2021"].to_list() == [1]
+
+    # 0D scalar count
+    res_0d = pivot_polars(df)
+    assert res_0d.columns == ["n"]
+    assert res_0d["n"].to_list() == [5]
+
+    # Incompatible agg func without v
+    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts."):
+        pivot_polars(df, r="region", c="year", a="mean")
+
+    # fill, f_v, fill_value aliases
+    r1 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", fill_value=0)
+    r2 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", fill=0)
+    r3 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", f_v=0)
+    assert r1.equals(r2)
+    assert r1.equals(r3)
+
+    # Conflicting fill arguments
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        pivot_polars(df, r="region", c="year", fill=0, fill_value=0)
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        pivot_polars(df, r="region", c="year", fill=0, f_v=0)
+
+
 def test_write_dataframe_polars(tmp_path):
     from pytae.readers import write_dataframe
 

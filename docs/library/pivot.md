@@ -6,8 +6,9 @@
 `pt.pivot()` summarizes and aggregates tabular data across dimensions using the intuitive **RCVA** grammar:
 - **`r`** (Rows): Row grouping dimensions (*optional*)
 - **`c`** (Cols): Column header dimensions (*optional*)
-- **`v`** (Values): Value / measure column(s) to aggregate (**required**)
+- **`v`** (Values): Value / measure column(s) to aggregate (*optional*; defaults to row counts `n` when omitted)
 - **`a`** (Aggregation): Aggregation function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`)
+- **`fill`, `f_v`, `fill_value`**: Replacement value for unobserved grid combinations (default: `0` for row counts, `NaN` for metric averages)
 
 ### Core Guarantees:
 1. **Always Flat 1D Output**: Never produces MultiIndex rows or tuples in column headers. Column names are joined with `_` (e.g. `Sales_2023`).
@@ -50,12 +51,14 @@ penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
 | Dream     |  3688.39 |     3733.09 |   nan    |
 | Torgersen |  3706.37 |      nan    |   nan    |
 
-## 2. Frequency Matrix via Row Counts (`a="n"`)
+## 2. Frequency Tables: Count Matrix & 1D Tallies (`v` omitted)
 
-Count occurrences across dimensions (the direct successor to cross-tabulation):
+Just like Excel pivot tables where omitting a value field counts observations, omitting `v=` in `pytae` automatically computes row counts (`n`), returns clean integer columns (`int64`), and defaults unobserved combinations to `0`:
 
+### 2D Cross-Tabulation Matrix:
 ```python
-penguins.pt.pivot(r="island", c="species", v="sex", a="n")
+# Omit v to produce a 2D contingency matrix of counts
+penguins.pt.pivot(r="island", c="species")
 ```
 
 **Output:**
@@ -65,6 +68,26 @@ penguins.pt.pivot(r="island", c="species", v="sex", a="n")
 | Biscoe    |       44 |           0 |      124 |
 | Dream     |       56 |          68 |        0 |
 | Torgersen |       52 |           0 |        0 |
+
+### 1D Frequency Table:
+```python
+# Omit c and v to produce a 1D frequency breakdown with column 'n'
+penguins.pt.pivot(r="island,sex")
+```
+
+**Output:**
+
+| island    | sex    |   n |
+|:----------|:-------|----:|
+| Biscoe    | Female |  80 |
+| Biscoe    | Male   |  83 |
+| Biscoe    | nan    |   5 |
+| Dream     | Female |  61 |
+| Dream     | Male   |  62 |
+| Dream     | nan    |   1 |
+| Torgersen | Female |  24 |
+| Torgersen | Male   |  23 |
+| Torgersen | nan    |   5 |
 
 ## 3. Flexible Excel Layouts: Optional Rows or Columns
 

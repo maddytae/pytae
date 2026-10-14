@@ -245,6 +245,8 @@ class PtAccessor:
         a: str = "sum",
         dropna: bool = False,
         fill_value: Any = None,
+        fill: Any = None,
+        f_v: Any = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
         """Summarize and aggregate DataFrame across dimensions (Excel-style pivot table).
@@ -255,15 +257,16 @@ class PtAccessor:
             Row dimension(s) to group by.
         c : str or sequence of str, optional
             Column dimension(s) to spread as headers.
-        v : str or sequence of str
-            Value column(s) to aggregate. REQUIRED.
+        v : str or sequence of str, optional
+            Value column(s) to aggregate. If omitted, defaults to row counts (`n`).
         a : str, default 'sum'
             Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
             'n' is accepted for group row count.
         dropna : bool, default False
             Whether to drop NA categories from grouping keys.
-        fill_value : any, optional
+        fill_value, fill, f_v : any, optional
             Value to replace missing grid intersections with (e.g. 0).
+            Aliases for each other; specify at most one. Defaults to 0 when computing counts (`v` omitted or `a='n'`).
 
         Returns:
         --------
@@ -271,7 +274,7 @@ class PtAccessor:
             Clean, flattened DataFrame with standard RangeIndex and 1D column names.
         """
         from .shape import pivot as _pivot
-        return _pivot(self._obj, r=r, c=c, v=v, a=a, dropna=dropna, fill_value=fill_value, **kwargs)
+        return _pivot(self._obj, r=r, c=c, v=v, a=a, dropna=dropna, fill_value=fill_value, fill=fill, f_v=f_v, **kwargs)
 
     def handle_missing(
         self,

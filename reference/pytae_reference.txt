@@ -4534,10 +4534,10 @@ pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,specie
 `-pivot` provides an Excel-style 2D pivot table engine with universal `r, c, v, a` vocabulary:
 - **Rows (`r=`)**: Row dimension(s) (*optional*).
 - **Cols (`c=`)**: Column dimension(s) to spread as headers (*optional*).
-- **Values (`v=`)**: Measure / metric column(s) to aggregate (**required** for metric aggregations; optional for `a=n`).
+- **Values (`v=`)**: Measure / metric column(s) to aggregate (*optional*; defaults to row count `n` when omitted).
 - **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`).
 - **Missing Categories (`dropna=`)**: Retain `NaN` keys when `false` (default: `false`).
-- **Empty Intersections (`fill_value=`)**: Fill missing grid cells (e.g. `fill_value=0`).
+- **Empty Intersections (`fill=`, `f_v=`, `fill_value=`)**: Fill missing grid cells (e.g. `fill=0`, `f_v=0`, `fill_value=0`).
 
 ---
 
@@ -4546,13 +4546,13 @@ pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,specie
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Excel-Style Pivot Layouts](#excel-style-pivot-layouts)
   - [1. 2D Grid with Rows & Columns (`r=`, `c=`, `v=`)](#1-2d-grid-with-rows--columns-r-c-v)
-  - [2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)](#2-2d-frequency-matrix--cross-tabulation-an)
+  - [2. Frequency Tables & Count Matrices (v= Omitted)](#2-frequency-tables--count-matrices-v-omitted)
   - [3. Vertical Summary Table (`r=`, `v=`)](#3-vertical-summary-table-r-v)
   - [4. Horizontal Summary Table (`c=`, `v=`)](#4-horizontal-summary-table-c-v)
   - [5. Grand Total Summary (`v=`)](#5-grand-total-summary-v)
 - [Hierarchical Grouping with Multiple Rows (`r=Region,Store`)](#hierarchical-grouping-with-multiple-rows-rregionstore)
 - [Multi-Metric Reporting (`v=Sales,Profit`)](#multi-metric-reporting-vsalesprofit)
-- [Filling Empty Intersections (`fill_value=0`)](#filling-empty-intersections-fill_value0)
+- [Filling Empty Intersections (`fill=0`, `f_v=0`, `fill_value=0`)](#filling-empty-intersections-fill0-f_v0-fill_value0)
 - [Guarantees & Differences from `-wide`](#guarantees--differences-from--wide)
 
 ---
@@ -4563,10 +4563,10 @@ pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,specie
 |---|---|---|---|
 | `r` | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
 | `c` | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
-| `v` | Metric column(s) to aggregate | Required (optional for `a=n`) | `v=Sales` or `v=Sales,Profit` |
+| `v` | Metric column(s) to aggregate | *Optional (defaults to row counts `n`)* | `v=Sales` or `v=Sales,Profit` |
 | `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
-| `fill_value` | Fill for empty cells | `None` (`NaN`) | `fill_value=0` |
+| `fill` / `f_v` / `fill_value` | Fill for empty cells | `None` (`0` for counts) | `fill=0`, `f_v=0`, `fill_value=0` |
 
 ---
 
@@ -4590,12 +4590,14 @@ pytae penguins.parquet \
 | Dream     |   3688.4 |      3733.1 |      nan |
 | Torgersen |   3706.4 |       nan   |      nan |
 
-### 2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)
+### 2. Frequency Tables & Count Matrices (v= Omitted)
 
-When counting occurrences across dimensions with `a=n` (or `a=size`), `pytae` automatically returns standard integers (`int64`), sets unobserved intersections to `0` rather than `NaN`, and allows `v=` to be omitted:
+Just like in Excel where omitting a measure counts records, omitting `v=` in `-pivot` automatically computes row counts (`n`), returns clean integer columns (`int64`), and defaults unobserved intersections to `0`:
 
+#### 2D Contingency Table (Cross-Tabulation):
 ```bash
-pytae penguins.parquet -pivot "r=island,c=species,a=n"
+# Omit v to produce a 2D cross-tabulation count matrix
+pytae penguins.parquet -pivot "r=island,c=species"
 ```
 
 **Output:**
@@ -4605,6 +4607,26 @@ pytae penguins.parquet -pivot "r=island,c=species,a=n"
 | Biscoe    |       44 |           0 |      124 |
 | Dream     |       56 |          68 |        0 |
 | Torgersen |       52 |           0 |        0 |
+
+#### 1D Frequency Breakdown:
+```bash
+# Omit c and v to produce a 1D frequency breakdown with column 'n'
+pytae penguins.parquet -pivot "r=island,sex"
+```
+
+**Output:**
+
+| island    | sex    |   n |
+|:----------|:-------|----:|
+| Biscoe    | Female |  80 |
+| Biscoe    | Male   |  83 |
+| Biscoe    | nan    |   5 |
+| Dream     | Female |  61 |
+| Dream     | Male   |  62 |
+| Dream     | nan    |   1 |
+| Torgersen | Female |  24 |
+| Torgersen | Male   |  23 |
+| Torgersen | nan    |   5 |
 
 ### 3. Vertical Summary Table (`r=`, `v=`)
 
@@ -4690,13 +4712,13 @@ Column names are automatically flattened into intuitive strings (`Metric_Col`), 
 
 ---
 
-## Filling Empty Intersections (`fill_value=0`)
+## Filling Empty Intersections (`fill=0`, `f_v=0`, `fill_value=0`)
 
-When a category combination has no records, replace the missing cell with a scalar:
+When a category combination has no records, replace the missing cell with a scalar (`fill=`, `f_v=`, and `fill_value=` are interchangeable aliases):
 
 ```bash
 pytae penguins.parquet \
-  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill_value=0" \
+  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill=0" \
   -round 1
 ```
 
@@ -8465,8 +8487,9 @@ Select a fraction of rows (e.g. `prop=0.1` for top 10%) overall or within each g
 `pt.pivot()` summarizes and aggregates tabular data across dimensions using the intuitive **RCVA** grammar:
 - **`r`** (Rows): Row grouping dimensions (*optional*)
 - **`c`** (Cols): Column header dimensions (*optional*)
-- **`v`** (Values): Value / measure column(s) to aggregate (**required**)
+- **`v`** (Values): Value / measure column(s) to aggregate (*optional*; defaults to row counts `n` when omitted)
 - **`a`** (Aggregation): Aggregation function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`)
+- **`fill`, `f_v`, `fill_value`**: Replacement value for unobserved grid combinations (default: `0` for row counts, `NaN` for metric averages)
 
 ### Core Guarantees:
 1. **Always Flat 1D Output**: Never produces MultiIndex rows or tuples in column headers. Column names are joined with `_` (e.g. `Sales_2023`).
@@ -8509,12 +8532,14 @@ penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
 | Dream     |  3688.39 |     3733.09 |   nan    |
 | Torgersen |  3706.37 |      nan    |   nan    |
 
-## 2. Frequency Matrix via Row Counts (`a="n"`)
+## 2. Frequency Tables: Count Matrix & 1D Tallies (`v` omitted)
 
-Count occurrences across dimensions (the direct successor to cross-tabulation):
+Just like Excel pivot tables where omitting a value field counts observations, omitting `v=` in `pytae` automatically computes row counts (`n`), returns clean integer columns (`int64`), and defaults unobserved combinations to `0`:
 
+### 2D Cross-Tabulation Matrix:
 ```python
-penguins.pt.pivot(r="island", c="species", v="sex", a="n")
+# Omit v to produce a 2D contingency matrix of counts
+penguins.pt.pivot(r="island", c="species")
 ```
 
 **Output:**
@@ -8524,6 +8549,26 @@ penguins.pt.pivot(r="island", c="species", v="sex", a="n")
 | Biscoe    |       44 |           0 |      124 |
 | Dream     |       56 |          68 |        0 |
 | Torgersen |       52 |           0 |        0 |
+
+### 1D Frequency Table:
+```python
+# Omit c and v to produce a 1D frequency breakdown with column 'n'
+penguins.pt.pivot(r="island,sex")
+```
+
+**Output:**
+
+| island    | sex    |   n |
+|:----------|:-------|----:|
+| Biscoe    | Female |  80 |
+| Biscoe    | Male   |  83 |
+| Biscoe    | nan    |   5 |
+| Dream     | Female |  61 |
+| Dream     | Male   |  62 |
+| Dream     | nan    |   1 |
+| Torgersen | Female |  24 |
+| Torgersen | Male   |  23 |
+| Torgersen | nan    |   5 |
 
 ## 3. Flexible Excel Layouts: Optional Rows or Columns
 
@@ -10793,6 +10838,8 @@ class PtAccessor:
         a: str = "sum",
         dropna: bool = False,
         fill_value: Any = None,
+        fill: Any = None,
+        f_v: Any = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
         """Summarize and aggregate DataFrame across dimensions (Excel-style pivot table).
@@ -10803,15 +10850,16 @@ class PtAccessor:
             Row dimension(s) to group by.
         c : str or sequence of str, optional
             Column dimension(s) to spread as headers.
-        v : str or sequence of str
-            Value column(s) to aggregate. REQUIRED.
+        v : str or sequence of str, optional
+            Value column(s) to aggregate. If omitted, defaults to row counts (`n`).
         a : str, default 'sum'
             Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
             'n' is accepted for group row count.
         dropna : bool, default False
             Whether to drop NA categories from grouping keys.
-        fill_value : any, optional
+        fill_value, fill, f_v : any, optional
             Value to replace missing grid intersections with (e.g. 0).
+            Aliases for each other; specify at most one. Defaults to 0 when computing counts (`v` omitted or `a='n'`).
 
         Returns:
         --------
@@ -10819,7 +10867,7 @@ class PtAccessor:
             Clean, flattened DataFrame with standard RangeIndex and 1D column names.
         """
         from .shape import pivot as _pivot
-        return _pivot(self._obj, r=r, c=c, v=v, a=a, dropna=dropna, fill_value=fill_value, **kwargs)
+        return _pivot(self._obj, r=r, c=c, v=v, a=a, dropna=dropna, fill_value=fill_value, fill=fill, f_v=f_v, **kwargs)
 
     def handle_missing(
         self,
@@ -12570,28 +12618,30 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "pivot": KeywordHelp(
         name="pivot",
         flag="-pivot, --pivot [KEY=VALUE,...]",
-        syntax="pytae <path> -pivot \"r=rows,c=cols,v=values,a=func\"",
+        syntax="pytae <path> -pivot \"r=rows,c=cols,v=values,a=func,fill=val\"",
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
             "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
+            "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('n').\n"
             "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, count=n, col:[f1, f2]).\n"
             "Flattens multi-level column hierarchies to clean 1D strings and resets index to RangeIndex.\n"
-            "Missing combinations default to fill_value (or 0 for row counts a=n)."
+            "Missing combinations default to fill/f_v/fill_value (or 0 for row counts)."
         ),
         options=[
             "r=row_cols : Row grouping dimension(s).",
             "c=col_cols : Column dimension(s) to spread as headers (optional for 1D aggregations).",
-            "v=spec : Metric specification (e.g. Sales, Sales:mean, rev=Sales:sum, count=n, Sales:[mean,sum]).",
+            "v=spec : Metric specification (optional; defaults to row count 'n' when omitted).",
             "a=func : Default aggregation function (default: sum; 'n' for counts).",
-            "fill_value=val : Replacement for empty grid cells (default 0 for a=n).",
+            "fill=val, f_v=val, fill_value=val : Replacement for empty grid cells (default 0 for counts, NaN for metric averages).",
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
         examples=[
+            "pytae penguins.parquet -pivot \"r=island,c=species\"   # 2D cross-tabulation count matrix",
+            "pytae penguins.parquet -pivot \"r=island,sex\"   # 1D frequency table",
             "pytae penguins.parquet -pivot \"r=island,c=species,v=body_mass_g,a=mean\"",
             "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, count=n'\"   # 1D summary",
             "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=n'\"",
-            "pytae penguins.parquet -pivot \"r=island,c=species,a=n\"   # Frequency cross-tabulation",
-            "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,fill_value=0\"",
+            "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,fill=0\"",
         ],
         see_also=["-agg", "-long", "-wide"],
     ),
@@ -13635,22 +13685,30 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             if current_key is None:
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
             kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
+    fill_keys = [k for k in kwargs if k in ("fill_value", "fill", "f_v")]
+    if len(fill_keys) > 1:
+        raise SystemExit(f"{flag}: conflicting fill arguments provided ({', '.join(fill_keys)}); specify only one")
+    if fill_keys:
+        k = fill_keys[0]
+        val = kwargs.pop(k)
+        if isinstance(val, str):
+            v_lower = val.strip().lower()
+            if v_lower in ("none", "null"):
+                kwargs["fill_value"] = None
+            else:
+                try:
+                    kwargs["fill_value"] = int(val)
+                except ValueError:
+                    try:
+                        kwargs["fill_value"] = float(val)
+                    except ValueError:
+                        raise SystemExit(f"{flag}: {k}= must be a numeric value or 'none'")
+        else:
+            kwargs["fill_value"] = val
+
     for key, value in list(kwargs.items()):
         if key in ("margins", "exact", "dropna"):
             kwargs[key] = parse_bool_text(value)
-        elif key == "fill_value":
-            if isinstance(value, str):
-                v_lower = value.strip().lower()
-                if v_lower in ("none", "null"):
-                    kwargs[key] = None
-                else:
-                    try:
-                        kwargs[key] = int(value)
-                    except ValueError:
-                        try:
-                            kwargs[key] = float(value)
-                        except ValueError:
-                            raise SystemExit(f"{flag}: {key}= must be a numeric value or 'none'")
         else:
             kwargs[key] = value
     return kwargs
@@ -13664,7 +13722,7 @@ def parse_wide_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
-_PIVOT_KEYS = ("r", "c", "v", "a", "dropna", "fill_value")
+_PIVOT_KEYS = ("r", "c", "v", "a", "dropna", "fill_value", "fill", "f_v")
 
 
 def parse_pivot_arg(raw: str | None) -> dict:
@@ -18789,11 +18847,18 @@ def pivot_polars(
     a: str = "sum",
     dropna: bool = False,
     fill_value: Any = None,
+    fill: Any = None,
+    f_v: Any = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
+    fill_args = [arg for arg, val in [("fill_value", fill_value), ("fill", fill), ("f_v", f_v)] if val is not None]
+    if len(fill_args) > 1:
+        raise TypeError(f"pivot(): conflicting fill arguments provided: {', '.join(fill_args)}. Specify only one.")
+    fill_val = fill_value if fill_value is not None else (fill if fill is not None else f_v)
+
     if kwargs:
-        raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
+        raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, fill_value, fill, f_v are accepted")
 
     all_cols = list(df.columns)
 
@@ -18922,8 +18987,8 @@ def pivot_polars(
                 piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
                 data_cols = [f"{prefix}_{c}" for c in data_cols]
 
-            if fill_value is not None:
-                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            if fill_val is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_val) for c in data_cols])
             elif agg_fn == "len":
                 piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
 
@@ -18946,8 +19011,8 @@ def pivot_polars(
             exprs.append(expr)
 
         res = work_df.group_by(r_cols).agg(exprs).sort(r_cols)
-        if fill_value is not None:
-            res = res.fill_null(fill_value)
+        if fill_val is not None:
+            res = res.fill_null(fill_val)
         return res
 
     elif c_cols:
@@ -18996,8 +19061,8 @@ def pivot_polars(
                 piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
                 data_cols = [f"{prefix}_{c}" for c in data_cols]
 
-            if fill_value is not None:
-                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            if fill_val is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_val) for c in data_cols])
             elif agg_fn == "len":
                 piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
 
@@ -19036,8 +19101,8 @@ def pivot_polars(
 
             res = pl.concat(rows, how="vertical")
             data_cols = [c for c in res.columns if c != "metric"]
-            if fill_value is not None:
-                res = res.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            if fill_val is not None:
+                res = res.with_columns([pl.col(c).fill_null(fill_val) for c in data_cols])
             return res
 
     else:
@@ -19050,8 +19115,8 @@ def pivot_polars(
             exprs.append(expr)
 
         res = work_df.select(exprs)
-        if fill_value is not None:
-            res = res.fill_null(fill_value)
+        if fill_val is not None:
+            res = res.fill_null(fill_val)
         return res
 
 
@@ -20882,10 +20947,10 @@ def parse_pivot_metrics(
     df_cols: Sequence[str] | None = None,
 ) -> list[PivotMetric]:
     """Parse rich metric mappings in v for pivot operations."""
-    if v is None:
-        if a in ("n", "size"):
-            return [PivotMetric(src_col=None, out_name="n", aggfunc="size", has_alias=False, has_explicit_func=True)]
-        return []
+    if v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, (list, tuple, dict, set)) and len(v) == 0):
+        if a in ("n", "size", "count", "sum"):
+            return [PivotMetric(src_col=None, out_name="n", aggfunc="size", has_alias=False, has_explicit_func=False)]
+        raise ValueError(f"pivot(): value column 'v' is required when aggregation function is '{a}'. Omit 'v' for row counts.")
 
     if isinstance(v, Mapping):
         metrics: list[PivotMetric] = []
@@ -21124,6 +21189,8 @@ def pivot(
     a: str = "sum",
     dropna: bool = False,
     fill_value: Any = None,
+    fill: Any = None,
+    f_v: Any = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """Summarize and aggregate a DataFrame across dimensions (Excel-style pivot table).
@@ -21136,23 +21203,30 @@ def pivot(
         Row dimension(s) to group by.
     c : str or sequence of str, optional
         Column dimension(s) to spread as headers.
-    v : str or sequence of str
-        Value column(s) to aggregate. REQUIRED.
+    v : str or sequence of str, optional
+        Value column(s) to aggregate. If omitted, defaults to row counts (`n`).
     a : str, default 'sum'
         Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
         'n' is accepted for group row count.
     dropna : bool, default False
         Whether to drop NA categories from grouping keys.
-    fill_value : any, optional
+    fill_value, fill, f_v : any, optional
         Value to replace missing grid intersections with (e.g. 0).
+        Aliases for each other; specify at most one. Defaults to 0 when computing counts (`v` omitted or `a='n'`).
 
     Returns:
     --------
     pd.DataFrame
         Clean, flattened DataFrame with standard RangeIndex and 1D column names.
     """
-    if kwargs:
-        raise TypeError(f"pivot() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
+    fill_args = [arg for arg, val in [("fill_value", fill_value), ("fill", fill), ("f_v", f_v)] if val is not None]
+    if len(fill_args) > 1:
+        raise TypeError(f"pivot(): conflicting fill arguments provided: {', '.join(fill_args)}. Specify only one.")
+    fill_val = fill_value if fill_value is not None else (fill if fill is not None else f_v)
+
+    extra = {k: v for k, v in kwargs.items() if k != "observed"}
+    if extra:
+        raise TypeError(f"pivot() got unexpected keyword argument(s): {list(extra.keys())}; only r, c, v, a, dropna, fill_value, fill, f_v are accepted")
 
     all_cols = list(df.columns)
 
@@ -21249,11 +21323,11 @@ def pivot(
             prefix = m.out_name if m_prefix_needed else None
             if m.src_col is None or m.aggfunc == "size":
                 s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
-                fv = fill_value if fill_value is not None else 0
+                fv = fill_val if fill_val is not None else 0
                 piv_m = s.unstack(list(c_cols), fill_value=fv)
             else:
                 g = df.groupby(group_keys, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
-                piv_m = g.unstack(list(c_cols), fill_value=fill_value)
+                piv_m = g.unstack(list(c_cols), fill_value=fill_val)
             new_cols = _flatten_cols(piv_m, prefix=prefix)
             piv_m.columns = new_cols
             pivoted_dfs.append(piv_m)
@@ -21291,8 +21365,8 @@ def pivot(
             else:
                 g = df.groupby(r_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
                 col_df = g.to_frame(name=m.out_name)
-            if fill_value is not None:
-                col_df = col_df.fillna(fill_value)
+            if fill_val is not None:
+                col_df = col_df.fillna(fill_val)
             col_dfs.append(col_df)
 
         combined = pd.concat(col_dfs, axis=1)
@@ -21320,8 +21394,8 @@ def pivot(
             else:
                 g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
                 pivoted = g.to_frame().T.reset_index(drop=True)
-            if fill_value is not None:
-                pivoted = pivoted.fillna(fill_value)
+            if fill_val is not None:
+                pivoted = pivoted.fillna(fill_val)
             pivoted.columns = _flatten_cols(pivoted, prefix=prefix)
             pivoted.columns.name = None
             if m.aggfunc == "size":
@@ -21340,8 +21414,8 @@ def pivot(
                 else:
                     g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
                     row_df = g.to_frame().T
-                if fill_value is not None:
-                    row_df = row_df.fillna(fill_value)
+                if fill_val is not None:
+                    row_df = row_df.fillna(fill_val)
                 row_df.index = [m.out_name]
                 rows.append(row_df)
             pivoted = pd.concat(rows)
@@ -21359,8 +21433,8 @@ def pivot(
                 val = df[m.src_col].agg(m.aggfunc)
             data[m.out_name] = [val]
         res = pd.DataFrame(data)
-        if fill_value is not None:
-            res = res.fillna(fill_value)
+        if fill_val is not None:
+            res = res.fillna(fill_val)
         for m in metrics:
             if m.aggfunc == "size" and m.out_name in res.columns:
                 try:
@@ -24708,6 +24782,57 @@ def test_cli_pivot_multi_func(tmp_path, capsys):
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["Region", "Sales_mean", "Sales_sum"]
 
+
+def test_cli_pivot_optional_v(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Year": [2020, 2021, 2020],
+        "Store": ["S1", "S2", "S1"],
+    })
+    p = _write_csv(tmp_path, df)
+
+    # 2D table without v
+    exit_code = cli.main([p, "-pivot", "r=Region, c=Year", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "2020", "2021"]
+
+    # 1D row frequency table without v
+    exit_code = cli.main([p, "-pivot", "r=Region,Store", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "Store", "n"]
+
+
+def test_cli_pivot_fill_aliases(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Quarter": ["Q1", "Q1", "Q2"],
+        "Sales": [100.0, 200.0, 300.0],
+    })
+    p = _write_csv(tmp_path, df)
+
+    # fill=0
+    exit_code = cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, a=sum, fill=0", "-head"])
+    assert exit_code == 0
+    out_fill = capsys.readouterr().out
+
+    # f_v=0
+    exit_code = cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, a=sum, f_v=0", "-head"])
+    assert exit_code == 0
+    out_fv = capsys.readouterr().out
+
+    # fill_value=0
+    exit_code = cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, a=sum, fill_value=0", "-head"])
+    assert exit_code == 0
+    out_fill_value = capsys.readouterr().out
+
+    assert out_fill == out_fv == out_fill_value
+
+    # conflicting fill args
+    with pytest.raises(SystemExit):
+        cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, fill=0, fill_value=0"])
+
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
@@ -26239,14 +26364,57 @@ def test_pivot_dropna_false_default():
 
 
 def test_pivot_aliases_rejected(sales_df):
-    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"fill": 0.0}):
+    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"index": "Region"}, {"columns": "Year"}):
         with pytest.raises(TypeError, match="pivot\\(\\) got unexpected keyword argument\\(s\\)"):
             sales_df.pt.pivot(r="Region", c="Year", v="Sales", **bad_kw)
 
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        sales_df.pt.pivot(r="Region", c="Year", fill=0, fill_value=0)
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        sales_df.pt.pivot(r="Region", c="Year", fill=0, f_v=0)
 
-def test_pivot_missing_v_error(sales_df):
-    with pytest.raises(ValueError, match="value column 'v' is required"):
-        sales_df.pt.pivot(r="Region", c="Year")
+
+def test_pivot_optional_v(sales_df):
+    # 2D cross-tabulation count matrix with v omitted
+    res = sales_df.pt.pivot(r="Region", c="Year")
+    assert list(res.columns) == ["Region", "2023", "2024"]
+    assert res.loc[res["Region"] == "East", "2023"].iloc[0] == 2
+    assert res.loc[res["Region"] == "East", "2024"].iloc[0] == 1
+    assert res.loc[res["Region"] == "West", "2023"].iloc[0] == 1
+    assert res.loc[res["Region"] == "West", "2024"].iloc[0] == 1
+
+    # 1D row frequency table with v omitted
+    res_1d = sales_df.pt.pivot(r="Region,Store")
+    assert list(res_1d.columns) == ["Region", "Store", "n"]
+    assert len(res_1d) == 4
+    assert res_1d["n"].sum() == 5
+
+    # 1D column frequency table with v omitted
+    res_col = sales_df.pt.pivot(c="Year")
+    assert list(res_col.columns) == ["2023", "2024"]
+    assert res_col["2023"].iloc[0] == 3
+    assert res_col["2024"].iloc[0] == 2
+
+    # 0D total count with v omitted
+    res_0d = sales_df.pt.pivot()
+    assert list(res_0d.columns) == ["n"]
+    assert res_0d["n"].iloc[0] == 5
+
+    # v omitted but incompatible agg function requested
+    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts."):
+        sales_df.pt.pivot(r="Region", c="Year", a="mean")
+
+    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'median'. Omit 'v' for row counts."):
+        sales_df.pt.pivot(r="Region", c="Year", a="median")
+
+
+def test_pivot_fill_aliases(sales_df):
+    # fill, f_v, and fill_value are interchangeable
+    r1 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", fill_value=0)
+    r2 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", fill=0)
+    r3 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", f_v=0)
+    pd.testing.assert_frame_equal(r1, r2)
+    pd.testing.assert_frame_equal(r1, r3)
 
 
 def test_pivot_unknown_column_error(sales_df):
@@ -27967,6 +28135,55 @@ def test_pivot_polars_whole_table_and_c_only():
     assert res_c.columns == ["2020", "2021"]
     assert res_c["2020"].to_list() == [300.0]
     assert res_c["2021"].to_list() == [300.0]
+
+
+def test_pivot_polars_optional_v_and_fill_aliases():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West", "West", "East"],
+        "year": [2020, 2021, 2020, 2020, 2020],
+        "quarter": ["Q1", "Q1", "Q2", "Q2", "Q2"],
+        "sales": [10.0, 20.0, 30.0, 40.0, 50.0],
+    })
+
+    # 2D contingency table with v omitted
+    res_2d = pivot_polars(df, r="region", c="year")
+    assert res_2d.columns == ["region", "2020", "2021"]
+    assert res_2d["region"].to_list() == ["East", "West"]
+    assert res_2d["2020"].to_list() == [2, 2]
+    assert res_2d["2021"].to_list() == [1, 0]  # unobserved combination defaults to 0
+
+    # 1D row frequency table with v omitted
+    res_1d = pivot_polars(df, r="region,quarter")
+    assert res_1d.columns == ["region", "quarter", "n"]
+    assert res_1d["n"].to_list() == [2, 1, 2]
+
+    # 1D col frequency table with v omitted
+    res_c = pivot_polars(df, c="year")
+    assert res_c.columns == ["2020", "2021"]
+    assert res_c["2020"].to_list() == [4]
+    assert res_c["2021"].to_list() == [1]
+
+    # 0D scalar count
+    res_0d = pivot_polars(df)
+    assert res_0d.columns == ["n"]
+    assert res_0d["n"].to_list() == [5]
+
+    # Incompatible agg func without v
+    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts."):
+        pivot_polars(df, r="region", c="year", a="mean")
+
+    # fill, f_v, fill_value aliases
+    r1 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", fill_value=0)
+    r2 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", fill=0)
+    r3 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", f_v=0)
+    assert r1.equals(r2)
+    assert r1.equals(r3)
+
+    # Conflicting fill arguments
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        pivot_polars(df, r="region", c="year", fill=0, fill_value=0)
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        pivot_polars(df, r="region", c="year", fill=0, f_v=0)
 
 
 def test_write_dataframe_polars(tmp_path):

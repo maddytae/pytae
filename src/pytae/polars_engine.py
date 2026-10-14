@@ -200,11 +200,18 @@ def pivot_polars(
     a: str = "sum",
     dropna: bool = False,
     fill_value: Any = None,
+    fill: Any = None,
+    f_v: Any = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
+    fill_args = [arg for arg, val in [("fill_value", fill_value), ("fill", fill), ("f_v", f_v)] if val is not None]
+    if len(fill_args) > 1:
+        raise TypeError(f"pivot(): conflicting fill arguments provided: {', '.join(fill_args)}. Specify only one.")
+    fill_val = fill_value if fill_value is not None else (fill if fill is not None else f_v)
+
     if kwargs:
-        raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
+        raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, fill_value, fill, f_v are accepted")
 
     all_cols = list(df.columns)
 
@@ -333,8 +340,8 @@ def pivot_polars(
                 piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
                 data_cols = [f"{prefix}_{c}" for c in data_cols]
 
-            if fill_value is not None:
-                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            if fill_val is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_val) for c in data_cols])
             elif agg_fn == "len":
                 piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
 
@@ -357,8 +364,8 @@ def pivot_polars(
             exprs.append(expr)
 
         res = work_df.group_by(r_cols).agg(exprs).sort(r_cols)
-        if fill_value is not None:
-            res = res.fill_null(fill_value)
+        if fill_val is not None:
+            res = res.fill_null(fill_val)
         return res
 
     elif c_cols:
@@ -407,8 +414,8 @@ def pivot_polars(
                 piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
                 data_cols = [f"{prefix}_{c}" for c in data_cols]
 
-            if fill_value is not None:
-                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            if fill_val is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_val) for c in data_cols])
             elif agg_fn == "len":
                 piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
 
@@ -447,8 +454,8 @@ def pivot_polars(
 
             res = pl.concat(rows, how="vertical")
             data_cols = [c for c in res.columns if c != "metric"]
-            if fill_value is not None:
-                res = res.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            if fill_val is not None:
+                res = res.with_columns([pl.col(c).fill_null(fill_val) for c in data_cols])
             return res
 
     else:
@@ -461,8 +468,8 @@ def pivot_polars(
             exprs.append(expr)
 
         res = work_df.select(exprs)
-        if fill_value is not None:
-            res = res.fill_null(fill_value)
+        if fill_val is not None:
+            res = res.fill_null(fill_val)
         return res
 
 

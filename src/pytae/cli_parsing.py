@@ -514,22 +514,30 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
             if current_key is None:
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
             kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
+    fill_keys = [k for k in kwargs if k in ("fill_value", "fill", "f_v")]
+    if len(fill_keys) > 1:
+        raise SystemExit(f"{flag}: conflicting fill arguments provided ({', '.join(fill_keys)}); specify only one")
+    if fill_keys:
+        k = fill_keys[0]
+        val = kwargs.pop(k)
+        if isinstance(val, str):
+            v_lower = val.strip().lower()
+            if v_lower in ("none", "null"):
+                kwargs["fill_value"] = None
+            else:
+                try:
+                    kwargs["fill_value"] = int(val)
+                except ValueError:
+                    try:
+                        kwargs["fill_value"] = float(val)
+                    except ValueError:
+                        raise SystemExit(f"{flag}: {k}= must be a numeric value or 'none'")
+        else:
+            kwargs["fill_value"] = val
+
     for key, value in list(kwargs.items()):
         if key in ("margins", "exact", "dropna"):
             kwargs[key] = parse_bool_text(value)
-        elif key == "fill_value":
-            if isinstance(value, str):
-                v_lower = value.strip().lower()
-                if v_lower in ("none", "null"):
-                    kwargs[key] = None
-                else:
-                    try:
-                        kwargs[key] = int(value)
-                    except ValueError:
-                        try:
-                            kwargs[key] = float(value)
-                        except ValueError:
-                            raise SystemExit(f"{flag}: {key}= must be a numeric value or 'none'")
         else:
             kwargs[key] = value
     return kwargs
@@ -543,7 +551,7 @@ def parse_wide_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
-_PIVOT_KEYS = ("r", "c", "v", "a", "dropna", "fill_value")
+_PIVOT_KEYS = ("r", "c", "v", "a", "dropna", "fill_value", "fill", "f_v")
 
 
 def parse_pivot_arg(raw: str | None) -> dict:

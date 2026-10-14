@@ -178,14 +178,57 @@ def test_pivot_dropna_false_default():
 
 
 def test_pivot_aliases_rejected(sales_df):
-    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"fill": 0.0}):
+    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"index": "Region"}, {"columns": "Year"}):
         with pytest.raises(TypeError, match="pivot\\(\\) got unexpected keyword argument\\(s\\)"):
             sales_df.pt.pivot(r="Region", c="Year", v="Sales", **bad_kw)
 
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        sales_df.pt.pivot(r="Region", c="Year", fill=0, fill_value=0)
+    with pytest.raises(TypeError, match="conflicting fill arguments"):
+        sales_df.pt.pivot(r="Region", c="Year", fill=0, f_v=0)
 
-def test_pivot_missing_v_error(sales_df):
-    with pytest.raises(ValueError, match="value column 'v' is required"):
-        sales_df.pt.pivot(r="Region", c="Year")
+
+def test_pivot_optional_v(sales_df):
+    # 2D cross-tabulation count matrix with v omitted
+    res = sales_df.pt.pivot(r="Region", c="Year")
+    assert list(res.columns) == ["Region", "2023", "2024"]
+    assert res.loc[res["Region"] == "East", "2023"].iloc[0] == 2
+    assert res.loc[res["Region"] == "East", "2024"].iloc[0] == 1
+    assert res.loc[res["Region"] == "West", "2023"].iloc[0] == 1
+    assert res.loc[res["Region"] == "West", "2024"].iloc[0] == 1
+
+    # 1D row frequency table with v omitted
+    res_1d = sales_df.pt.pivot(r="Region,Store")
+    assert list(res_1d.columns) == ["Region", "Store", "n"]
+    assert len(res_1d) == 4
+    assert res_1d["n"].sum() == 5
+
+    # 1D column frequency table with v omitted
+    res_col = sales_df.pt.pivot(c="Year")
+    assert list(res_col.columns) == ["2023", "2024"]
+    assert res_col["2023"].iloc[0] == 3
+    assert res_col["2024"].iloc[0] == 2
+
+    # 0D total count with v omitted
+    res_0d = sales_df.pt.pivot()
+    assert list(res_0d.columns) == ["n"]
+    assert res_0d["n"].iloc[0] == 5
+
+    # v omitted but incompatible agg function requested
+    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts."):
+        sales_df.pt.pivot(r="Region", c="Year", a="mean")
+
+    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'median'. Omit 'v' for row counts."):
+        sales_df.pt.pivot(r="Region", c="Year", a="median")
+
+
+def test_pivot_fill_aliases(sales_df):
+    # fill, f_v, and fill_value are interchangeable
+    r1 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", fill_value=0)
+    r2 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", fill=0)
+    r3 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", f_v=0)
+    pd.testing.assert_frame_equal(r1, r2)
+    pd.testing.assert_frame_equal(r1, r3)
 
 
 def test_pivot_unknown_column_error(sales_df):

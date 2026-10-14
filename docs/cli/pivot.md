@@ -5,10 +5,10 @@
 `-pivot` provides an Excel-style 2D pivot table engine with universal `r, c, v, a` vocabulary:
 - **Rows (`r=`)**: Row dimension(s) (*optional*).
 - **Cols (`c=`)**: Column dimension(s) to spread as headers (*optional*).
-- **Values (`v=`)**: Measure / metric column(s) to aggregate (**required** for metric aggregations; optional for `a=n`).
+- **Values (`v=`)**: Measure / metric column(s) to aggregate (*optional*; defaults to row count `n` when omitted).
 - **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`).
 - **Missing Categories (`dropna=`)**: Retain `NaN` keys when `false` (default: `false`).
-- **Empty Intersections (`fill_value=`)**: Fill missing grid cells (e.g. `fill_value=0`).
+- **Empty Intersections (`fill=`, `f_v=`, `fill_value=`)**: Fill missing grid cells (e.g. `fill=0`, `f_v=0`, `fill_value=0`).
 
 ---
 
@@ -17,13 +17,13 @@
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Excel-Style Pivot Layouts](#excel-style-pivot-layouts)
   - [1. 2D Grid with Rows & Columns (`r=`, `c=`, `v=`)](#1-2d-grid-with-rows--columns-r-c-v)
-  - [2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)](#2-2d-frequency-matrix--cross-tabulation-an)
+  - [2. Frequency Tables & Count Matrices (v= Omitted)](#2-frequency-tables--count-matrices-v-omitted)
   - [3. Vertical Summary Table (`r=`, `v=`)](#3-vertical-summary-table-r-v)
   - [4. Horizontal Summary Table (`c=`, `v=`)](#4-horizontal-summary-table-c-v)
   - [5. Grand Total Summary (`v=`)](#5-grand-total-summary-v)
 - [Hierarchical Grouping with Multiple Rows (`r=Region,Store`)](#hierarchical-grouping-with-multiple-rows-rregionstore)
 - [Multi-Metric Reporting (`v=Sales,Profit`)](#multi-metric-reporting-vsalesprofit)
-- [Filling Empty Intersections (`fill_value=0`)](#filling-empty-intersections-fill_value0)
+- [Filling Empty Intersections (`fill=0`, `f_v=0`, `fill_value=0`)](#filling-empty-intersections-fill0-f_v0-fill_value0)
 - [Guarantees & Differences from `-wide`](#guarantees--differences-from--wide)
 
 ---
@@ -34,10 +34,10 @@
 |---|---|---|---|
 | `r` | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
 | `c` | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
-| `v` | Metric column(s) to aggregate | Required (optional for `a=n`) | `v=Sales` or `v=Sales,Profit` |
+| `v` | Metric column(s) to aggregate | *Optional (defaults to row counts `n`)* | `v=Sales` or `v=Sales,Profit` |
 | `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
-| `fill_value` | Fill for empty cells | `None` (`NaN`) | `fill_value=0` |
+| `fill` / `f_v` / `fill_value` | Fill for empty cells | `None` (`0` for counts) | `fill=0`, `f_v=0`, `fill_value=0` |
 
 ---
 
@@ -61,12 +61,14 @@ pytae penguins.parquet \
 | Dream     |   3688.4 |      3733.1 |      nan |
 | Torgersen |   3706.4 |       nan   |      nan |
 
-### 2. 2D Frequency Matrix / Cross-Tabulation (`a=n`)
+### 2. Frequency Tables & Count Matrices (v= Omitted)
 
-When counting occurrences across dimensions with `a=n` (or `a=size`), `pytae` automatically returns standard integers (`int64`), sets unobserved intersections to `0` rather than `NaN`, and allows `v=` to be omitted:
+Just like in Excel where omitting a measure counts records, omitting `v=` in `-pivot` automatically computes row counts (`n`), returns clean integer columns (`int64`), and defaults unobserved intersections to `0`:
 
+#### 2D Contingency Table (Cross-Tabulation):
 ```bash
-pytae penguins.parquet -pivot "r=island,c=species,a=n"
+# Omit v to produce a 2D cross-tabulation count matrix
+pytae penguins.parquet -pivot "r=island,c=species"
 ```
 
 **Output:**
@@ -76,6 +78,26 @@ pytae penguins.parquet -pivot "r=island,c=species,a=n"
 | Biscoe    |       44 |           0 |      124 |
 | Dream     |       56 |          68 |        0 |
 | Torgersen |       52 |           0 |        0 |
+
+#### 1D Frequency Breakdown:
+```bash
+# Omit c and v to produce a 1D frequency breakdown with column 'n'
+pytae penguins.parquet -pivot "r=island,sex"
+```
+
+**Output:**
+
+| island    | sex    |   n |
+|:----------|:-------|----:|
+| Biscoe    | Female |  80 |
+| Biscoe    | Male   |  83 |
+| Biscoe    | nan    |   5 |
+| Dream     | Female |  61 |
+| Dream     | Male   |  62 |
+| Dream     | nan    |   1 |
+| Torgersen | Female |  24 |
+| Torgersen | Male   |  23 |
+| Torgersen | nan    |   5 |
 
 ### 3. Vertical Summary Table (`r=`, `v=`)
 
@@ -161,13 +183,13 @@ Column names are automatically flattened into intuitive strings (`Metric_Col`), 
 
 ---
 
-## Filling Empty Intersections (`fill_value=0`)
+## Filling Empty Intersections (`fill=0`, `f_v=0`, `fill_value=0`)
 
-When a category combination has no records, replace the missing cell with a scalar:
+When a category combination has no records, replace the missing cell with a scalar (`fill=`, `f_v=`, and `fill_value=` are interchangeable aliases):
 
 ```bash
 pytae penguins.parquet \
-  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill_value=0" \
+  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill=0" \
   -round 1
 ```
 
