@@ -359,7 +359,7 @@ def build_parser() -> argparse.ArgumentParser:
                          default=None, metavar="N",
                          help="measure and print pipeline execution time (default: 1 run; optional N runs the pipeline N times and reports avg/min/max/total)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
-                         help="render tables as a bordered markdown table instead of plain pandas text")
+                         help="[deprecated] table formatting is now automatically detected (boxed table for terminal, bare unbordered for pipes)")
     parser.add_argument("-pager", "--pager", action="store_true",
                          help="pipe long table or inspect outputs through system pager ($PAGER or less)")
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",

@@ -33,9 +33,21 @@ from pytae.readers import (
 )
 
 
-def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
+def _apply_round(df: Any, ndigits: int | None) -> Any:
     """Round numeric columns to ndigits; non-numeric columns pass through unchanged."""
-    return df.round(ndigits) if ndigits is not None else df
+    if ndigits is None:
+        return df
+    if isinstance(df, pd.DataFrame):
+        return df.round(ndigits)
+    try:
+        import polars as pl
+        import polars.selectors as cs
+
+        if isinstance(df, pl.DataFrame):
+            return df.with_columns(cs.numeric().round(ndigits))
+    except Exception:
+        pass
+    return df
 
 
 def _dataframe_info(df: pd.DataFrame) -> str:
@@ -44,16 +56,64 @@ def _dataframe_info(df: pd.DataFrame) -> str:
     return buf.getvalue().rstrip()
 
 
-def _format_table(df: pd.DataFrame, *, index: bool | None = None, pretty: bool = False) -> str:
-    """Render a DataFrame as standard pandas text, or a markdown/bordered table when pretty=True."""
-    if index is None:
-        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
-    if not pretty:
+def _format_table(
+    df: Any,
+    *,
+    index: bool | None = None,
+    pretty: bool = False,
+    is_tty: bool | None = None,
+) -> str:
+    """Render tabular data directly using Polars.
+
+    Auto-detects TTY output:
+    - Interactive terminal (isatty): renders Polars default boxed table with shape & dtypes.
+    - Piped / redirected (not isatty): renders bare unbordered plain text without shape or dtype headers.
+    """
+    if is_tty is None:
+        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+    import polars as pl
+
+    if is_tty:
+        if isinstance(df, pl.DataFrame):
+            pldf = df
+        elif isinstance(df, pd.DataFrame):
+            if index is None:
+                index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+            try:
+                pldf = pl.from_pandas(df.reset_index() if index else df)
+            except Exception:
+                return df.to_string(index=index)
+        else:
+            return str(df)
+
+        n_rows = len(pldf)
+        tbl_rows = max(n_rows, 10) if n_rows <= 100 else 10
+        with pl.Config(tbl_rows=tbl_rows):
+            return str(pldf)
+
+    # Non-TTY / Piped / Redirected: Bare output
+    if isinstance(df, pd.DataFrame):
+        if index is None:
+            index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
         return df.to_string(index=index)
-    try:
-        return df.to_markdown(index=index)
-    except ImportError:
-        return df.to_string(index=index)
+
+    if isinstance(df, pl.DataFrame):
+        if len(df) == 0:
+            return f"Empty DataFrame\nColumns: {list(df.columns)}\nIndex: []"
+        if len(df) <= 1000:
+            return df.to_pandas().to_string(index=False)
+        with pl.Config(
+            tbl_formatting="NOTHING",
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+            tbl_width_chars=10_000,
+            tbl_rows=-1,
+            tbl_cols=-1,
+        ):
+            return "\n".join(line.strip() for line in str(df).splitlines())
+
+    return str(df)
 
 
 def _compute_freq(source_df: pd.DataFrame, col: str | None, dropna: bool) -> pd.DataFrame:
@@ -478,10 +538,12 @@ def _process_path(
     emit_stdout = not is_clip and not is_file and not is_image_out
 
     if show_all:
-        df = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        frame = pipeline.current_frame()
+        rounded = _apply_round(frame, args.round_ndigits)
         if emit_stdout:
-            print(_format_table(df, pretty=args.pretty))
+            _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
+            df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     op_order = getattr(args, "op_order", [])
@@ -514,10 +576,12 @@ def _process_path(
         nonlocal clip_action
         if not (should_print(idx) or is_clip):
             return
-        df = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        frame = pipeline.current_frame()
+        rounded = _apply_round(frame, args.round_ndigits)
         if should_print(idx):
-            _output_text(_format_table(df, pretty=args.pretty), args)
+            _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
+            df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     for idx, op in enumerate(op_order):
@@ -634,7 +698,11 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
-            nulls = _list_order_index(pipeline.dataframe().isna().sum(), args.nulls)
+            if pipeline._pldf is not None:
+                nulls_s = pipeline._pldf.null_count().to_pandas().iloc[0]
+            else:
+                nulls_s = pipeline.dataframe().isna().sum()
+            nulls = _list_order_index(nulls_s, args.nulls)
             if should_print(idx):
                 _output_text(nulls.to_string(), args)
             if is_clip:
@@ -726,18 +794,20 @@ def _process_path(
             emit_frame(idx)
         elif op == "head":
             head_val = _next_op_val("head", args.head)
-            df = pipeline.head(head_val)
+            frame = pipeline.head(head_val)
             if should_print(idx):
-                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
+                df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
             tail_val = _next_op_val("tail", args.tail)
-            df = pipeline.tail(tail_val)
+            frame = pipeline.tail(tail_val)
             if should_print(idx):
-                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
+                df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "sample":
@@ -747,7 +817,8 @@ def _process_path(
             if should_print(idx):
                 _output_text(_format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
-                clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                df = sampled.to_pandas() if hasattr(sampled, "to_pandas") else sampled
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "arrange":
             arrange_val = _next_op_val("arrange", getattr(args, "arrange", None))
             err = pipeline.apply_arrange(arrange_val)

@@ -291,3 +291,72 @@ def test_mutate_polars_map_and_disallow_dot_map():
     with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
         mutate_polars(df, {"code": "species.map({'Adelie': 'AD'})"})
 
+
+def test_format_table_tty_and_non_tty():
+    from pytae.cli_run import _format_table
+
+    pldf = pl.DataFrame({"name": ["alpha", "beta"], "val": [10, 20]})
+    pddf = pd.DataFrame({"name": ["alpha", "beta"], "val": [10, 20]})
+
+    # TTY mode: Polars boxed table
+    tty_pl = _format_table(pldf, is_tty=True)
+    assert "┌" in tty_pl
+    assert "shape: (2, 2)" in tty_pl
+    assert "name" in tty_pl and "val" in tty_pl
+
+    tty_pd = _format_table(pddf, is_tty=True)
+    assert "┌" in tty_pd
+    assert "shape: (2, 2)" in tty_pd
+
+    # Non-TTY mode: Bare table
+    bare_pl = _format_table(pldf, is_tty=False)
+    assert "┌" not in bare_pl
+    assert "shape:" not in bare_pl
+    assert "alpha" in bare_pl and "beta" in bare_pl
+
+    bare_pd = _format_table(pddf, is_tty=False)
+    assert "┌" not in bare_pd
+    assert "shape:" not in bare_pd
+
+
+def test_format_table_large_and_small_rows_tty():
+    from pytae.cli_run import _format_table
+
+    # Small table (25 rows): displays all rows in TTY
+    df25 = pl.DataFrame({"a": list(range(25))})
+    out25 = _format_table(df25, is_tty=True)
+    assert "shape: (25, 1)" in out25
+    assert "24" in out25  # all 25 rows shown, not truncated at 10
+
+    # Huge table: Polars truncates cleanly
+    df_huge = pl.DataFrame({"a": list(range(5000))})
+    out_huge = _format_table(df_huge, is_tty=True)
+    assert "shape: (5_000, 1)" in out_huge
+    assert "…" in out_huge
+
+
+def test_cli_pretty_deprecated_silent(tmp_path, capsys):
+    p = tmp_path / "data.parquet"
+    pl.DataFrame({"x": [1, 2]}).write_parquet(p)
+
+    code = cli.main([str(p), "-pretty"])
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""  # Zero deprecation warnings
+    assert "1" in captured.out and "2" in captured.out
+
+
+def test_cli_tty_boxed_output(tmp_path, monkeypatch, capsys):
+    import sys
+
+    p = tmp_path / "data.parquet"
+    pl.DataFrame({"col1": [100, 200]}).write_parquet(p)
+
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    code = cli.main([str(p)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "┌" in out
+    assert "shape: (2, 1)" in out
+
+

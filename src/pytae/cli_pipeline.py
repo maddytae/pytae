@@ -430,7 +430,7 @@ class _Pipeline:
 
     def dtypes(self) -> pd.Series:
         if self._pldf is not None:
-            return self.dataframe().dtypes
+            return self._pldf.head(0).to_pandas().dtypes
         if self._df is not None:
             return self._df.dtypes
         dtypes = self._reader.dtypes()
@@ -445,13 +445,23 @@ class _Pipeline:
         cols = len(self._pending_exact) if self._pending_exact is not None else self._reader.shape()[1]
         return (rows, cols)
 
+    def current_frame(self) -> Any:
+        """Return the active frame (preferring Polars to avoid needless Pandas conversions)."""
+        if self._progress:
+            return self.dataframe()
+        if self._pldf is not None:
+            return self._pldf
+        if self._df is not None:
+            return self._df
+        return self.polars_frame()
+
     def head(self, n: int) -> pd.DataFrame:
         if self._pldf is not None:
             self._pldf = self._pldf.head(n)
             self._df = None
             return self.dataframe()
         if self._df is None:
-            if self._nrows is not None:
+            if self._nrows is not None or self._progress:
                 df = self.dataframe().head(n)
             else:
                 df = self._reader.head(n)
@@ -468,7 +478,7 @@ class _Pipeline:
             self._df = None
             return self.dataframe()
         if self._df is None:
-            if self._nrows is not None:
+            if self._nrows is not None or self._progress:
                 df = self.dataframe().tail(n)
             else:
                 df = self._reader.tail(n)
