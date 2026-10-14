@@ -453,18 +453,16 @@ def test_pivot_polars_optional_v_and_fill_aliases():
     with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts."):
         pivot_polars(df, r="region", c="year", a="mean")
 
-    # fill, f_v, fill_value aliases
-    r1 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", fill_value=0)
-    r2 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", fill=0)
-    r3 = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", f_v=0)
-    assert r1.equals(r2)
-    assert r1.equals(r3)
+    # f_v parameter
+    r = pivot_polars(df, r="region", c="quarter", v="sales", a="sum", f_v=0)
+    assert "Q1" in r.columns
+    assert "Q2" in r.columns
 
-    # Conflicting fill arguments
-    with pytest.raises(TypeError, match="conflicting fill arguments"):
-        pivot_polars(df, r="region", c="year", fill=0, fill_value=0)
-    with pytest.raises(TypeError, match="conflicting fill arguments"):
-        pivot_polars(df, r="region", c="year", fill=0, f_v=0)
+    # fill and fill_value are rejected
+    with pytest.raises(TypeError, match="pivot_polars\\(\\) got unexpected keyword argument\\(s\\)"):
+        pivot_polars(df, r="region", c="year", fill=0)
+    with pytest.raises(TypeError, match="pivot_polars\\(\\) got unexpected keyword argument\\(s\\)"):
+        pivot_polars(df, r="region", c="year", fill_value=0)
 
 
 def test_write_dataframe_polars(tmp_path):

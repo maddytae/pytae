@@ -281,8 +281,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-pivot", "--pivot", dest="pivot", nargs="?", const="", default=None,
                          metavar="KEY=VALUE,...", action=_OrderedValue,
                          help="2-D pivot table (pytae pivot()); r=row_cols (optional), c=col_cols "
-                              "(optional), v=value_cols (required), a=aggfunc (default sum; n=size), "
-                              "dropna=false (default), fill_value=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
+                              "(optional), v=value_cols (optional; defaults to counts), a=aggfunc (default sum; n=size), "
+                              "dropna=false (default), f_v=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
     parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
                          help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
                               "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "

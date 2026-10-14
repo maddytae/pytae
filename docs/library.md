@@ -238,7 +238,7 @@ pt.pivot(penguins, r="island", c="species", v="body_mass_g", a="mean")
 pt.pivot(penguins, r="island", c="species", a="n")
 
 # Hierarchical multi-row summary
-pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", fill_value=0)
+pt.pivot(penguins, r=["island", "sex"], c="species", v="body_mass_g", a="mean", f_v=0)
 ```
 
 👉 **Complete Guide:** [library/pivot.md](library/pivot.md)

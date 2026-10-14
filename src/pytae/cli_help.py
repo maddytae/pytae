@@ -209,21 +209,21 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "pivot": KeywordHelp(
         name="pivot",
         flag="-pivot, --pivot [KEY=VALUE,...]",
-        syntax="pytae <path> -pivot \"r=rows,c=cols,v=values,a=func,fill=val\"",
+        syntax="pytae <path> -pivot \"r=rows,c=cols,v=values,a=func,f_v=val\"",
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
             "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
             "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('n').\n"
             "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, count=n, col:[f1, f2]).\n"
             "Flattens multi-level column hierarchies to clean 1D strings and resets index to RangeIndex.\n"
-            "Missing combinations default to fill/f_v/fill_value (or 0 for row counts)."
+            "Missing combinations default to f_v (or 0 for row counts)."
         ),
         options=[
             "r=row_cols : Row grouping dimension(s).",
             "c=col_cols : Column dimension(s) to spread as headers (optional for 1D aggregations).",
             "v=spec : Metric specification (optional; defaults to row count 'n' when omitted).",
             "a=func : Default aggregation function (default: sum; 'n' for counts).",
-            "fill=val, f_v=val, fill_value=val : Replacement for empty grid cells (default 0 for counts, NaN for metric averages).",
+            "f_v=val : Replacement for empty grid cells (default 0 for counts, NaN for metric averages).",
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
         examples=[
@@ -232,7 +232,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -pivot \"r=island,c=species,v=body_mass_g,a=mean\"",
             "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, count=n'\"   # 1D summary",
             "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=n'\"",
-            "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,fill=0\"",
+            "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,f_v=0\"",
         ],
         see_also=["-agg", "-long", "-wide"],
     ),

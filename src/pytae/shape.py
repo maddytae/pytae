@@ -344,8 +344,6 @@ def pivot(
     v: str | Sequence[str] | None = None,
     a: str = "sum",
     dropna: bool = False,
-    fill_value: Any = None,
-    fill: Any = None,
     f_v: Any = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
@@ -366,23 +364,18 @@ def pivot(
         'n' is accepted for group row count.
     dropna : bool, default False
         Whether to drop NA categories from grouping keys.
-    fill_value, fill, f_v : any, optional
+    f_v : any, optional
         Value to replace missing grid intersections with (e.g. 0).
-        Aliases for each other; specify at most one. Defaults to 0 when computing counts (`v` omitted or `a='n'`).
+        Defaults to 0 when computing counts (`v` omitted or `a='n'`).
 
     Returns:
     --------
     pd.DataFrame
         Clean, flattened DataFrame with standard RangeIndex and 1D column names.
     """
-    fill_args = [arg for arg, val in [("fill_value", fill_value), ("fill", fill), ("f_v", f_v)] if val is not None]
-    if len(fill_args) > 1:
-        raise TypeError(f"pivot(): conflicting fill arguments provided: {', '.join(fill_args)}. Specify only one.")
-    fill_val = fill_value if fill_value is not None else (fill if fill is not None else f_v)
-
     extra = {k: v for k, v in kwargs.items() if k != "observed"}
     if extra:
-        raise TypeError(f"pivot() got unexpected keyword argument(s): {list(extra.keys())}; only r, c, v, a, dropna, fill_value, fill, f_v are accepted")
+        raise TypeError(f"pivot() got unexpected keyword argument(s): {list(extra.keys())}; only r, c, v, a, dropna, f_v are accepted")
 
     all_cols = list(df.columns)
 
@@ -479,11 +472,11 @@ def pivot(
             prefix = m.out_name if m_prefix_needed else None
             if m.src_col is None or m.aggfunc == "size":
                 s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
-                fv = fill_val if fill_val is not None else 0
+                fv = f_v if f_v is not None else 0
                 piv_m = s.unstack(list(c_cols), fill_value=fv)
             else:
                 g = df.groupby(group_keys, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
-                piv_m = g.unstack(list(c_cols), fill_value=fill_val)
+                piv_m = g.unstack(list(c_cols), fill_value=f_v)
             new_cols = _flatten_cols(piv_m, prefix=prefix)
             piv_m.columns = new_cols
             pivoted_dfs.append(piv_m)
@@ -521,8 +514,8 @@ def pivot(
             else:
                 g = df.groupby(r_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
                 col_df = g.to_frame(name=m.out_name)
-            if fill_val is not None:
-                col_df = col_df.fillna(fill_val)
+            if f_v is not None:
+                col_df = col_df.fillna(f_v)
             col_dfs.append(col_df)
 
         combined = pd.concat(col_dfs, axis=1)
@@ -550,8 +543,8 @@ def pivot(
             else:
                 g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
                 pivoted = g.to_frame().T.reset_index(drop=True)
-            if fill_val is not None:
-                pivoted = pivoted.fillna(fill_val)
+            if f_v is not None:
+                pivoted = pivoted.fillna(f_v)
             pivoted.columns = _flatten_cols(pivoted, prefix=prefix)
             pivoted.columns.name = None
             if m.aggfunc == "size":
@@ -570,8 +563,8 @@ def pivot(
                 else:
                     g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
                     row_df = g.to_frame().T
-                if fill_val is not None:
-                    row_df = row_df.fillna(fill_val)
+                if f_v is not None:
+                    row_df = row_df.fillna(f_v)
                 row_df.index = [m.out_name]
                 rows.append(row_df)
             pivoted = pd.concat(rows)
@@ -589,8 +582,8 @@ def pivot(
                 val = df[m.src_col].agg(m.aggfunc)
             data[m.out_name] = [val]
         res = pd.DataFrame(data)
-        if fill_val is not None:
-            res = res.fillna(fill_val)
+        if f_v is not None:
+            res = res.fillna(f_v)
         for m in metrics:
             if m.aggfunc == "size" and m.out_name in res.columns:
                 try:

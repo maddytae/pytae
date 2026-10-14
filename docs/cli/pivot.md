@@ -8,7 +8,7 @@
 - **Values (`v=`)**: Measure / metric column(s) to aggregate (*optional*; defaults to row count `n` when omitted).
 - **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`).
 - **Missing Categories (`dropna=`)**: Retain `NaN` keys when `false` (default: `false`).
-- **Empty Intersections (`fill=`, `f_v=`, `fill_value=`)**: Fill missing grid cells (e.g. `fill=0`, `f_v=0`, `fill_value=0`).
+- **Empty Intersections (`f_v=`)**: Fill missing grid cells (e.g. `f_v=0`).
 
 ---
 
@@ -23,7 +23,7 @@
   - [5. Grand Total Summary (`v=`)](#5-grand-total-summary-v)
 - [Hierarchical Grouping with Multiple Rows (`r=Region,Store`)](#hierarchical-grouping-with-multiple-rows-rregionstore)
 - [Multi-Metric Reporting (`v=Sales,Profit`)](#multi-metric-reporting-vsalesprofit)
-- [Filling Empty Intersections (`fill=0`, `f_v=0`, `fill_value=0`)](#filling-empty-intersections-fill0-f_v0-fill_value0)
+- [Filling Empty Intersections (`f_v=0`)](#filling-empty-intersections-f_v0)
 - [Guarantees & Differences from `-wide`](#guarantees--differences-from--wide)
 
 ---
@@ -37,7 +37,7 @@
 | `v` | Metric column(s) to aggregate | *Optional (defaults to row counts `n`)* | `v=Sales` or `v=Sales,Profit` |
 | `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
-| `fill` / `f_v` / `fill_value` | Fill for empty cells | `None` (`0` for counts) | `fill=0`, `f_v=0`, `fill_value=0` |
+| `f_v` | Fill for empty cells | `None` (`0` for counts) | `f_v=0` |
 
 ---
 
@@ -183,13 +183,13 @@ Column names are automatically flattened into intuitive strings (`Metric_Col`), 
 
 ---
 
-## Filling Empty Intersections (`fill=0`, `f_v=0`, `fill_value=0`)
+## Filling Empty Intersections (`f_v=0`)
 
-When a category combination has no records, replace the missing cell with a scalar (`fill=`, `f_v=`, and `fill_value=` are interchangeable aliases):
+When a category combination has no records, replace the missing cell with a scalar:
 
 ```bash
 pytae penguins.parquet \
-  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill=0" \
+  -pivot "r=island,c=species,v=body_mass_g,a=mean,f_v=0" \
   -round 1
 ```
 

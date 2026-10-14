@@ -192,7 +192,7 @@ def test_cli_pivot_optional_v(tmp_path, capsys):
     assert cols == ["Region", "Store", "n"]
 
 
-def test_cli_pivot_fill_aliases(tmp_path, capsys):
+def test_cli_pivot_f_v(tmp_path, capsys):
     df = pd.DataFrame({
         "Region": ["East", "East", "West"],
         "Quarter": ["Q1", "Q1", "Q2"],
@@ -200,26 +200,19 @@ def test_cli_pivot_fill_aliases(tmp_path, capsys):
     })
     p = _write_csv(tmp_path, df)
 
-    # fill=0
-    exit_code = cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, a=sum, fill=0", "-head"])
-    assert exit_code == 0
-    out_fill = capsys.readouterr().out
-
-    # f_v=0
+    # f_v=0 works
     exit_code = cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, a=sum, f_v=0", "-head"])
     assert exit_code == 0
     out_fv = capsys.readouterr().out
+    assert "East" in out_fv
 
-    # fill_value=0
-    exit_code = cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, a=sum, fill_value=0", "-head"])
-    assert exit_code == 0
-    out_fill_value = capsys.readouterr().out
-
-    assert out_fill == out_fv == out_fill_value
-
-    # conflicting fill args
+    # fill=0 is rejected
     with pytest.raises(SystemExit):
-        cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, fill=0, fill_value=0"])
+        cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, fill=0"])
+
+    # fill_value=0 is rejected
+    with pytest.raises(SystemExit):
+        cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, fill_value=0"])
 
 
 

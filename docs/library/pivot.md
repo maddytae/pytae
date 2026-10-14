@@ -8,7 +8,7 @@
 - **`c`** (Cols): Column header dimensions (*optional*)
 - **`v`** (Values): Value / measure column(s) to aggregate (*optional*; defaults to row counts `n` when omitted)
 - **`a`** (Aggregation): Aggregation function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`)
-- **`fill`, `f_v`, `fill_value`**: Replacement value for unobserved grid combinations (default: `0` for row counts, `NaN` for metric averages)
+- **`f_v`**: Replacement value for unobserved grid combinations (default: `0` for row counts, `NaN` for metric averages)
 
 ### Core Guarantees:
 1. **Always Flat 1D Output**: Never produces MultiIndex rows or tuples in column headers. Column names are joined with `_` (e.g. `Sales_2023`).
@@ -139,7 +139,7 @@ penguins.pt.pivot(
     c="species",
     v=["body_mass_g", "flipper_length_mm"],
     a="mean",
-    fill_value=0
+    f_v=0
 )
 ```
 
@@ -162,7 +162,7 @@ penguins.pt.pivot(
 Because `pt.pivot` always returns a clean, rectangular DataFrame with a flat RangeIndex, you can immediately chain into further transformations or `.pt.plot()`:
 
 ```python
-piv = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean", fill_value=0)
+piv = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean", f_v=0)
 # Clean flat columns and standard index ready for downstream manipulation:
 print("Columns:", list(piv.columns))
 print("Index:", list(piv.index))

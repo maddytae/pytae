@@ -149,7 +149,7 @@ def test_pivot_agg_n_explicit_nan_fill():
         "Species": ["Adelie", "Chinstrap"],
         "Sex": ["M", "F"],
     })
-    res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n", fill_value=np.nan)
+    res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n", f_v=np.nan)
     # When explicit NaN fill is requested, missing combinations are <NA> of Int64 dtype
     assert res["Adelie"].dtype == "Int64"
     assert res["Chinstrap"].dtype == "Int64"
@@ -157,8 +157,8 @@ def test_pivot_agg_n_explicit_nan_fill():
     assert res.loc[res["Island"] == "Dream", "Chinstrap"].iloc[0] == 1
 
 
-def test_pivot_fill_value(sales_df):
-    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="sum", fill_value=0.0)
+def test_pivot_f_v_explicit(sales_df):
+    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="sum", f_v=0.0)
     # Check that missing combinations have 0.0 instead of NaN
     assert not res.isna().any().any()
 
@@ -178,14 +178,9 @@ def test_pivot_dropna_false_default():
 
 
 def test_pivot_aliases_rejected(sales_df):
-    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"index": "Region"}, {"columns": "Year"}):
+    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"index": "Region"}, {"columns": "Year"}, {"fill": 0.0}, {"fill_value": 0.0}):
         with pytest.raises(TypeError, match="pivot\\(\\) got unexpected keyword argument\\(s\\)"):
             sales_df.pt.pivot(r="Region", c="Year", v="Sales", **bad_kw)
-
-    with pytest.raises(TypeError, match="conflicting fill arguments"):
-        sales_df.pt.pivot(r="Region", c="Year", fill=0, fill_value=0)
-    with pytest.raises(TypeError, match="conflicting fill arguments"):
-        sales_df.pt.pivot(r="Region", c="Year", fill=0, f_v=0)
 
 
 def test_pivot_optional_v(sales_df):
@@ -222,13 +217,10 @@ def test_pivot_optional_v(sales_df):
         sales_df.pt.pivot(r="Region", c="Year", a="median")
 
 
-def test_pivot_fill_aliases(sales_df):
-    # fill, f_v, and fill_value are interchangeable
-    r1 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", fill_value=0)
-    r2 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", fill=0)
-    r3 = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", f_v=0)
-    pd.testing.assert_frame_equal(r1, r2)
-    pd.testing.assert_frame_equal(r1, r3)
+def test_pivot_f_v(sales_df):
+    res = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", f_v=0)
+    assert not res.isna().any().any()
+    assert (res["Q1"] >= 0).all()
 
 
 def test_pivot_unknown_column_error(sales_df):
@@ -412,7 +404,7 @@ def test_cli_pivot_fill_numeric(tmp_path, capsys):
     })
     path = str(tmp_path / "sales.csv")
     df.to_csv(path, index=False)
-    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,fill_value=0", "-round", "1"])
+    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,f_v=0", "-round", "1"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "0" in out
