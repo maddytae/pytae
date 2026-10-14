@@ -1,22 +1,23 @@
-import pytest
 import pandas as pd
 import polars as pl
+import pytest
+
 from pytae import cli
 from pytae.polars_engine import (
-    filter_polars,
-    select_polars,
     arrange_polars,
+    clean_columns_polars,
     distinct_polars,
     dropna_polars,
-    rename_polars,
-    pivot_polars,
+    filter_polars,
+    handle_missing_polars,
+    long_polars,
     mutate_polars,
     pick_polars,
+    pivot_polars,
+    rename_polars,
+    select_polars,
     value_counts_polars,
-    long_polars,
     wide_polars,
-    handle_missing_polars,
-    clean_columns_polars,
 )
 
 

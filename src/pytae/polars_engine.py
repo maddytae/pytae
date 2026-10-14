@@ -10,10 +10,8 @@ from __future__ import annotations
 import ast
 import re
 from collections.abc import Sequence
-from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
-import pandas as pd
 import polars as pl
 
 from pytae._text import unquote_name as _unquote_name
@@ -144,6 +142,7 @@ def arrange_polars(df: pl.DataFrame, spec: str, na_last: bool = True) -> pl.Data
 
 def distinct_polars(df: pl.DataFrame, cols: list[str] | None = None, keep: str | bool = "first") -> pl.DataFrame:
     """Drop duplicate rows in a Polars DataFrame."""
+    pl_keep: Literal["first", "last", "any", "none"]
     if keep == "first":
         pl_keep = "first"
     elif keep == "last":
@@ -217,7 +216,7 @@ def pivot_polars(
         on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
         index=r_cols if r_cols else None,
         values=val_arg,
-        aggregate_function=aggfunc,
+        aggregate_function=cast(Any, aggfunc),
         sort_columns=True,
     )
 
@@ -253,39 +252,59 @@ def _ast_to_polars_expr(
     if isinstance(node, ast.BinOp):
         left = _ast_to_polars_expr(node.left, col_names, col_map, by)
         right = _ast_to_polars_expr(node.right, col_names, col_map, by)
-        if isinstance(node.op, ast.Add): return left + right
-        if isinstance(node.op, ast.Sub): return left - right
-        if isinstance(node.op, ast.Mult): return left * right
-        if isinstance(node.op, ast.Div): return left / right
-        if isinstance(node.op, ast.FloorDiv): return left // right
-        if isinstance(node.op, ast.Mod): return left % right
-        if isinstance(node.op, ast.Pow): return left ** right
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.FloorDiv):
+            return left // right
+        if isinstance(node.op, ast.Mod):
+            return left % right
+        if isinstance(node.op, ast.Pow):
+            return left ** right
         raise ValueError(f"Unsupported binary operator: {type(node.op)}")
     if isinstance(node, ast.UnaryOp):
         oprnd = _ast_to_polars_expr(node.operand, col_names, col_map, by)
-        if isinstance(node.op, ast.USub): return -oprnd
-        if isinstance(node.op, ast.UAdd): return oprnd
-        if isinstance(node.op, (ast.Not, ast.Invert)): return ~oprnd
+        if isinstance(node.op, ast.USub):
+            return -oprnd
+        if isinstance(node.op, ast.UAdd):
+            return oprnd
+        if isinstance(node.op, (ast.Not, ast.Invert)):
+            return ~oprnd
         raise ValueError(f"Unsupported unary operator: {type(node.op)}")
     if isinstance(node, ast.Compare):
         left = _ast_to_polars_expr(node.left, col_names, col_map, by)
         for op, comp in zip(node.ops, node.comparators):
             right = _ast_to_polars_expr(comp, col_names, col_map, by)
-            if isinstance(op, ast.Eq): left = (left == right)
-            elif isinstance(op, ast.NotEq): left = (left != right)
-            elif isinstance(op, ast.Lt): left = (left < right)
-            elif isinstance(op, ast.LtE): left = (left <= right)
-            elif isinstance(op, ast.Gt): left = (left > right)
-            elif isinstance(op, ast.GtE): left = (left >= right)
-            else: raise ValueError(f"Unsupported comparison operator: {type(op)}")
+            if isinstance(op, ast.Eq):
+                left = (left == right)
+            elif isinstance(op, ast.NotEq):
+                left = (left != right)
+            elif isinstance(op, ast.Lt):
+                left = (left < right)
+            elif isinstance(op, ast.LtE):
+                left = (left <= right)
+            elif isinstance(op, ast.Gt):
+                left = (left > right)
+            elif isinstance(op, ast.GtE):
+                left = (left >= right)
+            else:
+                raise ValueError(f"Unsupported comparison operator: {type(op)}")
         return left
     if isinstance(node, ast.BoolOp):
         vals = [_ast_to_polars_expr(v, col_names, col_map, by) for v in node.values]
         res = vals[0]
         for v in vals[1:]:
-            if isinstance(node.op, ast.And): res = res & v
-            elif isinstance(node.op, ast.Or): res = res | v
-            else: raise ValueError(f"Unsupported bool op: {type(node.op)}")
+            if isinstance(node.op, ast.And):
+                res = res & v
+            elif isinstance(node.op, ast.Or):
+                res = res | v
+            else:
+                raise ValueError(f"Unsupported bool op: {type(node.op)}")
         return res
     if isinstance(node, ast.IfExp):
         test = _ast_to_polars_expr(node.test, col_names, col_map, by)
@@ -317,15 +336,18 @@ def _ast_to_polars_expr(
             expr = pl.len()
             return expr.over(by) if by else expr
         if func_name == "lead" and len(args) >= 1:
-            shift_n = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_val = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_n = int(shift_val) if isinstance(shift_val, (int, float)) else 1
             expr = args[0].shift(-shift_n)
             return expr.over(by) if by else expr
         if func_name == "lag" and len(args) >= 1:
-            shift_n = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_val = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_n = int(shift_val) if isinstance(shift_val, (int, float)) else 1
             expr = args[0].shift(shift_n)
             return expr.over(by) if by else expr
         if func_name == "round":
-            dec = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 0
+            dec_val = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 0
+            dec = int(dec_val) if isinstance(dec_val, (int, float)) else 0
             return args[0].round(dec)
         if func_name == "abs" and len(args) == 1:
             return args[0].abs()
