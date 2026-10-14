@@ -949,10 +949,16 @@ def _process_path(
             if "dropna" not in pivot_kwargs:
                 pivot_kwargs["dropna"] = False if args.dropna is None else args.dropna
             to_check = []
-            for k in ("r", "c", "v"):
+            for k in ("r", "c"):
                 val = pivot_kwargs.get(k)
                 if val:
                     to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))
+            if pivot_kwargs.get("v"):
+                from pytae.shape import parse_pivot_metrics
+                parsed_metrics = parse_pivot_metrics(pivot_kwargs["v"], a=pivot_kwargs.get("a", "sum"))
+                for m in parsed_metrics:
+                    if m.src_col is not None:
+                        to_check.append(m.src_col)
             available_cols = pipeline.columns()
             missing = [col for col in to_check if col not in available_cols]
             if missing:

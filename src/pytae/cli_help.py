@@ -212,20 +212,23 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         syntax="pytae <path> -pivot \"r=rows,c=cols,v=values,a=func\"",
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
-            "Full multi-dimensional pivot table engine.\n"
+            "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
+            "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, count=n, col:[f1, f2]).\n"
             "Flattens multi-level column hierarchies to clean 1D strings and resets index to RangeIndex.\n"
             "Missing combinations default to fill_value (or 0 for row counts a=n)."
         ),
         options=[
             "r=row_cols : Row grouping dimension(s).",
-            "c=col_cols : Column dimension(s) to spread as headers.",
-            "v=value_cols : Metric column(s) to aggregate (optional when a=n).",
-            "a=func : Aggregation function (default: sum; 'n' for counts).",
+            "c=col_cols : Column dimension(s) to spread as headers (optional for 1D aggregations).",
+            "v=spec : Metric specification (e.g. Sales, Sales:mean, rev=Sales:sum, count=n, Sales:[mean,sum]).",
+            "a=func : Default aggregation function (default: sum; 'n' for counts).",
             "fill_value=val : Replacement for empty grid cells (default 0 for a=n).",
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
         examples=[
             "pytae penguins.parquet -pivot \"r=island,c=species,v=body_mass_g,a=mean\"",
+            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, count=n'\"   # 1D summary",
+            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=n'\"",
             "pytae penguins.parquet -pivot \"r=island,c=species,a=n\"   # Frequency cross-tabulation",
             "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,fill_value=0\"",
         ],

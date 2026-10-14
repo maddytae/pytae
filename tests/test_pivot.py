@@ -454,3 +454,78 @@ def test_pivot_repeated_columns_in_dimensions_and_values():
     with pytest.raises(ValueError, match="cannot appear multiple times in 'v'"):
         df.pt.pivot(r="Region", v=["Sales", "Sales"])
 
+
+def test_pivot_rich_metric_1d_aliases_and_counts(sales_df):
+    # 1D: new_col = col:aggfunc and count = n
+    res = sales_df.pt.pivot(r="Region", v="rev = Sales:sum, avg_sales = Sales:mean, orders = n")
+    assert list(res.columns) == ["Region", "rev", "avg_sales", "orders"]
+    assert res["orders"].dtype == "int64"
+    east = res[res["Region"] == "East"].iloc[0]
+    assert east["rev"] == 450.0
+    assert east["avg_sales"] == 150.0
+    assert east["orders"] == 3
+    west = res[res["Region"] == "West"].iloc[0]
+    assert west["rev"] == 700.0
+    assert west["avg_sales"] == 350.0
+    assert west["orders"] == 2
+
+
+def test_pivot_rich_metric_2d_aliases_and_counts(sales_df):
+    # 2D cross-tabulation with multi-metric prefixes
+    res = sales_df.pt.pivot(r="Region", c="Year", v="rev = Sales:sum, orders = n")
+    assert list(res.columns) == ["Region", "rev_2023", "rev_2024", "orders_2023", "orders_2024"]
+    assert res["orders_2023"].dtype == "int64"
+    assert res["orders_2024"].dtype == "int64"
+    east = res[res["Region"] == "East"].iloc[0]
+    assert east["rev_2023"] == 300.0
+    assert east["rev_2024"] == 150.0
+    assert east["orders_2023"] == 2
+    assert east["orders_2024"] == 1
+
+
+def test_pivot_multi_func_single_col(sales_df):
+    # Multi-func syntax col:[f1, f2]
+    res_1d = sales_df.pt.pivot(r="Region", v="Sales:[mean, sum]")
+    assert list(res_1d.columns) == ["Region", "Sales_mean", "Sales_sum"]
+    east = res_1d[res_1d["Region"] == "East"].iloc[0]
+    assert east["Sales_mean"] == 150.0
+    assert east["Sales_sum"] == 450.0
+
+    # With alias: prefix_[f]
+    res_alias = sales_df.pt.pivot(r="Region", v="rev = Sales:[mean, sum]")
+    assert list(res_alias.columns) == ["Region", "rev_mean", "rev_sum"]
+
+
+def test_pivot_bracketed_column_spaced():
+    df = pd.DataFrame({
+        "Store Region": ["East", "East", "West"],
+        "gross sales": [100.0, 200.0, 300.0],
+    })
+    res = df.pt.pivot(r="[Store Region]", v="total = [gross sales]:sum, count = n")
+    assert list(res.columns) == ["Store Region", "total", "count"]
+    assert res.loc[res["Store Region"] == "East", "total"].iloc[0] == 300.0
+    assert res.loc[res["Store Region"] == "East", "count"].iloc[0] == 2
+
+
+def test_pivot_dict_spec(sales_df):
+    # Dict with col->func and alias->expr
+    res1 = sales_df.pt.pivot(r="Region", v={"Sales": "mean", "Profit": "sum"})
+    assert list(res1.columns) == ["Region", "Sales", "Profit"]
+    assert res1.loc[res1["Region"] == "East", "Sales"].iloc[0] == 150.0
+    assert res1.loc[res1["Region"] == "East", "Profit"].iloc[0] == 55.0
+
+    res2 = sales_df.pt.pivot(r="Region", v={"rev": "Sales:sum", "orders": "n"})
+    assert list(res2.columns) == ["Region", "rev", "orders"]
+    assert res2.loc[res2["Region"] == "East", "rev"].iloc[0] == 450.0
+    assert res2.loc[res2["Region"] == "East", "orders"].iloc[0] == 3
+
+
+def test_pivot_whole_table_rich_metrics(sales_df):
+    res = sales_df.pt.pivot(v="total_sales = Sales:sum, avg_profit = Profit:mean, count = n")
+    assert list(res.columns) == ["total_sales", "avg_profit", "count"]
+    assert len(res) == 1
+    assert res["total_sales"].iloc[0] == 1150.0
+    assert res["avg_profit"].iloc[0] == 28.0
+    assert res["count"].iloc[0] == 5
+
+

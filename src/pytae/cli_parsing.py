@@ -499,14 +499,17 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
                     "-wide: -wide is strictly for 1-to-1 reshaping without aggregation. "
                     "Use -pivot for aggregations (e.g. -pivot 'r=...,c=...,v=...,a=...')."
                 )
-            if key not in keys:
+            if key in keys:
+                if not value:
+                    raise SystemExit(f"{flag}: {key}= needs a value")
+                if key in kwargs:
+                    raise SystemExit(f"{flag}: {key}= given more than once")
+                current_key = key
+                kwargs[key] = value
+            elif current_key is not None:
+                kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
+            else:
                 raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
-            if not value:
-                raise SystemExit(f"{flag}: {key}= needs a value")
-            if key in kwargs:
-                raise SystemExit(f"{flag}: {key}= given more than once")
-            current_key = key
-            kwargs[key] = value
         else:
             if current_key is None:
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")

@@ -164,21 +164,49 @@ def rename_polars(df: pl.DataFrame, mapping: dict[str, str]) -> pl.DataFrame:
     return df.rename(mapping)
 
 
+def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
+    fn = func.lower()
+    if fn == "sum":
+        return col.sum()
+    elif fn in ("mean", "avg"):
+        return col.mean()
+    elif fn == "median":
+        return col.median()
+    elif fn == "min":
+        return col.min()
+    elif fn == "max":
+        return col.max()
+    elif fn == "std":
+        return col.std()
+    elif fn == "var":
+        return col.var()
+    elif fn in ("count", "len", "size"):
+        return col.count()
+    elif fn == "first":
+        return col.first()
+    elif fn == "last":
+        return col.last()
+    elif fn in ("n_unique", "nunique"):
+        return col.n_unique()
+    else:
+        raise ValueError(f"pivot_polars: unsupported aggregation function '{func}'")
+
+
 def pivot_polars(
     df: pl.DataFrame,
     r: str | Sequence[str] | None = None,
     c: str | Sequence[str] | None = None,
-    v: str | Sequence[str] | None = None,
+    v: Any = None,
     a: str = "sum",
     dropna: bool = False,
     fill_value: Any = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
-    """Pivot a Polars DataFrame matching pytae's pivot semantics."""
+    """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
     if kwargs:
         raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
-    if a in ("n", "size") and fill_value is None:
-        fill_value = 0
+
+    all_cols = list(df.columns)
 
     def _norm(spec: Any) -> list[str]:
         if spec is None:
@@ -192,41 +220,250 @@ def pivot_polars(
 
     r_cols = _norm(r)
     c_cols = _norm(c)
-    v_cols = _norm(v)
 
-    if not c_cols:
-        raise ValueError("pivot_polars requires column dimension 'c'")
+    for col in r_cols:
+        if col not in df.columns:
+            import difflib
+            close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): r (rows) column '{col}' not found in DataFrame{hint}")
 
-    aggfunc = "len" if a in ("n", "size") else a
+    for col in c_cols:
+        if col not in df.columns:
+            import difflib
+            close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): c (cols) column '{col}' not found in DataFrame{hint}")
+
+    dim_counts: dict[str, int] = {}
+    for col in r_cols + c_cols:
+        dim_counts[col] = dim_counts.get(col, 0) + 1
+    dups = [col for col, count in dim_counts.items() if count > 1]
+    if dups:
+        raise ValueError(f"pivot(): column(s) {dups} cannot appear multiple times in grouping dimensions (r/c)")
+
+    from pytae.shape import parse_pivot_metrics
+    metrics = parse_pivot_metrics(v, a=a, df_cols=all_cols)
+    if not metrics:
+        raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
+
+    for m in metrics:
+        if m.src_col is not None and m.src_col not in df.columns:
+            import difflib
+            close = difflib.get_close_matches(str(m.src_col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): value column '{m.src_col}' not found in DataFrame{hint}")
+
+    overlap = [m.src_col for m in metrics if m.src_col is not None and ((r_cols and m.src_col in r_cols) or (c_cols and m.src_col in c_cols))]
+    if overlap:
+        if all(m.aggfunc in ("size", "len") for m in metrics if m.src_col in overlap):
+            raise ValueError(
+                f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
+                "For row counts (a='n'), omit 'v' or specify a non-grouping column."
+            )
+        else:
+            raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
+
+    out_names = [m.out_name for m in metrics]
+    if len(out_names) != len(set(out_names)):
+        v_dups = [name for name in dict.fromkeys(out_names) if out_names.count(name) > 1]
+        raise ValueError(f"pivot(): value column(s) {v_dups} cannot appear multiple times in 'v'")
+
+    if r_cols and not c_cols:
+        for m in metrics:
+            if m.out_name in r_cols:
+                if m.aggfunc in ("size", "len"):
+                    raise ValueError(
+                        f"pivot(): count column name '{m.out_name}' collides with row grouping column. "
+                        "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                    )
+                else:
+                    raise ValueError(f"pivot(): resulting column header '{m.out_name}' collides with row grouping column.")
 
     work_df = df
-    pivot_on = c_cols
-    if len(c_cols) > 1:
-        # Combine multiple column dimension keys into a single string formatted key (e.g. 'East_2020')
-        col_exprs = [pl.col(col).cast(pl.String) for col in c_cols]
-        work_df = work_df.with_columns(pl.concat_str(col_exprs, separator="_").alias("__pt_c_key__"))
-        pivot_on = ["__pt_c_key__"]
+    if dropna:
+        dim_cols = r_cols + c_cols
+        if dim_cols:
+            work_df = work_df.drop_nulls(subset=dim_cols)
 
-    val_arg = v_cols[0] if len(v_cols) == 1 else (v_cols if v_cols else None)
-    if val_arg is None:
-        work_df = work_df.with_columns(pl.lit(1).alias("__pt_n_val__"))
-        val_arg = "__pt_n_val__"
+    if r_cols and c_cols:
+        pivot_on = c_cols
+        if len(c_cols) > 1:
+            col_exprs = [pl.col(col).cast(pl.String) for col in c_cols]
+            work_df = work_df.with_columns(pl.concat_str(col_exprs, separator="_").alias("__pt_c_key__"))
+            pivot_on = ["__pt_c_key__"]
 
-    res = work_df.pivot(
-        on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
-        index=r_cols if r_cols else None,
-        values=val_arg,
-        aggregate_function=cast(Any, aggfunc),
-        sort_columns=True,
-    )
+        need_prefix = len(metrics) > 1
+        pivoted_dfs: list[pl.DataFrame] = []
 
-    if fill_value is not None:
-        res = res.fill_null(fill_value)
+        for m in metrics:
+            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
 
-    if r_cols:
+            if m.src_col is None:
+                m_df = work_df.with_columns(pl.lit(1).alias("__pt_n__"))
+                val_col = "__pt_n__"
+                agg_fn = "len"
+            else:
+                m_df = work_df
+                val_col = m.src_col
+                agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
+
+            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            if agg_fn in native_aggs:
+                piv_m = m_df.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index=r_cols,
+                    values=val_col,
+                    aggregate_function=cast(Any, agg_fn),
+                    sort_columns=True,
+                )
+            else:
+                grouped = m_df.group_by([*r_cols, *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                piv_m = grouped.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index=r_cols,
+                    values=val_col,
+                    aggregate_function="first",
+                    sort_columns=True,
+                )
+
+            data_cols = [c for c in piv_m.columns if c not in r_cols]
+            if prefix:
+                piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
+                data_cols = [f"{prefix}_{c}" for c in data_cols]
+
+            if fill_value is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            elif agg_fn == "len":
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
+
+            pivoted_dfs.append(piv_m)
+
+        res = pivoted_dfs[0]
+        for next_df in pivoted_dfs[1:]:
+            res = res.join(next_df, on=r_cols, how="full", coalesce=True)
+
         res = res.sort(r_cols)
+        return res
 
-    return res
+    elif r_cols:
+        exprs: list[pl.Expr] = []
+        for m in metrics:
+            if m.src_col is None or m.aggfunc in ("size", "len"):
+                expr = pl.len().alias(m.out_name)
+            else:
+                expr = _polars_agg_expr(pl.col(m.src_col), m.aggfunc).alias(m.out_name)
+            exprs.append(expr)
+
+        res = work_df.group_by(r_cols).agg(exprs).sort(r_cols)
+        if fill_value is not None:
+            res = res.fill_null(fill_value)
+        return res
+
+    elif c_cols:
+        pivot_on = c_cols
+        if len(c_cols) > 1:
+            col_exprs = [pl.col(col).cast(pl.String) for col in c_cols]
+            work_df = work_df.with_columns(pl.concat_str(col_exprs, separator="_").alias("__pt_c_key__"))
+            pivot_on = ["__pt_c_key__"]
+
+        need_prefix = len(metrics) > 1
+        if len(metrics) == 1:
+            m = metrics[0]
+            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
+
+            if m.src_col is None:
+                m_df = work_df.with_columns([pl.lit(1).alias("__pt_n__"), pl.lit(1).alias("__dummy__")])
+                val_col = "__pt_n__"
+                agg_fn = "len"
+            else:
+                m_df = work_df.with_columns(pl.lit(1).alias("__dummy__"))
+                val_col = m.src_col
+                agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
+
+            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            if agg_fn in native_aggs:
+                piv_m = m_df.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index="__dummy__",
+                    values=val_col,
+                    aggregate_function=cast(Any, agg_fn),
+                    sort_columns=True,
+                ).drop("__dummy__")
+            else:
+                grouped = m_df.group_by(["__dummy__", *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                piv_m = grouped.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index="__dummy__",
+                    values=val_col,
+                    aggregate_function="first",
+                    sort_columns=True,
+                ).drop("__dummy__")
+
+            data_cols = list(piv_m.columns)
+            if prefix:
+                piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
+                data_cols = [f"{prefix}_{c}" for c in data_cols]
+
+            if fill_value is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            elif agg_fn == "len":
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
+
+            return piv_m
+        else:
+            rows: list[pl.DataFrame] = []
+            for m in metrics:
+                if m.src_col is None:
+                    m_df = work_df.with_columns([pl.lit(1).alias("__pt_n__"), pl.lit(m.out_name).alias("metric")])
+                    val_col = "__pt_n__"
+                    agg_fn = "len"
+                else:
+                    m_df = work_df.with_columns(pl.lit(m.out_name).alias("metric"))
+                    val_col = m.src_col
+                    agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
+
+                native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+                if agg_fn in native_aggs:
+                    piv_m = m_df.pivot(
+                        on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                        index="metric",
+                        values=val_col,
+                        aggregate_function=cast(Any, agg_fn),
+                        sort_columns=True,
+                    )
+                else:
+                    grouped = m_df.group_by(["metric", *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                    piv_m = grouped.pivot(
+                        on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                        index="metric",
+                        values=val_col,
+                        aggregate_function="first",
+                        sort_columns=True,
+                    )
+                rows.append(piv_m)
+
+            res = pl.concat(rows, how="vertical")
+            data_cols = [c for c in res.columns if c != "metric"]
+            if fill_value is not None:
+                res = res.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            return res
+
+    else:
+        exprs = []
+        for m in metrics:
+            if m.src_col is None or m.aggfunc in ("size", "len"):
+                expr = pl.len().alias(m.out_name)
+            else:
+                expr = _polars_agg_expr(pl.col(m.src_col), m.aggfunc).alias(m.out_name)
+            exprs.append(expr)
+
+        res = work_df.select(exprs)
+        if fill_value is not None:
+            res = res.fill_null(fill_value)
+        return res
 
 
 def _ast_to_polars_expr(

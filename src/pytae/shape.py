@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import difflib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -12,6 +13,145 @@ from pytae._text import unquote_name as _unquote_name
 from pytae.other_utilities import safe_reset_index
 
 _safe_reset_index = safe_reset_index
+
+
+@dataclass
+class PivotMetric:
+    src_col: str | None
+    out_name: str
+    aggfunc: str
+    has_alias: bool = False
+    has_explicit_func: bool = False
+
+
+def _parse_single_metric_expr(item: str, default_a: str) -> list[PivotMetric]:
+    item = item.strip()
+    if not item:
+        return []
+
+    alias: str | None = None
+    has_alias = False
+    if "=" in item:
+        parts = _tokenize(item, "=", track_brackets=True, keep_quotes=True)
+        if len(parts) >= 2 and parts[0].strip():
+            alias = _unquote_name(parts[0].strip())
+            has_alias = True
+            rest = "=".join(parts[1:]).strip()
+        else:
+            rest = item
+    else:
+        rest = item
+
+    norm_rest = rest.strip()
+    if norm_rest.lower() in ("n", "n()", "size", "size()", "count()"):
+        out_name = alias if has_alias and alias else "n"
+        return [PivotMetric(
+            src_col=None,
+            out_name=out_name,
+            aggfunc="size",
+            has_alias=has_alias,
+            has_explicit_func=True,
+        )]
+
+    col_part = rest
+    funcs: list[str] = []
+    if ":" in rest:
+        colon_parts = _tokenize(rest, ":", track_brackets=True, keep_quotes=True)
+        if len(colon_parts) >= 2 and colon_parts[0].strip():
+            col_part = colon_parts[0].strip()
+            func_spec = ":".join(colon_parts[1:]).strip()
+            if (func_spec.startswith("[") and func_spec.endswith("]")) or (func_spec.startswith("(") and func_spec.endswith(")")):
+                inner = func_spec[1:-1].strip()
+                funcs = [_unquote_name(f.strip()) for f in _tokenize(inner, ",") if f.strip()]
+            else:
+                funcs = [_unquote_name(func_spec)]
+
+    src_col = _unquote_name(col_part.strip())
+    if not funcs:
+        agg = "size" if default_a in ("n", "size") else default_a
+        out_name = alias if has_alias and alias else src_col
+        return [PivotMetric(
+            src_col=src_col,
+            out_name=out_name,
+            aggfunc=agg,
+            has_alias=has_alias,
+            has_explicit_func=False,
+        )]
+
+    res: list[PivotMetric] = []
+    for f in funcs:
+        agg = "size" if f in ("n", "size") else f
+        if has_alias and len(funcs) == 1:
+            out_name = alias if alias else f"{src_col}_{f}"
+        elif has_alias and len(funcs) > 1:
+            out_name = f"{alias}_{f}"
+        else:
+            out_name = f"{src_col}_{f}"
+        res.append(PivotMetric(
+            src_col=src_col,
+            out_name=out_name,
+            aggfunc=agg,
+            has_alias=has_alias,
+            has_explicit_func=True,
+        ))
+    return res
+
+
+def parse_pivot_metrics(
+    v: Any,
+    a: str = "sum",
+    df_cols: Sequence[str] | None = None,
+) -> list[PivotMetric]:
+    """Parse rich metric mappings in v for pivot operations."""
+    if v is None:
+        if a in ("n", "size"):
+            return [PivotMetric(src_col=None, out_name="n", aggfunc="size", has_alias=False, has_explicit_func=True)]
+        return []
+
+    if isinstance(v, Mapping):
+        metrics: list[PivotMetric] = []
+        for key, val in v.items():
+            key_str = _unquote_name(str(key).strip())
+            if isinstance(val, (list, tuple)):
+                for f in val:
+                    f_str = str(f).strip()
+                    agg = "size" if f_str in ("n", "size") else f_str
+                    metrics.append(PivotMetric(
+                        src_col=key_str,
+                        out_name=f"{key_str}_{f_str}",
+                        aggfunc=agg,
+                        has_alias=False,
+                        has_explicit_func=True,
+                    ))
+            elif isinstance(val, str) and (":" in val or val.strip().lower() in ("n", "size")):
+                metrics.extend(_parse_single_metric_expr(f"{key_str} = {val}", default_a=a))
+            else:
+                f_str = str(val).strip()
+                agg = "size" if f_str in ("n", "size") else f_str
+                metrics.append(PivotMetric(
+                    src_col=key_str,
+                    out_name=key_str,
+                    aggfunc=agg,
+                    has_alias=False,
+                    has_explicit_func=True,
+                ))
+        return metrics
+
+    if isinstance(v, (list, tuple, set)):
+        metrics = []
+        for item in v:
+            metrics.extend(_parse_single_metric_expr(str(item), default_a=a))
+        return metrics
+
+    if isinstance(v, str):
+        raw_items = [t for t in _tokenize(v, ",", track_brackets=True, keep_quotes=True) if t.strip()]
+        metrics = []
+        for item in raw_items:
+            metrics.extend(_parse_single_metric_expr(item, default_a=a))
+        return metrics
+
+    return _parse_single_metric_expr(str(v), default_a=a)
+
 
 
 def long(
@@ -253,13 +393,8 @@ def pivot(
                 raise KeyError(f"pivot(): {param_name} column '{col}' not found in DataFrame{hint}")
         return cols
 
-    aggfunc = "size" if a == "n" else a
-    if aggfunc == "size" and fill_value is None:
-        fill_value = 0
-
     r_cols = _normalize_cols(r, "r (rows)")
     c_cols = _normalize_cols(c, "c (cols)")
-    v_cols = _normalize_cols(v, "v (values)")
 
     dim_counts: dict[str, int] = {}
     for col in r_cols + c_cols:
@@ -268,22 +403,41 @@ def pivot(
     if dups:
         raise ValueError(f"pivot(): column(s) {dups} cannot appear multiple times in grouping dimensions (r/c)")
 
-    if len(v_cols) != len(set(v_cols)):
-        v_dups = [col for col in dict.fromkeys(v_cols) if v_cols.count(col) > 1]
-        raise ValueError(f"pivot(): value column(s) {v_dups} cannot appear multiple times in 'v'")
-
-    if not v_cols and aggfunc != "size":
+    metrics = parse_pivot_metrics(v, a=a, df_cols=all_cols)
+    if not metrics:
         raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
 
-    overlap = [col for col in v_cols if (r_cols and col in r_cols) or (c_cols and col in c_cols)]
+    for m in metrics:
+        if m.src_col is not None and m.src_col not in df.columns:
+            close = difflib.get_close_matches(str(m.src_col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): value column '{m.src_col}' not found in DataFrame{hint}")
+
+    overlap = [m.src_col for m in metrics if m.src_col is not None and ((r_cols and m.src_col in r_cols) or (c_cols and m.src_col in c_cols))]
     if overlap:
-        if aggfunc == "size":
+        if all(m.aggfunc == "size" for m in metrics if m.src_col in overlap):
             raise ValueError(
                 f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
                 "For row counts (a='n'), omit 'v' or specify a non-grouping column."
             )
         else:
             raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
+
+    out_names = [m.out_name for m in metrics]
+    if len(out_names) != len(set(out_names)):
+        v_dups = [name for name in dict.fromkeys(out_names) if out_names.count(name) > 1]
+        raise ValueError(f"pivot(): value column(s) {v_dups} cannot appear multiple times in 'v'")
+
+    if r_cols and not c_cols:
+        for m in metrics:
+            if m.out_name in r_cols:
+                if m.aggfunc == "size":
+                    raise ValueError(
+                        f"pivot(): count column name '{m.out_name}' collides with row grouping column. "
+                        "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                    )
+                else:
+                    raise ValueError(f"pivot(): resulting column header '{m.out_name}' collides with row grouping column.")
 
     observed = kwargs.get("observed", True)
 
@@ -294,110 +448,146 @@ def pivot(
             return str(int(part))
         return str(part)
 
-    def _flatten_cols(piv: pd.DataFrame) -> None:
+    def _flatten_cols(piv: pd.DataFrame, prefix: str | None = None) -> list[str]:
         raw_names: list[str] = []
         if isinstance(piv.columns, pd.MultiIndex):
             for col in piv.columns:
                 formatted_parts = [_format_part(part) for part in col if part is not None]
-                raw_names.append("_".join(formatted_parts))
+                base_name = "_".join(formatted_parts)
+                raw_names.append(f"{prefix}_{base_name}" if prefix else base_name)
         else:
-            raw_names = [_format_part(col) for col in piv.columns]
+            for col in piv.columns:
+                base_name = _format_part(col)
+                raw_names.append(f"{prefix}_{base_name}" if prefix else base_name)
+        return raw_names
 
-        duplicates = []
-        seen = set()
-        for name in raw_names:
-            if name in seen and name not in duplicates:
-                duplicates.append(name)
-            seen.add(name)
+    if r_cols and c_cols:
+        group_keys = list(r_cols) + list(c_cols)
+        need_prefix = len(metrics) > 1
+        pivoted_dfs: list[pd.DataFrame] = []
+        for m in metrics:
+            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
+            if m.src_col is None or m.aggfunc == "size":
+                s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
+                fv = fill_value if fill_value is not None else 0
+                piv_m = s.unstack(list(c_cols), fill_value=fv)
+            else:
+                g = df.groupby(group_keys, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                piv_m = g.unstack(list(c_cols), fill_value=fill_value)
+            new_cols = _flatten_cols(piv_m, prefix=prefix)
+            piv_m.columns = new_cols
+            pivoted_dfs.append(piv_m)
+
+        concatenated = pd.concat(pivoted_dfs, axis=1)
+        all_col_names = list(concatenated.columns)
+        duplicates = [c for c in dict.fromkeys(all_col_names) if all_col_names.count(c) > 1]
         if duplicates:
             raise ValueError(
                 f"pivot(): resulting column header(s) {duplicates} contain duplicate names. "
                 "Ensure pivoted column keys have distinct string representations."
             )
-        piv.columns = raw_names
+        res = _safe_reset_index(concatenated)
+        res.columns.name = None
+        for m in metrics:
+            if m.aggfunc == "size":
+                m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
+                prefix = m.out_name if m_prefix_needed else ""
+                val_cols = [c for c in res.columns if not (r_cols and c in r_cols) and (not prefix or c.startswith(prefix))]
+                for c in val_cols:
+                    try:
+                        if res[c].isna().any():
+                            res[c] = res[c].astype("Int64")
+                        else:
+                            res[c] = res[c].astype("int64")
+                    except (TypeError, ValueError):
+                        pass
+        return res
+    elif r_cols:
+        col_dfs: list[pd.DataFrame] = []
+        for m in metrics:
+            if m.src_col is None or m.aggfunc == "size":
+                s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
+                col_df = s.to_frame(name=m.out_name)
+            else:
+                g = df.groupby(r_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                col_df = g.to_frame(name=m.out_name)
+            if fill_value is not None:
+                col_df = col_df.fillna(fill_value)
+            col_dfs.append(col_df)
 
-    def _cast_size_ints(df_out: pd.DataFrame) -> pd.DataFrame:
-        if aggfunc == "size":
-            val_cols = [col for col in df_out.columns if not (r_cols and col in r_cols)]
-            for col in val_cols:
+        combined = pd.concat(col_dfs, axis=1)
+        res = _safe_reset_index(combined)
+        res.columns.name = None
+        for m in metrics:
+            if m.aggfunc == "size" and m.out_name in res.columns:
                 try:
-                    if df_out[col].isna().any():
-                        df_out[col] = df_out[col].astype("Int64")
+                    if res[m.out_name].isna().any():
+                        res[m.out_name] = res[m.out_name].astype("Int64")
                     else:
-                        df_out[col] = df_out[col].astype("int64")
+                        res[m.out_name] = res[m.out_name].astype("int64")
                 except (TypeError, ValueError):
                     pass
-        return df_out
-
-    val_arg = v_cols[0] if len(v_cols) == 1 else v_cols
-
-    if r_cols and c_cols:
-        group_keys = list(r_cols) + list(c_cols)
-        if aggfunc == "size":
-            s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
-            pivoted = s.unstack(list(c_cols), fill_value=fill_value if fill_value is not None else 0)
-        else:
-            g = df.groupby(group_keys, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
-            pivoted = g.unstack(list(c_cols), fill_value=fill_value)
-        _flatten_cols(pivoted)
-        res = _safe_reset_index(pivoted)
-        res.columns.name = None
-        return _cast_size_ints(res)
-    elif r_cols:
-        if aggfunc == "size":
-            target_name = v_cols[0] if v_cols else "n"
-            if target_name in r_cols:
-                raise ValueError(
-                    f"pivot(): count column name '{target_name}' collides with row grouping column. "
-                    "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
-                )
-            s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
-            res = s.to_frame(name=target_name).reset_index()
-            res.columns.name = None
-            return _cast_size_ints(res)
-        else:
-            g = df.groupby(r_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
-            pivoted = g if isinstance(g, pd.DataFrame) else g.to_frame()
+        return res
+    elif c_cols:
+        need_prefix = len(metrics) > 1
+        if len(metrics) == 1:
+            m = metrics[0]
+            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
+            if m.src_col is None or m.aggfunc == "size":
+                s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
+                pivoted = s.to_frame().T.reset_index(drop=True)
+            else:
+                g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                pivoted = g.to_frame().T.reset_index(drop=True)
             if fill_value is not None:
                 pivoted = pivoted.fillna(fill_value)
-            _flatten_cols(pivoted)
+            pivoted.columns = _flatten_cols(pivoted, prefix=prefix)
+            pivoted.columns.name = None
+            if m.aggfunc == "size":
+                for col in pivoted.columns:
+                    try:
+                        pivoted[col] = pivoted[col].astype("int64")
+                    except (TypeError, ValueError):
+                        pass
+            return pivoted
+        else:
+            rows: list[pd.DataFrame] = []
+            for m in metrics:
+                if m.src_col is None or m.aggfunc == "size":
+                    s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
+                    row_df = s.to_frame().T
+                else:
+                    g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                    row_df = g.to_frame().T
+                if fill_value is not None:
+                    row_df = row_df.fillna(fill_value)
+                row_df.index = [m.out_name]
+                rows.append(row_df)
+            pivoted = pd.concat(rows)
+            pivoted.columns = _flatten_cols(pivoted)
+            pivoted.index.name = "metric"
             res = _safe_reset_index(pivoted)
             res.columns.name = None
             return res
-    elif c_cols:
-        if aggfunc == "size":
-            s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
-            pivoted = s.to_frame().T.reset_index(drop=True)
-            _flatten_cols(pivoted)
-            pivoted.columns.name = None
-            return _cast_size_ints(pivoted)
-        else:
-            g = df.groupby(c_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
-            if len(v_cols) == 1:
-                pivoted = g.to_frame().T.reset_index(drop=True)
-                if fill_value is not None:
-                    pivoted = pivoted.fillna(fill_value)
-                _flatten_cols(pivoted)
-                pivoted.columns.name = None
-                return pivoted
-            else:
-                pivoted = g.T
-                if fill_value is not None:
-                    pivoted = pivoted.fillna(fill_value)
-                _flatten_cols(pivoted)
-                pivoted.index.name = "metric"
-                res = _safe_reset_index(pivoted)
-                res.columns.name = None
-                return res
     else:
-        if aggfunc == "size":
-            target_cols = v_cols if v_cols else ["n"]
-            res = pd.DataFrame({col: [len(df)] for col in target_cols}, dtype="int64")
-        else:
-            res = df[v_cols].agg(aggfunc).to_frame().T.reset_index(drop=True)
+        data: dict[str, Any] = {}
+        for m in metrics:
+            if m.src_col is None or m.aggfunc == "size":
+                val = len(df)
+            else:
+                val = df[m.src_col].agg(m.aggfunc)
+            data[m.out_name] = [val]
+        res = pd.DataFrame(data)
         if fill_value is not None:
             res = res.fillna(fill_value)
-        _flatten_cols(res)
+        for m in metrics:
+            if m.aggfunc == "size" and m.out_name in res.columns:
+                try:
+                    res[m.out_name] = res[m.out_name].astype("int64")
+                except (TypeError, ValueError):
+                    pass
         res.columns.name = None
-        return _cast_size_ints(res)
+        return res
 

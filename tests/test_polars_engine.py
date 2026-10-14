@@ -360,3 +360,62 @@ def test_cli_tty_boxed_output(tmp_path, monkeypatch, capsys):
     assert "shape: (2, 1)" in out
 
 
+def test_pivot_polars_rich_metrics_1d():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West", "West", "East"],
+        "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+        "profit": [10.0, 25.0, 35.0, 50.0, 20.0],
+    })
+    res = pivot_polars(df, r="region", v="rev = sales:sum, avg_sales = sales:mean, orders = n")
+    assert res.columns == ["region", "rev", "avg_sales", "orders"]
+    assert res["region"].to_list() == ["East", "West"]
+    assert res["rev"].to_list() == [450.0, 700.0]
+    assert res["avg_sales"].to_list() == [150.0, 350.0]
+    assert res["orders"].to_list() == [3, 2]
+
+
+def test_pivot_polars_rich_metrics_2d():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West", "West", "East"],
+        "year": [2020, 2020, 2020, 2021, 2021],
+        "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+    })
+    res = pivot_polars(df, r="region", c="year", v="rev = sales:sum, orders = n")
+    assert res.columns == ["region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"]
+    assert res["region"].to_list() == ["East", "West"]
+    assert res["rev_2020"].to_list() == [300.0, 300.0]
+    assert res["rev_2021"].to_list() == [150.0, 400.0]
+    assert res["orders_2020"].to_list() == [2, 1]
+    assert res["orders_2021"].to_list() == [1, 1]
+
+
+def test_pivot_polars_multi_func_single_col():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West"],
+        "sales": [100.0, 200.0, 300.0],
+    })
+    res = pivot_polars(df, r="region", v="sales:[mean, sum]")
+    assert res.columns == ["region", "sales_mean", "sales_sum"]
+    assert res["sales_mean"].to_list() == [150.0, 300.0]
+    assert res["sales_sum"].to_list() == [300.0, 300.0]
+
+
+def test_pivot_polars_whole_table_and_c_only():
+    df = pl.DataFrame({
+        "year": [2020, 2020, 2021],
+        "sales": [100.0, 200.0, 300.0],
+    })
+    # Whole table
+    res_whole = pivot_polars(df, v="total = sales:sum, count = n")
+    assert res_whole.columns == ["total", "count"]
+    assert res_whole["total"].to_list() == [600.0]
+    assert res_whole["count"].to_list() == [3]
+
+    # c only
+    res_c = pivot_polars(df, c="year", v="sales", a="sum")
+    assert res_c.columns == ["2020", "2021"]
+    assert res_c["2020"].to_list() == [300.0]
+    assert res_c["2021"].to_list() == [300.0]
+
+
+

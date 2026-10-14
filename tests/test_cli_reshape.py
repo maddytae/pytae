@@ -134,5 +134,43 @@ def test_crosstab_unrecognized_argument(tmp_path):
     assert exc_info.value.code == 2
 
 
+def test_cli_pivot_rich_metrics_1d(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Sales": [100.0, 200.0, 300.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=Region, v='avg_sales=Sales:mean, count=n'", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "avg_sales", "count"]
+
+
+def test_cli_pivot_rich_metrics_2d_unquoted(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Year": [2020, 2021, 2020],
+        "Sales": [100.0, 200.0, 300.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=Region, c=Year, v=rev=Sales:sum, count=n", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"] or cols == ["Region", "rev_2020", "rev_2021", "count_2020", "count_2021"]
+
+
+def test_cli_pivot_multi_func(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Sales": [100.0, 200.0, 300.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=Region, v=Sales:[mean, sum]", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "Sales_mean", "Sales_sum"]
+
+
+
 
 
