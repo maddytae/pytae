@@ -316,7 +316,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
                               "\"bmi = body_mass_g / bill_length_mm ** 2\" or \"(startswith=bill_) = _ / 10\"")
     parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
-                         help="run a SQL query (via duckdb) against the current view at this point in "
+                         help="run a SQL query (via Polars SQLContext) against the current view at this point in "
                               "the pipeline; the view is queryable as table `data`; standard SQL identifier "
                               "quoting applies (double quotes for names with spaces, e.g. \"col a\"; single "
                               "quotes are string literals, not identifiers), e.g. "

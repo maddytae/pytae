@@ -3,7 +3,6 @@
     df.rename(columns={...}).pt.agg_df(a="mean")
     df.pt.select("species", contains="bill").head()
     df.pt.select("species", "body_mass_g").pt.agg_df(a=["mean", "n"])
-    df.pt.sql("select species, avg(body_mass_g) from data group by species")
 """
 
 from __future__ import annotations
@@ -56,8 +55,8 @@ class PtAccessor:
     - arrange: Order rows by column(s) with inline direction ('desc', '-col').
     - pick: Group-aware top/bottom-N row slicing.
     - agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
-    - long / wide: Reshaping (melting to rows and pivoting to columns).
-    - sql: DuckDB SQL queries over the DataFrame (as table `data`).
+    - long / wide: Reshaping (melting to rows and unmelting to columns).
+    - pivot: 2D pivot tables with Excel-style (r, c, v, a) syntax.
     - clean_columns: Standardizing and normalizing column header names.
     - replace_values: Cell value replacement (exact or substring).
     - handle_missing: Missing value imputation with type-safe defaults.

@@ -29,9 +29,10 @@ DOCS_DIR = REPO_ROOT / "docs"
 
 def setup_temp_environment(tmpdir: str) -> None:
     """Pre-populate sample datasets in the temporary directory."""
-    import pytae
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+
+    import pytae
 
     sample_names = ["penguins", "tips", "titanic", "diamonds", "mpg", "flights"]
     for name in sample_names:
@@ -108,6 +109,7 @@ def format_table(raw_output: str) -> str:
     lines = raw.splitlines()
     if len(lines) >= 2 and not raw.startswith("Rows:") and not raw.startswith("<class"):
         import io
+
         import pandas as pd
         try:
             df = pd.read_csv(io.StringIO(raw), sep=r"\s+")

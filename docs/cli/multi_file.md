@@ -129,7 +129,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2; mar.parquet=m3" \
 
 ## Cross-File SQL Queries (`-sql`)
 
-Instead of `-merge`, you can start a `-file` pipeline with `-sql`. Every alias in `-file` is registered directly as an in-memory DuckDB table:
+Instead of `-merge`, you can start a `-file` pipeline with `-sql`. Every alias in `-file` is registered directly as an in-memory Polars SQL table:
 
 ```bash
 pytae -file "customers.csv=c; orders.parquet=o" \

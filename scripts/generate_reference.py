@@ -26,8 +26,7 @@ TABLE OF CONTENTS
     4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
     4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
-    4.11. pt.sql() / df.pt.sql() — DuckDB SQL Engine
-    4.12. Other Utilities:
+    4.11. Other Utilities:
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
           - pt.freq() / df.pt.freq()
@@ -37,7 +36,7 @@ TABLE OF CONTENTS
           - pt.replace_values() / df.pt.replace_values()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
-    4.13. Plotter — Visualization & Dashboarding (Plotting API)
+    4.12. Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -65,7 +64,7 @@ TABLE OF CONTENTS
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
     Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
-    Recipe 4: DuckDB SQL Query with Joining Frames
+    Recipe 4: Polars SQL Query in CLI Pipeline
     Recipe 5: Multi-File Merge, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
@@ -82,7 +81,7 @@ TABLE OF CONTENTS
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
-command-line tool built on top of Pandas, PyArrow, DuckDB, and Matplotlib.
+command-line tool built on top of Pandas, PyArrow, Polars, and Matplotlib.
 
 Key principles:
 1. Dual Calling Convention: Every library verb exists both as a functional 
@@ -118,7 +117,6 @@ Key principles:
 Installation (PyPI: https://pypi.org/project/pytae/):
   pip install pytae
   pip install 'pytae[plot]'    # includes matplotlib, scipy
-  pip install 'pytae[sql]'     # includes duckdb
 
 Importing:
   import pytae as pt
@@ -139,7 +137,6 @@ Top-Level Functions exported by `pytae`:
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
-  - pt.sql(df, query, **frames)
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
   - pt.cols(df, ascending=True)
   - pt.glimpse(df, width=None)
@@ -169,7 +166,6 @@ DataFrame Accessor (`df.pt`):
     df.pt.long(...)
     df.pt.wide(...)
     df.pt.pivot(...)
-    df.pt.sql(...)
     df.pt.handle_missing(...)
     df.pt.cols(...)
     df.pt.glimpse(...)
@@ -619,24 +615,7 @@ Examples:
   df.pt.pivot(r="island", c="species", a="n")
 
 
-4.11. pt.sql() / df.pt.sql() — DuckDB SQL Engine
---------------------------------------------------------------------------------
-Executes SQL queries directly over in-memory DataFrames using DuckDB.
-Requires: pip install 'pytae[sql]'
-
-Signature:
-  pt.sql(df: pd.DataFrame, query: str, **frames: pd.DataFrame) -> pd.DataFrame
-  df.pt.sql(query: str, **frames: pd.DataFrame) -> pd.DataFrame
-
-Rules & Features:
-  - Table 'data': The calling DataFrame is automatically registered as table `data`.
-  - Joining Extra DataFrames: Extra DataFrames passed as kwargs:
-    pt.sql(orders, "select * from data join cust using (cust_id)", cust=customers)
-  - Query From File: Pass external SQL file path prefixed with `@`:
-    df.pt.sql("@analysis.sql")
-
-
-4.12. Other Utilities
+4.11. Other Utilities
 --------------------------------------------------------------------------------
 - pt.cols(df, ascending=True):
   Returns list of column names (ascending=True for A-Z, False for Z-A, None for file order).
@@ -658,7 +637,7 @@ Rules & Features:
   Copies DataFrame or Series to clipboard as TSV without index.
 
 
-4.13. Plotter — Visualization & Dashboarding (Plotting API)
+4.12. Plotter — Visualization & Dashboarding (Plotting API)
 --------------------------------------------------------------------------------
 Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
@@ -760,7 +739,7 @@ Aggregation & Reshaping Flags:
   -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=n")
 
 SQL & Multi-File Flags:
-  -sql QUERY            Run DuckDB SQL on table 'data' (or @query.sql)
+  -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
   -file SPECS           Multi-file mode: "file1.parquet=df1; file2.csv=df2"
   -merge SPECS          Join files: "left=df1, right=df2, on=id, how=inner"
   -concat SPECS         Stack files: "frames='df1,df2'"
@@ -1018,17 +997,26 @@ top_bill = pt.pick(tips, "total_bill", n=1)[["day", "total_bill", "tip"]]
 pytae tips.parquet -by day -pick "tip,n=1" -select "day,total_bill,tip"
 ```
 
-Recipe 4: DuckDB SQL Query on DataFrame
+Recipe 4: Polars SQL Query in CLI Pipeline
 --------------------------------------------------------------------------------
-```python
-import pytae as pt
+```bash
+# Single-file analytical query against table 'data'
+pytae tips.parquet -sql "
+select 
+    day, 
+    time, 
+    count(*) as total_orders,
+    round(avg(total_bill), 2) as avg_bill,
+    round(avg(tip), 2) as avg_tip
+from data
+where total_bill > 15
+group by day, time
+order by avg_bill desc
+"
 
-tips = pt.sample("tips")
-
-query = \"\"\"\nselect \n    day, \n    time, \n    count(*) as total_orders,\n    round(avg(total_bill), 2) as avg_bill,\n    round(avg(tip), 2) as avg_tip\nfrom data\nwhere total_bill > 15\ngroup by day, time\norder by avg_bill desc\n\"\"\"
-
-result = tips.pt.sql(query)
-print(result)
+# Cross-file analytical join in -file mode
+pytae -file "customers.csv=c; orders.parquet=o" \
+      -sql "select c.name, sum(o.amount) as total from c join o on c.cust_id = o.cust_id group by c.name"
 ```
 
 Recipe 5: Multi-File Merge, Concat, and Export

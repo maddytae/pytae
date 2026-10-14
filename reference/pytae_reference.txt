@@ -18,8 +18,7 @@ TABLE OF CONTENTS
     4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
     4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
-    4.11. pt.sql() / df.pt.sql() — DuckDB SQL Engine
-    4.12. Other Utilities:
+    4.11. Other Utilities:
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
           - pt.freq() / df.pt.freq()
@@ -29,7 +28,7 @@ TABLE OF CONTENTS
           - pt.replace_values() / df.pt.replace_values()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
-    4.13. Plotter — Visualization & Dashboarding (Plotting API)
+    4.12. Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -57,7 +56,7 @@ TABLE OF CONTENTS
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
     Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
-    Recipe 4: DuckDB SQL Query with Joining Frames
+    Recipe 4: Polars SQL Query in CLI Pipeline
     Recipe 5: Multi-File Merge, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
@@ -74,7 +73,7 @@ TABLE OF CONTENTS
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
-command-line tool built on top of Pandas, PyArrow, DuckDB, and Matplotlib.
+command-line tool built on top of Pandas, PyArrow, Polars, and Matplotlib.
 
 Key principles:
 1. Dual Calling Convention: Every library verb exists both as a functional 
@@ -110,7 +109,6 @@ Key principles:
 Installation (PyPI: https://pypi.org/project/pytae/):
   pip install pytae
   pip install 'pytae[plot]'    # includes matplotlib, scipy
-  pip install 'pytae[sql]'     # includes duckdb
 
 Importing:
   import pytae as pt
@@ -131,7 +129,6 @@ Top-Level Functions exported by `pytae`:
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
-  - pt.sql(df, query, **frames)
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
   - pt.cols(df, ascending=True)
   - pt.glimpse(df, width=None)
@@ -161,7 +158,6 @@ DataFrame Accessor (`df.pt`):
     df.pt.long(...)
     df.pt.wide(...)
     df.pt.pivot(...)
-    df.pt.sql(...)
     df.pt.handle_missing(...)
     df.pt.cols(...)
     df.pt.glimpse(...)
@@ -611,24 +607,7 @@ Examples:
   df.pt.pivot(r="island", c="species", a="n")
 
 
-4.11. pt.sql() / df.pt.sql() — DuckDB SQL Engine
---------------------------------------------------------------------------------
-Executes SQL queries directly over in-memory DataFrames using DuckDB.
-Requires: pip install 'pytae[sql]'
-
-Signature:
-  pt.sql(df: pd.DataFrame, query: str, **frames: pd.DataFrame) -> pd.DataFrame
-  df.pt.sql(query: str, **frames: pd.DataFrame) -> pd.DataFrame
-
-Rules & Features:
-  - Table 'data': The calling DataFrame is automatically registered as table `data`.
-  - Joining Extra DataFrames: Extra DataFrames passed as kwargs:
-    pt.sql(orders, "select * from data join cust using (cust_id)", cust=customers)
-  - Query From File: Pass external SQL file path prefixed with `@`:
-    df.pt.sql("@analysis.sql")
-
-
-4.12. Other Utilities
+4.11. Other Utilities
 --------------------------------------------------------------------------------
 - pt.cols(df, ascending=True):
   Returns list of column names (ascending=True for A-Z, False for Z-A, None for file order).
@@ -650,7 +629,7 @@ Rules & Features:
   Copies DataFrame or Series to clipboard as TSV without index.
 
 
-4.13. Plotter — Visualization & Dashboarding (Plotting API)
+4.12. Plotter — Visualization & Dashboarding (Plotting API)
 --------------------------------------------------------------------------------
 Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
@@ -752,7 +731,7 @@ Aggregation & Reshaping Flags:
   -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=n")
 
 SQL & Multi-File Flags:
-  -sql QUERY            Run DuckDB SQL on table 'data' (or @query.sql)
+  -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
   -file SPECS           Multi-file mode: "file1.parquet=df1; file2.csv=df2"
   -merge SPECS          Join files: "left=df1, right=df2, on=id, how=inner"
   -concat SPECS         Stack files: "frames='df1,df2'"
@@ -1008,14 +987,11 @@ top_bill = pt.pick(tips, "total_bill", n=1)[["day", "total_bill", "tip"]]
 pytae tips.parquet -by day -pick "tip,n=1" -select "day,total_bill,tip"
 ```
 
-Recipe 4: DuckDB SQL Query on DataFrame
+Recipe 4: Polars SQL Query in CLI Pipeline
 --------------------------------------------------------------------------------
-```python
-import pytae as pt
-
-tips = pt.sample("tips")
-
-query = """
+```bash
+# Single-file analytical query against table 'data'
+pytae tips.parquet -sql "
 select 
     day, 
     time, 
@@ -1026,10 +1002,10 @@ from data
 where total_bill > 15
 group by day, time
 order by avg_bill desc
-"""
+"
 
-result = tips.pt.sql(query)
-print(result)
+# Cross-file analytical join in -file mode
+pytae -file "customers.csv=c; orders.parquet=o"       -sql "select c.name, sum(o.amount) as total from c join o on c.cust_id = o.cust_id group by c.name"
 ```
 
 Recipe 5: Multi-File Merge, Concat, and Export
@@ -1092,7 +1068,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ################################################################################
 # pytae — CLI Reference & Architecture Hub
 
-The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
+The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.pivot()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
 
 ---
 
@@ -1105,7 +1081,7 @@ The `pytae` CLI provides high-performance command-line data processing for tabul
   - [2. Column Selection](#column-selection)
   - [3. Row Filtering](#row-filtering)
   - [4. Feature Engineering & Mutation](#feature-engineering-mutation)
-  - [5. DuckDB SQL Engine](#duckdb-sql-engine)
+  - [5. SQL Engine (Polars SQLContext)](#sql-engine)
   - [6. Data Cleaning & Value Replacement](#data-cleaning-value-replacement)
   - [7. Aggregations & Group Operations](#aggregations-group-operations)
   - [8. Reshaping & Cross-Tabulation](#reshaping-cross-tabulation)
@@ -1168,7 +1144,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
 | **Distinct Rows** | [Distinct Rows Guide](cli/distinct.md) | `-distinct`, drop duplicate rows across all or specific column subsets |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, multi-column transforms (`(col1, col2) = _ * 2`), arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
-| **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
+| **SQL Engine** | [SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/agg.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
 | **Reshaping (Pure 1-to-1)** | [Reshaping Guide](cli/reshape.md) | `-long` (melt numeric columns), `-wide` (pure 1:1 unmelting) |
@@ -1282,13 +1258,13 @@ pytae penguins.parquet -mutate "mass_kg = body_mass_g / 1000" -select "species,b
 
 ---
 
-<a id="duckdb-sql-engine"></a>
-### 5. DuckDB SQL Engine
+<a id="sql-engine"></a>
+### 5. SQL Engine (Polars SQLContext)
 
-Run ad-hoc ANSI SQL queries directly against tabular datasets using DuckDB. Scans file formats like Parquet and CSV directly with zero-copy execution when placed first in the pipeline.
+Run ad-hoc ANSI SQL queries directly against tabular datasets using the native Polars SQL engine (`SQLContext`). Scans file formats like Parquet and CSV directly with zero-copy execution when placed first in the pipeline.
 
 - **Primary flags**: `-sql`
-- **Target table**: The active view is always queryable as table `data`.
+- **Target table**: The active view is always queryable as table `data`. In multi-file mode (`-file`), file aliases are queryable by name.
 
 ```bash
 pytae penguins.parquet -sql "select species, round(avg(body_mass_g), 2) as avg_mass from data group by species"
@@ -1302,7 +1278,7 @@ pytae penguins.parquet -sql "select species, round(avg(body_mass_g), 2) as avg_m
 | Adelie | 3700.66 |
 | Chinstrap | 3733.09 |
 
-👉 See the complete guide: **[DuckDB SQL Engine Guide](cli/sql.md)**
+👉 See the complete guide: **[SQL Engine Guide](cli/sql.md)**
 
 ---
 
@@ -1481,7 +1457,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-dropna [COLS]` | Select & Filter | Drop rows containing NaN (bare for all columns, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-pick SPEC` | Select & Filter | Pick top or bottom rows by column (`col,n=N`, `col,prop=P`, `order=max|min`), group-aware with `-by` | [cli/pick.md](cli/pick.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
-| `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |
+| `-sql QUERY` | Transform | Execute SQL query via Polars SQLContext against table `data` | [cli/sql.md](cli/sql.md) |
 | `-clean_columns SPEC` | Clean | Clean headers (strip, squeeze, strip_special, fill, case, dedupe) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-replace_values SPEC` | Clean | Replace cell values (`v=mapping`, `c=cols`, `exact=bool`) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-handle_missing [FILL]` | Clean | Fill NAs (`.` for object, `0` for numeric, or custom fill) | [cli/clean_replace.md](cli/clean_replace.md) |
@@ -1526,7 +1502,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Sort rows** | `-arrange` | [Row Sorting](cli/arrange.md) |
 | **Deduplicate rows** | `-distinct` | [Distinct Rows](cli/distinct.md) |
 | **Compute / mutate columns** | `-mutate` | [Mutating & Computing](cli/mutate.md) |
-| **Run SQL queries** | `-sql` | [DuckDB SQL Engine](cli/sql.md) |
+| **Run SQL queries** | `-sql` | [SQL Engine](cli/sql.md) |
 | **Replace cell values** | `-replace_values` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Impute missing values (NA)** | `-handle_missing` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/agg.md) |
@@ -3598,7 +3574,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2; mar.parquet=m3" \
 
 ## Cross-File SQL Queries (`-sql`)
 
-Instead of `-merge`, you can start a `-file` pipeline with `-sql`. Every alias in `-file` is registered directly as an in-memory DuckDB table:
+Instead of `-merge`, you can start a `-file` pipeline with `-sql`. Every alias in `-file` is registered directly as an in-memory Polars SQL table:
 
 ```bash
 pytae -file "customers.csv=c; orders.parquet=o" \
@@ -5327,7 +5303,7 @@ pytae penguins.parquet \
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Execute full analytical SQL queries directly against tabular files and in-memory pipeline views via DuckDB using `-sql`.
+Execute full analytical SQL queries directly against tabular files and in-memory pipeline views via Polars SQLContext using `-sql`.
 
 ---
 
@@ -5346,7 +5322,7 @@ Execute full analytical SQL queries directly against tabular files and in-memory
 
 ## Overview & Architecture
 
-Pytae integrates DuckDB to provide zero-copy, vectorized SQL execution directly against your data:
+Pytae integrates the native Polars SQL engine (`SQLContext`) to provide zero-copy, vectorized SQL execution directly against your data without external dependencies:
 - In single-file pipelines, the current dataset view is queryable as table **`data`**.
 - In multi-file mode (`-file`), each file alias (e.g. `df1`, `df2`) is queryable directly by name.
 - SQL can be inserted at any point in the pipeline and chained with other pytae flags.
@@ -5529,9 +5505,8 @@ pytae -file "customers.csv=c; orders.parquet=o" \
   - [6. Pure Reshaping (`long`, `wide`)](#6-pure-reshaping--long-wide)
   - [7. 2D Pivot Tables (`pivot`)](#7-2d-pivot-tables--pivot)
   - [8. Aggregation (`agg`)](#8-aggregation--agg)
-  - [9. DuckDB SQL Engine (`sql`)](#9-duckdb-sql-engine--sql)
-  - [10. Plotting (`Plotter` & `df.pt.plot`)](#10-plotting--plotter)
-  - [11. Utilities & Cleaning](#11-utilities--cleaning)
+  - [9. Plotting (`Plotter` & `df.pt.plot`)](#9-plotting--plotter)
+  - [10. Utilities & Cleaning](#10-utilities--cleaning)
 - [Bundled Sample Datasets](#sample-datasets)
 - [Syntax & Convention Cheat Sheet](#syntax-conventions)
 
@@ -5593,7 +5568,6 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.md](library/reshape.md) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.md](library/pivot.md) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.md](library/agg.md) |
-| **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.md](library/sql.md) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
 | **Utilities** | `glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, ASCII frequency bars & histograms, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.md](library/other_utilities.md) |
 
@@ -5786,28 +5760,8 @@ pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summ
 
 ---
 
-### 9. DuckDB SQL Engine — `sql()`
-
-Execute SQL queries directly over in-memory DataFrames using DuckDB (`pip install "pytae[sql]"`). The source DataFrame is queryable as table `data`, and additional frames can be registered as keyword arguments:
-
-```python
-# Query current frame as table 'data'
-pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from data group by species")
-
-# Multi-table joins and window functions
-pt.sql(orders, """
-    select o.id, c.name, o.amount
-    from data o
-    inner join customers c on o.cust_id = c.id
-""", customers=df_customers)
-```
-
-👉 **Complete Guide:** [library/sql.md](library/sql.md)
-
----
-
-<a id="10-plotting--plotter"></a>
-### 10. Plotting — `Plotter` & `df.pt.plot()`
+<a id="9-plotting--plotter"></a>
+### 9. Plotting — `Plotter` & `df.pt.plot()`
 
 Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, small-multiples grid faceting, and direct accessor chaining via `df.pt.plot()`:
 
@@ -5833,7 +5787,7 @@ p.finalize(consolidate_legends=True)
 
 ---
 
-### 11. Utilities & Cleaning
+### 10. Utilities & Cleaning
 
 Essential tabular utilities for everyday manipulation:
 
@@ -9934,243 +9888,6 @@ penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', '
 | Adelie    |
 | Adelie    |
 
-################################################################################
-# FILE: docs/library/sql.md
-################################################################################
-# `sql` — Reference
-
-[← Back to Library Reference Hub](../library.md)
-
-
-Run DuckDB SQL directly over a DataFrame. The current frame is registered as table **`data`**.
-Optional extra: `pip install 'pytae[sql]'` (pulls in `duckdb`).
-
-| Call style | Meaning |
-|---|---|
-| `pt.sql(df, query)` | Function form; the passed frame is table `data` |
-| `df.pt.sql(query)` | Accessor form; chains with pandas / other `pt` methods |
-| `pt.sql(df, query, extra=other)` | Register extra frames as additional tables (like CLI `-file` aliases) |
-
-The name `data` is reserved for the current frame — an extra frame cannot be named `data`.
-Column names with spaces need double quotes inside the query: `"bill length mm"`.
-
----
-
-```python
-import pandas as pd
-import pytae as pt
-
-penguins = pt.sample_data['penguins']
-tips = pt.sample_data['tips']
-titanic = pt.sample_data['titanic']
-penguins.head(3)
-```
-
-**Output:**
-
-| species   | island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
-|:----------|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
-| Adelie    | Torgersen |             39.1 |            18.7 |                 181 |          3750 | Male   |
-| Adelie    | Torgersen |             39.5 |            17.4 |                 186 |          3800 | Female |
-| Adelie    | Torgersen |             40.3 |            18   |                 195 |          3250 | Female |
-
-## Function form — current frame is table `data`
-
-```python
-# The passed DataFrame is registered as the table `data`
-pt.sql(
-    penguins,
-    'select species, avg(body_mass_g) as avg_mass, count(*) as n '
-    'from data group by species order by species'
-)
-```
-
-**Output:**
-
-| species   |   avg_mass |   n |
-|:----------|-----------:|----:|
-| Adelie    |    3700.66 | 152 |
-| Chinstrap |    3733.09 |  68 |
-| Gentoo    |    5076.02 | 124 |
-
-## Accessor form — `df.pt.sql(...)`
-
-Same query engine, but chains naturally off any DataFrame.
-
-```python
-# `data` inside the query refers to the frame the accessor is called on
-(
-    penguins
-    .pt.sql("select * from data where species = 'Adelie'")
-    .head()
-)
-```
-
-**Output:**
-
-| species   | island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
-|:----------|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
-| Adelie    | Torgersen |             39.1 |            18.7 |                 181 |          3750 | Male   |
-| Adelie    | Torgersen |             39.5 |            17.4 |                 186 |          3800 | Female |
-| Adelie    | Torgersen |             40.3 |            18   |                 195 |          3250 | Female |
-| Adelie    | Torgersen |            nan   |           nan   |                 nan |           nan | nan    |
-| Adelie    | Torgersen |             36.7 |            19.3 |                 193 |          3450 | Female |
-
-## Spaced column names — double quotes, brackets `[col]`, or backticks
-
-SQL standard uses double quotes for identifiers with spaces. `pytae` also accepts SQL-style square brackets `[col a]` and backticks (both converted to standard SQL double quotes before querying DuckDB):
-
-```python
-spaced = pd.DataFrame({'col a': [1, 20, 3], 'col b': ['x', 'y', 'z']})
-
-# Double quotes, brackets, and backticks all work
-pt.sql(spaced, 'select [col a], `col b` from data where [col a] > 2')
-```
-
-**Output:**
-
-|   col a | col b   |
-|--------:|:--------|
-|      20 | y       |
-|       3 | z       |
-
-## Extra frames — joins across DataFrames
-
-Pass additional DataFrames as keyword arguments; each becomes a table of that name.
-
-```python
-left = pd.DataFrame({'id': [1, 2, 3], 'x': ['a', 'b', 'c']})
-right = pd.DataFrame({'id': [1, 3], 'y': ['p', 'q']})
-
-# `left` is `data`; `right` is registered under the keyword name `extra`
-pt.sql(left, 'select data.id, x, y from data inner join extra using (id)', extra=right)
-```
-
-**Output:**
-
-|   id | x   | y   |
-|-----:|:----|:----|
-|    1 | a   | p   |
-|    3 | c   | q   |
-
-## Chaining — mix SQL with pandas and other `pt` methods
-
-```python
-# SQL to aggregate, then a plain pandas method, then another pt accessor call
-(
-    tips
-    .pt.sql('select day, time, sum(total_bill) as bill, sum(tip) as tip from data group by day, time')
-    .sort_values('bill', ascending=False)
-    .pt.mutate(tip_pct='tip / bill * 100')
-)
-```
-
-**Output:**
-
-| day   | time   |    bill |    tip |   tip_pct |
-|:------|:-------|--------:|-------:|----------:|
-| Sat   | Dinner | 1778.4  | 260.4  |   14.6424 |
-| Sun   | Dinner | 1627.16 | 247.39 |   15.2038 |
-| Thur  | Lunch  | 1077.55 | 168.83 |   15.668  |
-| Fri   | Dinner |  235.96 |  35.28 |   14.9517 |
-| Fri   | Lunch  |   89.92 |  16.68 |   18.5498 |
-| Thur  | Dinner |   18.78 |   3    |   15.9744 |
-
-## Loading queries from an external file — `@query.txt`
-
-Just like the CLI (`pytae data.parquet -sql @query.txt`), you can pass `@path.txt` to execute SQL queries directly from a file:
-
-```python
-import os
-with open('query_demo.txt', 'w') as f:
-    f.write('select species, avg(body_mass_g) as avg_mass from data group by species order by avg_mass desc')
-
-out = penguins.pt.sql('@query_demo.txt')
-if os.path.exists('query_demo.txt'):
-    os.remove('query_demo.txt')
-out
-```
-
-**Output:**
-
-| species   |   avg_mass |
-|:----------|-----------:|
-| Gentoo    |    5076.02 |
-| Chinstrap |    3733.09 |
-| Adelie    |    3700.66 |
-
-## Analytical SQL: Window Functions, CTEs, and Multi-Table Joins
-
-DuckDB supports full ANSI SQL features including window functions, common table expressions (CTEs), and joining external frames passed via keyword arguments:
-
-```python
-# 1. Window Functions (Ranking penguins within species by body mass)
-ranked_penguins = pt.sql(penguins, '''
-    select species, sex, island, body_mass_g,
-           dense_rank() over (partition by species order by body_mass_g desc) as rank_in_species
-    from data
-    where body_mass_g is not null
-    limit 10
-''')
-display(ranked_penguins)
-
-# 2. Common Table Expressions (CTEs)
-day_summary = pt.sql(tips, '''
-    with stats as (
-        select day, avg(total_bill) as avg_bill, avg(tip) as avg_tip, count(*) as n
-        from data
-        group by day
-    )
-    select day, round(avg_bill, 2) as avg_bill, round(avg_tip, 2) as avg_tip,
-           round(avg_tip / avg_bill * 100, 1) as tip_pct, n
-    from stats
-    order by avg_bill desc
-''')
-display(day_summary)
-
-# 3. Multi-Table Join with extra DataFrame
-df_classes = pd.DataFrame({'pclass': [1, 2, 3], 'class_name': ['First Class', 'Second Class', 'Third Class']})
-titanic_joined = pt.sql(titanic, '''
-    select d.sex, c.class_name, round(avg(d.survived) * 100, 1) as survival_rate_pct, count(*) as total_passengers
-    from data d
-    inner join classes c on d.pclass = c.pclass
-    group by d.sex, c.class_name
-    order by c.class_name, d.sex
-''', classes=df_classes)
-display(titanic_joined)
-```
-
-**Output:**
-
-| species   | sex   | island    |   body_mass_g |   rank_in_species |
-|:----------|:------|:----------|--------------:|------------------:|
-| Adelie    | Male  | Biscoe    |          4775 |                 1 |
-| Adelie    | Male  | Biscoe    |          4725 |                 2 |
-| Adelie    | Male  | Torgersen |          4700 |                 3 |
-| Adelie    | Male  | Torgersen |          4675 |                 4 |
-| Adelie    | Male  | Dream     |          4650 |                 5 |
-| Adelie    | Male  | Dream     |          4600 |                 6 |
-| Adelie    | Male  | Biscoe    |          4600 |                 6 |
-| Adelie    | Male  | Torgersen |          4500 |                 7 |
-| Adelie    | Male  | Dream     |          4475 |                 8 |
-| Adelie    | Male  | Dream     |          4450 |                 9 |
-
-| day   |   avg_bill |   avg_tip |   tip_pct |   n |
-|:------|-----------:|----------:|----------:|----:|
-| Sun   |      21.41 |      3.26 |      15.2 |  76 |
-| Sat   |      20.44 |      2.99 |      14.6 |  87 |
-| Thur  |      17.68 |      2.77 |      15.7 |  62 |
-| Fri   |      17.15 |      2.73 |      15.9 |  19 |
-
-| sex    | class_name   |   survival_rate_pct |   total_passengers |
-|:-------|:-------------|--------------------:|-------------------:|
-| female | First Class  |                96.8 |                 94 |
-| male   | First Class  |                36.9 |                122 |
-| female | Second Class |                92.1 |                 76 |
-| male   | Second Class |                15.7 |                108 |
-| female | Third Class  |                50   |                144 |
-| male   | Third Class  |                13.5 |                347 |
-
 ================================================================================
 10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
 ================================================================================
@@ -10543,8 +10260,8 @@ classifiers = [
 
 [project.optional-dependencies]
 plot = ["matplotlib", "scipy"]
-sql = ["duckdb>=0.9"]
-dev = ["pytest>=8.0.0", "matplotlib", "duckdb>=0.9", "scipy", "ruff>=0.8", "mypy>=1.13"]
+sql = []
+dev = ["pytest>=8.0.0", "matplotlib", "scipy", "ruff>=0.8", "mypy>=1.13"]
 notebooks = ["nbclient", "nbformat", "ipykernel", "scipy"]
 
 [project.scripts]
@@ -10628,7 +10345,6 @@ from .other_utilities import (
     safe_reset_index,
 )
 from .select import everything, select
-from .sql import sql
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -10726,7 +10442,6 @@ __all__ = [
     "clean_columns",
     "replace_values",
     "safe_reset_index",
-    "sql",
     "everything",
     "PtAccessor",
 ]
@@ -10834,7 +10549,6 @@ def unquote_name(raw: str) -> str:
     df.rename(columns={...}).pt.agg_df(a="mean")
     df.pt.select("species", contains="bill").head()
     df.pt.select("species", "body_mass_g").pt.agg_df(a=["mean", "n"])
-    df.pt.sql("select species, avg(body_mass_g) from data group by species")
 """
 
 from __future__ import annotations
@@ -10876,7 +10590,6 @@ from .other_utilities import (
     replace_values as _replace_values,
 )
 from .select import select as _select
-from .sql import sql as _sql
 
 
 @pd.api.extensions.register_dataframe_accessor("pt")
@@ -10888,8 +10601,8 @@ class PtAccessor:
     - arrange: Order rows by column(s) with inline direction ('desc', '-col').
     - pick: Group-aware top/bottom-N row slicing.
     - agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
-    - long / wide: Reshaping (melting to rows and pivoting to columns).
-    - sql: DuckDB SQL queries over the DataFrame (as table `data`).
+    - long / wide: Reshaping (melting to rows and unmelting to columns).
+    - pivot: 2D pivot tables with Excel-style (r, c, v, a) syntax.
     - clean_columns: Standardizing and normalizing column header names.
     - replace_values: Cell value replacement (exact or substring).
     - handle_missing: Missing value imputation with type-safe defaults.
@@ -10953,14 +10666,6 @@ class PtAccessor:
         if "by" in kwargs or "_by" in kwargs:
             raise TypeError("df.pt.mutate() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
         return _mutate(self._obj, *args, dropna=dropna, observed=observed, **kwargs)
-
-    def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
-        """Run DuckDB SQL queries over this DataFrame (registered as table `data`).
-
-        Additional DataFrames can be registered as keyword arguments. Spaced column
-        names can use brackets `[col]`, double quotes `"col"`, or backticks.
-        """
-        return _sql(self._obj, query, **frames)
 
     def arrange(
         self,
@@ -12016,8 +11721,7 @@ from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-
-import pandas as pd
+from typing import Any
 
 from pytae.cli_parsing import (
     expand_paths,
@@ -12325,7 +12029,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
                               "\"bmi = body_mass_g / bill_length_mm ** 2\" or \"(startswith=bill_) = _ / 10\"")
     parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
-                         help="run a SQL query (via duckdb) against the current view at this point in "
+                         help="run a SQL query (via Polars SQLContext) against the current view at this point in "
                               "the pipeline; the view is queryable as table `data`; standard SQL identifier "
                               "quoting applies (double quotes for names with spaces, e.g. \"col a\"; single "
                               "quotes are string literals, not identifiers), e.g. "
@@ -12367,7 +12071,7 @@ def build_parser() -> argparse.ArgumentParser:
                          default=None, metavar="N",
                          help="measure and print pipeline execution time (default: 1 run; optional N runs the pipeline N times and reports avg/min/max/total)")
     parser.add_argument("-pretty", "--pretty", action="store_true",
-                         help="render tables as a bordered markdown table instead of plain pandas text")
+                         help="[deprecated] table formatting is now automatically detected (boxed table for terminal, bare unbordered for pipes)")
     parser.add_argument("-pager", "--pager", action="store_true",
                          help="pipe long table or inspect outputs through system pager ($PAGER or less)")
     parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
@@ -12582,7 +12286,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _execute_once() -> int:
         if args.file is not None:
-            frames: dict[str, pd.DataFrame] = {}
+            frames: dict[str, Any] = {}
             for entry in parse_file_arg(args.file):
                 entry_path = Path(entry["path"])
                 if not entry_path.exists():
@@ -12592,9 +12296,16 @@ def main(argv: list[str] | None = None) -> int:
                 except ValueError as exc:
                     parser.error(f"-file: {exc}")
                 try:
-                    frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
+                    if args.progress:
+                        frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
+                    else:
+                        frames[entry["alias"]] = reader.to_polars(nrows=args.nrows)
                 except UnicodeError as exc:
                     parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
+                except Exception as exc:
+                    if "utf-8" in str(exc).lower():
+                        parser.error(_encoding_error_message(entry_path, entry["encoding"], UnicodeDecodeError("utf-8", b"", 0, 1, str(exc))))
+                    parser.error(f"-file: {exc}")
             failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
                                     filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
@@ -12670,9 +12381,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="sql",
         flag="-sql, --sql QUERY",
         syntax="pytae <path> -sql \"<QUERY>\" [other flags...]",
-        summary="Run full analytical SQL queries via DuckDB directly against data.",
+        summary="Run full analytical SQL queries via Polars SQLContext directly against data.",
         description=(
-            "Executes zero-copy, vectorized SQL queries via embedded DuckDB.\n"
+            "Executes zero-copy, vectorized SQL queries via embedded Polars SQLContext.\n"
             "- In single-file pipelines, the current dataset view is queryable as table `data`.\n"
             "- In multi-file mode (-file), each file alias (e.g. df1, df2) is queryable directly by name.\n"
             "- Standard SQL identifier quoting applies: double quotes for names with spaces (\"col a\"),\n"
@@ -12682,7 +12393,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=[
             "`data` : Default in-memory table representing the current pipeline view.",
             "@file.sql : Load SQL query string directly from an external SQL file.",
-            "DuckDB functions : Full support for CTEs, WINDOW functions, aggregate functions, and math.",
+            "Polars SQL functions : Full support for CTEs, WINDOW functions, aggregate functions, and math.",
         ],
         examples=[
             'pytae penguins.parquet -sql "select species, island, body_mass_g from data where body_mass_g > 5000" -head 5',
@@ -12860,20 +12571,23 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         syntax="pytae <path> -pivot \"r=rows,c=cols,v=values,a=func\"",
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
-            "Full multi-dimensional pivot table engine.\n"
+            "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
+            "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, count=n, col:[f1, f2]).\n"
             "Flattens multi-level column hierarchies to clean 1D strings and resets index to RangeIndex.\n"
             "Missing combinations default to fill_value (or 0 for row counts a=n)."
         ),
         options=[
             "r=row_cols : Row grouping dimension(s).",
-            "c=col_cols : Column dimension(s) to spread as headers.",
-            "v=value_cols : Metric column(s) to aggregate (optional when a=n).",
-            "a=func : Aggregation function (default: sum; 'n' for counts).",
+            "c=col_cols : Column dimension(s) to spread as headers (optional for 1D aggregations).",
+            "v=spec : Metric specification (e.g. Sales, Sales:mean, rev=Sales:sum, count=n, Sales:[mean,sum]).",
+            "a=func : Default aggregation function (default: sum; 'n' for counts).",
             "fill_value=val : Replacement for empty grid cells (default 0 for a=n).",
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
         examples=[
             "pytae penguins.parquet -pivot \"r=island,c=species,v=body_mass_g,a=mean\"",
+            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, count=n'\"   # 1D summary",
+            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=n'\"",
             "pytae penguins.parquet -pivot \"r=island,c=species,a=n\"   # Frequency cross-tabulation",
             "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,fill_value=0\"",
         ],
@@ -13273,12 +12987,11 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="pretty",
         flag="-pretty, --pretty",
         syntax="pytae <path> [operations] -pretty",
-        summary="Render terminal output as a bordered Markdown table.",
-        description="Formats DataFrame output as a GitHub-flavored Markdown bordered table via df.to_markdown().",
+        summary="[Deprecated] Table formatting is automatically detected.",
+        description="Deprecated. Table formatting is now automatically detected: boxed UTF-8 tables for interactive terminals and clean unbordered bare tables when piped or redirected.",
         options=[],
         examples=[
-            "pytae penguins.parquet -head 5 -pretty",
-            "pytae penguins.parquet -by species -agg mean -pretty",
+            "pytae penguins.parquet -head 5",
         ],
         see_also=["-pager", "-round"],
     ),
@@ -13905,14 +13618,17 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
                     "-wide: -wide is strictly for 1-to-1 reshaping without aggregation. "
                     "Use -pivot for aggregations (e.g. -pivot 'r=...,c=...,v=...,a=...')."
                 )
-            if key not in keys:
+            if key in keys:
+                if not value:
+                    raise SystemExit(f"{flag}: {key}= needs a value")
+                if key in kwargs:
+                    raise SystemExit(f"{flag}: {key}= given more than once")
+                current_key = key
+                kwargs[key] = value
+            elif current_key is not None:
+                kwargs[current_key] = f"{kwargs[current_key]},{_unquote_name(token)}"
+            else:
                 raise SystemExit(f"{flag}: unknown key {key!r}; expected {', '.join(keys)}")
-            if not value:
-                raise SystemExit(f"{flag}: {key}= needs a value")
-            if key in kwargs:
-                raise SystemExit(f"{flag}: {key}= given more than once")
-            current_key = key
-            kwargs[key] = value
         else:
             if current_key is None:
                 raise SystemExit(f"{flag}: expected key=value tokens ({', '.join(keys)})")
@@ -14222,6 +13938,67 @@ def parse_kv_spec(raw: str | None, *, flag: str) -> dict[str, Any]:
         kwargs[key] = val
     return kwargs
 
+
+def normalize_sql(query: str) -> str:
+    """Normalize SQL queries for CLI -sql: resolve @file references, convert backticks
+    `col` and brackets [col] to double-quoted identifiers "col" for standard SQL."""
+    q = query.strip()
+    if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
+        q = q[1:-1].strip()
+    if q.startswith("@"):
+        path = q[1:].strip()
+        if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+            path = path[1:-1].strip()
+        from pathlib import Path
+
+        file_path = Path(path)
+        if not file_path.is_file():
+            raise FileNotFoundError(f"sql: query file not found: '{path}'")
+        q = file_path.read_text(encoding="utf-8").strip()
+    out_chars: list[str] = []
+    i, n = 0, len(q)
+    quote = None
+    while i < n:
+        ch = q[i]
+        if quote is not None:
+            out_chars.append(ch)
+            if ch == quote:
+                if i + 1 < n and q[i + 1] == quote:
+                    out_chars.append(q[i + 1])
+                    i += 2
+                    continue
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            out_chars.append(ch)
+            i += 1
+            continue
+        if ch == "`":
+            j = q.find("`", i + 1)
+            if j != -1:
+                ident = q[i + 1 : j]
+                out_chars.append(f'"{ident}"')
+                i = j + 1
+                continue
+        if ch == "[":
+            j = q.find("]", i + 1)
+            if j != -1:
+                inner = q[i + 1 : j]
+                is_index = i > 0 and (q[i - 1].isalnum() or q[i - 1] in "_)]")
+                is_list_literal = "," in inner or "'" in inner or '"' in inner
+                has_ident = any(c.isalpha() or c == "_" for c in inner)
+                all_valid = all(c.isalnum() or c in " _-" for c in inner)
+                if not is_index and not is_list_literal and has_ident and all_valid:
+                    out_chars.append(f'"{inner}"')
+                    i = j + 1
+                    continue
+
+        out_chars.append(ch)
+        i += 1
+    return "".join(out_chars)
+
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -14241,13 +14018,6 @@ from pytae.filter import filter
 from pytae.mutate import mutate
 from pytae.other_utilities import replace_values, safe_reset_index
 from pytae.select import select
-
-
-def _sql_string_literal(value: str) -> str:
-    """Quote a plain Python string as a SQL string literal (escaping embedded quotes) —
-    duckdb table functions like read_parquet()/read_csv() can't be parameterized via
-    prepared-statement placeholders, so the path/delimiter must be inlined as a literal."""
-    return "'" + value.replace("'", "''") + "'"
 
 
 def _mask_quoted(spec: str) -> str:
@@ -14285,7 +14055,7 @@ class _Pipeline:
         self._pandas_df: pd.DataFrame | None = None
         self._pldf: Any | None = None
         self._pending_exact: list[str] | None = None
-        self._frames: dict[str, pd.DataFrame] = frames or {}
+        self._frames: dict[str, Any] = frames or {}
 
     @property
     def _df(self) -> pd.DataFrame | None:
@@ -14564,77 +14334,38 @@ class _Pipeline:
         return None
 
     def apply_sql(self, query: str) -> str | None:
-        """Apply one -sql query via duckdb. Single-file mode: the current view is registered
+        """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered
         as table `data` (the file itself is already named on the command line, so there's no
-        separate file-derived alias) — if nothing has touched the view yet, duckdb scans the
-        source parquet/csv/txt/dat file directly instead of first materializing it through
-        pandas (much faster; pandas is only used as a fallback, see _register_source_view).
+        separate file-derived alias).
         -file/-merge mode: every -file alias is registered under its own name instead, so
         -sql can do the join itself; `data` is also registered once something (e.g. -merge)
         has produced a current view. Returns an error message or None."""
+        import re
+
+        import polars as pl
+
+        from pytae.cli_parsing import normalize_sql
+
         try:
-            import duckdb
-        except ImportError as exc:
-            return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
-        q = query.strip()
-        if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
-            q = q[1:-1].strip()
-        if q.startswith("@"):
-            path = q[1:].strip()
-            if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
-                path = path[1:-1].strip()
-            from pathlib import Path
-            file_path = Path(path)
-            if not file_path.is_file():
-                return f"-sql: query file not found: '{path}'"
-            try:
-                q = file_path.read_text(encoding="utf-8").strip()
-            except Exception as exc:
-                return f"-sql: failed to read query file '{path}': {exc}"
-        from pytae.sql import _normalize_sql
-        normalized_query = _normalize_sql(q)
-        con = duckdb.connect()
+            normalized_query = normalize_sql(query)
+        except Exception as exc:
+            return f"-sql: {exc}"
+        polars_query = re.sub(r"\bin\s*\[(.*?)\]", r"in (\1)", normalized_query, flags=re.IGNORECASE)
+
         try:
+            if self._progress and self._reader is not None:
+                self.dataframe()
+            tables: dict[str, pl.DataFrame] = {}
             for alias, frame in self._frames.items():
-                con.register(alias, frame)
-            if self._df is not None:
-                con.register("data", self._df)
-            elif self._reader is not None:
-                if not self._register_source_view(con):
-                    con.register("data", self.dataframe())
-            try:
-                self._df = con.sql(normalized_query).df()
-                self._pldf = None
-            except Exception as exc:
-                return f"-sql: {exc}"
-        finally:
-            con.close()
-        return None
-
-    def _register_source_view(self, con) -> bool:
-        """Best-effort: have duckdb scan the source file directly and register the
-        result as view `df`, instead of first materializing it through pandas
-        (self.dataframe()). Returns False when the fast path doesn't apply (a prior
-        op already narrowed columns, -progress was requested, or the source format
-        has no fast native duckdb reader e.g. .sas7bdat) — the caller then falls
-        back to the pandas-backed view."""
-        from pytae.readers import CsvReader, ParquetReader, TxtReader
-
-        if self._pending_exact is not None or self._progress:
-            return False
-        reader = self._reader
-        path_sql = _sql_string_literal(str(reader.path))
-        if isinstance(reader, ParquetReader):
-            scan = f"read_parquet({path_sql})"
-        elif isinstance(reader, (CsvReader, TxtReader)):
-            if reader.encoding not in (None, "utf-8", "utf8"):
-                return False  # duckdb's CSV reader doesn't support arbitrary encodings
-            scan = f"read_csv({path_sql}, delim={_sql_string_literal(reader.sep)}, header=true)"
-        else:
-            return False  # e.g. .sas7bdat -- duckdb has no native reader for it
-        limit_sql = f" LIMIT {int(self._nrows)}" if self._nrows is not None else ""
-        con.execute(f"CREATE VIEW data AS SELECT * FROM {scan}{limit_sql}")
-        return True
+                tables[alias] = pl.from_pandas(frame) if isinstance(frame, pd.DataFrame) else frame
+            tables["data"] = self.polars_frame()
+            ctx = pl.SQLContext(frames=tables)
+            res_pl = ctx.execute(polars_query).collect()
+            self._pldf = res_pl
+            self._df = None
+            return None
+        except Exception as polars_err:
+            return f"-sql: {polars_err}"
 
     def dataframe(self) -> pd.DataFrame:
         if self._pandas_df is None:
@@ -14657,7 +14388,7 @@ class _Pipeline:
 
     def dtypes(self) -> pd.Series:
         if self._pldf is not None:
-            return self.dataframe().dtypes
+            return self._pldf.head(0).to_pandas().dtypes
         if self._df is not None:
             return self._df.dtypes
         dtypes = self._reader.dtypes()
@@ -14672,11 +14403,26 @@ class _Pipeline:
         cols = len(self._pending_exact) if self._pending_exact is not None else self._reader.shape()[1]
         return (rows, cols)
 
-    def head(self, n: int) -> pd.DataFrame:
+    def current_frame(self) -> Any:
+        """Return the active frame (preferring Polars to avoid needless Pandas conversions)."""
+        if self._progress:
+            return self.dataframe()
+        if self._pldf is not None:
+            return self._pldf
+        if self._df is not None:
+            return self._df
+        return self.polars_frame()
+
+    def head(self, n: int) -> Any:
+        if self._progress:
+            df = self.dataframe().head(n)
+            self._df = df
+            self._pldf = None
+            return df
         if self._pldf is not None:
             self._pldf = self._pldf.head(n)
             self._df = None
-            return self.dataframe()
+            return self._pldf
         if self._df is None:
             if self._nrows is not None:
                 df = self.dataframe().head(n)
@@ -14689,11 +14435,16 @@ class _Pipeline:
         self._df = df
         return df
 
-    def tail(self, n: int) -> pd.DataFrame:
+    def tail(self, n: int) -> Any:
+        if self._progress:
+            df = self.dataframe().tail(n)
+            self._df = df
+            self._pldf = None
+            return df
         if self._pldf is not None:
             self._pldf = self._pldf.tail(n)
             self._df = None
-            return self.dataframe()
+            return self._pldf
         if self._df is None:
             if self._nrows is not None:
                 df = self.dataframe().tail(n)
@@ -14706,19 +14457,31 @@ class _Pipeline:
         self._df = df
         return df
 
-    def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
-        df = self.dataframe()
-        if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
-            df = safe_reset_index(df)
+    def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> Any:
+        if self._progress:
+            df = self.dataframe()
+            if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+                df = safe_reset_index(df)
+            if frac is not None:
+                sampled = df.sample(frac=frac, random_state=seed)
+            else:
+                n = min(n, len(df))
+                sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
+            sampled = sampled.reset_index(drop=True)
+            self._df = sampled
+            self._pldf = None
+            return sampled
+
+        pldf = self.polars_frame()
         if frac is not None:
-            sampled = df.sample(frac=frac, random_state=seed)
+            sampled_pl = pldf.sample(fraction=frac, seed=seed)
         else:
-            n = min(n, len(df))
-            sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
-        sampled = sampled.reset_index(drop=True)
-        self._df = sampled
-        self._pldf = None
-        return sampled
+            n_rows = len(pldf)
+            sample_n = min(n, n_rows)
+            sampled_pl = pldf.sample(n=sample_n, seed=seed) if sample_n > 0 else pldf.head(0)
+        self._pldf = sampled_pl
+        self._df = None
+        return sampled_pl
 
 
 class _OrderedFlag(argparse.Action):
@@ -14814,9 +14577,21 @@ from pytae.readers import (
 )
 
 
-def _apply_round(df: pd.DataFrame, ndigits: int | None) -> pd.DataFrame:
+def _apply_round(df: Any, ndigits: int | None) -> Any:
     """Round numeric columns to ndigits; non-numeric columns pass through unchanged."""
-    return df.round(ndigits) if ndigits is not None else df
+    if ndigits is None:
+        return df
+    if isinstance(df, pd.DataFrame):
+        return df.round(ndigits)
+    try:
+        import polars as pl
+        import polars.selectors as cs
+
+        if isinstance(df, pl.DataFrame):
+            return df.with_columns(cs.numeric().round(ndigits))
+    except Exception:
+        pass
+    return df
 
 
 def _dataframe_info(df: pd.DataFrame) -> str:
@@ -14825,19 +14600,98 @@ def _dataframe_info(df: pd.DataFrame) -> str:
     return buf.getvalue().rstrip()
 
 
-def _format_table(df: pd.DataFrame, *, index: bool | None = None, pretty: bool = False) -> str:
-    """Render a DataFrame as standard pandas text, or a markdown/bordered table when pretty=True."""
-    if index is None:
-        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
-    if not pretty:
-        return df.to_string(index=index)
-    try:
-        return df.to_markdown(index=index)
-    except ImportError:
+def _format_table(
+    df: Any,
+    *,
+    index: bool | None = None,
+    pretty: bool = False,
+    is_tty: bool | None = None,
+) -> str:
+    """Render tabular data directly using Polars.
+
+    Auto-detects TTY output:
+    - Interactive terminal (isatty): renders Polars default boxed table with shape & dtypes.
+    - Piped / redirected (not isatty): renders bare unbordered plain text without shape or dtype headers.
+    """
+    if is_tty is None:
+        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+    import polars as pl
+
+    if is_tty:
+        if isinstance(df, pl.DataFrame):
+            pldf = df
+        elif isinstance(df, pd.DataFrame):
+            if index is None:
+                index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+            try:
+                pldf = pl.from_pandas(df.reset_index() if index else df)
+            except Exception:
+                return df.to_string(index=index)
+        else:
+            return str(df)
+
+        n_rows = len(pldf)
+        tbl_rows = max(n_rows, 10) if n_rows <= 100 else 10
+        with pl.Config(tbl_rows=tbl_rows):
+            return str(pldf)
+
+    # Non-TTY / Piped / Redirected: Bare output
+    if isinstance(df, pd.DataFrame):
+        if index is None:
+            index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
         return df.to_string(index=index)
 
+    if isinstance(df, pl.DataFrame):
+        if len(df) == 0:
+            return f"Empty DataFrame\nColumns: {list(df.columns)}\nIndex: []"
+        if len(df) <= 1000:
+            return df.to_pandas().to_string(index=False)
+        with pl.Config(
+            tbl_formatting="NOTHING",
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+            tbl_width_chars=10_000,
+            tbl_rows=-1,
+            tbl_cols=-1,
+        ):
+            return "\n".join(line.strip() for line in str(df).splitlines())
 
-def _compute_freq(source_df: pd.DataFrame, col: str | None, dropna: bool) -> pd.DataFrame:
+    return str(df)
+
+
+def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> pd.DataFrame:
+    import polars as pl
+
+    if isinstance(source_df, pl.DataFrame):
+        cols = list(source_df.columns)
+        if col is None:
+            if len(cols) == 1:
+                col = cols[0]
+            else:
+                raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
+        col = col.strip()
+        if col not in cols:
+            raise SystemExit(unknown_columns_message("-freq", [col], cols))
+
+        counts = source_df.group_by(col).len(name="Count")
+        if dropna:
+            counts = counts.filter(pl.col(col).is_not_null())
+        counts = counts.sort(by=["Count", col], descending=[True, False])
+        bar_max_width = 20
+        cat_vals = counts[col].to_list()
+        cnt_vals = [int(c) for c in counts["Count"].to_list()]
+        total_int = sum(cnt_vals)
+        max_cnt_int = cnt_vals[0] if cnt_vals else 1
+        data = []
+        for category, count in zip(cat_vals, cnt_vals):
+            bar_len = int(round((count / max_cnt_int) * bar_max_width)) if max_cnt_int > 0 else 0
+            bar_str = "█" * bar_len
+            pct_str = f"({(count / total_int * 100):.1f}%)" if total_int > 0 else "(0.0%)"
+            dist_str = f"{bar_str} {pct_str}".strip()
+            data.append({col: str(category), "Count": count, "Distribution": dist_str})
+        return pd.DataFrame(data)
+
     if col is None:
         if len(source_df.columns) == 1:
             col = source_df.columns[0]
@@ -15124,7 +14978,7 @@ def _list_order_index(series: pd.Series, order) -> pd.Series:
 
 
 def cmd_convert(
-    df: pd.DataFrame,
+    df: Any,
     source: Path,
     output: Path | None,
     *,
@@ -15137,7 +14991,10 @@ def cmd_convert(
     index: bool | None = None,
 ) -> None:
     if rename:
-        df = df.rename(columns=rename)
+        if isinstance(df, pd.DataFrame):
+            df = df.rename(columns=rename)
+        elif hasattr(df, "rename"):
+            df = df.rename(rename)
     dest = output if output is not None else source.with_suffix(".csv")
     if dest.resolve() == source.resolve():
         raise SystemExit(
@@ -15174,9 +15031,9 @@ def _resolve_alias(alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipel
     result so far (lets repeated -merge/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
     if alias == "data":
-        if pipeline._df is None:
+        if pipeline._df is None and pipeline._pldf is None:
             return None, f"{flag}: 'data' isn't available yet — nothing has produced a pipeline result yet"
-        return pipeline._df, None
+        return pipeline.dataframe(), None
     if alias == "df":
         return None, f"{flag}: 'df' is not a valid alias; use 'data' for the pipeline's current result"
     if alias not in frames:
@@ -15259,10 +15116,12 @@ def _process_path(
     emit_stdout = not is_clip and not is_file and not is_image_out
 
     if show_all:
-        df = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        frame = pipeline.current_frame()
+        rounded = _apply_round(frame, args.round_ndigits)
         if emit_stdout:
-            print(_format_table(df, pretty=args.pretty))
+            _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
+            df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     op_order = getattr(args, "op_order", [])
@@ -15295,10 +15154,12 @@ def _process_path(
         nonlocal clip_action
         if not (should_print(idx) or is_clip):
             return
-        df = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        frame = pipeline.current_frame()
+        rounded = _apply_round(frame, args.round_ndigits)
         if should_print(idx):
-            _output_text(_format_table(df, pretty=args.pretty), args)
+            _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
+            df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     for idx, op in enumerate(op_order):
@@ -15349,16 +15210,12 @@ def _process_path(
             right_df, err = _resolve_alias(spec["right"], frames, pipeline, "-merge")
             if err or right_df is None:
                 return _fail(parser, batch, err or "-merge: missing right frame")
-            merge_kwargs = {"how": spec["how"]}
-            if spec["validate"]:
-                merge_kwargs["validate"] = spec["validate"]
             if spec["how"] == "cross":
                 pass  # cross joins don't take on=/left_on=/right_on=
             elif spec["on"] is not None:
                 missing = [c for c in spec["on"] if c not in left_df.columns or c not in right_df.columns]
                 if missing:
                     return _fail(parser, batch, f"-merge: on= column(s) not in both frames: {', '.join(missing)}")
-                merge_kwargs["on"] = spec["on"]
             else:
                 missing_left = [c for c in spec["left_on"] if c not in left_df.columns]
                 missing_right = [c for c in spec["right_on"] if c not in right_df.columns]
@@ -15366,17 +15223,35 @@ def _process_path(
                     return _fail(parser, batch, unknown_columns_message("-merge (left)", missing_left, list(left_df.columns)))
                 if missing_right:
                     return _fail(parser, batch, unknown_columns_message("-merge (right)", missing_right, list(right_df.columns)))
-                merge_kwargs["left_on"] = spec["left_on"]
-                merge_kwargs["right_on"] = spec["right_on"]
+            import polars as pl
+            left_pl = left_df if isinstance(left_df, pl.DataFrame) else pl.from_pandas(left_df)
+            right_pl = right_df if isinstance(right_df, pl.DataFrame) else pl.from_pandas(right_df)
+            how: Any = "full" if spec["how"] == "outer" else spec["how"]
+            val_map = {
+                "1:1": "1:1", "one_to_one": "1:1",
+                "1:m": "1:m", "one_to_many": "1:m",
+                "m:1": "m:1", "many_to_one": "m:1",
+                "m:m": "m:m", "many_to_many": "m:m",
+            }
+            validate_arg: Any = val_map.get(spec["validate"], "m:m") if spec["validate"] else "m:m"
             try:
-                result = pd.merge(left_df, right_df, **merge_kwargs)
+                if how == "cross":
+                    res_pl = left_pl.join(right_pl, how="cross")
+                elif spec["on"] is not None:
+                    res_pl = left_pl.join(right_pl, on=spec["on"], how=how, validate=validate_arg, coalesce=True)
+                elif spec["left_on"] == spec["right_on"]:
+                    res_pl = left_pl.join(right_pl, on=spec["left_on"], how=how, validate=validate_arg, coalesce=True)
+                else:
+                    res_pl = left_pl.join(right_pl, left_on=spec["left_on"], right_on=spec["right_on"], how=how, validate=validate_arg, coalesce=False)
             except Exception as exc:
                 return _fail(parser, batch, f"-merge: {exc}")
-            pipeline._df = result
+            pipeline._pldf = res_pl
+            pipeline._df = None
             if should_print(idx):
-                print(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty))
+                print(_format_table(_apply_round(res_pl, args.round_ndigits), pretty=args.pretty))
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                df = res_pl.to_pandas()
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "concat":
             spec = next(concat_iter)
             if frames is None:
@@ -15387,15 +15262,19 @@ def _process_path(
                 if err or df is None:
                     return _fail(parser, batch, err or f"-concat: missing frame '{alias}'")
                 dfs.append(df)
+            import polars as pl
+            pl_dfs = [df if isinstance(df, pl.DataFrame) else pl.from_pandas(df) for df in dfs]
             try:
-                result = pd.concat(dfs, ignore_index=True)
+                res_pl = pl.concat(pl_dfs, how="diagonal_relaxed")
             except Exception as exc:
                 return _fail(parser, batch, f"-concat: {exc}")
-            pipeline._df = result
+            pipeline._pldf = res_pl
+            pipeline._df = None
             if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(res_pl, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                df = res_pl.to_pandas()
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
@@ -15415,7 +15294,11 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
-            nulls = _list_order_index(pipeline.dataframe().isna().sum(), args.nulls)
+            if pipeline._pldf is not None:
+                nulls_s = pipeline._pldf.null_count().to_pandas().iloc[0]
+            else:
+                nulls_s = pipeline.dataframe().isna().sum()
+            nulls = _list_order_index(nulls_s, args.nulls)
             if should_print(idx):
                 _output_text(nulls.to_string(), args)
             if is_clip:
@@ -15483,7 +15366,7 @@ def _process_path(
             emit_frame(idx)
         elif op == "freq":
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
-            source_df = pipeline.dataframe()
+            source_df = pipeline.current_frame()
             result = _compute_freq(source_df, freq_col, False if args.dropna is None else args.dropna)
             pipeline._df = result
             if should_print(idx):
@@ -15507,18 +15390,20 @@ def _process_path(
             emit_frame(idx)
         elif op == "head":
             head_val = _next_op_val("head", args.head)
-            df = pipeline.head(head_val)
+            frame = pipeline.head(head_val)
             if should_print(idx):
-                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
+                df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
             tail_val = _next_op_val("tail", args.tail)
-            df = pipeline.tail(tail_val)
+            frame = pipeline.tail(tail_val)
             if should_print(idx):
-                _output_text(_format_table(_apply_round(df, args.round_ndigits), pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
+                df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "sample":
@@ -15528,7 +15413,8 @@ def _process_path(
             if should_print(idx):
                 _output_text(_format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)", args)
             if is_clip and n:
-                clip_action = lambda d=sampled: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                df = sampled.to_pandas() if hasattr(sampled, "to_pandas") else sampled
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "arrange":
             arrange_val = _next_op_val("arrange", getattr(args, "arrange", None))
             err = pipeline.apply_arrange(arrange_val)
@@ -15659,10 +15545,16 @@ def _process_path(
             if "dropna" not in pivot_kwargs:
                 pivot_kwargs["dropna"] = False if args.dropna is None else args.dropna
             to_check = []
-            for k in ("r", "c", "v"):
+            for k in ("r", "c"):
                 val = pivot_kwargs.get(k)
                 if val:
                     to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))
+            if pivot_kwargs.get("v"):
+                from pytae.shape import parse_pivot_metrics
+                parsed_metrics = parse_pivot_metrics(pivot_kwargs["v"], a=pivot_kwargs.get("a", "sum"))
+                for m in parsed_metrics:
+                    if m.src_col is not None:
+                        to_check.append(m.src_col)
             available_cols = pipeline.columns()
             missing = [col for col in to_check if col not in available_cols]
             if missing:
@@ -15746,7 +15638,7 @@ def _process_path(
             if out_dir is not None and not dest.is_absolute():
                 dest = out_dir / dest
 
-        df_to_write = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
         try:
             cmd_convert(
                 df_to_write,
@@ -16555,6 +16447,23 @@ class _GroupContext:
         return self._n_series
 
 
+def _check_disallowed_method_calls(expr: str) -> None:
+    """Disallow .map() method calls in mutate expressions in favor of functional map(col, mapping, [default])."""
+    if ".map(" in expr:
+        safe_expr = re.sub(r"\[([^\]]+)\]", r"__pt_col__", expr)
+        safe_expr = re.sub(r"`([^`]+)`", r"__pt_col__", safe_expr)
+        try:
+            tree = ast.parse(safe_expr, mode="eval")
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "map":
+                    raise ValueError(
+                        "In mutate, '.map()' method syntax is not supported. "
+                        "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'}, 'OTHER')"
+                    )
+        except SyntaxError:
+            pass
+
+
 def _eval_grouped_vectorized(
     work_df: pd.DataFrame,
     expr: str,
@@ -16563,6 +16472,7 @@ def _eval_grouped_vectorized(
     grp_ctx: _GroupContext,
 ) -> pd.Series:
     """Evaluate a grouped mutate expression in one vectorized pass across work_df."""
+    _check_disallowed_method_calls(expr)
     known_cols = set(work_df.columns)
     safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
     rewritten, at_names = _strip_at_refs(safe_expr)
@@ -16610,20 +16520,7 @@ def _eval_grouped_vectorized(
 
 
 def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
-    """out.eval(expr), resolving @local_var references against the scope that
-    called mutate() rather than mutate()'s own frame — mutate() sits between
-    the user's call and this eval(), so pandas' default frame-walking would
-    otherwise look in the wrong place.
-
-    pandas' eval() can't parse some Python constructs (notably dict literals,
-    e.g. `species.map({'a': 1})`, string slicing like `col.str[:8]`, and custom
-    helpers like `if_else`, `case_when`, `coalesce`); when it rejects one
-    (NotImplementedError, ValueError, SyntaxError, or UndefinedVariableError) we fall back
-    to a plain Python eval() with each column exposed as a Series plus the caller's scope,
-    so natural pandas method chains work. Bracketed `[col]` and backtick `col`
-    names are safely mapped to valid identifiers in fallback mode. `@name` refs
-    are rewritten to the caller-scope value, and `and`/`or`/`not` are rewritten
-    to `&`/`|`/`~` so boolean conditions on a Series work."""
+    _check_disallowed_method_calls(expr)
     known_cols = set(out.columns)
     normalized = _normalize_col_brackets(expr, known_cols)
     try:
@@ -18700,10 +18597,8 @@ from __future__ import annotations
 import ast
 import re
 from collections.abc import Sequence
-from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
-import pandas as pd
 import polars as pl
 
 from pytae._text import unquote_name as _unquote_name
@@ -18834,6 +18729,7 @@ def arrange_polars(df: pl.DataFrame, spec: str, na_last: bool = True) -> pl.Data
 
 def distinct_polars(df: pl.DataFrame, cols: list[str] | None = None, keep: str | bool = "first") -> pl.DataFrame:
     """Drop duplicate rows in a Polars DataFrame."""
+    pl_keep: Literal["first", "last", "any", "none"]
     if keep == "first":
         pl_keep = "first"
     elif keep == "last":
@@ -18855,21 +18751,49 @@ def rename_polars(df: pl.DataFrame, mapping: dict[str, str]) -> pl.DataFrame:
     return df.rename(mapping)
 
 
+def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
+    fn = func.lower()
+    if fn == "sum":
+        return col.sum()
+    elif fn in ("mean", "avg"):
+        return col.mean()
+    elif fn == "median":
+        return col.median()
+    elif fn == "min":
+        return col.min()
+    elif fn == "max":
+        return col.max()
+    elif fn == "std":
+        return col.std()
+    elif fn == "var":
+        return col.var()
+    elif fn in ("count", "len", "size"):
+        return col.count()
+    elif fn == "first":
+        return col.first()
+    elif fn == "last":
+        return col.last()
+    elif fn in ("n_unique", "nunique"):
+        return col.n_unique()
+    else:
+        raise ValueError(f"pivot_polars: unsupported aggregation function '{func}'")
+
+
 def pivot_polars(
     df: pl.DataFrame,
     r: str | Sequence[str] | None = None,
     c: str | Sequence[str] | None = None,
-    v: str | Sequence[str] | None = None,
+    v: Any = None,
     a: str = "sum",
     dropna: bool = False,
     fill_value: Any = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
-    """Pivot a Polars DataFrame matching pytae's pivot semantics."""
+    """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
     if kwargs:
         raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
-    if a in ("n", "size") and fill_value is None:
-        fill_value = 0
+
+    all_cols = list(df.columns)
 
     def _norm(spec: Any) -> list[str]:
         if spec is None:
@@ -18883,41 +18807,250 @@ def pivot_polars(
 
     r_cols = _norm(r)
     c_cols = _norm(c)
-    v_cols = _norm(v)
 
-    if not c_cols:
-        raise ValueError("pivot_polars requires column dimension 'c'")
+    for col in r_cols:
+        if col not in df.columns:
+            import difflib
+            close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): r (rows) column '{col}' not found in DataFrame{hint}")
 
-    aggfunc = "len" if a in ("n", "size") else a
+    for col in c_cols:
+        if col not in df.columns:
+            import difflib
+            close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): c (cols) column '{col}' not found in DataFrame{hint}")
+
+    dim_counts: dict[str, int] = {}
+    for col in r_cols + c_cols:
+        dim_counts[col] = dim_counts.get(col, 0) + 1
+    dups = [col for col, count in dim_counts.items() if count > 1]
+    if dups:
+        raise ValueError(f"pivot(): column(s) {dups} cannot appear multiple times in grouping dimensions (r/c)")
+
+    from pytae.shape import parse_pivot_metrics
+    metrics = parse_pivot_metrics(v, a=a, df_cols=all_cols)
+    if not metrics:
+        raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
+
+    for m in metrics:
+        if m.src_col is not None and m.src_col not in df.columns:
+            import difflib
+            close = difflib.get_close_matches(str(m.src_col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): value column '{m.src_col}' not found in DataFrame{hint}")
+
+    overlap = [m.src_col for m in metrics if m.src_col is not None and ((r_cols and m.src_col in r_cols) or (c_cols and m.src_col in c_cols))]
+    if overlap:
+        if all(m.aggfunc in ("size", "len") for m in metrics if m.src_col in overlap):
+            raise ValueError(
+                f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
+                "For row counts (a='n'), omit 'v' or specify a non-grouping column."
+            )
+        else:
+            raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
+
+    out_names = [m.out_name for m in metrics]
+    if len(out_names) != len(set(out_names)):
+        v_dups = [name for name in dict.fromkeys(out_names) if out_names.count(name) > 1]
+        raise ValueError(f"pivot(): value column(s) {v_dups} cannot appear multiple times in 'v'")
+
+    if r_cols and not c_cols:
+        for m in metrics:
+            if m.out_name in r_cols:
+                if m.aggfunc in ("size", "len"):
+                    raise ValueError(
+                        f"pivot(): count column name '{m.out_name}' collides with row grouping column. "
+                        "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                    )
+                else:
+                    raise ValueError(f"pivot(): resulting column header '{m.out_name}' collides with row grouping column.")
 
     work_df = df
-    pivot_on = c_cols
-    if len(c_cols) > 1:
-        # Combine multiple column dimension keys into a single string formatted key (e.g. 'East_2020')
-        col_exprs = [pl.col(col).cast(pl.String) for col in c_cols]
-        work_df = work_df.with_columns(pl.concat_str(col_exprs, separator="_").alias("__pt_c_key__"))
-        pivot_on = ["__pt_c_key__"]
+    if dropna:
+        dim_cols = r_cols + c_cols
+        if dim_cols:
+            work_df = work_df.drop_nulls(subset=dim_cols)
 
-    val_arg = v_cols[0] if len(v_cols) == 1 else (v_cols if v_cols else None)
-    if val_arg is None:
-        work_df = work_df.with_columns(pl.lit(1).alias("__pt_n_val__"))
-        val_arg = "__pt_n_val__"
+    if r_cols and c_cols:
+        pivot_on = c_cols
+        if len(c_cols) > 1:
+            col_exprs = [pl.col(col).cast(pl.String) for col in c_cols]
+            work_df = work_df.with_columns(pl.concat_str(col_exprs, separator="_").alias("__pt_c_key__"))
+            pivot_on = ["__pt_c_key__"]
 
-    res = work_df.pivot(
-        on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
-        index=r_cols if r_cols else None,
-        values=val_arg,
-        aggregate_function=aggfunc,
-        sort_columns=True,
-    )
+        need_prefix = len(metrics) > 1
+        pivoted_dfs: list[pl.DataFrame] = []
 
-    if fill_value is not None:
-        res = res.fill_null(fill_value)
+        for m in metrics:
+            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
 
-    if r_cols:
+            if m.src_col is None:
+                m_df = work_df.with_columns(pl.lit(1).alias("__pt_n__"))
+                val_col = "__pt_n__"
+                agg_fn = "len"
+            else:
+                m_df = work_df
+                val_col = m.src_col
+                agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
+
+            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            if agg_fn in native_aggs:
+                piv_m = m_df.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index=r_cols,
+                    values=val_col,
+                    aggregate_function=cast(Any, agg_fn),
+                    sort_columns=True,
+                )
+            else:
+                grouped = m_df.group_by([*r_cols, *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                piv_m = grouped.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index=r_cols,
+                    values=val_col,
+                    aggregate_function="first",
+                    sort_columns=True,
+                )
+
+            data_cols = [c for c in piv_m.columns if c not in r_cols]
+            if prefix:
+                piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
+                data_cols = [f"{prefix}_{c}" for c in data_cols]
+
+            if fill_value is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            elif agg_fn == "len":
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
+
+            pivoted_dfs.append(piv_m)
+
+        res = pivoted_dfs[0]
+        for next_df in pivoted_dfs[1:]:
+            res = res.join(next_df, on=r_cols, how="full", coalesce=True)
+
         res = res.sort(r_cols)
+        return res
 
-    return res
+    elif r_cols:
+        exprs: list[pl.Expr] = []
+        for m in metrics:
+            if m.src_col is None or m.aggfunc in ("size", "len"):
+                expr = pl.len().alias(m.out_name)
+            else:
+                expr = _polars_agg_expr(pl.col(m.src_col), m.aggfunc).alias(m.out_name)
+            exprs.append(expr)
+
+        res = work_df.group_by(r_cols).agg(exprs).sort(r_cols)
+        if fill_value is not None:
+            res = res.fill_null(fill_value)
+        return res
+
+    elif c_cols:
+        pivot_on = c_cols
+        if len(c_cols) > 1:
+            col_exprs = [pl.col(col).cast(pl.String) for col in c_cols]
+            work_df = work_df.with_columns(pl.concat_str(col_exprs, separator="_").alias("__pt_c_key__"))
+            pivot_on = ["__pt_c_key__"]
+
+        need_prefix = len(metrics) > 1
+        if len(metrics) == 1:
+            m = metrics[0]
+            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
+
+            if m.src_col is None:
+                m_df = work_df.with_columns([pl.lit(1).alias("__pt_n__"), pl.lit(1).alias("__dummy__")])
+                val_col = "__pt_n__"
+                agg_fn = "len"
+            else:
+                m_df = work_df.with_columns(pl.lit(1).alias("__dummy__"))
+                val_col = m.src_col
+                agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
+
+            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            if agg_fn in native_aggs:
+                piv_m = m_df.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index="__dummy__",
+                    values=val_col,
+                    aggregate_function=cast(Any, agg_fn),
+                    sort_columns=True,
+                ).drop("__dummy__")
+            else:
+                grouped = m_df.group_by(["__dummy__", *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                piv_m = grouped.pivot(
+                    on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                    index="__dummy__",
+                    values=val_col,
+                    aggregate_function="first",
+                    sort_columns=True,
+                ).drop("__dummy__")
+
+            data_cols = list(piv_m.columns)
+            if prefix:
+                piv_m = piv_m.rename({c: f"{prefix}_{c}" for c in data_cols})
+                data_cols = [f"{prefix}_{c}" for c in data_cols]
+
+            if fill_value is not None:
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            elif agg_fn == "len":
+                piv_m = piv_m.with_columns([pl.col(c).fill_null(0) for c in data_cols])
+
+            return piv_m
+        else:
+            rows: list[pl.DataFrame] = []
+            for m in metrics:
+                if m.src_col is None:
+                    m_df = work_df.with_columns([pl.lit(1).alias("__pt_n__"), pl.lit(m.out_name).alias("metric")])
+                    val_col = "__pt_n__"
+                    agg_fn = "len"
+                else:
+                    m_df = work_df.with_columns(pl.lit(m.out_name).alias("metric"))
+                    val_col = m.src_col
+                    agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
+
+                native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+                if agg_fn in native_aggs:
+                    piv_m = m_df.pivot(
+                        on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                        index="metric",
+                        values=val_col,
+                        aggregate_function=cast(Any, agg_fn),
+                        sort_columns=True,
+                    )
+                else:
+                    grouped = m_df.group_by(["metric", *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                    piv_m = grouped.pivot(
+                        on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
+                        index="metric",
+                        values=val_col,
+                        aggregate_function="first",
+                        sort_columns=True,
+                    )
+                rows.append(piv_m)
+
+            res = pl.concat(rows, how="vertical")
+            data_cols = [c for c in res.columns if c != "metric"]
+            if fill_value is not None:
+                res = res.with_columns([pl.col(c).fill_null(fill_value) for c in data_cols])
+            return res
+
+    else:
+        exprs = []
+        for m in metrics:
+            if m.src_col is None or m.aggfunc in ("size", "len"):
+                expr = pl.len().alias(m.out_name)
+            else:
+                expr = _polars_agg_expr(pl.col(m.src_col), m.aggfunc).alias(m.out_name)
+            exprs.append(expr)
+
+        res = work_df.select(exprs)
+        if fill_value is not None:
+            res = res.fill_null(fill_value)
+        return res
 
 
 def _ast_to_polars_expr(
@@ -18943,39 +19076,59 @@ def _ast_to_polars_expr(
     if isinstance(node, ast.BinOp):
         left = _ast_to_polars_expr(node.left, col_names, col_map, by)
         right = _ast_to_polars_expr(node.right, col_names, col_map, by)
-        if isinstance(node.op, ast.Add): return left + right
-        if isinstance(node.op, ast.Sub): return left - right
-        if isinstance(node.op, ast.Mult): return left * right
-        if isinstance(node.op, ast.Div): return left / right
-        if isinstance(node.op, ast.FloorDiv): return left // right
-        if isinstance(node.op, ast.Mod): return left % right
-        if isinstance(node.op, ast.Pow): return left ** right
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.FloorDiv):
+            return left // right
+        if isinstance(node.op, ast.Mod):
+            return left % right
+        if isinstance(node.op, ast.Pow):
+            return left ** right
         raise ValueError(f"Unsupported binary operator: {type(node.op)}")
     if isinstance(node, ast.UnaryOp):
         oprnd = _ast_to_polars_expr(node.operand, col_names, col_map, by)
-        if isinstance(node.op, ast.USub): return -oprnd
-        if isinstance(node.op, ast.UAdd): return oprnd
-        if isinstance(node.op, (ast.Not, ast.Invert)): return ~oprnd
+        if isinstance(node.op, ast.USub):
+            return -oprnd
+        if isinstance(node.op, ast.UAdd):
+            return oprnd
+        if isinstance(node.op, (ast.Not, ast.Invert)):
+            return ~oprnd
         raise ValueError(f"Unsupported unary operator: {type(node.op)}")
     if isinstance(node, ast.Compare):
         left = _ast_to_polars_expr(node.left, col_names, col_map, by)
         for op, comp in zip(node.ops, node.comparators):
             right = _ast_to_polars_expr(comp, col_names, col_map, by)
-            if isinstance(op, ast.Eq): left = (left == right)
-            elif isinstance(op, ast.NotEq): left = (left != right)
-            elif isinstance(op, ast.Lt): left = (left < right)
-            elif isinstance(op, ast.LtE): left = (left <= right)
-            elif isinstance(op, ast.Gt): left = (left > right)
-            elif isinstance(op, ast.GtE): left = (left >= right)
-            else: raise ValueError(f"Unsupported comparison operator: {type(op)}")
+            if isinstance(op, ast.Eq):
+                left = (left == right)
+            elif isinstance(op, ast.NotEq):
+                left = (left != right)
+            elif isinstance(op, ast.Lt):
+                left = (left < right)
+            elif isinstance(op, ast.LtE):
+                left = (left <= right)
+            elif isinstance(op, ast.Gt):
+                left = (left > right)
+            elif isinstance(op, ast.GtE):
+                left = (left >= right)
+            else:
+                raise ValueError(f"Unsupported comparison operator: {type(op)}")
         return left
     if isinstance(node, ast.BoolOp):
         vals = [_ast_to_polars_expr(v, col_names, col_map, by) for v in node.values]
         res = vals[0]
         for v in vals[1:]:
-            if isinstance(node.op, ast.And): res = res & v
-            elif isinstance(node.op, ast.Or): res = res | v
-            else: raise ValueError(f"Unsupported bool op: {type(node.op)}")
+            if isinstance(node.op, ast.And):
+                res = res & v
+            elif isinstance(node.op, ast.Or):
+                res = res | v
+            else:
+                raise ValueError(f"Unsupported bool op: {type(node.op)}")
         return res
     if isinstance(node, ast.IfExp):
         test = _ast_to_polars_expr(node.test, col_names, col_map, by)
@@ -18983,11 +19136,44 @@ def _ast_to_polars_expr(
         orelse = _ast_to_polars_expr(node.orelse, col_names, col_map, by)
         return pl.when(test).then(body).otherwise(orelse)
     if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "map":
+            raise ValueError(
+                "In mutate, '.map()' method syntax is not supported. "
+                "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'}, 'OTHER')"
+            )
         func_name = ""
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
+
+        if func_name == "map" and len(node.args) >= 2:
+            col_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by)
+            mapping_node = node.args[1]
+            if isinstance(mapping_node, ast.Dict):
+                mapping: dict[Any, Any] = {}
+                for k_node, v_node in zip(mapping_node.keys, mapping_node.values):
+                    if k_node is not None and isinstance(k_node, ast.Constant) and isinstance(v_node, ast.Constant):
+                        mapping[k_node.value] = v_node.value
+                    elif k_node is not None:
+                        mapping[ast.literal_eval(k_node)] = ast.literal_eval(v_node)
+            else:
+                mapping = ast.literal_eval(mapping_node)
+
+            default_val = None
+            if len(node.args) > 2:
+                def_node = node.args[2]
+                if isinstance(def_node, ast.Constant):
+                    default_val = def_node.value
+                else:
+                    default_val = ast.literal_eval(def_node)
+
+            if hasattr(pl.Expr, "replace_strict"):
+                expr = col_expr.replace_strict(mapping, default=cast(Any, default_val))
+            else:
+                expr = col_expr.replace(mapping, default=cast(Any, default_val))  # type: ignore[call-arg]
+            return expr.over(by) if by else expr
+
         args = [_ast_to_polars_expr(a, col_names, col_map, by) for a in node.args]
 
         agg_map = {
@@ -19007,15 +19193,18 @@ def _ast_to_polars_expr(
             expr = pl.len()
             return expr.over(by) if by else expr
         if func_name == "lead" and len(args) >= 1:
-            shift_n = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_val = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_n = int(shift_val) if isinstance(shift_val, (int, float)) else 1
             expr = args[0].shift(-shift_n)
             return expr.over(by) if by else expr
         if func_name == "lag" and len(args) >= 1:
-            shift_n = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_val = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 1
+            shift_n = int(shift_val) if isinstance(shift_val, (int, float)) else 1
             expr = args[0].shift(shift_n)
             return expr.over(by) if by else expr
         if func_name == "round":
-            dec = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 0
+            dec_val = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else 0
+            dec = int(dec_val) if isinstance(dec_val, (int, float)) else 0
             return args[0].round(dec)
         if func_name == "abs" and len(args) == 1:
             return args[0].abs()
@@ -19327,6 +19516,7 @@ import os
 import re
 import warnings
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pyarrow as pa
@@ -20063,7 +20253,7 @@ _WRITABLE_SUFFIXES = (
 
 
 def write_dataframe(
-    df: pd.DataFrame,
+    df: Any,
     dest: Path,
     *,
     sep: str | None = None,
@@ -20072,11 +20262,45 @@ def write_dataframe(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool | None = None,
 ) -> None:
-    if "_pt_by" in df.attrs:
+    import polars as pl
+
+    if isinstance(df, pl.DataFrame):
+        suffix, compression = _split_path_suffixes(dest)
+        if progress or (encoding is not None and encoding.lower() not in ("utf-8", "utf8")):
+            df = df.to_pandas()
+        else:
+            if suffix in (".parquet", ".pq"):
+                df.write_parquet(dest)
+                return
+            elif suffix == ".csv":
+                df.write_csv(
+                    dest,
+                    separator=sep or ",",
+                    compression="gzip" if compression == "gzip" else "uncompressed",
+                )
+                return
+            elif suffix in _TXT_DEFAULT_SEP:
+                df.write_csv(
+                    dest,
+                    separator=sep or _TXT_DEFAULT_SEP[suffix],
+                    compression="gzip" if compression == "gzip" else "uncompressed",
+                )
+                return
+            elif suffix in (".jsonl", ".ndjson"):
+                if compression is None:
+                    df.write_ndjson(dest)
+                    return
+                else:
+                    df = df.to_pandas()
+            else:
+                supported = ", ".join(_WRITABLE_SUFFIXES)
+                raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
+
+    if hasattr(df, "attrs") and "_pt_by" in df.attrs:
         df = df.copy(deep=False)
         df.attrs = {k: v for k, v in df.attrs.items() if k != "_pt_by"}
     if index is None:
-        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+        index = not (isinstance(getattr(df, "index", None), pd.RangeIndex) and getattr(df.index, "name", None) is None)
     suffix, compression = _split_path_suffixes(dest)
     if suffix in (".parquet", ".pq"):
         _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)
@@ -20554,7 +20778,8 @@ def select(
 from __future__ import annotations
 
 import difflib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -20565,6 +20790,145 @@ from pytae._text import unquote_name as _unquote_name
 from pytae.other_utilities import safe_reset_index
 
 _safe_reset_index = safe_reset_index
+
+
+@dataclass
+class PivotMetric:
+    src_col: str | None
+    out_name: str
+    aggfunc: str
+    has_alias: bool = False
+    has_explicit_func: bool = False
+
+
+def _parse_single_metric_expr(item: str, default_a: str) -> list[PivotMetric]:
+    item = item.strip()
+    if not item:
+        return []
+
+    alias: str | None = None
+    has_alias = False
+    if "=" in item:
+        parts = _tokenize(item, "=", track_brackets=True, keep_quotes=True)
+        if len(parts) >= 2 and parts[0].strip():
+            alias = _unquote_name(parts[0].strip())
+            has_alias = True
+            rest = "=".join(parts[1:]).strip()
+        else:
+            rest = item
+    else:
+        rest = item
+
+    norm_rest = rest.strip()
+    if norm_rest.lower() in ("n", "n()", "size", "size()", "count()"):
+        out_name = alias if has_alias and alias else "n"
+        return [PivotMetric(
+            src_col=None,
+            out_name=out_name,
+            aggfunc="size",
+            has_alias=has_alias,
+            has_explicit_func=True,
+        )]
+
+    col_part = rest
+    funcs: list[str] = []
+    if ":" in rest:
+        colon_parts = _tokenize(rest, ":", track_brackets=True, keep_quotes=True)
+        if len(colon_parts) >= 2 and colon_parts[0].strip():
+            col_part = colon_parts[0].strip()
+            func_spec = ":".join(colon_parts[1:]).strip()
+            if (func_spec.startswith("[") and func_spec.endswith("]")) or (func_spec.startswith("(") and func_spec.endswith(")")):
+                inner = func_spec[1:-1].strip()
+                funcs = [_unquote_name(f.strip()) for f in _tokenize(inner, ",") if f.strip()]
+            else:
+                funcs = [_unquote_name(func_spec)]
+
+    src_col = _unquote_name(col_part.strip())
+    if not funcs:
+        agg = "size" if default_a in ("n", "size") else default_a
+        out_name = alias if has_alias and alias else src_col
+        return [PivotMetric(
+            src_col=src_col,
+            out_name=out_name,
+            aggfunc=agg,
+            has_alias=has_alias,
+            has_explicit_func=False,
+        )]
+
+    res: list[PivotMetric] = []
+    for f in funcs:
+        agg = "size" if f in ("n", "size") else f
+        if has_alias and len(funcs) == 1:
+            out_name = alias if alias else f"{src_col}_{f}"
+        elif has_alias and len(funcs) > 1:
+            out_name = f"{alias}_{f}"
+        else:
+            out_name = f"{src_col}_{f}"
+        res.append(PivotMetric(
+            src_col=src_col,
+            out_name=out_name,
+            aggfunc=agg,
+            has_alias=has_alias,
+            has_explicit_func=True,
+        ))
+    return res
+
+
+def parse_pivot_metrics(
+    v: Any,
+    a: str = "sum",
+    df_cols: Sequence[str] | None = None,
+) -> list[PivotMetric]:
+    """Parse rich metric mappings in v for pivot operations."""
+    if v is None:
+        if a in ("n", "size"):
+            return [PivotMetric(src_col=None, out_name="n", aggfunc="size", has_alias=False, has_explicit_func=True)]
+        return []
+
+    if isinstance(v, Mapping):
+        metrics: list[PivotMetric] = []
+        for key, val in v.items():
+            key_str = _unquote_name(str(key).strip())
+            if isinstance(val, (list, tuple)):
+                for f in val:
+                    f_str = str(f).strip()
+                    agg = "size" if f_str in ("n", "size") else f_str
+                    metrics.append(PivotMetric(
+                        src_col=key_str,
+                        out_name=f"{key_str}_{f_str}",
+                        aggfunc=agg,
+                        has_alias=False,
+                        has_explicit_func=True,
+                    ))
+            elif isinstance(val, str) and (":" in val or val.strip().lower() in ("n", "size")):
+                metrics.extend(_parse_single_metric_expr(f"{key_str} = {val}", default_a=a))
+            else:
+                f_str = str(val).strip()
+                agg = "size" if f_str in ("n", "size") else f_str
+                metrics.append(PivotMetric(
+                    src_col=key_str,
+                    out_name=key_str,
+                    aggfunc=agg,
+                    has_alias=False,
+                    has_explicit_func=True,
+                ))
+        return metrics
+
+    if isinstance(v, (list, tuple, set)):
+        metrics = []
+        for item in v:
+            metrics.extend(_parse_single_metric_expr(str(item), default_a=a))
+        return metrics
+
+    if isinstance(v, str):
+        raw_items = [t for t in _tokenize(v, ",", track_brackets=True, keep_quotes=True) if t.strip()]
+        metrics = []
+        for item in raw_items:
+            metrics.extend(_parse_single_metric_expr(item, default_a=a))
+        return metrics
+
+    return _parse_single_metric_expr(str(v), default_a=a)
+
 
 
 def long(
@@ -20806,13 +21170,8 @@ def pivot(
                 raise KeyError(f"pivot(): {param_name} column '{col}' not found in DataFrame{hint}")
         return cols
 
-    aggfunc = "size" if a == "n" else a
-    if aggfunc == "size" and fill_value is None:
-        fill_value = 0
-
     r_cols = _normalize_cols(r, "r (rows)")
     c_cols = _normalize_cols(c, "c (cols)")
-    v_cols = _normalize_cols(v, "v (values)")
 
     dim_counts: dict[str, int] = {}
     for col in r_cols + c_cols:
@@ -20821,22 +21180,41 @@ def pivot(
     if dups:
         raise ValueError(f"pivot(): column(s) {dups} cannot appear multiple times in grouping dimensions (r/c)")
 
-    if len(v_cols) != len(set(v_cols)):
-        v_dups = [col for col in dict.fromkeys(v_cols) if v_cols.count(col) > 1]
-        raise ValueError(f"pivot(): value column(s) {v_dups} cannot appear multiple times in 'v'")
-
-    if not v_cols and aggfunc != "size":
+    metrics = parse_pivot_metrics(v, a=a, df_cols=all_cols)
+    if not metrics:
         raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
 
-    overlap = [col for col in v_cols if (r_cols and col in r_cols) or (c_cols and col in c_cols)]
+    for m in metrics:
+        if m.src_col is not None and m.src_col not in df.columns:
+            close = difflib.get_close_matches(str(m.src_col), [str(x) for x in all_cols], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"pivot(): value column '{m.src_col}' not found in DataFrame{hint}")
+
+    overlap = [m.src_col for m in metrics if m.src_col is not None and ((r_cols and m.src_col in r_cols) or (c_cols and m.src_col in c_cols))]
     if overlap:
-        if aggfunc == "size":
+        if all(m.aggfunc == "size" for m in metrics if m.src_col in overlap):
             raise ValueError(
                 f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
                 "For row counts (a='n'), omit 'v' or specify a non-grouping column."
             )
         else:
             raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
+
+    out_names = [m.out_name for m in metrics]
+    if len(out_names) != len(set(out_names)):
+        v_dups = [name for name in dict.fromkeys(out_names) if out_names.count(name) > 1]
+        raise ValueError(f"pivot(): value column(s) {v_dups} cannot appear multiple times in 'v'")
+
+    if r_cols and not c_cols:
+        for m in metrics:
+            if m.out_name in r_cols:
+                if m.aggfunc == "size":
+                    raise ValueError(
+                        f"pivot(): count column name '{m.out_name}' collides with row grouping column. "
+                        "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                    )
+                else:
+                    raise ValueError(f"pivot(): resulting column header '{m.out_name}' collides with row grouping column.")
 
     observed = kwargs.get("observed", True)
 
@@ -20847,240 +21225,148 @@ def pivot(
             return str(int(part))
         return str(part)
 
-    def _flatten_cols(piv: pd.DataFrame) -> None:
+    def _flatten_cols(piv: pd.DataFrame, prefix: str | None = None) -> list[str]:
         raw_names: list[str] = []
         if isinstance(piv.columns, pd.MultiIndex):
             for col in piv.columns:
                 formatted_parts = [_format_part(part) for part in col if part is not None]
-                raw_names.append("_".join(formatted_parts))
+                base_name = "_".join(formatted_parts)
+                raw_names.append(f"{prefix}_{base_name}" if prefix else base_name)
         else:
-            raw_names = [_format_part(col) for col in piv.columns]
+            for col in piv.columns:
+                base_name = _format_part(col)
+                raw_names.append(f"{prefix}_{base_name}" if prefix else base_name)
+        return raw_names
 
-        duplicates = []
-        seen = set()
-        for name in raw_names:
-            if name in seen and name not in duplicates:
-                duplicates.append(name)
-            seen.add(name)
+    if r_cols and c_cols:
+        group_keys = list(r_cols) + list(c_cols)
+        need_prefix = len(metrics) > 1
+        pivoted_dfs: list[pd.DataFrame] = []
+        for m in metrics:
+            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
+            if m.src_col is None or m.aggfunc == "size":
+                s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
+                fv = fill_value if fill_value is not None else 0
+                piv_m = s.unstack(list(c_cols), fill_value=fv)
+            else:
+                g = df.groupby(group_keys, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                piv_m = g.unstack(list(c_cols), fill_value=fill_value)
+            new_cols = _flatten_cols(piv_m, prefix=prefix)
+            piv_m.columns = new_cols
+            pivoted_dfs.append(piv_m)
+
+        concatenated = pd.concat(pivoted_dfs, axis=1)
+        all_col_names = list(concatenated.columns)
+        duplicates = [c for c in dict.fromkeys(all_col_names) if all_col_names.count(c) > 1]
         if duplicates:
             raise ValueError(
                 f"pivot(): resulting column header(s) {duplicates} contain duplicate names. "
                 "Ensure pivoted column keys have distinct string representations."
             )
-        piv.columns = raw_names
+        res = _safe_reset_index(concatenated)
+        res.columns.name = None
+        for m in metrics:
+            if m.aggfunc == "size":
+                m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
+                prefix = m.out_name if m_prefix_needed else ""
+                val_cols = [c for c in res.columns if not (r_cols and c in r_cols) and (not prefix or c.startswith(prefix))]
+                for c in val_cols:
+                    try:
+                        if res[c].isna().any():
+                            res[c] = res[c].astype("Int64")
+                        else:
+                            res[c] = res[c].astype("int64")
+                    except (TypeError, ValueError):
+                        pass
+        return res
+    elif r_cols:
+        col_dfs: list[pd.DataFrame] = []
+        for m in metrics:
+            if m.src_col is None or m.aggfunc == "size":
+                s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
+                col_df = s.to_frame(name=m.out_name)
+            else:
+                g = df.groupby(r_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                col_df = g.to_frame(name=m.out_name)
+            if fill_value is not None:
+                col_df = col_df.fillna(fill_value)
+            col_dfs.append(col_df)
 
-    def _cast_size_ints(df_out: pd.DataFrame) -> pd.DataFrame:
-        if aggfunc == "size":
-            val_cols = [col for col in df_out.columns if not (r_cols and col in r_cols)]
-            for col in val_cols:
+        combined = pd.concat(col_dfs, axis=1)
+        res = _safe_reset_index(combined)
+        res.columns.name = None
+        for m in metrics:
+            if m.aggfunc == "size" and m.out_name in res.columns:
                 try:
-                    if df_out[col].isna().any():
-                        df_out[col] = df_out[col].astype("Int64")
+                    if res[m.out_name].isna().any():
+                        res[m.out_name] = res[m.out_name].astype("Int64")
                     else:
-                        df_out[col] = df_out[col].astype("int64")
+                        res[m.out_name] = res[m.out_name].astype("int64")
                 except (TypeError, ValueError):
                     pass
-        return df_out
-
-    val_arg = v_cols[0] if len(v_cols) == 1 else v_cols
-
-    if r_cols and c_cols:
-        group_keys = list(r_cols) + list(c_cols)
-        if aggfunc == "size":
-            s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
-            pivoted = s.unstack(list(c_cols), fill_value=fill_value if fill_value is not None else 0)
-        else:
-            g = df.groupby(group_keys, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
-            pivoted = g.unstack(list(c_cols), fill_value=fill_value)
-        _flatten_cols(pivoted)
-        res = _safe_reset_index(pivoted)
-        res.columns.name = None
-        return _cast_size_ints(res)
-    elif r_cols:
-        if aggfunc == "size":
-            target_name = v_cols[0] if v_cols else "n"
-            if target_name in r_cols:
-                raise ValueError(
-                    f"pivot(): count column name '{target_name}' collides with row grouping column. "
-                    "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
-                )
-            s = df.groupby(r_cols, dropna=dropna, observed=observed).size()
-            res = s.to_frame(name=target_name).reset_index()
-            res.columns.name = None
-            return _cast_size_ints(res)
-        else:
-            g = df.groupby(r_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
-            pivoted = g if isinstance(g, pd.DataFrame) else g.to_frame()
+        return res
+    elif c_cols:
+        need_prefix = len(metrics) > 1
+        if len(metrics) == 1:
+            m = metrics[0]
+            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
+            prefix = m.out_name if m_prefix_needed else None
+            if m.src_col is None or m.aggfunc == "size":
+                s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
+                pivoted = s.to_frame().T.reset_index(drop=True)
+            else:
+                g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                pivoted = g.to_frame().T.reset_index(drop=True)
             if fill_value is not None:
                 pivoted = pivoted.fillna(fill_value)
-            _flatten_cols(pivoted)
+            pivoted.columns = _flatten_cols(pivoted, prefix=prefix)
+            pivoted.columns.name = None
+            if m.aggfunc == "size":
+                for col in pivoted.columns:
+                    try:
+                        pivoted[col] = pivoted[col].astype("int64")
+                    except (TypeError, ValueError):
+                        pass
+            return pivoted
+        else:
+            rows: list[pd.DataFrame] = []
+            for m in metrics:
+                if m.src_col is None or m.aggfunc == "size":
+                    s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
+                    row_df = s.to_frame().T
+                else:
+                    g = df.groupby(c_cols, dropna=dropna, observed=observed)[m.src_col].agg(m.aggfunc)
+                    row_df = g.to_frame().T
+                if fill_value is not None:
+                    row_df = row_df.fillna(fill_value)
+                row_df.index = [m.out_name]
+                rows.append(row_df)
+            pivoted = pd.concat(rows)
+            pivoted.columns = _flatten_cols(pivoted)
+            pivoted.index.name = "metric"
             res = _safe_reset_index(pivoted)
             res.columns.name = None
             return res
-    elif c_cols:
-        if aggfunc == "size":
-            s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
-            pivoted = s.to_frame().T.reset_index(drop=True)
-            _flatten_cols(pivoted)
-            pivoted.columns.name = None
-            return _cast_size_ints(pivoted)
-        else:
-            g = df.groupby(c_cols, dropna=dropna, observed=observed)[val_arg].agg(aggfunc)
-            if len(v_cols) == 1:
-                pivoted = g.to_frame().T.reset_index(drop=True)
-                if fill_value is not None:
-                    pivoted = pivoted.fillna(fill_value)
-                _flatten_cols(pivoted)
-                pivoted.columns.name = None
-                return pivoted
-            else:
-                pivoted = g.T
-                if fill_value is not None:
-                    pivoted = pivoted.fillna(fill_value)
-                _flatten_cols(pivoted)
-                pivoted.index.name = "metric"
-                res = _safe_reset_index(pivoted)
-                res.columns.name = None
-                return res
     else:
-        if aggfunc == "size":
-            target_cols = v_cols if v_cols else ["n"]
-            res = pd.DataFrame({col: [len(df)] for col in target_cols}, dtype="int64")
-        else:
-            res = df[v_cols].agg(aggfunc).to_frame().T.reset_index(drop=True)
+        data: dict[str, Any] = {}
+        for m in metrics:
+            if m.src_col is None or m.aggfunc == "size":
+                val = len(df)
+            else:
+                val = df[m.src_col].agg(m.aggfunc)
+            data[m.out_name] = [val]
+        res = pd.DataFrame(data)
         if fill_value is not None:
             res = res.fillna(fill_value)
-        _flatten_cols(res)
+        for m in metrics:
+            if m.aggfunc == "size" and m.out_name in res.columns:
+                try:
+                    res[m.out_name] = res[m.out_name].astype("int64")
+                except (TypeError, ValueError):
+                    pass
         res.columns.name = None
-        return _cast_size_ints(res)
-
-################################################################################
-# FILE: src/pytae/sql.py
-################################################################################
-"""SQL over DataFrames via duckdb. Optional extra: pip install 'pytae[sql]'."""
-
-from __future__ import annotations
-
-import pandas as pd
-
-
-def _require_duckdb():
-    try:
-        import duckdb
-    except ImportError as exc:
-        raise ImportError(
-            "sql() requires duckdb. Install with: pip install 'pytae[sql]'"
-        ) from exc
-    return duckdb
-
-
-def _normalize_sql(query: str) -> str:
-    """Normalize query: read from @path if given, and convert [col] and `col` to \"col\"."""
-    q = query.strip()
-    if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
-        q = q[1:-1].strip()
-    if q.startswith("@"):
-        path = q[1:].strip()
-        if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
-            path = path[1:-1].strip()
-        from pathlib import Path
-        file_path = Path(path)
-        if not file_path.is_file():
-            raise FileNotFoundError(f"sql: query file not found: '{path}'")
-        q = file_path.read_text(encoding="utf-8").strip()
-    out_chars: list[str] = []
-    i, n = 0, len(q)
-    quote = None
-    while i < n:
-        ch = q[i]
-        if quote is not None:
-            out_chars.append(ch)
-            if ch == quote:
-                if i + 1 < n and q[i + 1] == quote:
-                    out_chars.append(q[i + 1])
-                    i += 2
-                    continue
-                quote = None
-            i += 1
-            continue
-        if ch in "'\"":
-            quote = ch
-            out_chars.append(ch)
-            i += 1
-            continue
-        if ch == "`":
-            j = q.find("`", i + 1)
-            if j != -1:
-                ident = q[i + 1 : j]
-                out_chars.append(f'"{ident}"')
-                i = j + 1
-                continue
-        if ch == "[":
-            j = q.find("]", i + 1)
-            if j != -1:
-                inner = q[i + 1 : j]
-                is_index = i > 0 and (q[i - 1].isalnum() or q[i - 1] in "_)]")
-                is_list_literal = "," in inner or "'" in inner or '"' in inner
-                has_ident = any(c.isalpha() or c == "_" for c in inner)
-                all_valid = all(c.isalnum() or c in " _-" for c in inner)
-                if not is_index and not is_list_literal and has_ident and all_valid:
-                    out_chars.append(f'"{inner}"')
-                    i = j + 1
-                    continue
-
-        out_chars.append(ch)
-        i += 1
-    return "".join(out_chars)
-
-
-def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
-    """Run a SQL query via duckdb.
-
-    The current DataFrame is table ``data`` (same as CLI ``-sql``). Extra keyword
-    frames are registered under those names, like ``-file`` aliases.
-
-    Parameters
-    ----------
-    df:
-        Registered as table ``data``.
-    query:
-        DuckDB SQL, or '@query.txt' to load from a file. Spaced column names can
-        use double quotes (\"col a\"), brackets ([col a]), or backticks (`col a`).
-    **frames:
-        Additional DataFrames registered as tables. The name ``data`` is reserved.
-
-    Examples
-    --------
-    >>> import pytae as pt
-    >>> penguins = pt.sample("penguins")
-    >>> pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from data group by species order by species")
-         species     avg_mass
-    0     Adelie  3700.662252
-    1  Chinstrap  3733.088235
-    2     Gentoo  5076.016260
-    >>> penguins.pt.sql("select * from data where species = 'Adelie'").shape
-    (152, 7)
-    >>> left = pd.DataFrame({"id": [1, 2], "x": ["a", "b"]})
-    >>> right = pd.DataFrame({"id": [1, 3], "y": ["p", "q"]})
-    >>> pt.sql(left, "select data.id, x, y from data join extra using (id)", extra=right)
-       id  x  y
-    0   1  a  p
-    """
-    if "data" in frames:
-        raise ValueError("sql(): extra frame cannot be named 'data' — that's the current DataFrame")
-    normalized_query = _normalize_sql(query)
-    tables = {"data": df, **frames}
-    duckdb = _require_duckdb()
-    con = duckdb.connect()
-    try:
-        for name, frame in tables.items():
-            con.register(name, frame)
-        try:
-            return con.sql(normalized_query).df()
-        except Exception as exc:
-            raise ValueError(f"sql: {exc}") from exc
-    finally:
-        con.close()
+        return res
 
 ================================================================================
 14. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
@@ -24047,6 +24333,32 @@ def test_mutate_multi_col_cli(tmp_path, capsys):
     assert "20" in out and "40" in out
     assert "12" in out and "24" in out
 
+
+def test_mutate_cli_map_with_spaces(tmp_path, capsys):
+    df = pd.DataFrame({"island name": ["Biscoe", "Dream", "Torgersen"]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([
+        path,
+        "-mutate", "[island code] = map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')",
+        "-select", "island code",
+        "-head",
+    ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "BIS" in out and "DRM" in out and "TOR" in out
+
+
+def test_mutate_cli_disallow_dot_map(tmp_path, capsys):
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"]})
+    path = _write_csv(tmp_path, df)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-mutate", "code = species.map({'Adelie': 'AD'})"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "'.map()' method syntax is not supported" in err
+
 ################################################################################
 # FILE: tests/test_cli_new_features.py
 ################################################################################
@@ -24356,6 +24668,43 @@ def test_crosstab_unrecognized_argument(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([p, "-crosstab", "index=species,columns=island"])
     assert exc_info.value.code == 2
+
+
+def test_cli_pivot_rich_metrics_1d(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Sales": [100.0, 200.0, 300.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=Region, v='avg_sales=Sales:mean, count=n'", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "avg_sales", "count"]
+
+
+def test_cli_pivot_rich_metrics_2d_unquoted(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Year": [2020, 2021, 2020],
+        "Sales": [100.0, 200.0, 300.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=Region, c=Year, v=rev=Sales:sum, count=n", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"] or cols == ["Region", "rev_2020", "rev_2021", "count_2020", "count_2021"]
+
+
+def test_cli_pivot_multi_func(tmp_path, capsys):
+    df = pd.DataFrame({
+        "Region": ["East", "East", "West"],
+        "Sales": [100.0, 200.0, 300.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=Region, v=Sales:[mean, sum]", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["Region", "Sales_mean", "Sales_sum"]
 
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
@@ -24882,8 +25231,7 @@ def test_sql_invalid_query_errors(tmp_path, capsys):
     assert "-sql" in capsys.readouterr().err
 
 def test_sql_first_op_scans_parquet_directly(tmp_path, capsys):
-    # -sql as the very first op should give the same result whether duckdb scans the
-    # source file directly (fast path) or pandas materializes it first (fallback).
+    # -sql as the very first op queries table data via Polars SQLContext.
     path = tmp_path / "data.parquet"
     pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]}).to_parquet(path, index=False)
 
@@ -24904,20 +25252,17 @@ def test_sql_first_op_respects_nrows(tmp_path, capsys):
     assert len(out) - 1 == 3  # header + 3 rows
 
 def test_sql_first_op_with_progress_still_works(tmp_path, capsys):
-    # -progress forces the pandas-materialize fallback instead of the direct duckdb scan.
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
 
     exit_code = cli.main([path, "-progress", "-sql", "select * from data where a > 1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "reading" in out  # progress line proves the pandas fallback path ran
+    assert "reading" in out
     table_lines = [line for line in out.strip().splitlines() if "reading" not in line]
     assert len(table_lines) - 1 == 2
 
 def test_sql_first_op_with_custom_encoding_still_works(tmp_path, capsys):
-    # A non-utf8 encoding forces the pandas-materialize fallback (duckdb's CSV reader
-    # doesn't support arbitrary encodings the way pandas does).
     path = tmp_path / "data.csv"
     pd.DataFrame({"a": [1, 2], "name": ["café", "naïve"]}).to_csv(path, index=False, encoding="latin-1")
 
@@ -24995,6 +25340,23 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 2)"
 
+
+def test_cli_sql_works_without_duckdb(tmp_path, capsys, monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "duckdb" or name.startswith("duckdb."):
+            raise ImportError("duckdb is not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    path = _write_csv(tmp_path, pd.DataFrame({"x": [10, 20, 30], "y": ["a", "b", "c"]}))
+    exit_code = cli.main([str(path), "-sql", "select y from data where x >= 20", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
 ################################################################################
 # FILE: tests/test_import.py
 ################################################################################
@@ -25015,6 +25377,7 @@ assert "pytae.plotting" not in sys.modules
 assert "pytae.shape" not in sys.modules
 assert "matplotlib" not in sys.modules
 assert "duckdb" not in sys.modules
+assert "polars" not in sys.modules
 assert pytae._cache == {}
 assert "penguins" in pytae.sample_data
 assert list(pytae.sample_data.keys())
@@ -25103,36 +25466,6 @@ def test_sample_unknown_dataset():
         assert "penguins" in str(exc)
     else:
         raise AssertionError("expected KeyError")
-
-
-def test_sql_import_error_mentions_sql_extra(tmp_path):
-    csv_path = tmp_path / "data.csv"
-    csv_path.write_text("a,b\n1,2\n")
-    code = r"""
-import builtins
-import sys
-sys.path.insert(0, %r)
-real_import = builtins.__import__
-
-def blocked(name, *args, **kwargs):
-    if name == "duckdb" or name.startswith("duckdb."):
-        raise ImportError("No module named duckdb")
-    return real_import(name, *args, **kwargs)
-
-builtins.__import__ = blocked
-import pytae.cli as cli
-try:
-    cli.main([%r, "-sql", "select * from df"])
-except SystemExit as exc:
-    assert exc.code == 2
-else:
-    raise AssertionError("expected SystemExit")
-""" % (_SRC, str(csv_path))
-    result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True
-    )
-    assert result.returncode == 0, result.stderr
-    assert "pytae[sql]" in result.stderr
 
 ################################################################################
 # FILE: tests/test_mutate.py
@@ -25706,6 +26039,21 @@ def test_mutate_multi_col_spaced_columns():
     assert list(res["col a"]) == [15, 25]
     assert list(res["col b"]) == [35, 45]
 
+
+def test_mutate_map_with_spaced_columns():
+    df = pd.DataFrame({"island name": ["Biscoe", "Dream", "Torgersen"]})
+    res = df.pt.mutate("[island code] = map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')")
+    assert list(res["island code"]) == ["BIS", "DRM", "TOR"]
+
+
+def test_mutate_disallow_dot_map_method_syntax():
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island name": ["Biscoe", "Dream"]})
+    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+        df.pt.mutate("code = species.map({'Adelie': 'AD'})")
+
+    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+        df.pt.mutate("[code] = [island name].map({'Biscoe': 'BIS'})")
+
 ################################################################################
 # FILE: tests/test_pivot.py
 ################################################################################
@@ -26164,6 +26512,80 @@ def test_pivot_repeated_columns_in_dimensions_and_values():
 
     with pytest.raises(ValueError, match="cannot appear multiple times in 'v'"):
         df.pt.pivot(r="Region", v=["Sales", "Sales"])
+
+
+def test_pivot_rich_metric_1d_aliases_and_counts(sales_df):
+    # 1D: new_col = col:aggfunc and count = n
+    res = sales_df.pt.pivot(r="Region", v="rev = Sales:sum, avg_sales = Sales:mean, orders = n")
+    assert list(res.columns) == ["Region", "rev", "avg_sales", "orders"]
+    assert res["orders"].dtype == "int64"
+    east = res[res["Region"] == "East"].iloc[0]
+    assert east["rev"] == 450.0
+    assert east["avg_sales"] == 150.0
+    assert east["orders"] == 3
+    west = res[res["Region"] == "West"].iloc[0]
+    assert west["rev"] == 700.0
+    assert west["avg_sales"] == 350.0
+    assert west["orders"] == 2
+
+
+def test_pivot_rich_metric_2d_aliases_and_counts(sales_df):
+    # 2D cross-tabulation with multi-metric prefixes
+    res = sales_df.pt.pivot(r="Region", c="Year", v="rev = Sales:sum, orders = n")
+    assert list(res.columns) == ["Region", "rev_2023", "rev_2024", "orders_2023", "orders_2024"]
+    assert res["orders_2023"].dtype == "int64"
+    assert res["orders_2024"].dtype == "int64"
+    east = res[res["Region"] == "East"].iloc[0]
+    assert east["rev_2023"] == 300.0
+    assert east["rev_2024"] == 150.0
+    assert east["orders_2023"] == 2
+    assert east["orders_2024"] == 1
+
+
+def test_pivot_multi_func_single_col(sales_df):
+    # Multi-func syntax col:[f1, f2]
+    res_1d = sales_df.pt.pivot(r="Region", v="Sales:[mean, sum]")
+    assert list(res_1d.columns) == ["Region", "Sales_mean", "Sales_sum"]
+    east = res_1d[res_1d["Region"] == "East"].iloc[0]
+    assert east["Sales_mean"] == 150.0
+    assert east["Sales_sum"] == 450.0
+
+    # With alias: prefix_[f]
+    res_alias = sales_df.pt.pivot(r="Region", v="rev = Sales:[mean, sum]")
+    assert list(res_alias.columns) == ["Region", "rev_mean", "rev_sum"]
+
+
+def test_pivot_bracketed_column_spaced():
+    df = pd.DataFrame({
+        "Store Region": ["East", "East", "West"],
+        "gross sales": [100.0, 200.0, 300.0],
+    })
+    res = df.pt.pivot(r="[Store Region]", v="total = [gross sales]:sum, count = n")
+    assert list(res.columns) == ["Store Region", "total", "count"]
+    assert res.loc[res["Store Region"] == "East", "total"].iloc[0] == 300.0
+    assert res.loc[res["Store Region"] == "East", "count"].iloc[0] == 2
+
+
+def test_pivot_dict_spec(sales_df):
+    # Dict with col->func and alias->expr
+    res1 = sales_df.pt.pivot(r="Region", v={"Sales": "mean", "Profit": "sum"})
+    assert list(res1.columns) == ["Region", "Sales", "Profit"]
+    assert res1.loc[res1["Region"] == "East", "Sales"].iloc[0] == 150.0
+    assert res1.loc[res1["Region"] == "East", "Profit"].iloc[0] == 55.0
+
+    res2 = sales_df.pt.pivot(r="Region", v={"rev": "Sales:sum", "orders": "n"})
+    assert list(res2.columns) == ["Region", "rev", "orders"]
+    assert res2.loc[res2["Region"] == "East", "rev"].iloc[0] == 450.0
+    assert res2.loc[res2["Region"] == "East", "orders"].iloc[0] == 3
+
+
+def test_pivot_whole_table_rich_metrics(sales_df):
+    res = sales_df.pt.pivot(v="total_sales = Sales:sum, avg_profit = Profit:mean, count = n")
+    assert list(res.columns) == ["total_sales", "avg_profit", "count"]
+    assert len(res) == 1
+    assert res["total_sales"].iloc[0] == 1150.0
+    assert res["avg_profit"].iloc[0] == 28.0
+    assert res["count"].iloc[0] == 5
 
 ################################################################################
 # FILE: tests/test_plotter.py
@@ -27125,25 +27547,26 @@ def test_plotter_remap_coord_pandas2_and_3():
 ################################################################################
 # FILE: tests/test_polars_engine.py
 ################################################################################
-import pytest
 import pandas as pd
 import polars as pl
+import pytest
+
 from pytae import cli
 from pytae.polars_engine import (
-    filter_polars,
-    select_polars,
     arrange_polars,
+    clean_columns_polars,
     distinct_polars,
     dropna_polars,
-    rename_polars,
-    pivot_polars,
+    filter_polars,
+    handle_missing_polars,
+    long_polars,
     mutate_polars,
     pick_polars,
+    pivot_polars,
+    rename_polars,
+    select_polars,
     value_counts_polars,
-    long_polars,
     wide_polars,
-    handle_missing_polars,
-    clean_columns_polars,
 )
 
 
@@ -27404,6 +27827,171 @@ def test_clean_columns_polars():
     })
     res = clean_columns_polars(df, strip=True, squeeze=True, fill="_", case="lower")
     assert res.columns == ["col_a", "col_b"]
+
+
+def test_mutate_polars_map_and_disallow_dot_map():
+    df = pl.DataFrame({
+        "island name": ["Biscoe", "Dream", "Torgersen"],
+        "species": ["Adelie", "Gentoo", "Chinstrap"],
+    })
+    res = mutate_polars(df, {"island code": "map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')"})
+    assert res["island code"].to_list() == ["BIS", "DRM", "TOR"]
+
+    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+        mutate_polars(df, {"code": "species.map({'Adelie': 'AD'})"})
+
+
+def test_format_table_tty_and_non_tty():
+    from pytae.cli_run import _format_table
+
+    pldf = pl.DataFrame({"name": ["alpha", "beta"], "val": [10, 20]})
+    pddf = pd.DataFrame({"name": ["alpha", "beta"], "val": [10, 20]})
+
+    # TTY mode: Polars boxed table
+    tty_pl = _format_table(pldf, is_tty=True)
+    assert "┌" in tty_pl
+    assert "shape: (2, 2)" in tty_pl
+    assert "name" in tty_pl and "val" in tty_pl
+
+    tty_pd = _format_table(pddf, is_tty=True)
+    assert "┌" in tty_pd
+    assert "shape: (2, 2)" in tty_pd
+
+    # Non-TTY mode: Bare table
+    bare_pl = _format_table(pldf, is_tty=False)
+    assert "┌" not in bare_pl
+    assert "shape:" not in bare_pl
+    assert "alpha" in bare_pl and "beta" in bare_pl
+
+    bare_pd = _format_table(pddf, is_tty=False)
+    assert "┌" not in bare_pd
+    assert "shape:" not in bare_pd
+
+
+def test_format_table_large_and_small_rows_tty():
+    from pytae.cli_run import _format_table
+
+    # Small table (25 rows): displays all rows in TTY
+    df25 = pl.DataFrame({"a": list(range(25))})
+    out25 = _format_table(df25, is_tty=True)
+    assert "shape: (25, 1)" in out25
+    assert "24" in out25  # all 25 rows shown, not truncated at 10
+
+    # Huge table: Polars truncates cleanly
+    df_huge = pl.DataFrame({"a": list(range(5000))})
+    out_huge = _format_table(df_huge, is_tty=True)
+    assert "shape: (5_000, 1)" in out_huge
+    assert "…" in out_huge
+
+
+def test_cli_pretty_deprecated_silent(tmp_path, capsys):
+    p = tmp_path / "data.parquet"
+    pl.DataFrame({"x": [1, 2]}).write_parquet(p)
+
+    code = cli.main([str(p), "-pretty"])
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""  # Zero deprecation warnings
+    assert "1" in captured.out and "2" in captured.out
+
+
+def test_cli_tty_boxed_output(tmp_path, monkeypatch, capsys):
+    import sys
+
+    p = tmp_path / "data.parquet"
+    pl.DataFrame({"col1": [100, 200]}).write_parquet(p)
+
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    code = cli.main([str(p)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "┌" in out
+    assert "shape: (2, 1)" in out
+
+
+def test_pivot_polars_rich_metrics_1d():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West", "West", "East"],
+        "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+        "profit": [10.0, 25.0, 35.0, 50.0, 20.0],
+    })
+    res = pivot_polars(df, r="region", v="rev = sales:sum, avg_sales = sales:mean, orders = n")
+    assert res.columns == ["region", "rev", "avg_sales", "orders"]
+    assert res["region"].to_list() == ["East", "West"]
+    assert res["rev"].to_list() == [450.0, 700.0]
+    assert res["avg_sales"].to_list() == [150.0, 350.0]
+    assert res["orders"].to_list() == [3, 2]
+
+
+def test_pivot_polars_rich_metrics_2d():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West", "West", "East"],
+        "year": [2020, 2020, 2020, 2021, 2021],
+        "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+    })
+    res = pivot_polars(df, r="region", c="year", v="rev = sales:sum, orders = n")
+    assert res.columns == ["region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"]
+    assert res["region"].to_list() == ["East", "West"]
+    assert res["rev_2020"].to_list() == [300.0, 300.0]
+    assert res["rev_2021"].to_list() == [150.0, 400.0]
+    assert res["orders_2020"].to_list() == [2, 1]
+    assert res["orders_2021"].to_list() == [1, 1]
+
+
+def test_pivot_polars_multi_func_single_col():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West"],
+        "sales": [100.0, 200.0, 300.0],
+    })
+    res = pivot_polars(df, r="region", v="sales:[mean, sum]")
+    assert res.columns == ["region", "sales_mean", "sales_sum"]
+    assert res["sales_mean"].to_list() == [150.0, 300.0]
+    assert res["sales_sum"].to_list() == [300.0, 300.0]
+
+
+def test_pivot_polars_whole_table_and_c_only():
+    df = pl.DataFrame({
+        "year": [2020, 2020, 2021],
+        "sales": [100.0, 200.0, 300.0],
+    })
+    # Whole table
+    res_whole = pivot_polars(df, v="total = sales:sum, count = n")
+    assert res_whole.columns == ["total", "count"]
+    assert res_whole["total"].to_list() == [600.0]
+    assert res_whole["count"].to_list() == [3]
+
+    # c only
+    res_c = pivot_polars(df, c="year", v="sales", a="sum")
+    assert res_c.columns == ["2020", "2021"]
+    assert res_c["2020"].to_list() == [300.0]
+    assert res_c["2021"].to_list() == [300.0]
+
+
+def test_write_dataframe_polars(tmp_path):
+    from pytae.readers import write_dataframe
+
+    df = pl.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+
+    # Parquet
+    pq_path = tmp_path / "out.parquet"
+    write_dataframe(df, pq_path)
+    assert pq_path.exists()
+    read_pq = pl.read_parquet(pq_path)
+    assert read_pq["a"].to_list() == [1, 2, 3]
+
+    # CSV
+    csv_path = tmp_path / "out.csv"
+    write_dataframe(df, csv_path)
+    assert csv_path.exists()
+    read_csv = pl.read_csv(csv_path)
+    assert read_csv["a"].to_list() == [1, 2, 3]
+
+    # NDJSON
+    json_path = tmp_path / "out.jsonl"
+    write_dataframe(df, json_path)
+    assert json_path.exists()
+    read_json = pl.read_ndjson(json_path)
+    assert read_json["b"].to_list() == ["x", "y", "z"]
 
 ################################################################################
 # FILE: tests/test_readers.py
@@ -28176,93 +28764,6 @@ def test_long_bracketed_column_names():
 
 if __name__ == '__main__':
     pytest.main()
-
-################################################################################
-# FILE: tests/test_sql.py
-################################################################################
-import os
-import sys
-
-import pandas as pd
-import pytest
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-
-import pytae as pt
-
-duckdb = pytest.importorskip("duckdb")
-
-
-def test_sql_query_via_data_alias():
-    df = pd.DataFrame({"col a": [1, 20, 3], "col b": ["x", "y", "z"]})
-    out = pt.sql(df, 'select "col b" from data where "col a" > 10')
-    assert list(out["col b"]) == ["y"]
-
-
-def test_sql_via_accessor():
-    penguins = pt.sample("penguins")
-    out = penguins.pt.sql(
-        "select species, avg(body_mass_g) as avg_mass from data group by species order by species"
-    )
-    assert list(out.columns) == ["species", "avg_mass"]
-    assert set(out["species"]) == {"Adelie", "Chinstrap", "Gentoo"}
-
-
-def test_sql_extra_frames():
-    left = pd.DataFrame({"id": [1, 2], "x": ["a", "b"]})
-    right = pd.DataFrame({"id": [1, 3], "y": ["p", "q"]})
-    out = pt.sql(left, "select data.id, x, y from data inner join extra using (id)", extra=right)
-    assert list(out["id"]) == [1]
-    assert list(out["x"]) == ["a"]
-    assert list(out["y"]) == ["p"]
-
-
-def test_sql_rejects_data_as_extra_name():
-    df = pd.DataFrame({"a": [1]})
-    with pytest.raises(ValueError, match="cannot be named 'data'"):
-        pt.sql(df, "select * from data", data=df)
-
-
-def test_sql_invalid_query_errors():
-    df = pd.DataFrame({"a": [1]})
-    with pytest.raises(ValueError, match="sql:"):
-        pt.sql(df, "not valid sql")
-
-
-def test_sql_then_pandas_head():
-    df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
-    out = df.pt.sql("select b from data where a > 1").head(1)
-    assert list(out["b"]) == ["y"]
-
-
-def test_sql_load_from_file(tmp_path):
-    df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
-    qfile = tmp_path / "query.txt"
-    qfile.write_text("select b from data where a > 1")
-    out = pt.sql(df, f"@{qfile}")
-    assert list(out["b"]) == ["y", "z"]
-
-
-def test_sql_bracketed_identifiers():
-    df = pd.DataFrame({"col a": [1, 2], "col b": [10, 20]})
-    out = pt.sql(df, "select [col a], `col b` from data")
-    assert list(out["col a"]) == [1, 2]
-    assert list(out["col b"]) == [10, 20]
-
-
-def test_sql_preserves_duckdb_lists_and_indexing():
-    df = pd.DataFrame({"a": [1, 2, 3], "col a": [10, 20, 30], "arr": [[100, 200], [300, 400], [500, 600]]})
-    # List literal in WHERE clause with spaces
-    out1 = pt.sql(df, "select [col a] from data where a in [1, 2]")
-    assert list(out1["col a"]) == [10, 20]
-
-    # Array indexing arr[1]
-    out2 = pt.sql(df, "select arr[1] as first_elem from data where a = 1")
-    assert list(out2["first_elem"]) == [100]
-
-    # String list literal
-    out3 = pt.sql(df, "select ['x', 'y'] as pair from data where a = 1")
-    assert list(out3["pair"][0]) == ["x", "y"]
 
 ################################################################################
 # FILE: tests/test_utilities.py

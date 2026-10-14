@@ -22,9 +22,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="sql",
         flag="-sql, --sql QUERY",
         syntax="pytae <path> -sql \"<QUERY>\" [other flags...]",
-        summary="Run full analytical SQL queries via DuckDB directly against data.",
+        summary="Run full analytical SQL queries via Polars SQLContext directly against data.",
         description=(
-            "Executes zero-copy, vectorized SQL queries via embedded DuckDB.\n"
+            "Executes zero-copy, vectorized SQL queries via embedded Polars SQLContext.\n"
             "- In single-file pipelines, the current dataset view is queryable as table `data`.\n"
             "- In multi-file mode (-file), each file alias (e.g. df1, df2) is queryable directly by name.\n"
             "- Standard SQL identifier quoting applies: double quotes for names with spaces (\"col a\"),\n"
@@ -34,7 +34,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=[
             "`data` : Default in-memory table representing the current pipeline view.",
             "@file.sql : Load SQL query string directly from an external SQL file.",
-            "DuckDB functions : Full support for CTEs, WINDOW functions, aggregate functions, and math.",
+            "Polars SQL functions : Full support for CTEs, WINDOW functions, aggregate functions, and math.",
         ],
         examples=[
             'pytae penguins.parquet -sql "select species, island, body_mass_g from data where body_mass_g > 5000" -head 5',

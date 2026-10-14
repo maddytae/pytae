@@ -2,7 +2,7 @@
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Execute full analytical SQL queries directly against tabular files and in-memory pipeline views via DuckDB using `-sql`.
+Execute full analytical SQL queries directly against tabular files and in-memory pipeline views via Polars SQLContext using `-sql`.
 
 ---
 
@@ -21,7 +21,7 @@ Execute full analytical SQL queries directly against tabular files and in-memory
 
 ## Overview & Architecture
 
-Pytae integrates DuckDB to provide zero-copy, vectorized SQL execution directly against your data:
+Pytae integrates the native Polars SQL engine (`SQLContext`) to provide zero-copy, vectorized SQL execution directly against your data without external dependencies:
 - In single-file pipelines, the current dataset view is queryable as table **`data`**.
 - In multi-file mode (`-file`), each file alias (e.g. `df1`, `df2`) is queryable directly by name.
 - SQL can be inserted at any point in the pipeline and chained with other pytae flags.

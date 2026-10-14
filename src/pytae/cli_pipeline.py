@@ -330,11 +330,9 @@ class _Pipeline:
         return None
 
     def apply_sql(self, query: str) -> str | None:
-        """Apply one -sql query via duckdb. Single-file mode: the current view is registered
+        """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered
         as table `data` (the file itself is already named on the command line, so there's no
-        separate file-derived alias) — if nothing has touched the view yet, duckdb scans the
-        source parquet/csv/txt/dat file directly instead of first materializing it through
-        pandas (much faster; pandas is only used as a fallback, see _register_source_view).
+        separate file-derived alias).
         -file/-merge mode: every -file alias is registered under its own name instead, so
         -sql can do the join itself; `data` is also registered once something (e.g. -merge)
         has produced a current view. Returns an error message or None."""

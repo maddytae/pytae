@@ -1,6 +1,6 @@
 # pytae — CLI Reference & Architecture Hub
 
-The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.sql()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
+The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.pivot()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
 
 ---
 
@@ -13,7 +13,7 @@ The `pytae` CLI provides high-performance command-line data processing for tabul
   - [2. Column Selection](#column-selection)
   - [3. Row Filtering](#row-filtering)
   - [4. Feature Engineering & Mutation](#feature-engineering-mutation)
-  - [5. DuckDB SQL Engine](#duckdb-sql-engine)
+  - [5. SQL Engine (Polars SQLContext)](#sql-engine)
   - [6. Data Cleaning & Value Replacement](#data-cleaning-value-replacement)
   - [7. Aggregations & Group Operations](#aggregations-group-operations)
   - [8. Reshaping & Cross-Tabulation](#reshaping-cross-tabulation)
@@ -76,7 +76,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Row Sorting** | [Row Sorting Guide](cli/arrange.md) | `-arrange`, ascending/descending (`desc`, `-col`), bracketed spaced columns |
 | **Distinct Rows** | [Distinct Rows Guide](cli/distinct.md) | `-distinct`, drop duplicate rows across all or specific column subsets |
 | **Feature Engineering** | [Mutating & Computing Guide](cli/mutate.md) | `-mutate`, formulas, multi-column transforms (`(col1, col2) = _ * 2`), arithmetic, boolean indicators, `@specs.txt`, functional helpers, `-by` grouped transforms |
-| **SQL Engine** | [DuckDB SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
+| **SQL Engine** | [SQL Engine Guide](cli/sql.md) | `-sql`, querying table `data`, window functions, CTEs, `@query.sql`, zero-copy scan |
 | **Data Cleaning** | [Data Cleaning & Value Replacement Guide](cli/clean_replace.md) | `-clean_columns` (strip, squeeze, fill, case, dedupe), `-replace_values`, `-handle_missing`, `-dropna`, `-rename` |
 | **Aggregations & Grouping** | [Aggregations & Grouping Guide](cli/agg.md) | `-by` + `-agg` (group summaries & grand totals), `-by` + `-mutate` (grouped window transforms) |
 | **Reshaping (Pure 1-to-1)** | [Reshaping Guide](cli/reshape.md) | `-long` (melt numeric columns), `-wide` (pure 1:1 unmelting) |
@@ -190,13 +190,13 @@ pytae penguins.parquet -mutate "mass_kg = body_mass_g / 1000" -select "species,b
 
 ---
 
-<a id="duckdb-sql-engine"></a>
-### 5. DuckDB SQL Engine
+<a id="sql-engine"></a>
+### 5. SQL Engine (Polars SQLContext)
 
-Run ad-hoc ANSI SQL queries directly against tabular datasets using DuckDB. Scans file formats like Parquet and CSV directly with zero-copy execution when placed first in the pipeline.
+Run ad-hoc ANSI SQL queries directly against tabular datasets using the native Polars SQL engine (`SQLContext`). Scans file formats like Parquet and CSV directly with zero-copy execution when placed first in the pipeline.
 
 - **Primary flags**: `-sql`
-- **Target table**: The active view is always queryable as table `data`.
+- **Target table**: The active view is always queryable as table `data`. In multi-file mode (`-file`), file aliases are queryable by name.
 
 ```bash
 pytae penguins.parquet -sql "select species, round(avg(body_mass_g), 2) as avg_mass from data group by species"
@@ -210,7 +210,7 @@ pytae penguins.parquet -sql "select species, round(avg(body_mass_g), 2) as avg_m
 | Adelie | 3700.66 |
 | Chinstrap | 3733.09 |
 
-👉 See the complete guide: **[DuckDB SQL Engine Guide](cli/sql.md)**
+👉 See the complete guide: **[SQL Engine Guide](cli/sql.md)**
 
 ---
 
@@ -389,7 +389,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-dropna [COLS]` | Select & Filter | Drop rows containing NaN (bare for all columns, or comma-separated columns) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-pick SPEC` | Select & Filter | Pick top or bottom rows by column (`col,n=N`, `col,prop=P`, `order=max|min`), group-aware with `-by` | [cli/pick.md](cli/pick.md) |
 | `-mutate SPEC` | Transform | Create or overwrite columns via formulas / helpers | [cli/mutate.md](cli/mutate.md) |
-| `-sql QUERY` | Transform | Execute SQL query via DuckDB against table `data` | [cli/sql.md](cli/sql.md) |
+| `-sql QUERY` | Transform | Execute SQL query via Polars SQLContext against table `data` | [cli/sql.md](cli/sql.md) |
 | `-clean_columns SPEC` | Clean | Clean headers (strip, squeeze, strip_special, fill, case, dedupe) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-replace_values SPEC` | Clean | Replace cell values (`v=mapping`, `c=cols`, `exact=bool`) | [cli/clean_replace.md](cli/clean_replace.md) |
 | `-handle_missing [FILL]` | Clean | Fill NAs (`.` for object, `0` for numeric, or custom fill) | [cli/clean_replace.md](cli/clean_replace.md) |
@@ -434,7 +434,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Sort rows** | `-arrange` | [Row Sorting](cli/arrange.md) |
 | **Deduplicate rows** | `-distinct` | [Distinct Rows](cli/distinct.md) |
 | **Compute / mutate columns** | `-mutate` | [Mutating & Computing](cli/mutate.md) |
-| **Run SQL queries** | `-sql` | [DuckDB SQL Engine](cli/sql.md) |
+| **Run SQL queries** | `-sql` | [SQL Engine](cli/sql.md) |
 | **Replace cell values** | `-replace_values` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Impute missing values (NA)** | `-handle_missing` | [Data Cleaning & Value Replacement](cli/clean_replace.md) |
 | **Group summary** | `-by` + `-agg` | [Aggregations & Grouping](cli/agg.md) |

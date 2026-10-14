@@ -5,10 +5,10 @@
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
-Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, feature engineering, DuckDB SQL, and visualization.
+Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, feature engineering, Polars SQL, and visualization.
 
 `pytae` offers **one and only one right way** to perform every tabular operation across two complementary workflows:
-1. **Python Library & DataFrame Accessor (`df.pt`)**: Expressive, chainable verbs (`filter`, `select`, `mutate`, `arrange`, `distinct`, `by`, `ungroup`, `pick`, `agg`, `long`, `wide`, `pivot`, `sql`, `plot`) on standard Pandas DataFrames.
+1. **Python Library & DataFrame Accessor (`df.pt`)**: Expressive, chainable verbs (`filter`, `select`, `mutate`, `arrange`, `distinct`, `by`, `ungroup`, `pick`, `agg`, `long`, `wide`, `pivot`, `plot`) on standard Pandas DataFrames.
 2. **Unix Pipeline CLI (`pytae`)**: Inspect, filter, transform, aggregate, diff, and export files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`) from the terminal with zero boilerplate.
 
 👉 **New to Pytae?** Check out **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Naming Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)**.
@@ -18,10 +18,8 @@ Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, fe
 ## Installation
 
 ```bash
-pip install pytae              # Core library and CLI
+pip install pytae              # Core library and Polars-powered CLI
 pip install "pytae[plot]"       # Includes matplotlib for plotting
-pip install "pytae[sql]"        # Includes DuckDB for SQL queries
-pip install "pytae[plot,sql]"   # All optional dependencies
 ```
 
 ---
@@ -77,7 +75,7 @@ pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean, count=n"
 # 4. Deduplicate rows across key columns
 pytae penguins.parquet -distinct "species,island"
 
-# 5. Embedded DuckDB SQL
+# 5. Polars SQL Query
 pytae sales.parquet -sql "select region, sum(revenue) from data group by 1"
 
 # 6. Fast dataset comparison
@@ -105,7 +103,7 @@ pytae current.parquet -diff baseline.parquet
 | **2D Pivot Table** | `.pt.pivot(...)` | `-pivot "..."` | `df.pt.pivot(r="island", c="species", v="mass", a="mean")` |
 | **Pure Reshape** | `.pt.long()`, `.pt.wide()`| `-long`, `-wide` | `df.pt.wide(c="metric", v="val", index="id")` |
 | **Distinct Rows** | `.pt.distinct(*cols)`| `-distinct [COLS]` | `df.pt.distinct("species", "island")` |
-| **DuckDB SQL** | `.pt.sql("...")` | `-sql "..."` | `df.pt.sql("select * from data order by 1")` |
+| **SQL Query (CLI)**| N/A (CLI only) | `-sql "..."` | `pytae data.parquet -sql "select * from data order by 1"` |
 | **Glimpse Table** | `.pt.glimpse()` | `-glimpse` | `df.pt.glimpse()` |
 | **ASCII Freq & Hist**| `.pt.freq()`, `.pt.hist()` | `-freq`, `-hist` | `df.pt.freq("species")`, `df.pt.hist("mass:10")` |
 | **Copy to Clipboard**| `df.to_clip()` | `-o clip` | `df.head().to_clip()` |
@@ -130,7 +128,7 @@ pytae current.parquet -diff baseline.parquet
   - [Aggregations & Grouping](https://github.com/maddytae/pytae/blob/master/docs/cli/agg.md) (`-by`, `-agg`, grand totals)
   - [Inspection & Metadata](https://github.com/maddytae/pytae/blob/master/docs/cli/inspect.md) (`-shape`, `-cols`, `-meta`, `-freq`, `-hist`, `-value_counts`)
   - [Data Cleaning](https://github.com/maddytae/pytae/blob/master/docs/cli/clean_replace.md) (`-clean_columns`, `-replace_values`, `-handle_missing`)
-  - [DuckDB SQL](https://github.com/maddytae/pytae/blob/master/docs/cli/sql.md) (`-sql`)
+  - [SQL Engine](https://github.com/maddytae/pytae/blob/master/docs/cli/sql.md) (`-sql`)
   - [Plotting & Figures](https://github.com/maddytae/pytae/blob/master/docs/cli/plotting.md) (`-plot`, `-finalize`)
   - [Dataset Diffing](https://github.com/maddytae/pytae/blob/master/docs/cli/diff.md) (`-diff`)
   - [File I/O & Export](https://github.com/maddytae/pytae/blob/master/docs/cli/export_io.md) (`-o`, `-out_dir`, STDIN, compression)
@@ -148,7 +146,6 @@ Explore step-by-step Python API guides with inline outputs:
 - **Pure Reshaping**: [`reshape.md`](https://github.com/maddytae/pytae/blob/master/docs/library/reshape.md)
 - **2D Pivot Tables**: [`pivot.md`](https://github.com/maddytae/pytae/blob/master/docs/library/pivot.md)
 - **Aggregation**: [`agg.md`](https://github.com/maddytae/pytae/blob/master/docs/library/agg.md)
-- **DuckDB SQL**: [`sql.md`](https://github.com/maddytae/pytae/blob/master/docs/library/sql.md)
 - **Plotting (Interactive Notebook)**: [`plotting.ipynb`](https://github.com/maddytae/pytae/blob/master/docs/library/plotting.ipynb)
 - **Other Utilities**: [`other_utilities.md`](https://github.com/maddytae/pytae/blob/master/docs/library/other_utilities.md)
 

@@ -17,9 +17,8 @@
   - [6. Pure Reshaping (`long`, `wide`)](#6-pure-reshaping--long-wide)
   - [7. 2D Pivot Tables (`pivot`)](#7-2d-pivot-tables--pivot)
   - [8. Aggregation (`agg`)](#8-aggregation--agg)
-  - [9. DuckDB SQL Engine (`sql`)](#9-duckdb-sql-engine--sql)
-  - [10. Plotting (`Plotter` & `df.pt.plot`)](#10-plotting--plotter)
-  - [11. Utilities & Cleaning](#11-utilities--cleaning)
+  - [9. Plotting (`Plotter` & `df.pt.plot`)](#9-plotting--plotter)
+  - [10. Utilities & Cleaning](#10-utilities--cleaning)
 - [Bundled Sample Datasets](#sample-datasets)
 - [Syntax & Convention Cheat Sheet](#syntax-conventions)
 
@@ -81,7 +80,6 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **Pure Reshaping** | `pt.long()`, `pt.wide()` | Melt numeric columns to long rows, spread back to wide tables with standard `c=`, `v=`, `r=` keys | [library/reshape.md](library/reshape.md) |
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.md](library/pivot.md) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.md](library/agg.md) |
-| **SQL Engine** | `pt.sql()`, `df.pt.sql()` | Zero-copy ANSI SQL queries via DuckDB over in-memory DataFrames and multi-frame joins | [library/sql.md](library/sql.md) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
 | **Utilities** | `glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, ASCII frequency bars & histograms, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.md](library/other_utilities.md) |
 
@@ -274,28 +272,8 @@ pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summ
 
 ---
 
-### 9. DuckDB SQL Engine — `sql()`
-
-Execute SQL queries directly over in-memory DataFrames using DuckDB (`pip install "pytae[sql]"`). The source DataFrame is queryable as table `data`, and additional frames can be registered as keyword arguments:
-
-```python
-# Query current frame as table 'data'
-pt.sql(penguins, "select species, avg(body_mass_g) as avg_mass from data group by species")
-
-# Multi-table joins and window functions
-pt.sql(orders, """
-    select o.id, c.name, o.amount
-    from data o
-    inner join customers c on o.cust_id = c.id
-""", customers=df_customers)
-```
-
-👉 **Complete Guide:** [library/sql.md](library/sql.md)
-
----
-
-<a id="10-plotting--plotter"></a>
-### 10. Plotting — `Plotter` & `df.pt.plot()`
+<a id="9-plotting--plotter"></a>
+### 9. Plotting — `Plotter` & `df.pt.plot()`
 
 Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. Supports automated grouping, secondary Y-axes, complex multi-panel mosaic dashboards, small-multiples grid faceting, and direct accessor chaining via `df.pt.plot()`:
 
@@ -321,7 +299,7 @@ p.finalize(consolidate_legends=True)
 
 ---
 
-### 11. Utilities & Cleaning
+### 10. Utilities & Cleaning
 
 Essential tabular utilities for everyday manipulation:
 
