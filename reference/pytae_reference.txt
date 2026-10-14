@@ -18817,7 +18817,9 @@ def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
         return col.std()
     elif fn == "var":
         return col.var()
-    elif fn in ("count", "len", "size"):
+    elif fn in ("len", "size", "n"):
+        return pl.len()
+    elif fn == "count":
         return col.count()
     elif fn == "first":
         return col.first()
@@ -18945,7 +18947,7 @@ def pivot_polars(
                 val_col = m.src_col
                 agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
 
-            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            native_aggs = ("min", "max", "first", "last", "mean", "median")
             if agg_fn in native_aggs:
                 piv_m = m_df.pivot(
                     on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
@@ -19018,7 +19020,7 @@ def pivot_polars(
                 val_col = m.src_col
                 agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
 
-            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            native_aggs = ("min", "max", "first", "last", "mean", "median")
             if agg_fn in native_aggs:
                 piv_m = m_df.pivot(
                     on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
@@ -19060,7 +19062,7 @@ def pivot_polars(
                     val_col = m.src_col
                     agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
 
-                native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+                native_aggs = ("min", "max", "first", "last", "mean", "median")
                 if agg_fn in native_aggs:
                     piv_m = m_df.pivot(
                         on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
@@ -24812,6 +24814,19 @@ def test_cli_pivot_single_metric_2d_no_prefix(tmp_path, capsys):
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["cola", "colb", "C1", "C2"]
 
+
+def test_cli_pivot_default_f_v_is_null_for_metrics(tmp_path, capsys):
+    df = pd.DataFrame({
+        "island": ["Torgersen", "Biscoe"],
+        "sex": ["male", "female"],
+        "mass": [100.0, 200.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=island,c=sex,v=mass:sum"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "NaN" in out or "null" in out
+
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
@@ -28174,6 +28189,29 @@ def test_pivot_polars_single_metric_in_2d_no_prefix():
     })
     res = pivot_polars(df, r="region,store", c="year", v="sales:sum")
     assert res.columns == ["region", "store", "2020", "2021"]
+
+
+def test_pivot_polars_default_f_v_is_null_for_metrics():
+    df = pl.DataFrame({
+        "island": ["Torgersen", "Biscoe"],
+        "sex": ["male", "female"],
+        "mass": [100.0, 200.0],
+    })
+    # Default: metrics have null for unobserved intersections
+    res = pivot_polars(df, r="island", c="sex", v="mass:sum")
+    female_vals = dict(zip(res["island"].to_list(), res["female"].to_list()))
+    male_vals = dict(zip(res["island"].to_list(), res["male"].to_list()))
+    assert female_vals["Biscoe"] == 200.0
+    assert female_vals["Torgersen"] is None
+    assert male_vals["Biscoe"] is None
+    assert male_vals["Torgersen"] == 100.0
+
+    # With f_v=0: unobserved intersections are replaced with 0.0
+    res_f0 = pivot_polars(df, r="island", c="sex", v="mass:sum", f_v=0)
+    female_f0 = dict(zip(res_f0["island"].to_list(), res_f0["female"].to_list()))
+    male_f0 = dict(zip(res_f0["island"].to_list(), res_f0["male"].to_list()))
+    assert female_f0["Torgersen"] == 0.0
+    assert male_f0["Biscoe"] == 0.0
 
 
 def test_write_dataframe_polars(tmp_path):

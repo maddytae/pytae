@@ -230,6 +230,19 @@ def test_cli_pivot_single_metric_2d_no_prefix(tmp_path, capsys):
     assert cols == ["cola", "colb", "C1", "C2"]
 
 
+def test_cli_pivot_default_f_v_is_null_for_metrics(tmp_path, capsys):
+    df = pd.DataFrame({
+        "island": ["Torgersen", "Biscoe"],
+        "sex": ["male", "female"],
+        "mass": [100.0, 200.0],
+    })
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-pivot", "r=island,c=sex,v=mass:sum"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "NaN" in out or "null" in out
+
+
 
 
 

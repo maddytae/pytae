@@ -180,7 +180,9 @@ def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
         return col.std()
     elif fn == "var":
         return col.var()
-    elif fn in ("count", "len", "size"):
+    elif fn in ("len", "size", "n"):
+        return pl.len()
+    elif fn == "count":
         return col.count()
     elif fn == "first":
         return col.first()
@@ -308,7 +310,7 @@ def pivot_polars(
                 val_col = m.src_col
                 agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
 
-            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            native_aggs = ("min", "max", "first", "last", "mean", "median")
             if agg_fn in native_aggs:
                 piv_m = m_df.pivot(
                     on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
@@ -381,7 +383,7 @@ def pivot_polars(
                 val_col = m.src_col
                 agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
 
-            native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+            native_aggs = ("min", "max", "first", "last", "mean", "median")
             if agg_fn in native_aggs:
                 piv_m = m_df.pivot(
                     on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
@@ -423,7 +425,7 @@ def pivot_polars(
                     val_col = m.src_col
                     agg_fn = "len" if m.aggfunc in ("size", "len") else m.aggfunc
 
-                native_aggs = ("min", "max", "first", "last", "mean", "sum", "median", "len")
+                native_aggs = ("min", "max", "first", "last", "mean", "median")
                 if agg_fn in native_aggs:
                     piv_m = m_df.pivot(
                         on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,

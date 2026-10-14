@@ -476,6 +476,29 @@ def test_pivot_polars_single_metric_in_2d_no_prefix():
     assert res.columns == ["region", "store", "2020", "2021"]
 
 
+def test_pivot_polars_default_f_v_is_null_for_metrics():
+    df = pl.DataFrame({
+        "island": ["Torgersen", "Biscoe"],
+        "sex": ["male", "female"],
+        "mass": [100.0, 200.0],
+    })
+    # Default: metrics have null for unobserved intersections
+    res = pivot_polars(df, r="island", c="sex", v="mass:sum")
+    female_vals = dict(zip(res["island"].to_list(), res["female"].to_list()))
+    male_vals = dict(zip(res["island"].to_list(), res["male"].to_list()))
+    assert female_vals["Biscoe"] == 200.0
+    assert female_vals["Torgersen"] is None
+    assert male_vals["Biscoe"] is None
+    assert male_vals["Torgersen"] == 100.0
+
+    # With f_v=0: unobserved intersections are replaced with 0.0
+    res_f0 = pivot_polars(df, r="island", c="sex", v="mass:sum", f_v=0)
+    female_f0 = dict(zip(res_f0["island"].to_list(), res_f0["female"].to_list()))
+    male_f0 = dict(zip(res_f0["island"].to_list(), res_f0["male"].to_list()))
+    assert female_f0["Torgersen"] == 0.0
+    assert male_f0["Biscoe"] == 0.0
+
+
 def test_write_dataframe_polars(tmp_path):
     from pytae.readers import write_dataframe
 
