@@ -109,8 +109,6 @@ __all__ = [
     "mutate",
     "arrange",
     "pick",
-    "slice_max",
-    "slice_min",
     "distinct",
     "agg",
     "long",

@@ -119,13 +119,13 @@ Importing:
 Top-Level Functions exported by `pytae`:
   - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
-  - pt.filter(df, *args, **kwargs)   [qry is maintained as deprecated alias]
+  - pt.filter(df, *args, **kwargs)
   - pt.by(df, *cols)
   - pt.ungroup(df)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.lit(val)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
-  - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)  [slice_max/slice_min are deprecated aliases]
+  - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
   - pt.distinct(df, *cols, keep="first")
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
@@ -150,12 +150,12 @@ DataFrame Accessor (`df.pt`):
   Importing pytae automatically registers the `.pt` accessor on `pd.DataFrame`.
   Methods on `df.pt`:
     df.pt.select(...)
-    df.pt.filter(...)    # [df.pt.qry is deprecated alias]
+    df.pt.filter(...)
     df.pt.by(...)
     df.pt.ungroup()
     df.pt.mutate(...)
     df.pt.arrange(...)
-    df.pt.pick(...)      # [df.pt.slice_max / df.pt.slice_min are deprecated aliases]
+    df.pt.pick(...)
     df.pt.distinct(...)
     df.pt.agg(...)
     df.pt.long(...)
@@ -203,7 +203,7 @@ List available dataset names:
 4.1. pt.filter() / df.pt.filter() — Row Filtering
 --------------------------------------------------------------------------------
 Filters DataFrame rows based on callables, string expressions, plain dictionaries, 
-or keyword arguments. (Note: `qry()` is maintained as a deprecated alias).
+or keyword arguments.
 
 Signature:
   pt.filter(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame
@@ -462,7 +462,6 @@ Calling Styles:
 --------------------------------------------------------------------------------
 Selects extreme top or bottom N rows (or proportion of rows) ordered by a target column.
 Inherits active grouping strictly from `pt.by()`. Rejects `by=` in kwargs with TypeError.
-(Note: `slice_max` and `slice_min` are maintained as deprecated aliases).
 
 Signature:
   pt.pick(
@@ -732,9 +731,9 @@ In-Terminal ASCII Visualizations:
   -hist COL[:BINS]      Render in-terminal distribution histogram for a numeric column (default: 10 bins)
 
 Row Filtering & Slicing Flags:
-  -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500") [-qry is deprecated alias]
+  -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -dropna [COLS]        Drop rows containing NaN
-  -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by [-slice_max/-slice_min are deprecated aliases]
+  -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
@@ -814,7 +813,7 @@ When computing bulk summaries (e.g. `-agg mean`), using `-select` beforehand pru
 6.2. Why is `by` strictly standalone across all verbs?
 ------------------------------------------------------
 To adhere strictly to the "one and only one obvious way" philosophy:
-- `by` is never an argument inside verbs (`mutate`, `pick`, `agg`, `slice_max`, `slice_min`).
+- `by` is never an argument inside verbs (`mutate`, `pick`, `agg`).
 - Grouping must always be declared beforehand via `pt.by(df, *cols)` or `.pt.by(*cols)`.
 - Verbs inherit grouping from `df.attrs['_pt_by']` and raise a `TypeError` if passed `by=`.
 
@@ -836,7 +835,7 @@ This ensures readable git diffs, clean execution tracebacks, and syntactic consi
 -----------------------------------------------------------------
 Pytae standardizes on canonical modern naming:
 - `pt.filter()` / `df.pt.filter()` / `-filter`: Replaces `qry`
-- `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min`
+- `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min` (the legacy `slice_max`/`slice_min` functions and flags have been completely removed with no backward compatibility).
 - `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
 
 6.5. How do I apply custom functions in `mutate()`?
@@ -2832,9 +2831,6 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
 | `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
 | `-pick SPEC` | Row Slicing | Select top/bottom rows by column (`col,n=N` or `col,order=min`), group-aware with `-by` |
 
-> [!NOTE]
-> `-qry` is preserved as a backward-compatible alias pointing to `-filter`. `-slice_max` and `-slice_min` point to `-pick`.
-
 ---
 
 ## Pytae Filtering (`-filter`)
@@ -4407,10 +4403,7 @@ Extract top or bottom rows by column order, with group awareness via `-by`.
 | `-pick SPEC` | Select rows with largest (or smallest) values of a column | `-pick mass`, `-pick "mass,n=3"`, `-pick "mass,n=3,order=min"` |
 | `-by COLS` | Partition rows into groups before picking | `-by species -pick "mass,n=2"` |
 
-> [!NOTE]
-> `-slice_max` and `-slice_min` are preserved as backward-compatible aliases pointing to `-pick`.
-
-Both commands preserve all columns, reset the index to `0, 1, ...`, and preserve NA grouping categories.
+The command preserves all columns, resets the index to `0, 1, ...`, and preserves NA grouping categories.
 
 ---
 
@@ -10718,8 +10711,6 @@ __all__ = [
     "mutate",
     "arrange",
     "pick",
-    "slice_max",
-    "slice_min",
     "distinct",
     "agg",
     "long",
@@ -10895,7 +10886,7 @@ class PtAccessor:
     - filter: Row filtering via string expressions, dicts, intervals, and kwargs.
     - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
     - arrange: Order rows by column(s) with inline direction ('desc', '-col').
-    - slice_max / slice_min: Group-aware top/bottom-N row slicing.
+    - pick: Group-aware top/bottom-N row slicing.
     - agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
     - long / wide: Reshaping (melting to rows and pivoting to columns).
     - sql: DuckDB SQL queries over the DataFrame (as table `data`).
@@ -11000,35 +10991,13 @@ class PtAccessor:
             raise TypeError(f"df.pt.pick() got unexpected keyword argument(s): {list(kwargs.keys())}")
         return _pick(self._obj, col, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
 
-    def slice_max(
-        self,
-        col: str,
-        n: int | None = None,
-        prop: float | None = None,
-        *,
-        with_ties: bool = False,
-        na_last: bool = True,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Deprecated alias for `pick(..., order='max')`."""
-        import warnings
-        warnings.warn(".pt.slice_max() is deprecated; use .pt.pick() instead.", DeprecationWarning, stacklevel=2)
-        return self.pick(col, n=n, prop=prop, order="max", with_ties=with_ties, na_last=na_last, **kwargs)
+    def slice_max(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Removed: Use df.pt.pick() instead."""
+        raise AttributeError("df.pt.slice_max() has been removed; use df.pt.pick() instead")
 
-    def slice_min(
-        self,
-        col: str,
-        n: int | None = None,
-        prop: float | None = None,
-        *,
-        with_ties: bool = False,
-        na_last: bool = True,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Deprecated alias for `pick(..., order='min')`."""
-        import warnings
-        warnings.warn(".pt.slice_min() is deprecated; use .pt.pick(..., order='min') instead.", DeprecationWarning, stacklevel=2)
-        return self.pick(col, n=n, prop=prop, order="min", with_ties=with_ties, na_last=na_last, **kwargs)
+    def slice_min(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Removed: Use df.pt.pick(..., order='min') instead."""
+        raise AttributeError("df.pt.slice_min() has been removed; use df.pt.pick(..., order='min') instead")
 
     def distinct(
         self,
@@ -11646,7 +11615,7 @@ def agg(
 ################################################################################
 # FILE: src/pytae/arrange.py
 ################################################################################
-"""Row-ordering and group-aware top-N row slicing verbs: arrange, slice_max, slice_min."""
+"""Row-ordering and group-aware top-N row slicing verbs: arrange, pick."""
 
 from __future__ import annotations
 
@@ -11844,36 +11813,14 @@ def pick(
     return res
 
 
-def slice_max(
-    df: pd.DataFrame,
-    col: str,
-    n: int | None = None,
-    prop: float | None = None,
-    *,
-    with_ties: bool = False,
-    na_last: bool = True,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Deprecated alias for `pick(..., order='max')`."""
-    import warnings
-    warnings.warn("slice_max() is deprecated; use pick() instead.", DeprecationWarning, stacklevel=2)
-    return pick(df, col, n=n, prop=prop, order="max", with_ties=with_ties, na_last=na_last, **kwargs)
+def slice_max(*args: Any, **kwargs: Any) -> pd.DataFrame:
+    """Removed: Use pick() instead."""
+    raise AttributeError("pt.slice_max() has been removed; use pt.pick() instead")
 
 
-def slice_min(
-    df: pd.DataFrame,
-    col: str,
-    n: int | None = None,
-    prop: float | None = None,
-    *,
-    with_ties: bool = False,
-    na_last: bool = True,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Deprecated alias for `pick(..., order='min')`."""
-    import warnings
-    warnings.warn("slice_min() is deprecated; use pick(..., order='min') instead.", DeprecationWarning, stacklevel=2)
-    return pick(df, col, n=n, prop=prop, order="min", with_ties=with_ties, na_last=na_last, **kwargs)
+def slice_min(*args: Any, **kwargs: Any) -> pd.DataFrame:
+    """Removed: Use pick(..., order='min') instead."""
+    raise AttributeError("pt.slice_min() has been removed; use pt.pick(..., order='min') instead")
 
 
 def _slice_ordered(
@@ -12132,7 +12079,7 @@ _CLI_FLAGS = {
     "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
     "-distinct", "--distinct", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
-    "-arrange", "--arrange", "-pick", "--pick", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
+    "-arrange", "--arrange", "-pick", "--pick",
     "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-handle_missing", "--handle_missing",
@@ -12299,12 +12246,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-pick", "--pick", dest="pick", default=None, metavar="SPEC",
                          action=_OrderedStore,
                          help="pick top/bottom rows by column, e.g. -pick \"mass,n=3\" or -pick \"mass,prop=0.1,order=min\"")
-    parser.add_argument("-slice_max", "--slice_max", dest="slice_max", default=None, metavar="SPEC",
-                         action=_OrderedStore,
-                         help="deprecated alias for -pick (order=max)")
-    parser.add_argument("-slice_min", "--slice_min", dest="slice_min", default=None, metavar="SPEC",
-                         action=_OrderedStore,
-                         help="deprecated alias for -pick (order=min)")
     parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
                               "Used by -agg, -mutate, -pick.")
@@ -12488,6 +12429,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
         if any(e in ("-convert", "--convert") for e in extras):
             parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
+        if any(e in ("-slice_max", "--slice_max") for e in extras):
+            parser.error("'-slice_max' has been removed; use '-pick' instead")
+        if any(e in ("-slice_min", "--slice_min") for e in extras):
+            parser.error("'-slice_min' has been removed; use '-pick with order=min' instead")
         if args.file is None:
             path_extras = [e for e in extras if _is_path_like(e)]
             if path_extras:
@@ -12568,7 +12513,7 @@ def main(argv: list[str] | None = None) -> int:
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
                          args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
                          args.head is not None, args.tail is not None, args.sample is not None,
-                         args.arrange is not None, args.pick is not None, args.slice_max is not None, args.slice_min is not None,
+                         args.arrange is not None, args.pick is not None,
                          args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
                          args.select, args.filter, args.sql, args.replace_values,
@@ -12578,17 +12523,17 @@ def main(argv: list[str] | None = None) -> int:
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
                      args.head is not None, args.tail is not None, args.sample is not None,
-                     args.arrange is not None, args.pick is not None, args.slice_max is not None, args.slice_min is not None,
+                     args.arrange is not None, args.pick is not None,
                      args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                      args.long is not None, args.wide is not None, args.pivot is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
-                     "-pick/-slice_max/-slice_min/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+                     "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
-    if args.by is not None and args.agg is None and not args.mutate and args.pick is None and args.slice_max is None and args.slice_min is None:
-        parser.error("-by requires -agg, -mutate, -pick, -slice_max, or -slice_min")
+    if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
+        parser.error("-by requires -agg, -mutate, -pick")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 
@@ -12878,52 +12823,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-arrange", "-head", "-tail"],
     ),
-    "slice_max": KeywordHelp(
-        name="slice_max",
-        flag="-slice_max, --slice_max SPEC",
-        syntax="pytae <path> [-by <cols>] -slice_max \"<col>[,n=N|,prop=P]\"",
-        summary="Slice top rows with the largest values (deprecated alias for -pick).",
-        description=(
-            "Selects rows with the highest values of a target column.\n"
-            "Deprecated: use -pick instead."
-        ),
-        options=[
-            "col : Column to rank by (defaults to n=1).",
-            "col,n=N : Extract the top N rows (e.g. 'body_mass_g,n=3').",
-            "col,prop=P : Extract the top proportion of rows (e.g. 'body_mass_g,prop=0.1').",
-            "-by <cols> : Grouping column(s) to partition by before slicing.",
-        ],
-        examples=[
-            "pytae penguins.parquet -slice_max body_mass_g",
-            "pytae penguins.parquet -slice_max \"body_mass_g,n=5\"",
-            "pytae penguins.parquet -slice_max \"body_mass_g,prop=0.1\"",
-            "pytae penguins.parquet -by species -slice_max \"body_mass_g,n=2\"",
-        ],
-        see_also=["-pick", "-arrange", "-head"],
-    ),
-    "slice_min": KeywordHelp(
-        name="slice_min",
-        flag="-slice_min, --slice_min SPEC",
-        syntax="pytae <path> [-by <cols>] -slice_min \"<col>[,n=N|,prop=P]\"",
-        summary="Slice bottom rows with the smallest values (deprecated alias for -pick).",
-        description=(
-            "Selects rows with the lowest values of a target column.\n"
-            "Deprecated: use -pick with order=min instead (e.g. -pick \"col,n=N,order=min\")."
-        ),
-        options=[
-            "col : Column to rank by (defaults to n=1).",
-            "col,n=N : Extract bottom N rows (e.g. 'body_mass_g,n=3').",
-            "col,prop=P : Extract bottom proportion of rows (e.g. 'body_mass_g,prop=0.1').",
-            "-by <cols> : Grouping column(s) to partition by before slicing.",
-        ],
-        examples=[
-            "pytae penguins.parquet -slice_min body_mass_g",
-            "pytae penguins.parquet -slice_min \"body_mass_g,n=3\"",
-            "pytae penguins.parquet -slice_min \"body_mass_g,prop=0.1\"",
-            "pytae penguins.parquet -by species -slice_min \"body_mass_g,n=1\"",
-        ],
-        see_also=["-pick", "-arrange", "-tail"],
-    ),
     "agg": KeywordHelp(
         name="agg",
         flag="-agg, --agg [AGGFUNC]",
@@ -13162,7 +13061,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "-out_dir <dir> : Destination folder for exported files.",
         ],
         examples=[
-            "pytae penguins.parquet -qry \"species == 'Gentoo'\" -o gentoo.csv",
+            "pytae penguins.parquet -filter \"species == 'Gentoo'\" -o gentoo.csv",
             "pytae *.csv -o parquet -out_dir converted/   # Batch convert all CSVs to Parquet",
             "pytae penguins.parquet -head 10 -o clip      # Copy 10 rows to clipboard",
         ],
@@ -13451,6 +13350,10 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-qry": "filter",
     "query": "filter",
     "-query": "filter",
+    "slice_max": "pick",
+    "-slice_max": "pick",
+    "slice_min": "pick",
+    "-slice_min": "pick",
 }
 
 
@@ -13663,12 +13566,6 @@ def parse_pick_spec(raw: str, flag_name: str = "-pick") -> tuple[str, int | None
     if n is None and prop is None:
         n = 1
     return col, n, prop, order
-
-
-def parse_slice_spec(raw: str, flag_name: str = "-slice_max") -> tuple[str, int | None, float | None]:
-    """Deprecated parser alias for parse_pick_spec."""
-    col, n, prop, _ = parse_pick_spec(raw, flag_name=flag_name)
-    return col, n, prop
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -14666,11 +14563,6 @@ class _Pipeline:
                 return f"{flag}: {exc}"
             return None
 
-    def apply_slice(self, spec: str, *, by: list[str] | None = None, is_max: bool = True) -> str | None:
-        """Deprecated alias for apply_pick."""
-        flag = "-slice_max" if is_max else "-slice_min"
-        return self.apply_pick(spec, by=by, flag=flag)
-
     def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
         """Apply one -replace_values spec to the current view. Returns an error message or None."""
         df = self.dataframe()
@@ -15664,28 +15556,6 @@ def _process_path(
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             pick_val = _next_op_val("pick", getattr(args, "pick", None))
             err = pipeline.apply_pick(pick_val, by=by_cols, flag="-pick")
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "slice_max":
-            by_cols = parse_columns(args.by) if args.by else None
-            if by_cols:
-                avail_cols = pipeline.columns()
-                if any(c not in avail_cols for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
-            slice_val = _next_op_val("slice_max", getattr(args, "slice_max", None))
-            err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_max")
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "slice_min":
-            by_cols = parse_columns(args.by) if args.by else None
-            if by_cols:
-                avail_cols = pipeline.columns()
-                if any(c not in avail_cols for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
-            slice_val = _next_op_val("slice_min", getattr(args, "slice_min", None))
-            err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_min")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -21768,33 +21638,46 @@ def test_library_arrange_bracket_spaced_columns():
     assert list(res2["first name"]) == ["Charlie", "Bob", "Alice"]
 
 
-def test_library_slice_max_and_slice_min():
+def test_library_pick_canonical():
     df = pd.DataFrame({
         "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
         "body_mass_g": [3000, 4000, 3500, 5000, 5500],
     })
 
-    # Global slice_max
-    top1 = df.pt.slice_max("body_mass_g", n=1)
+    # Global pick (order=max)
+    top1 = df.pt.pick("body_mass_g", n=1)
     assert len(top1) == 1
     assert top1["body_mass_g"].iloc[0] == 5500
 
-    # Grouped slice_max
-    top_per_grp = df.pt.by("species").pt.slice_max("body_mass_g", n=1)
+    # Grouped pick (order=max)
+    top_per_grp = df.pt.by("species").pt.pick("body_mass_g", n=1)
     assert len(top_per_grp) == 2
     assert set(top_per_grp["body_mass_g"]) == {4000, 5500}
 
-    # Grouped slice_min
-    bot_per_grp = df.pt.by("species").pt.slice_min("body_mass_g", n=1)
+    # Grouped pick (order=min)
+    bot_per_grp = df.pt.by("species").pt.pick("body_mass_g", n=1, order="min")
     assert len(bot_per_grp) == 2
     assert set(bot_per_grp["body_mass_g"]) == {3000, 5000}
 
-    # Standalone function pt.slice_max and pt.slice_min
-    assert pt.slice_max(df, "body_mass_g", n=2).iloc[0]["body_mass_g"] == 5500
-    assert pt.slice_min(df, "body_mass_g", n=2).iloc[0]["body_mass_g"] == 3000
+    # Standalone function pt.pick
+    assert pt.pick(df, "body_mass_g", n=2).iloc[0]["body_mass_g"] == 5500
+    assert pt.pick(df, "body_mass_g", n=2, order="min").iloc[0]["body_mass_g"] == 3000
 
 
-def test_cli_arrange_and_slice(tmp_path, capsys):
+def test_library_slice_max_and_min_removed():
+    import pytest
+    df = pd.DataFrame({"x": [1, 2, 3]})
+    with pytest.raises(AttributeError, match=r"df\.pt\.slice_max\(\) has been removed; use df\.pt\.pick\(\) instead"):
+        df.pt.slice_max("x")
+    with pytest.raises(AttributeError, match=r"df\.pt\.slice_min\(\) has been removed; use df\.pt\.pick\(..., order='min'\) instead"):
+        df.pt.slice_min("x")
+    with pytest.raises(AttributeError, match=r"pt\.slice_max\(\) has been removed; use pt\.pick\(\) instead"):
+        pt.slice_max(df, "x")
+    with pytest.raises(AttributeError, match=r"pt\.slice_min\(\) has been removed; use pt\.pick\(..., order='min'\) instead"):
+        pt.slice_min(df, "x")
+
+
+def test_cli_arrange_and_pick(tmp_path, capsys):
     df = pd.DataFrame({
         "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
         "body_mass_g": [3000, 4000, 3500, 5000, 5500],
@@ -21807,17 +21690,33 @@ def test_cli_arrange_and_slice(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "5500" in out
 
-    # -slice_max with -by
-    exit_code = cli.main([path, "-by", "species", "-slice_max", "body_mass_g,n=1", "-shape"])
+    # -pick with -by
+    exit_code = cli.main([path, "-by", "species", "-pick", "body_mass_g,n=1", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(2, 2)" in out
 
-    # -slice_min with -by
-    exit_code = cli.main([path, "-by", "species", "-slice_min", "body_mass_g,n=1", "-shape"])
+    # -pick with order=min and -by
+    exit_code = cli.main([path, "-by", "species", "-pick", "body_mass_g,n=1,order=min", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(2, 2)" in out
+
+
+def test_cli_slice_max_min_fatal_error(tmp_path, capsys):
+    import pytest
+    df = pd.DataFrame({"x": [1, 2, 3]})
+    path = _write_csv(tmp_path, df)
+
+    with pytest.raises(SystemExit):
+        cli.main([path, "-slice_max", "x"])
+    err = capsys.readouterr().err
+    assert "'-slice_max' has been removed; use '-pick' instead" in err
+
+    with pytest.raises(SystemExit):
+        cli.main([path, "-slice_min", "x"])
+    err = capsys.readouterr().err
+    assert "'-slice_min' has been removed; use '-pick with order=min' instead" in err
 
 
 def test_cli_distinct_and_dropna(tmp_path, capsys):
@@ -21840,90 +21739,90 @@ def test_cli_distinct_and_dropna(tmp_path, capsys):
     assert "(3, 2)" in out
 
 
-def test_slice_with_nan_by_keys():
-    """Verify that rows with NaN in grouping keys are not dropped by slice_max/min."""
+def test_pick_with_nan_by_keys():
+    """Verify that rows with NaN in grouping keys are not dropped by pick."""
     df = pd.DataFrame({
         "group": ["A", "A", None, None],
         "val": [10, 20, 100, 200],
     })
-    # slice_max with ties=False
-    res_max = pt.slice_max(pt.by(df, "group"), "val", n=1)
+    # pick (order=max) with ties=False
+    res_max = pt.pick(pt.by(df, "group"), "val", n=1)
     assert len(res_max) == 2
     assert set(res_max["val"]) == {20, 200}
     assert res_max["group"].isna().sum() == 1
 
-    # slice_min with ties=False
-    res_min = pt.slice_min(pt.by(df, "group"), "val", n=1)
+    # pick (order=min) with ties=False
+    res_min = pt.pick(pt.by(df, "group"), "val", n=1, order="min")
     assert len(res_min) == 2
     assert set(res_min["val"]) == {10, 100}
     assert res_min["group"].isna().sum() == 1
 
-    # slice_max with ties=True
+    # pick with ties=True
     df_ties = pd.DataFrame({
         "group": ["A", "A", None, None],
         "val": [20, 20, 200, 200],
     })
-    res_max_ties = pt.slice_max(pt.by(df_ties, "group"), "val", n=1, with_ties=True)
+    res_max_ties = pt.pick(pt.by(df_ties, "group"), "val", n=1, with_ties=True)
     assert len(res_max_ties) == 4
 
 
-def test_slice_edge_cases():
+def test_pick_edge_cases():
     df = pd.DataFrame({
         "val": [10, 20, None],
     })
     # n <= 0 returns empty DataFrame
-    res = pt.slice_max(df, "val", n=0)
+    res = pt.pick(df, "val", n=0)
     assert len(res) == 0
     assert list(res.columns) == ["val"]
 
-    # na_last=False puts NaN at top for slice_max
-    res_na_first = pt.slice_max(df, "val", n=1, na_last=False)
+    # na_last=False puts NaN at top for pick
+    res_na_first = pt.pick(df, "val", n=1, na_last=False)
     assert pd.isna(res_na_first["val"].iloc[0])
 
 
-def test_slice_prop():
+def test_pick_prop():
     df = pd.DataFrame({
         "group": ["A"] * 10 + ["B"] * 20,
         "val": list(range(10)) + list(range(20)),
     })
     # Overall 10% of 30 is 3
-    res_top = pt.slice_max(df, "val", prop=0.1)
+    res_top = pt.pick(df, "val", prop=0.1)
     assert len(res_top) == 3
     assert list(res_top["val"]) == [19, 18, 17]
 
     # Grouped 10%: A gets 1 row (10 * 0.1), B gets 2 rows (20 * 0.1)
-    res_grp = pt.slice_max(pt.by(df, "group"), "val", prop=0.1)
+    res_grp = pt.pick(pt.by(df, "group"), "val", prop=0.1)
     assert len(res_grp) == 3
     assert list(res_grp[res_grp["group"] == "A"]["val"]) == [9]
     assert list(res_grp[res_grp["group"] == "B"]["val"]) == [19, 18]
 
-    # slice_min with prop
-    res_min_grp = pt.slice_min(pt.by(df, "group"), "val", prop=0.1)
+    # pick with prop and order=min
+    res_min_grp = pt.pick(pt.by(df, "group"), "val", prop=0.1, order="min")
     assert list(res_min_grp[res_min_grp["group"] == "A"]["val"]) == [0]
     assert list(res_min_grp[res_min_grp["group"] == "B"]["val"]) == [0, 1]
 
     # Error if both n and prop given
     import pytest
     with pytest.raises(ValueError, match="specify either 'n' or 'prop'"):
-        pt.slice_max(df, "val", n=2, prop=0.1)
+        pt.pick(df, "val", n=2, prop=0.1)
 
 
-def test_cli_slice_syntax_and_prop(tmp_path, capsys):
+def test_cli_pick_syntax_and_prop(tmp_path, capsys):
     from pytae import cli
     df = pd.DataFrame({"x": list(range(100)), "grp": ["g1"] * 50 + ["g2"] * 50})
     path = str(tmp_path / "data.parquet")
     df.to_parquet(path)
 
     # col,n=N
-    assert cli.main([path, "-slice_max", "x,n=5", "-shape"]) == 0
+    assert cli.main([path, "-pick", "x,n=5", "-shape"]) == 0
     assert "(5, 2)" in capsys.readouterr().out
 
     # col,prop=P
-    assert cli.main([path, "-slice_max", "x,prop=0.1", "-shape"]) == 0
+    assert cli.main([path, "-pick", "x,prop=0.1", "-shape"]) == 0
     assert "(10, 2)" in capsys.readouterr().out
 
     # bare col defaults to n=1
-    assert cli.main([path, "-slice_max", "x", "-shape"]) == 0
+    assert cli.main([path, "-pick", "x", "-shape"]) == 0
     assert "(1, 2)" in capsys.readouterr().out
 
 ################################################################################
@@ -28833,9 +28732,9 @@ def test_by_non_destructive_input_isolation():
     assert "_pt_by" not in df.attrs
 
 
-def test_by_chains_into_slice_max():
+def test_by_chains_into_pick():
     df = _sample_df()
-    res = df.pt.by("species").pt.slice_max("mass", n=1)
+    res = df.pt.by("species").pt.pick("mass", n=1)
     assert len(res) == 3
     # Check max per species
     assert set(res["mass"]) == {4200, 5200, 3900}

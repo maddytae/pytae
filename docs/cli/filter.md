@@ -29,9 +29,6 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
 | `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
 | `-pick SPEC` | Row Slicing | Select top/bottom rows by column (`col,n=N` or `col,order=min`), group-aware with `-by` |
 
-> [!NOTE]
-> `-qry` is preserved as a backward-compatible alias pointing to `-filter`. `-slice_max` and `-slice_min` point to `-pick`.
-
 ---
 
 ## Pytae Filtering (`-filter`)

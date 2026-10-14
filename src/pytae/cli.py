@@ -72,7 +72,7 @@ _CLI_FLAGS = {
     "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
     "-distinct", "--distinct", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
-    "-arrange", "--arrange", "-pick", "--pick", "-slice_max", "--slice_max", "-slice_min", "--slice_min",
+    "-arrange", "--arrange", "-pick", "--pick",
     "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-handle_missing", "--handle_missing",
@@ -239,12 +239,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-pick", "--pick", dest="pick", default=None, metavar="SPEC",
                          action=_OrderedStore,
                          help="pick top/bottom rows by column, e.g. -pick \"mass,n=3\" or -pick \"mass,prop=0.1,order=min\"")
-    parser.add_argument("-slice_max", "--slice_max", dest="slice_max", default=None, metavar="SPEC",
-                         action=_OrderedStore,
-                         help="deprecated alias for -pick (order=max)")
-    parser.add_argument("-slice_min", "--slice_min", dest="slice_min", default=None, metavar="SPEC",
-                         action=_OrderedStore,
-                         help="deprecated alias for -pick (order=min)")
     parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
                               "Used by -agg, -mutate, -pick.")
@@ -428,6 +422,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
         if any(e in ("-convert", "--convert") for e in extras):
             parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
+        if any(e in ("-slice_max", "--slice_max") for e in extras):
+            parser.error("'-slice_max' has been removed; use '-pick' instead")
+        if any(e in ("-slice_min", "--slice_min") for e in extras):
+            parser.error("'-slice_min' has been removed; use '-pick with order=min' instead")
         if args.file is None:
             path_extras = [e for e in extras if _is_path_like(e)]
             if path_extras:
@@ -508,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
     show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
                          args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
                          args.head is not None, args.tail is not None, args.sample is not None,
-                         args.arrange is not None, args.pick is not None, args.slice_max is not None, args.slice_min is not None,
+                         args.arrange is not None, args.pick is not None,
                          args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                          args.long is not None, args.wide is not None, args.pivot is not None,
                          args.select, args.filter, args.sql, args.replace_values,
@@ -518,17 +516,17 @@ def main(argv: list[str] | None = None) -> int:
     wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
                      args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
                      args.head is not None, args.tail is not None, args.sample is not None,
-                     args.arrange is not None, args.pick is not None, args.slice_max is not None, args.slice_min is not None,
+                     args.arrange is not None, args.pick is not None,
                      args.agg is not None, args.handle_missing is not None, args.dropna is not None,
                      args.long is not None, args.wide is not None, args.pivot is not None,
                      args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
     if is_clip and args.shape and wants_df:
         parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
                      "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
-                     "-pick/-slice_max/-slice_min/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+                     "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
                      "run -shape separately")
-    if args.by is not None and args.agg is None and not args.mutate and args.pick is None and args.slice_max is None and args.slice_min is None:
-        parser.error("-by requires -agg, -mutate, -pick, -slice_max, or -slice_min")
+    if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
+        parser.error("-by requires -agg, -mutate, -pick")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
 

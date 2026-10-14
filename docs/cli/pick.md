@@ -25,10 +25,7 @@ Extract top or bottom rows by column order, with group awareness via `-by`.
 | `-pick SPEC` | Select rows with largest (or smallest) values of a column | `-pick mass`, `-pick "mass,n=3"`, `-pick "mass,n=3,order=min"` |
 | `-by COLS` | Partition rows into groups before picking | `-by species -pick "mass,n=2"` |
 
-> [!NOTE]
-> `-slice_max` and `-slice_min` are preserved as backward-compatible aliases pointing to `-pick`.
-
-Both commands preserve all columns, reset the index to `0, 1, ...`, and preserve NA grouping categories.
+The command preserves all columns, resets the index to `0, 1, ...`, and preserves NA grouping categories.
 
 ---
 

@@ -158,12 +158,6 @@ def parse_pick_spec(raw: str, flag_name: str = "-pick") -> tuple[str, int | None
     return col, n, prop, order
 
 
-def parse_slice_spec(raw: str, flag_name: str = "-slice_max") -> tuple[str, int | None, float | None]:
-    """Deprecated parser alias for parse_pick_spec."""
-    col, n, prop, _ = parse_pick_spec(raw, flag_name=flag_name)
-    return col, n, prop
-
-
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
     """Split on sep, respecting quotes and brackets."""
     return [t for t in _tokenize(raw, sep, track_brackets=True) if t]

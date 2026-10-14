@@ -194,9 +194,9 @@ def test_by_non_destructive_input_isolation():
     assert "_pt_by" not in df.attrs
 
 
-def test_by_chains_into_slice_max():
+def test_by_chains_into_pick():
     df = _sample_df()
-    res = df.pt.by("species").pt.slice_max("mass", n=1)
+    res = df.pt.by("species").pt.pick("mass", n=1)
     assert len(res) == 3
     # Check max per species
     assert set(res["mass"]) == {4200, 5200, 3900}

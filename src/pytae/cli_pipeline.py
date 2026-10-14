@@ -321,11 +321,6 @@ class _Pipeline:
                 return f"{flag}: {exc}"
             return None
 
-    def apply_slice(self, spec: str, *, by: list[str] | None = None, is_max: bool = True) -> str | None:
-        """Deprecated alias for apply_pick."""
-        flag = "-slice_max" if is_max else "-slice_min"
-        return self.apply_pick(spec, by=by, flag=flag)
-
     def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
         """Apply one -replace_values spec to the current view. Returns an error message or None."""
         df = self.dataframe()

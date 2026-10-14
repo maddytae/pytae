@@ -1,4 +1,4 @@
-"""Row-ordering and group-aware top-N row slicing verbs: arrange, slice_max, slice_min."""
+"""Row-ordering and group-aware top-N row slicing verbs: arrange, pick."""
 
 from __future__ import annotations
 
@@ -196,36 +196,14 @@ def pick(
     return res
 
 
-def slice_max(
-    df: pd.DataFrame,
-    col: str,
-    n: int | None = None,
-    prop: float | None = None,
-    *,
-    with_ties: bool = False,
-    na_last: bool = True,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Deprecated alias for `pick(..., order='max')`."""
-    import warnings
-    warnings.warn("slice_max() is deprecated; use pick() instead.", DeprecationWarning, stacklevel=2)
-    return pick(df, col, n=n, prop=prop, order="max", with_ties=with_ties, na_last=na_last, **kwargs)
+def slice_max(*args: Any, **kwargs: Any) -> pd.DataFrame:
+    """Removed: Use pick() instead."""
+    raise AttributeError("pt.slice_max() has been removed; use pt.pick() instead")
 
 
-def slice_min(
-    df: pd.DataFrame,
-    col: str,
-    n: int | None = None,
-    prop: float | None = None,
-    *,
-    with_ties: bool = False,
-    na_last: bool = True,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """Deprecated alias for `pick(..., order='min')`."""
-    import warnings
-    warnings.warn("slice_min() is deprecated; use pick(..., order='min') instead.", DeprecationWarning, stacklevel=2)
-    return pick(df, col, n=n, prop=prop, order="min", with_ties=with_ties, na_last=na_last, **kwargs)
+def slice_min(*args: Any, **kwargs: Any) -> pd.DataFrame:
+    """Removed: Use pick(..., order='min') instead."""
+    raise AttributeError("pt.slice_min() has been removed; use pt.pick(..., order='min') instead")
 
 
 def _slice_ordered(

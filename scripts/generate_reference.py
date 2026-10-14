@@ -127,13 +127,13 @@ Importing:
 Top-Level Functions exported by `pytae`:
   - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
-  - pt.filter(df, *args, **kwargs)   [qry is maintained as deprecated alias]
+  - pt.filter(df, *args, **kwargs)
   - pt.by(df, *cols)
   - pt.ungroup(df)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.lit(val)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
-  - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)  [slice_max/slice_min are deprecated aliases]
+  - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
   - pt.distinct(df, *cols, keep="first")
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
@@ -158,12 +158,12 @@ DataFrame Accessor (`df.pt`):
   Importing pytae automatically registers the `.pt` accessor on `pd.DataFrame`.
   Methods on `df.pt`:
     df.pt.select(...)
-    df.pt.filter(...)    # [df.pt.qry is deprecated alias]
+    df.pt.filter(...)
     df.pt.by(...)
     df.pt.ungroup()
     df.pt.mutate(...)
     df.pt.arrange(...)
-    df.pt.pick(...)      # [df.pt.slice_max / df.pt.slice_min are deprecated aliases]
+    df.pt.pick(...)
     df.pt.distinct(...)
     df.pt.agg(...)
     df.pt.long(...)
@@ -211,7 +211,7 @@ List available dataset names:
 4.1. pt.filter() / df.pt.filter() — Row Filtering
 --------------------------------------------------------------------------------
 Filters DataFrame rows based on callables, string expressions, plain dictionaries, 
-or keyword arguments. (Note: `qry()` is maintained as a deprecated alias).
+or keyword arguments.
 
 Signature:
   pt.filter(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame
@@ -470,7 +470,6 @@ Calling Styles:
 --------------------------------------------------------------------------------
 Selects extreme top or bottom N rows (or proportion of rows) ordered by a target column.
 Inherits active grouping strictly from `pt.by()`. Rejects `by=` in kwargs with TypeError.
-(Note: `slice_max` and `slice_min` are maintained as deprecated aliases).
 
 Signature:
   pt.pick(
@@ -740,9 +739,9 @@ In-Terminal ASCII Visualizations:
   -hist COL[:BINS]      Render in-terminal distribution histogram for a numeric column (default: 10 bins)
 
 Row Filtering & Slicing Flags:
-  -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500") [-qry is deprecated alias]
+  -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -dropna [COLS]        Drop rows containing NaN
-  -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by [-slice_max/-slice_min are deprecated aliases]
+  -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
@@ -824,7 +823,7 @@ When computing bulk summaries (e.g. `-agg mean`), using `-select` beforehand pru
 6.2. Why is `by` strictly standalone across all verbs?
 ------------------------------------------------------
 To adhere strictly to the "one and only one obvious way" philosophy:
-- `by` is never an argument inside verbs (`mutate`, `pick`, `agg`, `slice_max`, `slice_min`).
+- `by` is never an argument inside verbs (`mutate`, `pick`, `agg`).
 - Grouping must always be declared beforehand via `pt.by(df, *cols)` or `.pt.by(*cols)`.
 - Verbs inherit grouping from `df.attrs['_pt_by']` and raise a `TypeError` if passed `by=`.
 
@@ -846,7 +845,7 @@ This ensures readable git diffs, clean execution tracebacks, and syntactic consi
 -----------------------------------------------------------------
 Pytae standardizes on canonical modern naming:
 - `pt.filter()` / `df.pt.filter()` / `-filter`: Replaces `qry`
-- `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min`
+- `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min` (the legacy `slice_max`/`slice_min` functions and flags have been completely removed with no backward compatibility).
 - `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
 
 6.5. How do I apply custom functions in `mutate()`?

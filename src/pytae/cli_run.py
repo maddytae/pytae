@@ -763,28 +763,6 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op == "slice_max":
-            by_cols = parse_columns(args.by) if args.by else None
-            if by_cols:
-                avail_cols = pipeline.columns()
-                if any(c not in avail_cols for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
-            slice_val = _next_op_val("slice_max", getattr(args, "slice_max", None))
-            err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_max")
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "slice_min":
-            by_cols = parse_columns(args.by) if args.by else None
-            if by_cols:
-                avail_cols = pipeline.columns()
-                if any(c not in avail_cols for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
-            slice_val = _next_op_val("slice_min", getattr(args, "slice_min", None))
-            err = pipeline.apply_pick(slice_val, by=by_cols, flag="-slice_min")
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
         elif op == "agg":
             agg_val = _next_op_val("agg", args.agg)
             if isinstance(agg_val, str):

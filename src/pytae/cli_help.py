@@ -178,52 +178,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-arrange", "-head", "-tail"],
     ),
-    "slice_max": KeywordHelp(
-        name="slice_max",
-        flag="-slice_max, --slice_max SPEC",
-        syntax="pytae <path> [-by <cols>] -slice_max \"<col>[,n=N|,prop=P]\"",
-        summary="Slice top rows with the largest values (deprecated alias for -pick).",
-        description=(
-            "Selects rows with the highest values of a target column.\n"
-            "Deprecated: use -pick instead."
-        ),
-        options=[
-            "col : Column to rank by (defaults to n=1).",
-            "col,n=N : Extract the top N rows (e.g. 'body_mass_g,n=3').",
-            "col,prop=P : Extract the top proportion of rows (e.g. 'body_mass_g,prop=0.1').",
-            "-by <cols> : Grouping column(s) to partition by before slicing.",
-        ],
-        examples=[
-            "pytae penguins.parquet -slice_max body_mass_g",
-            "pytae penguins.parquet -slice_max \"body_mass_g,n=5\"",
-            "pytae penguins.parquet -slice_max \"body_mass_g,prop=0.1\"",
-            "pytae penguins.parquet -by species -slice_max \"body_mass_g,n=2\"",
-        ],
-        see_also=["-pick", "-arrange", "-head"],
-    ),
-    "slice_min": KeywordHelp(
-        name="slice_min",
-        flag="-slice_min, --slice_min SPEC",
-        syntax="pytae <path> [-by <cols>] -slice_min \"<col>[,n=N|,prop=P]\"",
-        summary="Slice bottom rows with the smallest values (deprecated alias for -pick).",
-        description=(
-            "Selects rows with the lowest values of a target column.\n"
-            "Deprecated: use -pick with order=min instead (e.g. -pick \"col,n=N,order=min\")."
-        ),
-        options=[
-            "col : Column to rank by (defaults to n=1).",
-            "col,n=N : Extract bottom N rows (e.g. 'body_mass_g,n=3').",
-            "col,prop=P : Extract bottom proportion of rows (e.g. 'body_mass_g,prop=0.1').",
-            "-by <cols> : Grouping column(s) to partition by before slicing.",
-        ],
-        examples=[
-            "pytae penguins.parquet -slice_min body_mass_g",
-            "pytae penguins.parquet -slice_min \"body_mass_g,n=3\"",
-            "pytae penguins.parquet -slice_min \"body_mass_g,prop=0.1\"",
-            "pytae penguins.parquet -by species -slice_min \"body_mass_g,n=1\"",
-        ],
-        see_also=["-pick", "-arrange", "-tail"],
-    ),
     "agg": KeywordHelp(
         name="agg",
         flag="-agg, --agg [AGGFUNC]",
@@ -462,7 +416,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "-out_dir <dir> : Destination folder for exported files.",
         ],
         examples=[
-            "pytae penguins.parquet -qry \"species == 'Gentoo'\" -o gentoo.csv",
+            "pytae penguins.parquet -filter \"species == 'Gentoo'\" -o gentoo.csv",
             "pytae *.csv -o parquet -out_dir converted/   # Batch convert all CSVs to Parquet",
             "pytae penguins.parquet -head 10 -o clip      # Copy 10 rows to clipboard",
         ],
@@ -751,6 +705,10 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-qry": "filter",
     "query": "filter",
     "-query": "filter",
+    "slice_max": "pick",
+    "-slice_max": "pick",
+    "slice_min": "pick",
+    "-slice_min": "pick",
 }
 
 

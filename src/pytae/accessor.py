@@ -55,7 +55,7 @@ class PtAccessor:
     - filter: Row filtering via string expressions, dicts, intervals, and kwargs.
     - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
     - arrange: Order rows by column(s) with inline direction ('desc', '-col').
-    - slice_max / slice_min: Group-aware top/bottom-N row slicing.
+    - pick: Group-aware top/bottom-N row slicing.
     - agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
     - long / wide: Reshaping (melting to rows and pivoting to columns).
     - sql: DuckDB SQL queries over the DataFrame (as table `data`).
@@ -160,35 +160,13 @@ class PtAccessor:
             raise TypeError(f"df.pt.pick() got unexpected keyword argument(s): {list(kwargs.keys())}")
         return _pick(self._obj, col, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
 
-    def slice_max(
-        self,
-        col: str,
-        n: int | None = None,
-        prop: float | None = None,
-        *,
-        with_ties: bool = False,
-        na_last: bool = True,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Deprecated alias for `pick(..., order='max')`."""
-        import warnings
-        warnings.warn(".pt.slice_max() is deprecated; use .pt.pick() instead.", DeprecationWarning, stacklevel=2)
-        return self.pick(col, n=n, prop=prop, order="max", with_ties=with_ties, na_last=na_last, **kwargs)
+    def slice_max(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Removed: Use df.pt.pick() instead."""
+        raise AttributeError("df.pt.slice_max() has been removed; use df.pt.pick() instead")
 
-    def slice_min(
-        self,
-        col: str,
-        n: int | None = None,
-        prop: float | None = None,
-        *,
-        with_ties: bool = False,
-        na_last: bool = True,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Deprecated alias for `pick(..., order='min')`."""
-        import warnings
-        warnings.warn(".pt.slice_min() is deprecated; use .pt.pick(..., order='min') instead.", DeprecationWarning, stacklevel=2)
-        return self.pick(col, n=n, prop=prop, order="min", with_ties=with_ties, na_last=na_last, **kwargs)
+    def slice_min(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Removed: Use df.pt.pick(..., order='min') instead."""
+        raise AttributeError("df.pt.slice_min() has been removed; use df.pt.pick(..., order='min') instead")
 
     def distinct(
         self,
