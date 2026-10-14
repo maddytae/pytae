@@ -27,8 +27,8 @@ classifiers = [
 
 [project.optional-dependencies]
 plot = ["matplotlib", "scipy"]
-sql = ["duckdb>=0.9"]
-dev = ["pytest>=8.0.0", "matplotlib", "duckdb>=0.9", "scipy", "ruff>=0.8", "mypy>=1.13"]
+sql = []
+dev = ["pytest>=8.0.0", "matplotlib", "scipy", "ruff>=0.8", "mypy>=1.13"]
 notebooks = ["nbclient", "nbformat", "ipykernel", "scipy"]
 
 [project.scripts]

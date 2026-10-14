@@ -16,13 +16,6 @@ from pytae.other_utilities import replace_values, safe_reset_index
 from pytae.select import select
 
 
-def _sql_string_literal(value: str) -> str:
-    """Quote a plain Python string as a SQL string literal (escaping embedded quotes) —
-    duckdb table functions like read_parquet()/read_csv() can't be parameterized via
-    prepared-statement placeholders, so the path/delimiter must be inlined as a literal."""
-    return "'" + value.replace("'", "''") + "'"
-
-
 def _mask_quoted(spec: str) -> str:
     """Blank out the contents of quoted substrings in spec (keeping overall length/
     positions), so a regex check on the result only ever sees text outside string
@@ -58,7 +51,7 @@ class _Pipeline:
         self._pandas_df: pd.DataFrame | None = None
         self._pldf: Any | None = None
         self._pending_exact: list[str] | None = None
-        self._frames: dict[str, pd.DataFrame] = frames or {}
+        self._frames: dict[str, Any] = frames or {}
 
     @property
     def _df(self) -> pd.DataFrame | None:
@@ -349,14 +342,14 @@ class _Pipeline:
 
         import polars as pl
 
-        from pytae.sql import _normalize_sql
+        from pytae.cli_parsing import normalize_sql
+
         try:
-            normalized_query = _normalize_sql(query)
+            normalized_query = normalize_sql(query)
         except Exception as exc:
             return f"-sql: {exc}"
         polars_query = re.sub(r"\bin\s*\[(.*?)\]", r"in (\1)", normalized_query, flags=re.IGNORECASE)
 
-        # Fast path: Native Polars SQLContext (zero extra dependencies required)
         try:
             if self._progress and self._reader is not None:
                 self.dataframe()
@@ -370,54 +363,7 @@ class _Pipeline:
             self._df = None
             return None
         except Exception as polars_err:
-            # Fall back to DuckDB if available
-            try:
-                import duckdb
-                con = duckdb.connect()
-                try:
-                    for alias, frame in self._frames.items():
-                        con.register(alias, frame)
-                    if self._df is not None:
-                        con.register("data", self._df)
-                    elif self._reader is not None:
-                        if not self._register_source_view(con):
-                            con.register("data", self.dataframe())
-                    else:
-                        con.register("data", self.dataframe())
-                    self._df = con.sql(normalized_query).df()
-                    self._pldf = None
-                    return None
-                finally:
-                    con.close()
-            except ImportError:
-                return f"-sql: {polars_err}. Install duckdb for additional SQL syntax support: pip install 'pytae[sql]'"
-            except Exception as duckdb_exc:
-                return f"-sql: {duckdb_exc}"
-
-    def _register_source_view(self, con) -> bool:
-        """Best-effort: have duckdb scan the source file directly and register the
-        result as view `df`, instead of first materializing it through pandas
-        (self.dataframe()). Returns False when the fast path doesn't apply (a prior
-        op already narrowed columns, -progress was requested, or the source format
-        has no fast native duckdb reader e.g. .sas7bdat) — the caller then falls
-        back to the pandas-backed view."""
-        from pytae.readers import CsvReader, ParquetReader, TxtReader
-
-        if self._pending_exact is not None or self._progress:
-            return False
-        reader = self._reader
-        path_sql = _sql_string_literal(str(reader.path))
-        if isinstance(reader, ParquetReader):
-            scan = f"read_parquet({path_sql})"
-        elif isinstance(reader, (CsvReader, TxtReader)):
-            if reader.encoding not in (None, "utf-8", "utf8"):
-                return False  # duckdb's CSV reader doesn't support arbitrary encodings
-            scan = f"read_csv({path_sql}, delim={_sql_string_literal(reader.sep)}, header=true)"
-        else:
-            return False  # e.g. .sas7bdat -- duckdb has no native reader for it
-        limit_sql = f" LIMIT {int(self._nrows)}" if self._nrows is not None else ""
-        con.execute(f"CREATE VIEW data AS SELECT * FROM {scan}{limit_sql}")
-        return True
+            return f"-sql: {polars_err}"
 
     def dataframe(self) -> pd.DataFrame:
         if self._pandas_df is None:

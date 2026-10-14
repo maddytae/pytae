@@ -666,16 +666,12 @@ def _process_path(
             right_df, err = _resolve_alias(spec["right"], frames, pipeline, "-merge")
             if err or right_df is None:
                 return _fail(parser, batch, err or "-merge: missing right frame")
-            merge_kwargs = {"how": spec["how"]}
-            if spec["validate"]:
-                merge_kwargs["validate"] = spec["validate"]
             if spec["how"] == "cross":
                 pass  # cross joins don't take on=/left_on=/right_on=
             elif spec["on"] is not None:
                 missing = [c for c in spec["on"] if c not in left_df.columns or c not in right_df.columns]
                 if missing:
                     return _fail(parser, batch, f"-merge: on= column(s) not in both frames: {', '.join(missing)}")
-                merge_kwargs["on"] = spec["on"]
             else:
                 missing_left = [c for c in spec["left_on"] if c not in left_df.columns]
                 missing_right = [c for c in spec["right_on"] if c not in right_df.columns]
@@ -683,17 +679,35 @@ def _process_path(
                     return _fail(parser, batch, unknown_columns_message("-merge (left)", missing_left, list(left_df.columns)))
                 if missing_right:
                     return _fail(parser, batch, unknown_columns_message("-merge (right)", missing_right, list(right_df.columns)))
-                merge_kwargs["left_on"] = spec["left_on"]
-                merge_kwargs["right_on"] = spec["right_on"]
+            import polars as pl
+            left_pl = left_df if isinstance(left_df, pl.DataFrame) else pl.from_pandas(left_df)
+            right_pl = right_df if isinstance(right_df, pl.DataFrame) else pl.from_pandas(right_df)
+            how: Any = "full" if spec["how"] == "outer" else spec["how"]
+            val_map = {
+                "1:1": "1:1", "one_to_one": "1:1",
+                "1:m": "1:m", "one_to_many": "1:m",
+                "m:1": "m:1", "many_to_one": "m:1",
+                "m:m": "m:m", "many_to_many": "m:m",
+            }
+            validate_arg: Any = val_map.get(spec["validate"], "m:m") if spec["validate"] else "m:m"
             try:
-                result = pd.merge(left_df, right_df, **merge_kwargs)
+                if how == "cross":
+                    res_pl = left_pl.join(right_pl, how="cross")
+                elif spec["on"] is not None:
+                    res_pl = left_pl.join(right_pl, on=spec["on"], how=how, validate=validate_arg, coalesce=True)
+                elif spec["left_on"] == spec["right_on"]:
+                    res_pl = left_pl.join(right_pl, on=spec["left_on"], how=how, validate=validate_arg, coalesce=True)
+                else:
+                    res_pl = left_pl.join(right_pl, left_on=spec["left_on"], right_on=spec["right_on"], how=how, validate=validate_arg, coalesce=False)
             except Exception as exc:
                 return _fail(parser, batch, f"-merge: {exc}")
-            pipeline._df = result
+            pipeline._pldf = res_pl
+            pipeline._df = None
             if should_print(idx):
-                print(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty))
+                print(_format_table(_apply_round(res_pl, args.round_ndigits), pretty=args.pretty))
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                df = res_pl.to_pandas()
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "concat":
             spec = next(concat_iter)
             if frames is None:
@@ -704,15 +718,19 @@ def _process_path(
                 if err or df is None:
                     return _fail(parser, batch, err or f"-concat: missing frame '{alias}'")
                 dfs.append(df)
+            import polars as pl
+            pl_dfs = [df if isinstance(df, pl.DataFrame) else pl.from_pandas(df) for df in dfs]
             try:
-                result = pd.concat(dfs, ignore_index=True)
+                res_pl = pl.concat(pl_dfs, how="diagonal_relaxed")
             except Exception as exc:
                 return _fail(parser, batch, f"-concat: {exc}")
-            pipeline._df = result
+            pipeline._pldf = res_pl
+            pipeline._df = None
             if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+                _output_text(_format_table(_apply_round(res_pl, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                df = res_pl.to_pandas()
+                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):

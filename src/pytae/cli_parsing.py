@@ -819,3 +819,65 @@ def parse_kv_spec(raw: str | None, *, flag: str) -> dict[str, Any]:
         kwargs[key] = val
     return kwargs
 
+
+def normalize_sql(query: str) -> str:
+    """Normalize SQL queries for CLI -sql: resolve @file references, convert backticks
+    `col` and brackets [col] to double-quoted identifiers "col" for standard SQL."""
+    q = query.strip()
+    if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
+        q = q[1:-1].strip()
+    if q.startswith("@"):
+        path = q[1:].strip()
+        if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
+            path = path[1:-1].strip()
+        from pathlib import Path
+
+        file_path = Path(path)
+        if not file_path.is_file():
+            raise FileNotFoundError(f"sql: query file not found: '{path}'")
+        q = file_path.read_text(encoding="utf-8").strip()
+    out_chars: list[str] = []
+    i, n = 0, len(q)
+    quote = None
+    while i < n:
+        ch = q[i]
+        if quote is not None:
+            out_chars.append(ch)
+            if ch == quote:
+                if i + 1 < n and q[i + 1] == quote:
+                    out_chars.append(q[i + 1])
+                    i += 2
+                    continue
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            out_chars.append(ch)
+            i += 1
+            continue
+        if ch == "`":
+            j = q.find("`", i + 1)
+            if j != -1:
+                ident = q[i + 1 : j]
+                out_chars.append(f'"{ident}"')
+                i = j + 1
+                continue
+        if ch == "[":
+            j = q.find("]", i + 1)
+            if j != -1:
+                inner = q[i + 1 : j]
+                is_index = i > 0 and (q[i - 1].isalnum() or q[i - 1] in "_)]")
+                is_list_literal = "," in inner or "'" in inner or '"' in inner
+                has_ident = any(c.isalpha() or c == "_" for c in inner)
+                all_valid = all(c.isalnum() or c in " _-" for c in inner)
+                if not is_index and not is_list_literal and has_ident and all_valid:
+                    out_chars.append(f'"{inner}"')
+                    i = j + 1
+                    continue
+
+        out_chars.append(ch)
+        i += 1
+    return "".join(out_chars)
+
+

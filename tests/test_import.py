@@ -15,6 +15,7 @@ assert "pytae.plotting" not in sys.modules
 assert "pytae.shape" not in sys.modules
 assert "matplotlib" not in sys.modules
 assert "duckdb" not in sys.modules
+assert "polars" not in sys.modules
 assert pytae._cache == {}
 assert "penguins" in pytae.sample_data
 assert list(pytae.sample_data.keys())
@@ -104,33 +105,4 @@ def test_sample_unknown_dataset():
     else:
         raise AssertionError("expected KeyError")
 
-
-def test_sql_import_error_mentions_sql_extra(tmp_path):
-    csv_path = tmp_path / "data.csv"
-    csv_path.write_text("a,b\n1,2\n")
-    code = r"""
-import builtins
-import sys
-sys.path.insert(0, %r)
-real_import = builtins.__import__
-
-def blocked(name, *args, **kwargs):
-    if name == "duckdb" or name.startswith("duckdb."):
-        raise ImportError("No module named duckdb")
-    return real_import(name, *args, **kwargs)
-
-builtins.__import__ = blocked
-import pytae.cli as cli
-try:
-    cli.main([%r, "-sql", "select * from df"])
-except SystemExit as exc:
-    assert exc.code == 2
-else:
-    raise AssertionError("expected SystemExit")
-""" % (_SRC, str(csv_path))
-    result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True
-    )
-    assert result.returncode == 0, result.stderr
-    assert "pytae[sql]" in result.stderr
 

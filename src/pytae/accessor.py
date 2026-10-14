@@ -45,7 +45,6 @@ from .other_utilities import (
     replace_values as _replace_values,
 )
 from .select import select as _select
-from .sql import sql as _sql
 
 
 @pd.api.extensions.register_dataframe_accessor("pt")
@@ -122,14 +121,6 @@ class PtAccessor:
         if "by" in kwargs or "_by" in kwargs:
             raise TypeError("df.pt.mutate() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
         return _mutate(self._obj, *args, dropna=dropna, observed=observed, **kwargs)
-
-    def sql(self, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
-        """Run DuckDB SQL queries over this DataFrame (registered as table `data`).
-
-        Additional DataFrames can be registered as keyword arguments. Spaced column
-        names can use brackets `[col]`, double quotes `"col"`, or backticks.
-        """
-        return _sql(self._obj, query, **frames)
 
     def arrange(
         self,

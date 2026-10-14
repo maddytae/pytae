@@ -8,8 +8,7 @@ from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-
-import pandas as pd
+from typing import Any
 
 from pytae.cli_parsing import (
     expand_paths,
@@ -574,7 +573,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _execute_once() -> int:
         if args.file is not None:
-            frames: dict[str, pd.DataFrame] = {}
+            frames: dict[str, Any] = {}
             for entry in parse_file_arg(args.file):
                 entry_path = Path(entry["path"])
                 if not entry_path.exists():
@@ -584,9 +583,16 @@ def main(argv: list[str] | None = None) -> int:
                 except ValueError as exc:
                     parser.error(f"-file: {exc}")
                 try:
-                    frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
+                    if args.progress:
+                        frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
+                    else:
+                        frames[entry["alias"]] = reader.to_polars(nrows=args.nrows)
                 except UnicodeError as exc:
                     parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
+                except Exception as exc:
+                    if "utf-8" in str(exc).lower():
+                        parser.error(_encoding_error_message(entry_path, entry["encoding"], UnicodeDecodeError("utf-8", b"", 0, 1, str(exc))))
+                    parser.error(f"-file: {exc}")
             failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
                                     filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
                                     replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,

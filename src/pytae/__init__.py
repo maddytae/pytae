@@ -26,7 +26,6 @@ from .other_utilities import (
     safe_reset_index,
 )
 from .select import everything, select
-from .sql import sql
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -124,7 +123,6 @@ __all__ = [
     "clean_columns",
     "replace_values",
     "safe_reset_index",
-    "sql",
     "everything",
     "PtAccessor",
 ]
