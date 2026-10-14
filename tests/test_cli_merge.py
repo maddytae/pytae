@@ -294,4 +294,17 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(2, 4)"
 
 
+def test_merge_df_alias_rejected(tmp_path, capsys):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([
+            "-file", f"{a}=a;{b}=b",
+            "-merge", "left=a,right=b,on=id",
+            "-merge", "left=df,right=b,on=id",
+        ])
+    assert exc_info.value.code == 2
+    assert "'df' is not a valid alias; use 'data' for the pipeline's current result" in capsys.readouterr().err
+
+
+
 

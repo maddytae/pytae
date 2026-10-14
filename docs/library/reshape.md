@@ -7,8 +7,8 @@
 
 | Method | Key params | Purpose |
 |---|---|---|
-| `.pt.long(c='variable', v='value', id_vars=None)` | `c`, `v`, `id_vars` | wide → long (melt) |
-| `.pt.wide(c='variable', v='value', index=None)` | `c`, `v`, `index` (or `r`) | long → wide (pure 1:1 unmelt) |
+| `.pt.long(cols=None, id_vars=None, c='variable', v='value')` | `cols`, `id_vars`, `c`, `v` | wide → long (melt) |
+| `.pt.wide(r=None, c='variable', v='value')` | `r`, `c`, `v` | long → wide (pure 1:1 unmelt) |
 
 They are designed to work together as a **strictly complementary 1-to-1 reshaping pair**.
 
@@ -98,7 +98,7 @@ Melts all numeric columns to rows by default, preserving non-numeric columns as 
 
 ## 2. `wide` — Pure 1-to-1 Unmelting
 
-Pivots categorical values in column `c` into column headers, pulling cell values from `v`. Every `(index, c)` combination must be unique.
+Pivots categorical values in column `c` into column headers, pulling cell values from `v`. Every `(r, c)` combination must be unique.
 
 ```python
 # flights has exactly one row per year + month: perfect 1-to-1 unmelt
@@ -117,7 +117,7 @@ flights_wide.head()
 |   1953 |   196 |   196 |   236 |   235 |   229 |   243 |   264 |   272 |   237 |   211 |   180 |   201 |
 
 ```python
-# Explicit index parameter (r= / index=)
+# Explicit row identifier parameter (r=)
 demo_long = pd.DataFrame({
     "id": [1, 2, 3],
     "quarter": ["Q1", "Q2", "Q3"],
@@ -136,12 +136,12 @@ demo_long.pt.wide(r="id", c="quarter", v="sales")
 
 ## 3. Strict 1-to-1 Reshaping Guarantees
 
-If your DataFrame contains duplicate index/column pairs, `wide()` refuses to silently aggregate and raises a clear error directing you to `pt.pivot()`:
+If your DataFrame contains duplicate row/column pairs, `wide()` refuses to silently aggregate and raises a clear error directing you to `pt.pivot()`:
 
 ```python
 # penguins has multiple individuals per (island, species), so wide() halts:
 try:
-    penguins.pt.wide(index="island", c="species", v="body_mass_g")
+    penguins.pt.wide(r="island", c="species", v="body_mass_g")
 except ValueError as e:
     print("Error caught successfully:")
     print(e)
@@ -150,7 +150,7 @@ except ValueError as e:
 **Output:**
 ```text
 Error caught successfully:
-wide() encountered duplicate entries for index ['island'] and column 'species'. wide() is strictly for 1-to-1 reshaping without aggregation. Use pt.pivot() / -pivot to summarize or aggregate duplicate entries.
+wide() encountered duplicate entries for row 'r' ['island'] and column 'species'. wide() is strictly for 1-to-1 reshaping without aggregation. Use pt.pivot() / -pivot to summarize or aggregate duplicate entries.
 ```
 
 To summarize duplicate keys across dimensions, use [`pt.pivot`](pivot.md) instead:

@@ -24,8 +24,8 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
 
 | Flag | Description | Key Parameters |
 |---|---|---|
-| `-long [SPEC]` | Melt numeric columns into rows | `c=` (metric header), `v=` (value header), `r=` (fixed rows) |
-| `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `c=` (header source), `v=` (values), `r=` (row index) |
+| `-long [SPEC]` | Melt numeric columns into rows | `cols=` (columns to melt), `id_vars=` (fixed rows), `c=` (metric header), `v=` (value header) |
+| `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `r=` (row index), `c=` (header source), `v=` (values) |
 
 > [!IMPORTANT]
 > **`-wide` is strictly for 1-to-1 reshaping without aggregation.** If your data has multiple rows per key combination and requires mathematical summarization (`mean`, `sum`, `count`/`n`), use **[`-pivot`](pivot.md)**.
@@ -91,7 +91,7 @@ pytae flights.parquet -wide "c=month,v=passengers" -head 3
 
 ### 2. Explicit Row Index (`r=`)
 
-By default, all columns other than `c` and `v` serve as row identifiers. Use `r=` (or `by=`) to declare specific row index columns explicitly:
+By default, all columns other than `c` and `v` serve as row identifiers. Use `r=` to declare specific row index columns explicitly:
 
 ```bash
 pytae flights.parquet -wide "r=year,c=month,v=passengers" -head 3

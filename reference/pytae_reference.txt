@@ -129,7 +129,7 @@ Top-Level Functions exported by `pytae`:
   - pt.distinct(df, *cols, keep="first")
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
-  - pt.wide(df, c="variable", v="value", index=None)
+  - pt.wide(df, r=None, c="variable", v="value")
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
   - pt.sql(df, query, **frames)
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
@@ -569,15 +569,15 @@ pt.long(df, cols=None, id_vars=None, c="variable", v="value"):
     c: column name for melted metric names (default: "variable")
     v: column name for melted metric values (default: "value")
 
-pt.wide(df, c="variable", v="value", index=None):
+pt.wide(df, r=None, c="variable", v="value"):
   Pivots long-format records back into column headers (exact reverse of pt.long).
   Strictly 1-to-1 without aggregation.
   Parameters:
+    r: explicit row identifier column(s). If None, all remaining columns are used.
     c: column whose unique values become headers (default: "variable")
     v: column containing values (default: "value")
-    index: explicit row identifier column(s). If None, all remaining columns are used.
   Rules:
-    - Requires unique (index, c) pairs. If duplicate keys exist, raises ValueError
+    - Requires unique (r, c) pairs. If duplicate keys exist, raises ValueError
       guiding the user to use pt.pivot() instead.
 
 
@@ -599,8 +599,8 @@ Signature:
   ) -> pd.DataFrame
 
 Parameters:
-  r: Row grouping column(s) (aliases: index=, rows=, row=, by=).
-  c: Column dimension(s) (aliases: columns=, cols=, col=).
+  r: Row grouping column(s).
+  c: Column dimension(s) to spread as headers.
   v: Value column(s) to aggregate. Optional when counting (a="n").
   a: Aggregation function (default: "sum"; use "n" for row counts).
   dropna: Whether to drop NA categories in row/column keys (default: False).
@@ -744,7 +744,7 @@ Column Transformation Flags:
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
-  -by, -group_by COLS   Grouping columns for -agg, -mutate, -pick (e.g. -by species -agg mean)
+  -by COLS              Grouping columns for -agg, -mutate, -pick (e.g. -by species -agg mean)
   -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
@@ -4556,9 +4556,9 @@ pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,specie
 - **Rows (`r=`)**: Row dimension(s) (*optional*).
 - **Cols (`c=`)**: Column dimension(s) to spread as headers (*optional*).
 - **Values (`v=`)**: Measure / metric column(s) to aggregate (**required** for metric aggregations; optional for `a=n`).
-- **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`/`size`; default: `sum`).
+- **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`).
 - **Missing Categories (`dropna=`)**: Retain `NaN` keys when `false` (default: `false`).
-- **Empty Intersections (`fill=`)**: Fill missing grid cells (e.g. `fill=0`).
+- **Empty Intersections (`fill_value=`)**: Fill missing grid cells (e.g. `fill_value=0`).
 
 ---
 
@@ -4573,7 +4573,7 @@ pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,specie
   - [5. Grand Total Summary (`v=`)](#5-grand-total-summary-v)
 - [Hierarchical Grouping with Multiple Rows (`r=Region,Store`)](#hierarchical-grouping-with-multiple-rows-rregionstore)
 - [Multi-Metric Reporting (`v=Sales,Profit`)](#multi-metric-reporting-vsalesprofit)
-- [Filling Empty Intersections (`fill=0`)](#filling-empty-intersections-fill0)
+- [Filling Empty Intersections (`fill_value=0`)](#filling-empty-intersections-fill_value0)
 - [Guarantees & Differences from `-wide`](#guarantees--differences-from--wide)
 
 ---
@@ -4582,12 +4582,12 @@ pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,specie
 
 | Parameter | Meaning | Default | Example |
 |---|---|---|---|
-| `r` (or `rows`, `index`, `by`) | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
-| `c` (or `cols`, `columns`) | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
-| `v` (or `values`, `val`) | Metric column(s) to aggregate | Required (optional for `a=n`) | `v=Sales` or `v=Sales,Profit` |
-| `a` (or `agg`, `aggfunc`) | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
+| `r` | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
+| `c` | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
+| `v` | Metric column(s) to aggregate | Required (optional for `a=n`) | `v=Sales` or `v=Sales,Profit` |
+| `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
-| `fill` (or `fill_value`) | Fill for empty cells | `None` (`NaN`) | `fill=0` |
+| `fill_value` | Fill for empty cells | `None` (`NaN`) | `fill_value=0` |
 
 ---
 
@@ -4711,13 +4711,13 @@ Column names are automatically flattened into intuitive strings (`Metric_Col`), 
 
 ---
 
-## Filling Empty Intersections (`fill=0`)
+## Filling Empty Intersections (`fill_value=0`)
 
 When a category combination has no records, replace the missing cell with a scalar:
 
 ```bash
 pytae penguins.parquet \
-  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill=0" \
+  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill_value=0" \
   -round 1
 ```
 
@@ -4945,8 +4945,8 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
 
 | Flag | Description | Key Parameters |
 |---|---|---|
-| `-long [SPEC]` | Melt numeric columns into rows | `c=` (metric header), `v=` (value header), `r=` (fixed rows) |
-| `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `c=` (header source), `v=` (values), `r=` (row index) |
+| `-long [SPEC]` | Melt numeric columns into rows | `cols=` (columns to melt), `id_vars=` (fixed rows), `c=` (metric header), `v=` (value header) |
+| `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `r=` (row index), `c=` (header source), `v=` (values) |
 
 > [!IMPORTANT]
 > **`-wide` is strictly for 1-to-1 reshaping without aggregation.** If your data has multiple rows per key combination and requires mathematical summarization (`mean`, `sum`, `count`/`n`), use **[`-pivot`](pivot.md)**.
@@ -5012,7 +5012,7 @@ pytae flights.parquet -wide "c=month,v=passengers" -head 3
 
 ### 2. Explicit Row Index (`r=`)
 
-By default, all columns other than `c` and `v` serve as row identifiers. Use `r=` (or `by=`) to declare specific row index columns explicitly:
+By default, all columns other than `c` and `v` serve as row identifiers. Use `r=` to declare specific row index columns explicitly:
 
 ```bash
 pytae flights.parquet -wide "r=year,c=month,v=passengers" -head 3
@@ -9274,8 +9274,8 @@ kind='hist': unsupported=[], controls=['annot', 'by', 'clip_data', 'column', 'dr
 
 | Method | Key params | Purpose |
 |---|---|---|
-| `.pt.long(c='variable', v='value', id_vars=None)` | `c`, `v`, `id_vars` | wide → long (melt) |
-| `.pt.wide(c='variable', v='value', index=None)` | `c`, `v`, `index` (or `r`) | long → wide (pure 1:1 unmelt) |
+| `.pt.long(cols=None, id_vars=None, c='variable', v='value')` | `cols`, `id_vars`, `c`, `v` | wide → long (melt) |
+| `.pt.wide(r=None, c='variable', v='value')` | `r`, `c`, `v` | long → wide (pure 1:1 unmelt) |
 
 They are designed to work together as a **strictly complementary 1-to-1 reshaping pair**.
 
@@ -9365,7 +9365,7 @@ Melts all numeric columns to rows by default, preserving non-numeric columns as 
 
 ## 2. `wide` — Pure 1-to-1 Unmelting
 
-Pivots categorical values in column `c` into column headers, pulling cell values from `v`. Every `(index, c)` combination must be unique.
+Pivots categorical values in column `c` into column headers, pulling cell values from `v`. Every `(r, c)` combination must be unique.
 
 ```python
 # flights has exactly one row per year + month: perfect 1-to-1 unmelt
@@ -9384,7 +9384,7 @@ flights_wide.head()
 |   1953 |   196 |   196 |   236 |   235 |   229 |   243 |   264 |   272 |   237 |   211 |   180 |   201 |
 
 ```python
-# Explicit index parameter (r= / index=)
+# Explicit row identifier parameter (r=)
 demo_long = pd.DataFrame({
     "id": [1, 2, 3],
     "quarter": ["Q1", "Q2", "Q3"],
@@ -9403,12 +9403,12 @@ demo_long.pt.wide(r="id", c="quarter", v="sales")
 
 ## 3. Strict 1-to-1 Reshaping Guarantees
 
-If your DataFrame contains duplicate index/column pairs, `wide()` refuses to silently aggregate and raises a clear error directing you to `pt.pivot()`:
+If your DataFrame contains duplicate row/column pairs, `wide()` refuses to silently aggregate and raises a clear error directing you to `pt.pivot()`:
 
 ```python
 # penguins has multiple individuals per (island, species), so wide() halts:
 try:
-    penguins.pt.wide(index="island", c="species", v="body_mass_g")
+    penguins.pt.wide(r="island", c="species", v="body_mass_g")
 except ValueError as e:
     print("Error caught successfully:")
     print(e)
@@ -9417,7 +9417,7 @@ except ValueError as e:
 **Output:**
 ```text
 Error caught successfully:
-wide() encountered duplicate entries for index ['island'] and column 'species'. wide() is strictly for 1-to-1 reshaping without aggregation. Use pt.pivot() / -pivot to summarize or aggregate duplicate entries.
+wide() encountered duplicate entries for row 'r' ['island'] and column 'species'. wide() is strictly for 1-to-1 reshaping without aggregation. Use pt.pivot() / -pivot to summarize or aggregate duplicate entries.
 ```
 
 To summarize duplicate keys across dimensions, use [`pt.pivot`](pivot.md) instead:
@@ -10355,8 +10355,8 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 
 | Operation | Pandas | tidyr (R) | Pytae (`df.pt`) | Pytae CLI |
 |---|---|---|---|---|
-| **Wide to Long** | `pd.melt(df, id_vars=['id'], value_vars=['x', 'y'])` | `pivot_longer(df, cols = c(x, y))` | `df.pt.long(id_vars="id", cols=["x", "y"])` | `-long "r=id, c='x,y'"` |
-| **Long to Wide (1:1)**| `df.pivot(index='id', columns='var', values='val').reset_index()` | `pivot_wider(df, names_from = var, values_from = val)` | `df.pt.wide(c="var", v="val", index="id")` | `-wide "c=var, v=val, r=id"` |
+| **Wide to Long** | `pd.melt(df, id_vars=['id'], value_vars=['x', 'y'])` | `pivot_longer(df, cols = c(x, y))` | `df.pt.long(id_vars="id", cols=["x", "y"])` | `-long "id_vars=id, cols='x,y'"` |
+| **Long to Wide (1:1)**| `df.pivot(index='id', columns='var', values='val').reset_index()` | `pivot_wider(df, names_from = var, values_from = val)` | `df.pt.wide(r="id", c="var", v="val")` | `-wide "r=id, c=var, v=val"` |
 | **2D Pivot Table** | `pd.pivot_table(df, index='r', columns='c', values='v', aggfunc='mean').reset_index()` | `df %>% group_by(r, c) %>% summarise(...) %>% pivot_wider(...)` | `df.pt.pivot(r="r", c="c", v="v", a="mean")` | `-pivot "r=r, c=c, v=v, a=mean"` |
 
 ---
@@ -11063,19 +11063,20 @@ class PtAccessor:
 
     def wide(
         self,
+        r: str | Sequence[str] | None = None,
         c: str = "variable",
         v: str = "value",
-        index: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
         """Pivot long-form records back to wide format (columns).
 
-        Headers are created from `c` (default 'variable'), cells from `v` (default 'value').
+        Row identifier(s) are specified by `r`. Headers are created from `c` (default 'variable'),
+        cells from `v` (default 'value').
         Strictly 1-to-1 structural reshaping without aggregation.
         For multi-dimensional aggregation, use `df.pt.pivot()`.
         """
         from .shape import wide as _wide
-        return _wide(self._obj, c=c, v=v, index=index, **kwargs)
+        return _wide(self._obj, r=r, c=c, v=v, **kwargs)
 
     def pivot(
         self,
@@ -11092,14 +11093,14 @@ class PtAccessor:
         Parameters:
         -----------
         r : str or sequence of str, optional
-            Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+            Row dimension(s) to group by.
         c : str or sequence of str, optional
-            Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+            Column dimension(s) to spread as headers.
         v : str or sequence of str
-            Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+            Value column(s) to aggregate. REQUIRED.
         a : str, default 'sum'
             Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
-            'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+            'n' is accepted for group row count.
         dropna : bool, default False
             Whether to drop NA categories from grouping keys.
         fill_value : any, optional
@@ -12080,7 +12081,7 @@ _CLI_FLAGS = {
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
     "-distinct", "--distinct", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
     "-arrange", "--arrange", "-pick", "--pick",
-    "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
+    "-by", "--by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-handle_missing", "--handle_missing",
     "-dropna", "--dropna", "-glimpse", "--glimpse",
@@ -12246,7 +12247,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-pick", "--pick", dest="pick", default=None, metavar="SPEC",
                          action=_OrderedStore,
                          help="pick top/bottom rows by column, e.g. -pick \"mass,n=3\" or -pick \"mass,prop=0.1,order=min\"")
-    parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
+    parser.add_argument("-by", "--by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
                               "Used by -agg, -mutate, -pick.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
@@ -12433,6 +12434,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("'-slice_max' has been removed; use '-pick' instead")
         if any(e in ("-slice_min", "--slice_min") for e in extras):
             parser.error("'-slice_min' has been removed; use '-pick with order=min' instead")
+        if any(e in ("-group_by", "--group_by", "-groupby", "--groupby") for e in extras):
+            parser.error("'-group_by' has been removed; use '-by' instead")
         if args.file is None:
             path_extras = [e for e in extras if _is_path_like(e)]
             if path_extras:
@@ -12901,27 +12904,27 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "wide": KeywordHelp(
         name="wide",
         flag="-wide, --wide [KEY=VALUE,...]",
-        syntax="pytae <path> -wide [c=var,v=val,index=id_cols]",
+        syntax="pytae <path> -wide [c=var,v=val,r=id_cols]",
         summary="Spread tall rows into wide headers (pure 1-to-1 reshaping, reverse of -long).",
         description=(
             "Spreads unique key/value pairs back into columns without aggregating.\n"
-            "Requires unique (index, c) pairs; if duplicates exist, use -pivot instead."
+            "Requires unique (r, c) pairs; if duplicates exist, use -pivot instead."
         ),
         options=[
             "c=name : Column whose distinct values become column headers (default: 'variable').",
             "v=name : Column containing cell values (default: 'value').",
-            "index=cols : Explicit row identifier column(s) (default: all remaining columns).",
+            "r=cols : Explicit row identifier column(s) (default: all remaining columns).",
         ],
         examples=[
             "pytae tall.csv -wide",
             "pytae tall.csv -wide \"c=metric,v=measurement\"",
-            "pytae tall.csv -wide \"c=quarter,v=revenue,index=customer_id\"",
+            "pytae tall.csv -wide \"c=quarter,v=revenue,r=customer_id\"",
         ],
         see_also=["-long", "-pivot"],
     ),
     "by": KeywordHelp(
         name="by",
-        flag="-by, --by, -group_by COLUMNS",
+        flag="-by, --by COLUMNS",
         syntax="pytae <path> -by <COLUMNS> [operation]",
         summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -pick).",
         description=(
@@ -13333,9 +13336,6 @@ KEYWORD_ALIASES: dict[str, str] = {
     "o": "output",
     "-o": "output",
     "--output": "output",
-    "group_by": "by",
-    "-group_by": "by",
-    "--group_by": "by",
     "limit": "nrows",
     "-limit": "nrows",
     "--limit": "nrows",
@@ -13350,10 +13350,6 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-qry": "filter",
     "query": "filter",
     "-query": "filter",
-    "slice_max": "pick",
-    "-slice_max": "pick",
-    "slice_min": "pick",
-    "-slice_min": "pick",
 }
 
 
@@ -13887,8 +13883,8 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
-_WIDE_KEYS = ("c", "v", "index", "by", "r", "rows", "cols", "values")
+_LONG_KEYS = ("cols", "id_vars", "c", "v")
+_WIDE_KEYS = ("r", "c", "v")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
@@ -13924,7 +13920,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
     for key, value in list(kwargs.items()):
         if key in ("margins", "exact", "dropna"):
             kwargs[key] = parse_bool_text(value)
-        elif key in ("fill", "fill_value"):
+        elif key == "fill_value":
             if isinstance(value, str):
                 v_lower = value.strip().lower()
                 if v_lower in ("none", "null"):
@@ -13947,21 +13943,10 @@ def parse_long_arg(raw: str | None) -> dict:
 
 
 def parse_wide_arg(raw: str | None) -> dict:
-    parsed = parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
-    if "cols" in parsed and "c" not in parsed:
-        parsed["c"] = parsed.pop("cols")
-    if "values" in parsed and "v" not in parsed:
-        parsed["v"] = parsed.pop("values")
-    return parsed
+    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
-_PIVOT_KEYS = (
-    "r", "c", "v", "a", "dropna", "fill_value", "fill",
-    "rows", "row", "index", "by",
-    "cols", "col", "columns",
-    "values", "value", "val", "vals",
-    "agg", "aggfunc",
-)
+_PIVOT_KEYS = ("r", "c", "v", "a", "dropna", "fill_value")
 
 
 def parse_pivot_arg(raw: str | None) -> dict:
@@ -14155,7 +14140,7 @@ def parse_merge_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[s
 
 def parse_merge_arg(raw: str) -> dict:
     """Parse -merge as key=value tokens: left=/right= (required -file aliases, or the
-    literal 'df' to reference the pipeline's current result so far — lets repeated
+    literal 'data' to reference the pipeline's current result so far — lets repeated
     -merge calls fold in one more file at a time), on= (required; shared column
     name(s), or left:right pairs if they differ between sides), how= (optional,
     default 'inner', passed straight to pandas merge()), validate= (optional, passed
@@ -14189,7 +14174,7 @@ _CONCAT_KEYS = ("frames",)
 
 def parse_concat_arg(raw: str) -> dict:
     """Parse -concat as key=value tokens: frames= (required) — an ordered,
-    comma-separated list of -file aliases (or 'df' for the pipeline's current
+    comma-separated list of -file aliases (or 'data' for the pipeline's current
     result, to stack more files onto something already produced), e.g.
     frames='df1,df2,df3'. Quote the whole value — it has internal commas.
     """
@@ -15185,13 +15170,15 @@ def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError)
 
 
 def _resolve_alias(alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipeline, flag: str) -> tuple[pd.DataFrame | None, str | None]:
-    """Look up a -merge/-concat alias: a -file alias, or 'df' for the pipeline's current
+    """Look up a -merge/-concat alias: a -file alias, or 'data' for the pipeline's current
     result so far (lets repeated -merge/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
     if alias == "data":
         if pipeline._df is None:
             return None, f"{flag}: 'data' isn't available yet — nothing has produced a pipeline result yet"
         return pipeline._df, None
+    if alias == "df":
+        return None, f"{flag}: 'df' is not a valid alias; use 'data' for the pipeline's current result"
     if alias not in frames:
         return None, f"{flag}: unknown -file alias '{alias}'"
     return frames[alias], None
@@ -15642,9 +15629,9 @@ def _process_path(
             wide_val = _next_op_val("wide", args.wide)
             wide_kwargs = parse_wide_arg(wide_val)
             to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
-            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index") or wide_kwargs.get("r") or wide_kwargs.get("rows")
-            if by_cols:
-                to_check.extend(parse_columns(by_cols) if isinstance(by_cols, str) else list(by_cols))
+            r_cols = wide_kwargs.get("r")
+            if r_cols:
+                to_check.extend(parse_columns(r_cols) if isinstance(r_cols, str) else list(r_cols))
             avail_cols = pipeline.columns()
             missing = [c for c in to_check if c not in avail_cols]
             if missing:
@@ -15672,7 +15659,7 @@ def _process_path(
             if "dropna" not in pivot_kwargs:
                 pivot_kwargs["dropna"] = False if args.dropna is None else args.dropna
             to_check = []
-            for k in ("r", "rows", "index", "by", "c", "cols", "columns", "v", "values", "val", "vals"):
+            for k in ("r", "c", "v"):
                 val = pivot_kwargs.get(k)
                 if val:
                     to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))
@@ -18879,16 +18866,8 @@ def pivot_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics."""
-    if r is None:
-        r = kwargs.pop("rows", kwargs.pop("row", kwargs.pop("index", kwargs.pop("by", None))))
-    if c is None:
-        c = kwargs.pop("cols", kwargs.pop("col", kwargs.pop("columns", None)))
-    if v is None:
-        v = kwargs.pop("values", kwargs.pop("value", kwargs.pop("val", kwargs.pop("vals", None))))
-    if a == "sum":
-        a = kwargs.pop("agg", kwargs.pop("aggfunc", a))
-    if fill_value is None:
-        fill_value = kwargs.pop("fill", None)
+    if kwargs:
+        raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
     if a in ("n", "size") and fill_value is None:
         fill_value = 0
 
@@ -19157,14 +19136,8 @@ def long_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Unpivot a Polars DataFrame from wide to long format."""
-    if cols is None:
-        cols = kwargs.pop("values", kwargs.pop("value_vars", None))
-    if id_vars is None:
-        id_vars = kwargs.pop("by", kwargs.pop("id", None))
-    if c == "variable":
-        c = kwargs.pop("var_name", c)
-    if v == "value":
-        v = kwargs.pop("value_name", v)
+    if kwargs:
+        raise TypeError(f"long_polars() got unexpected keyword argument(s): {list(kwargs.keys())}")
 
     all_cols = list(df.columns)
 
@@ -19226,9 +19199,9 @@ def long_polars(
 
 def wide_polars(
     df: pl.DataFrame,
+    r: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
-    index: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Reshape a long Polars DataFrame into wide format (1-to-1 pivot)."""
@@ -19239,19 +19212,10 @@ def wide_polars(
                 "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
             )
 
-    if "cols" in kwargs and c == "variable":
-        c = kwargs.pop("cols")
-    elif "col" in kwargs and c == "variable":
-        c = kwargs.pop("col")
-    elif "columns" in kwargs and c == "variable":
-        c = kwargs.pop("columns")
-
-    if "values" in kwargs and v == "value":
-        v = kwargs.pop("values")
-    elif "val" in kwargs and v == "value":
-        v = kwargs.pop("val")
-    elif "vals" in kwargs and v == "value":
-        v = kwargs.pop("vals")
+    if "index" in kwargs:
+        raise TypeError("wide() parameter 'index' has been removed; use 'r' instead")
+    if kwargs:
+        raise TypeError(f"wide() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v are accepted")
 
     c = _unquote_name(c)
     if v is None:
@@ -19264,35 +19228,32 @@ def wide_polars(
     if v not in df.columns:
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
-    if index is None:
-        index = kwargs.pop("r", kwargs.pop("rows", kwargs.pop("by", kwargs.pop("id_vars", None))))
-
-    if index is not None:
-        if isinstance(index, str):
+    if r is not None:
+        if isinstance(r, str):
             from pytae._text import tokenize as _tok
-            index_cols = [_unquote_name(col.strip()) for col in _tok(index, ",", keep_quotes=True, track_brackets=True) if col.strip()]
+            r_cols = [_unquote_name(col.strip()) for col in _tok(r, ",", keep_quotes=True, track_brackets=True) if col.strip()]
         else:
-            index_cols = [_unquote_name(col) if isinstance(col, str) else col for col in index]
-        for col in index_cols:
+            r_cols = [_unquote_name(col) if isinstance(col, str) else col for col in r]
+        for col in r_cols:
             if col not in df.columns:
-                raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
-        if c in index_cols:
-            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in index columns")
-        if v is not None and v in index_cols:
-            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in index columns")
+                raise KeyError(f"wide(): row 'r' column '{col}' not found in DataFrame")
+        if c in r_cols:
+            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in row 'r' columns")
+        if v is not None and v in r_cols:
+            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in row 'r' columns")
     else:
-        index_cols = [col for col in df.columns if col not in [c, v]]
+        r_cols = [col for col in df.columns if col not in [c, v]]
 
     try:
         return df.pivot(
             on=c,
-            index=index_cols if index_cols else None,
+            index=r_cols if r_cols else None,
             values=v,
             sort_columns=True,
         )
     except Exception as exc:
         raise ValueError(
-            f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
+            f"wide() encountered duplicate entries for row 'r' {r_cols} and column '{c}'. "
             "wide() is strictly for 1-to-1 reshaping without aggregation. "
             "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
         ) from exc
@@ -20621,31 +20582,25 @@ def long(
     df : pd.DataFrame
         The DataFrame to melt.
     cols : str or sequence of str, optional
-        Columns to unpivot into rows. Aliases: `values`, `value_vars`.
+        Columns to unpivot into rows.
         If not specified and `id_vars` is provided, all remaining columns are melted.
         If neither `cols` nor `id_vars` is provided, all numeric columns are melted.
     id_vars : str or sequence of str, optional
-        Identifier columns to keep fixed. Aliases: `by`, `id`.
+        Identifier columns to keep fixed.
         If not specified, all columns not in `cols` are kept as identifier variables.
     c : str, default 'variable'
-        Name for the melted-variable column. Alias: `var_name`.
+        Name for the melted-variable column.
     v : str, default 'value'
-        Name for the melted-value column. Alias: `value_name`.
+        Name for the melted-value column.
 
     Returns:
     --------
     pd.DataFrame
         Unpivoted long DataFrame.
     """
-    # Keyword argument aliases
-    if cols is None:
-        cols = kwargs.pop("values", kwargs.pop("value_vars", None))
-    if id_vars is None:
-        id_vars = kwargs.pop("by", kwargs.pop("id", None))
-    if c == "variable":
-        c = kwargs.pop("var_name", c)
-    if v == "value":
-        v = kwargs.pop("value_name", v)
+    # Validate kwargs
+    if kwargs:
+        raise TypeError(f"long() got unexpected keyword argument(s): {list(kwargs.keys())}")
 
     all_cols = list(df.columns)
 
@@ -20712,9 +20667,9 @@ def long(
 
 def wide(
     df: pd.DataFrame,
+    r: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
-    index: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """Pivot a long column into headers (pure 1-to-1 reshape).
@@ -20723,13 +20678,13 @@ def wide(
     -----------
     df : pd.DataFrame
         The DataFrame to pivot.
+    r : str or sequence of str, optional
+        Row identifier column(s) to keep fixed.
+        If omitted, all columns other than `c` and `v` are used.
     c : str, default 'variable'
         Column whose values become headers (columns).
     v : str, default 'value'
         Values column to populate table cells.
-    index : str or sequence of str, optional
-        Explicit index column(s) to use. Aliases: `r`, `rows`, `by`, `id_vars`.
-        If omitted, all columns other than `c` and `v` are used.
 
     Returns:
     --------
@@ -20743,19 +20698,10 @@ def wide(
                 "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
             )
 
-    if "cols" in kwargs and c == "variable":
-        c = kwargs.pop("cols")
-    elif "col" in kwargs and c == "variable":
-        c = kwargs.pop("col")
-    elif "columns" in kwargs and c == "variable":
-        c = kwargs.pop("columns")
-
-    if "values" in kwargs and v == "value":
-        v = kwargs.pop("values")
-    elif "val" in kwargs and v == "value":
-        v = kwargs.pop("val")
-    elif "vals" in kwargs and v == "value":
-        v = kwargs.pop("vals")
+    if "index" in kwargs:
+        raise TypeError("wide() parameter 'index' has been removed; use 'r' instead")
+    if kwargs:
+        raise TypeError(f"wide() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v are accepted")
 
     c = _unquote_name(c)
     if v is None:
@@ -20768,40 +20714,37 @@ def wide(
     if v not in df.columns:
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
-    if index is None:
-        index = kwargs.pop("r", kwargs.pop("rows", kwargs.pop("by", kwargs.pop("id_vars", None))))
-
-    if index is not None:
-        if isinstance(index, str):
-            index_cols = [_unquote_name(col.strip()) for col in _tokenize(index, ",", keep_quotes=True, track_brackets=True) if col.strip()]
+    if r is not None:
+        if isinstance(r, str):
+            r_cols = [_unquote_name(col.strip()) for col in _tokenize(r, ",", keep_quotes=True, track_brackets=True) if col.strip()]
         else:
-            index_cols = [_unquote_name(col) if isinstance(col, str) else col for col in index]
-        for col in index_cols:
+            r_cols = [_unquote_name(col) if isinstance(col, str) else col for col in r]
+        for col in r_cols:
             if col not in df.columns:
-                raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
-        if c in index_cols:
-            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in index columns")
-        if v is not None and v in index_cols:
-            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in index columns")
+                raise KeyError(f"wide(): row 'r' column '{col}' not found in DataFrame")
+        if c in r_cols:
+            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in row 'r' columns")
+        if v in r_cols:
+            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in row 'r' columns")
     else:
-        index_cols = [col for col in df.columns if col not in [c, v]]
+        r_cols = [col for col in df.columns if col not in [c, v]]
 
     try:
-        if not index_cols:
+        if not r_cols:
             temp_df = df.copy()
             temp_df["__pt_wide_tmp__"] = 0
             pivoted = temp_df.pivot(index="__pt_wide_tmp__", columns=c, values=v)
         else:
-            pivoted = df.pivot(index=index_cols, columns=c, values=v)
+            pivoted = df.pivot(index=r_cols, columns=c, values=v)
     except ValueError as exc:
         raise ValueError(
-            f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
+            f"wide() encountered duplicate entries for row 'r' {r_cols} and column '{c}'. "
             "wide() is strictly for 1-to-1 reshaping without aggregation. "
             "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
         ) from exc
 
     wide_df = _safe_reset_index(pivoted)
-    if not index_cols and "__pt_wide_tmp__" in wide_df.columns:
+    if not r_cols and "__pt_wide_tmp__" in wide_df.columns:
         wide_df = wide_df.drop(columns=["__pt_wide_tmp__"])
     wide_df.columns.name = None
     return wide_df
@@ -20824,14 +20767,14 @@ def pivot(
     df : pd.DataFrame
         The DataFrame to pivot.
     r : str or sequence of str, optional
-        Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+        Row dimension(s) to group by.
     c : str or sequence of str, optional
-        Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+        Column dimension(s) to spread as headers.
     v : str or sequence of str
-        Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+        Value column(s) to aggregate. REQUIRED.
     a : str, default 'sum'
         Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
-        'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+        'n' is accepted for group row count.
     dropna : bool, default False
         Whether to drop NA categories from grouping keys.
     fill_value : any, optional
@@ -20842,16 +20785,8 @@ def pivot(
     pd.DataFrame
         Clean, flattened DataFrame with standard RangeIndex and 1D column names.
     """
-    if r is None:
-        r = kwargs.pop("rows", kwargs.pop("row", kwargs.pop("index", kwargs.pop("by", None))))
-    if c is None:
-        c = kwargs.pop("cols", kwargs.pop("col", kwargs.pop("columns", None)))
-    if v is None:
-        v = kwargs.pop("values", kwargs.pop("value", kwargs.pop("val", kwargs.pop("vals", None))))
-    if a == "sum":
-        a = kwargs.pop("agg", kwargs.pop("aggfunc", a))
-    if fill_value is None:
-        fill_value = kwargs.pop("fill", None)
+    if kwargs:
+        raise TypeError(f"pivot() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
 
     all_cols = list(df.columns)
 
@@ -23922,6 +23857,18 @@ def test_merge_unquoted_on_pairs(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 4)"
 
+
+def test_merge_df_alias_rejected(tmp_path, capsys):
+    a, b, _ = _write_three_id_csvs(tmp_path)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([
+            "-file", f"{a}=a;{b}=b",
+            "-merge", "left=a,right=b,on=id",
+            "-merge", "left=df,right=b,on=id",
+        ])
+    assert exc_info.value.code == 2
+    assert "'df' is not a valid alias; use 'data' for the pipeline's current result" in capsys.readouterr().err
+
 ################################################################################
 # FILE: tests/test_cli_mutate.py
 ################################################################################
@@ -25941,9 +25888,10 @@ def test_pivot_dropna_false_default():
     assert any("nan" in c.lower() for c in col_names)
 
 
-def test_pivot_aliases(sales_df):
-    res = sales_df.pt.pivot(rows="Region", cols="Year", values="Sales", aggfunc="mean", fill=0.0)
-    assert list(res.columns) == ["Region", "2023", "2024"]
+def test_pivot_aliases_rejected(sales_df):
+    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"fill": 0.0}):
+        with pytest.raises(TypeError, match="pivot\\(\\) got unexpected keyword argument\\(s\\)"):
+            sales_df.pt.pivot(r="Region", c="Year", v="Sales", **bad_kw)
 
 
 def test_pivot_missing_v_error(sales_df):
@@ -25956,8 +25904,7 @@ def test_pivot_unknown_column_error(sales_df):
         sales_df.pt.pivot(r="NonExistent", c="Year", v="Sales")
 
 
-def test_wide_accepts_r_alias(sales_df):
-    # wide accepts r as alias for index/by
+def test_wide_r_spec(sales_df):
     tall = sales_df.pt.long(cols=["Sales", "Profit"], id_vars=["Region", "Store", "Year"])
     back = tall.pt.wide(r=["Region", "Store", "Year"], c="variable", v="value")
     assert "Sales" in back.columns
@@ -26133,7 +26080,7 @@ def test_cli_pivot_fill_numeric(tmp_path, capsys):
     })
     path = str(tmp_path / "sales.csv")
     df.to_csv(path, index=False)
-    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,fill=0", "-round", "1"])
+    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,fill_value=0", "-round", "1"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "0" in out
@@ -26148,19 +26095,31 @@ def test_cli_pivot_unknown_agg_fails_cleanly(tmp_path):
     assert exc.value.code == 2
 
 
-def test_wide_cols_and_values_aliases(tmp_path):
+def test_wide_cols_and_values_aliases_rejected(tmp_path):
     df = pd.DataFrame({
         "id": ["a", "b"],
         "country": ["sg", "cn"],
         "balance": [10, 20],
     })
-    w1 = df.pt.wide(cols="country", values="balance")
-    assert "cn" in w1.columns and "sg" in w1.columns
+    with pytest.raises(TypeError, match="wide\\(\\) got unexpected keyword argument\\(s\\)"):
+        df.pt.wide(cols="country", values="balance")
 
     path = str(tmp_path / "data.csv")
     df.to_csv(path, index=False)
-    exit_code = cli.main([path, "-wide", "cols=country,values=balance"])
-    assert exit_code == 0
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-wide", "cols=country,values=balance"])
+    assert "unknown key 'cols'" in str(exc.value)
+
+
+def test_cli_group_by_rejected(tmp_path, capsys):
+    df = pd.DataFrame({"Region": ["East", "West"], "Sales": [10, 20]})
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-group_by", "Region"])
+    assert exc.value.code == 2
+    assert "'-group_by' has been removed; use '-by' instead" in capsys.readouterr().err
 
 
 def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):
@@ -27416,10 +27375,13 @@ def test_long_and_wide_polars():
     assert len(long_res) == 4
 
     # Wide (1-to-1 pivot)
-    wide_res = wide_polars(long_res, c="variable", v="value", index="id")
+    wide_res = wide_polars(long_res, r="id", c="variable", v="value")
     assert wide_res.columns == ["id", "q1", "q2"]
     assert wide_res["q1"].to_list() == [10, 20]
     assert wide_res["q2"].to_list() == [30, 40]
+
+    with pytest.raises(TypeError, match="wide\\(\\) parameter 'index' has been removed; use 'r' instead"):
+        wide_polars(long_res, c="variable", v="value", index="id")
 
 
 def test_handle_missing_polars():
@@ -28106,17 +28068,21 @@ def test_long_unknown_col_raises_helpful_error():
         pt.long(df, cols=["c"])
 
 
-def test_wide_with_explicit_index():
+def test_wide_with_explicit_r():
     df = pd.DataFrame({
         "region": ["East", "West"],
         "rep": ["Alice", "Bob"],
         "quarter": ["Q1", "Q2"],
         "sales": [100, 200],
     })
-    res = df.pt.wide(index="region", c="quarter", v="sales")
+    res = df.pt.wide(r="region", c="quarter", v="sales")
     assert "region" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
+
+    # index parameter must raise TypeError
+    with pytest.raises(TypeError, match="wide\\(\\) parameter 'index' has been removed; use 'r' instead"):
+        df.pt.wide(index="region", c="quarter", v="sales")
 
 
 def test_wide_bracketed_names_and_column_validation():
@@ -28126,23 +28092,23 @@ def test_wide_bracketed_names_and_column_validation():
         "quarter": ["Q1", "Q2"],
         "sales": [1, 2],
     })
-    res = df.pt.wide(index="[region name]", c="quarter", v="sales")
+    res = df.pt.wide(r="[region name]", c="quarter", v="sales")
     assert "region name" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
 
-    with pytest.raises(KeyError, match=r"wide\(\): index column 'nope' not found in DataFrame"):
-        df.pt.wide(index="nope", c="quarter", v="sales")
+    with pytest.raises(KeyError, match=r"wide\(\): row 'r' column 'nope' not found in DataFrame"):
+        df.pt.wide(r="nope", c="quarter", v="sales")
 
     with pytest.raises(KeyError, match=r"wide\(\): columns 'c' column 'nope' not found in DataFrame"):
-        df.pt.wide(index="region name", c="nope", v="sales")
+        df.pt.wide(r="region name", c="nope", v="sales")
 
 
 def test_safe_reset_index_name_collision():
     # Lib Issue 13: index name collision does not raise ValueError
     df = pd.DataFrame({"region": ["East", "West"], "c": ["Q1", "Q2"], "v": [1, 2]})
     df.index.name = "Q1"  # index name collides with pivoted column name "Q1"
-    res = df.pt.wide(index="region", c="c", v="v")
+    res = df.pt.wide(r="region", c="c", v="v")
     assert "region" in res.columns
     assert "Q1" in res.columns
 
@@ -28151,7 +28117,7 @@ def test_safe_reset_index_disambiguates_collision():
     # When pivoted column name matches index name, raise ValueError rather than magical renaming
     df = pd.DataFrame({"id": [1, 2], "k": ["id", "a"], "v": [10, 20]})
     with pytest.raises(ValueError, match="collide with existing column name"):
-        df.pt.wide(index="id", c="k", v="v")
+        df.pt.wide(r="id", c="k", v="v")
 
 
 def test_long_cols_and_id_vars_overlap():
@@ -28163,10 +28129,10 @@ def test_long_cols_and_id_vars_overlap():
 def test_wide_c_and_v_collisions():
     df = pd.DataFrame({"x": ["A", "B"], "y": [1, 2], "z": [3, 4]})
     with pytest.raises(ValueError, match="'c' and 'v' cannot be the same column"):
-        df.pt.wide(index="x", c="y", v="y")
+        df.pt.wide(r="x", c="y", v="y")
 
-    with pytest.raises(ValueError, match="cannot also be in index columns"):
-        df.pt.wide(index=["x", "y"], c="y", v="z")
+    with pytest.raises(ValueError, match="cannot also be in row 'r' columns"):
+        df.pt.wide(r=["x", "y"], c="y", v="z")
 
 
 def test_long_output_name_collisions():

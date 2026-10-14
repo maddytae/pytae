@@ -175,8 +175,8 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 
 | Operation | Pandas | tidyr (R) | Pytae (`df.pt`) | Pytae CLI |
 |---|---|---|---|---|
-| **Wide to Long** | `pd.melt(df, id_vars=['id'], value_vars=['x', 'y'])` | `pivot_longer(df, cols = c(x, y))` | `df.pt.long(id_vars="id", cols=["x", "y"])` | `-long "r=id, c='x,y'"` |
-| **Long to Wide (1:1)**| `df.pivot(index='id', columns='var', values='val').reset_index()` | `pivot_wider(df, names_from = var, values_from = val)` | `df.pt.wide(c="var", v="val", index="id")` | `-wide "c=var, v=val, r=id"` |
+| **Wide to Long** | `pd.melt(df, id_vars=['id'], value_vars=['x', 'y'])` | `pivot_longer(df, cols = c(x, y))` | `df.pt.long(id_vars="id", cols=["x", "y"])` | `-long "id_vars=id, cols='x,y'"` |
+| **Long to Wide (1:1)**| `df.pivot(index='id', columns='var', values='val').reset_index()` | `pivot_wider(df, names_from = var, values_from = val)` | `df.pt.wide(r="id", c="var", v="val")` | `-wide "r=id, c=var, v=val"` |
 | **2D Pivot Table** | `pd.pivot_table(df, index='r', columns='c', values='v', aggfunc='mean').reset_index()` | `df %>% group_by(r, c) %>% summarise(...) %>% pivot_wider(...)` | `df.pt.pivot(r="r", c="c", v="v", a="mean")` | `-pivot "r=r, c=c, v=v, a=mean"` |
 
 ---

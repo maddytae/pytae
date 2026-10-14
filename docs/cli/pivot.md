@@ -6,9 +6,9 @@
 - **Rows (`r=`)**: Row dimension(s) (*optional*).
 - **Cols (`c=`)**: Column dimension(s) to spread as headers (*optional*).
 - **Values (`v=`)**: Measure / metric column(s) to aggregate (**required** for metric aggregations; optional for `a=n`).
-- **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`/`size`; default: `sum`).
+- **Aggregation (`a=`)**: Summary function (`sum`, `mean`, `median`, `min`, `max`, `count`, `std`, `n`; default: `sum`).
 - **Missing Categories (`dropna=`)**: Retain `NaN` keys when `false` (default: `false`).
-- **Empty Intersections (`fill=`)**: Fill missing grid cells (e.g. `fill=0`).
+- **Empty Intersections (`fill_value=`)**: Fill missing grid cells (e.g. `fill_value=0`).
 
 ---
 
@@ -23,7 +23,7 @@
   - [5. Grand Total Summary (`v=`)](#5-grand-total-summary-v)
 - [Hierarchical Grouping with Multiple Rows (`r=Region,Store`)](#hierarchical-grouping-with-multiple-rows-rregionstore)
 - [Multi-Metric Reporting (`v=Sales,Profit`)](#multi-metric-reporting-vsalesprofit)
-- [Filling Empty Intersections (`fill=0`)](#filling-empty-intersections-fill0)
+- [Filling Empty Intersections (`fill_value=0`)](#filling-empty-intersections-fill_value0)
 - [Guarantees & Differences from `-wide`](#guarantees--differences-from--wide)
 
 ---
@@ -32,12 +32,12 @@
 
 | Parameter | Meaning | Default | Example |
 |---|---|---|---|
-| `r` (or `rows`, `index`, `by`) | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
-| `c` (or `cols`, `columns`) | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
-| `v` (or `values`, `val`) | Metric column(s) to aggregate | Required (optional for `a=n`) | `v=Sales` or `v=Sales,Profit` |
-| `a` (or `agg`, `aggfunc`) | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
+| `r` | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
+| `c` | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
+| `v` | Metric column(s) to aggregate | Required (optional for `a=n`) | `v=Sales` or `v=Sales,Profit` |
+| `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
-| `fill` (or `fill_value`) | Fill for empty cells | `None` (`NaN`) | `fill=0` |
+| `fill_value` | Fill for empty cells | `None` (`NaN`) | `fill_value=0` |
 
 ---
 
@@ -161,13 +161,13 @@ Column names are automatically flattened into intuitive strings (`Metric_Col`), 
 
 ---
 
-## Filling Empty Intersections (`fill=0`)
+## Filling Empty Intersections (`fill_value=0`)
 
 When a category combination has no records, replace the missing cell with a scalar:
 
 ```bash
 pytae penguins.parquet \
-  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill=0" \
+  -pivot "r=island,c=species,v=body_mass_g,a=mean,fill_value=0" \
   -round 1
 ```
 

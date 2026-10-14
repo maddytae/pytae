@@ -119,17 +119,21 @@ def test_long_unknown_col_raises_helpful_error():
         pt.long(df, cols=["c"])
 
 
-def test_wide_with_explicit_index():
+def test_wide_with_explicit_r():
     df = pd.DataFrame({
         "region": ["East", "West"],
         "rep": ["Alice", "Bob"],
         "quarter": ["Q1", "Q2"],
         "sales": [100, 200],
     })
-    res = df.pt.wide(index="region", c="quarter", v="sales")
+    res = df.pt.wide(r="region", c="quarter", v="sales")
     assert "region" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
+
+    # index parameter must raise TypeError
+    with pytest.raises(TypeError, match="wide\\(\\) parameter 'index' has been removed; use 'r' instead"):
+        df.pt.wide(index="region", c="quarter", v="sales")
 
 
 def test_wide_bracketed_names_and_column_validation():
@@ -139,23 +143,23 @@ def test_wide_bracketed_names_and_column_validation():
         "quarter": ["Q1", "Q2"],
         "sales": [1, 2],
     })
-    res = df.pt.wide(index="[region name]", c="quarter", v="sales")
+    res = df.pt.wide(r="[region name]", c="quarter", v="sales")
     assert "region name" in res.columns
     assert "Q1" in res.columns
     assert "Q2" in res.columns
 
-    with pytest.raises(KeyError, match=r"wide\(\): index column 'nope' not found in DataFrame"):
-        df.pt.wide(index="nope", c="quarter", v="sales")
+    with pytest.raises(KeyError, match=r"wide\(\): row 'r' column 'nope' not found in DataFrame"):
+        df.pt.wide(r="nope", c="quarter", v="sales")
 
     with pytest.raises(KeyError, match=r"wide\(\): columns 'c' column 'nope' not found in DataFrame"):
-        df.pt.wide(index="region name", c="nope", v="sales")
+        df.pt.wide(r="region name", c="nope", v="sales")
 
 
 def test_safe_reset_index_name_collision():
     # Lib Issue 13: index name collision does not raise ValueError
     df = pd.DataFrame({"region": ["East", "West"], "c": ["Q1", "Q2"], "v": [1, 2]})
     df.index.name = "Q1"  # index name collides with pivoted column name "Q1"
-    res = df.pt.wide(index="region", c="c", v="v")
+    res = df.pt.wide(r="region", c="c", v="v")
     assert "region" in res.columns
     assert "Q1" in res.columns
 
@@ -164,7 +168,7 @@ def test_safe_reset_index_disambiguates_collision():
     # When pivoted column name matches index name, raise ValueError rather than magical renaming
     df = pd.DataFrame({"id": [1, 2], "k": ["id", "a"], "v": [10, 20]})
     with pytest.raises(ValueError, match="collide with existing column name"):
-        df.pt.wide(index="id", c="k", v="v")
+        df.pt.wide(r="id", c="k", v="v")
 
 
 def test_long_cols_and_id_vars_overlap():
@@ -176,10 +180,10 @@ def test_long_cols_and_id_vars_overlap():
 def test_wide_c_and_v_collisions():
     df = pd.DataFrame({"x": ["A", "B"], "y": [1, 2], "z": [3, 4]})
     with pytest.raises(ValueError, match="'c' and 'v' cannot be the same column"):
-        df.pt.wide(index="x", c="y", v="y")
+        df.pt.wide(r="x", c="y", v="y")
 
-    with pytest.raises(ValueError, match="cannot also be in index columns"):
-        df.pt.wide(index=["x", "y"], c="y", v="z")
+    with pytest.raises(ValueError, match="cannot also be in row 'r' columns"):
+        df.pt.wide(r=["x", "y"], c="y", v="z")
 
 
 def test_long_output_name_collisions():

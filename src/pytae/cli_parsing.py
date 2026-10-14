@@ -477,8 +477,8 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_LONG_KEYS = ("c", "v", "cols", "values", "id_vars", "by")
-_WIDE_KEYS = ("c", "v", "index", "by", "r", "rows", "cols", "values")
+_LONG_KEYS = ("cols", "id_vars", "c", "v")
+_WIDE_KEYS = ("r", "c", "v")
 
 
 def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -> dict:
@@ -514,7 +514,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
     for key, value in list(kwargs.items()):
         if key in ("margins", "exact", "dropna"):
             kwargs[key] = parse_bool_text(value)
-        elif key in ("fill", "fill_value"):
+        elif key == "fill_value":
             if isinstance(value, str):
                 v_lower = value.strip().lower()
                 if v_lower in ("none", "null"):
@@ -537,21 +537,10 @@ def parse_long_arg(raw: str | None) -> dict:
 
 
 def parse_wide_arg(raw: str | None) -> dict:
-    parsed = parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
-    if "cols" in parsed and "c" not in parsed:
-        parsed["c"] = parsed.pop("cols")
-    if "values" in parsed and "v" not in parsed:
-        parsed["v"] = parsed.pop("values")
-    return parsed
+    return parse_reshape_kwargs(raw, keys=_WIDE_KEYS, flag="-wide")
 
 
-_PIVOT_KEYS = (
-    "r", "c", "v", "a", "dropna", "fill_value", "fill",
-    "rows", "row", "index", "by",
-    "cols", "col", "columns",
-    "values", "value", "val", "vals",
-    "agg", "aggfunc",
-)
+_PIVOT_KEYS = ("r", "c", "v", "a", "dropna", "fill_value")
 
 
 def parse_pivot_arg(raw: str | None) -> dict:
@@ -745,7 +734,7 @@ def parse_merge_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[s
 
 def parse_merge_arg(raw: str) -> dict:
     """Parse -merge as key=value tokens: left=/right= (required -file aliases, or the
-    literal 'df' to reference the pipeline's current result so far — lets repeated
+    literal 'data' to reference the pipeline's current result so far — lets repeated
     -merge calls fold in one more file at a time), on= (required; shared column
     name(s), or left:right pairs if they differ between sides), how= (optional,
     default 'inner', passed straight to pandas merge()), validate= (optional, passed
@@ -779,7 +768,7 @@ _CONCAT_KEYS = ("frames",)
 
 def parse_concat_arg(raw: str) -> dict:
     """Parse -concat as key=value tokens: frames= (required) — an ordered,
-    comma-separated list of -file aliases (or 'df' for the pipeline's current
+    comma-separated list of -file aliases (or 'data' for the pipeline's current
     result, to stack more files onto something already produced), e.g.
     frames='df1,df2,df3'. Quote the whole value — it has internal commas.
     """

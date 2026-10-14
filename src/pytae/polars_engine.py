@@ -176,16 +176,8 @@ def pivot_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics."""
-    if r is None:
-        r = kwargs.pop("rows", kwargs.pop("row", kwargs.pop("index", kwargs.pop("by", None))))
-    if c is None:
-        c = kwargs.pop("cols", kwargs.pop("col", kwargs.pop("columns", None)))
-    if v is None:
-        v = kwargs.pop("values", kwargs.pop("value", kwargs.pop("val", kwargs.pop("vals", None))))
-    if a == "sum":
-        a = kwargs.pop("agg", kwargs.pop("aggfunc", a))
-    if fill_value is None:
-        fill_value = kwargs.pop("fill", None)
+    if kwargs:
+        raise TypeError(f"pivot_polars() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
     if a in ("n", "size") and fill_value is None:
         fill_value = 0
 
@@ -454,14 +446,8 @@ def long_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Unpivot a Polars DataFrame from wide to long format."""
-    if cols is None:
-        cols = kwargs.pop("values", kwargs.pop("value_vars", None))
-    if id_vars is None:
-        id_vars = kwargs.pop("by", kwargs.pop("id", None))
-    if c == "variable":
-        c = kwargs.pop("var_name", c)
-    if v == "value":
-        v = kwargs.pop("value_name", v)
+    if kwargs:
+        raise TypeError(f"long_polars() got unexpected keyword argument(s): {list(kwargs.keys())}")
 
     all_cols = list(df.columns)
 
@@ -523,9 +509,9 @@ def long_polars(
 
 def wide_polars(
     df: pl.DataFrame,
+    r: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
-    index: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Reshape a long Polars DataFrame into wide format (1-to-1 pivot)."""
@@ -536,19 +522,10 @@ def wide_polars(
                 "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
             )
 
-    if "cols" in kwargs and c == "variable":
-        c = kwargs.pop("cols")
-    elif "col" in kwargs and c == "variable":
-        c = kwargs.pop("col")
-    elif "columns" in kwargs and c == "variable":
-        c = kwargs.pop("columns")
-
-    if "values" in kwargs and v == "value":
-        v = kwargs.pop("values")
-    elif "val" in kwargs and v == "value":
-        v = kwargs.pop("val")
-    elif "vals" in kwargs and v == "value":
-        v = kwargs.pop("vals")
+    if "index" in kwargs:
+        raise TypeError("wide() parameter 'index' has been removed; use 'r' instead")
+    if kwargs:
+        raise TypeError(f"wide() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v are accepted")
 
     c = _unquote_name(c)
     if v is None:
@@ -561,35 +538,32 @@ def wide_polars(
     if v not in df.columns:
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
-    if index is None:
-        index = kwargs.pop("r", kwargs.pop("rows", kwargs.pop("by", kwargs.pop("id_vars", None))))
-
-    if index is not None:
-        if isinstance(index, str):
+    if r is not None:
+        if isinstance(r, str):
             from pytae._text import tokenize as _tok
-            index_cols = [_unquote_name(col.strip()) for col in _tok(index, ",", keep_quotes=True, track_brackets=True) if col.strip()]
+            r_cols = [_unquote_name(col.strip()) for col in _tok(r, ",", keep_quotes=True, track_brackets=True) if col.strip()]
         else:
-            index_cols = [_unquote_name(col) if isinstance(col, str) else col for col in index]
-        for col in index_cols:
+            r_cols = [_unquote_name(col) if isinstance(col, str) else col for col in r]
+        for col in r_cols:
             if col not in df.columns:
-                raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
-        if c in index_cols:
-            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in index columns")
-        if v is not None and v in index_cols:
-            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in index columns")
+                raise KeyError(f"wide(): row 'r' column '{col}' not found in DataFrame")
+        if c in r_cols:
+            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in row 'r' columns")
+        if v is not None and v in r_cols:
+            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in row 'r' columns")
     else:
-        index_cols = [col for col in df.columns if col not in [c, v]]
+        r_cols = [col for col in df.columns if col not in [c, v]]
 
     try:
         return df.pivot(
             on=c,
-            index=index_cols if index_cols else None,
+            index=r_cols if r_cols else None,
             values=v,
             sort_columns=True,
         )
     except Exception as exc:
         raise ValueError(
-            f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
+            f"wide() encountered duplicate entries for row 'r' {r_cols} and column '{c}'. "
             "wide() is strictly for 1-to-1 reshaping without aggregation. "
             "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
         ) from exc

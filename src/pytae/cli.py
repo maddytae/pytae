@@ -73,7 +73,7 @@ _CLI_FLAGS = {
     "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
     "-distinct", "--distinct", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
     "-arrange", "--arrange", "-pick", "--pick",
-    "-by", "--by", "-group_by", "--group_by", "-nrows", "--nrows",
+    "-by", "--by", "-nrows", "--nrows",
     "-limit", "--limit", "-select", "--select", "-agg", "--agg",
     "-handle_missing", "--handle_missing",
     "-dropna", "--dropna", "-glimpse", "--glimpse",
@@ -239,7 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-pick", "--pick", dest="pick", default=None, metavar="SPEC",
                          action=_OrderedStore,
                          help="pick top/bottom rows by column, e.g. -pick \"mass,n=3\" or -pick \"mass,prop=0.1,order=min\"")
-    parser.add_argument("-by", "--by", "-group_by", "--group_by", dest="by", default=None, metavar="COLUMNS",
+    parser.add_argument("-by", "--by", dest="by", default=None, metavar="COLUMNS",
                          help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
                               "Used by -agg, -mutate, -pick.")
     parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
@@ -426,6 +426,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("'-slice_max' has been removed; use '-pick' instead")
         if any(e in ("-slice_min", "--slice_min") for e in extras):
             parser.error("'-slice_min' has been removed; use '-pick with order=min' instead")
+        if any(e in ("-group_by", "--group_by", "-groupby", "--groupby") for e in extras):
+            parser.error("'-group_by' has been removed; use '-by' instead")
         if args.file is None:
             path_extras = [e for e in extras if _is_path_like(e)]
             if path_extras:

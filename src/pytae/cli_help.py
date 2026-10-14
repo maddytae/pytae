@@ -256,27 +256,27 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "wide": KeywordHelp(
         name="wide",
         flag="-wide, --wide [KEY=VALUE,...]",
-        syntax="pytae <path> -wide [c=var,v=val,index=id_cols]",
+        syntax="pytae <path> -wide [c=var,v=val,r=id_cols]",
         summary="Spread tall rows into wide headers (pure 1-to-1 reshaping, reverse of -long).",
         description=(
             "Spreads unique key/value pairs back into columns without aggregating.\n"
-            "Requires unique (index, c) pairs; if duplicates exist, use -pivot instead."
+            "Requires unique (r, c) pairs; if duplicates exist, use -pivot instead."
         ),
         options=[
             "c=name : Column whose distinct values become column headers (default: 'variable').",
             "v=name : Column containing cell values (default: 'value').",
-            "index=cols : Explicit row identifier column(s) (default: all remaining columns).",
+            "r=cols : Explicit row identifier column(s) (default: all remaining columns).",
         ],
         examples=[
             "pytae tall.csv -wide",
             "pytae tall.csv -wide \"c=metric,v=measurement\"",
-            "pytae tall.csv -wide \"c=quarter,v=revenue,index=customer_id\"",
+            "pytae tall.csv -wide \"c=quarter,v=revenue,r=customer_id\"",
         ],
         see_also=["-long", "-pivot"],
     ),
     "by": KeywordHelp(
         name="by",
-        flag="-by, --by, -group_by COLUMNS",
+        flag="-by, --by COLUMNS",
         syntax="pytae <path> -by <COLUMNS> [operation]",
         summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -pick).",
         description=(
@@ -688,9 +688,6 @@ KEYWORD_ALIASES: dict[str, str] = {
     "o": "output",
     "-o": "output",
     "--output": "output",
-    "group_by": "by",
-    "-group_by": "by",
-    "--group_by": "by",
     "limit": "nrows",
     "-limit": "nrows",
     "--limit": "nrows",
@@ -705,10 +702,6 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-qry": "filter",
     "query": "filter",
     "-query": "filter",
-    "slice_max": "pick",
-    "-slice_max": "pick",
-    "slice_min": "pick",
-    "-slice_min": "pick",
 }
 
 

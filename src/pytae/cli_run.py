@@ -389,13 +389,15 @@ def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError)
 
 
 def _resolve_alias(alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipeline, flag: str) -> tuple[pd.DataFrame | None, str | None]:
-    """Look up a -merge/-concat alias: a -file alias, or 'df' for the pipeline's current
+    """Look up a -merge/-concat alias: a -file alias, or 'data' for the pipeline's current
     result so far (lets repeated -merge/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
     if alias == "data":
         if pipeline._df is None:
             return None, f"{flag}: 'data' isn't available yet — nothing has produced a pipeline result yet"
         return pipeline._df, None
+    if alias == "df":
+        return None, f"{flag}: 'df' is not a valid alias; use 'data' for the pipeline's current result"
     if alias not in frames:
         return None, f"{flag}: unknown -file alias '{alias}'"
     return frames[alias], None
@@ -846,9 +848,9 @@ def _process_path(
             wide_val = _next_op_val("wide", args.wide)
             wide_kwargs = parse_wide_arg(wide_val)
             to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
-            by_cols = wide_kwargs.get("by") or wide_kwargs.get("index") or wide_kwargs.get("r") or wide_kwargs.get("rows")
-            if by_cols:
-                to_check.extend(parse_columns(by_cols) if isinstance(by_cols, str) else list(by_cols))
+            r_cols = wide_kwargs.get("r")
+            if r_cols:
+                to_check.extend(parse_columns(r_cols) if isinstance(r_cols, str) else list(r_cols))
             avail_cols = pipeline.columns()
             missing = [c for c in to_check if c not in avail_cols]
             if missing:
@@ -876,7 +878,7 @@ def _process_path(
             if "dropna" not in pivot_kwargs:
                 pivot_kwargs["dropna"] = False if args.dropna is None else args.dropna
             to_check = []
-            for k in ("r", "rows", "index", "by", "c", "cols", "columns", "v", "values", "val", "vals"):
+            for k in ("r", "c", "v"):
                 val = pivot_kwargs.get(k)
                 if val:
                     to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))

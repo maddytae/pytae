@@ -177,9 +177,10 @@ def test_pivot_dropna_false_default():
     assert any("nan" in c.lower() for c in col_names)
 
 
-def test_pivot_aliases(sales_df):
-    res = sales_df.pt.pivot(rows="Region", cols="Year", values="Sales", aggfunc="mean", fill=0.0)
-    assert list(res.columns) == ["Region", "2023", "2024"]
+def test_pivot_aliases_rejected(sales_df):
+    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"fill": 0.0}):
+        with pytest.raises(TypeError, match="pivot\\(\\) got unexpected keyword argument\\(s\\)"):
+            sales_df.pt.pivot(r="Region", c="Year", v="Sales", **bad_kw)
 
 
 def test_pivot_missing_v_error(sales_df):
@@ -192,8 +193,7 @@ def test_pivot_unknown_column_error(sales_df):
         sales_df.pt.pivot(r="NonExistent", c="Year", v="Sales")
 
 
-def test_wide_accepts_r_alias(sales_df):
-    # wide accepts r as alias for index/by
+def test_wide_r_spec(sales_df):
     tall = sales_df.pt.long(cols=["Sales", "Profit"], id_vars=["Region", "Store", "Year"])
     back = tall.pt.wide(r=["Region", "Store", "Year"], c="variable", v="value")
     assert "Sales" in back.columns
@@ -369,7 +369,7 @@ def test_cli_pivot_fill_numeric(tmp_path, capsys):
     })
     path = str(tmp_path / "sales.csv")
     df.to_csv(path, index=False)
-    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,fill=0", "-round", "1"])
+    exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,fill_value=0", "-round", "1"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "0" in out
@@ -384,19 +384,31 @@ def test_cli_pivot_unknown_agg_fails_cleanly(tmp_path):
     assert exc.value.code == 2
 
 
-def test_wide_cols_and_values_aliases(tmp_path):
+def test_wide_cols_and_values_aliases_rejected(tmp_path):
     df = pd.DataFrame({
         "id": ["a", "b"],
         "country": ["sg", "cn"],
         "balance": [10, 20],
     })
-    w1 = df.pt.wide(cols="country", values="balance")
-    assert "cn" in w1.columns and "sg" in w1.columns
+    with pytest.raises(TypeError, match="wide\\(\\) got unexpected keyword argument\\(s\\)"):
+        df.pt.wide(cols="country", values="balance")
 
     path = str(tmp_path / "data.csv")
     df.to_csv(path, index=False)
-    exit_code = cli.main([path, "-wide", "cols=country,values=balance"])
-    assert exit_code == 0
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-wide", "cols=country,values=balance"])
+    assert "unknown key 'cols'" in str(exc.value)
+
+
+def test_cli_group_by_rejected(tmp_path, capsys):
+    df = pd.DataFrame({"Region": ["East", "West"], "Sales": [10, 20]})
+    path = str(tmp_path / "data.csv")
+    df.to_csv(path, index=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-group_by", "Region"])
+    assert exc.value.code == 2
+    assert "'-group_by' has been removed; use '-by' instead" in capsys.readouterr().err
 
 
 def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):

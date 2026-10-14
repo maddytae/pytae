@@ -248,10 +248,13 @@ def test_long_and_wide_polars():
     assert len(long_res) == 4
 
     # Wide (1-to-1 pivot)
-    wide_res = wide_polars(long_res, c="variable", v="value", index="id")
+    wide_res = wide_polars(long_res, r="id", c="variable", v="value")
     assert wide_res.columns == ["id", "q1", "q2"]
     assert wide_res["q1"].to_list() == [10, 20]
     assert wide_res["q2"].to_list() == [30, 40]
+
+    with pytest.raises(TypeError, match="wide\\(\\) parameter 'index' has been removed; use 'r' instead"):
+        wide_polars(long_res, c="variable", v="value", index="id")
 
 
 def test_handle_missing_polars():

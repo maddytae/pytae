@@ -232,19 +232,20 @@ class PtAccessor:
 
     def wide(
         self,
+        r: str | Sequence[str] | None = None,
         c: str = "variable",
         v: str = "value",
-        index: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
         """Pivot long-form records back to wide format (columns).
 
-        Headers are created from `c` (default 'variable'), cells from `v` (default 'value').
+        Row identifier(s) are specified by `r`. Headers are created from `c` (default 'variable'),
+        cells from `v` (default 'value').
         Strictly 1-to-1 structural reshaping without aggregation.
         For multi-dimensional aggregation, use `df.pt.pivot()`.
         """
         from .shape import wide as _wide
-        return _wide(self._obj, c=c, v=v, index=index, **kwargs)
+        return _wide(self._obj, r=r, c=c, v=v, **kwargs)
 
     def pivot(
         self,
@@ -261,14 +262,14 @@ class PtAccessor:
         Parameters:
         -----------
         r : str or sequence of str, optional
-            Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+            Row dimension(s) to group by.
         c : str or sequence of str, optional
-            Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+            Column dimension(s) to spread as headers.
         v : str or sequence of str
-            Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+            Value column(s) to aggregate. REQUIRED.
         a : str, default 'sum'
             Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
-            'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+            'n' is accepted for group row count.
         dropna : bool, default False
             Whether to drop NA categories from grouping keys.
         fill_value : any, optional

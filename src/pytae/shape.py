@@ -29,31 +29,25 @@ def long(
     df : pd.DataFrame
         The DataFrame to melt.
     cols : str or sequence of str, optional
-        Columns to unpivot into rows. Aliases: `values`, `value_vars`.
+        Columns to unpivot into rows.
         If not specified and `id_vars` is provided, all remaining columns are melted.
         If neither `cols` nor `id_vars` is provided, all numeric columns are melted.
     id_vars : str or sequence of str, optional
-        Identifier columns to keep fixed. Aliases: `by`, `id`.
+        Identifier columns to keep fixed.
         If not specified, all columns not in `cols` are kept as identifier variables.
     c : str, default 'variable'
-        Name for the melted-variable column. Alias: `var_name`.
+        Name for the melted-variable column.
     v : str, default 'value'
-        Name for the melted-value column. Alias: `value_name`.
+        Name for the melted-value column.
 
     Returns:
     --------
     pd.DataFrame
         Unpivoted long DataFrame.
     """
-    # Keyword argument aliases
-    if cols is None:
-        cols = kwargs.pop("values", kwargs.pop("value_vars", None))
-    if id_vars is None:
-        id_vars = kwargs.pop("by", kwargs.pop("id", None))
-    if c == "variable":
-        c = kwargs.pop("var_name", c)
-    if v == "value":
-        v = kwargs.pop("value_name", v)
+    # Validate kwargs
+    if kwargs:
+        raise TypeError(f"long() got unexpected keyword argument(s): {list(kwargs.keys())}")
 
     all_cols = list(df.columns)
 
@@ -120,9 +114,9 @@ def long(
 
 def wide(
     df: pd.DataFrame,
+    r: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
-    index: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """Pivot a long column into headers (pure 1-to-1 reshape).
@@ -131,13 +125,13 @@ def wide(
     -----------
     df : pd.DataFrame
         The DataFrame to pivot.
+    r : str or sequence of str, optional
+        Row identifier column(s) to keep fixed.
+        If omitted, all columns other than `c` and `v` are used.
     c : str, default 'variable'
         Column whose values become headers (columns).
     v : str, default 'value'
         Values column to populate table cells.
-    index : str or sequence of str, optional
-        Explicit index column(s) to use. Aliases: `r`, `rows`, `by`, `id_vars`.
-        If omitted, all columns other than `c` and `v` are used.
 
     Returns:
     --------
@@ -151,19 +145,10 @@ def wide(
                 "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
             )
 
-    if "cols" in kwargs and c == "variable":
-        c = kwargs.pop("cols")
-    elif "col" in kwargs and c == "variable":
-        c = kwargs.pop("col")
-    elif "columns" in kwargs and c == "variable":
-        c = kwargs.pop("columns")
-
-    if "values" in kwargs and v == "value":
-        v = kwargs.pop("values")
-    elif "val" in kwargs and v == "value":
-        v = kwargs.pop("val")
-    elif "vals" in kwargs and v == "value":
-        v = kwargs.pop("vals")
+    if "index" in kwargs:
+        raise TypeError("wide() parameter 'index' has been removed; use 'r' instead")
+    if kwargs:
+        raise TypeError(f"wide() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v are accepted")
 
     c = _unquote_name(c)
     if v is None:
@@ -176,40 +161,37 @@ def wide(
     if v not in df.columns:
         raise KeyError(f"wide(): values 'v' column '{v}' not found in DataFrame")
 
-    if index is None:
-        index = kwargs.pop("r", kwargs.pop("rows", kwargs.pop("by", kwargs.pop("id_vars", None))))
-
-    if index is not None:
-        if isinstance(index, str):
-            index_cols = [_unquote_name(col.strip()) for col in _tokenize(index, ",", keep_quotes=True, track_brackets=True) if col.strip()]
+    if r is not None:
+        if isinstance(r, str):
+            r_cols = [_unquote_name(col.strip()) for col in _tokenize(r, ",", keep_quotes=True, track_brackets=True) if col.strip()]
         else:
-            index_cols = [_unquote_name(col) if isinstance(col, str) else col for col in index]
-        for col in index_cols:
+            r_cols = [_unquote_name(col) if isinstance(col, str) else col for col in r]
+        for col in r_cols:
             if col not in df.columns:
-                raise KeyError(f"wide(): index column '{col}' not found in DataFrame")
-        if c in index_cols:
-            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in index columns")
-        if v is not None and v in index_cols:
-            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in index columns")
+                raise KeyError(f"wide(): row 'r' column '{col}' not found in DataFrame")
+        if c in r_cols:
+            raise ValueError(f"wide(): column 'c' ('{c}') cannot also be in row 'r' columns")
+        if v in r_cols:
+            raise ValueError(f"wide(): column 'v' ('{v}') cannot also be in row 'r' columns")
     else:
-        index_cols = [col for col in df.columns if col not in [c, v]]
+        r_cols = [col for col in df.columns if col not in [c, v]]
 
     try:
-        if not index_cols:
+        if not r_cols:
             temp_df = df.copy()
             temp_df["__pt_wide_tmp__"] = 0
             pivoted = temp_df.pivot(index="__pt_wide_tmp__", columns=c, values=v)
         else:
-            pivoted = df.pivot(index=index_cols, columns=c, values=v)
+            pivoted = df.pivot(index=r_cols, columns=c, values=v)
     except ValueError as exc:
         raise ValueError(
-            f"wide() encountered duplicate entries for index {index_cols} and column '{c}'. "
+            f"wide() encountered duplicate entries for row 'r' {r_cols} and column '{c}'. "
             "wide() is strictly for 1-to-1 reshaping without aggregation. "
             "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
         ) from exc
 
     wide_df = _safe_reset_index(pivoted)
-    if not index_cols and "__pt_wide_tmp__" in wide_df.columns:
+    if not r_cols and "__pt_wide_tmp__" in wide_df.columns:
         wide_df = wide_df.drop(columns=["__pt_wide_tmp__"])
     wide_df.columns.name = None
     return wide_df
@@ -232,14 +214,14 @@ def pivot(
     df : pd.DataFrame
         The DataFrame to pivot.
     r : str or sequence of str, optional
-        Row dimension(s) to group by. Aliases: `rows`, `row`, `index`, `by`.
+        Row dimension(s) to group by.
     c : str or sequence of str, optional
-        Column dimension(s) to spread as headers. Aliases: `cols`, `col`, `columns`.
+        Column dimension(s) to spread as headers.
     v : str or sequence of str
-        Value column(s) to aggregate. REQUIRED. Aliases: `values`, `value`, `val`, `vals`.
+        Value column(s) to aggregate. REQUIRED.
     a : str, default 'sum'
         Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
-        'n' is accepted as an alias for 'size' (group row count). Aliases: `agg`, `aggfunc`.
+        'n' is accepted for group row count.
     dropna : bool, default False
         Whether to drop NA categories from grouping keys.
     fill_value : any, optional
@@ -250,16 +232,8 @@ def pivot(
     pd.DataFrame
         Clean, flattened DataFrame with standard RangeIndex and 1D column names.
     """
-    if r is None:
-        r = kwargs.pop("rows", kwargs.pop("row", kwargs.pop("index", kwargs.pop("by", None))))
-    if c is None:
-        c = kwargs.pop("cols", kwargs.pop("col", kwargs.pop("columns", None)))
-    if v is None:
-        v = kwargs.pop("values", kwargs.pop("value", kwargs.pop("val", kwargs.pop("vals", None))))
-    if a == "sum":
-        a = kwargs.pop("agg", kwargs.pop("aggfunc", a))
-    if fill_value is None:
-        fill_value = kwargs.pop("fill", None)
+    if kwargs:
+        raise TypeError(f"pivot() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a are accepted")
 
     all_cols = list(df.columns)
 

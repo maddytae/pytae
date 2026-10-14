@@ -137,7 +137,7 @@ Top-Level Functions exported by `pytae`:
   - pt.distinct(df, *cols, keep="first")
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
-  - pt.wide(df, c="variable", v="value", index=None)
+  - pt.wide(df, r=None, c="variable", v="value")
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
   - pt.sql(df, query, **frames)
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
@@ -577,15 +577,15 @@ pt.long(df, cols=None, id_vars=None, c="variable", v="value"):
     c: column name for melted metric names (default: "variable")
     v: column name for melted metric values (default: "value")
 
-pt.wide(df, c="variable", v="value", index=None):
+pt.wide(df, r=None, c="variable", v="value"):
   Pivots long-format records back into column headers (exact reverse of pt.long).
   Strictly 1-to-1 without aggregation.
   Parameters:
+    r: explicit row identifier column(s). If None, all remaining columns are used.
     c: column whose unique values become headers (default: "variable")
     v: column containing values (default: "value")
-    index: explicit row identifier column(s). If None, all remaining columns are used.
   Rules:
-    - Requires unique (index, c) pairs. If duplicate keys exist, raises ValueError
+    - Requires unique (r, c) pairs. If duplicate keys exist, raises ValueError
       guiding the user to use pt.pivot() instead.
 
 
@@ -607,8 +607,8 @@ Signature:
   ) -> pd.DataFrame
 
 Parameters:
-  r: Row grouping column(s) (aliases: index=, rows=, row=, by=).
-  c: Column dimension(s) (aliases: columns=, cols=, col=).
+  r: Row grouping column(s).
+  c: Column dimension(s) to spread as headers.
   v: Value column(s) to aggregate. Optional when counting (a="n").
   a: Aggregation function (default: "sum"; use "n" for row counts).
   dropna: Whether to drop NA categories in row/column keys (default: False).
@@ -752,7 +752,7 @@ Column Transformation Flags:
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
-  -by, -group_by COLS   Grouping columns for -agg, -mutate, -pick (e.g. -by species -agg mean)
+  -by COLS              Grouping columns for -agg, -mutate, -pick (e.g. -by species -agg mean)
   -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
