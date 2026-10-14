@@ -398,7 +398,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-agg [SPEC]` | Aggregate | Aggregate numeric columns (or whole table if `-by` omitted) | [cli/agg.md](cli/agg.md) |
 | `-long [SPEC]` | Reshape | Melt wide table to long format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
 | `-wide [SPEC]` | Reshape | Pure reshape: long table to wide format (`c=`, `v=`, `r=`) | [cli/reshape.md](cli/reshape.md) |
-| `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `fill=`) | [cli/pivot.md](cli/pivot.md) |
+| `-pivot SPEC` | Reshape | 2D Excel-style pivot table (`r=`, `c=`, `v=`, `a=`, `f_v=`) | [cli/pivot.md](cli/pivot.md) |
 | `-value_counts` | Reshape | Frequency counts of unique column combinations | [cli/inspect.md](cli/inspect.md) |
 | `-distinct [COLS]` | Reshape | Remove duplicate rows across all or specific columns | [cli/distinct.md](cli/distinct.md) |
 | `-arrange SPEC` | Reshape | Sort rows by column(s) with optional `asc`/`desc` or `-col` prefix | [cli/arrange.md](cli/arrange.md) |

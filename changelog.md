@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.9.0] - 2026-10-13
+## [3.9.0] - 2026-10-14
 
 ### Added
 - **Native Vectorized Polars Execution Engine for CLI**:
@@ -13,9 +13,9 @@ All notable changes to this project are documented in this file.
     - `-distinct`: deduplication with `keep=first|last|none`.
     - `-dropna`: row-level null drops.
     - `-rename`: fast column renaming.
-    - `-pivot`: 2D cross-tabulation with alphabetical column ordering.
-    - `-mutate`: AST expression compiler translating arithmetic, scientific notation (`1e6`), bracketed spaced columns (`[col name]`), `if_else`, and `.over(by)` window functions into native Polars vector expressions.
-    - `-pick` / `-slice_max` / `-slice_min`: grouped and ungrouped extreme row selection.
+    - `-pivot`: 1D, 2D, and whole-table pivot engine with rich metric expressions (`v="rev = sales:sum, orders = n"`), multi-func shorthand (`v="sales:[mean, sum]"`), optional `v` (defaults to row counts `n`), strict `f_v` fill parameter, and unprefixed 2D column headers for single metrics.
+    - `-mutate`: AST expression compiler translating arithmetic, scientific notation (`1e6`), bracketed spaced columns (`[col name]`), `if_else`, functional `map()`, and `.over(by)` window functions into native Polars vector expressions.
+    - `-pick`: extreme row selection (canonical verb replacing deprecated slice_max/min).
     - `-value_counts`: multi-column frequency counting with automated collision avoidance.
     - `-long` / `-wide`: fast unpivoting and 1-to-1 pivoting.
     - `-handle_missing`: type-aware vectorized null filling (mean/median/numeric, string fill & strip, preserving bool/datetime).
@@ -24,8 +24,26 @@ All notable changes to this project are documented in this file.
   - Lazy dual-state caching in `_Pipeline` ensuring end-to-end vector execution without Pandas row materialization until final terminal display or plotting.
   - Transparent, resilient fallback to Pandas if any unsupported expression or construct is encountered.
   - 10x–20x performance improvement across CLI data processing tasks.
+- **Pure Pandas Python Library**:
+  - `pytae` Python library (`import pytae as pt`, `df.pt`) is 100% Pandas-based with zero Polars import overhead. Polars is exclusively isolated to the CLI pipeline.
+- **Native Polars SQLContext**:
+  - Replaced DuckDB in CLI multi-file `-sql` with native `polars.SQLContext`, eliminating external SQL dependencies and running queries directly on Polars DataFrames in memory.
+- **CLI Native Boxed Tables & Auto-TTY Formatting**:
+  - Direct Polars terminal table formatting when stdout is a TTY.
+  - Clean TSV/whitespace streaming when piping to other tools or redirecting to files.
+  - Silent deprecation of `-pretty` (rendered unnecessary by automatic TTY detection).
 - **Fixed `-pick` Interaction with `show_all`**:
   - Ensured standalone `-pick` correctly suppresses full-dataset display without requiring an explicit `-head`.
+
+### Removed & Breaking Changes ("One and Only One Right Way")
+- **Eradicated `-slice_max` and `-slice_min` CLI flags**:
+  - Eradicated completely in CLI; use `-pick "col desc"` or `-pick "col asc"` exclusively.
+- **Removed `-group_by` in multi-file CLI**:
+  - Removed in favor of canonical `-by`.
+- **Strict `f_v` Fill Parameter in Pivot**:
+  - Standardized on `f_v` exclusively across `pt.pivot()`, `df.pt.pivot()`, and CLI `-pivot`. Legacy aliases `fill` and `fill_value` are rejected with clear errors.
+- **Pivot Column Header Naming**:
+  - Single-metric 2D pivots no longer prefix column headers derived from `c` (e.g. `2020`, `2021` instead of `sales_sum_2020`). Prefixing is strictly reserved for multi-metric pivots (`len(metrics) > 1`).
 
 ## [3.8.4] - 2026-10-12
 

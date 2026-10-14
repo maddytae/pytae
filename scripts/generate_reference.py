@@ -139,7 +139,7 @@ Top-Level Functions exported by `pytae`:
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
-  - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, fill_value=None)
+  - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, f_v=None)
   - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
   - pt.cols(df, ascending=True)
   - pt.glimpse(df, width=None)
@@ -602,7 +602,7 @@ Signature:
       v: str | Sequence[str] | None = None,
       a: str | Callable | Sequence[str | Callable] = "sum",
       dropna: bool = False,
-      fill_value: Any = None,
+      f_v: Any = None,
   ) -> pd.DataFrame
 
 Parameters:
@@ -611,7 +611,7 @@ Parameters:
   v: Value column(s) to aggregate. Optional when counting (a="n").
   a: Aggregation function (default: "sum"; use "n" for row counts).
   dropna: Whether to drop NA categories in row/column keys (default: False).
-  fill_value: Scalar value for missing grid intersections (default: 0 for a="n").
+  f_v: Scalar value for missing grid intersections (default: 0 for a="n").
 
 Examples:
   df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
