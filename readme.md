@@ -5,11 +5,11 @@
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
-Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, feature engineering, Polars SQL, and visualization.
+Fast, ergonomic **Pandas-based** Python tools and high-performance **Polars-based** CLI for tabular data manipulation, feature engineering, SQL queries, and visualization.
 
-`pytae` offers **one and only one right way** to perform every tabular operation across two complementary workflows:
-1. **Python Library & DataFrame Accessor (`df.pt`)**: Expressive, chainable verbs (`filter`, `select`, `mutate`, `arrange`, `distinct`, `by`, `ungroup`, `pick`, `agg`, `long`, `wide`, `pivot`, `plot`) on standard Pandas DataFrames.
-2. **Unix Pipeline CLI (`pytae`)**: Inspect, filter, transform, aggregate, diff, and export files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`) from the terminal with zero boilerplate.
+`pytae` offers **one and only one right way** to perform every tabular operation across two complementary, specialized workflows:
+1. **Python Library & DataFrame Accessor (`df.pt`) — 100% Pandas-Based**: Zero external engine overhead. Operates directly on standard Pandas DataFrames with expressive, chainable verbs (`filter`, `select`, `mutate`, `arrange`, `distinct`, `by`, `ungroup`, `pick`, `agg`, `long`, `wide`, `pivot`, `plot`). Importing `pytae` in Python is pure Pandas and never loads Polars into memory.
+2. **Unix Pipeline CLI (`pytae`) — 100% Polars-Based**: Blazing-fast multithreaded SIMD vector engine. Ingests tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filters, transforms, aggregates, reshapes, and executes analytical ANSI SQL queries (`-sql`) natively in Polars vector memory with zero boilerplate.
 
 👉 **New to Pytae?** Check out **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Naming Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)**.
 
@@ -18,13 +18,13 @@ Fast, ergonomic Pandas tools and zero-code CLI for tabular data manipulation, fe
 ## Installation
 
 ```bash
-pip install pytae              # Core library and Polars-powered CLI
+pip install pytae              # Core Pandas library and Polars-powered CLI
 pip install "pytae[plot]"       # Includes matplotlib for plotting
 ```
 
 ---
 
-## Quick Start: Python Library
+## Quick Start: Python Library (Pure Pandas)
 
 Use verbs as standalone functions (`pt.verb(df, ...)`) or chain them via `.pt`:
 
@@ -53,9 +53,9 @@ summary = (
 
 ---
 
-## Quick Start: CLI
+## Quick Start: CLI (Polars-Powered)
 
-Flags execute from left to right as an in-memory pipeline:
+Flags execute from left to right as an in-memory pipeline powered natively by Polars:
 
 ```bash
 # 1. Zero-cost inspection (reads Parquet headers without loading rows)
@@ -114,8 +114,8 @@ pytae current.parquet -diff baseline.parquet
 
 ### Guides & Specifications
 - **Architecture & Rosetta Stone**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
-- **Library API Guide**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) (Complete Python API reference for `df.pt` and `pt.*`)
-- **CLI Reference Hub**: [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md) (Complete command-line pipeline reference)
+- **Library API Guide**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) (Complete reference for the pure Pandas Python API: `df.pt` and `pt.*`)
+- **CLI Reference Hub**: [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md) (Complete reference for the Polars-powered command-line pipeline)
 
 ### Library Feature Guides (`docs/library/`)
 Explore step-by-step Python API guides with inline outputs:
