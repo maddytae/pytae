@@ -18934,8 +18934,7 @@ def pivot_polars(
         pivoted_dfs: list[pl.DataFrame] = []
 
         for m in metrics:
-            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = m.out_name if need_prefix else None
 
             if m.src_col is None:
                 m_df = work_df.with_columns(pl.lit(1).alias("__pt_n__"))
@@ -19008,8 +19007,7 @@ def pivot_polars(
         need_prefix = len(metrics) > 1
         if len(metrics) == 1:
             m = metrics[0]
-            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = None
 
             if m.src_col is None:
                 m_df = work_df.with_columns([pl.lit(1).alias("__pt_n__"), pl.lit(1).alias("__dummy__")])
@@ -21295,8 +21293,7 @@ def pivot(
         need_prefix = len(metrics) > 1
         pivoted_dfs: list[pd.DataFrame] = []
         for m in metrics:
-            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = m.out_name if need_prefix else None
             if m.src_col is None or m.aggfunc == "size":
                 s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
                 fv = f_v if f_v is not None else 0
@@ -21320,8 +21317,7 @@ def pivot(
         res.columns.name = None
         for m in metrics:
             if m.aggfunc == "size":
-                m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
-                prefix = m.out_name if m_prefix_needed else ""
+                prefix = m.out_name if need_prefix else ""
                 val_cols = [c for c in res.columns if not (r_cols and c in r_cols) and (not prefix or c.startswith(prefix))]
                 for c in val_cols:
                     try:
@@ -21362,8 +21358,7 @@ def pivot(
         need_prefix = len(metrics) > 1
         if len(metrics) == 1:
             m = metrics[0]
-            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = None
             if m.src_col is None or m.aggfunc == "size":
                 s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
                 pivoted = s.to_frame().T.reset_index(drop=True)
@@ -24802,6 +24797,21 @@ def test_cli_pivot_f_v(tmp_path, capsys):
     with pytest.raises(SystemExit):
         cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, fill_value=0"])
 
+
+def test_cli_pivot_single_metric_2d_no_prefix(tmp_path, capsys):
+    df = pd.DataFrame({
+        "cola": ["A1", "A2"],
+        "colb": ["B1", "B2"],
+        "colc": ["C1", "C2"],
+        "colv": [10.0, 20.0],
+    })
+    p = _write_csv(tmp_path, df)
+    # pytae x.parquet -pivot "r=cola,colb,c=colc,v=colv:sum"
+    exit_code = cli.main([p, "-pivot", "r=cola,colb,c=colc,v=colv:sum", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["cola", "colb", "C1", "C2"]
+
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
@@ -26718,6 +26728,16 @@ def test_pivot_whole_table_rich_metrics(sales_df):
     assert res["avg_profit"].iloc[0] == 28.0
     assert res["count"].iloc[0] == 5
 
+
+def test_pivot_single_metric_in_2d_no_prefix(sales_df):
+    # Single value metric with explicit func should NOT prefix column headers in 2D
+    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="Sales:sum")
+    assert list(res.columns) == ["Region", "Store", "2023", "2024"]
+
+    # In contrast, multiple values DO prefix column headers
+    res_multi = sales_df.pt.pivot(r="Region", c="Year", v="Sales:sum, Profit:mean")
+    assert list(res_multi.columns) == ["Region", "Sales_sum_2023", "Sales_sum_2024", "Profit_mean_2023", "Profit_mean_2024"]
+
 ################################################################################
 # FILE: tests/test_plotter.py
 ################################################################################
@@ -28143,6 +28163,17 @@ def test_pivot_polars_optional_v_and_fill_aliases():
         pivot_polars(df, r="region", c="year", fill=0)
     with pytest.raises(TypeError, match="pivot_polars\\(\\) got unexpected keyword argument\\(s\\)"):
         pivot_polars(df, r="region", c="year", fill_value=0)
+
+
+def test_pivot_polars_single_metric_in_2d_no_prefix():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West"],
+        "store": ["S1", "S2", "S1"],
+        "year": [2020, 2021, 2020],
+        "sales": [10.0, 20.0, 30.0],
+    })
+    res = pivot_polars(df, r="region,store", c="year", v="sales:sum")
+    assert res.columns == ["region", "store", "2020", "2021"]
 
 
 def test_write_dataframe_polars(tmp_path):

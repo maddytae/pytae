@@ -297,8 +297,7 @@ def pivot_polars(
         pivoted_dfs: list[pl.DataFrame] = []
 
         for m in metrics:
-            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = m.out_name if need_prefix else None
 
             if m.src_col is None:
                 m_df = work_df.with_columns(pl.lit(1).alias("__pt_n__"))
@@ -371,8 +370,7 @@ def pivot_polars(
         need_prefix = len(metrics) > 1
         if len(metrics) == 1:
             m = metrics[0]
-            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = None
 
             if m.src_col is None:
                 m_df = work_df.with_columns([pl.lit(1).alias("__pt_n__"), pl.lit(1).alias("__dummy__")])

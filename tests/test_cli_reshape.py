@@ -215,6 +215,21 @@ def test_cli_pivot_f_v(tmp_path, capsys):
         cli.main([p, "-pivot", "r=Region, c=Quarter, v=Sales, fill_value=0"])
 
 
+def test_cli_pivot_single_metric_2d_no_prefix(tmp_path, capsys):
+    df = pd.DataFrame({
+        "cola": ["A1", "A2"],
+        "colb": ["B1", "B2"],
+        "colc": ["C1", "C2"],
+        "colv": [10.0, 20.0],
+    })
+    p = _write_csv(tmp_path, df)
+    # pytae x.parquet -pivot "r=cola,colb,c=colc,v=colv:sum"
+    exit_code = cli.main([p, "-pivot", "r=cola,colb,c=colc,v=colv:sum", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["cola", "colb", "C1", "C2"]
+
+
 
 
 

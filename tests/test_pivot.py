@@ -564,3 +564,13 @@ def test_pivot_whole_table_rich_metrics(sales_df):
     assert res["count"].iloc[0] == 5
 
 
+def test_pivot_single_metric_in_2d_no_prefix(sales_df):
+    # Single value metric with explicit func should NOT prefix column headers in 2D
+    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="Sales:sum")
+    assert list(res.columns) == ["Region", "Store", "2023", "2024"]
+
+    # In contrast, multiple values DO prefix column headers
+    res_multi = sales_df.pt.pivot(r="Region", c="Year", v="Sales:sum, Profit:mean")
+    assert list(res_multi.columns) == ["Region", "Sales_sum_2023", "Sales_sum_2024", "Profit_mean_2023", "Profit_mean_2024"]
+
+

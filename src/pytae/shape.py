@@ -468,8 +468,7 @@ def pivot(
         need_prefix = len(metrics) > 1
         pivoted_dfs: list[pd.DataFrame] = []
         for m in metrics:
-            m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = m.out_name if need_prefix else None
             if m.src_col is None or m.aggfunc == "size":
                 s = df.groupby(group_keys, dropna=dropna, observed=observed).size()
                 fv = f_v if f_v is not None else 0
@@ -493,8 +492,7 @@ def pivot(
         res.columns.name = None
         for m in metrics:
             if m.aggfunc == "size":
-                m_prefix_needed = need_prefix or m.has_alias or (m.has_explicit_func and m.src_col is not None)
-                prefix = m.out_name if m_prefix_needed else ""
+                prefix = m.out_name if need_prefix else ""
                 val_cols = [c for c in res.columns if not (r_cols and c in r_cols) and (not prefix or c.startswith(prefix))]
                 for c in val_cols:
                     try:
@@ -535,8 +533,7 @@ def pivot(
         need_prefix = len(metrics) > 1
         if len(metrics) == 1:
             m = metrics[0]
-            m_prefix_needed = m.has_alias or (m.has_explicit_func and m.src_col is not None)
-            prefix = m.out_name if m_prefix_needed else None
+            prefix = None
             if m.src_col is None or m.aggfunc == "size":
                 s = df.groupby(c_cols, dropna=dropna, observed=observed).size()
                 pivoted = s.to_frame().T.reset_index(drop=True)

@@ -465,6 +465,17 @@ def test_pivot_polars_optional_v_and_fill_aliases():
         pivot_polars(df, r="region", c="year", fill_value=0)
 
 
+def test_pivot_polars_single_metric_in_2d_no_prefix():
+    df = pl.DataFrame({
+        "region": ["East", "East", "West"],
+        "store": ["S1", "S2", "S1"],
+        "year": [2020, 2021, 2020],
+        "sales": [10.0, 20.0, 30.0],
+    })
+    res = pivot_polars(df, r="region,store", c="year", v="sales:sum")
+    assert res.columns == ["region", "store", "2020", "2021"]
+
+
 def test_write_dataframe_polars(tmp_path):
     from pytae.readers import write_dataframe
 
