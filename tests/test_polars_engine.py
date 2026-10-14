@@ -279,3 +279,15 @@ def test_clean_columns_polars():
     res = clean_columns_polars(df, strip=True, squeeze=True, fill="_", case="lower")
     assert res.columns == ["col_a", "col_b"]
 
+
+def test_mutate_polars_map_and_disallow_dot_map():
+    df = pl.DataFrame({
+        "island name": ["Biscoe", "Dream", "Torgersen"],
+        "species": ["Adelie", "Gentoo", "Chinstrap"],
+    })
+    res = mutate_polars(df, {"island code": "map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')"})
+    assert res["island code"].to_list() == ["BIS", "DRM", "TOR"]
+
+    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+        mutate_polars(df, {"code": "species.map({'Adelie': 'AD'})"})
+

@@ -567,3 +567,18 @@ def test_mutate_multi_col_spaced_columns():
     assert list(res["col a"]) == [15, 25]
     assert list(res["col b"]) == [35, 45]
 
+
+def test_mutate_map_with_spaced_columns():
+    df = pd.DataFrame({"island name": ["Biscoe", "Dream", "Torgersen"]})
+    res = df.pt.mutate("[island code] = map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')")
+    assert list(res["island code"]) == ["BIS", "DRM", "TOR"]
+
+
+def test_mutate_disallow_dot_map_method_syntax():
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island name": ["Biscoe", "Dream"]})
+    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+        df.pt.mutate("code = species.map({'Adelie': 'AD'})")
+
+    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+        df.pt.mutate("[code] = [island name].map({'Biscoe': 'BIS'})")
+

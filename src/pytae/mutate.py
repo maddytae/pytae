@@ -504,6 +504,23 @@ class _GroupContext:
         return self._n_series
 
 
+def _check_disallowed_method_calls(expr: str) -> None:
+    """Disallow .map() method calls in mutate expressions in favor of functional map(col, mapping, [default])."""
+    if ".map(" in expr:
+        safe_expr = re.sub(r"\[([^\]]+)\]", r"__pt_col__", expr)
+        safe_expr = re.sub(r"`([^`]+)`", r"__pt_col__", safe_expr)
+        try:
+            tree = ast.parse(safe_expr, mode="eval")
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "map":
+                    raise ValueError(
+                        "In mutate, '.map()' method syntax is not supported. "
+                        "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'}, 'OTHER')"
+                    )
+        except SyntaxError:
+            pass
+
+
 def _eval_grouped_vectorized(
     work_df: pd.DataFrame,
     expr: str,
@@ -512,6 +529,7 @@ def _eval_grouped_vectorized(
     grp_ctx: _GroupContext,
 ) -> pd.Series:
     """Evaluate a grouped mutate expression in one vectorized pass across work_df."""
+    _check_disallowed_method_calls(expr)
     known_cols = set(work_df.columns)
     safe_expr, col_map = _rewrite_fallback_col_refs(expr, known_cols)
     rewritten, at_names = _strip_at_refs(safe_expr)
@@ -559,20 +577,7 @@ def _eval_grouped_vectorized(
 
 
 def _eval(out: pd.DataFrame, expr: str, local_dict: dict, global_dict: dict):
-    """out.eval(expr), resolving @local_var references against the scope that
-    called mutate() rather than mutate()'s own frame — mutate() sits between
-    the user's call and this eval(), so pandas' default frame-walking would
-    otherwise look in the wrong place.
-
-    pandas' eval() can't parse some Python constructs (notably dict literals,
-    e.g. `species.map({'a': 1})`, string slicing like `col.str[:8]`, and custom
-    helpers like `if_else`, `case_when`, `coalesce`); when it rejects one
-    (NotImplementedError, ValueError, SyntaxError, or UndefinedVariableError) we fall back
-    to a plain Python eval() with each column exposed as a Series plus the caller's scope,
-    so natural pandas method chains work. Bracketed `[col]` and backtick `col`
-    names are safely mapped to valid identifiers in fallback mode. `@name` refs
-    are rewritten to the caller-scope value, and `and`/`or`/`not` are rewritten
-    to `&`/`|`/`~` so boolean conditions on a Series work."""
+    _check_disallowed_method_calls(expr)
     known_cols = set(out.columns)
     normalized = _normalize_col_brackets(expr, known_cols)
     try:

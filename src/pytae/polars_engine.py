@@ -312,11 +312,44 @@ def _ast_to_polars_expr(
         orelse = _ast_to_polars_expr(node.orelse, col_names, col_map, by)
         return pl.when(test).then(body).otherwise(orelse)
     if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "map":
+            raise ValueError(
+                "In mutate, '.map()' method syntax is not supported. "
+                "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'}, 'OTHER')"
+            )
         func_name = ""
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
+
+        if func_name == "map" and len(node.args) >= 2:
+            col_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by)
+            mapping_node = node.args[1]
+            if isinstance(mapping_node, ast.Dict):
+                mapping: dict[Any, Any] = {}
+                for k_node, v_node in zip(mapping_node.keys, mapping_node.values):
+                    if k_node is not None and isinstance(k_node, ast.Constant) and isinstance(v_node, ast.Constant):
+                        mapping[k_node.value] = v_node.value
+                    elif k_node is not None:
+                        mapping[ast.literal_eval(k_node)] = ast.literal_eval(v_node)
+            else:
+                mapping = ast.literal_eval(mapping_node)
+
+            default_val = None
+            if len(node.args) > 2:
+                def_node = node.args[2]
+                if isinstance(def_node, ast.Constant):
+                    default_val = def_node.value
+                else:
+                    default_val = ast.literal_eval(def_node)
+
+            if hasattr(pl.Expr, "replace_strict"):
+                expr = col_expr.replace_strict(mapping, default=cast(Any, default_val))
+            else:
+                expr = col_expr.replace(mapping, default=cast(Any, default_val))  # type: ignore[call-arg]
+            return expr.over(by) if by else expr
+
         args = [_ast_to_polars_expr(a, col_names, col_map, by) for a in node.args]
 
         agg_map = {

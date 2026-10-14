@@ -172,3 +172,29 @@ def test_mutate_multi_col_cli(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "20" in out and "40" in out
     assert "12" in out and "24" in out
+
+
+def test_mutate_cli_map_with_spaces(tmp_path, capsys):
+    df = pd.DataFrame({"island name": ["Biscoe", "Dream", "Torgersen"]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([
+        path,
+        "-mutate", "[island code] = map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')",
+        "-select", "island code",
+        "-head",
+    ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "BIS" in out and "DRM" in out and "TOR" in out
+
+
+def test_mutate_cli_disallow_dot_map(tmp_path, capsys):
+    df = pd.DataFrame({"species": ["Adelie", "Gentoo"]})
+    path = _write_csv(tmp_path, df)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-mutate", "code = species.map({'Adelie': 'AD'})"])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "'.map()' method syntax is not supported" in err
