@@ -1,18 +1,11 @@
-"""SQL over DataFrames via duckdb. Optional extra: pip install 'pytae[sql]'."""
+"""SQL over DataFrames via Polars SQLContext (native, zero extra dependencies)."""
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
-
-
-def _require_duckdb():
-    try:
-        import duckdb
-    except ImportError as exc:
-        raise ImportError(
-            "sql() requires duckdb. Install with: pip install 'pytae[sql]'"
-        ) from exc
-    return duckdb
+import polars as pl
 
 
 def _normalize_sql(query: str) -> str:
@@ -75,7 +68,7 @@ def _normalize_sql(query: str) -> str:
 
 
 def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame:
-    """Run a SQL query via duckdb.
+    """Run a SQL query via Polars SQLContext.
 
     The current DataFrame is table ``data`` (same as CLI ``-sql``). Extra keyword
     frames are registered under those names, like ``-file`` aliases.
@@ -85,7 +78,7 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
     df:
         Registered as table ``data``.
     query:
-        DuckDB SQL, or '@query.txt' to load from a file. Spaced column names can
+        SQL query, or '@query.txt' to load from a file. Spaced column names can
         use double quotes (\"col a\"), brackets ([col a]), or backticks (`col a`).
     **frames:
         Additional DataFrames registered as tables. The name ``data`` is reserved.
@@ -110,16 +103,35 @@ def sql(df: pd.DataFrame, query: str, /, **frames: pd.DataFrame) -> pd.DataFrame
     if "data" in frames:
         raise ValueError("sql(): extra frame cannot be named 'data' — that's the current DataFrame")
     normalized_query = _normalize_sql(query)
-    tables = {"data": df, **frames}
-    duckdb = _require_duckdb()
-    con = duckdb.connect()
+    
+    # Execute natively with Polars SQLContext
     try:
-        for name, frame in tables.items():
-            con.register(name, frame)
+        tables: dict[str, pl.DataFrame] = {
+            "data": pl.from_pandas(df) if isinstance(df, pd.DataFrame) else df
+        }
+        for name, frame in frames.items():
+            tables[name] = pl.from_pandas(frame) if isinstance(frame, pd.DataFrame) else frame
+        polars_query = re.sub(r"\bin\s*\[(.*?)\]", r"in (\1)", normalized_query, flags=re.IGNORECASE)
+        ctx = pl.SQLContext(frames=tables)
+        res_pl = ctx.execute(polars_query).collect()
+        return res_pl.to_pandas()
+    except Exception as polars_exc:
+        # Fall back to DuckDB if available
         try:
-            return con.sql(normalized_query).df()
-        except Exception as exc:
-            raise ValueError(f"sql: {exc}") from exc
-    finally:
-        con.close()
+            import duckdb
+            tables_pd = {"data": df, **frames}
+            con = duckdb.connect()
+            try:
+                for name, frame in tables_pd.items():
+                    con.register(name, frame)
+                return con.sql(normalized_query).df()
+            finally:
+                con.close()
+        except ImportError:
+            raise ValueError(
+                f"sql: {polars_exc}. Install duckdb for additional SQL syntax support: pip install 'pytae[sql]'"
+            ) from polars_exc
+        except Exception:
+            raise ValueError(f"sql: {polars_exc}") from polars_exc
+
 

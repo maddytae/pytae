@@ -8,7 +8,22 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 import pytae as pt
 
-duckdb = pytest.importorskip("duckdb")
+
+def test_sql_works_without_duckdb(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "duckdb" or name.startswith("duckdb."):
+            raise ImportError("duckdb is not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+    res = pt.sql(df, "select x, y * 2 as y2 from data where x >= 2")
+    assert list(res["x"]) == [2, 3]
+    assert list(res["y2"]) == [40, 60]
 
 
 def test_sql_query_via_data_alias():

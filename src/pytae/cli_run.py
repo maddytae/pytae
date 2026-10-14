@@ -116,7 +116,38 @@ def _format_table(
     return str(df)
 
 
-def _compute_freq(source_df: pd.DataFrame, col: str | None, dropna: bool) -> pd.DataFrame:
+def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> pd.DataFrame:
+    import polars as pl
+
+    if isinstance(source_df, pl.DataFrame):
+        cols = list(source_df.columns)
+        if col is None:
+            if len(cols) == 1:
+                col = cols[0]
+            else:
+                raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
+        col = col.strip()
+        if col not in cols:
+            raise SystemExit(unknown_columns_message("-freq", [col], cols))
+
+        counts = source_df.group_by(col).len(name="Count")
+        if dropna:
+            counts = counts.filter(pl.col(col).is_not_null())
+        counts = counts.sort(by=["Count", col], descending=[True, False])
+        bar_max_width = 20
+        cat_vals = counts[col].to_list()
+        cnt_vals = [int(c) for c in counts["Count"].to_list()]
+        total_int = sum(cnt_vals)
+        max_cnt_int = cnt_vals[0] if cnt_vals else 1
+        data = []
+        for category, count in zip(cat_vals, cnt_vals):
+            bar_len = int(round((count / max_cnt_int) * bar_max_width)) if max_cnt_int > 0 else 0
+            bar_str = "█" * bar_len
+            pct_str = f"({(count / total_int * 100):.1f}%)" if total_int > 0 else "(0.0%)"
+            dist_str = f"{bar_str} {pct_str}".strip()
+            data.append({col: str(category), "Count": count, "Distribution": dist_str})
+        return pd.DataFrame(data)
+
     if col is None:
         if len(source_df.columns) == 1:
             col = source_df.columns[0]
@@ -403,7 +434,7 @@ def _list_order_index(series: pd.Series, order) -> pd.Series:
 
 
 def cmd_convert(
-    df: pd.DataFrame,
+    df: Any,
     source: Path,
     output: Path | None,
     *,
@@ -416,7 +447,10 @@ def cmd_convert(
     index: bool | None = None,
 ) -> None:
     if rename:
-        df = df.rename(columns=rename)
+        if isinstance(df, pd.DataFrame):
+            df = df.rename(columns=rename)
+        elif hasattr(df, "rename"):
+            df = df.rename(rename)
     dest = output if output is not None else source.with_suffix(".csv")
     if dest.resolve() == source.resolve():
         raise SystemExit(
@@ -453,9 +487,9 @@ def _resolve_alias(alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipel
     result so far (lets repeated -merge/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
     if alias == "data":
-        if pipeline._df is None:
+        if pipeline._df is None and pipeline._pldf is None:
             return None, f"{flag}: 'data' isn't available yet — nothing has produced a pipeline result yet"
-        return pipeline._df, None
+        return pipeline.dataframe(), None
     if alias == "df":
         return None, f"{flag}: 'df' is not a valid alias; use 'data' for the pipeline's current result"
     if alias not in frames:
@@ -770,7 +804,7 @@ def _process_path(
             emit_frame(idx)
         elif op == "freq":
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
-            source_df = pipeline.dataframe()
+            source_df = pipeline.current_frame()
             result = _compute_freq(source_df, freq_col, False if args.dropna is None else args.dropna)
             pipeline._df = result
             if should_print(idx):
@@ -1042,7 +1076,7 @@ def _process_path(
             if out_dir is not None and not dest.is_absolute():
                 dest = out_dir / dest
 
-        df_to_write = _apply_round(pipeline.dataframe(), args.round_ndigits)
+        df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
         try:
             cmd_convert(
                 df_to_write,

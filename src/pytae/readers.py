@@ -14,6 +14,7 @@ import os
 import re
 import warnings
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pyarrow as pa
@@ -750,7 +751,7 @@ _WRITABLE_SUFFIXES = (
 
 
 def write_dataframe(
-    df: pd.DataFrame,
+    df: Any,
     dest: Path,
     *,
     sep: str | None = None,
@@ -759,11 +760,45 @@ def write_dataframe(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool | None = None,
 ) -> None:
-    if "_pt_by" in df.attrs:
+    import polars as pl
+
+    if isinstance(df, pl.DataFrame):
+        suffix, compression = _split_path_suffixes(dest)
+        if progress or (encoding is not None and encoding.lower() not in ("utf-8", "utf8")):
+            df = df.to_pandas()
+        else:
+            if suffix in (".parquet", ".pq"):
+                df.write_parquet(dest)
+                return
+            elif suffix == ".csv":
+                df.write_csv(
+                    dest,
+                    separator=sep or ",",
+                    compression="gzip" if compression == "gzip" else "uncompressed",
+                )
+                return
+            elif suffix in _TXT_DEFAULT_SEP:
+                df.write_csv(
+                    dest,
+                    separator=sep or _TXT_DEFAULT_SEP[suffix],
+                    compression="gzip" if compression == "gzip" else "uncompressed",
+                )
+                return
+            elif suffix in (".jsonl", ".ndjson"):
+                if compression is None:
+                    df.write_ndjson(dest)
+                    return
+                else:
+                    df = df.to_pandas()
+            else:
+                supported = ", ".join(_WRITABLE_SUFFIXES)
+                raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
+
+    if hasattr(df, "attrs") and "_pt_by" in df.attrs:
         df = df.copy(deep=False)
         df.attrs = {k: v for k, v in df.attrs.items() if k != "_pt_by"}
     if index is None:
-        index = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
+        index = not (isinstance(getattr(df, "index", None), pd.RangeIndex) and getattr(df.index, "name", None) is None)
     suffix, compression = _split_path_suffixes(dest)
     if suffix in (".parquet", ".pq"):
         _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)

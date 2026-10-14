@@ -345,44 +345,54 @@ class _Pipeline:
         -file/-merge mode: every -file alias is registered under its own name instead, so
         -sql can do the join itself; `data` is also registered once something (e.g. -merge)
         has produced a current view. Returns an error message or None."""
-        try:
-            import duckdb
-        except ImportError as exc:
-            return f"-sql requires duckdb. Install with: pip install 'pytae[sql]' ({exc})"
-        q = query.strip()
-        if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
-            q = q[1:-1].strip()
-        if q.startswith("@"):
-            path = q[1:].strip()
-            if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
-                path = path[1:-1].strip()
-            from pathlib import Path
-            file_path = Path(path)
-            if not file_path.is_file():
-                return f"-sql: query file not found: '{path}'"
-            try:
-                q = file_path.read_text(encoding="utf-8").strip()
-            except Exception as exc:
-                return f"-sql: failed to read query file '{path}': {exc}"
+        import re
+
+        import polars as pl
+
         from pytae.sql import _normalize_sql
-        normalized_query = _normalize_sql(q)
-        con = duckdb.connect()
         try:
+            normalized_query = _normalize_sql(query)
+        except Exception as exc:
+            return f"-sql: {exc}"
+        polars_query = re.sub(r"\bin\s*\[(.*?)\]", r"in (\1)", normalized_query, flags=re.IGNORECASE)
+
+        # Fast path: Native Polars SQLContext (zero extra dependencies required)
+        try:
+            if self._progress and self._reader is not None:
+                self.dataframe()
+            tables: dict[str, pl.DataFrame] = {}
             for alias, frame in self._frames.items():
-                con.register(alias, frame)
-            if self._df is not None:
-                con.register("data", self._df)
-            elif self._reader is not None:
-                if not self._register_source_view(con):
-                    con.register("data", self.dataframe())
+                tables[alias] = pl.from_pandas(frame) if isinstance(frame, pd.DataFrame) else frame
+            tables["data"] = self.polars_frame()
+            ctx = pl.SQLContext(frames=tables)
+            res_pl = ctx.execute(polars_query).collect()
+            self._pldf = res_pl
+            self._df = None
+            return None
+        except Exception as polars_err:
+            # Fall back to DuckDB if available
             try:
-                self._df = con.sql(normalized_query).df()
-                self._pldf = None
-            except Exception as exc:
-                return f"-sql: {exc}"
-        finally:
-            con.close()
-        return None
+                import duckdb
+                con = duckdb.connect()
+                try:
+                    for alias, frame in self._frames.items():
+                        con.register(alias, frame)
+                    if self._df is not None:
+                        con.register("data", self._df)
+                    elif self._reader is not None:
+                        if not self._register_source_view(con):
+                            con.register("data", self.dataframe())
+                    else:
+                        con.register("data", self.dataframe())
+                    self._df = con.sql(normalized_query).df()
+                    self._pldf = None
+                    return None
+                finally:
+                    con.close()
+            except ImportError:
+                return f"-sql: {polars_err}. Install duckdb for additional SQL syntax support: pip install 'pytae[sql]'"
+            except Exception as duckdb_exc:
+                return f"-sql: {duckdb_exc}"
 
     def _register_source_view(self, con) -> bool:
         """Best-effort: have duckdb scan the source file directly and register the
@@ -455,13 +465,18 @@ class _Pipeline:
             return self._df
         return self.polars_frame()
 
-    def head(self, n: int) -> pd.DataFrame:
+    def head(self, n: int) -> Any:
+        if self._progress:
+            df = self.dataframe().head(n)
+            self._df = df
+            self._pldf = None
+            return df
         if self._pldf is not None:
             self._pldf = self._pldf.head(n)
             self._df = None
-            return self.dataframe()
+            return self._pldf
         if self._df is None:
-            if self._nrows is not None or self._progress:
+            if self._nrows is not None:
                 df = self.dataframe().head(n)
             else:
                 df = self._reader.head(n)
@@ -472,13 +487,18 @@ class _Pipeline:
         self._df = df
         return df
 
-    def tail(self, n: int) -> pd.DataFrame:
+    def tail(self, n: int) -> Any:
+        if self._progress:
+            df = self.dataframe().tail(n)
+            self._df = df
+            self._pldf = None
+            return df
         if self._pldf is not None:
             self._pldf = self._pldf.tail(n)
             self._df = None
-            return self.dataframe()
+            return self._pldf
         if self._df is None:
-            if self._nrows is not None or self._progress:
+            if self._nrows is not None:
                 df = self.dataframe().tail(n)
             else:
                 df = self._reader.tail(n)
@@ -489,19 +509,31 @@ class _Pipeline:
         self._df = df
         return df
 
-    def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> pd.DataFrame:
-        df = self.dataframe()
-        if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
-            df = safe_reset_index(df)
+    def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> Any:
+        if self._progress:
+            df = self.dataframe()
+            if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):
+                df = safe_reset_index(df)
+            if frac is not None:
+                sampled = df.sample(frac=frac, random_state=seed)
+            else:
+                n = min(n, len(df))
+                sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
+            sampled = sampled.reset_index(drop=True)
+            self._df = sampled
+            self._pldf = None
+            return sampled
+
+        pldf = self.polars_frame()
         if frac is not None:
-            sampled = df.sample(frac=frac, random_state=seed)
+            sampled_pl = pldf.sample(fraction=frac, seed=seed)
         else:
-            n = min(n, len(df))
-            sampled = df.sample(n=n, random_state=seed) if n else df.iloc[0:0]
-        sampled = sampled.reset_index(drop=True)
-        self._df = sampled
-        self._pldf = None
-        return sampled
+            n_rows = len(pldf)
+            sample_n = min(n, n_rows)
+            sampled_pl = pldf.sample(n=sample_n, seed=seed) if sample_n > 0 else pldf.head(0)
+        self._pldf = sampled_pl
+        self._df = None
+        return sampled_pl
 
 
 class _OrderedFlag(argparse.Action):

@@ -418,4 +418,32 @@ def test_pivot_polars_whole_table_and_c_only():
     assert res_c["2021"].to_list() == [300.0]
 
 
+def test_write_dataframe_polars(tmp_path):
+    from pytae.readers import write_dataframe
+
+    df = pl.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+
+    # Parquet
+    pq_path = tmp_path / "out.parquet"
+    write_dataframe(df, pq_path)
+    assert pq_path.exists()
+    read_pq = pl.read_parquet(pq_path)
+    assert read_pq["a"].to_list() == [1, 2, 3]
+
+    # CSV
+    csv_path = tmp_path / "out.csv"
+    write_dataframe(df, csv_path)
+    assert csv_path.exists()
+    read_csv = pl.read_csv(csv_path)
+    assert read_csv["a"].to_list() == [1, 2, 3]
+
+    # NDJSON
+    json_path = tmp_path / "out.jsonl"
+    write_dataframe(df, json_path)
+    assert json_path.exists()
+    read_json = pl.read_ndjson(json_path)
+    assert read_json["b"].to_list() == ["x", "y", "z"]
+
+
+
 

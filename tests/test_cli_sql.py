@@ -185,4 +185,22 @@ def test_sql_bracketed_identifiers_cli(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(2, 2)"
 
 
+def test_cli_sql_works_without_duckdb(tmp_path, capsys, monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "duckdb" or name.startswith("duckdb."):
+            raise ImportError("duckdb is not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    path = _write_csv(tmp_path, pd.DataFrame({"x": [10, 20, 30], "y": ["a", "b", "c"]}))
+    exit_code = cli.main([str(path), "-sql", "select y from data where x >= 20", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+
+
 
