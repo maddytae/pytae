@@ -147,3 +147,30 @@ def test_filter_cli_bracket_interval(tmp_path, capsys):
     exit_code = cli.main([path, "-filter", "body_mass_g = [3000, 3200]", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 1)"
+
+
+def test_filter_cli_str_methods_and_null_checks(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({
+            "species": ["Adelie", "Gentoo", "Chinstrap"],
+            "island": ["Torgersen", "Biscoe", "Dream"],
+            "sex": ["MALE", None, "FEMALE"],
+        }),
+    )
+
+    # -filter "island.str.contains('org')"
+    exit_code = cli.main([path, "-filter", "island.str.contains('org')", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 3)"
+
+    # -filter "species.str.starts_with('Gen')"
+    exit_code = cli.main([path, "-filter", "species.str.starts_with('Gen')", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 3)"
+
+    # -filter "sex.is_not_null()"
+    exit_code = cli.main([path, "-filter", "sex.is_not_null()", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 3)"
+

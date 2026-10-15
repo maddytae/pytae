@@ -367,6 +367,25 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             val = m_in.group(3).strip()
             entries.append((col, f"{op} {val}"))
             continue
+        # String method calls: col.str.contains('val'), col.str.starts_with('val'), col.str.endswith('val')
+        m_str = re.match(r"^([^()]+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw_entry)
+        if m_str:
+            col = m_str.group(1).strip()
+            method = m_str.group(2).strip()
+            val = m_str.group(3).strip()
+            if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
+                val = val[1:-1]
+            op = "startswith" if "start" in method else ("endswith" if "end" in method else "contains")
+            entries.append((col, (op, val)))
+            continue
+        # Null check method calls: col.is_null(), col.is_not_null(), col.isna(), col.notna()
+        m_null = re.match(r"^([^()]+?)\.(is_null|isna|is_not_null|notna)\(\)$", raw_entry)
+        if m_null:
+            col = m_null.group(1).strip()
+            m_name = m_null.group(2).strip()
+            op = "notna" if "not" in m_name else "isna"
+            entries.append((col, (op,)))
+            continue
         # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
         m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
         if m_eq:
@@ -397,6 +416,9 @@ def parse_filter(raw: str) -> list[tuple[str, Any]]:
         key = _unquote_name(key_raw)
         if not key:
             raise SystemExit("invalid --filter conditions: empty column name")
+        if isinstance(value_raw, tuple):
+            conditions.append((key, value_raw))
+            continue
         val_strip = value_raw.strip()
         if not val_strip:
             raise SystemExit(f"invalid --filter conditions: '{key}' has no value")

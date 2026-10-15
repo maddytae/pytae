@@ -116,6 +116,9 @@ def _parse_filter_string(raw: str) -> list[tuple[str, Any]]:
         key = _unquote_name(key_raw)
         if not key:
             raise ValueError("invalid filter conditions: empty column name")
+        if isinstance(value_raw, tuple):
+            pairs.append((key, value_raw))
+            continue
         if not value_raw:
             raise ValueError(f"invalid filter conditions: '{key}' has no value")
         val_strip = value_raw.strip()
