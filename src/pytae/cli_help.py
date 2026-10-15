@@ -469,25 +469,41 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "diff": KeywordHelp(
         name="diff",
-        flag="-diff, --diff SPEC [-tol VALUE]",
-        syntax="pytae <file1> -diff <file2>[:tol] [-tol VALUE]",
-        summary="Compare schema and values between two tabular datasets with optional numeric tolerance.",
+        flag="-diff, --diff PATH [-tol N]",
+        syntax="pytae <file1> -diff <file2> [-tol N]",
+        summary="Compare schema and values between two tabular datasets.",
         description=(
             "Compares column lists, types, row counts, null counts, and value differences "
-            "between two datasets. Supports an optional numeric threshold / tolerance for floating-point comparisons."
+            "between two datasets. Use -tol or -tolerance to set an absolute numeric threshold."
         ),
         options=[
-            "-diff target.csv : Exact comparison of all common columns.",
-            "-diff target.csv:0.001 : Numeric comparison with absolute tolerance 0.001.",
-            "-diff \"target.csv, tol=1e-4\" : Key-value specification for tolerance.",
-            "-tol 0.001, --threshold 0.001 : CLI flag setting the numeric threshold.",
+            "PATH : Target file path to compare against.",
+            "-tol N, -tolerance N : Numeric tolerance threshold for floating-point comparisons (e.g. -tol 0.001).",
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet",
-            "pytae staging.csv -diff prod.parquet:0.001",
-            "pytae new.parquet -diff old.parquet -tol 1e-5",
+            "pytae current.parquet -diff previous.parquet -tol 0.001",
+            "pytae current.parquet -diff previous.parquet -tolerance 1e-4",
         ],
         see_also=["-meta", "-cols", "-dtype"],
+    ),
+    "tol": KeywordHelp(
+        name="tol",
+        flag="-tol, -tolerance N",
+        syntax="pytae <file1> -diff <file2> -tol <N>",
+        summary="Set numeric threshold / tolerance for -diff.",
+        description=(
+            "Specifies an absolute numeric threshold for cell-by-cell comparisons in -diff. "
+            "Numeric cells differing by less than or equal to N are treated as matching."
+        ),
+        options=[
+            "N : Floating-point threshold (e.g. 0.001, 1e-4).",
+        ],
+        examples=[
+            "pytae current.parquet -diff previous.parquet -tol 0.001",
+            "pytae current.parquet -diff previous.parquet -tolerance 1e-5",
+        ],
+        see_also=["-diff"],
     ),
     "head": KeywordHelp(
         name="head",

@@ -889,20 +889,13 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
-            from pytae.cli_parsing import parse_diff_spec
-
-            default_tol = getattr(args, "tol", None) or 0.0
-            try:
-                diff_path, diff_tol, diff_rtol = parse_diff_spec(args.diff, default_tol=default_tol)
-            except ValueError as exc:
-                return _fail(parser, batch, str(exc))
-
+            diff_path = Path(args.diff)
+            diff_tol = getattr(args, "tol", None) or 0.0
             diff_str = _compute_diff(
                 pipeline.dataframe(),
                 diff_path,
                 path.name if path is not None else "<pipeline>",
                 tol=diff_tol,
-                rtol=diff_rtol,
                 sep=args.dlim,
                 encoding=args.encoding,
             )

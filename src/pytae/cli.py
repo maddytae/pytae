@@ -185,7 +185,8 @@ _CLI_FLAGS = {
     "--round",
     "-tol",
     "--tol",
-    "--threshold",
+    "-tolerance",
+    "--tolerance",
     "-h",
     "--help",
     "-fmt",
@@ -399,11 +400,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--diff",
         dest="diff",
         default=None,
-        metavar="SPEC",
+        metavar="PATH",
         action=_OrderedStore,
-        help="compare schema and contents against another dataset file; "
-        "supports optional tolerance: -diff target.parquet:0.001, -diff \"target.parquet, tol=1e-4\", "
-        "or combine with -tol VALUE",
+        help="compare schema and contents against another dataset file (use -tol or -tolerance to set a numeric threshold)",
     )
     parser.add_argument(
         "-value_counts",
@@ -836,13 +835,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-tol",
         "--tol",
-        "--threshold",
+        "-tolerance",
+        "--tolerance",
         dest="tol",
         type=float,
         default=None,
-        metavar="VALUE",
+        metavar="N",
         help="numeric difference tolerance / threshold for dataset comparison (-diff); "
-        "e.g. -tol 0.001 or --threshold 1e-4",
+        "e.g. -tol 0.001 or -tolerance 1e-4",
     )
     return parser
 
@@ -1063,6 +1063,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("-by requires -agg, -mutate, -pick")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
+    if args.tol is not None and args.diff is None:
+        parser.error("-tol requires -diff")
 
     rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]

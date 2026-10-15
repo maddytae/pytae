@@ -105,20 +105,16 @@ Values:
   ```
 - Copy diff report to clipboard: `-diff target.parquet -o clip`
 
-### Numeric Thresholds & Tolerances (`-tol`, `--threshold`)
+### Numeric Thresholds & Tolerances (`-tol`, `-tolerance`)
 
-When comparing floating-point or numeric datasets, minor precision fluctuations (such as `0.00000001` floating-point inaccuracies or small calibration drifts) can cause false mismatches. Pytae provides first-class numeric thresholding via colon shorthand, key-value specs, or dedicated flags:
+When comparing floating-point or numeric datasets, minor precision fluctuations (such as `0.00000001` floating-point inaccuracies or calibration drifts) can cause false mismatches. Pytae provides the `-tol` (or `-tolerance`) flag as the one and only obvious way to set a numeric threshold:
 
 ```bash
-# 1. Colon shorthand notation (absolute tolerance)
-pytae current.parquet -diff previous.parquet:0.001
-
-# 2. Dedicated CLI flag (-tol or --threshold)
+# Compare with absolute tolerance of 0.001
 pytae current.parquet -diff previous.parquet -tol 0.001
-pytae current.parquet -diff previous.parquet --threshold 1e-4
 
-# 3. Key-value spec (supports relative tolerance rtol)
-pytae current.parquet -diff "previous.parquet, tol=0.01, rtol=1e-5"
+# Supports scientific notation
+pytae current.parquet -diff previous.parquet -tolerance 1e-4
 ```
 
 **Diff Output with Tolerance & Mismatch Breakdown:**
@@ -131,7 +127,7 @@ Values:
 ```
 
 ### Python Library Diffing (`df.diff` & `pt.diff`)
-You can also run dataset comparisons directly in Python:
+You can also run dataset comparisons directly in Python using the `tol` parameter:
 ```python
 import pytae as pt
 
@@ -142,8 +138,9 @@ df2 = pt.read_parquet("previous.parquet")
 report = df1.diff(df2, tol=0.001)
 print(report)
 
-# Functional pt.diff
+# Functional pt.diff or pandas/polars .pt accessor
 print(pt.diff(df1, df2, tol=1e-4))
+df1.pt.diff(df2, tol=0.001)
 ```
 
 ---
