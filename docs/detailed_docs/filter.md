@@ -92,3 +92,4 @@ penguins.filter(lambda d: d["flipper_length_mm"] % 2 == 0)
 ## Lazy Scanners: Predicate Pushdown
 
 When filtering a lazy dataset (`pt.scan_parquet()` or `pt.scan_csv()`), `.filter()` operations are pushed down directly into the Parquet row group scanner. File chunks that do not satisfy the filter conditions are skipped without ever being read into RAM.
+

@@ -77,3 +77,4 @@ pytae penguins.parquet \
   -filter "sex == 'Female'" \
   -pivot "r=species, c=island, v=flipper_length_mm, a=max"
 ```
+

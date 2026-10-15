@@ -100,3 +100,4 @@ pytae sales.parquet -select "[Customer Name], [Total Spend]" -head 5
 ## Lazy Scanners: Projection Pushdown
 
 When reading large Parquet or CSV datasets using `pt.scan_parquet()` or `pt.scan_csv()`, calling `.select()` informs the Polars query optimizer to only load the selected columns from disk, completely skipping unselected columns and saving significant I/O bandwidth.
+

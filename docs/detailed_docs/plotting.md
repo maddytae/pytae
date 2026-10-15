@@ -86,3 +86,4 @@ pytae penguins.parquet \
   -plot "kind=box, y=body_mass_g, by=species" \
   -o mass_box.png
 ```
+

@@ -77,3 +77,4 @@ pytae quarterly_sales.csv -long "id_vars=id, cols='q1,q2', var_name=quarter, val
 # Spread back into wide table
 pytae long_sales.parquet -wide "r=id, c=quarter, v=revenue" -head 5
 ```
+

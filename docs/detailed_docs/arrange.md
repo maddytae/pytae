@@ -58,3 +58,4 @@ pytae penguins.parquet -arrange "species, -body_mass_g" -head 10
 
 > [!TIP]
 > In bash/zsh, always quote negative column names (`"-col"`) so the shell does not mistake the leading dash for a CLI flag.
+

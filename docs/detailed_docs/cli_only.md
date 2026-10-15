@@ -216,3 +216,4 @@ Enable tab-completion for flags, sample datasets, and filenames:
 pytae --install-completion
 ```
 Supports `bash`, `zsh`, and `fish`.
+

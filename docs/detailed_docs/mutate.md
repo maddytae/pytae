@@ -146,3 +146,4 @@ Always enclose the entire `-mutate` specification in double quotes `""`. Use sin
 ```bash
 pytae data.parquet -mutate "region_label = if_else(code == 1, 'US', 'International')"
 ```
+

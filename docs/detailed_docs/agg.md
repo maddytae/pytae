@@ -104,3 +104,4 @@ pytae penguins.parquet \
   -by species \
   -agg "n = n, avg_bill = mean(bill_length_mm)"
 ```
+

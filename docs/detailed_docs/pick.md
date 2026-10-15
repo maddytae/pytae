@@ -52,3 +52,4 @@ pytae penguins.parquet -pick "body_mass_g, n=5, order=min"
 # Top 2 per species
 pytae penguins.parquet -by species -pick "body_mass_g, n=2"
 ```
+

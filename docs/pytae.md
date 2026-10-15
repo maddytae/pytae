@@ -47,6 +47,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Deduplication** | **[Distinct Records (`distinct`)](detailed_docs/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
 | **Slicing** | **[Top / Bottom Records (`pick`)](detailed_docs/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
 | **Reshaping** | **[Table Reshaping (`long` & `wide`)](detailed_docs/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
+| **Relational Joins** | **[Relational Joins & Stacking (`join`)](detailed_docs/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon key notation, `validate` |
 | **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `fillna`, `fill_null`, `fill_nan`, `dropna`, `handle_missing`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
 | **Plotting** | **[Visualizations & Charts (`plotting`)](detailed_docs/plotting.md)** | Terminal ASCII charts (`freq`, `hist`) and Matplotlib publication figures (`.plot()`, `-plot`) |
 | **CLI Only** | **[CLI Terminal Features (`cli_only`)](detailed_docs/cli_only.md)** | `-diff`, `-inspect`, `-meta`, `-file` multi-file pipelines, `-sql`, batch globbing, completions |

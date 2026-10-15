@@ -198,3 +198,4 @@ df.replace_values({"temporary": "temp"}, c="notes", exact=False)
 ```bash
 pytae penguins.parquet -replace_values "Male=M, Female=F" -head 5
 ```
+

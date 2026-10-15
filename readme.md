@@ -121,6 +121,7 @@ Unified documentation covering both the Python library and CLI:
 - [Row Picking](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/pick.md) (`pick`, top/bottom N or proportion per group via `by`)
 - [Distinct Rows](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/distinct.md) (`distinct`, deduplication across column subsets, `keep`)
 - [Table Reshaping](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/reshape.md) (`long`, `wide`, pure 1-to-1 unmelting)
+- [Relational Joins & Stacking](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/join.md) (`df.join()`, `pt.join()`, `pt.concat()`, `-join`, `-concat`, colon keys, `validate`)
 - [2D Pivot Tables](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/pivot.md) (`pivot`, `r, c, v, a` matrices, flat 1D headers)
 - [Aggregations & Grouping](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/agg.md) (`by`, `agg`, `dropna=False` zero data loss retention)
 - [Visualizations & Plotting](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting.md) (`df.plot()`, `-plot`, `-finalize`, interactive walkthrough)

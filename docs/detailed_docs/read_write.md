@@ -252,4 +252,5 @@ pytae -file "orders.parquet=o; users.csv=u" \
   -join "left=o,right=u,on=user_id,how=left" \
   -head 5
 ```
-*(For complete multi-file CLI syntax and SQL joins, see [CLI Only Guide](cli_only.md#multi-file-pipelines)).*
+*(For comprehensive join strategies, validation, and multi-file workflows, see the dedicated **[Relational Joins & Stacking Guide](join.md)** and **[CLI Only Guide](cli_only.md#multi-file-pipelines)**).*
+

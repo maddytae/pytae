@@ -1136,6 +1136,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   │   ├── cli_only.md
 │   │   ├── distinct.md
 │   │   ├── filter.md
+│   │   ├── join.md
 │   │   ├── library_only.md
 │   │   ├── mutate.md
 │   │   ├── other_utilities.md
