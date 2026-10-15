@@ -89,9 +89,9 @@ penguins.mutate(
 penguins.mutate(
     tier="""
     case_when(
-        body_mass_g > 5000: 'Heavy',
-        body_mass_g > 3500: 'Medium',
-        True: 'Light'
+        (body_mass_g > 5000, 'Heavy'),
+        (body_mass_g > 3500, 'Medium'),
+        'Light'
     )
     """
 )

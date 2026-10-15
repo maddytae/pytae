@@ -2172,9 +2172,9 @@ penguins.mutate(
 penguins.mutate(
     tier="""
     case_when(
-        body_mass_g > 5000: 'Heavy',
-        body_mass_g > 3500: 'Medium',
-        True: 'Light'
+        (body_mass_g > 5000, 'Heavy'),
+        (body_mass_g > 3500, 'Medium'),
+        'Light'
     )
     """
 )
@@ -14705,6 +14705,12 @@ def _ast_to_polars_expr(
             return left % right
         if isinstance(node.op, ast.Pow):
             return left**right
+        if isinstance(node.op, ast.BitOr):
+            return left | right
+        if isinstance(node.op, ast.BitAnd):
+            return left & right
+        if isinstance(node.op, ast.BitXor):
+            return left ^ right
         raise ValueError(f"Unsupported binary operator: {type(node.op)}")
     if isinstance(node, ast.UnaryOp):
         oprnd = _ast_to_polars_expr(node.operand, col_names, col_map, by, schema)
@@ -14775,9 +14781,41 @@ def _ast_to_polars_expr(
                     return obj_expr.str.strip_chars()
                 elif attr_name in ("len", "len_chars"):
                     return obj_expr.str.len_chars()
+                elif attr_name == "contains" and len(node.args) >= 1:
+                    literal = False
+                    for kw in node.keywords:
+                        if kw.arg == "literal" and isinstance(kw.value, ast.Constant):
+                            literal = bool(kw.value.value)
+                    if isinstance(node.args[0], ast.Constant):
+                        pat_val = str(node.args[0].value)
+                        return obj_expr.str.contains(pat_val, literal=literal)
+                    pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+                    return obj_expr.str.contains(pat_expr, literal=literal)
+                elif attr_name in ("startswith", "starts_with") and len(node.args) >= 1:
+                    if isinstance(node.args[0], ast.Constant):
+                        return obj_expr.str.starts_with(str(node.args[0].value))
+                    pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+                    return obj_expr.str.starts_with(pat_expr)
+                elif attr_name in ("endswith", "ends_with") and len(node.args) >= 1:
+                    if isinstance(node.args[0], ast.Constant):
+                        return obj_expr.str.ends_with(str(node.args[0].value))
+                    pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+                    return obj_expr.str.ends_with(pat_expr)
             elif isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute)):
                 obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema)
-                if attr_name == "cumsum":
+                if attr_name == "is_null":
+                    expr = obj_expr.is_null()
+                    return expr.over(by) if by else expr
+                elif attr_name == "is_not_null":
+                    expr = obj_expr.is_not_null()
+                    return expr.over(by) if by else expr
+                elif attr_name == "is_nan":
+                    expr = obj_expr.is_nan()
+                    return expr.over(by) if by else expr
+                elif attr_name == "is_not_nan":
+                    expr = obj_expr.is_not_nan()
+                    return expr.over(by) if by else expr
+                elif attr_name == "cumsum":
                     expr = obj_expr.cum_sum()
                     return expr.over(by) if by else expr
                 elif attr_name == "cumprod":
@@ -15041,6 +15079,15 @@ def _ast_to_polars_expr(
             target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
             target_dt = _extract_dtype_from_ast(node.args[1])
             expr = target_expr.cast(target_dt)
+            return expr.over(by) if by else expr
+        if func_name in ("is_null", "isna") and len(args) == 1:
+            expr = args[0].is_null()
+            return expr.over(by) if by else expr
+        if func_name in ("is_not_null", "notna") and len(args) == 1:
+            expr = args[0].is_not_null()
+            return expr.over(by) if by else expr
+        if func_name in ("is_nan", "isnan") and len(args) == 1:
+            expr = args[0].is_nan()
             return expr.over(by) if by else expr
 
     raise ValueError(f"Unsupported AST node: {type(node)}")
@@ -23551,6 +23598,60 @@ def test_mutate_grouped_interleaved_callable_and_string():
     res = df.by("grp").mutate(a=lambda g: g["x"] * 2, b="a + 10")
     assert list(res["a"]) == [2, 4, 6]
     assert list(res["b"]) == [12, 14, 16]
+
+
+def test_mutate_consecutive_callables_consuming_each_other():
+    df = pt.DataFrame({"x": [1, 2, 3]})
+    # One callable consuming another callable's output
+    res = df.mutate(
+        a=lambda d: d["x"] + 1,
+        b=lambda d: d["a"] * 2,
+        c=lambda d: d["b"] + 100,
+    )
+    assert list(res["a"]) == [2, 3, 4]
+    assert list(res["b"]) == [4, 6, 8]
+    assert list(res["c"]) == [104, 106, 108]
+
+
+def test_mutate_grouped_consecutive_callables_consuming_each_other():
+    df = pt.DataFrame({"grp": ["A", "A", "B"], "x": [1, 2, 10]})
+    # Grouped callables consuming each other sequentially
+    res = df.by("grp").mutate(
+        a=lambda g: g["x"] + 1,
+        b=lambda g: g["a"] * 2,
+        c=lambda g: g["b"] + 100,
+    )
+    assert list(res["a"]) == [2, 3, 11]
+    assert list(res["b"]) == [4, 6, 22]
+    assert list(res["c"]) == [104, 106, 122]
+
+
+def test_mutate_str_methods_and_null_checks_case_when():
+    df = pt.DataFrame({
+        "deal_identifier": ["D1", "D2", "D3", "D4"],
+        "tranche_id": ["D1", "T2-COL-9", "T3", "T4"],
+        "collateral_class": [None, None, "AAA", None],
+    })
+    res = df.mutate(
+        tranche_type="""
+        case_when(
+            (deal_identifier == tranche_id, 'Main Tranche'),
+            (tranche_id.str.contains('-COL-') | collateral_class.is_not_null(), 'Collateral'),
+            'Guarantor'
+        )
+        """
+    )
+    assert list(res["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+
+    # Also test functional is_not_null and starts_with / ends_with
+    res2 = df.mutate(
+        is_col=lambda d: d["tranche_id"].str.contains("-COL-"),
+        has_col=df.mutate("has_col = is_not_null(collateral_class)")["has_col"],
+        prefix="tranche_id.str.startswith('T2')",
+        suffix="tranche_id.str.endswith('9')",
+    )
+    assert list(res2["prefix"]) == [False, True, False, False]
+    assert list(res2["suffix"]) == [False, True, False, False]
 
 ################################################################################
 # FILE: tests/test_pivot.py

@@ -832,6 +832,12 @@ def _ast_to_polars_expr(
             return left % right
         if isinstance(node.op, ast.Pow):
             return left**right
+        if isinstance(node.op, ast.BitOr):
+            return left | right
+        if isinstance(node.op, ast.BitAnd):
+            return left & right
+        if isinstance(node.op, ast.BitXor):
+            return left ^ right
         raise ValueError(f"Unsupported binary operator: {type(node.op)}")
     if isinstance(node, ast.UnaryOp):
         oprnd = _ast_to_polars_expr(node.operand, col_names, col_map, by, schema)
@@ -902,9 +908,41 @@ def _ast_to_polars_expr(
                     return obj_expr.str.strip_chars()
                 elif attr_name in ("len", "len_chars"):
                     return obj_expr.str.len_chars()
+                elif attr_name == "contains" and len(node.args) >= 1:
+                    literal = False
+                    for kw in node.keywords:
+                        if kw.arg == "literal" and isinstance(kw.value, ast.Constant):
+                            literal = bool(kw.value.value)
+                    if isinstance(node.args[0], ast.Constant):
+                        pat_val = str(node.args[0].value)
+                        return obj_expr.str.contains(pat_val, literal=literal)
+                    pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+                    return obj_expr.str.contains(pat_expr, literal=literal)
+                elif attr_name in ("startswith", "starts_with") and len(node.args) >= 1:
+                    if isinstance(node.args[0], ast.Constant):
+                        return obj_expr.str.starts_with(str(node.args[0].value))
+                    pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+                    return obj_expr.str.starts_with(pat_expr)
+                elif attr_name in ("endswith", "ends_with") and len(node.args) >= 1:
+                    if isinstance(node.args[0], ast.Constant):
+                        return obj_expr.str.ends_with(str(node.args[0].value))
+                    pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+                    return obj_expr.str.ends_with(pat_expr)
             elif isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute)):
                 obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema)
-                if attr_name == "cumsum":
+                if attr_name == "is_null":
+                    expr = obj_expr.is_null()
+                    return expr.over(by) if by else expr
+                elif attr_name == "is_not_null":
+                    expr = obj_expr.is_not_null()
+                    return expr.over(by) if by else expr
+                elif attr_name == "is_nan":
+                    expr = obj_expr.is_nan()
+                    return expr.over(by) if by else expr
+                elif attr_name == "is_not_nan":
+                    expr = obj_expr.is_not_nan()
+                    return expr.over(by) if by else expr
+                elif attr_name == "cumsum":
                     expr = obj_expr.cum_sum()
                     return expr.over(by) if by else expr
                 elif attr_name == "cumprod":
@@ -1168,6 +1206,15 @@ def _ast_to_polars_expr(
             target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
             target_dt = _extract_dtype_from_ast(node.args[1])
             expr = target_expr.cast(target_dt)
+            return expr.over(by) if by else expr
+        if func_name in ("is_null", "isna") and len(args) == 1:
+            expr = args[0].is_null()
+            return expr.over(by) if by else expr
+        if func_name in ("is_not_null", "notna") and len(args) == 1:
+            expr = args[0].is_not_null()
+            return expr.over(by) if by else expr
+        if func_name in ("is_nan", "isnan") and len(args) == 1:
+            expr = args[0].is_nan()
             return expr.over(by) if by else expr
 
     raise ValueError(f"Unsupported AST node: {type(node)}")

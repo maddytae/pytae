@@ -704,3 +704,32 @@ def test_mutate_grouped_consecutive_callables_consuming_each_other():
     assert list(res["c"]) == [104, 106, 122]
 
 
+def test_mutate_str_methods_and_null_checks_case_when():
+    df = pt.DataFrame({
+        "deal_identifier": ["D1", "D2", "D3", "D4"],
+        "tranche_id": ["D1", "T2-COL-9", "T3", "T4"],
+        "collateral_class": [None, None, "AAA", None],
+    })
+    res = df.mutate(
+        tranche_type="""
+        case_when(
+            (deal_identifier == tranche_id, 'Main Tranche'),
+            (tranche_id.str.contains('-COL-') | collateral_class.is_not_null(), 'Collateral'),
+            'Guarantor'
+        )
+        """
+    )
+    assert list(res["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+
+    # Also test functional is_not_null and starts_with / ends_with
+    res2 = df.mutate(
+        is_col=lambda d: d["tranche_id"].str.contains("-COL-"),
+        has_col=df.mutate("has_col = is_not_null(collateral_class)")["has_col"],
+        prefix="tranche_id.str.startswith('T2')",
+        suffix="tranche_id.str.endswith('9')",
+    )
+    assert list(res2["prefix"]) == [False, True, False, False]
+    assert list(res2["suffix"]) == [False, True, False, False]
+
+
+
