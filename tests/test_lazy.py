@@ -116,10 +116,17 @@ def test_lazy_verbs(sample_parquet: Path):
     assert d.is_lazy
     assert len(d.collect()) == 3
 
-    # dropna
+    # dropna (Option B zero data loss: bare defaults to how='all', targeted to how='any')
+    assert len(df.dropna().collect()) == 5
+    assert len(df.drop_nulls().collect()) == 5
+    assert len(df.drop_na().collect()) == 5
+
     dn = df.dropna("val1")
     assert dn.is_lazy
     assert len(dn.collect()) == 5
+    assert len(df.drop_nulls("val1").collect()) == 5
+    assert len(df.drop_na("val1").collect()) == 5
+    assert len(df.dropna(how="any").collect()) == 5
 
     # pick
     p = df.pick("val1", n=2, order="max")

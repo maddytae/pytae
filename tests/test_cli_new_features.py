@@ -20,12 +20,38 @@ def test_cli_glimpse(capsys):
     assert "$ body_mass_g" in captured.out
 
 
-def test_cli_dropna_all_columns(capsys):
-    # Dropping all NaNs reduces rows from 344 to 333
+def test_cli_dropna_bare_default_zero_data_loss(capsys):
+    # Option B: Bare -dropna defaults to how='all' (preserves all rows unless a row is 100% null)
     ret = main([PENGUINS_PATH, "-dropna", "-shape"])
     assert ret == 0
     captured = capsys.readouterr()
+    assert "(344, 7)" in captured.out
+
+
+def test_cli_dropna_how_any(capsys):
+    # Explicit how=any drops rows with any missing value (344 -> 333)
+    ret = main([PENGUINS_PATH, "-dropna", "how=any", "-shape"])
+    assert ret == 0
+    captured = capsys.readouterr()
     assert "(333, 7)" in captured.out
+
+
+def test_cli_drop_nulls_alias(capsys):
+    # -drop_nulls is an alias for -dropna
+    ret = main([PENGUINS_PATH, "-drop_nulls", "-shape"])
+    assert ret == 0
+    assert "(344, 7)" in capsys.readouterr().out
+
+    ret2 = main([PENGUINS_PATH, "-drop_nulls", "how=any", "-shape"])
+    assert ret2 == 0
+    assert "(333, 7)" in capsys.readouterr().out
+
+
+def test_cli_drop_na_alias(capsys):
+    # -drop_na is also an alias for -dropna
+    ret = main([PENGUINS_PATH, "-drop_na", "-shape"])
+    assert ret == 0
+    assert "(344, 7)" in capsys.readouterr().out
 
 
 def test_cli_dropna_specific_columns(capsys):
@@ -49,13 +75,6 @@ def test_cli_dropna_unknown_column(capsys):
         main([PENGUINS_PATH, "-dropna", "nonexistent_col"])
     captured = capsys.readouterr()
     assert "Column 'nonexistent_col' does not exist" in captured.err or "unknown column" in captured.err.lower()
-
-
-def test_cli_drop_na_deprecated(capsys):
-    with pytest.raises(SystemExit) as exc:
-        main([PENGUINS_PATH, "-drop_na"])
-    assert exc.value.code == 2
-    assert "'-drop_na' has been consolidated; use '-dropna' instead" in capsys.readouterr().err
 
 
 def test_cli_auto_pipe_detection(monkeypatch, capsys):

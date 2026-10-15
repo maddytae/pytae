@@ -131,6 +131,10 @@ _CLI_FLAGS = {
     "--handle_missing",
     "-dropna",
     "--dropna",
+    "-drop_nulls",
+    "--drop_nulls",
+    "-drop_na",
+    "--drop_na",
     "-glimpse",
     "--glimpse",
     "-clean_columns",
@@ -539,14 +543,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-dropna",
         "--dropna",
+        "-drop_nulls",
+        "--drop_nulls",
+        "-drop_na",
+        "--drop_na",
         dest="dropna",
         nargs="?",
         const="",
         default=None,
         metavar="COLS",
         action=_OrderedValue,
-        help="drop rows containing NaN (bare -dropna drops rows with any NaN; "
-        '-dropna "col1,col2" drops rows where specified columns are NaN)',
+        help="drop rows containing missing values (bare -dropna drops completely empty rows; "
+        '-dropna "col1,col2" drops rows where specified columns are missing; '
+        "-dropna how=any drops rows where any column is missing)",
     )
     parser.add_argument(
         "-clean_columns",
@@ -858,8 +867,6 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("'-dedupe' has been removed; use '-distinct' instead")
         if any(e in ("-sort_by", "--sort_by", "-sort", "--sort") for e in extras):
             parser.error("'-sort_by' has been deprecated; use '-arrange' instead")
-        if any(e in ("-drop_na", "--drop_na") for e in extras):
-            parser.error("'-drop_na' has been consolidated; use '-dropna' instead")
         if any(e in ("-agg_df", "--agg_df") for e in extras):
             parser.error("'-agg_df' has been removed; use '-agg' instead")
         if any(e in ("-to_clip", "--to_clip") for e in extras):

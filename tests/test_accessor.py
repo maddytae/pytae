@@ -54,3 +54,24 @@ def test_pt_accessor_to_clip(monkeypatch):
     df.pt.to_clip()
     assert len(clip_called) == 1
     assert clip_called[0][1].get("index") is False
+
+
+def test_pt_accessor_dropna_pandas_and_polars():
+    import polars as pl
+
+    pdf = pd.DataFrame({"a": [1.0, None, 3.0], "b": [10.0, 20.0, 30.0]})
+    pldf = pl.DataFrame({"a": [1.0, None, 3.0], "b": [10.0, 20.0, 30.0]})
+
+    # Option B: bare dropna on partially null rows keeps all rows
+    assert len(pdf.pt.dropna()) == 3
+    assert len(pldf.pt.dropna()) == 3
+
+    # Targeted dropna on column 'a' drops the null row
+    assert len(pdf.pt.dropna("a")) == 2
+    assert len(pldf.pt.dropna("a")) == 2
+
+    # Aliases drop_nulls and drop_na
+    assert len(pdf.pt.drop_nulls("a")) == 2
+    assert len(pldf.pt.drop_nulls("a")) == 2
+    assert len(pdf.pt.drop_na("a")) == 2
+    assert len(pldf.pt.drop_na("a")) == 2

@@ -34,8 +34,14 @@ class PolarsPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(self, *cols: Any) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols)
+    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+
+    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+
+    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
 
     def pick(
         self,
@@ -154,8 +160,14 @@ class PandasPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(self, *cols: Any) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols)
+    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+
+    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+
+    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
 
     def pick(
         self,

@@ -971,8 +971,8 @@ def _process_path(
             except Exception as exc:
                 return _fail(parser, batch, str(exc))
             emit_frame(idx)
-        elif op == "dropna":
-            dropna_val = _next_op_val("dropna", getattr(args, "dropna", None))
+        elif op in ("dropna", "drop_nulls", "drop_na"):
+            dropna_val = _next_op_val(op, getattr(args, "dropna", None))
             err = pipeline.apply_dropna(dropna_val)
             if err:
                 return _fail(parser, batch, err)

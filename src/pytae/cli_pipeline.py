@@ -201,27 +201,29 @@ class _Pipeline:
             return f"-mutate: {exc}"
 
     def apply_dropna(self, spec: str | None) -> str | None:
-        """Drop rows containing NaN values. Returns an error message or None."""
-        if not spec:
-            try:
-                from pytae.polars_engine import dropna_polars
+        """Drop rows containing missing values (null/NaN). Returns an error message or None."""
+        from pytae.cli_parsing import parse_dropna_spec, unknown_columns_message
 
-                self._pldf = dropna_polars(self.polars_lazy_frame())
-                self._df = None
-                return None
-            except Exception as exc:
-                return f"-dropna: {exc}"
-        from pytae.cli_parsing import parse_columns, unknown_columns_message
-
-        cols = parse_columns(spec)
         available = self._available_columns()
-        unknown = [c for c in cols if c not in available]
-        if unknown:
-            return unknown_columns_message("-dropna", unknown, available)
+        try:
+            cols, how, drop_nans = parse_dropna_spec(spec, flag_name="-dropna", available_cols=available)
+        except SystemExit as exc:
+            return str(exc)
+
+        if cols:
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-dropna", unknown, available)
+
         try:
             from pytae.polars_engine import dropna_polars
 
-            self._pldf = dropna_polars(self.polars_lazy_frame(), cols=cols)
+            self._pldf = dropna_polars(
+                self.polars_lazy_frame(),
+                cols=cols if cols else None,
+                how=how,
+                drop_nans=drop_nans,
+            )
             self._df = None
             return None
         except Exception as exc:

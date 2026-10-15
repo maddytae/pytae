@@ -203,9 +203,48 @@ def distinct_polars(df: Any, cols: list[str] | None = None, keep: str | bool = "
     return df.unique(subset=cols if cols else None, keep=pl_keep, maintain_order=True)
 
 
-def dropna_polars(df: Any, cols: list[str] | None = None) -> Any:
-    """Drop rows containing null values in specified or all columns."""
-    return df.drop_nulls(subset=cols)
+def dropna_polars(
+    df: Any,
+    cols: list[str] | Sequence[str] | None = None,
+    *,
+    how: str | None = None,
+    drop_nans: bool = True,
+) -> Any:
+    """Drop rows containing missing values (Arrow null and/or float NaN).
+
+    Option B Zero Data Loss Philosophy:
+    - If `cols` is None/empty: defaults to how='all' (only drop completely empty rows).
+    - If `cols` is specified: defaults to how='any' (drop rows missing any of the specified columns).
+    - `how` can be explicitly 'any' or 'all' to override.
+    - `drop_nans=True` (default) drops float NaNs in addition to Arrow nulls.
+    """
+    import polars as pl
+
+    schema = _df_schema(df)
+    target_cols = [c for c in cols if c in schema] if cols else list(schema.names())
+    if not target_cols:
+        return df
+
+    effective_how = how.lower() if how else ("all" if cols is None else "any")
+    if effective_how not in ("any", "all"):
+        raise ValueError(f"dropna: invalid 'how' argument '{how}'. Must be 'any' or 'all'")
+
+    is_null_exprs = []
+    for c in target_cols:
+        dt = schema[c]
+        if drop_nans and dt.is_float():
+            is_null_exprs.append(pl.col(c).is_null() | pl.col(c).is_nan())
+        else:
+            is_null_exprs.append(pl.col(c).is_null())
+
+    if len(is_null_exprs) == 1:
+        cond = ~is_null_exprs[0]
+    elif effective_how == "all":
+        cond = ~pl.all_horizontal(is_null_exprs)
+    else:
+        cond = ~pl.any_horizontal(is_null_exprs)
+
+    return df.filter(cond)
 
 
 def rename_polars(df: Any, mapping: dict[str, str]) -> Any:
@@ -255,9 +294,11 @@ def pivot_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
+    if "drop_nulls" in kwargs:
+        dropna = kwargs.pop("drop_nulls")
     if kwargs:
         raise TypeError(
-            f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, f_v are accepted"
+            f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, drop_nulls, f_v are accepted"
         )
 
     if isinstance(df, pl.LazyFrame):
@@ -1337,6 +1378,8 @@ def agg_polars(
     if a is not None and specs:
         raise TypeError("agg(): multiple values for aggregation spec: both positional args and 'a' were provided")
 
+    if "drop_nulls" in kwargs:
+        dropna = kwargs.pop("drop_nulls")
     by_cols: list[str] = list(by) if by else []
     work_df = df
     if by_cols and dropna:
@@ -1379,6 +1422,14 @@ def agg_polars(
 
     if "__dropna__" in active_kwargs:
         dropna = active_kwargs.pop("__dropna__")
+        if by_cols and dropna:
+            work_df = work_df.drop_nulls(subset=by_cols)
+    if "drop_nulls" in active_kwargs:
+        dropna = active_kwargs.pop("drop_nulls")
+        if by_cols and dropna:
+            work_df = work_df.drop_nulls(subset=by_cols)
+    if "dropna" in active_kwargs:
+        dropna = active_kwargs.pop("dropna")
         if by_cols and dropna:
             work_df = work_df.drop_nulls(subset=by_cols)
 

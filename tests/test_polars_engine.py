@@ -128,6 +128,39 @@ def test_dropna_and_rename_polars():
     assert res_ren.columns == ["col_a", "col_b"]
 
 
+def test_dropna_polars_option_b_semantics():
+    df = pl.DataFrame(
+        {
+            "a": [1.0, None, float("nan"), None],
+            "b": ["x", "y", "z", None],
+        }
+    )
+
+    # 1. Bare call defaults to how='all': drops ONLY row 3 (where both a and b are null)
+    res_bare = dropna_polars(df)
+    assert res_bare.shape == (3, 2)
+    assert res_bare["b"].to_list() == ["x", "y", "z"]
+
+    # 2. Targeted call cols=['a'] defaults to how='any': drops None and NaN in 'a' (drops rows 1, 2, 3)
+    res_a = dropna_polars(df, cols=["a"])
+    assert res_a.shape == (1, 2)
+    assert res_a["b"].to_list() == ["x"]
+
+    # 3. Explicit how='any' without cols drops any row with null or NaN
+    res_any = dropna_polars(df, how="any")
+    assert res_any.shape == (1, 2)
+    assert res_any["b"].to_list() == ["x"]
+
+    # 4. drop_nans=False preserves float('nan') while dropping None
+    res_no_drop_nans = dropna_polars(df, cols=["a"], drop_nans=False)
+    assert res_no_drop_nans.shape == (2, 2)
+    assert res_no_drop_nans["b"].to_list() == ["x", "z"]
+
+    # 5. LazyFrame support
+    res_lazy = dropna_polars(df.lazy(), cols=["a"]).collect()
+    assert res_lazy.shape == (1, 2)
+
+
 def test_pivot_polars():
     df = pl.DataFrame(
         {

@@ -471,10 +471,25 @@ class DataFrame:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
 
-    def dropna(self, *cols: Any) -> DataFrame:
-        """Drop rows containing null values across all or specified columns."""
+    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        """Drop rows containing missing values (Arrow null and/or float NaN).
+
+        Option B Zero Data Loss Philosophy:
+        - Without arguments: drops completely empty rows (all columns null/NaN, how='all').
+        - With column names: drops rows where any of the specified columns are null/NaN (how='any').
+        - Pass how='any' or how='all' to explicitly override.
+        - drop_nans=True (default) drops float NaNs in addition to Arrow nulls.
+        """
         resolved = list(cols) if cols else None
-        return DataFrame(dropna_polars(self._df, cols=resolved))
+        return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
+
+    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        """Alias for dropna()."""
+        return self.dropna(*cols, how=how, drop_nans=drop_nans)
+
+    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        """Alias for dropna()."""
+        return self.dropna(*cols, how=how, drop_nans=drop_nans)
 
     def pick(
         self,
@@ -977,10 +992,18 @@ class GroupedDataFrame:
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
 
-    def dropna(self, *cols: Any) -> DataFrame:
-        """Drop rows containing null values across all or specified columns."""
+    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        """Drop rows containing missing values (Arrow null and/or float NaN)."""
         resolved = list(cols) if cols else None
-        return DataFrame(dropna_polars(self._df, cols=resolved))
+        return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
+
+    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        """Alias for dropna()."""
+        return self.dropna(*cols, how=how, drop_nans=drop_nans)
+
+    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+        """Alias for dropna()."""
+        return self.dropna(*cols, how=how, drop_nans=drop_nans)
 
     def pick(
         self,

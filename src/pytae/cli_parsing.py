@@ -8,7 +8,7 @@ import difflib
 import glob
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
@@ -61,6 +61,49 @@ def parse_distinct_spec(raw: str | None) -> tuple[list[str], str | bool]:
             cols.append(_unquote_name(token))
 
     return cols, keep
+
+
+def parse_dropna_spec(
+    raw: str | None,
+    flag_name: str = "-dropna",
+    available_cols: Sequence[str] | None = None,
+) -> tuple[list[str], str | None, bool]:
+    """Parse -dropna / -drop_nulls / -drop_na SPEC into (cols, how, drop_nans).
+
+    Option B Zero Data Loss Philosophy:
+      - Bare flag / "": cols=[], how=None (Option B defaults to 'all'), drop_nans=True
+      - "col1,col2": cols=['col1', 'col2'], how=None (Option B defaults to 'any'), drop_nans=True
+      - "how=any" or "how=all": cols=[], how='any'/'all', drop_nans=True
+      - "col1,col2,how=all": cols=['col1', 'col2'], how='all', drop_nans=True
+      - "drop_nans=false": drop_nans=False
+    """
+    if not raw or not raw.strip():
+        return [], None, True
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
+    cols: list[str] = []
+    how: str | None = None
+    drop_nans: bool = True
+
+    for token in tokens:
+        if re.match(r"^how\s*[:=]\s*", token, re.IGNORECASE):
+            val = re.sub(r"^how\s*[:=]\s*", "", token, flags=re.IGNORECASE).strip().strip("'\"").lower()
+            if val in ("any", "all"):
+                how = val
+            else:
+                raise SystemExit(f"{flag_name}: invalid how value '{val}'. Expected 'any' or 'all'")
+        elif re.match(r"^(drop_nans|nans)\s*[:=]\s*", token, re.IGNORECASE):
+            val = re.sub(r"^(drop_nans|nans)\s*[:=]\s*", "", token, flags=re.IGNORECASE).strip().strip("'\"").lower()
+            drop_nans = val not in ("false", "0", "no")
+        elif token.lower() in ("any", "all"):
+            if available_cols and token in available_cols:
+                cols.append(_unquote_name(token))
+            else:
+                how = token.lower()
+        else:
+            cols.append(_unquote_name(token))
+
+    return cols, how, drop_nans
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:

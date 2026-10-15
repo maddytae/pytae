@@ -144,36 +144,37 @@ pytae dataset.parquet -handle_missing "UNKNOWN"
 
 ---
 
-## Dropping Missing Values (`-dropna`)
+## Dropping Missing Values (`-dropna`, `-drop_nulls`)
 
-Drop rows containing missing values (`NaN`). Can be run bare to drop rows with `NaN` across any column, or scoped to specific target columns:
+Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values (Arrow `null`s and IEEE-754 float `NaN`s).
 
-```bash
-# Drop rows with NaN in any column
-pytae penguins.parquet -dropna -head 3
-```
-
-**Output:**
-
-| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
-|:---|:---|---:|---:|---:|---:|:---|
-| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
-| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
-| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+- **Bare `-dropna` / `-drop_nulls`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
+- **Targeted `-dropna "col1, col2"`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
+- **Explicit `how=any`**: Drops rows containing *any* missing value across all columns.
+- **Aliases**: `-drop_nulls` and `-drop_na` are 100% interchangeable aliases for `-dropna`.
 
 ```bash
-# Drop rows with NaN in specific column(s)
-pytae penguins.parquet -dropna "body_mass_g,sex" -shape
-```
+# Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
+pytae penguins.parquet -dropna -shape
+# (344, 7)
 
-**Output:**
-```text
-(333, 7)
+# Drop rows missing specific required columns (344 -> 342 rows)
+pytae penguins.parquet -dropna body_mass_g -shape
+# (342, 7)
+
+# Explicit how=any drops rows with any missing value (344 -> 333 rows)
+pytae penguins.parquet -dropna how=any -shape
+# (333, 7)
+
+# Polars alias works identically
+pytae penguins.parquet -drop_nulls "body_mass_g, sex" -shape
+# (333, 7)
 ```
 
 > [!NOTE]
-> - **Top-level `-dropna [COLS]`**: Operates as a row filter, dropping rows containing `NaN` in any column (or specified subset of columns), matching Pandas `df.dropna(subset=...)`.
-> - **Scoped `dropna=bool`**: For operations like `-pivot` and `-agg`, pass `dropna=true` or `dropna=false` inside the spec (e.g. `-pivot "r=species,c=island,dropna=true"` or `-agg "a=mean,dropna=true"`) to control whether `NaN` grouping keys are dropped.
+> - **Top-level `-dropna [COLS]`**: Operates as a row filter. Bare calls use `how="all"` (Zero Data Loss), while targeted calls use `how="any"` on the specified columns. Both Arrow `null` and float `NaN` are cleaned by default.
+> - **Scoped `dropna=bool` / `drop_nulls=bool`**: In `-pivot` and `-agg`, default is `dropna=false` (retains missing group keys without silent data loss). Pass `dropna=true` inside the spec (e.g. `-agg "a=mean, dropna=true"`) to exclude NA groups.
+> - For full architectural rationale, comparisons to Pandas and dplyr, and deep dive examples, see [pytae.md](file:///Users/maddy/Documents/my_repos/pytae/docs/pytae.md).
 
 ---
 

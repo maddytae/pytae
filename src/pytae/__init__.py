@@ -96,8 +96,16 @@ def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
-def dropna(df: Any, *cols: Any) -> DataFrame:
-    return DataFrame(df).dropna(*cols)
+def dropna(df: Any, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    return DataFrame(df).dropna(*cols, how=how, drop_nans=drop_nans)
+
+
+def drop_nulls(df: Any, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    return DataFrame(df).dropna(*cols, how=how, drop_nans=drop_nans)
+
+
+def drop_na(df: Any, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    return DataFrame(df).dropna(*cols, how=how, drop_nans=drop_nans)
 
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
@@ -212,7 +220,10 @@ class _PytaeModule(ModuleType):
     pick = _VerbDescriptor(pick)
     distinct = _VerbDescriptor(distinct)
     dropna = _VerbDescriptor(dropna)
+    drop_nulls = _VerbDescriptor(drop_nulls)
+    drop_na = _VerbDescriptor(drop_na)
     by = _VerbDescriptor(by)
+
     ungroup = _VerbDescriptor(ungroup)
     agg = _VerbDescriptor(agg)
     pivot = _VerbDescriptor(pivot)
@@ -268,6 +279,8 @@ __all__ = [
     "pick",
     "distinct",
     "dropna",
+    "drop_nulls",
+    "drop_na",
     "agg",
     "long",
     "wide",

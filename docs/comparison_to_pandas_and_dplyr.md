@@ -81,11 +81,17 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 ### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
 - Pytae uses strictly complementary, intuitive English opposites: `long` turns wide tables into tall records; `wide` spreads long records back into headers. Both use identical `c=` (column dimension), `v=` (value column), and `r=` (row identifiers) vocabularies.
 
-### 7. Default Boolean for `dropna`: Non-Destructive `dropna=False`
-- **Pandas Trap (`dropna=True`)**: In Pandas, `df.groupby(..., dropna=True)` drops rows where the grouping keys contain `NaN` or `None` by default! This causes silent data loss in analytical pipelines, hiding unclassified, orphan, or missing data records unless the user explicitly remembers to pass `dropna=False`.
-- **Pytae Design (`dropna=False`)**: Pytae aggregation, window mutation, and pivot verbs (`agg`, `mutate`, `pivot`) default to **`dropna=False`**. Missing values (`NaN`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns. Nothing is hidden or discarded silently. If the analyst explicitly wants to discard missing group keys, they specify `dropna=True`.
+### 7. Zero Data Loss by Default: Non-Destructive `dropna` and Option B Semantics
+- **Pandas Trap (`dropna=True` and `how='any'`)**: In Pandas, `df.dropna()` without arguments defaults to `how='any'`, silently wiping out rows that have even one optional column missing. In `df.groupby(..., dropna=True)`, Pandas drops rows where grouping keys contain `NaN` or `None` by default! This causes silent data loss in analytical pipelines, hiding unclassified, orphan, or missing data records unless the user explicitly remembers to pass `dropna=False`.
+- **Pytae Design (Option B & Zero Data Loss)**:
+  - **Bare `dropna()`**: Defaults to `how='all'`. Only completely blank rows (100% null/NaN across all columns) are dropped.
+  - **Targeted `dropna("col1", "col2")`**: Defaults to `how='any'` over the specified subset, guaranteeing that only rows missing *required* keys are dropped.
+  - **Analytical Verbs (`agg`, `mutate`, `pivot`, `freq`)**: Default to **`dropna=False` / `drop_nulls=False`**. Missing values (`NaN`/`null`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns.
+  - **Dual Missing Value Cleaning**: Drops both Arrow `null` and IEEE-754 float `NaN` by default (`drop_nans=True`), preventing float NaN arithmetic poisoning.
+  - **Full Aliasing**: `dropna`, `drop_nulls`, and `drop_na` are 100% interchangeable aliases across functions, methods, accessors, keyword arguments, and CLI flags (`-dropna`, `-drop_nulls`, `-drop_na`).
+  - *For deep architectural details and side-by-side examples, see [pytae.md](file:///Users/maddy/Documents/my_repos/pytae/docs/pytae.md).*
 - **dplyr Alignment**: This non-destructive default matches R's `dplyr` (which treats `NA` group levels as valid grouping keys by default rather than discarding them).
-- **CLI Consistency**: Top-level `-dropna [COLS]` performs row-level dropping across the dataset (matching `df.dropna(subset=...)`), whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
+- **CLI Consistency**: Top-level `-dropna [COLS]` / `-drop_nulls [COLS]` performs row-level dropping across the dataset, whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
 
 ---
 
