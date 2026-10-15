@@ -396,3 +396,4 @@ pytae <path> -dropna [SPEC]
 - `-dropna how=any` $\rightarrow$ Drops rows with any missing value across all columns.
 - `-dropna "col1, how=all"` $\rightarrow$ Drops row only if all listed columns are missing.
 - `-dropna "col1, drop_nans=false"` $\rightarrow$ Preserves float NaNs.
+

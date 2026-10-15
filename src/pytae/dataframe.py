@@ -758,7 +758,7 @@ class DataFrame:
         """Print an R tibble / tidyverse-style schema and preview of the DataFrame."""
         from pytae.other_utilities import format_glimpse
 
-        print(format_glimpse(self.to_pandas(), width=width))
+        print(format_glimpse(self, width=width))
         return self
 
     def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:

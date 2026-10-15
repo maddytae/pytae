@@ -805,7 +805,7 @@ def _process_path(
         elif op == "glimpse":
             from pytae.other_utilities import format_glimpse
 
-            glimpse_str = format_glimpse(pipeline.dataframe())
+            glimpse_str = format_glimpse(pipeline.current_frame())
             if should_print(idx):
                 _output_text(glimpse_str, args)
             if is_clip:

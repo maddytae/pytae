@@ -163,20 +163,72 @@ def replace_values(
     return DataFrame(df).replace_values(v=v, c=c, exact=exact)
 
 
-def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
+def format_glimpse(df: Any, width: int | None = None) -> str:
     """Format DataFrame as a transposed glimpse summary (like dplyr::glimpse / Polars).
 
     Parameters:
     -----------
-    df : pd.DataFrame
-        DataFrame to glimpse.
+    df : Any
+        DataFrame, Polars DataFrame, or Polars LazyFrame to glimpse.
     width : int, optional
         Maximum line width (defaults to terminal width or 80).
     """
-    if width is None:
-        import shutil
+    import shutil
 
+    if width is None:
         width = shutil.get_terminal_size(fallback=(80, 24)).columns
+
+    try:
+        import polars as pl
+
+        from pytae.dataframe import DataFrame
+
+        underlying = df._df if isinstance(df, DataFrame) else df
+        if isinstance(underlying, (pl.DataFrame, pl.LazyFrame)):
+            if isinstance(underlying, pl.LazyFrame):
+                try:
+                    n_rows = underlying.select(pl.len()).collect().item()
+                except Exception:
+                    n_rows = len(underlying.collect())
+                schema = underlying.collect_schema()
+                preview = underlying.limit(25).collect()
+            else:
+                n_rows = underlying.height
+                schema = underlying.schema
+                preview = underlying.head(25)
+
+            col_names = [str(c) for c in schema.names()]
+            lines = [
+                f"Rows: {n_rows:,}",
+                f"Columns: {len(col_names):,}",
+            ]
+            if not col_names:
+                return "\n".join(lines)
+
+            max_col_len = min(max((len(c) for c in col_names), default=0), 30)
+            dtypes = [f"<{schema[c]}>" for c in col_names]
+            max_dtype_len = min(max((len(d) for d in dtypes), default=0), 20)
+
+            for col, dtype_str in zip(col_names, dtypes):
+                prefix = f"$ {col.ljust(max_col_len)} {dtype_str.ljust(max_dtype_len)} "
+                sample_vals: list[str] = []
+                for val in preview[col].to_list():
+                    if val is None:
+                        sample_vals.append("NA")
+                    elif isinstance(val, str):
+                        sample_vals.append(repr(val))
+                    else:
+                        sample_vals.append(str(val))
+
+                remaining_width = max(width - len(prefix), 10)
+                vals_str = ", ".join(sample_vals)
+                if len(vals_str) > remaining_width:
+                    vals_str = vals_str[: remaining_width - 3].rstrip(", ") + "..."
+                lines.append(prefix + vals_str)
+
+            return "\n".join(lines)
+    except Exception:
+        pass
 
     lines = [
         f"Rows: {len(df):,}",
@@ -194,7 +246,7 @@ def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
     for col, dtype_str in zip(df.columns, dtypes):
         col_str = str(col)
         prefix = f"$ {col_str.ljust(max_col_len)} {dtype_str.ljust(max_dtype_len)} "
-        sample_vals: list[str] = []
+        sample_vals = []
         for val in df[col].head(25):
             if pd.isna(val):
                 sample_vals.append("NA")
@@ -212,7 +264,7 @@ def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def glimpse(df: pd.DataFrame, width: int | None = None) -> pd.DataFrame:
+def glimpse(df: Any, width: int | None = None) -> Any:
     """Print a transposed overview of DataFrame columns, dtypes, and sample values.
 
     Returns the original DataFrame for method chaining.

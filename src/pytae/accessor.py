@@ -113,7 +113,7 @@ class PolarsPtAccessor:
     def glimpse(self, width: int | None = None) -> pl.DataFrame:
         from pytae.other_utilities import format_glimpse
 
-        print(format_glimpse(self._obj.to_pandas(), width=width))
+        print(format_glimpse(self._obj, width=width))
         return self._obj
 
     def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
