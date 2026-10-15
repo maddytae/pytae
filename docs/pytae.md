@@ -11,6 +11,7 @@ This document outlines Pytae's foundational architecture, explaining how files a
   - [Eager Ingestion (`pt.read`) vs. Lazy Evaluation (`pt.scan`)](#eager-ingestion-ptread-vs-lazy-evaluation-ptscan)
   - [Hardware Query Optimizations: Pushdowns at Work](#hardware-query-optimizations-pushdowns-at-work)
   - [Universal Container Constructor (`pt.DataFrame`)](#universal-container-constructor-ptdataframe)
+  - [Dual-Mode Execution: Best of Both Lazy & Eager Without Manual `.collect()`](#dual-mode-execution-best-of-both-lazy--eager-without-manual-collect)
   - [CLI File Ingestion & Internal Lazy Graph Execution](#cli-file-ingestion--internal-lazy-graph-execution)
   - [Zero-Cost Metadata Inspection (No Full Table Read)](#zero-cost-metadata-inspection-no-full-table-read)
   - [Streaming Input: Piped Stdin, Clipboard, and Multi-File Pipelines](#streaming-input-piped-stdin-clipboard-and-multi-file-pipelines)
@@ -197,6 +198,88 @@ penguins = pt.sample("penguins")
 tips = pt.sample("tips")
 flights = pt.sample("flights")
 ```
+
+---
+
+### Dual-Mode Execution: Best of Both Lazy & Eager Without Manual `.collect()`
+
+One of the major pain points in modern data frameworks (such as native Polars) is the strict binary separation between eager `pl.DataFrame` and lazy `pl.LazyFrame`. In native Polars, they are distinct classes with diverging APIs; users must constantly remember when to call `.lazy()` to obtain query optimizations, and when to call `.collect()` to inspect results or pass data to downstream libraries.
+
+Pytae eliminates this cognitive overhead through its **Dual-Mode Container Architecture**:
+
+```
+                       ┌────────────────────────────┐
+                       │      pytae.DataFrame       │
+                       │   (Universal Dual-Mode)    │
+                       └─────────────┬──────────────┘
+                                     │
+                 ┌───────────────────┴───────────────────┐
+                 ▼                                       ▼
+        Eager Under the Hood                    Lazy Under the Hood
+         (pl.DataFrame)                          (pl.LazyFrame)
+                 │                                       │
+  All Verbs (.select, .filter,            All Verbs (.select, .filter,
+  .mutate, .arrange, .dropna,             .mutate, .arrange, .dropna,
+  .by, .agg) run in-memory                .by, .agg) chain lazy graph
+                 │                                       │
+                 ▼                                       ▼
+       Immediate Results                   "Just-In-Time" Materialization
+                                           • df.to_pandas()  • df.plot()
+                                           • df.to_clip()    • df.values
+                                           • df.to_parquet() (sink streaming!)
+```
+
+#### 1. Unified Fluent Grammar Across Both Modes
+In Pytae, you write the exact same code whether your dataset is in-memory or lazy:
+```python
+import pytae as pt
+
+# Mode A: Eager (in-memory)
+df_eager = pt.read("sales.parquet")
+
+# Mode B: Lazy (symbolic query graph)
+df_lazy = pt.scan("sales.parquet")
+
+# The exact same analytical pipeline runs on BOTH!
+result = (
+    df_lazy  # or df_eager
+    .pt.filter("revenue > 1000")
+    .pt.select("region", "revenue", "order_date")
+    .pt.by("region")
+    .pt.agg(total="sum(revenue)", count="n")
+    .pt.arrange("total", ascending=False)
+)
+```
+When chained on a lazy dataset, every verb invisibly returns another `pytae.DataFrame` with `is_lazy == True`. Polars continuously accumulates the logical query plan, preserving projection, predicate, and slice pushdowns without requiring intermediate `.collect()` calls.
+
+#### 2. Zero-Cost Schema & Metadata Inspection
+On a lazy dataset, standard property accesses do not trigger slow full-table scans:
+- **`df.columns`**: Calls `self._df.collect_schema().names()`. Resolves column names directly from schema metadata with **0 rows read**.
+- **`df.dtypes` / `df.schema`**: Calls `self._df.collect_schema()`. Returns Arrow type definitions without parsing table data.
+- **`df.shape` & `len(df)`**: Evaluates `self._df.select(pl.len()).collect().item()`. Polars computes the exact row count in $\sim 0.01\text{ s}$ (often directly from Parquet metadata footers) without allocating column memory in RAM.
+
+#### 3. "Just-In-Time" Automatic Collection
+You only need materialized in-memory data when interfacing with Python objects, visualization packages, or the system clipboard. Pytae handles materialization **just-in-time** behind the scenes:
+
+| Action / Method | What Happens Under the Hood |
+|:---|:---|
+| `df.to_pandas()` | Automatically collects the lazy plan and returns a Pandas DataFrame with original indices preserved. |
+| `df.plot(...)` | Automatically collects the final analytical result and passes it to the Matplotlib Plotter. |
+| `df.to_clip()` | Automatically collects the TSV stream and writes to the OS clipboard (`pbcopy`, `clip`, `xclip`). |
+| `df.values` / `df.to_numpy()` | Materializes the minimum required columns to a NumPy ndarray. |
+| `df.head(5)` | Slices the lazy plan with `.head(5)` and pushes the early termination limit down to the reader. |
+| `repr(df)` | Formats the plan or preview without loading the full dataset into RAM. |
+
+#### 4. Streaming Sinks: Out-of-Core Processing Without RAM Overhead
+When exporting transformed datasets, you usually don't need the table held in Python RAM at all. 
+
+When you call:
+```python
+query.to_parquet("summary.parquet")
+# or
+query.to_csv("summary.csv")
+```
+Pytae attempts **`self._df.sink_parquet()`** / **`sink_csv()`**. Polars streams data batches directly from the source disk through the filter/aggregation pipeline straight into the output file. You can transform a **100 GB dataset on an 8 GB laptop** without ever materializing the whole table in memory!
 
 ---
 
