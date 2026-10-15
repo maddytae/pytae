@@ -72,7 +72,7 @@ TABLE OF CONTENTS
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
 9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
 10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
-    10.1 CORE PHILOSOPHY & MISSING DATA ARCHITECTURE (docs/pytae.md)
+    10.1 CORE ARCHITECTURE, FILE INGESTION & DATA PHILOSOPHY (docs/pytae.md)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -1319,11 +1319,11 @@ def generate_reference() -> None:
     parts.append("################################################################################")
     parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n")
 
-    # Section 10.1: Missing Data Architecture & Core Philosophy (docs/pytae.md)
+    # Section 10.1: Core Architecture, File Ingestion & Data Philosophy (docs/pytae.md)
     pytae_md = REPO_ROOT / "docs" / "pytae.md"
     if pytae_md.exists():
         parts.append("================================================================================")
-        parts.append("10.1 CORE PHILOSOPHY & MISSING DATA ARCHITECTURE (docs/pytae.md)")
+        parts.append("10.1 CORE ARCHITECTURE, FILE INGESTION & DATA PHILOSOPHY (docs/pytae.md)")
         parts.append("================================================================================\n")
         parts.append("################################################################################")
         parts.append(f"# FILE: {pytae_md.relative_to(REPO_ROOT)}")

@@ -1,12 +1,21 @@
-# Pytae — Missing Data Architecture & Core Philosophy
+# Pytae — Architecture, File Ingestion & Missing Data Philosophy
 
-This document outlines Pytae's foundational philosophy regarding missing data, detailing the design, implementation, and behavior of `dropna` / `drop_nulls` across both the **Python Library API** and the **Command-Line Interface (CLI)**.
+This document outlines Pytae's foundational architecture, explaining how files are ingested and queried across both the **Python Library API** and the **Command-Line Interface (CLI)**, and detailing the "Zero Data Loss by Default" philosophy governing missing data handling (`dropna` / `drop_nulls`).
 
 ---
 
 ## Table of Contents
 
 - [Core Philosophy: "Zero Data Loss by Default"](#core-philosophy-zero-data-loss-by-default)
+- [How Files Are Read in Pytae](#how-files-are-read-in-pytae)
+  - [Eager Ingestion (`pt.read`) vs. Lazy Evaluation (`pt.scan`)](#eager-ingestion-ptread-vs-lazy-evaluation-ptscan)
+  - [Hardware Query Optimizations: Pushdowns at Work](#hardware-query-optimizations-pushdowns-at-work)
+  - [Universal Container Constructor (`pt.DataFrame`)](#universal-container-constructor-ptdataframe)
+  - [CLI File Ingestion & Internal Lazy Graph Execution](#cli-file-ingestion--internal-lazy-graph-execution)
+  - [Zero-Cost Metadata Inspection (No Full Table Read)](#zero-cost-metadata-inspection-no-full-table-read)
+  - [Streaming Input: Piped Stdin, Clipboard, and Multi-File Pipelines](#streaming-input-piped-stdin-clipboard-and-multi-file-pipelines)
+  - [Supported File Formats Matrix](#supported-file-formats-matrix)
+  - [Side-by-Side Reading & Inspection Cheat Sheet](#side-by-side-reading--inspection-cheat-sheet)
 - [How Pytae Compares to Pandas, Polars, and R/dplyr](#how-pytae-compares-to-pandas-polars-and-rdplyr)
   - [The Pandas Trap: Over-Aggressive Row Dropping](#the-pandas-trap-over-aggressive-row-dropping)
   - [The Polars Pitfall: Arrow Null vs. IEEE-754 Float NaN](#the-polars-pitfall-arrow-null-vs-ieee-754-float-nan)
@@ -42,6 +51,270 @@ Pytae adheres strictly to the principle of **Zero Data Loss by Default**:
 1. **Conservative Row Elimination**: General cleanup operations only purge completely useless rows (i.e., rows where every single column is null/NaN).
 2. **Intentional Filtering**: Rows are only filtered on specific columns when the user explicitly requests those columns or explicitly asks for `how="any"`.
 3. **Preservation of NA Groups**: Analytical operations (`agg`, `pivot`, `freq`, `mutate`) retain missing/NA group categories rather than silently omitting them, ensuring you always know how much of your data lacks categorization.
+
+---
+
+## How Files Are Read in Pytae
+
+File ingestion in Pytae is built on a high-throughput, multithreaded SIMD Polars core with seamless Apache Arrow memory layouts. 
+
+Traditional tools (such as standard Pandas `pd.read_csv` or `pd.read_parquet`) read datasets **eagerly**, loading every single row and column into memory before downstream filtering or column selection can begin. On larger-than-RAM or multi-gigabyte datasets, this produces excessive I/O wait times and frequent Out-Of-Memory (OOM) crashes.
+
+Pytae solves this problem across both Python and the Command-Line Interface through two complementary ingestion modes:
+1. **Eager Ingestion (`pt.read`)**: Fast, immediate in-memory loading when you need interactive row access right away.
+2. **Lazy Evaluation (`pt.scan` & CLI Pipeline)**: Constructs a symbolic execution plan, deferring all physical disk I/O until the final result is requested.
+
+```
+                    ┌────────────────────────┐
+                    │      Source File       │
+                    │ (.parquet, .csv, etc.) │
+                    └───────────┬────────────┘
+                                │
+             ┌──────────────────┴──────────────────┐
+             ▼                                     ▼
+     Eager Ingestion                        Lazy Evaluation
+      pt.read(path)                         pt.scan(path) / CLI
+             │                                     │
+             ▼                                     ▼
+   Materializes to RAM                     Builds Query Graph
+   • Polars SIMD Reader                    • Projection Pushdown
+   • Immediate row access                  • Predicate Pushdown
+   • In-memory DataFrame                   • Slice Pushdown
+                                                   │
+                                                   ▼
+                                         Single .collect()
+                                         Only reads what's needed!
+```
+
+---
+
+### Eager Ingestion (`pt.read`) vs. Lazy Evaluation (`pt.scan`)
+
+#### 1. `pt.read(path, **kwargs) -> DataFrame` (Eager)
+`pt.read()` reads data immediately off disk into a `pytae.DataFrame` backed by a native Polars `DataFrame`. It automatically identifies the underlying format from the file extension and dispatches to the optimal SIMD reader.
+
+```python
+import pytae as pt
+
+# Eager read from Parquet
+df = pt.read("transactions.parquet")
+
+# Eager read from CSV with custom options
+df_csv = pt.read("measurements.csv", separator=";", encoding="utf-8")
+
+# Eager read from remote URL
+df_remote = pt.read("https://raw.githubusercontent.com/mwaskom/seaborn-data/master/penguins.csv")
+```
+- **Returns**: Eager `pytae.DataFrame` (`df.is_lazy == False`).
+- **Best For**: Quick ad-hoc scripts, exploratory analysis, datasets that easily fit into memory, or when you need immediate row indexing and display.
+
+#### 2. `pt.scan(path, **kwargs) -> DataFrame` (Lazy)
+`pt.scan()` registers the file into Polars' query planner without reading the data into RAM. It returns a `pytae.DataFrame` with `is_lazy == True` wrapping a `polars.LazyFrame`.
+
+```python
+import pytae as pt
+
+# Scans metadata only — zero rows are loaded into RAM!
+lazy_df = pt.scan("massive_sales.parquet")
+
+# Build a fluent analytical pipeline
+query = (
+    lazy_df
+    .pt.select("region", "store_id", "revenue", "order_date")
+    .pt.filter("revenue > 500.0 and region == 'West'")
+    .pt.by("region", "store_id")
+    .pt.agg(total_rev="sum(revenue)", num_orders="n")
+    .pt.arrange("total_rev", ascending=False)
+    .pt.head(10)
+)
+
+# Materialize execution: executes the optimized query plan
+top_stores = query.collect()
+```
+- **Returns**: Lazy `pytae.DataFrame` (`df.is_lazy == True`).
+- **Best For**: Large datasets, production ETL pipelines, queries needing filtering/column selection before loading, or systems with limited RAM.
+
+---
+
+### Hardware Query Optimizations: Pushdowns at Work
+
+When using `pt.scan()` in Python or running the `pytae` CLI, the Polars query optimizer reorganizes operations to minimize hardware disk I/O, CPU decompression cycles, and RAM consumption.
+
+```
+Parquet on Disk (100 Columns, 50,000,000 Rows across 100 Row Groups)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [Row Group 1] min(amount)=10, max(amount)=250  ──► SKIPPED (Predicate Pushdown)
+│ [Row Group 2] min(amount)=150, max(amount)=8000 ──► READ ONLY col 'amount' & 'id'
+│ [Row Group 3] min(amount)=5, max(amount)=90   ──► SKIPPED (Predicate Pushdown)
+│ ...                                                                          │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 1. Projection Pushdown (Column Pruning)
+If a table has 80 columns but your pipeline only references `user_id` and `amount`:
+- **Standard Pandas**: Reads all 80 columns from disk, allocates memory for all 80, and drops 78 columns in memory.
+- **Pytae / Polars**: Passes the column projection to the Parquet/Arrow reader. **Only the 2 requested columns are read from disk.** The remaining 78 columns are never read, decompressed, or allocated in RAM.
+
+#### 2. Predicate Pushdown (Row-Group Skipping)
+If your pipeline filters `-filter "amount > 1000"`:
+- Parquet files contain metadata headers with `min` and `max` statistics for each column within each row group (typically ~100,000 rows per group).
+- Pytae evaluates the filter predicate against the row group statistics **before reading**.
+- Any row group where `max(amount) <= 1000` is **completely skipped**. The disk read heads never touch those blocks, and zero decompression CPU cycles are consumed.
+
+#### 3. Slice Pushdown (Early Termination)
+If your pipeline ends with `.head(5)` or `-head 5`:
+- The file reader terminates reading as soon as 5 matching rows are found, rather than scanning the entire file and discarding rows later.
+
+---
+
+### Universal Container Constructor (`pt.DataFrame`)
+
+Pytae provides a universal constructor, `pt.DataFrame(data)`, that creates a Pytae DataFrame from almost any tabular data structure without unnecessary copies:
+
+```python
+import pytae as pt
+import polars as pl
+import pandas as pd
+import pyarrow as pa
+
+# 1. From an existing Polars DataFrame or LazyFrame (Zero-copy wrapper)
+pldf = pl.DataFrame({"a": [1, 2, 3], "b": [10.0, 20.0, 30.0]})
+df1 = pt.DataFrame(pldf)
+
+# 2. From a Pandas DataFrame (Seamless Arrow conversion, original index preserved)
+pdf = pd.DataFrame({"name": ["Alice", "Bob"], "age": [25, 30]})
+df2 = pt.DataFrame(pdf)
+
+# 3. From a PyArrow Table
+arrow_tbl = pa.table({"x": [1, 2], "y": ["a", "b"]})
+df3 = pt.DataFrame(arrow_tbl)
+
+# 4. From raw Python dicts or records
+df4 = pt.DataFrame({"id": [101, 102], "status": ["active", "pending"]})
+
+# 5. Bundled Sample Datasets
+penguins = pt.sample("penguins")
+tips = pt.sample("tips")
+flights = pt.sample("flights")
+```
+
+---
+
+### CLI File Ingestion & Internal Lazy Graph Execution
+
+When executing commands via the CLI (`pytae <path> [flags...]`), Pytae streams through an internal lazy pipeline:
+
+```bash
+pytae sales.parquet -filter "revenue > 1000" -select "region, revenue" -head 5
+```
+
+#### Under the Hood:
+1. **Reader Resolution**: The CLI passes `sales.parquet` to `readers.get_reader(path)`, detecting the file format, compression, and separators.
+2. **Lazy Initialization**: By default, Pytae invokes `to_polars_lazy()` on the reader. No row data is parsed into Python or RAM yet.
+3. **Graph Construction**:
+   - `-filter "revenue > 1000"` adds a filter node to the Polars query graph.
+   - `-select "region, revenue"` adds a projection node.
+   - `-head 5` adds a slice limit node.
+4. **Hardware Pushdown & Single `.collect()`**: Polars pushes the projection and predicate directly into the Parquet reader. Only rows with `revenue > 1000` in row groups where `max(revenue) > 1000` are scanned, reading only the `region` and `revenue` columns off disk, and terminating immediately once 5 rows are collected.
+5. **Formatted Output**: The resulting small, eager Polars DataFrame is formatted for terminal display (or emitted as TSV/JSONL if piped).
+
+---
+
+### Zero-Cost Metadata Inspection (No Full Table Read)
+
+One of Pytae's most powerful capabilities is **Zero-Cost Metadata Inspection**. For structured columnar formats that carry schema and dimension information in their headers or footers (such as Parquet and SAS7BDAT), Pytae answers schema queries in milliseconds without scanning the table rows:
+
+```bash
+# Instant shape: Reads only Parquet footer metadata!
+pytae huge_file.parquet -shape
+# Output: (50000000, 48)  [0.01 seconds]
+
+# Instant column list
+pytae huge_file.parquet -cols
+
+# Instant data types
+pytae huge_file.parquet -dtype
+```
+
+| Operation | Command | Execution Cost |
+|:---|:---|:---|
+| Table Dimensions | `pytae file.parquet -shape` | **0.01s** (reads Parquet metadata footer, 0 rows scanned) |
+| Column List | `pytae file.parquet -cols` | **0.01s** (reads schema names only) |
+| Column Data Types | `pytae file.parquet -dtype` | **0.01s** (reads Arrow type definitions) |
+| First $N$ Rows | `pytae file.parquet -head 5` | Reads only the first row group / batch |
+
+---
+
+### Streaming Input: Piped Stdin, Clipboard, and Multi-File Pipelines
+
+Pytae is designed to integrate seamlessly into Unix command-line pipelines and multi-table environments:
+
+#### 1. Piped Standard Input (`stdin` / `-`)
+Pytae automatically detects piped data from standard input, or you can specify `-`:
+```bash
+# Automatically detects piped CSV input from curl or upstream command
+curl -s "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/penguins.csv" | \
+  pytae -select "species, island, body_mass_g" -dropna body_mass_g -head 5
+
+# Explicit stdin indicator (-)
+cat server_logs.csv | pytae - -filter "status == 500" -freq endpoint
+```
+
+#### 2. System Clipboard (`clip`)
+Inspect data copied to your operating system clipboard directly in the terminal or Python:
+```bash
+# In the CLI: Ingests TSV/CSV from system clipboard
+pytae clip -shape
+pytae clip -by department -agg "avg_salary=mean(salary)"
+```
+```python
+# In Python:
+import pytae as pt
+# Export any DataFrame directly to system clipboard
+df.to_clip()
+```
+
+#### 3. Multi-File Pipelines (`-file`)
+You can ingest multiple files simultaneously using alias syntax:
+```bash
+pytae -file "tx=transactions.parquet; cust=customers.csv" \
+  -merge "left=tx, right=cust, on=customer_id, how=left" \
+  -by cust.segment \
+  -agg "total_sales=sum(tx.amount), count=n"
+```
+
+---
+
+### Supported File Formats Matrix
+
+| Format | File Extensions | Reader Engine | Lazy Scanning (`pt.scan`) | Zero-Cost Metadata | Compression Support |
+|:---|:---|:---|:---:|:---:|:---:|
+| **Apache Parquet** | `.parquet`, `.pq` | Native Polars SIMD / Arrow | Yes | Yes (Footer) | Snappy, ZSTD, Gzip (embedded) |
+| **Delimited CSV** | `.csv` | Native Polars Fast CSV | Yes | Partial (Sampled) | `.csv.gz` |
+| **Tab-Delimited** | `.tsv`, `.txt` | Native Polars Fast CSV (`\t`) | Yes | Partial (Sampled) | `.tsv.gz`, `.txt.gz` |
+| **Pipe-Delimited** | `.dat` | Native Polars Fast CSV (`\|`, latin-1) | Yes | Partial (Sampled) | `.dat.gz` |
+| **Line JSON** | `.jsonl`, `.ndjson` | Native Polars NDJSON | Yes | Partial (Sampled) | `.jsonl.gz`, `.ndjson.gz` |
+| **Arrow / Feather** | `.ipc`, `.arrow`, `.feather` | Apache Arrow IPC Stream | Yes | Yes (Header) | LZ4, ZSTD (embedded) |
+| **SAS Dataset** | `.sas7bdat` | PyReadstat $\to$ Polars | In-memory | Yes (Header) | Native SAS compression |
+| **Excel** | `.xlsx`, `.xls` | Polars Excel / Calamine | In-memory | No | OpenXML zip |
+
+---
+
+### Side-by-Side Reading & Inspection Cheat Sheet
+
+| Task | Python Library API | Command-Line Interface (CLI) |
+|:---|:---|:---|
+| **Eager Read** | `df = pt.read("data.parquet")` | `pytae data.parquet` |
+| **Lazy Scan** | `df = pt.scan("data.parquet")` | `pytae data.parquet [flags...]` (auto-lazy) |
+| **Inspect Shape** | `df.shape` | `pytae data.parquet -shape` |
+| **Inspect Columns** | `df.columns` or `pt.cols(df)` | `pytae data.parquet -cols` |
+| **Inspect Types** | `df.dtypes` | `pytae data.parquet -dtype` |
+| **View First Rows** | `df.head(5)` | `pytae data.parquet -head 5` |
+| **View Schema Summary**| `pt.glimpse(df)` | `pytae data.parquet -glimpse` |
+| **Filter & Project** | `pt.scan("f.parquet").pt.select("a").pt.filter("a > 10").collect()` | `pytae f.parquet -select a -filter "a > 10"` |
+| **Read Stdin** | `pt.read(sys.stdin)` | `cat f.csv \| pytae -select a` |
+| **Read Clipboard** | `pd.read_clipboard().pt` | `pytae clip -shape` |
+| **Custom Delimiter** | `pt.read("f.txt", separator=";")` | `pytae f.txt -dlim ";"` |
 
 ---
 
