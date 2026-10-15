@@ -134,13 +134,7 @@ Pass a list of columns to `r`, `c`, or `v`:
 
 ```python
 # Hierarchical rows + multiple metric values
-penguins.pt.pivot(
-    r=["island", "sex"],
-    c="species",
-    v=["body_mass_g", "flipper_length_mm"],
-    a="mean",
-    f_v=0
-)
+penguins.pt.pivot(r=["island", "sex"], c="species", v=["body_mass_g", "flipper_length_mm"], a="mean", f_v=0)
 ```
 
 **Output:**

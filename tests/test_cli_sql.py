@@ -136,14 +136,14 @@ def test_sql_can_join_file_aliases_directly(tmp_path, capsys):
     assert "val_l" in out and "val_r" in out
 
 
-def test_sql_after_merge_can_query_data(tmp_path, capsys):
+def test_sql_after_join_can_query_data(tmp_path, capsys):
     left, right = _write_two_csvs(tmp_path)
 
     cli.main(
         [
             "-file",
             f"{left}=df1;{right}=df2",
-            "-merge",
+            "-join",
             "left=df1,right=df2,on=col a:cola",
             "-sql",
             "select count(*) as n from data",
@@ -156,7 +156,7 @@ def test_sql_after_merge_can_query_data(tmp_path, capsys):
 def test_sql_as_first_op_satisfies_file_requirement(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
-    # no -merge at all — -sql alone should be accepted as the founding op
+    # no -join at all — -sql alone should be accepted as the founding op
     exit_code = cli.main(
         [
             "-file",

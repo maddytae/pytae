@@ -346,10 +346,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="file",
         flag="-file, --file PATH=ALIAS;...",
         syntax='pytae -file "path1=alias1; path2=alias2" [operation]',
-        summary="Load multiple tabular datasets for multi-file joins (-merge, -concat, or -sql).",
+        summary="Load multiple tabular datasets for multi-file joins (-join, -concat, or -sql).",
         description=(
             "Replaces the positional path to enable multi-dataset pipelines.\n"
-            "Each file is assigned an alias and can be joined via -merge, stacked via -concat, or queried via -sql."
+            "Each file is assigned an alias and can be joined via -join, stacked via -concat, or queried via -sql."
         ),
         options=[
             "path=alias : Assign an in-memory alias to a file.",
@@ -358,29 +358,29 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             ",encoding=ENC : Override text encoding per file.",
         ],
         examples=[
-            'pytae -file "orders.parquet=o; cust.csv=c" -merge "left=o,right=c,on=cust_id" -head 5',
+            'pytae -file "orders.parquet=o; cust.csv=c" -join "left=o,right=c,on=cust_id" -head 5',
             'pytae -file "2023.parquet=df1; 2024.parquet=df2" -concat "frames=\'df1,df2\'" -o combined.parquet',
             'pytae -file "orders.parquet=o; items.parquet=i" -sql "select o.*, i.name from o join i using (item_id)"',
         ],
-        see_also=["-merge", "-concat", "-sql"],
+        see_also=["-join", "-concat", "-sql"],
     ),
-    "merge": KeywordHelp(
-        name="merge",
-        flag="-merge, --merge KEY=VALUE,...",
-        syntax='pytae -file "..." -merge "left=alias1,right=alias2,on=key[,how=inner]"',
-        summary="Merge/join two datasets in the pipeline (pandas merge).",
+    "join": KeywordHelp(
+        name="join",
+        flag="-join, --join KEY=VALUE,...",
+        syntax='pytae -file "..." -join "left=alias1,right=alias2,on=key[,how=inner]"',
+        summary="Join two datasets in the pipeline using Polars SIMD multithreading.",
         description=("Combines two datasets by key columns. Repeatable to join additional files sequentially."),
         options=[
             "left=alias : Left dataset alias (or 'data' for current pipeline state).",
             "right=alias : Right dataset alias.",
             "on=col : Shared join key column (or 'on=\"col1,col2\"').",
             "left_on=col, right_on=col : Join keys with differing names (or 'on=\"left_col:right_col\"').",
-            "how=inner|left|right|outer|cross : Join method (default: 'inner').",
-            "validate=one_to_one|one_to_many : Join cardinality assertion.",
+            "how=inner|left|right|full|semi|anti|cross : Join method (default: 'inner').",
+            "validate=1:1|1:m|m:1|m:m : Join cardinality assertion.",
         ],
         examples=[
-            'pytae -file "orders.parquet=o; users.csv=u" -merge "left=o,right=u,on=user_id"',
-            'pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=\'id:user_id\',how=left"',
+            'pytae -file "orders.parquet=o; users.csv=u" -join "left=o,right=u,on=user_id"',
+            'pytae -file "a.csv=a; b.csv=b" -join "left=a,right=b,on=\'id:user_id\',how=left"',
         ],
         see_also=["-file", "-concat", "-sql"],
     ),
@@ -389,14 +389,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         flag="-concat, --concat KEY=VALUE,...",
         syntax='pytae -file "..." -concat "frames=\'alias1,alias2,...\'"',
         summary="Stack multiple datasets vertically row-wise into one pipeline DataFrame.",
-        description=("Concatenates two or more datasets along rows (pandas concat with ignore_index=True)."),
+        description=("Concatenates two or more datasets along rows using Polars."),
         options=[
             "frames='alias1,alias2,...' : Comma-separated list of dataset aliases to stack.",
         ],
         examples=[
             'pytae -file "jan.csv=m1; feb.csv=m2; mar.csv=m3" -concat "frames=\'m1,m2,m3\'" -o q1.parquet',
         ],
-        see_also=["-file", "-merge"],
+        see_also=["-file", "-join"],
     ),
     "output": KeywordHelp(
         name="output",

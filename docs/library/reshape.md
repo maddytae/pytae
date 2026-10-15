@@ -42,12 +42,7 @@ Melts all numeric columns to rows by default, preserving non-numeric columns as 
 
 ```python
 # Melt numeric columns into (variable, value) pairs
-(
-    penguins
-    .pt.select("species", "bill_length_mm", "bill_depth_mm")
-    .pt.long()
-    .head()
-)
+(penguins.pt.select("species", "bill_length_mm", "bill_depth_mm").pt.long().head())
 ```
 
 **Output:**
@@ -62,10 +57,7 @@ Melts all numeric columns to rows by default, preserving non-numeric columns as 
 
 ```python
 # Customize target column names for variable and value
-(
-    flights.pt.long(c="metric", v="value")
-    .head()
-)
+(flights.pt.long(c="metric", v="value").head())
 ```
 
 **Output:**
@@ -80,10 +72,7 @@ Melts all numeric columns to rows by default, preserving non-numeric columns as 
 
 ```python
 # Explicit id_vars: specify which columns remain fixed
-(
-    healthexp.pt.long(id_vars=["Year", "Country"], c="Metric", v="Amount")
-    .head()
-)
+(healthexp.pt.long(id_vars=["Year", "Country"], c="Metric", v="Amount").head())
 ```
 
 **Output:**
@@ -118,11 +107,7 @@ flights_wide.head()
 
 ```python
 # Explicit row identifier parameter (r=)
-demo_long = pd.DataFrame({
-    "id": [1, 2, 3],
-    "quarter": ["Q1", "Q2", "Q3"],
-    "sales": [100, 200, 300]
-})
+demo_long = pd.DataFrame({"id": [1, 2, 3], "quarter": ["Q1", "Q2", "Q3"], "sales": [100, 200, 300]})
 demo_long.pt.wide(r="id", c="quarter", v="sales")
 ```
 

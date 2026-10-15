@@ -306,10 +306,7 @@ import polars as pl
 import pytae as pt
 
 # Dataset containing both Arrow null and IEEE-754 float NaN
-raw_data = pl.DataFrame({
-    "id": [1, 2, 3, 4],
-    "value": [10.5, None, float("nan"), 40.0]
-})
+raw_data = pl.DataFrame({"id": [1, 2, 3, 4], "value": [10.5, None, float("nan"), 40.0]})
 
 df = pt.DataFrame(raw_data)
 
@@ -342,12 +339,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 
 # Drop rows missing body mass, group by species, and aggregate
-result = (
-    penguins
-    .pt.dropna("body_mass_g")
-    .pt.by("species")
-    .pt.agg(count="n", avg_mass="mean(body_mass_g)")
-)
+result = penguins.pt.dropna("body_mass_g").pt.by("species").pt.agg(count="n", avg_mass="mean(body_mass_g)")
 print(result)
 ```
 

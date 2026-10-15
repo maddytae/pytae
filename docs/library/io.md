@@ -36,6 +36,12 @@ This guide covers:
 - [Bundled Sample Datasets & Row Sampling](#sample-datasets-and-sampling)
   - [Loading Bundled Datasets (`pt.sample`)](#bundled-datasets)
   - [Random Row Sampling (`df.sample`)](#row-sampling)
+- [Joining & Stacking Datasets (`join`, `concat`)](#joining-and-stacking)
+  - [Joining Datasets (`df.join`, `pt.join`)](#joining-datasets)
+  - [Join Strategies (`how`)](#join-strategies)
+  - [Differing Key Names & Colon Notation](#differing-keys)
+  - [Stacking Datasets (`pt.concat`, `df.concat`)](#concat-datasets)
+  - [Transparent Polars Verb Delegation](#polars-delegation)
 - [I/O API Quick Reference](#api-quick-reference)
 
 ---
@@ -141,8 +147,7 @@ lazy_df = pt.scan("massive_sales.parquet")
 
 # Build a fluent analytical pipeline
 query = (
-    lazy_df
-    .pt.select("region", "store_id", "revenue", "order_date")
+    lazy_df.pt.select("region", "store_id", "revenue", "order_date")
     .pt.filter("revenue > 500.0 and region == 'West'")
     .pt.by("region", "store_id")
     .pt.agg(total_rev="sum(revenue)", num_orders="n")
@@ -323,8 +328,8 @@ diamonds = pt.sample("diamonds")
 
 # View all available dataset names:
 print(pt.sample_data.keys())
-# ('anagrams', 'anscombe', 'attention', 'brain_networks', 'car_crashes', 
-#  'diamonds', 'dots', 'dowjones', 'exercise', 'flights', 'fmri', 'geyser', 
+# ('anagrams', 'anscombe', 'attention', 'brain_networks', 'car_crashes',
+#  'diamonds', 'dots', 'dowjones', 'exercise', 'flights', 'fmri', 'geyser',
 #  'glue', 'healthexp', 'iris', 'mpg', 'penguins', 'planets', 'seaice', 'taxis', 'titanic')
 ```
 
@@ -359,6 +364,140 @@ sampled = pt.sample(df, 5, seed=42)
 
 ---
 
+<a id="joining-and-stacking"></a>
+## Joining & Stacking Datasets (`join`, `concat`)
+
+Pytae provides first-class support for relational joins and tabular stacking powered directly by Polars' multithreaded SIMD vector engine. Rather than introducing intermediate abstractions, Pytae adopts Polars' native **`join`** and **`concat`** verbs so you can combine datasets without ever breaking your method chain.
+
+---
+
+<a id="joining-datasets"></a>
+### Joining Datasets (`df.join`, `pt.join`)
+
+Join two tables on shared or distinct keys with `df1.join(df2)` or `pt.join(df1, df2)`:
+
+```python
+import pytae as pt
+
+orders = pt.read("orders.parquet")
+customers = pt.read("customers.csv")
+
+# Fluent method chain: join -> filter -> mutate -> arrange
+result = (
+    orders.join(customers, on="customer_id", how="left")
+    .filter("order_amount > 50")
+    .by("region")
+    .mutate(running_total="cumsum(order_amount)")
+    .arrange("-running_total")
+)
+```
+
+#### Automatic Key Detection
+If `on`, `left_on`, and `right_on` are omitted, Pytae automatically discovers the intersecting column names between both tables:
+
+```python
+# Automatically joins on common columns (e.g., ["user_id"])
+joined = df1.join(df2)
+```
+
+---
+
+<a id="join-strategies"></a>
+### Join Strategies (`how`)
+
+Pytae supports all 7 native Polars join strategies:
+
+| Strategy (`how`) | Description |
+|:---|:---|
+| **`"inner"`** (default) | Returns rows where keys match in both tables. |
+| **`"left"`** | Returns all left rows plus matching right rows (unmatched right filled with null). |
+| **`"right"`** | Returns all right rows plus matching left rows. |
+| **`"full"`** | Full outer join; preserves all rows from both tables. |
+| **`"semi"`** | **Filtering join**: Returns rows from the left table that have a match in the right table (without duplicating columns). |
+| **`"anti"`** | **Filtering join**: Returns rows from the left table that have NO match in the right table. |
+| **`"cross"`** | Cartesian product of every left row with every right row (does not take join keys). |
+
+```python
+# Fast membership filtering with semi join:
+active_orders = orders.join(active_users, on="user_id", how="semi")
+
+# Finding churned users with anti join:
+churned_users = users.join(recent_logins, on="user_id", how="anti")
+```
+
+---
+
+<a id="differing-keys"></a>
+### Differing Key Names & Colon Notation
+
+When key columns have different names between tables, pass `left_on` and `right_on`, or use CLI-compatible colon notation `on="left_key:right_key"`:
+
+```python
+# Explicit left_on / right_on
+res = orders.join(users, left_on="cust_id", right_on="user_id", how="left")
+
+# Concise colon notation
+res = orders.join(users, on="cust_id:user_id", how="left")
+```
+
+#### Lazy Join Query Optimization
+When joining two lazy datasets created via `pt.scan()`, Pytae preserves the lazy execution graph. Polars optimizes join predicate pushdowns across both files before reading rows from disk:
+
+```python
+# Zero upfront memory: Polars plans the join and pushes filters down to disk
+lazy_joined = (
+    pt.scan("orders_100M.parquet").join(pt.scan("customers.csv"), on="customer_id").filter("region == 'EMEA'").collect()
+)
+```
+
+---
+
+<a id="concat-datasets"></a>
+### Stacking Datasets (`pt.concat`, `df.concat`)
+
+Concatenate datasets vertically (row-wise) or horizontally (column-wise) using `pt.concat([dfs...])` or `df1.concat(df2, df3)`:
+
+```python
+# 1. Vertical stacking (identical schemas)
+q_all = pt.concat([q1, q2, q3, q4])
+
+# 2. Method-chain stacking
+combined = q1.concat(q2, q3)
+
+# 3. Automatic schema alignment (diagonal_relaxed fallback)
+# If schemas differ in column sets, missing columns are automatically filled with nulls:
+diff_schema_combined = pt.concat([df_2023, df_2024])
+
+# 4. Horizontal concatenation
+widened = pt.concat([features, targets], how="horizontal")
+```
+
+---
+
+<a id="polars-delegation"></a>
+### Transparent Polars Verb Delegation
+
+Because `pytae.DataFrame` wraps a native Polars frame, **any native Polars method** not explicitly shadowed by Pytae (such as `.with_columns()`, `.describe()`, `.slice()`, `.fill_null()`, `.pipe()`, `.upsample()`) can be called directly on `pytae.DataFrame`. 
+
+Pytae automatically unwraps arguments to Polars and re-wraps Polars results back into `pytae.DataFrame`, meaning **the Pytae method chain never breaks**:
+
+```python
+import polars as pl
+
+# Drop seamlessly into native Polars verbs and continue Pytae chaining
+res = (
+    df1.join(df2, on="id")  # Native Polars join
+    .with_columns(bonus=pl.col("score") * 1.1)  # Native Polars with_columns
+    .filter("bonus > 100")  # Pytae filter
+    .by("dept")  # Pytae by
+    .mutate(avg="mean(bonus)")  # Pytae mutate
+    .slice(0, 50)  # Native Polars slice
+    .arrange("-avg")  # Pytae arrange
+)
+```
+
+---
+
 <a id="api-quick-reference"></a>
 ## I/O API Quick Reference
 
@@ -367,6 +506,10 @@ sampled = pt.sample(df, 5, seed=42)
 | **`pt.read()`** | `pt.read(path, **kwargs) -> DataFrame` | Eager reader (Parquet, CSV, TSV, DAT, JSONL, Excel, URLs). |
 | **`pt.scan()`** | `pt.scan(path, **kwargs) -> DataFrame` | Lazy reader with query pushdown (Parquet, CSV, TSV, JSONL, Arrow). |
 | **`pt.DataFrame()`**| `pt.DataFrame(data) -> DataFrame` | Universal container constructor (Polars, Pandas, Arrow, dicts). |
+| **`pt.join()`** | `pt.join(left, other, on=None, how='inner', ...) -> DataFrame` | Joins two tabular datasets via Polars multithreading. |
+| **`df.join()`** | `df.join(other, on=None, how='inner', ...) -> DataFrame` | Joins this DataFrame with another dataset in a fluent chain. |
+| **`pt.concat()`** | `pt.concat(items, how='vertical', ...) -> DataFrame` | Concatenates DataFrames vertically or horizontally. |
+| **`df.concat()`** | `df.concat(*others, how='vertical', ...) -> DataFrame` | Concatenates this DataFrame with other DataFrames. |
 | **`pt.sample()`** | `pt.sample(data_or_name, n=None, frac=None, seed=None)` | Loads sample dataset by name, or samples rows from DataFrame. |
 | **`pt.sample_data`**| `pt.sample_data[name] -> DataFrame` | Mapping of all 21 bundled sample datasets. |
 | **`df.sample()`** | `df.sample(n=5, frac=None, seed=None, replace=False)` | Randomly samples rows from DataFrame. |
@@ -379,3 +522,4 @@ sampled = pt.sample(df, 5, seed=42)
 | **`df.to_pandas()`** | `df.to_pandas() -> pd.DataFrame` | Converts to Pandas DataFrame with tracked original indices. |
 | **`df.to_polars()`** | `df.to_polars() -> pl.DataFrame` | Returns underlying native Polars DataFrame. |
 | **`df.to_clip()`** | `df.to_clip()` | Copies table directly to OS clipboard as TSV without index. |
+

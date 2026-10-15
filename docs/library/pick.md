@@ -14,8 +14,8 @@
 ```python
 import pytae as pt
 
-penguins = pt.sample_data['penguins']
-tips = pt.sample_data['tips']
+penguins = pt.sample_data["penguins"]
+tips = pt.sample_data["tips"]
 penguins.head(3)
 ```
 
@@ -33,11 +33,7 @@ Retrieve the rows with the highest values in `col`.
 
 ```python
 # Top 3 heaviest penguins overall
-(
-    penguins
-    .pt.pick("body_mass_g", n=3)
-    .pt.select("species", "island", "body_mass_g")
-)
+(penguins.pt.pick("body_mass_g", n=3).pt.select("species", "island", "body_mass_g"))
 ```
 
 **Output:**
@@ -54,11 +50,7 @@ Retrieve the rows with the lowest values in `col`.
 
 ```python
 # 3 lightest penguins overall
-(
-    penguins
-    .pt.pick("body_mass_g", n=3, order="min")
-    .pt.select("species", "island", "body_mass_g")
-)
+(penguins.pt.pick("body_mass_g", n=3, order="min").pt.select("species", "island", "body_mass_g"))
 ```
 
 **Output:**
@@ -75,12 +67,7 @@ When preceded by `.pt.by(...)`, `pick` and `pick` extract top or bottom N rows *
 
 ```python
 # Top heaviest penguin for each species
-(
-    penguins
-    .pt.by("species")
-    .pt.pick("body_mass_g", n=1)
-    .pt.select("species", "island", "body_mass_g")
-)
+(penguins.pt.by("species").pt.pick("body_mass_g", n=1).pt.select("species", "island", "body_mass_g"))
 ```
 
 **Output:**
@@ -93,12 +80,7 @@ When preceded by `.pt.by(...)`, `pick` and `pick` extract top or bottom N rows *
 
 ```python
 # Lightest 2 penguins per island
-(
-    penguins
-    .pt.by("island")
-    .pt.pick("body_mass_g", n=2, order="min")
-    .pt.select("island", "species", "body_mass_g")
-)
+(penguins.pt.by("island").pt.pick("body_mass_g", n=2, order="min").pt.select("island", "species", "body_mass_g"))
 ```
 
 **Output:**
@@ -133,11 +115,7 @@ Select a fraction of rows (e.g. `prop=0.1` for top 10%) overall or within each g
 
 ```python
 # Top 10% heaviest penguins per species
-(
-    penguins
-    .pt.by("species")
-    .pt.pick("body_mass_g", prop=0.1)
-)
+(penguins.pt.by("species").pt.pick("body_mass_g", prop=0.1))
 ```
 
 **Output:**

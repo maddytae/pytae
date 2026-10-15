@@ -14,8 +14,8 @@
 ```python
 import pytae as pt
 
-penguins = pt.sample_data['penguins']
-tips = pt.sample_data['tips']
+penguins = pt.sample_data["penguins"]
+tips = pt.sample_data["tips"]
 penguins.head(3)
 ```
 
@@ -33,12 +33,7 @@ By default, `.pt.arrange()` sorts in ascending order.
 
 ```python
 # Sort ascending by body mass
-(
-    penguins
-    .pt.arrange("body_mass_g")
-    .pt.select("species", "island", "body_mass_g")
-    .head(5)
-)
+(penguins.pt.arrange("body_mass_g").pt.select("species", "island", "body_mass_g").head(5))
 ```
 
 **Output:**
@@ -57,12 +52,7 @@ Specify descending order either by appending `desc` or prefixing the column name
 
 ```python
 # Using explicit 'desc'
-(
-    penguins
-    .pt.arrange("body_mass_g desc")
-    .pt.select("species", "island", "body_mass_g")
-    .head(5)
-)
+(penguins.pt.arrange("body_mass_g desc").pt.select("species", "island", "body_mass_g").head(5))
 ```
 
 **Output:**
@@ -77,12 +67,7 @@ Specify descending order either by appending `desc` or prefixing the column name
 
 ```python
 # Using leading minus '-' shorthand
-(
-    penguins
-    .pt.arrange("-body_mass_g")
-    .pt.select("species", "island", "body_mass_g")
-    .head(5)
-)
+(penguins.pt.arrange("-body_mass_g").pt.select("species", "island", "body_mass_g").head(5))
 ```
 
 **Output:**
@@ -101,12 +86,7 @@ Pass multiple column specifications either as separate arguments or as a comma-s
 
 ```python
 # Multi-column: species ascending, body_mass_g descending
-(
-    penguins
-    .pt.arrange("species", "body_mass_g desc")
-    .pt.select("species", "island", "body_mass_g")
-    .head(6)
-)
+(penguins.pt.arrange("species", "body_mass_g desc").pt.select("species", "island", "body_mass_g").head(6))
 ```
 
 **Output:**
@@ -122,12 +102,7 @@ Pass multiple column specifications either as separate arguments or as a comma-s
 
 ```python
 # Comma-separated string with shorthand minus
-(
-    penguins
-    .pt.arrange("species, -body_mass_g")
-    .pt.select("species", "island", "body_mass_g")
-    .head(6)
-)
+(penguins.pt.arrange("species, -body_mass_g").pt.select("species", "island", "body_mass_g").head(6))
 ```
 
 **Output:**
@@ -150,12 +125,7 @@ Columns with spaces are cleanly referenced using square brackets `[col name]`.
 spaced_penguins = penguins.rename(columns={"bill_length_mm": "bill length mm"})
 
 # Sort by bracketed column name descending
-(
-    spaced_penguins
-    .pt.arrange("[bill length mm] desc")
-    .pt.select("species", "[bill length mm]")
-    .head(5)
-)
+(spaced_penguins.pt.arrange("[bill length mm] desc").pt.select("species", "[bill length mm]").head(5))
 ```
 
 **Output:**

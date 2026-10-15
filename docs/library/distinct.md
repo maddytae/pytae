@@ -19,8 +19,8 @@ Remove duplicate records across the intermediate DataFrame with full control ove
 import pytae as pt
 import pandas as pd
 
-penguins = pt.sample_data['penguins']
-tips = pt.sample_data['tips']
+penguins = pt.sample_data["penguins"]
+tips = pt.sample_data["tips"]
 penguins.head(3)
 ```
 
@@ -38,11 +38,7 @@ Eliminate identical rows across all selected columns. The index is automatically
 
 ```python
 # Keep only unique species and island pairs
-(
-    penguins
-    .pt.select("species", "island")
-    .pt.distinct()
-)
+(penguins.pt.select("species", "island").pt.distinct())
 ```
 
 **Output:**
@@ -61,11 +57,7 @@ Pass column names to restrict duplicate checks to specific identifiers, keeping 
 
 ```python
 # Keep the first recorded penguin for each unique species and island combination
-(
-    penguins
-    .pt.select("species", "island", "body_mass_g", "sex")
-    .pt.distinct("species", "island")
-)
+(penguins.pt.select("species", "island", "body_mass_g", "sex").pt.distinct("species", "island"))
 ```
 
 **Output:**
@@ -84,13 +76,7 @@ Pass column names to restrict duplicate checks to specific identifiers, keeping 
 
 ```python
 # Filter heavy penguins -> select columns -> deduplicate -> arrange
-(
-    penguins
-    .pt.filter("body_mass_g > 4000")
-    .pt.select("species", "island")
-    .pt.distinct()
-    .pt.arrange("species", "island")
-)
+(penguins.pt.filter("body_mass_g > 4000").pt.select("species", "island").pt.distinct().pt.arrange("species", "island"))
 ```
 
 **Output:**
@@ -109,11 +95,7 @@ Optionally retain the last occurrence instead of the first:
 
 ```python
 # Retain the last record for each day and time
-(
-    tips
-    .pt.select("day", "time", "total_bill", "tip")
-    .pt.distinct("day", "time", keep="last")
-)
+(tips.pt.select("day", "time", "total_bill", "tip").pt.distinct("day", "time", keep="last"))
 ```
 
 **Output:**

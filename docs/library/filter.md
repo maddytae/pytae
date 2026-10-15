@@ -38,9 +38,9 @@
 ```python
 import pytae as pt
 
-penguins = pt.sample_data['penguins']
-tips = pt.sample_data['tips']
-titanic = pt.sample_data['titanic']
+penguins = pt.sample_data["penguins"]
+tips = pt.sample_data["tips"]
+titanic = pt.sample_data["titanic"]
 penguins.head(3)
 ```
 
@@ -58,11 +58,7 @@ penguins.head(3)
 
 ```python
 # 1. Keyword arguments — clean and pythonic
-(
-    penguins
-    .pt.filter(species='Adelie', island='Dream')
-    .head(5)
-)
+(penguins.pt.filter(species="Adelie", island="Dream").head(5))
 ```
 
 **Output:**
@@ -77,11 +73,7 @@ penguins.head(3)
 
 ```python
 # 2. String expressions — matches pytae CLI -qry syntax; supports comma-separated conditions
-(
-    penguins
-    .pt.filter("species = 'Adelie', body_mass_g > 4000")
-    .head(5)
-)
+(penguins.pt.filter("species = 'Adelie', body_mass_g > 4000").head(5))
 ```
 
 **Output:**
@@ -96,11 +88,7 @@ penguins.head(3)
 
 ```python
 # 3. Plain dictionaries — useful for programmatic pipelines or dynamic key mapping
-(
-    penguins
-    .pt.filter({"species": "Adelie", "island": "Dream"})
-    .head(5)
-)
+(penguins.pt.filter({"species": "Adelie", "island": "Dream"}).head(5))
 ```
 
 **Output:**
@@ -115,11 +103,7 @@ penguins.head(3)
 
 ```python
 # 4. Mixed calling — combine string expressions, dicts, and kwargs in a single call
-(
-    penguins
-    .pt.filter("body_mass_g > 4000", {"island": "Biscoe"}, sex="Female")
-    .head(5)
-)
+(penguins.pt.filter("body_mass_g > 4000", {"island": "Biscoe"}, sex="Female").head(5))
 ```
 
 **Output:**
@@ -153,16 +137,10 @@ When columns have spaces (like `'bill length mm'`), enclose them in square brack
 
 ```python
 # DataFrame with spaces in column names
-penguins_spaces = penguins.rename(
-    columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'}
-)
+penguins_spaces = penguins.rename(columns={"bill_length_mm": "bill length mm", "body_mass_g": "body mass g"})
 
 # String expressions with brackets handle spaced column names cleanly:
-(
-    penguins_spaces
-    .pt.filter("[bill length mm] > 45", "[body mass g] > 4000")
-    .head(5)
-)
+(penguins_spaces.pt.filter("[bill length mm] > 45", "[body mass g] > 4000").head(5))
 ```
 
 **Output:**
@@ -179,11 +157,7 @@ penguins_spaces = penguins.rename(
 
 ```python
 # Single equality — keep only Dream island
-(
-    penguins
-    .pt.filter(island='Dream')
-    .head(5)
-)
+(penguins.pt.filter(island="Dream").head(5))
 ```
 
 **Output:**
@@ -200,11 +174,10 @@ penguins_spaces = penguins.rename(
 # List — keep Adelie and Chinstrap, aggregate per species + island
 # Kwargs accept a list directly:
 (
-    penguins
-    .pt.filter(species=['Adelie', 'Chinstrap'])
-    .pt.select('species', 'island', 'body_mass_g')
-    .pt.by('species', 'island')
-    .pt.agg(a=['mean', 'n'])
+    penguins.pt.filter(species=["Adelie", "Chinstrap"])
+    .pt.select("species", "island", "body_mass_g")
+    .pt.by("species", "island")
+    .pt.agg(a=["mean", "n"])
 )
 ```
 
@@ -219,11 +192,7 @@ penguins_spaces = penguins.rename(
 
 ```python
 # 'not in' — exclude Male penguins via kwargs
-(
-    penguins
-    .pt.filter(sex=('not in', ['Male']))
-    .head(5)
-)
+(penguins.pt.filter(sex=("not in", ["Male"])).head(5))
 ```
 
 **Output:**
@@ -243,11 +212,7 @@ Supported comparison operators: `>`, `>=`, `<`, `<=`, `==`, `!=`.
 
 ```python
 # Filter penguins with body mass greater than 5000g (string operator)
-(
-    penguins
-    .pt.filter(body_mass_g='> 5000')
-    .head(5)
-)
+(penguins.pt.filter(body_mass_g="> 5000").head(5))
 ```
 
 **Output:**
@@ -262,11 +227,7 @@ Supported comparison operators: `>`, `>=`, `<`, `<=`, `==`, `!=`.
 
 ```python
 # Tuple operator syntax: ('>', 5000)
-(
-    penguins
-    .pt.filter(body_mass_g=('>', 5000))
-    .head(5)
-)
+(penguins.pt.filter(body_mass_g=(">", 5000)).head(5))
 ```
 
 **Output:**
@@ -283,9 +244,8 @@ Supported comparison operators: `>`, `>=`, `<`, `<=`, `==`, `!=`.
 # Combine multiple column conditions in one qry call
 # Gentoo females with large bills — multi-condition kwargs:
 (
-    penguins
-    .pt.filter(species='Gentoo', sex='Female', bill_length_mm='>= 45')
-    .pt.select('species', 'island', 'sex', 'bill_length_mm', 'body_mass_g')
+    penguins.pt.filter(species="Gentoo", sex="Female", bill_length_mm=">= 45")
+    .pt.select("species", "island", "sex", "bill_length_mm", "body_mass_g")
     .head(5)
 )
 ```
@@ -306,11 +266,7 @@ String intervals let you filter a range on the same column without chaining two 
 
 ```python
 # Open interval — strictly between 3500 and 4500 g via kwargs:
-(
-    penguins
-    .pt.filter(body_mass_g='(3500,4500)')
-    .head(5)
-)
+(penguins.pt.filter(body_mass_g="(3500,4500)").head(5))
 ```
 
 **Output:**
@@ -325,11 +281,7 @@ String intervals let you filter a range on the same column without chaining two 
 
 ```python
 # Half-open interval — bill_length_mm >= 40 and < 50
-(
-    penguins
-    .pt.filter(bill_length_mm='[40,50)')
-    .head(5)
-)
+(penguins.pt.filter(bill_length_mm="[40,50)").head(5))
 ```
 
 **Output:**
@@ -344,11 +296,7 @@ String intervals let you filter a range on the same column without chaining two 
 
 ```python
 # Closed interval — body_mass_g between 3500 and 4000 inclusive
-(
-    penguins
-    .pt.filter(body_mass_g='[3500,4000]')
-    .head(5)
-)
+(penguins.pt.filter(body_mass_g="[3500,4000]").head(5))
 ```
 
 **Output:**
@@ -364,11 +312,7 @@ String intervals let you filter a range on the same column without chaining two 
 ```python
 # Interval notation also works on STRING columns — alphabetical comparison
 # 'island' values: Biscoe, Dream, Torgersen — (Biscoe, Dream] means Dream only
-(
-    penguins
-    .pt.filter(island='(Biscoe,Dream]')
-    .sample()
-)
+(penguins.pt.filter(island="(Biscoe,Dream]").sample())
 ```
 
 **Output:**
@@ -384,11 +328,7 @@ String intervals let you filter a range on the same column without chaining two 
 
 ```python
 # species starting with 'Ad' — same idea for endswith/contains
-(
-    penguins
-    .pt.filter(species=('startswith', 'Ad'))
-    .head(5)
-)
+(penguins.pt.filter(species=("startswith", "Ad")).head(5))
 ```
 
 **Output:**
@@ -403,11 +343,7 @@ String intervals let you filter a range on the same column without chaining two 
 
 ```python
 # Multiple prefixes: species starting with 'Ad' OR 'Ge'
-(
-    penguins
-    .pt.filter(species=('startswith', ['Ad', 'Ge']))
-    .head(5)
-)
+(penguins.pt.filter(species=("startswith", ["Ad", "Ge"])).head(5))
 ```
 
 **Output:**
@@ -422,11 +358,7 @@ String intervals let you filter a range on the same column without chaining two 
 
 ```python
 # regex, search-anywhere (like re.search) — species containing a repeated 'o'
-(
-    penguins
-    .pt.filter(species=('regex', r'oo'))
-    .head(5)
-)
+(penguins.pt.filter(species=("regex", r"oo")).head(5))
 ```
 
 **Output:**
@@ -441,10 +373,7 @@ String intervals let you filter a range on the same column without chaining two 
 
 ```python
 # isna/notna — rows with a missing 'sex' value (one-element tuple, no value needed)
-(
-    penguins
-    .pt.filter(sex=('isna',))
-)
+(penguins.pt.filter(sex=("isna",)))
 ```
 
 **Output:**
@@ -474,11 +403,7 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 
 ```python
 # Comma-separated string expression on the same column:
-(
-    penguins
-    .pt.filter("bill_length_mm > 40, bill_length_mm < 50")
-    .head(5)
-)
+(penguins.pt.filter("bill_length_mm > 40, bill_length_mm < 50").head(5))
 ```
 
 **Output:**
@@ -493,11 +418,7 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 
 ```python
 # Multiple string arguments:
-(
-    penguins
-    .pt.filter("bill_length_mm > 40", "bill_length_mm < 50")
-    .head(5)
-)
+(penguins.pt.filter("bill_length_mm > 40", "bill_length_mm < 50").head(5))
 ```
 
 **Output:**
@@ -512,12 +433,7 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 
 ```python
 # Chaining two .pt.filter() calls:
-(
-    penguins
-    .pt.filter(bill_length_mm='> 40')
-    .pt.filter(bill_length_mm='< 50')
-    .head(5)
-)
+(penguins.pt.filter(bill_length_mm="> 40").pt.filter(bill_length_mm="< 50").head(5))
 ```
 
 **Output:**
@@ -537,7 +453,7 @@ If a column name is misspelled, `filter()` suggests close matches using fuzzy ma
 ```python
 # Intentional typo 'speceis' raises KeyError with a helpful suggestion
 try:
-    penguins.pt.filter(speceis='Adelie')
+    penguins.pt.filter(speceis="Adelie")
 except KeyError as exc:
     print("Caught expected error:", exc)
 ```
@@ -553,10 +469,9 @@ Caught expected error: "unknown column 'speceis' (did you mean 'species'?)"
 # Tips: weekend dinner table of 2+, spending > $10 — average tip and bill by smoker status
 # Using bracket notation [total bill] across qry and agg:
 (
-    tips
-    .rename(columns={'total_bill': 'total bill'})
-    .pt.filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
-    .pt.by('smoker')
+    tips.rename(columns={"total_bill": "total bill"})
+    .pt.filter("[total bill] > 10", day=["Sat", "Sun"], time="Dinner", size=">= 2")
+    .pt.by("smoker")
     .pt.agg("tip = mean, [total bill] = mean, n = n")
 )
 ```

@@ -28,10 +28,14 @@ TABLE OF CONTENTS
     4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
     4.11. Other Utilities:
+          - pt.dropna() / df.pt.dropna()
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
           - pt.freq() / df.pt.freq()
           - pt.hist() / df.pt.hist()
+          - pt.join() / df.pt.join() / df.join() (Polars Join Engine)
+          - pt.concat() / df.pt.concat() / df.concat() (Stacking Engine)
+          - Transparent Polars Verb Delegation (__getattr__)
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
           - pt.replace_values() / df.pt.replace_values()
@@ -44,7 +48,7 @@ TABLE OF CONTENTS
     5.3.  All CLI Flags & Syntax Rules
     5.4.  In-Terminal Visualizations (-freq, -hist)
     5.5.  Quoting & Delimiter Standards (: vs =)
-    5.6.  Multi-File Operations (-file, -merge, -concat, -sql)
+    5.6.  Multi-File Operations (-file, -join, -concat, -sql)
     5.7.  Batch Processing, Conversions & Clipboard (-o)
 6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
     6.1.  When should I use `-select` before `-agg`?
@@ -66,7 +70,7 @@ TABLE OF CONTENTS
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
     Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
     Recipe 4: Polars SQL Query in CLI Pipeline
-    Recipe 5: Multi-File Merge, Concat, and Export
+    Recipe 5: Multi-File Join, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
@@ -644,6 +648,15 @@ Examples:
   Computes frequency distribution DataFrame with counts, percentages, and ASCII bars.
 - pt.hist(df, col=None, bins=10) / df.pt.hist(col=None, bins=10):
   Computes numeric histogram DataFrame with bin intervals, counts, and ASCII bars; accepts "col:bins" shorthand.
+- pt.join(df, right, on=None, how="inner", suffix="_right", suffixes=None, validate=None, coalesce=None) / df.pt.join(...) / df.join(...):
+  Joins two DataFrames on keys using high-performance Polars engine. Supports how="inner"|"left"|"right"|"full"|"semi"|"anti"|"cross",
+  colon notation on="id:uid", validation ("1:1", "1:m", "m:1", "m:m"), auto-discovery of common keys, and preserves LazyFrame query plans.
+- pt.concat(dfs, how="vertical") / df.pt.concat(other, how="vertical") / df.concat(other, how="vertical"):
+  Stacks DataFrames vertically (how="vertical", with automatic fallback to diagonal relaxed stacking on schema mismatches)
+  or horizontally (how="horizontal", with automatic column deduplication).
+- Transparent Polars Verb Delegation (__getattr__):
+  Any native Polars method (e.g. .with_columns(), .slice(), .describe(), .explode()) can be called directly on pytae.DataFrame.
+  Arguments are auto-unwrapped and results are rewrapped into pytae.DataFrame so method chains never break.
 - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True):
   Sanitizes missing values with type-safe defaults.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
@@ -760,7 +773,7 @@ Aggregation & Reshaping Flags:
 SQL & Multi-File Flags:
   -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
   -file SPECS           Multi-file mode: "file1.parquet=df1; file2.csv=df2"
-  -merge SPECS          Join files: "left=df1, right=df2, on=id, how=inner"
+  -join SPECS           Join files: "left=df1, right=df2, on=id, how=inner"
   -concat SPECS         Stack files: "frames='df1,df2'"
 
 Output & Formatting Flags:
@@ -789,14 +802,14 @@ Output & Formatting Flags:
    - `-mutate`: "new_col = expression, mass_kg = body_mass_g / 1000"
    - `-filter`: "species = 'Adelie', body_mass_g > 3500"
    - `-clean_columns`: "strip=True, fill='_', case='lower'"
-   - `-merge`: "left=df1, right=df2, on=id, how=left"
+   - `-join`: "left=df1, right=df2, on=id, how=left"
    - `-agg`: "tip=mean, total_bill=mean, n=n"
 
 
-5.6. Multi-File Operations (-file, -merge, -concat, -sql)
+5.6. Multi-File Operations (-file, -join, -concat, -sql)
 --------------------------------------------------------------------------------
 pytae -file "orders.parquet=ord; customers.csv=cust" \
-      -merge "left=ord, right=cust, on=cust_id, how=inner" \
+      -join "left=ord, right=cust, on=cust_id, how=inner" \
       -select "order_id,cust_name,amount" -head 10
 
 
@@ -1038,12 +1051,12 @@ pytae -file "customers.csv=c; orders.parquet=o" \
       -sql "select c.name, sum(o.amount) as total from c join o on c.cust_id = o.cust_id group by c.name"
 ```
 
-Recipe 5: Multi-File Merge, Concat, and Export
+Recipe 5: Multi-File Join, Concat, and Export
 --------------------------------------------------------------------------------
 ```bash
 # 1. Join files on shared key and filter
 pytae -file "orders.parquet=ord; customers.csv=cust" \
-      -merge "left=ord, right=cust, on=cust_id, how=inner" \
+      -join "left=ord, right=cust, on=cust_id, how=inner" \
       -filter "amount > 50" \
       -o filtered_orders.parquet
 
@@ -1144,16 +1157,15 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   └── pytae
 │       ├── __init__.py
 │       ├── __main__.py
+│       ├── _parsing.py
 │       ├── _text.py
 │       ├── accessor.py
-│       ├── agg.py
-│       ├── arrange.py
-│       ├── by.py
 │       ├── cli.py
 │       ├── cli_help.py
 │       ├── cli_parsing.py
 │       ├── cli_pipeline.py
 │       ├── cli_run.py
+│       ├── dataframe.py
 │       ├── datasets
 │       │   ├── anagrams.parquet
 │       │   ├── anscombe.parquet
@@ -1177,16 +1189,13 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │       │   ├── taxis.parquet
 │       │   ├── tips.parquet
 │       │   └── titanic.parquet
-│       ├── filter.py
 │       ├── mutate.py
 │       ├── other_utilities.py
 │       ├── plotting.py
+│       ├── polars_engine.py
 │       ├── py.typed
-│       ├── qry.py
 │       ├── readers.py
-│       ├── select.py
-│       ├── shape.py
-│       └── sql.py
+│       └── select.py
 └── tests
     ├── __init__.py
     ├── cli_helpers.py
@@ -1199,7 +1208,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
     ├── test_cli_enhancements.py
     ├── test_cli_filter.py
     ├── test_cli_inspect.py
-    ├── test_cli_merge.py
+    ├── test_cli_join.py
     ├── test_cli_mutate.py
     ├── test_cli_new_features.py
     ├── test_cli_parse.py
@@ -1208,14 +1217,15 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
     ├── test_cli_select.py
     ├── test_cli_sql.py
     ├── test_import.py
+    ├── test_join_concat.py
+    ├── test_lazy.py
     ├── test_mutate.py
     ├── test_pivot.py
     ├── test_plotter.py
-    ├── test_qry.py
+    ├── test_polars_engine.py
     ├── test_readers.py
     ├── test_select.py
     ├── test_shape.py
-    ├── test_sql.py
     ├── test_utilities.py
     └── test_verbs_v39.py
 """

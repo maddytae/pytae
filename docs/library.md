@@ -40,8 +40,7 @@ penguins = pt.sample("penguins")
 
 # 1. Accessor chain: seamless integration with pandas
 (
-    penguins
-    .pt.filter("body_mass_g > 3000, species == 'Gentoo'")
+    penguins.pt.filter("body_mass_g > 3000, species == 'Gentoo'")
     .pt.select("species", "island", "bill_length_mm", "body_mass_g")
     .pt.mutate(mass_kg="body_mass_g / 1000")
     .pt.arrange("mass_kg desc")
@@ -71,7 +70,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 
 | Module | Verbs / API | Description | Feature Guide |
 |---|---|---|---|
-| **Data I/O** | `pt.read()`, `pt.scan()`, `df.to_parquet()`, `df.to_csv()`, `df.to_clip()`, `pt.sample()` | Eager reading, lazy scanning, pushdowns, streaming sinks, interop, and dataset sampling | [library/io.md](library/io.md) |
+| **Data I/O & Joins** | `pt.read()`, `pt.scan()`, `df.join()`, `pt.concat()`, `df.to_parquet()`, `df.to_csv()`, `df.to_clip()`, `pt.sample()` | Eager reading, lazy scanning, pushdowns, relational joins, row stacking, streaming sinks, interop, and dataset sampling | [library/io.md](library/io.md) |
 | **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.md](library/filter.md) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.md](library/select.md) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, multi-column transforms (`(col1, col2) = _ * 2`), window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.md](library/mutate.md) |
@@ -120,13 +119,13 @@ pt.filter(penguins, body_mass_g="[3000, 4500]", species=("startswith", "Ad"))
 Select, filter, reorder, or exclude columns using exact names, negative prefixes (`-col`, `~col`), negative slices (`-start:end`), keyword exclusion (`exclude=`), regex patterns, or data type categories:
 
 ```python
-pt.select(penguins, "species", "island")              # Exact column order
-pt.select(penguins, "-species")                       # Exclude column (negative selection)
-pt.select(penguins, "-bill_length_mm:body_mass_g")    # Negative slice
-pt.select(penguins, exclude=["species", "island"])    # Keyword exclusion
-pt.select(penguins, "species:bill_length_mm")          # Contiguous slice
+pt.select(penguins, "species", "island")  # Exact column order
+pt.select(penguins, "-species")  # Exclude column (negative selection)
+pt.select(penguins, "-bill_length_mm:body_mass_g")  # Negative slice
+pt.select(penguins, exclude=["species", "island"])  # Keyword exclusion
+pt.select(penguins, "species:bill_length_mm")  # Contiguous slice
 pt.select(penguins, contains="bill", dtype="numeric")  # Pattern union
-pt.select(penguins, exclude_dtype="numeric")          # Invert selection
+pt.select(penguins, exclude_dtype="numeric")  # Invert selection
 ```
 
 👉 **Complete Guide:** [library/select.md](library/select.md)
@@ -175,17 +174,12 @@ pt.arrange(penguins, "-body_mass_g")
 pt.arrange(penguins, "[bill length mm] desc")
 
 # Pick top / bottom records overall or within groups
-pt.pick(penguins, "body_mass_g", n=3)                 # Top 3 (default order="max")
-pt.pick(penguins, "body_mass_g", n=1, order="min")    # Lightest penguin
-pt.pick(penguins, "body_mass_g", prop=0.1)            # Top 10%
+pt.pick(penguins, "body_mass_g", n=3)  # Top 3 (default order="max")
+pt.pick(penguins, "body_mass_g", n=1, order="min")  # Lightest penguin
+pt.pick(penguins, "body_mass_g", prop=0.1)  # Top 10%
 
 # Method chaining with group context
-(
-    penguins
-    .pt.arrange("species, -body_mass_g")
-    .pt.by("species")
-    .pt.pick("body_mass_g", n=2)
-)
+(penguins.pt.arrange("species, -body_mass_g").pt.by("species").pt.pick("body_mass_g", n=2))
 ```
 
 👉 **Complete Guides:** [library/arrange.md](library/arrange.md) (Sorting) • [library/pick.md](library/pick.md) (Picking Rows)
@@ -261,12 +255,14 @@ penguins.pt.by("species").pt.mutate("mean_mass = mean(body_mass_g), diff = body_
 penguins.pt.by("species").pt.ungroup()
 
 # Direct functional agg
-pt.agg(penguins, "species", "mean")                           # Mean of all numeric columns per species
-pt.agg(penguins, ["species", "island"], ["mean", "sum", "n"]) # Multi-column grouping
-pt.agg(penguins, "species", body_mass_g="mean", count="n")    # Column-specific aggregations
-pt.agg(tips.rename(columns={"total_bill": "total bill"}), "smoker", "tip = mean, [total bill] = mean, n = n") # String spec with bracketed spaced columns
-pt.agg(penguins, "species", total="body_mass_g:sum")          # Named aggregation
-pt.agg(penguins, None, a=["mean", "n"])                       # Whole-table summary (no grouping)
+pt.agg(penguins, "species", "mean")  # Mean of all numeric columns per species
+pt.agg(penguins, ["species", "island"], ["mean", "sum", "n"])  # Multi-column grouping
+pt.agg(penguins, "species", body_mass_g="mean", count="n")  # Column-specific aggregations
+pt.agg(
+    tips.rename(columns={"total_bill": "total bill"}), "smoker", "tip = mean, [total bill] = mean, n = n"
+)  # String spec with bracketed spaced columns
+pt.agg(penguins, "species", total="body_mass_g:sum")  # Named aggregation
+pt.agg(penguins, None, a=["mean", "n"])  # Whole-table summary (no grouping)
 ```
 
 👉 **Complete Guide:** [library/agg.md](library/agg.md)
@@ -281,8 +277,7 @@ Method-chainable visualization engine built on Matplotlib and `pandas.plot()`. S
 ```python
 # Direct accessor chaining
 (
-    penguins
-    .pt.select("species", "bill_length_mm", "bill_depth_mm")
+    penguins.pt.select("species", "bill_length_mm", "bill_depth_mm")
     .pt.plot(kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species", palette="tab10")
     .finalize()
 )
@@ -305,13 +300,13 @@ p.finalize(consolidate_legends=True)
 Essential tabular utilities for everyday manipulation:
 
 ```python
-penguins.pt.glimpse()                                                 # Transposed column overview (returns self)
-penguins.pt.freq("species")                                           # Frequency distribution DataFrame with ASCII bars
-penguins.pt.hist("body_mass_g:10")                                    # Numeric histogram DataFrame with ASCII bars
-pt.clean_columns(df, strip=True, fill="_", case="lower", dedupe=True) # Normalize headers
-pt.replace_values(df, {"old": "new"}, c="col_a", exact=True)          # Replace cell values
-pt.handle_missing(df, fillna="NA")                                    # Impute missing values
-penguins.to_clip()                                                    # Copy DataFrame to clipboard
+penguins.pt.glimpse()  # Transposed column overview (returns self)
+penguins.pt.freq("species")  # Frequency distribution DataFrame with ASCII bars
+penguins.pt.hist("body_mass_g:10")  # Numeric histogram DataFrame with ASCII bars
+pt.clean_columns(df, strip=True, fill="_", case="lower", dedupe=True)  # Normalize headers
+pt.replace_values(df, {"old": "new"}, c="col_a", exact=True)  # Replace cell values
+pt.handle_missing(df, fillna="NA")  # Impute missing values
+penguins.to_clip()  # Copy DataFrame to clipboard
 ```
 
 👉 **Complete Guide:** [library/other_utilities.md](library/other_utilities.md)
@@ -327,11 +322,11 @@ penguins.to_clip()                                                    # Copy Dat
 import pytae as pt
 
 penguins = pt.sample("penguins")  # or pt.sample_data["penguins"]
-tips     = pt.sample("tips")
-titanic  = pt.sample("titanic")
+tips = pt.sample("tips")
+titanic = pt.sample("titanic")
 diamonds = pt.sample("diamonds")
-mpg      = pt.sample("mpg")
-flights  = pt.sample("flights")
+mpg = pt.sample("mpg")
+flights = pt.sample("flights")
 ```
 
 ---

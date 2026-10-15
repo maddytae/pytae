@@ -27,9 +27,9 @@
 ```python
 import pytae as pt
 
-penguins = pt.sample_data['penguins']
-titanic = pt.sample_data['titanic']
-tips = pt.sample_data['tips']
+penguins = pt.sample_data["penguins"]
+titanic = pt.sample_data["titanic"]
+tips = pt.sample_data["tips"]
 
 penguins.pt.cols(ascending=None)  # see column order
 ```
@@ -44,10 +44,7 @@ Criteria are a union (OR). Prefer `contains=` for substrings and `regex=` for pa
 
 ```python
 # All columns that contain 'bill' OR 'mass', plus species
-(penguins
- .pt.select('species', contains=['bill', 'mass'])
- .head()
-)
+(penguins.pt.select("species", contains=["bill", "mass"]).head())
 ```
 
 **Output:**
@@ -64,10 +61,7 @@ Criteria are a union (OR). Prefer `contains=` for substrings and `regex=` for pa
 # Column order rule: explicit list preserves YOUR order; contains/regex follow original DataFrame order
 # island, sex, species are listed explicitly so they come first in that exact order,
 # then contains='mm' adds remaining mm-cols in original df order
-(penguins
- .pt.select('island', 'sex', 'species', contains='mm')
- .head()
-)
+(penguins.pt.select("island", "sex", "species", contains="mm").head())
 ```
 
 **Output:**
@@ -82,10 +76,7 @@ Criteria are a union (OR). Prefer `contains=` for substrings and `regex=` for pa
 
 ```python
 # Columns ending in 'mm' — anchored regex
-(penguins
- .pt.select(regex='mm$')
- .head()
-)
+(penguins.pt.select(regex="mm$").head())
 ```
 
 **Output:**
@@ -101,10 +92,7 @@ Criteria are a union (OR). Prefer `contains=` for substrings and `regex=` for pa
 ```python
 # Combining contains= with a slice in one call (union)
 # contains='mm' picks the mm-cols; 'island:body_mass_g' slice picks everything between those two cols
-(penguins
- .pt.select('island:body_mass_g', contains='mm')
- .head()
-)
+(penguins.pt.select("island:body_mass_g", contains="mm").head())
 ```
 
 **Output:**
@@ -122,10 +110,7 @@ Criteria are a union (OR). Prefer `contains=` for substrings and `regex=` for pa
 
 ```python
 # Select from 'bill_length_mm' through 'body_mass_g' (all measurement cols)
-(penguins
- .pt.select('bill_length_mm:body_mass_g')
- .head()
-)
+(penguins.pt.select("bill_length_mm:body_mass_g").head())
 ```
 
 **Output:**
@@ -144,18 +129,13 @@ Criteria are a union (OR). Prefer `contains=` for substrings and `regex=` for pa
 # just because it can be done, does not mean it should be done.
 # use more readable ways like list comprehension — this will ensure your co-workers
 # don't stab you in the middle of the night
-(penguins
- .pt.select(regex=r'^(?=.*mm)(?!.*flipper).*')  # regex sorcery
- .head()
+(
+    penguins.pt.select(regex=r"^(?=.*mm)(?!.*flipper).*").head()  # regex sorcery
 )
 
 # More readable alternative:
-cols_with_mm_not_flipper = [c for c in penguins.columns if 'mm' in c and 'flipper' not in c]
-(
-    penguins
-    .pt.select(cols_with_mm_not_flipper)
-    .head()
-)
+cols_with_mm_not_flipper = [c for c in penguins.columns if "mm" in c and "flipper" not in c]
+(penguins.pt.select(cols_with_mm_not_flipper).head())
 ```
 
 **Output:**
@@ -173,10 +153,7 @@ Use `everything()` to move specific columns to the front without dropping any.
 
 ```python
 # Move 'body_mass_g' and 'species' to front, keep all other columns after
-(penguins
- .pt.select('body_mass_g', 'species', pt.everything())
- .head()
-)
+(penguins.pt.select("body_mass_g", "species", pt.everything()).head())
 ```
 
 **Output:**
@@ -193,10 +170,7 @@ Use `everything()` to move specific columns to the front without dropping any.
 
 ```python
 # Lambda: columns whose name has more than 6 characters
-(penguins
- .pt.select(lambda c: len(c) > 6)
- .head()
-)
+(penguins.pt.select(lambda c: len(c) > 6).head())
 ```
 
 **Output:**
@@ -213,10 +187,7 @@ Use `everything()` to move specific columns to the front without dropping any.
 
 ```python
 # All numeric columns only
-(penguins
- .pt.select(dtype='numeric')
- .head()
-)
+(penguins.pt.select(dtype="numeric").head())
 ```
 
 **Output:**
@@ -231,10 +202,7 @@ Use `everything()` to move specific columns to the front without dropping any.
 
 ```python
 # Drop numeric columns — keep only categorical/string columns
-(penguins
- .pt.select(exclude_dtype='number')
- .head()
-)
+(penguins.pt.select(exclude_dtype="number").head())
 ```
 
 **Output:**
@@ -249,10 +217,7 @@ Use `everything()` to move specific columns to the front without dropping any.
 
 ```python
 # exclude_dtype also accepts a list — exclude multiple dtype families at once
-(penguins
- .pt.select(exclude_dtype=['datetime', 'object'])
- .head()
-)
+(penguins.pt.select(exclude_dtype=["datetime", "object"]).head())
 ```
 
 **Output:**
@@ -267,10 +232,7 @@ Use `everything()` to move specific columns to the front without dropping any.
 
 ```python
 # Titanic: columns starting with 'p' or 'a', plus all numeric; behaviour here is | and not &
-(titanic
- .pt.select(startswith=['p', 'a'], dtype='numeric')
- .head()
-)
+(titanic.pt.select(startswith=["p", "a"], dtype="numeric").head())
 ```
 
 **Output:**
@@ -285,9 +247,8 @@ Use `everything()` to move specific columns to the front without dropping any.
 
 ```python
 # endswith — select columns whose name ends with a given suffix
-(penguins
- .pt.select(endswith='mm')  # same result as .select(regex='mm$') but more readable
- .head()
+(
+    penguins.pt.select(endswith="mm").head()  # same result as .select(regex='mm$') but more readable
 )
 ```
 
@@ -304,11 +265,10 @@ Use `everything()` to move specific columns to the front without dropping any.
 ```python
 # Columns containing 'bill' or 'flipper' in name, used in a full chain ;  behaviour here is | and not &
 (
-    penguins
-    .pt.filter(species=['Adelie', 'Gentoo'])
-    .pt.select('species', 'island', contains=['bill', 'flipper'])
-    .pt.by('species', 'island')
-    .pt.agg(a=['mean', 'n'])
+    penguins.pt.filter(species=["Adelie", "Gentoo"])
+    .pt.select("species", "island", contains=["bill", "flipper"])
+    .pt.by("species", "island")
+    .pt.agg(a=["mean", "n"])
 )
 ```
 
@@ -326,10 +286,7 @@ Drop or exclude columns by prefixing names with `-` or `~`, passing a negative s
 
 ```python
 # Drop single column by negating with '-' or '~'
-(
-    penguins.pt.select('-species')
-    .head(3)
-)
+(penguins.pt.select("-species").head(3))
 ```
 
 **Output:**
@@ -342,10 +299,7 @@ Drop or exclude columns by prefixing names with `-` or `~`, passing a negative s
 
 ```python
 # Drop multiple columns
-(
-    penguins.pt.select('-species', '-island', '-sex')
-    .head(3)
-)
+(penguins.pt.select("-species", "-island", "-sex").head(3))
 ```
 
 **Output:**
@@ -358,10 +312,7 @@ Drop or exclude columns by prefixing names with `-` or `~`, passing a negative s
 
 ```python
 # Exclude a contiguous slice of columns
-(
-    penguins.pt.select('-bill_length_mm:body_mass_g')
-    .head(3)
-)
+(penguins.pt.select("-bill_length_mm:body_mass_g").head(3))
 ```
 
 **Output:**
@@ -374,10 +325,7 @@ Drop or exclude columns by prefixing names with `-` or `~`, passing a negative s
 
 ```python
 # Exclude columns using the exclude= keyword
-(
-    penguins.pt.select(exclude=['species', 'island'])
-    .head(3)
-)
+(penguins.pt.select(exclude=["species", "island"]).head(3))
 ```
 
 **Output:**
@@ -390,11 +338,7 @@ Drop or exclude columns by prefixing names with `-` or `~`, passing a negative s
 
 ```python
 # Combine positive selection with negative exclusion in a chain
-(penguins
- .pt.select(dtype='numeric')
- .pt.select('-bill_depth_mm')
- .head(3)
-)
+(penguins.pt.select(dtype="numeric").pt.select("-bill_depth_mm").head(3))
 ```
 
 **Output:**
@@ -411,11 +355,8 @@ Square brackets `[col name]` allow selecting and manipulating columns with space
 
 ```python
 # Select columns with spaces using bracket notation
-penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'})
-(
-    penguins_spaced.pt.select('species', '[bill length mm]', '[body mass g]')
-    .head()
-)
+penguins_spaced = penguins.rename(columns={"bill_length_mm": "bill length mm", "body_mass_g": "body mass g"})
+(penguins_spaced.pt.select("species", "[bill length mm]", "[body mass g]").head())
 ```
 
 **Output:**
@@ -430,10 +371,7 @@ penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', '
 
 ```python
 # Comma-separated string with bracketed space columns
-(
-    penguins_spaced.pt.select('species, [bill length mm], [body mass g]')
-    .head()
-)
+(penguins_spaced.pt.select("species, [bill length mm], [body mass g]").head())
 ```
 
 **Output:**
@@ -448,10 +386,7 @@ penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', '
 
 ```python
 # Drop a spaced column using negative bracket syntax -[col]
-(
-    penguins_spaced.pt.select('species', '[bill length mm]', '-[bill length mm]')
-    .head()
-)
+(penguins_spaced.pt.select("species", "[bill length mm]", "-[bill length mm]").head())
 ```
 
 **Output:**

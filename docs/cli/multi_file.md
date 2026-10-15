@@ -2,7 +2,7 @@
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Load, join, stack, and query multiple disparate datasets in a unified pipeline using `-file`, `-merge`, `-concat`, and cross-file `-sql`.
+Load, join, stack, and query multiple disparate datasets in a unified pipeline using `-file`, `-join`, `-concat`, and cross-file `-sql`.
 
 ---
 
@@ -10,7 +10,7 @@ Load, join, stack, and query multiple disparate datasets in a unified pipeline u
 
 - [Overview & Architecture](#overview--architecture)
 - [Loading Named Inputs (`-file`)](#loading-named-inputs--file)
-- [Joining Datasets (`-merge`)](#joining-datasets--merge)
+- [Joining Datasets (`-join`)](#joining-datasets--join)
   - [Shared Join Keys](#shared-join-keys)
   - [Different Join Keys (`left:right`)](#different-join-keys-leftright)
   - [Join Types (`how=inner|left|right|outer`)](#join-types-howinnerleftrightouter)
@@ -18,7 +18,7 @@ Load, join, stack, and query multiple disparate datasets in a unified pipeline u
   - [Folding Multiple Files with `data`](#folding-multiple-files-with-data)
 - [Row-Wise Stacking (`-concat`)](#row-wise-stacking--concat)
 - [Cross-File SQL Queries (`-sql`)](#cross-file-sql-queries--sql)
-- [Exporting Merged Results](#exporting-merged-results)
+- [Exporting Joined Results](#exporting-joined-results)
 
 ---
 
@@ -26,7 +26,7 @@ Load, join, stack, and query multiple disparate datasets in a unified pipeline u
 
 While standard `pytae` operations process a single positional file path, `-file` switches the CLI into multi-file mode:
 - `-file` replaces the positional path entirely.
-- The pipeline must begin with either `-merge`, `-concat`, or `-sql`.
+- The pipeline must begin with either `-join`, `-concat`, or `-sql`.
 - Subsequent steps (`-filter`, `-select`, `-mutate`, `-agg`, `-o`) operate on the combined result.
 
 ---
@@ -41,7 +41,7 @@ pytae -file "emp.parquet=emp; dept.csv=dept,dlim=',' ; sales.txt=sales,dlim='|'"
 
 ---
 
-## Joining Datasets (`-merge`)
+## Joining Datasets (`-join`)
 
 Merges two frames (or folds in the running pipeline result `data`):
 
@@ -56,7 +56,7 @@ Merges two frames (or folds in the running pipeline result `data`):
 
 ```bash
 pytae -file "emp.parquet=emp; dept.csv=dept" \
-  -merge "left=emp,right=dept,on=id" \
+  -join "left=emp,right=dept,on=id" \
   -head 3
 ```
 
@@ -74,7 +74,7 @@ When key column names differ between datasets, map them using `:`:
 
 ```bash
 pytae -file "customers.parquet=c; orders.csv=o" \
-  -merge "left=c,right=o,on='customer_id:cust_id',how=left" \
+  -join "left=c,right=o,on='customer_id:cust_id',how=left" \
   -head 5
 ```
 
@@ -82,7 +82,7 @@ pytae -file "customers.parquet=c; orders.csv=o" \
 
 ```bash
 # Left outer join
-pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,how=left"
+pytae -file "a.csv=a; b.csv=b" -join "left=a,right=b,on=id,how=left"
 ```
 
 **Output:**
@@ -98,17 +98,17 @@ pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,how=left"
 Protect data integrity by failing immediately if relationships violate cardinality expectations:
 
 ```bash
-pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=id,validate=one_to_one"
+pytae -file "a.csv=a; b.csv=b" -join "left=a,right=b,on=id,validate=one_to_one"
 ```
 
 ### Folding Multiple Files with `data`
 
-Chain multiple `-merge` flags in sequence. After the first join, use `data` to refer to the running pipeline result:
+Chain multiple `-join` flags in sequence. After the first join, use `data` to refer to the running pipeline result:
 
 ```bash
 pytae -file "users.csv=u; orders.csv=o; payments.parquet=p" \
-  -merge "left=u,right=o,on=user_id" \
-  -merge "left=data,right=p,on=order_id" \
+  -join "left=u,right=o,on=user_id" \
+  -join "left=data,right=p,on=order_id" \
   -head 5
 ```
 
@@ -129,7 +129,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2; mar.parquet=m3" \
 
 ## Cross-File SQL Queries (`-sql`)
 
-Instead of `-merge`, you can start a `-file` pipeline with `-sql`. Every alias in `-file` is registered directly as an in-memory Polars SQL table:
+Instead of `-join`, you can start a `-file` pipeline with `-sql`. Every alias in `-file` is registered directly as an in-memory Polars SQL table:
 
 ```bash
 pytae -file "customers.csv=c; orders.parquet=o" \
@@ -155,14 +155,14 @@ pytae -file "customers.csv=c; orders.parquet=o" \
 
 ---
 
-## Exporting Merged Results
+## Exporting Joined Results
 
 In `-file` mode, there is no single source path to infer an in-place output name. Therefore, exporting requires an explicit destination path via `-o`:
 
 ```bash
 pytae -file "a.parquet=a; b.csv=b" \
-  -merge "left=a,right=b,on=id" \
-  -o merged_output.parquet
+  -join "left=a,right=b,on=id" \
+  -o joined_output.parquet
 ```
 
 > [!NOTE]

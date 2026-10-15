@@ -308,8 +308,8 @@ class _Pipeline:
         """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered
         as table `data` (the file itself is already named on the command line, so there's no
         separate file-derived alias).
-        -file/-merge mode: every -file alias is registered under its own name instead, so
-        -sql can do the join itself; `data` is also registered once something (e.g. -merge)
+        -file/-join mode: every -file alias is registered under its own name instead, so
+        -sql can do the join itself; `data` is also registered once something (e.g. -join)
         has produced a current view. Returns an error message or None."""
         import re
 

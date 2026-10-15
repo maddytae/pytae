@@ -13,6 +13,15 @@ All notable changes to this project are documented in this file.
   - Native constructors: `pt(pandas_df)` or `pt(polars_df)` automatically detects and wraps tabular data into `pt.DataFrame`.
   - Effortless exports: `.to_pandas()`, `.to_polars()`, and `.to_clip()` (system clipboard export via Polars string serialization).
   - Preserved metadata and Pandas testing interoperability hooks (`pd.testing.assert_frame_equal` and `pd.melt`).
+- **Native Polars Joins & Concatenation (`join`, `concat`)**:
+  - `pt.join()`, `df.pt.join()`, `df.join()`: high-performance Polars join supporting inner, left, right, full, semi, anti, and cross joins, colon shorthand `on="left_key:right_key"`, auto-discovery of common join keys, and validation (`"1:1"`, `"1:m"`, `"m:1"`, `"m:m"`). Preserves `LazyFrame` query plans for predicate pushdown.
+  - `pt.concat()`, `df.pt.concat()`, `df.concat()`: fast vertical and horizontal stacking with automatic schema mismatch handling (relaxed diagonal fallback) and automatic horizontal column deduplication.
+  - **Transparent Polars Verb Delegation**: `pt.DataFrame.__getattr__` dynamically forwards any Polars DataFrame/LazyFrame method (e.g. `.with_columns()`, `.slice()`, `.describe()`, `.explode()`) while auto-unwrapping `pt.DataFrame` inputs and auto-rewrapping Polars outputs to preserve fluent chaining.
+
+### Removed & Breaking Changes
+- **Clean Break: Eradication of `merge` in favor of `join`**:
+  - Renamed CLI flag `-merge` / `--merge` to `-join` / `--join` (`pytae -file "a.csv=a; b.csv=b" -join "left=a,right=b,on=id"`).
+  - Eradicated `merge` keyword across Python library and CLI; use native `join` exclusively.
 
 ## [3.9.0] - 2026-10-14
 

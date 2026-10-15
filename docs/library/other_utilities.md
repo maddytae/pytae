@@ -19,8 +19,8 @@
 ```python
 import pytae as pt
 
-penguins = pt.sample_data['penguins']
-titanic = pt.sample_data['titanic']
+penguins = pt.sample_data["penguins"]
+titanic = pt.sample_data["titanic"]
 penguins.head(3)
 ```
 
@@ -83,13 +83,7 @@ penguins.pt.glimpse()
 
 ```python
 # Non-destructive: returns self, allowing inspection mid-pipeline
-(
-    penguins
-    .pt.filter("body_mass_g > 4000")
-    .pt.glimpse()
-    .pt.select("species", "island", "body_mass_g")
-    .head(3)
-)
+(penguins.pt.filter("body_mass_g > 4000").pt.glimpse().pt.select("species", "island", "body_mass_g").head(3))
 ```
 
 **Output:**
@@ -106,10 +100,7 @@ Fills string/category NaN with a visible marker (default `.`) and numeric NaN wi
 ```python
 # Default fillna='.': NaN sex becomes '.', NaN numerics become 0
 # Then aggregate to see the '.' group alongside real groups
-(
-    penguins
-    .pt.handle_missing()
-)
+(penguins.pt.handle_missing())
 ```
 
 **Output:**
@@ -129,10 +120,7 @@ Fills string/category NaN with a visible marker (default `.`) and numeric NaN wi
 
 ```python
 # Custom fillna marker — makes missing group explicit in reports
-(
-    penguins
-    .pt.handle_missing(fillna='Unknown')
-)
+(penguins.pt.handle_missing(fillna="Unknown"))
 ```
 
 **Output:**
@@ -152,10 +140,7 @@ Fills string/category NaN with a visible marker (default `.`) and numeric NaN wi
 
 ```python
 # Use a single-char marker like '$' to make missing data stand out in reports
-(
-    penguins
-    .pt.handle_missing(fillna='$')
-)
+(penguins.pt.handle_missing(fillna="$"))
 ```
 
 **Output:**
@@ -179,10 +164,10 @@ Fills string/category NaN with a visible marker (default `.`) and numeric NaN wi
 ```python
 # df.to_clip() copies the current DataFrame to clipboard — paste into Excel/Sheets
 # Run this cell then Cmd+V in any spreadsheet application
-(penguins
- .pt.select('species', 'island', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'island')
- .pt.agg(a=['mean', 'n'])
+(
+    penguins.pt.select("species", "island", "bill_length_mm", "body_mass_g")
+    .pt.by("species", "island")
+    .pt.agg(a=["mean", "n"])
 ).to_clip()
 ```
 
@@ -203,16 +188,15 @@ Cleans column header names in a fixed order: `strip` -> `strip_special` -> `sque
 
 ```python
 # messy headers: leading/trailing spaces, repeated internal spaces, mixed case
-messy = penguins.rename(columns={
-    'species': '  Species  ',
-    'island': 'Island   Name',
-    'body_mass_g': 'Body Mass (g)',
-})
-
-(messy
- .pt.clean_columns(strip=True, squeeze=True, strip_special=True, fill='_', case='lower')
- .pt.cols(ascending=None)
+messy = penguins.rename(
+    columns={
+        "species": "  Species  ",
+        "island": "Island   Name",
+        "body_mass_g": "Body Mass (g)",
+    }
 )
+
+(messy.pt.clean_columns(strip=True, squeeze=True, strip_special=True, fill="_", case="lower").pt.cols(ascending=None))
 ```
 
 **Output:**
@@ -222,11 +206,7 @@ messy = penguins.rename(columns={
 
 ```python
 # Method chain: clean names, then display them in original column order
-(
-    penguins
-    .pt.clean_columns(case='proper')
-    .pt.cols(ascending=None)
-)
+(penguins.pt.clean_columns(case="proper").pt.cols(ascending=None))
 ```
 
 **Output:**
@@ -239,11 +219,7 @@ Wraps pandas `replace()`. `exact=True` (default) only replaces a cell whose enti
 
 ```python
 # exact=True (default): only cells that equal 'Adelie'/'Male' exactly are replaced
-(penguins
- .pt.replace_values({'Adelie': 'Adelie (renamed)', 'Male': 'M'})
- .pt.select('species', 'sex')
- .drop_duplicates()
-)
+(penguins.pt.replace_values({"Adelie": "Adelie (renamed)", "Male": "M"}).pt.select("species", "sex").drop_duplicates())
 ```
 
 **Output:**
@@ -262,11 +238,7 @@ Wraps pandas `replace()`. `exact=True` (default) only replaces a cell whose enti
 ```python
 # c= restricts the replace to specific columns — 'island' untouched even though
 # it never contained 'Male' anyway, this shows the scoping mechanism itself
-(penguins
- .pt.replace_values({'Male': 'M', 'Female': 'F'}, c='sex')
- .pt.select('island', 'sex')
- .drop_duplicates()
-)
+(penguins.pt.replace_values({"Male": "M", "Female": "F"}, c="sex").pt.select("island", "sex").drop_duplicates())
 ```
 
 **Output:**
@@ -287,8 +259,8 @@ Wraps pandas `replace()`. `exact=True` (default) only replaces a cell whose enti
 # exact=False: substring match anywhere in the cell, rest of the cell untouched
 import pandas as pd
 
-notes = pd.DataFrame({'note': ['a magician performed', 'not a magician exactly', 'no match here']})
-notes.pt.replace_values({'a magician': 'the magic'}, exact=False)
+notes = pd.DataFrame({"note": ["a magician performed", "not a magician exactly", "no match here"]})
+notes.pt.replace_values({"a magician": "the magic"}, exact=False)
 ```
 
 **Output:**

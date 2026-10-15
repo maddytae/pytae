@@ -1,6 +1,6 @@
 # pytae — CLI Reference & Architecture Hub
 
-The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.pivot()`) and CLI-native workflows (schema diffing, multi-file merges, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
+The `pytae` CLI provides high-performance command-line data processing for tabular files (`.parquet`, `.csv`, `.txt`, `.dat`, `.jsonl`, `.sas7bdat`). It translates library verbs (`pt.select()`, `pt.filter()`, `pt.mutate()`, `pt.agg()`, `pt.long()`, `pt.wide()`, `pt.pivot()`) and CLI-native workflows (schema diffing, multi-file joins, header normalization, batch format conversions) into a fluent command-line pipeline without requiring Python scripts or boilerplate code.
 
 ---
 
@@ -40,7 +40,7 @@ The `pytae` CLI executes operations sequentially from left to right as an in-mem
 4. **Resilient Transparent Fallback**: If an operation encounters an expression or parameter unsupported by the vector engine, it seamlessly falls back to Pandas execution without interrupting the pipeline.
 5. **Execution Modes**:
    - **Single-file mode** (standard): `pytae <path> [operations...] [output]`
-   - **Multi-file mode**: `pytae -file "alias1=path1; alias2=path2" -merge ...` (replaces positional path)
+   - **Multi-file mode**: `pytae -file "alias1=path1; alias2=path2" -join ...` (replaces positional path)
 6. **Terminal vs Non-Terminal Steps**:
    - Most operations (`-select`, `-filter`, `-mutate`, `-arrange`, `-head`, `-describe`) produce a modified working DataFrame that can continue chaining.
    - Non-DataFrame inspection flags (`-shape`, `-cols`, `-dtype`, `-nulls`, `-info`, `-meta`, `-diff`) print summary text and terminate the pipeline (allowing only `-o clip` to copy the output).
@@ -84,7 +84,7 @@ For in-depth syntax rules, comprehensive parameter tables, corner cases, and ter
 | **Visualizations & Plots** | [Plotting Guide](cli/plotting.md) | `-freq` (ASCII bars), `-hist` (ASCII bins), `-plot` (export charts), `-finalize` |
 | **Dataset Comparison** | [Dataset & Schema Diffing Guide](cli/diff.md) | `-diff`, shape deltas, column changes, schema drift, null count variations, cell mismatches |
 | **File I/O & Compression** | [File I/O, Export, & Compression Guide](cli/export_io.md) | `-o`, `-out_dir`, STDIN (`-`, auto-pipe), `clip`, `-fmt`, `.parquet`, `.csv`, `.jsonl`, `.csv.gz`, `-progress` |
-| **Multi-File Pipelines** | [Multi-File Pipelines Guide](cli/multi_file.md) | `-file`, `-merge` (joins), `-concat` (stacking), cross-file `-sql` |
+| **Multi-File Pipelines** | [Multi-File Pipelines Guide](cli/multi_file.md) | `-file`, `-join` (joins), `-concat` (stacking), cross-file `-sql` |
 | **Other Utilities** | [Other Utilities Guide](cli/other_utilities.md) | `-nrows`, `-limit`, `-dlim`, `-encoding`, `-pretty`, `-round`, `-pager`, `-progress`, `-version` |
 
 ---
@@ -348,11 +348,11 @@ pytae data.parquet -head 10 -o clip                               # Copy to clip
 
 Load multiple named datasets into a single unified pipeline to perform SQL queries across tables, join on shared or distinct keys, or stack records row-wise.
 
-- **Primary flags**: `-file`, `-merge`, `-concat`
+- **Primary flags**: `-file`, `-join`, `-concat`
 
 ```bash
 pytae -file "orders.parquet=o; customers.csv=c" \
-      -merge "left=o,right=c,on=customer_id,how=left" \
+      -join "left=o,right=c,on=customer_id,how=left" \
       -head 5
 
 pytae -file "jan.parquet=m1; feb.parquet=m2" \
@@ -408,7 +408,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | `-finalize SPEC` | Visualize | Plot decoration and styling (`title=`, `style=`, `tight_layout=`) | [cli/plotting.md](cli/plotting.md) |
 | `-fmt FORMAT` | I/O & Export | Format override for STDIN / extensionless files (`csv`, `parquet`, `jsonl`) | [cli/export_io.md](cli/export_io.md) |
 | `-file SPEC` | Multi-File | Load multiple named input files (`PATH=ALIAS;...`) | [cli/multi_file.md](cli/multi_file.md) |
-| `-merge SPEC` | Multi-File | Join `-file` aliases (`left=`, `right=`, `on=`, `how=`) | [cli/multi_file.md](cli/multi_file.md) |
+| `-join SPEC` | Multi-File | Join `-file` aliases (`left=`, `right=`, `on=`, `how=`) | [cli/multi_file.md](cli/multi_file.md) |
 | `-concat SPEC` | Multi-File | Stack `-file` aliases row-wise (`frames=`) | [cli/multi_file.md](cli/multi_file.md) |
 | `-o TARGET` | I/O & Export | Destination file, format (`csv`, `parquet`), or `clip` | [cli/export_io.md](cli/export_io.md) |
 | `-out_dir DIR` | I/O & Export | Destination directory for exported files | [cli/export_io.md](cli/export_io.md) |
@@ -455,7 +455,7 @@ pytae -file "jan.parquet=m1; feb.parquet=m2" \
 | **Fast Parquet metadata check** | `-meta` | [Inspection & Metadata](cli/inspect.md) |
 | **Compare two datasets** | `-diff` | [Dataset & Schema Diffing](cli/diff.md) |
 | **Export / convert file format** | `-o`, `-out_dir` | [File I/O, Export, & Compression](cli/export_io.md) |
-| **Join or stack multiple files** | `-file` + `-merge` / `-concat` | [Multi-File Pipelines](cli/multi_file.md) |
+| **Join or stack multiple files** | `-file` + `-join` / `-concat` | [Multi-File Pipelines](cli/multi_file.md) |
 
 ---
 

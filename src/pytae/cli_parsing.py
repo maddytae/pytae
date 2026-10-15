@@ -773,11 +773,11 @@ def parse_file_arg(raw: str) -> list[dict]:
     return entries
 
 
-_MERGE_KEYS = ("left", "right", "on", "how", "validate")
+_JOIN_KEYS = ("left", "right", "on", "how", "validate")
 
 
-def parse_merge_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[str] | None]:
-    """Parse -merge's on= value: shared column names (comma list) when names match on
+def parse_join_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[str] | None]:
+    """Parse -join's on= value: shared column names (comma list) when names match on
     both sides, or 'left:right' pairs when they differ between sides. Quote the whole
     on= value if it has more than one column/pair (protects the inner commas), e.g.
     on='col a:cola,colb:colb'. Returns (on_cols, left_cols, right_cols) — on_cols is
@@ -785,10 +785,10 @@ def parse_merge_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[s
     """
     pairs = [p.strip() for p in raw.split(",") if p.strip()]
     if not pairs:
-        raise SystemExit("-merge: on= needs at least one column (or left:right pair)")
+        raise SystemExit("-join: on= needs at least one column (or left:right pair)")
     has_colon = [":" in p for p in pairs]
     if any(has_colon) and not all(has_colon):
-        raise SystemExit("-merge: on= mixes plain columns and left:right pairs; use one style")
+        raise SystemExit("-join: on= mixes plain columns and left:right pairs; use one style")
     if all(has_colon):
         left_cols, right_cols = [], []
         for pair in pairs:
@@ -799,26 +799,26 @@ def parse_merge_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[s
     return pairs, None, None
 
 
-def parse_merge_arg(raw: str) -> dict:
-    """Parse -merge as key=value tokens: left=/right= (required -file aliases, or the
+def parse_join_arg(raw: str) -> dict:
+    """Parse -join as key=value tokens: left=/right= (required -file aliases, or the
     literal 'data' to reference the pipeline's current result so far — lets repeated
-    -merge calls fold in one more file at a time), on= (required; shared column
+    -join calls fold in one more file at a time), on= (required; shared column
     name(s), or left:right pairs if they differ between sides), how= (optional,
-    default 'inner', passed straight to pandas merge()), validate= (optional, passed
-    straight to pandas merge()).
+    default 'inner', passed to Polars join()), validate= (optional, passed
+    to Polars join()).
     """
-    kwargs = parse_reshape_kwargs(raw, keys=_MERGE_KEYS, flag="-merge")
+    kwargs = parse_reshape_kwargs(raw, keys=_JOIN_KEYS, flag="-join")
     how = kwargs.get("how", "inner")
     required = ["left", "right"] if how == "cross" else ["left", "right", "on"]
     missing = [k for k in required if k not in kwargs]
     if missing:
-        raise SystemExit(f"-merge: missing required key(s): {', '.join(missing)}")
+        raise SystemExit(f"-join: missing required key(s): {', '.join(missing)}")
     if how == "cross":
         if "on" in kwargs:
-            raise SystemExit("-merge: on= cannot be used with how=cross (pandas cross joins don't take on=)")
+            raise SystemExit("-join: on= cannot be used with how=cross (cross joins don't take on=)")
         on_cols, left_cols, right_cols = None, None, None
     else:
-        on_cols, left_cols, right_cols = parse_merge_on(kwargs["on"])
+        on_cols, left_cols, right_cols = parse_join_on(kwargs["on"])
     return {
         "left": kwargs["left"],
         "right": kwargs["right"],

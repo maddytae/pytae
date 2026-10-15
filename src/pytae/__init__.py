@@ -158,16 +158,22 @@ def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
-def dropna(df: Any, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, how=how, drop_nans=drop_nans)
+def dropna(
+    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+) -> DataFrame:
+    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_nulls(df: Any, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, how=how, drop_nans=drop_nans)
+def drop_nulls(
+    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+) -> DataFrame:
+    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_na(df: Any, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, how=how, drop_nans=drop_nans)
+def drop_na(
+    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+) -> DataFrame:
+    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
@@ -251,6 +257,46 @@ def hist(df: Any, col: str | None = None, bins: int = 10) -> DataFrame:
     return DataFrame(df).hist(col=col, bins=bins)
 
 
+def join(
+    left: Any,
+    other: Any,
+    on: str | Sequence[str] | None = None,
+    how: str = "inner",
+    *,
+    left_on: str | Sequence[str] | None = None,
+    right_on: str | Sequence[str] | None = None,
+    suffix: str = "_right",
+    suffixes: tuple[str, str] | None = None,
+    validate: str = "m:m",
+    coalesce: bool | None = None,
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(left).join(
+        other,
+        on=on,
+        how=how,
+        left_on=left_on,
+        right_on=right_on,
+        suffix=suffix,
+        suffixes=suffixes,
+        validate=validate,
+        coalesce=coalesce,
+        **kwargs,
+    )
+
+
+def concat(
+    items: Sequence[Any],
+    how: str = "vertical",
+    axis: int | str | None = None,
+    **kwargs: Any,
+) -> DataFrame:
+    from pytae.polars_engine import concat_polars
+
+    res = concat_polars(items, how=how, axis=axis, **kwargs)
+    return DataFrame(res)
+
+
 def slice_max(*args: Any, **kwargs: Any) -> None:
     raise AttributeError("pt.slice_max() has been removed; use pt.pick() instead")
 
@@ -298,6 +344,8 @@ class _PytaeModule(ModuleType):
     glimpse = _VerbDescriptor(glimpse)
     freq = _VerbDescriptor(freq)
     hist = _VerbDescriptor(hist)
+    join = _VerbDescriptor(join)
+    concat = _VerbDescriptor(concat)
     slice_max = _VerbDescriptor(slice_max)
     slice_min = _VerbDescriptor(slice_min)
     lit = _VerbDescriptor(lit)
@@ -344,6 +392,8 @@ __all__ = [
     "drop_nulls",
     "drop_na",
     "agg",
+    "join",
+    "concat",
     "long",
     "wide",
     "pivot",

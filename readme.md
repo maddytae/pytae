@@ -143,7 +143,7 @@ Explore step-by-step CLI pipeline guides with terminal outputs:
 - [SQL Engine](https://github.com/maddytae/pytae/blob/master/docs/cli/sql.md) (`-sql`, Polars SQLContext queries, CTEs, joins)
 - [Dataset Diffing](https://github.com/maddytae/pytae/blob/master/docs/cli/diff.md) (`-diff`, schema drift, shape deltas, cell mismatches)
 - [File I/O & Export](https://github.com/maddytae/pytae/blob/master/docs/cli/export_io.md) (`-o`, `-out_dir`, STDIN, compression)
-- [Multi-File Pipelines](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) (`-file`, `-merge`, `-concat`)
+- [Multi-File Pipelines](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) (`-file`, `-join`, `-concat`)
 - [Other Utilities & Modifiers](https://github.com/maddytae/pytae/blob/master/docs/cli/other_utilities.md) (`-nrows`, `-limit`, `-dlim`, `-encoding`, `-pretty`, `-round`, `-pager`, `-progress`)
 
 ---

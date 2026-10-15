@@ -1534,3 +1534,239 @@ def agg_polars(
     else:
         res = work_df.select(exprs)
     return res
+
+
+def _to_polars_frame(obj: Any) -> pl.DataFrame | pl.LazyFrame:
+    """Convert any tabular input (Pytae DataFrame, Pandas DataFrame, Polars DataFrame/LazyFrame, dict) to Polars."""
+    if isinstance(obj, (pl.DataFrame, pl.LazyFrame)):
+        return obj
+    if hasattr(obj, "_df") and isinstance(obj._df, (pl.DataFrame, pl.LazyFrame)):
+        return obj._df
+    if hasattr(obj, "to_polars"):
+        return obj.to_polars()
+    if hasattr(obj, "to_pandas"):
+        import pandas as pd
+
+        return pl.from_pandas(obj.to_pandas())
+    try:
+        import pandas as pd
+
+        if isinstance(obj, pd.DataFrame):
+            return pl.from_pandas(obj)
+    except Exception:
+        pass
+    return pl.DataFrame(obj)
+
+
+def join_polars(
+    left: Any,
+    other: Any,
+    on: str | Sequence[str] | None = None,
+    how: str = "inner",
+    *,
+    left_on: str | Sequence[str] | None = None,
+    right_on: str | Sequence[str] | None = None,
+    suffix: str = "_right",
+    suffixes: tuple[str, str] | None = None,
+    validate: str = "m:m",
+    coalesce: bool | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Join two tabular datasets using Polars multithreaded SIMD vectorization.
+
+    Retains lazy execution plan if both frames are LazyFrames (or converts eager to lazy
+    when joining lazy with eager).
+    """
+    left_pl = _to_polars_frame(left)
+    right_pl = _to_polars_frame(other)
+
+    # If one is LazyFrame and other is DataFrame, unify to LazyFrame for lazy execution
+    if isinstance(left_pl, pl.LazyFrame) and not isinstance(right_pl, pl.LazyFrame):
+        right_pl = right_pl.lazy()
+    elif not isinstance(left_pl, pl.LazyFrame) and isinstance(right_pl, pl.LazyFrame):
+        left_pl = left_pl.lazy()
+
+    left_cols = _df_columns(left_pl)
+    right_cols = _df_columns(right_pl)
+
+    how_norm = str(how).lower()
+    if how_norm == "outer":
+        how_norm = "full"
+    valid_hows = {"inner", "left", "right", "full", "semi", "anti", "cross"}
+    if how_norm not in valid_hows:
+        raise ValueError(
+            f"join(): unsupported join type '{how}'. "
+            f"Supported join types: 'inner', 'left', 'right', 'full', 'semi', 'anti', 'cross'."
+        )
+
+    def _split_cols(c: str | Sequence[str]) -> list[str]:
+        if isinstance(c, str):
+            return [x.strip() for x in c.split(",") if x.strip()]
+        return [str(x).strip() for x in c if str(x).strip()]
+
+    on_cols: list[str] | None = None
+    l_cols_key: list[str] | None = None
+    r_cols_key: list[str] | None = None
+
+    if how_norm == "cross":
+        if on is not None or left_on is not None or right_on is not None:
+            raise ValueError("join(): 'on', 'left_on', and 'right_on' cannot be used with how='cross'")
+    elif on is not None:
+        if left_on is not None or right_on is not None:
+            raise ValueError("join(): Cannot specify both 'on' and 'left_on'/'right_on'")
+        raw_items = _split_cols(on)
+        has_colon = any(":" in item for item in raw_items)
+        if has_colon:
+            left_keys = []
+            right_keys = []
+            for item in raw_items:
+                if ":" in item:
+                    parts = item.split(":", 1)
+                    left_keys.append(parts[0].strip())
+                    right_keys.append(parts[1].strip())
+                else:
+                    left_keys.append(item.strip())
+                    right_keys.append(item.strip())
+            l_cols_key = left_keys
+            r_cols_key = right_keys
+        else:
+            on_cols = raw_items
+    elif left_on is not None or right_on is not None:
+        if left_on is None or right_on is None:
+            raise ValueError("join(): Both 'left_on' and 'right_on' must be specified")
+        l_keys = _split_cols(left_on)
+        r_keys = _split_cols(right_on)
+        if len(l_keys) != len(r_keys):
+            raise ValueError(f"join(): 'left_on' ({len(l_keys)}) and 'right_on' ({len(r_keys)}) must have same length")
+        if l_keys == r_keys:
+            on_cols = l_keys
+        else:
+            l_cols_key = l_keys
+            r_cols_key = r_keys
+    else:
+        # Auto-detect common columns
+        common = [c for c in left_cols if c in right_cols]
+        if not common:
+            raise ValueError(
+                "join(): No common columns found between left and right tables. "
+                "Specify join keys via 'on' or 'left_on'/'right_on'."
+            )
+        on_cols = common
+
+    # Validate columns
+    if on_cols is not None:
+        missing_l = [c for c in on_cols if c not in left_cols]
+        missing_r = [c for c in on_cols if c not in right_cols]
+        if missing_l or missing_r:
+            missing_both = list(dict.fromkeys(missing_l + missing_r))
+            raise ValueError(f"join(): 'on' column(s) not found in both tables: {missing_both}")
+    elif l_cols_key is not None and r_cols_key is not None:
+        missing_l = [c for c in l_cols_key if c not in left_cols]
+        if missing_l:
+            raise ValueError(f"join(): 'left_on' column(s) not found in left table: {missing_l}")
+        missing_r = [c for c in r_cols_key if c not in right_cols]
+        if missing_r:
+            raise ValueError(f"join(): 'right_on' column(s) not found in right table: {missing_r}")
+
+    val_map = {
+        "1:1": "1:1",
+        "one_to_one": "1:1",
+        "1:m": "1:m",
+        "one_to_many": "1:m",
+        "m:1": "m:1",
+        "many_to_one": "m:1",
+        "m:m": "m:m",
+        "many_to_many": "m:m",
+    }
+    validate_arg: Any = val_map.get(str(validate).lower(), "m:m")
+
+    eff_suffix = suffix
+    if suffixes is not None:
+        if not (isinstance(suffixes, (tuple, list)) and len(suffixes) == 2):
+            raise ValueError("join(): 'suffixes' must be a tuple or list of two strings, e.g. ('_x', '_y')")
+        l_suf, r_suf = suffixes
+        if on_cols is not None:
+            key_set = set(on_cols)
+        elif l_cols_key is not None and r_cols_key is not None:
+            key_set = set(l_cols_key) | set(r_cols_key)
+        else:
+            key_set = set()
+        conflicts = [c for c in left_cols if c in right_cols and c not in key_set]
+        if conflicts:
+            if l_suf:
+                left_pl = left_pl.rename({c: f"{c}{l_suf}" for c in conflicts})
+            if r_suf:
+                right_pl = right_pl.rename({c: f"{c}{r_suf}" for c in conflicts})
+        eff_suffix = ""
+
+    if coalesce is not None:
+        coalesce_val = coalesce
+    elif on_cols is not None or (l_cols_key == r_cols_key):
+        coalesce_val = True
+    else:
+        coalesce_val = False
+
+    if how_norm == "cross":
+        return left_pl.join(right_pl, how="cross", suffix=eff_suffix, **kwargs)
+    elif on_cols is not None:
+        return left_pl.join(
+            right_pl,
+            on=on_cols,
+            how=how_norm,
+            suffix=eff_suffix,
+            validate=validate_arg,
+            coalesce=coalesce_val,
+            **kwargs,
+        )
+    else:
+        return left_pl.join(
+            right_pl,
+            left_on=l_cols_key,
+            right_on=r_cols_key,
+            how=how_norm,
+            suffix=eff_suffix,
+            validate=validate_arg,
+            coalesce=coalesce_val,
+            **kwargs,
+        )
+
+
+def concat_polars(
+    items: Sequence[Any],
+    how: str = "vertical",
+    axis: int | str | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Concatenate multiple DataFrames vertically or horizontally with Polars.
+
+    Automatically handles LazyFrames lazily, and falls back to diagonal_relaxed
+    if schemas differ in column sets during vertical concatenation.
+    """
+    if not items:
+        raise ValueError("concat(): requires at least one DataFrame")
+
+    pl_dfs = [_to_polars_frame(d) for d in items]
+    has_lazy = any(isinstance(d, pl.LazyFrame) for d in pl_dfs)
+    if has_lazy:
+        pl_dfs = [d.lazy() if not isinstance(d, pl.LazyFrame) else d for d in pl_dfs]
+
+    if axis in (1, "columns", "horizontal") or how == "horizontal":
+        # Disambiguate duplicate column names across frames if present
+        seen_cols: set[str] = set()
+        renamed_dfs = []
+        for i, d in enumerate(pl_dfs):
+            cols = _df_columns(d)
+            clashes = {c: f"{c}_{i}" for c in cols if c in seen_cols}
+            if clashes:
+                d = d.rename(clashes)
+            seen_cols.update(_df_columns(d))
+            renamed_dfs.append(d)
+        return pl.concat(renamed_dfs, how="horizontal", **kwargs)
+
+    if how in ("diagonal", "diagonal_relaxed"):
+        return pl.concat(pl_dfs, how=how, **kwargs)
+
+    try:
+        return pl.concat(pl_dfs, how="vertical", **kwargs)
+    except (pl.exceptions.SchemaError, pl.exceptions.ShapeError, Exception):
+        return pl.concat(pl_dfs, how="diagonal_relaxed", **kwargs)

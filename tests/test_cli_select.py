@@ -223,14 +223,14 @@ def test_select_then_filter_on_dropped_column_errors(tmp_path, capsys):
     assert "flt" in err
 
 
-def test_select_runs_after_merge(tmp_path, capsys):
+def test_select_runs_after_join(tmp_path, capsys):
     left, right = _write_two_csvs(tmp_path)
 
     cli.main(
         [
             "-file",
             f"{left}=df1;{right}=df2",
-            "-merge",
+            "-join",
             "left=df1,right=df2,on=col a:cola",
             "-select",
             "val_l,val_r",

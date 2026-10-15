@@ -34,14 +34,20 @@ class PolarsPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+    def dropna(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+    def drop_nulls(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+    def drop_na(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(
         self,
@@ -148,6 +154,42 @@ class PolarsPtAccessor:
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).pipe(func, *args, **kwargs)
 
+    def join(
+        self,
+        other: Any,
+        on: str | Sequence[str] | None = None,
+        how: str = "inner",
+        *,
+        left_on: str | Sequence[str] | None = None,
+        right_on: str | Sequence[str] | None = None,
+        suffix: str = "_right",
+        suffixes: tuple[str, str] | None = None,
+        validate: str = "m:m",
+        coalesce: bool | None = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        return DataFrame(self._obj).join(
+            other,
+            on=on,
+            how=how,
+            left_on=left_on,
+            right_on=right_on,
+            suffix=suffix,
+            suffixes=suffixes,
+            validate=validate,
+            coalesce=coalesce,
+            **kwargs,
+        )
+
+    def concat(
+        self,
+        *others: Any,
+        how: str = "vertical",
+        axis: int | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        return DataFrame(self._obj).concat(*others, how=how, axis=axis, **kwargs)
+
     def to_clip(self) -> None:
         return DataFrame(self._obj).to_clip()
 
@@ -183,14 +225,20 @@ class PandasPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+    def dropna(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+    def drop_nulls(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, how=how, drop_nans=drop_nans)
+    def drop_na(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(
         self,
@@ -300,6 +348,42 @@ class PandasPtAccessor:
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).pipe(func, *args, **kwargs)
+
+    def join(
+        self,
+        other: Any,
+        on: str | Sequence[str] | None = None,
+        how: str = "inner",
+        *,
+        left_on: str | Sequence[str] | None = None,
+        right_on: str | Sequence[str] | None = None,
+        suffix: str = "_right",
+        suffixes: tuple[str, str] | None = None,
+        validate: str = "m:m",
+        coalesce: bool | None = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        return DataFrame(self._obj).join(
+            other,
+            on=on,
+            how=how,
+            left_on=left_on,
+            right_on=right_on,
+            suffix=suffix,
+            suffixes=suffixes,
+            validate=validate,
+            coalesce=coalesce,
+            **kwargs,
+        )
+
+    def concat(
+        self,
+        *others: Any,
+        how: str = "vertical",
+        axis: int | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        return DataFrame(self._obj).concat(*others, how=how, axis=axis, **kwargs)
 
     def to_clip(self) -> None:
         return self._obj.to_clipboard(index=False)

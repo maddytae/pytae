@@ -17,9 +17,9 @@
 ```python
 import pytae as pt
 
-penguins = pt.sample_data['penguins']
-tips = pt.sample_data['tips']
-titanic = pt.sample_data['titanic']
+penguins = pt.sample_data["penguins"]
+tips = pt.sample_data["tips"]
+titanic = pt.sample_data["titanic"]
 penguins.head(3)
 ```
 
@@ -35,10 +35,10 @@ penguins.head(3)
 
 ```python
 # mean + n: regardless of list order, n always comes first before aggregated columns
-(penguins
- .pt.select('species', 'island', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'island')
- .pt.agg(a=['mean', 'n'])  # notice n comes first
+(
+    penguins.pt.select("species", "island", "bill_length_mm", "body_mass_g")
+    .pt.by("species", "island")
+    .pt.agg(a=["mean", "n"])  # notice n comes first
 )
 ```
 
@@ -55,11 +55,7 @@ penguins.head(3)
 ```python
 # Multiple numeric aggregations — column names get suffix: col_sum, col_mean, col_max
 # also works with a single string if you only need one aggfunc
-(penguins
- .pt.select('species', 'bill_length_mm', 'body_mass_g')
- .pt.by('species')
- .pt.agg(a=['sum', 'mean', 'max', 'n'])
-)
+(penguins.pt.select("species", "bill_length_mm", "body_mass_g").pt.by("species").pt.agg(a=["sum", "mean", "max", "n"]))
 ```
 
 **Output:**
@@ -74,13 +70,12 @@ penguins.head(3)
 
 ```python
 # Keyword arguments — mean for bill_length, sum+mean for body_mass, count named 'n'
-(penguins
- .pt.by('species')
- .pt.agg(
-     bill_length_mm='mean',
-     body_mass_g=['sum', 'mean'],
-     n='n',
- )
+(
+    penguins.pt.by("species").pt.agg(
+        bill_length_mm="mean",
+        body_mass_g=["sum", "mean"],
+        n="n",
+    )
 )
 ```
 
@@ -97,10 +92,9 @@ penguins.head(3)
 # Output order follows parameter order
 # Note: the count keyword can be named anything — 'cnt', 'count', even 'maddy'
 (
-    tips
-    .pt.select('smoker', 'time', 'total_bill', 'tip')
-    .pt.by('smoker', 'time')
-    .pt.agg(cnt='n', total_bill='mean', tip=['mean', 'max'])
+    tips.pt.select("smoker", "time", "total_bill", "tip")
+    .pt.by("smoker", "time")
+    .pt.agg(cnt="n", total_bill="mean", tip=["mean", "max"])
 )
 ```
 
@@ -116,12 +110,7 @@ penguins.head(3)
 ```python
 # You can name the count column anything you like as a keyword argument
 # Here maddy='n' creates a column called 'maddy' that holds the group count
-(
-    penguins
-    .pt.select('species', 'island', 'body_mass_g')
-    .pt.by('species')
-    .pt.agg(maddy='n', body_mass_g='sum')
-)
+(penguins.pt.select("species", "island", "body_mass_g").pt.by("species").pt.agg(maddy="n", body_mass_g="sum"))
 ```
 
 **Output:**
@@ -135,10 +124,9 @@ penguins.head(3)
 ```python
 # Multiple count columns as keyword arguments — each count gets its own name
 (
-    penguins
-    .pt.select('species', 'island', 'body_mass_g')
-    .pt.by('species')
-    .pt.agg(count='n', countv2='n', body_mass_g='mean')
+    penguins.pt.select("species", "island", "body_mass_g")
+    .pt.by("species")
+    .pt.agg(count="n", countv2="n", body_mass_g="mean")
 )
 ```
 
@@ -153,10 +141,9 @@ penguins.head(3)
 ```python
 # median is a standard aggfunc — works in list form or as keyword argument
 (
-    penguins
-    .pt.select('species', 'island', 'bill_length_mm', 'body_mass_g')
-    .pt.by('species')
-    .pt.agg(a=['median', 'mean', 'n'])
+    penguins.pt.select("species", "island", "bill_length_mm", "body_mass_g")
+    .pt.by("species")
+    .pt.agg(a=["median", "mean", "n"])
 )
 ```
 
@@ -172,11 +159,7 @@ penguins.head(3)
 
 ```python
 # Default dropna=False keeps missing grouping keys in their own group (no silent data loss)
-(penguins
- .pt.select('species', 'sex', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'sex')
- .pt.agg(a=['mean', 'n'])
-)
+(penguins.pt.select("species", "sex", "bill_length_mm", "body_mass_g").pt.by("species", "sex").pt.agg(a=["mean", "n"]))
 ```
 
 **Output:**
@@ -194,10 +177,10 @@ penguins.head(3)
 
 ```python
 # Pass dropna=True to exclude groups with NaN keys
-(penguins
- .pt.select('species', 'sex', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'sex')
- .pt.agg(a=['mean', 'n'], dropna=True)
+(
+    penguins.pt.select("species", "sex", "bill_length_mm", "body_mass_g")
+    .pt.by("species", "sex")
+    .pt.agg(a=["mean", "n"], dropna=True)
 )
 ```
 
@@ -216,11 +199,7 @@ penguins.head(3)
 
 ```python
 # Count only — useful for frequency tables on categorical columns
-(penguins
- .pt.select(exclude_dtype='number')
- .pt.by('species', 'island')
- .pt.agg(a='n')
-)
+(penguins.pt.select(exclude_dtype="number").pt.by("species", "island").pt.agg(a="n"))
 ```
 
 **Output:**
@@ -239,12 +218,11 @@ Because  operations return DataFrames, you can chain them seamlessly with standa
 
 ```python
 (
-    penguins
-    .pt.filter('body_mass_g > 3000')
-    .pt.select('species', 'sex', 'body_mass_g')
-    .pt.by('species', 'sex')
-    .pt.agg(a=['mean', 'max', 'n'])
-    .sort_values('body_mass_g_mean', ascending=False)
+    penguins.pt.filter("body_mass_g > 3000")
+    .pt.select("species", "sex", "body_mass_g")
+    .pt.by("species", "sex")
+    .pt.agg(a=["mean", "max", "n"])
+    .sort_values("body_mass_g_mean", ascending=False)
 )
 ```
 
@@ -269,14 +247,10 @@ When column names have spaces, passing them as keyword arguments (`[total bill]=
 
 ```python
 # Create DataFrame with spaced column names
-tips_spaced = tips.rename(columns={'total_bill': 'total bill'})
+tips_spaced = tips.rename(columns={"total_bill": "total bill"})
 
 # Single string mapping with bracketed spaced columns
-(
-    tips_spaced
-    .pt.by('smoker')
-    .pt.agg("tip = mean, [total bill] = mean, n = n")
-)
+(tips_spaced.pt.by("smoker").pt.agg("tip = mean, [total bill] = mean, n = n"))
 ```
 
 **Output:**
@@ -288,11 +262,7 @@ tips_spaced = tips.rename(columns={'total_bill': 'total bill'})
 
 ```python
 # Multiple positional string specifications
-(
-    tips_spaced
-    .pt.by('smoker')
-    .pt.agg("tip = mean", "[total bill] = mean", "n = n")
-)
+(tips_spaced.pt.by("smoker").pt.agg("tip = mean", "[total bill] = mean", "n = n"))
 ```
 
 **Output:**
@@ -304,11 +274,7 @@ tips_spaced = tips.rename(columns={'total_bill': 'total bill'})
 
 ```python
 # Custom output names and bracketed source column
-(
-    tips_spaced
-    .pt.by('smoker')
-    .pt.agg("[avg bill] = [total bill]:mean, [total tip] = tip:sum, [table count] = n")
-)
+(tips_spaced.pt.by("smoker").pt.agg("[avg bill] = [total bill]:mean, [total tip] = tip:sum, [table count] = n"))
 ```
 
 **Output:**
@@ -321,11 +287,10 @@ tips_spaced = tips.rename(columns={'total_bill': 'total bill'})
 ```python
 # Complete pipeline: filter -> select -> agg with bracketed spaced columns across every verb
 (
-    tips
-    .rename(columns={'total_bill': 'total bill'})
-    .pt.filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
-    .pt.select('smoker', 'tip', '[total bill]')
-    .pt.by('smoker')
+    tips.rename(columns={"total_bill": "total bill"})
+    .pt.filter("[total bill] > 10", day=["Sat", "Sun"], time="Dinner", size=">= 2")
+    .pt.select("smoker", "tip", "[total bill]")
+    .pt.by("smoker")
     .pt.agg("tip = mean, [total bill] = mean, n = n")
 )
 ```

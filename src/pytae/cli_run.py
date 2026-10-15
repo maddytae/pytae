@@ -488,8 +488,8 @@ def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError)
 def _resolve_alias(
     alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipeline, flag: str
 ) -> tuple[pd.DataFrame | None, str | None]:
-    """Look up a -merge/-concat alias: a -file alias, or 'data' for the pipeline's current
-    result so far (lets repeated -merge/-concat calls fold in one more file at a time).
+    """Look up a -join/-concat alias: a -file alias, or 'data' for the pipeline's current
+    result so far (lets repeated -join/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
     if alias == "data":
         if pipeline._df is None and pipeline._pldf is None:
@@ -516,14 +516,14 @@ def _process_path(
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]] | None = None,
     rename_specs: list[dict[str, str]] | None = None,
     frames: dict[str, pd.DataFrame] | None = None,
-    merge_specs: list[dict] | None = None,
+    join_specs: list[dict] | None = None,
     concat_specs: list[dict] | None = None,
     qry_specs: list[list[tuple[str, Any]]] | None = None,
 ) -> bool:
     """Run every requested display/export/-agg action against one file, or (when frames
-    is given, i.e. -file/-merge mode) against named in-memory frames instead. Returns True
+    is given, i.e. -file/-join mode) against named in-memory frames instead. Returns True
     if an error occurred."""
-    merge_specs = merge_specs or []
+    join_specs = join_specs or []
     concat_specs = concat_specs or []
     if frames is None:
         chunk_size = getattr(args, "chunk_size", None) or 200_000
@@ -614,7 +614,7 @@ def _process_path(
     sql_iter = iter(sql_specs or [])
     replace_iter = iter(replace_specs or [])
     rename_iter = iter(rename_specs or [])
-    merge_iter = iter(merge_specs or [])
+    join_iter = iter(join_specs or [])
     concat_iter = iter(concat_specs or [])
 
     def should_print(idx: int) -> bool:
@@ -670,32 +670,32 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op == "merge":
-            spec = next(merge_iter)
+        elif op == "join":
+            spec = next(join_iter)
             if frames is None:
-                return _fail(parser, batch, "-merge requires -file")
-            left_df, err = _resolve_alias(spec["left"], frames, pipeline, "-merge")
+                return _fail(parser, batch, "-join requires -file")
+            left_df, err = _resolve_alias(spec["left"], frames, pipeline, "-join")
             if err or left_df is None:
-                return _fail(parser, batch, err or "-merge: missing left frame")
-            right_df, err = _resolve_alias(spec["right"], frames, pipeline, "-merge")
+                return _fail(parser, batch, err or "-join: missing left frame")
+            right_df, err = _resolve_alias(spec["right"], frames, pipeline, "-join")
             if err or right_df is None:
-                return _fail(parser, batch, err or "-merge: missing right frame")
+                return _fail(parser, batch, err or "-join: missing right frame")
             if spec["how"] == "cross":
                 pass  # cross joins don't take on=/left_on=/right_on=
             elif spec["on"] is not None:
                 missing = [c for c in spec["on"] if c not in left_df.columns or c not in right_df.columns]
                 if missing:
-                    return _fail(parser, batch, f"-merge: on= column(s) not in both frames: {', '.join(missing)}")
+                    return _fail(parser, batch, f"-join: on= column(s) not in both frames: {', '.join(missing)}")
             else:
                 missing_left = [c for c in spec["left_on"] if c not in left_df.columns]
                 missing_right = [c for c in spec["right_on"] if c not in right_df.columns]
                 if missing_left:
                     return _fail(
-                        parser, batch, unknown_columns_message("-merge (left)", missing_left, list(left_df.columns))
+                        parser, batch, unknown_columns_message("-join (left)", missing_left, list(left_df.columns))
                     )
                 if missing_right:
                     return _fail(
-                        parser, batch, unknown_columns_message("-merge (right)", missing_right, list(right_df.columns))
+                        parser, batch, unknown_columns_message("-join (right)", missing_right, list(right_df.columns))
                     )
             import polars as pl
 
@@ -730,7 +730,7 @@ def _process_path(
                         coalesce=False,
                     )
             except Exception as exc:
-                return _fail(parser, batch, f"-merge: {exc}")
+                return _fail(parser, batch, f"-join: {exc}")
             pipeline._pldf = res_pl
             pipeline._df = None
             if should_print(idx):
@@ -812,7 +812,7 @@ def _process_path(
                 clip_action = lambda s=glimpse_str: _copy_to_clipboard(s)
         elif op == "meta":
             meta_str = _extract_metadata(
-                path if path is not None else Path("<merged>"), sep=args.dlim, encoding=args.encoding
+                path if path is not None else Path("<joined>"), sep=args.dlim, encoding=args.encoding
             )
             if should_print(idx):
                 _output_text(meta_str, args)
@@ -1146,7 +1146,7 @@ def _process_path(
         try:
             cmd_convert(
                 df_to_write,
-                path if path is not None else Path("<merged>"),
+                path if path is not None else Path("<joined>"),
                 dest,
                 sep=args.dlim,
                 encoding=args.encoding,

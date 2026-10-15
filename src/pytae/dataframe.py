@@ -16,10 +16,12 @@ from pytae.polars_engine import (
     agg_polars,
     arrange_polars,
     clean_columns_polars,
+    concat_polars,
     distinct_polars,
     dropna_polars,
     filter_polars,
     handle_missing_polars,
+    join_polars,
     long_polars,
     mutate_polars,
     pick_polars,
@@ -360,6 +362,23 @@ class DataFrame:
         """Alias for isna()."""
         return self.to_pandas().isnull()
 
+    def sort_values(
+        self,
+        by: Any = None,
+        ascending: bool = True,
+        na_position: str = "last",
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Pandas-compatible sort_values, delegating to Polars sort."""
+        descending = not ascending if isinstance(ascending, bool) else [not a for a in ascending]
+        nulls_last = na_position == "last"
+        by_cols = [by] if isinstance(by, str) else list(by)
+        return DataFrame(self._df.sort(by_cols, descending=descending, nulls_last=nulls_last))
+
+    def query(self, *conditions: Any, **kwargs: Any) -> DataFrame:
+        """Pandas-compatible query(), delegating to Pytae filter()."""
+        return self.filter(*conditions, **kwargs)
+
     def slice_max(self, *args: Any, **kwargs: Any) -> None:
         raise AttributeError("df.pt.slice_max() has been removed; use df.pt.pick() instead")
 
@@ -467,6 +486,129 @@ class DataFrame:
             )
         return DataFrame(sampled, orig_col_map=self._orig_col_map)
 
+    def __getattr__(self, name: str) -> Any:
+        # Do not intercept private/dunder attributes or if _df is not yet initialized
+        if name.startswith("_") or not hasattr(self, "_df"):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        try:
+            attr = getattr(self._df, name)
+        except AttributeError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'") from None
+
+        if callable(attr):
+
+            def _polars_method_wrapper(*args: Any, **kwargs: Any) -> Any:
+                clean_args = [
+                    a._df
+                    if isinstance(a, DataFrame)
+                    else (a.to_polars() if hasattr(a, "to_polars") and not isinstance(a, (str, Path)) else a)
+                    for a in args
+                ]
+                clean_kwargs = {
+                    k: (
+                        v._df
+                        if isinstance(v, DataFrame)
+                        else (v.to_polars() if hasattr(v, "to_polars") and not isinstance(v, (str, Path)) else v)
+                    )
+                    for k, v in kwargs.items()
+                }
+                res = attr(*clean_args, **clean_kwargs)
+                if isinstance(res, (pl.DataFrame, pl.LazyFrame)):
+                    return DataFrame(res)
+                return res
+
+            return _polars_method_wrapper
+        return attr
+
+    def join(
+        self,
+        other: Any,
+        on: str | Sequence[str] | None = None,
+        how: str = "inner",
+        *,
+        left_on: str | Sequence[str] | None = None,
+        right_on: str | Sequence[str] | None = None,
+        suffix: str = "_right",
+        suffixes: tuple[str, str] | None = None,
+        validate: str = "m:m",
+        coalesce: bool | None = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Join this DataFrame with another tabular dataset using native Polars multithreading.
+
+        Parameters
+        ----------
+        other : DataFrame | pl.DataFrame | pd.DataFrame | pl.LazyFrame | Any
+            The other table to join with.
+        on : str | Sequence[str] | None
+            Join key column(s). Can be a single column string, comma-separated string,
+            list of columns, or colon-delimited mapping (e.g. ``"id:user_id"``).
+            If omitted and ``left_on``/``right_on`` are not specified, joins on common columns.
+        how : str, default "inner"
+            Type of join: ``"inner"``, ``"left"``, ``"right"``, ``"full"``,
+            ``"semi"``, ``"anti"``, or ``"cross"``.
+        left_on : str | Sequence[str] | None
+            Key column(s) in the left table.
+        right_on : str | Sequence[str] | None
+            Key column(s) in the right table.
+        suffix : str, default "_right"
+            Suffix added to overlapping column names in the right frame.
+        suffixes : tuple[str, str] | None, default None
+            Suffixes added to overlapping column names: ``(left_suffix, right_suffix)``.
+        validate : str, default "m:m"
+            Validation check: ``"1:1"``, ``"1:m"``, ``"m:1"``, or ``"m:m"``.
+        coalesce : bool | None, default None
+            Whether to coalesce join keys. Defaults to True when keys match, or False
+            when ``left_on != right_on`` to preserve both keys.
+
+        Returns
+        -------
+        DataFrame
+            Joined Pytae DataFrame. Retains lazy execution if both frames are lazy.
+        """
+        res = join_polars(
+            self._df,
+            other,
+            on=on,
+            how=how,
+            left_on=left_on,
+            right_on=right_on,
+            suffix=suffix,
+            suffixes=suffixes,
+            validate=validate,
+            coalesce=coalesce,
+            **kwargs,
+        )
+        return DataFrame(res)
+
+    def concat(
+        self,
+        *others: Any,
+        how: str = "vertical",
+        axis: int | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Concatenate this DataFrame with one or more other DataFrames vertically or horizontally.
+
+        Parameters
+        ----------
+        *others : Any
+            One or more DataFrames, Polars DataFrames, or Pandas DataFrames to stack.
+        how : str, default "vertical"
+            Concatenation strategy: ``"vertical"`` (stacks rows; falls back to ``"diagonal_relaxed"`` if
+            schemas differ), ``"horizontal"``, ``"diagonal"``, or ``"diagonal_relaxed"``.
+        axis : int | str | None, default None
+            ``0`` or ``"vertical"`` for rows, ``1`` or ``"horizontal"`` for columns.
+
+        Returns
+        -------
+        DataFrame
+            Concatenated Pytae DataFrame.
+        """
+        all_dfs = [self._df, *others]
+        res = concat_polars(all_dfs, how=how, axis=axis, **kwargs)
+        return DataFrame(res)
+
     # -------------------------------------------------------------------------
     # Fluent Transformation Verbs
     # -------------------------------------------------------------------------
@@ -526,7 +668,9 @@ class DataFrame:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
 
-    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    def dropna(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
         Option B Zero Data Loss Philosophy:
@@ -535,16 +679,20 @@ class DataFrame:
         - Pass how='any' or how='all' to explicitly override.
         - drop_nans=True (default) drops float NaNs in addition to Arrow nulls.
         """
-        resolved = list(cols) if cols else None
+        resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    def drop_nulls(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
         """Alias for dropna()."""
-        return self.dropna(*cols, how=how, drop_nans=drop_nans)
+        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    def drop_na(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
         """Alias for dropna()."""
-        return self.dropna(*cols, how=how, drop_nans=drop_nans)
+        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(
         self,
@@ -1047,18 +1195,24 @@ class GroupedDataFrame:
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
 
-    def dropna(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    def dropna(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN)."""
-        resolved = list(cols) if cols else None
+        resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    def drop_nulls(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
         """Alias for dropna()."""
-        return self.dropna(*cols, how=how, drop_nans=drop_nans)
+        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(self, *cols: Any, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    def drop_na(
+        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
+    ) -> DataFrame:
         """Alias for dropna()."""
-        return self.dropna(*cols, how=how, drop_nans=drop_nans)
+        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(
         self,

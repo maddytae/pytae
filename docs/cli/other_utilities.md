@@ -23,7 +23,7 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
   - [Renaming Columns (`-rename`)](#renaming-columns--rename)
 - [Multi-File Pipelines & Operations](#multi-file-pipelines--operations)
   - [Named Inputs (`-file`)](#named-inputs--file)
-  - [Merging & Joins (`-merge`)](#merging--joins--merge)
+  - [Multi-File Joins (`-join`)](#multi-file-joins--join)
   - [Row Stacking (`-concat`)](#row-stacking--concat)
 - [Input / Output & Pipeline Modifiers](#input--output--pipeline-modifiers)
   - [Reading Row Caps (`-nrows`, `-limit`)](#reading-row-caps--nrows--limit)
@@ -66,7 +66,7 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 | `-dropna [COLS]` | Cleaning | Optional comma-separated list | Drops rows containing NaN (across all columns or specified subset) |
 | `-rename SPEC` | Cleaning | `old:new,...` | Explicitly renames column headers |
 | `-file SPEC` | Multi-File | `path=alias;...` | Loads multiple input files into named aliases |
-| `-merge SPEC` | Multi-File | `left=a,right=b,on=k,...` | Joins datasets on keys with join validation |
+| `-join SPEC` | Multi-File | `left=a,right=b,on=k,...` | Joins datasets on keys with join validation |
 | `-concat SPEC` | Multi-File | `a,b` or `how=outer` | Stacks multiple datasets row-wise |
 | `-nrows N` / `-limit N`| Input I/O | Integer | Caps rows loaded from disk during read |
 | `-dlim STR` | Input I/O | Character (`","`, `"\t"`, `"|"`) | Delimiter for CSV / text files |
@@ -211,14 +211,14 @@ pytae penguins.parquet -rename "body_mass_g:mass,flipper_length_mm:flipper" -hea
 ### Named Inputs (`-file`)
 Loads multiple files simultaneously into named aliases:
 ```bash
-pytae -file "emp.parquet=emp; dept.csv=dept" -merge "left=emp,right=dept,on=dept_id" -head 5
+pytae -file "emp.parquet=emp; dept.csv=dept" -join "left=emp,right=dept,on=dept_id" -head 5
 ```
 
-### Merging & Joins (`-merge`)
+### Multi-File Joins (`-join`)
 Performs joins with optional relationship validation:
 ```bash
 pytae -file "sales.parquet=s; stores.parquet=st" \
-  -merge "left=s,right=st,on=store_id,how=left,validate=many_to_one" \
+  -join "left=s,right=st,on=store_id,how=left,validate=many_to_one" \
   -head 5
 ```
 

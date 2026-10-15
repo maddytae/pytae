@@ -16,8 +16,8 @@ from pytae.cli_parsing import (
     parse_file_arg,
     parse_filter,
     parse_fraction,
+    parse_join_arg,
     parse_list_order,
-    parse_merge_arg,
     parse_positive_int,
     parse_rename,
     parse_replace_values_arg,
@@ -167,8 +167,8 @@ _CLI_FLAGS = {
     "--sql",
     "-replace_values",
     "--replace_values",
-    "-merge",
-    "--merge",
+    "-join",
+    "--join",
     "-concat",
     "--concat",
     "-progress",
@@ -302,7 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
         "'clip' to read from system clipboard, "
         "a .yaml/.yml connection config (Databricks table or remote SSH file), "
         "or glob patterns/multiple files for batch operations; "
-        "omit when piping from stdin or using -file with -merge/-concat/-sql",
+        "omit when piping from stdin or using -file with -join/-concat/-sql",
     )
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -669,11 +669,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="file",
         default=None,
         metavar="PATH=ALIAS;...",
-        help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
+        help="load multiple named files for -join/-concat/-sql, instead of the positional path; "
         "';'-separated entries, each PATH=ALIAS optionally followed by "
         ",dlim=/,encoding= overrides for that file, e.g. "
         "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
-        "requires -merge, -concat, or -sql as the first operation, and can't be "
+        "requires -join, -concat, or -sql as the first operation, and can't be "
         "combined with the positional path",
     )
     parser.add_argument(
@@ -709,7 +709,7 @@ def build_parser() -> argparse.ArgumentParser:
         'quoting applies (double quotes for names with spaces, e.g. "col a"; single '
         "quotes are string literals, not identifiers), e.g. "
         '"select \\"col a\\" from data where \\"col a\\" > 10"; '
-        "in -file/-merge mode, may be used instead of -merge as the first op, with "
+        "in -file/-join mode, may be used instead of -join as the first op, with "
         'every -file alias queryable by its own name (e.g. "select * from df1 '
         'inner join df2 on df1.\\"col a\\" = df2.cola") — `data` becomes queryable '
         "too once something later in the pipeline has produced a current view",
@@ -728,20 +728,20 @@ def build_parser() -> argparse.ArgumentParser:
         "anywhere in the cell, e.g. \"v='old:new',exact=false\"",
     )
     parser.add_argument(
-        "-merge",
-        "--merge",
-        dest="merge",
+        "-join",
+        "--join",
+        dest="join",
         action=_OrderedAppend,
         default=None,
         metavar="KEY=VALUE,...",
-        help="merge two frames into the pipeline (pandas merge()); repeatable, to fold in "
+        help="join two frames into the pipeline (Polars join()); repeatable, to fold in "
         "one more file at a time; must be the first op when using -file (unless -sql/"
         "-concat starts it instead); key=value tokens: left=/right= (required — -file "
         "aliases, or 'data' for the pipeline's current result so far), "
         "on= (required; shared column name(s), or 'left:right' pairs if they "
         "differ between sides — quote on= if it has more than one column/pair, e.g. "
         "\"on='col a:cola,colb:colb'\"), how= (optional, default 'inner': "
-        "inner/left/right/outer/cross), validate= (optional, e.g. one_to_one)",
+        "inner/left/right/full/semi/anti/cross), validate= (optional, e.g. 1:1, 1:m)",
     )
     parser.add_argument(
         "-concat",
@@ -750,9 +750,8 @@ def build_parser() -> argparse.ArgumentParser:
         action=_OrderedAppend,
         default=None,
         metavar="KEY=VALUE,...",
-        help="stack frames row-wise into the pipeline (pandas concat(), always with "
-        "ignore_index=True); repeatable; must be the first op when using -file "
-        "(unless -sql/-merge starts it instead); key=value tokens: frames= (required) "
+        help="stack frames row-wise into the pipeline (Polars concat()); repeatable; must be the first op when using -file "
+        "(unless -sql/-join starts it instead); key=value tokens: frames= (required) "
         "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
         "current result so far), quoted since it has internal commas, e.g. "
         "\"frames='df1,df2,df3'\"",
@@ -938,17 +937,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.meta and args.file is not None:
         parser.error("-meta cannot be used with -file")
-    if args.merge and args.file is None:
-        parser.error("-merge requires -file")
+    if args.join and args.file is None:
+        parser.error("-join requires -file")
     if args.concat and args.file is None:
         parser.error("-concat requires -file")
     if args.file is not None:
         if raw_paths:
-            parser.error("-file/-merge can't be combined with a positional path; list every input via -file instead")
-        if not op_order or op_order[0] not in ("merge", "sql", "concat"):
-            parser.error("-file requires -merge, -concat, or -sql as its first operation")
+            parser.error("-file/-join can't be combined with a positional path; list every input via -file instead")
+        if not op_order or op_order[0] not in ("join", "sql", "concat"):
+            parser.error("-file requires -join, -concat, or -sql as its first operation")
         if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
-            parser.error(f"-o {out_target}: in -file/-merge mode, an explicit output file path is required")
+            parser.error(f"-o {out_target}: in -file/-join mode, an explicit output file path is required")
     elif not raw_paths:
         if _is_stdin_piped():
             raw_paths = ["-"]
@@ -986,7 +985,7 @@ def main(argv: list[str] | None = None) -> int:
             args.replace_values,
             args.rename,
             args.clean_columns is not None,
-            args.merge,
+            args.join,
             args.concat,
             args.meta,
             args.diff is not None,
@@ -1017,7 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
             args.wide is not None,
             args.pivot is not None,
             args.clean_columns is not None,
-            args.merge,
+            args.join,
             args.concat,
             args.plot is not None,
         ]
@@ -1026,7 +1025,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
             "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
-            "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+            "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
             "run -shape separately"
         )
     if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
@@ -1040,7 +1039,7 @@ def main(argv: list[str] | None = None) -> int:
     mutate_specs = list(args.mutate or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
-    merge_specs = [parse_merge_arg(raw) for raw in (args.merge or [])]
+    join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
     concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
 
     paths: list[Path] = []
@@ -1121,7 +1120,7 @@ def main(argv: list[str] | None = None) -> int:
                 replace_specs=replace_specs,
                 rename_specs=rename_specs,
                 frames=frames,
-                merge_specs=merge_specs,
+                join_specs=join_specs,
                 concat_specs=concat_specs,
             )
             return 1 if failed else 0

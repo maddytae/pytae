@@ -14,7 +14,7 @@
 import numpy as np
 import pytae as pt
 
-penguins = pt.sample_data['penguins']
+penguins = pt.sample_data["penguins"]
 penguins.head(3)
 ```
 
@@ -31,9 +31,8 @@ penguins.head(3)
 ```python
 # Body mass index style ratio — clean assignment formula via kwargs
 (
-    penguins
-    .pt.mutate(bmi='body_mass_g / bill_length_mm ** 2')
-    .pt.select('species', 'body_mass_g', 'bill_length_mm', 'bmi')
+    penguins.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2")
+    .pt.select("species", "body_mass_g", "bill_length_mm", "bmi")
     .head(5)
 )
 ```
@@ -68,9 +67,8 @@ Entries are applied left to right, so a later expression can reference a column 
 ```python
 # Two independent derived columns in one call via kwargs
 (
-    penguins
-    .pt.mutate(heavy='body_mass_g > 4000', mass_kg='body_mass_g / 1000')
-    .pt.select('species', 'body_mass_g', 'mass_kg', 'heavy')
+    penguins.pt.mutate(heavy="body_mass_g > 4000", mass_kg="body_mass_g / 1000")
+    .pt.select("species", "body_mass_g", "mass_kg", "heavy")
     .head(5)
 )
 ```
@@ -88,9 +86,8 @@ Entries are applied left to right, so a later expression can reference a column 
 ```python
 # mass_lb references mass_kg, derived by the keyword just before it
 (
-    penguins
-    .pt.mutate(mass_kg='body_mass_g / 1000', mass_lb='mass_kg * 2.20462')
-    .pt.select('species', 'body_mass_g', 'mass_kg', 'mass_lb')
+    penguins.pt.mutate(mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
+    .pt.select("species", "body_mass_g", "mass_kg", "mass_lb")
     .head(5)
 )
 ```
@@ -110,12 +107,7 @@ String literals *inside* the expression (e.g. `'Adelie'`) need real quotes — c
 
 ```python
 # String comparisons inside the expression formula
-(
-    penguins
-    .pt.mutate(is_adelie="species == 'Adelie'")
-    .pt.select('species', 'is_adelie')
-    .head(5)
-)
+(penguins.pt.mutate(is_adelie="species == 'Adelie'").pt.select("species", "is_adelie").head(5))
 ```
 
 **Output:**
@@ -133,12 +125,7 @@ String literals *inside* the expression (e.g. `'Adelie'`) need real quotes — c
 # — works identically whether calling pt.mutate() or chaining .pt.mutate()
 threshold = 4000
 
-(
-    penguins
-    .pt.mutate(heavy='body_mass_g >= @threshold')
-    .pt.select('species', 'body_mass_g', 'heavy')
-    .head(5)
-)
+(penguins.pt.mutate(heavy="body_mass_g >= @threshold").pt.select("species", "body_mass_g", "heavy").head(5))
 ```
 
 **Output:**
@@ -155,12 +142,7 @@ threshold = 4000
 
 ```python
 # mutate() can overwrite a column in place, e.g. converting units
-(
-    penguins
-    .pt.mutate(body_mass_g='body_mass_g / 1000')
-    .pt.select('species', 'body_mass_g')
-    .head(5)
-)
+(penguins.pt.mutate(body_mass_g="body_mass_g / 1000").pt.select("species", "body_mass_g").head(5))
 ```
 
 **Output:**
@@ -178,7 +160,8 @@ Use square brackets `[col name]` to reference column names containing spaces wit
 
 ```python
 import pandas as pd
-spaced = pd.DataFrame({'body mass g': [3750, 4200], 'bill length mm': [39.1, 46.5]})
+
+spaced = pd.DataFrame({"body mass g": [3750, 4200], "bill length mm": [39.1, 46.5]})
 
 # Square brackets protect column names that contain spaces
 spaced.pt.mutate(bmi="[body mass g] / [bill length mm] ** 2")
@@ -196,10 +179,9 @@ spaced.pt.mutate(bmi="[body mass g] / [bill length mm] ** 2")
 
 ```python
 (
-    penguins
-    .pt.mutate(bmi='body_mass_g / bill_length_mm ** 2')
-    .pt.filter(bmi='> 2')
-    .pt.select('species', 'island', 'body_mass_g', 'bill_length_mm', 'bmi')
+    penguins.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2")
+    .pt.filter(bmi="> 2")
+    .pt.select("species", "island", "body_mass_g", "bill_length_mm", "bmi")
     .head(5)
 )
 ```
@@ -221,9 +203,8 @@ Plain `eval()` has no ternary/`where()` support, so `mutate()` provides three dp
 # if_else(condition, true_value, false_value) — like dplyr's if_else()
 # true_value and false_value can be scalars or column names; conditions are vectorized
 (
-    penguins
-    .pt.mutate(weight_class="if_else(body_mass_g > 4000, 'heavy', 'light')")
-    .pt.select('species', 'body_mass_g', 'weight_class')
+    penguins.pt.mutate(weight_class="if_else(body_mass_g > 4000, 'heavy', 'light')")
+    .pt.select("species", "body_mass_g", "weight_class")
     .head(5)
 )
 ```
@@ -241,11 +222,10 @@ Plain `eval()` has no ternary/`where()` support, so `mutate()` provides three dp
 ```python
 # case_when supports tuples or flat pairs with default=
 (
-    penguins
-    .pt.mutate(
+    penguins.pt.mutate(
         size_class="case_when(body_mass_g >= 4500, 'large', body_mass_g >= 3500, 'medium', default='small')"
     )
-    .pt.select('species', 'body_mass_g', 'size_class')
+    .pt.select("species", "body_mass_g", "size_class")
     .head(5)
 )
 ```
@@ -264,11 +244,8 @@ Plain `eval()` has no ternary/`where()` support, so `mutate()` provides three dp
 # map(column, {key: value, ...}, default) — recode a column through a dictionary lookup
 # unmapped keys become default if given, else NaN
 (
-    penguins
-    .pt.mutate(
-        island_code="map(island, {'Torgersen': 'TOR', 'Biscoe': 'BIS'}, 'OTH')"
-    )
-    .pt.select('species', 'island', 'island_code')
+    penguins.pt.mutate(island_code="map(island, {'Torgersen': 'TOR', 'Biscoe': 'BIS'}, 'OTH')")
+    .pt.select("species", "island", "island_code")
     .head(5)
 )
 ```
@@ -288,11 +265,13 @@ Plain `eval()` has no ternary/`where()` support, so `mutate()` provides three dp
 `coalesce(col1, col2, ..., default)` evaluates candidates left-to-right and returns the first non-null value per row, like SQL `COALESCE()` or `dplyr::coalesce()`:
 
 ```python
-contacts = pd.DataFrame({
-    'mobile': [None, '555-1234', None],
-    'home': ['555-5678', None, None],
-    'work': [None, None, '555-9012'],
-})
+contacts = pd.DataFrame(
+    {
+        "mobile": [None, "555-1234", None],
+        "home": ["555-5678", None, None],
+        "work": [None, None, "555-9012"],
+    }
+)
 
 contacts.pt.mutate(preferred_contact="coalesce(mobile, home, work, 'N/A')")
 ```
@@ -311,13 +290,12 @@ contacts.pt.mutate(preferred_contact="coalesce(mobile, home, work, 'N/A')")
 
 ```python
 (
-    penguins
-    .pt.mutate(
-        bmi='body_mass_g / bill_length_mm ** 2',
-        mass_kg='body_mass_g / 1000',
-        is_heavy=lambda df: df['body_mass_g'] > 4000,
+    penguins.pt.mutate(
+        bmi="body_mass_g / bill_length_mm ** 2",
+        mass_kg="body_mass_g / 1000",
+        is_heavy=lambda df: df["body_mass_g"] > 4000,
     )
-    .pt.select('species', 'bmi', 'mass_kg', 'is_heavy')
+    .pt.select("species", "bmi", "mass_kg", "is_heavy")
     .head(5)
 )
 ```
@@ -349,9 +327,9 @@ def classify_penguin(row):
     else:
         return "Standard"
 
+
 (
-    penguins
-    .pt.mutate(
+    penguins.pt.mutate(
         mass_kg="body_mass_g / 1000",
         category=lambda df: df.apply(classify_penguin, axis=1),
     )
@@ -394,14 +372,11 @@ with open("penguin_features.txt", "w") as f:
 
 # Load directly using @filename
 result = penguins.pt.mutate("@penguin_features.txt")
-out = (
-    result
-    .pt.select("species", "mass_kg", "mass_lb")
-    .sample(5)
-)
+out = result.pt.select("species", "mass_kg", "mass_lb").sample(5)
 
 # Clean up demo file
 import os
+
 os.remove("penguin_features.txt")
 
 out
@@ -422,7 +397,7 @@ out
 SQL-style square brackets `[col a]` are supported alongside backticks, avoiding shell backtick substitution hazards:
 
 ```python
-spaced.pt.mutate(ratio='[body mass g] / [bill length mm]')
+spaced.pt.mutate(ratio="[body mass g] / [bill length mm]")
 ```
 
 **Output:**
@@ -441,9 +416,8 @@ You can create columns with spaces directly using string assignment expressions 
 ```python
 # Create a new column with spaces using bracket string expression (no dict unpacking!)
 (
-    spaced
-    .pt.mutate("[body mass ratio] = [body mass g] / [bill length mm]")
-    .pt.select('[body mass g]', '[body mass ratio]')
+    spaced.pt.mutate("[body mass ratio] = [body mass g] / [bill length mm]")
+    .pt.select("[body mass g]", "[body mass ratio]")
     .head()
 )
 ```
@@ -458,12 +432,11 @@ You can create columns with spaces directly using string assignment expressions 
 ```python
 # Define multiple new columns with spaces at once via string expressions
 (
-    penguins
-    .pt.mutate(
+    penguins.pt.mutate(
         "[body mass kg] = body_mass_g / 1000",
         "[bill ratio] = bill_length_mm / bill_depth_mm",
     )
-    .pt.select('species', '[body mass kg]', '[bill ratio]')
+    .pt.select("species", "[body mass kg]", "[bill ratio]")
     .head()
 )
 ```
@@ -502,8 +475,7 @@ Supported features:
 # Compute group average tip, deviation from group average, and group sample size
 tips = pt.sample("tips")
 (
-    tips
-    .pt.select("day", "time", "total_bill", "tip")
+    tips.pt.select("day", "time", "total_bill", "tip")
     .pt.by("day")
     .pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n")
     .head(6)
@@ -524,8 +496,7 @@ tips = pt.sample("tips")
 ```python
 # Multi-column grouping with spaced columns
 (
-    tips
-    .rename(columns={"total_bill": "total bill"})
+    tips.rename(columns={"total_bill": "total bill"})
     .pt.select("day", "time", "total bill", "tip")
     .pt.by("day", "time")
     .pt.mutate("[avg bill] = mean([total bill]), [bill diff] = [total bill] - [avg bill], count = n()")
@@ -547,8 +518,7 @@ tips = pt.sample("tips")
 ```python
 # De-meaning and z-score calculation per group
 (
-    penguins
-    .pt.select("species", "body_mass_g")
+    penguins.pt.select("species", "body_mass_g")
     .pt.by("species")
     .pt.mutate(
         "mean_mass = mean(body_mass_g), std_mass = std(body_mass_g), z_score = (body_mass_g - mean_mass) / std_mass"
@@ -575,8 +545,7 @@ Because `mutate()` always preserves the row count ($N \to N$) and retains the ac
 ```python
 # Comparing species-level mean to overall dataset mean in a single pipeline
 (
-    penguins
-    .pt.select("species", "body_mass_g")
+    penguins.pt.select("species", "body_mass_g")
     .pt.by("species")
     .pt.mutate("species_mean = mean(body_mass_g)")
     .pt.ungroup()
@@ -602,26 +571,15 @@ Because `mutate()` always preserves the row count ($N \to N$) and retains the ac
 By default, `dropna=False` computes group statistics across `NA` rows as their own distinct group (no silent data loss). Pass `dropna=True` to exclude rows with `NA` in grouping columns from calculations, filling `NaN` in mutated columns while preserving total row count and index alignment:
 
 ```python
-sample_data = pd.DataFrame({
-    "grp": ["A", "A", None, "B", None],
-    "val": [10.0, 20.0, 100.0, 30.0, 200.0]
-})
+sample_data = pd.DataFrame({"grp": ["A", "A", None, "B", None], "val": [10.0, 20.0, 100.0, 30.0, 200.0]})
 
 # dropna=False (default): NA rows form a distinct group
 print("dropna=False (default):")
-print(
-    sample_data
-    .pt.by("grp")
-    .pt.mutate("avg = mean(val), sz = n", dropna=False)
-)
+print(sample_data.pt.by("grp").pt.mutate("avg = mean(val), sz = n", dropna=False))
 
 # dropna=True: NA groups receive NaN
 print("\ndropna=True:")
-print(
-    sample_data
-    .pt.by("grp")
-    .pt.mutate("avg = mean(val), sz = n", dropna=True)
-)
+print(sample_data.pt.by("grp").pt.mutate("avg = mean(val), sz = n", dropna=True))
 ```
 
 **Output:**
@@ -666,54 +624,51 @@ penguins = pt.sample("penguins")
 # 7. Local Python variable from caller scope (referenced with @ prefix)
 target_threshold = 4.2
 
-master_df = (
-    penguins
-    .pt.by("species")
-    .pt.mutate(
-        # 1. Normal mutate: standard arithmetic derivation
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        mass_kg="body_mass_g / 1000",
-        
-        # 3. Referencing newly created col (mass_kg) in the same mutate call
-        bmi="mass_kg / ((flipper_length_mm / 1000) ** 2)",
-        
-        # 7a. Local variable reference (@target_threshold) from caller scope
-        above_target="mass_kg > @target_threshold",
-        
-        # 4. if_else: binary conditional logic
-        size_label="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')",
-        
-        # 5. case_when: multi-condition tiered categorization
-        weight_tier="case_when((mass_kg >= 5.0, 'XL'), (mass_kg >= 4.0, 'Large'), (mass_kg >= 3.0, 'Medium'), default='Small')",
-        
-        # 6. coalesce: prioritize sex, fall back to 'Undetermined' when null (row 3 has sex=NaN)
-        effective_sex="coalesce(sex, 'Undetermined')",
-        
-        # 7b. map(): category dictionary lookup with default fallback
-        species_code="map(species, {'Adelie': 'AD', 'Gentoo': 'GE', 'Chinstrap': 'CH'}, 'OTHER')",
-        
-        # 7c. Spaced column creation via dict unpacking & bracket referencing
-        **{"mass lbs": "mass_kg * 2.20462"},
-        heavy_lbs="[mass lbs] > 9.5",
-        
-        # 9. Grouped window transforms via standalone pt.by() without collapsing rows
-        species_avg_mass="mean(mass_kg)",
-        mass_diff="mass_kg - species_avg_mass",
-        group_size="n",
-        
-        # 2. lambda: custom callable inspecting the accumulated DataFrame
-        is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5),
-        # analysis='species', #if we don't use pt.lit, it will just assign value of speciec column
-        # analysis='species2', #it will throw error because there is not 'species2 column'
-        analysis=pt.lit('species'), 
-        
-    )
+master_df = penguins.pt.by("species").pt.mutate(
+    # 1. Normal mutate: standard arithmetic derivation
+    bill_ratio="bill_length_mm / bill_depth_mm",
+    mass_kg="body_mass_g / 1000",
+    # 3. Referencing newly created col (mass_kg) in the same mutate call
+    bmi="mass_kg / ((flipper_length_mm / 1000) ** 2)",
+    # 7a. Local variable reference (@target_threshold) from caller scope
+    above_target="mass_kg > @target_threshold",
+    # 4. if_else: binary conditional logic
+    size_label="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')",
+    # 5. case_when: multi-condition tiered categorization
+    weight_tier="case_when((mass_kg >= 5.0, 'XL'), (mass_kg >= 4.0, 'Large'), (mass_kg >= 3.0, 'Medium'), default='Small')",
+    # 6. coalesce: prioritize sex, fall back to 'Undetermined' when null (row 3 has sex=NaN)
+    effective_sex="coalesce(sex, 'Undetermined')",
+    # 7b. map(): category dictionary lookup with default fallback
+    species_code="map(species, {'Adelie': 'AD', 'Gentoo': 'GE', 'Chinstrap': 'CH'}, 'OTHER')",
+    # 7c. Spaced column creation via dict unpacking & bracket referencing
+    **{"mass lbs": "mass_kg * 2.20462"},
+    heavy_lbs="[mass lbs] > 9.5",
+    # 9. Grouped window transforms via standalone pt.by() without collapsing rows
+    species_avg_mass="mean(mass_kg)",
+    mass_diff="mass_kg - species_avg_mass",
+    group_size="n",
+    # 2. lambda: custom callable inspecting the accumulated DataFrame
+    is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5),
+    # analysis='species', #if we don't use pt.lit, it will just assign value of speciec column
+    # analysis='species2', #it will throw error because there is not 'species2 column'
+    analysis=pt.lit("species"),
 )
 
 cols_to_show = [
-    "species", "species_code", "mass_kg", "species_avg_mass", "mass_diff",
-    "group_size", "bmi", "size_label", "weight_tier", "effective_sex", 
-    "above_target", "heavy_lbs", "is_large","analysis"
+    "species",
+    "species_code",
+    "mass_kg",
+    "species_avg_mass",
+    "mass_diff",
+    "group_size",
+    "bmi",
+    "size_label",
+    "weight_tier",
+    "effective_sex",
+    "above_target",
+    "heavy_lbs",
+    "is_large",
+    "analysis",
 ]
 master_df[cols_to_show].head(8)
 ```
@@ -754,13 +709,13 @@ import pandas as pd
 import pytae as pt
 
 # Sample dataframe containing a column named 'original'
-df = pd.DataFrame({'original': [100, 200], 'val': [1, 2]})
+df = pd.DataFrame({"original": [100, 200], "val": [1, 2]})
 
 # 1. Unquoted string matching an existing column -> copies that column!
-print("Copied column 'original':\n", df.pt.mutate(source='original'))
+print("Copied column 'original':\n", df.pt.mutate(source="original"))
 
 # 2. With pt.lit(): assigns literal string constants cleanly and safely
-print("\nWith pt.lit():\n", df.pt.mutate(source=pt.lit('original'), status=pt.lit('active')))
+print("\nWith pt.lit():\n", df.pt.mutate(source=pt.lit("original"), status=pt.lit("active")))
 ```
 
 **Output:**
@@ -787,8 +742,7 @@ Apply the same formula across multiple columns at once using parenthesized targe
 ```python
 # Create new columns with a _cm suffix across multiple columns
 (
-    penguins
-    .pt.mutate("(bill_length_mm, bill_depth_mm)_cm = _ / 10")
+    penguins.pt.mutate("(bill_length_mm, bill_depth_mm)_cm = _ / 10")
     .pt.select("species", "bill_length_mm", "bill_length_mm_cm", "bill_depth_mm", "bill_depth_mm_cm")
     .head(5)
 )
@@ -807,8 +761,7 @@ Apply the same formula across multiple columns at once using parenthesized targe
 ```python
 # Grouped z-score standardization across all numeric columns using (dtype=numeric)
 (
-    penguins
-    .pt.select("species", "bill_length_mm", "bill_depth_mm", "body_mass_g")
+    penguins.pt.select("species", "bill_length_mm", "bill_depth_mm", "body_mass_g")
     .pt.by("species")
     .pt.mutate("z_(dtype=numeric) = (_ - mean(_)) / std(_)")
     .head(5)
