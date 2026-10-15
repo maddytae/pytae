@@ -412,6 +412,61 @@ class DataFrame:
     def tail(self, n: int = 5) -> DataFrame:
         return DataFrame(self._df.tail(n))
 
+    def sample(
+        self,
+        n: int | None = None,
+        frac: float | None = None,
+        *,
+        fraction: float | None = None,
+        seed: int | None = None,
+        random_state: int | None = None,
+        with_replacement: bool = False,
+        replace: bool = False,
+        shuffle: bool = False,
+    ) -> DataFrame:
+        """Randomly sample rows from the DataFrame.
+
+        Parameters
+        ----------
+        n : int, optional
+            Number of rows to sample. Defaults to 5 if neither n nor frac/fraction is provided.
+        frac, fraction : float, optional
+            Fraction of axis items to return (0.0 to 1.0).
+        seed, random_state : int, optional
+            Seed for reproducible random sampling.
+        with_replacement, replace : bool, default False
+            Allow sampling with replacement.
+        shuffle : bool, default False
+            Whether to shuffle the sampled rows.
+        """
+        effective_frac = frac if frac is not None else fraction
+        effective_seed = seed if seed is not None else random_state
+        effective_replace = with_replacement or replace
+
+        eager_df = self._df.collect() if self.is_lazy else self._df
+        if effective_frac is not None:
+            sampled = eager_df.sample(
+                fraction=effective_frac,
+                with_replacement=effective_replace,
+                shuffle=shuffle,
+                seed=effective_seed,
+            )
+        else:
+            n_val = 5 if n is None else n
+            n_rows = len(eager_df)
+            sample_n = min(n_val, n_rows) if not effective_replace else n_val
+            sampled = (
+                eager_df.sample(
+                    n=sample_n,
+                    with_replacement=effective_replace,
+                    shuffle=shuffle,
+                    seed=effective_seed,
+                )
+                if sample_n > 0
+                else eager_df.head(0)
+            )
+        return DataFrame(sampled, orig_col_map=self._orig_col_map)
+
     # -------------------------------------------------------------------------
     # Fluent Transformation Verbs
     # -------------------------------------------------------------------------
@@ -1027,6 +1082,51 @@ class GroupedDataFrame:
                 na_last=na_last,
             )
         )
+
+    def sample(
+        self,
+        n: int | None = None,
+        frac: float | None = None,
+        *,
+        fraction: float | None = None,
+        seed: int | None = None,
+        random_state: int | None = None,
+        with_replacement: bool = False,
+        replace: bool = False,
+        shuffle: bool = False,
+    ) -> DataFrame:
+        """Sample rows from each group established by pt.by()."""
+        effective_frac = frac if frac is not None else fraction
+        effective_seed = seed if seed is not None else random_state
+        effective_replace = with_replacement or replace
+        n_val = 5 if n is None and effective_frac is None else n
+
+        eager_df = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
+        parts = []
+        for _, sub_df in eager_df.group_by(self._by):
+            if effective_frac is not None:
+                parts.append(
+                    sub_df.sample(
+                        fraction=effective_frac,
+                        with_replacement=effective_replace,
+                        shuffle=shuffle,
+                        seed=effective_seed,
+                    )
+                )
+            else:
+                sample_n = min(n_val, len(sub_df)) if not effective_replace else n_val
+                parts.append(
+                    sub_df.sample(
+                        n=sample_n,
+                        with_replacement=effective_replace,
+                        shuffle=shuffle,
+                        seed=effective_seed,
+                    )
+                    if sample_n > 0
+                    else sub_df.head(0)
+                )
+        res = pl.concat(parts) if parts else eager_df.head(0)
+        return DataFrame(res, orig_col_map=self._orig_col_map)
 
     def __repr__(self) -> str:
         return f"<GroupedDataFrame by={self._by}>\n{self._df}"

@@ -75,3 +75,40 @@ def test_pt_accessor_dropna_pandas_and_polars():
     assert len(pldf.pt.drop_nulls("a")) == 2
     assert len(pdf.pt.drop_na("a")) == 2
     assert len(pldf.pt.drop_na("a")) == 2
+
+
+def test_pt_sample_datasets_and_row_sampling():
+    import polars as pl
+
+    # 1. Bundled dataset loading
+    penguins = pt.sample("penguins")
+    assert len(penguins) == 344
+    assert len(pt.sample()) == 344
+    assert len(pt.sample_data["tips"]) == 244
+
+    # 2. DataFrame.sample()
+    s1 = penguins.sample(5, seed=42)
+    assert len(s1) == 5
+    assert isinstance(s1, pt.DataFrame)
+
+    # 3. df.pt.sample() on pytae DataFrame
+    s2 = penguins.pt.sample(frac=0.1, seed=42)
+    assert len(s2) == 34
+
+    # 4. pt.sample(df, ...) top-level verb
+    s3 = pt.sample(penguins, 10, seed=42)
+    assert len(s3) == 10
+
+    # 5. Pandas DataFrame with .pt.sample()
+    pdf = pd.DataFrame({"x": range(100)})
+    s4 = pdf.pt.sample(7, seed=42)
+    assert len(s4) == 7
+
+    # 6. Polars DataFrame with .pt.sample()
+    pldf = pl.DataFrame({"x": range(100)})
+    s5 = pldf.pt.sample(8, seed=42)
+    assert len(s5) == 8
+
+    # 7. Grouped sampling
+    p_grouped = penguins.pt.by("species").sample(2, seed=42)
+    assert len(p_grouped) == 6  # 3 species * 2 rows

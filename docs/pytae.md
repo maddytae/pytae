@@ -393,6 +393,8 @@ pytae -file "tx=transactions.parquet; cust=customers.csv" \
 | **Inspect Columns** | `df.columns` or `pt.cols(df)` | `pytae data.parquet -cols` |
 | **Inspect Types** | `df.dtypes` | `pytae data.parquet -dtype` |
 | **View First Rows** | `df.head(5)` | `pytae data.parquet -head 5` |
+| **Sample Random Rows**| `df.sample(5)` or `pt.sample(df, 5)` | `pytae data.parquet -sample 5` |
+| **Load Sample Dataset**| `pt.sample("penguins")` | `pytae sample:penguins` |
 | **View Schema Summary**| `pt.glimpse(df)` | `pytae data.parquet -glimpse` |
 | **Filter & Project** | `pt.scan("f.parquet").pt.select("a").pt.filter("a > 10").collect()` | `pytae f.parquet -select a -filter "a > 10"` |
 | **Read Stdin** | `pt.read(sys.stdin)` | `cat f.csv \| pytae -select a` |

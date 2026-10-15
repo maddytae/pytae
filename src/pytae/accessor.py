@@ -54,6 +54,29 @@ class PolarsPtAccessor:
     ) -> DataFrame:
         return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
 
+    def sample(
+        self,
+        n: int | None = None,
+        frac: float | None = None,
+        *,
+        fraction: float | None = None,
+        seed: int | None = None,
+        random_state: int | None = None,
+        with_replacement: bool = False,
+        replace: bool = False,
+        shuffle: bool = False,
+    ) -> DataFrame:
+        return DataFrame(self._obj).sample(
+            n=n,
+            frac=frac,
+            fraction=fraction,
+            seed=seed,
+            random_state=random_state,
+            with_replacement=with_replacement,
+            replace=replace,
+            shuffle=shuffle,
+        )
+
     def by(self, *cols: Any) -> GroupedDataFrame:
         return DataFrame(self._obj).by(*cols)
 
@@ -179,6 +202,29 @@ class PandasPtAccessor:
         na_last: bool = True,
     ) -> DataFrame:
         return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
+
+    def sample(
+        self,
+        n: int | None = None,
+        frac: float | None = None,
+        *,
+        fraction: float | None = None,
+        seed: int | None = None,
+        random_state: int | None = None,
+        with_replacement: bool = False,
+        replace: bool = False,
+        shuffle: bool = False,
+    ) -> DataFrame:
+        return DataFrame(self._obj).sample(
+            n=n,
+            frac=frac,
+            fraction=fraction,
+            seed=seed,
+            random_state=random_state,
+            with_replacement=with_replacement,
+            replace=replace,
+            shuffle=shuffle,
+        )
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         return DataFrame(self._obj).by(*cols)

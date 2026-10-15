@@ -25,15 +25,77 @@ _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
 _cache: dict[str, DataFrame] = {}
 
 
-def sample(name: str = "penguins") -> DataFrame:
-    """Load a bundled sample dataset by name (cached after the first call).
-    Returns a copy each time — mutating the result does not affect later calls."""
-    if name not in _DATASET_NAMES:
+def sample(
+    data_or_name: Any = "penguins",
+    n: int | None = None,
+    frac: float | None = None,
+    *,
+    fraction: float | None = None,
+    seed: int | None = None,
+    random_state: int | None = None,
+    with_replacement: bool = False,
+    replace: bool = False,
+    shuffle: bool = False,
+) -> DataFrame:
+    """Load a bundled sample dataset by name, or randomly sample rows from a DataFrame.
+
+    Examples
+    --------
+    >>> # 1. Load bundled sample dataset:
+    >>> penguins = pt.sample("penguins")
+    >>> tips = pt.sample("tips")
+
+    >>> # 2. Randomly sample rows from a DataFrame:
+    >>> sampled = pt.sample(df, 5)
+    >>> sampled = pt.sample(df, frac=0.1, seed=42)
+    >>> sampled = df.pt.sample(5)
+    """
+    if isinstance(data_or_name, str) and (n is None and frac is None and fraction is None):
+        if data_or_name in _DATASET_NAMES:
+            if data_or_name not in _cache:
+                _cache[data_or_name] = read(DATA_PATH / f"{data_or_name}.parquet")
+            return _cache[data_or_name].copy()
         available = ", ".join(_DATASET_NAMES) or "(none)"
-        raise KeyError(f"unknown dataset {name!r}; available: {available}")
-    if name not in _cache:
-        _cache[name] = read(DATA_PATH / f"{name}.parquet")
-    return _cache[name].copy()
+        raise KeyError(f"unknown dataset {data_or_name!r}; available: {available}")
+
+    if not isinstance(data_or_name, str):
+        if hasattr(data_or_name, "sample") and isinstance(data_or_name, (DataFrame, GroupedDataFrame)):
+            return data_or_name.sample(
+                n=n,
+                frac=frac,
+                fraction=fraction,
+                seed=seed,
+                random_state=random_state,
+                with_replacement=with_replacement,
+                replace=replace,
+                shuffle=shuffle,
+            )
+        target_df = DataFrame(data_or_name)
+        return target_df.sample(
+            n=n,
+            frac=frac,
+            fraction=fraction,
+            seed=seed,
+            random_state=random_state,
+            with_replacement=with_replacement,
+            replace=replace,
+            shuffle=shuffle,
+        )
+
+    if data_or_name in _DATASET_NAMES:
+        loaded = sample(data_or_name)
+        return loaded.sample(
+            n=n,
+            frac=frac,
+            fraction=fraction,
+            seed=seed,
+            random_state=random_state,
+            with_replacement=with_replacement,
+            replace=replace,
+            shuffle=shuffle,
+        )
+    available = ", ".join(_DATASET_NAMES) or "(none)"
+    raise KeyError(f"unknown dataset {data_or_name!r}; available: {available}")
 
 
 class _SampleData(Mapping[str, DataFrame]):

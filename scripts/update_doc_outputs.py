@@ -13,6 +13,7 @@ Usage:
     python scripts/update_doc_outputs.py           # Update all docs
     python scripts/update_doc_outputs.py --check   # Check if docs are in sync (for CI)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,28 +41,30 @@ def setup_temp_environment(tmpdir: str) -> None:
         df.to_parquet(os.path.join(tmpdir, f"{name}.parquet"))
 
     # Additional standard sample files used across docs
-    sales_df = pd.DataFrame({
-        "annual revenue": [120000, 85000, 310000, 95000, 450000, 180000],
-        "region": ["North", "South", "East", "West", "Central", "Pacific"]
-    })
+    sales_df = pd.DataFrame(
+        {
+            "annual revenue": [120000, 85000, 310000, 95000, 450000, 180000],
+            "region": ["North", "South", "East", "West", "Central", "Pacific"],
+        }
+    )
     sales_df.to_csv(os.path.join(tmpdir, "sales.csv"), index=False)
 
-    items_df = pd.DataFrame({
-        "id": ["row1", "row2", "row3"],
-        "val1": [10.0, 20.0, 30.0],
-        "val2": [100.0, 200.0, 300.0]
-    })
+    items_df = pd.DataFrame({"id": ["row1", "row2", "row3"], "val1": [10.0, 20.0, 30.0], "val2": [100.0, 200.0, 300.0]})
     items_df.to_parquet(os.path.join(tmpdir, "items.parquet"))
 
-    dataset_df = pd.DataFrame({
-        "Old Name": ["hello world", "bad_val", np.nan],
-        "Score %": [10.5, np.nan, 30.2],
-        "Status": ["draft_stage", "approved", "draft_stage"]
-    })
+    dataset_df = pd.DataFrame(
+        {
+            "Old Name": ["hello world", "bad_val", np.nan],
+            "Score %": [10.5, np.nan, 30.2],
+            "Status": ["draft_stage", "approved", "draft_stage"],
+        }
+    )
     dataset_df.to_parquet(os.path.join(tmpdir, "dataset.parquet"))
 
     cust_df = pd.DataFrame({"customer_id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]})
-    orders_df = pd.DataFrame({"order_id": [101, 102, 103, 104], "customer_id": [1, 1, 2, 4], "amount": [250.0, 150.0, 300.0, 50.0]})
+    orders_df = pd.DataFrame(
+        {"order_id": [101, 102, 103, 104], "customer_id": [1, 1, 2, 4], "amount": [250.0, 150.0, 300.0, 50.0]}
+    )
     cust_df.to_csv(os.path.join(tmpdir, "customers.csv"), index=False)
     orders_df.to_parquet(os.path.join(tmpdir, "orders.parquet"))
 
@@ -111,6 +114,7 @@ def format_table(raw_output: str) -> str:
         import io
 
         import pandas as pd
+
         try:
             df = pd.read_csv(io.StringIO(raw), sep=r"\s+")
             return df.to_markdown(index=False)
@@ -126,10 +130,7 @@ def audit_docs() -> dict[Path, list[str]]:
         text = md_file.read_text(encoding="utf-8")
         code_blocks = re.findall(r"```(?:bash|sh|python)\n(.*?)```", text, re.DOTALL)
         outputs = re.findall(r"\*\*Output:\*\*\s*\n(.*?)(?=\n\n|\Z|---|```)", text, re.DOTALL)
-        results[md_file] = {
-            "total_code_blocks": len(code_blocks),
-            "total_outputs": len(outputs)
-        }
+        results[md_file] = {"total_code_blocks": len(code_blocks), "total_outputs": len(outputs)}
     return results
 
 
@@ -174,4 +175,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

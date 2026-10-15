@@ -6,6 +6,7 @@ Re-run and save all outputs: python scripts/run_notebooks.py --write
 Run automatically in CI's `notebooks` job (.github/workflows/ci.yml), gated to
 tag pushes only (i.e. before a release publishes), not on every commit/push.
 """
+
 import argparse
 import os
 import sys
@@ -20,7 +21,9 @@ DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Execute notebooks and optionally save outputs.")
-    parser.add_argument("--write", "--save", "-w", action="store_true", help="Write executed outputs back to .ipynb files")
+    parser.add_argument(
+        "--write", "--save", "-w", action="store_true", help="Write executed outputs back to .ipynb files"
+    )
     args, _ = parser.parse_known_args()
 
     if not args.write:
@@ -42,12 +45,16 @@ def main() -> int:
             # headless CI runners have no system clipboard; no-op to_clipboard()
             # inside the notebook's own kernel process (this script's process
             # doesn't share memory with it, so patch via an injected cell)
-            nb.cells.insert(0, nbformat.v4.new_code_cell(
-                "import pandas as pd\n"
-                "pd.DataFrame.to_clipboard = lambda self, *a, **k: None"
-            ))
+            nb.cells.insert(
+                0,
+                nbformat.v4.new_code_cell(
+                    "import pandas as pd\npd.DataFrame.to_clipboard = lambda self, *a, **k: None"
+                ),
+            )
         client = NotebookClient(
-            nb, timeout=180, kernel_name="python3",
+            nb,
+            timeout=180,
+            kernel_name="python3",
             resources={"metadata": {"path": str(path.parent)}},
         )
         try:
