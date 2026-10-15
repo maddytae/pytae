@@ -71,6 +71,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 
 | Module | Verbs / API | Description | Feature Guide |
 |---|---|---|---|
+| **Data I/O** | `pt.read()`, `pt.scan()`, `df.to_parquet()`, `df.to_csv()`, `df.to_clip()`, `pt.sample()` | Eager reading, lazy scanning, pushdowns, streaming sinks, interop, and dataset sampling | [library/io.md](library/io.md) |
 | **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.md](library/filter.md) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.md](library/select.md) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, multi-column transforms (`(col1, col2) = _ * 2`), window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.md](library/mutate.md) |
