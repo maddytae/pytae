@@ -943,3 +943,78 @@ def normalize_sql(query: str) -> str:
         out_chars.append(ch)
         i += 1
     return "".join(out_chars)
+
+
+def parse_diff_spec(
+    raw: str, default_tol: float = 0.0, default_rtol: float = 0.0
+) -> tuple[Path, float, float]:
+    """Parse -diff spec into (target_path, tol, rtol).
+
+    Supported formats:
+      - 'path/to/file.parquet'
+      - 'path/to/file.parquet:0.01' (colon numeric threshold shorthand)
+      - 'file.parquet, tol=0.01'
+      - 'path=file.parquet, tol=0.01, rtol=1e-5'
+      - 'file.parquet, threshold=0.01'
+    """
+    spec = raw.strip()
+    if not spec:
+        raise ValueError("-diff: target file path cannot be empty")
+
+    tol = default_tol
+    rtol = default_rtol
+
+    # Check for key=value or comma-separated syntax
+    if "," in spec:
+        from pytae._text import tokenize as _tok
+
+        tokens = _tok(spec, ",", keep_quotes=True, track_brackets=True)
+        path_str = None
+        for tok in tokens:
+            tok = tok.strip()
+            if not tok:
+                continue
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                k = k.strip().lower()
+                v = v.strip().strip("'\"")
+                if k in ("path", "target", "file", "right"):
+                    path_str = v
+                elif k in ("tol", "tolerance", "threshold", "atol"):
+                    try:
+                        tol = float(v)
+                    except ValueError:
+                        raise ValueError(f"-diff: invalid numeric tolerance '{v}'")
+                elif k == "rtol":
+                    try:
+                        rtol = float(v)
+                    except ValueError:
+                        raise ValueError(f"-diff: invalid relative tolerance rtol='{v}'")
+                else:
+                    raise ValueError(f"-diff: unknown option '{k}' in spec '{spec}'")
+            else:
+                if path_str is None:
+                    path_str = tok.strip().strip("'\"")
+                else:
+                    try:
+                        tol = float(tok)
+                    except ValueError:
+                        raise ValueError(f"-diff: unrecognized token '{tok}'")
+        if not path_str:
+            raise ValueError(f"-diff: no target path specified in '{spec}'")
+        return Path(path_str), tol, rtol
+
+    # Check for colon notation: file.csv:0.01
+    if ":" in spec:
+        r_idx = spec.rfind(":")
+        # Avoid drive letters on Windows like C:\
+        if r_idx > 1:
+            cand_tol = spec[r_idx + 1 :].strip()
+            try:
+                tol_val = float(cand_tol)
+                path_str = spec[:r_idx].strip().strip("'\"")
+                return Path(path_str), tol_val, rtol
+            except ValueError:
+                pass
+
+    return Path(spec.strip("'\"")), tol, rtol

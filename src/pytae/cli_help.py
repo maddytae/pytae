@@ -469,18 +469,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "diff": KeywordHelp(
         name="diff",
-        flag="-diff, --diff PATH",
-        syntax="pytae <file1> -diff <file2>",
-        summary="Compare schema and contents between two tabular datasets.",
-        description=("Compares column lists, types, row counts, and value differences between two files."),
+        flag="-diff, --diff SPEC [-tol VALUE]",
+        syntax="pytae <file1> -diff <file2>[:tol] [-tol VALUE]",
+        summary="Compare schema and values between two tabular datasets with optional numeric tolerance.",
+        description=(
+            "Compares column lists, types, row counts, null counts, and value differences "
+            "between two datasets. Supports an optional numeric threshold / tolerance for floating-point comparisons."
+        ),
         options=[
-            "PATH : Second file path to compare against.",
+            "-diff target.csv : Exact comparison of all common columns.",
+            "-diff target.csv:0.001 : Numeric comparison with absolute tolerance 0.001.",
+            "-diff \"target.csv, tol=1e-4\" : Key-value specification for tolerance.",
+            "-tol 0.001, --threshold 0.001 : CLI flag setting the numeric threshold.",
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet",
-            "pytae staging.csv -diff prod.parquet",
+            "pytae staging.csv -diff prod.parquet:0.001",
+            "pytae new.parquet -diff old.parquet -tol 1e-5",
         ],
-        see_also=["-meta", "-describe"],
+        see_also=["-meta", "-cols", "-dtype"],
     ),
     "head": KeywordHelp(
         name="head",

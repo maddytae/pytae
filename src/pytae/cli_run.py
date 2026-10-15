@@ -322,22 +322,33 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
 
 def _compute_diff(
     left_df: pd.DataFrame,
-    right_path: Path,
+    right_target: Any,
     left_name: str,
     *,
+    tol: float = 0.0,
+    rtol: float = 0.0,
     sep: str | None = None,
     encoding: str | None = None,
 ) -> str:
-    """Compare the current pipeline result against another tabular file."""
-    if not right_path.exists():
-        return f"Diff target not found: {right_path}"
-    try:
-        reader = get_reader(right_path, sep=sep, encoding=encoding)
-        right_df = reader.to_dataframe()
-    except UnicodeError as exc:
-        return _encoding_error_message(right_path, encoding, exc)
-    except Exception as exc:
-        return f"Cannot read diff target '{right_path}': {exc}"
+    """Compare the current pipeline result against another tabular file or DataFrame."""
+    if isinstance(right_target, pd.DataFrame):
+        right_df = right_target
+        right_name = getattr(right_target, "_name", "<right>")
+    elif hasattr(right_target, "to_pandas"):
+        right_df = right_target.to_pandas()
+        right_name = getattr(right_target, "_name", "<right>")
+    else:
+        right_path = Path(right_target)
+        if not right_path.exists():
+            return f"Diff target not found: {right_path}"
+        try:
+            reader = get_reader(right_path, sep=sep, encoding=encoding)
+            right_df = reader.to_dataframe()
+            right_name = right_path.name
+        except UnicodeError as exc:
+            return _encoding_error_message(right_path, encoding, exc)
+        except Exception as exc:
+            return f"Cannot read diff target '{right_path}': {exc}"
 
     r1, c1 = left_df.shape
     r2, c2 = right_df.shape
@@ -347,7 +358,7 @@ def _compute_diff(
     lines: list[str] = [
         "Comparing:",
         f"  Left (source):  {left_name} ({r1:,} rows, {c1} cols)",
-        f"  Right (target): {right_path.name} ({r2:,} rows, {c2} cols)",
+        f"  Right (target): {right_name} ({r2:,} rows, {c2} cols)",
         "",
         "Shape:",
         f"  Rows: {r1:,} vs {r2:,} ({'+' if r1 >= r2 else ''}{r1 - r2:,})",
@@ -395,19 +406,71 @@ def _compute_diff(
     if r1 == r2 and common_cols:
         try:
             mismatches = 0
+            col_mismatches: dict[str, tuple[int, float | None]] = {}
             for c in common_cols:
                 s1 = left_df[c]
                 s2 = right_df[c]
-                diff = ~((s1 == s2) | (s1.isna() & s2.isna()))
-                mismatches += int(diff.sum())
+                is_num1 = pd.api.types.is_numeric_dtype(s1)
+                is_num2 = pd.api.types.is_numeric_dtype(s2)
+                if (tol > 0 or rtol > 0) and is_num1 and is_num2:
+                    both_na = s1.isna() & s2.isna()
+                    v1 = pd.to_numeric(s1, errors="coerce")
+                    v2 = pd.to_numeric(s2, errors="coerce")
+                    abs_diff = (v1 - v2).abs()
+                    within_tol = abs_diff <= (tol + rtol * v2.abs())
+                    match = both_na | within_tol.fillna(False)
+                    diff = ~match
+                    cnt = int(diff.sum())
+                    if cnt > 0:
+                        max_d = float(abs_diff[diff].max()) if not abs_diff[diff].empty else None
+                        col_mismatches[c] = (cnt, max_d)
+                        mismatches += cnt
+                else:
+                    diff = ~((s1 == s2) | (s1.isna() & s2.isna()))
+                    cnt = int(diff.sum())
+                    if cnt > 0:
+                        max_d = None
+                        if is_num1 and is_num2:
+                            try:
+                                v1 = pd.to_numeric(s1, errors="coerce")
+                                v2 = pd.to_numeric(s2, errors="coerce")
+                                abs_diff = (v1 - v2).abs()
+                                max_d = float(abs_diff[diff].max()) if not abs_diff[diff].empty else None
+                            except Exception:
+                                pass
+                        col_mismatches[c] = (cnt, max_d)
+                        mismatches += cnt
+
             lines.append("")
             lines.append("Values:")
+            if tol > 0 or rtol > 0:
+                tol_desc = []
+                if tol > 0:
+                    tol_desc.append(f"threshold/atol={tol:g}")
+                if rtol > 0:
+                    tol_desc.append(f"rtol={rtol:g}")
+                lines.append(f"  Tolerance: {', '.join(tol_desc)} (for numeric columns)")
+
             if mismatches == 0 and cols1 == cols2:
-                lines.append("  Identical: all cell values match exactly.")
+                if tol > 0 or rtol > 0:
+                    lines.append("  Identical: all cell values match within tolerance.")
+                else:
+                    lines.append("  Identical: all cell values match exactly.")
             elif mismatches == 0:
-                lines.append("  Matching: all cell values in common columns match.")
+                if tol > 0 or rtol > 0:
+                    lines.append("  Matching: all cell values in common columns match within tolerance.")
+                else:
+                    lines.append("  Matching: all cell values in common columns match.")
             else:
-                lines.append(f"  Mismatches found in {mismatches:,} cells across common columns.")
+                if tol > 0 or rtol > 0:
+                    lines.append(f"  Mismatches found in {mismatches:,} cells exceeding tolerance across common columns:")
+                else:
+                    lines.append(f"  Mismatches found in {mismatches:,} cells across common columns:")
+                for c, (cnt, max_d) in col_mismatches.items():
+                    if max_d is not None:
+                        lines.append(f"    * {c}: {cnt:,} cell(s) differ (max diff: {max_d:g})")
+                    else:
+                        lines.append(f"    * {c}: {cnt:,} cell(s) differ")
         except Exception:
             pass
 
@@ -826,11 +889,20 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
-            diff_path = Path(args.diff)
+            from pytae.cli_parsing import parse_diff_spec
+
+            default_tol = getattr(args, "tol", None) or 0.0
+            try:
+                diff_path, diff_tol, diff_rtol = parse_diff_spec(args.diff, default_tol=default_tol)
+            except ValueError as exc:
+                return _fail(parser, batch, str(exc))
+
             diff_str = _compute_diff(
                 pipeline.dataframe(),
                 diff_path,
                 path.name if path is not None else "<pipeline>",
+                tol=diff_tol,
+                rtol=diff_rtol,
                 sep=args.dlim,
                 encoding=args.encoding,
             )

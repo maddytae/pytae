@@ -56,6 +56,9 @@ class PolarsPtAccessor:
     def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
 
+    def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
+        return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
+
     def pick(
         self,
         spec: str,
@@ -252,6 +255,9 @@ class PandasPtAccessor:
 
     def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
+
+    def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
+        return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
 
     def pick(
         self,

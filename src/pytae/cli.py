@@ -183,6 +183,9 @@ _CLI_FLAGS = {
     "--pager",
     "-round",
     "--round",
+    "-tol",
+    "--tol",
+    "--threshold",
     "-h",
     "--help",
     "-fmt",
@@ -396,9 +399,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--diff",
         dest="diff",
         default=None,
-        metavar="PATH",
+        metavar="SPEC",
         action=_OrderedStore,
-        help="compare schema and contents against another dataset file",
+        help="compare schema and contents against another dataset file; "
+        "supports optional tolerance: -diff target.parquet:0.001, -diff \"target.parquet, tol=1e-4\", "
+        "or combine with -tol VALUE",
     )
     parser.add_argument(
         "-value_counts",
@@ -827,6 +832,17 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="round numeric columns to N decimal places before printing/copying; "
         "non-numeric columns are left unchanged",
+    )
+    parser.add_argument(
+        "-tol",
+        "--tol",
+        "--threshold",
+        dest="tol",
+        type=float,
+        default=None,
+        metavar="VALUE",
+        help="numeric difference tolerance / threshold for dataset comparison (-diff); "
+        "e.g. -tol 0.001 or --threshold 1e-4",
     )
     return parser
 

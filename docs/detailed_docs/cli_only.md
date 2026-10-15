@@ -105,6 +105,47 @@ Values:
   ```
 - Copy diff report to clipboard: `-diff target.parquet -o clip`
 
+### Numeric Thresholds & Tolerances (`-tol`, `--threshold`)
+
+When comparing floating-point or numeric datasets, minor precision fluctuations (such as `0.00000001` floating-point inaccuracies or small calibration drifts) can cause false mismatches. Pytae provides first-class numeric thresholding via colon shorthand, key-value specs, or dedicated flags:
+
+```bash
+# 1. Colon shorthand notation (absolute tolerance)
+pytae current.parquet -diff previous.parquet:0.001
+
+# 2. Dedicated CLI flag (-tol or --threshold)
+pytae current.parquet -diff previous.parquet -tol 0.001
+pytae current.parquet -diff previous.parquet --threshold 1e-4
+
+# 3. Key-value spec (supports relative tolerance rtol)
+pytae current.parquet -diff "previous.parquet, tol=0.01, rtol=1e-5"
+```
+
+**Diff Output with Tolerance & Mismatch Breakdown:**
+```text
+Values:
+  Tolerance: threshold/atol=0.001 (for numeric columns)
+  Mismatches found in 12 cells exceeding tolerance across common columns:
+    * revenue: 8 cell(s) differ (max diff: 0.045)
+    * discount: 4 cell(s) differ (max diff: 0.012)
+```
+
+### Python Library Diffing (`df.diff` & `pt.diff`)
+You can also run dataset comparisons directly in Python:
+```python
+import pytae as pt
+
+df1 = pt.read_parquet("current.parquet")
+df2 = pt.read_parquet("previous.parquet")
+
+# Compare with absolute tolerance
+report = df1.diff(df2, tol=0.001)
+print(report)
+
+# Functional pt.diff
+print(pt.diff(df1, df2, tol=1e-4))
+```
+
 ---
 
 <a id="inspection-and-metadata"></a>

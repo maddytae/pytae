@@ -743,6 +743,33 @@ class DataFrame:
         """
         return DataFrame(cast_polars(self._df, dtypes=dtypes, strict=strict, **kwargs))
 
+    def diff(
+        self,
+        other: Any,
+        tol: float = 0.0,
+        rtol: float = 0.0,
+    ) -> str:
+        """Compare schema and contents against another DataFrame or dataset file with optional tolerance.
+
+        Parameters
+        ----------
+        other : DataFrame, pl.DataFrame, pd.DataFrame, str, or Path
+            Dataset or file path to compare against.
+        tol : float, default 0.0
+            Absolute numeric threshold / tolerance for numeric comparisons.
+        rtol : float, default 0.0
+            Relative numeric threshold / tolerance for numeric comparisons.
+
+        Returns
+        -------
+        str
+            A structured human-readable comparison report.
+        """
+        from pytae.cli_run import _compute_diff
+
+        left_df = self.to_pandas()
+        return _compute_diff(left_df, other, "<left>", tol=tol, rtol=rtol)
+
     def pick(
         self,
         spec: str,

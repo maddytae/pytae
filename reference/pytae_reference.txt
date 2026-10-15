@@ -1394,6 +1394,47 @@ Values:
   ```
 - Copy diff report to clipboard: `-diff target.parquet -o clip`
 
+### Numeric Thresholds & Tolerances (`-tol`, `--threshold`)
+
+When comparing floating-point or numeric datasets, minor precision fluctuations (such as `0.00000001` floating-point inaccuracies or small calibration drifts) can cause false mismatches. Pytae provides first-class numeric thresholding via colon shorthand, key-value specs, or dedicated flags:
+
+```bash
+# 1. Colon shorthand notation (absolute tolerance)
+pytae current.parquet -diff previous.parquet:0.001
+
+# 2. Dedicated CLI flag (-tol or --threshold)
+pytae current.parquet -diff previous.parquet -tol 0.001
+pytae current.parquet -diff previous.parquet --threshold 1e-4
+
+# 3. Key-value spec (supports relative tolerance rtol)
+pytae current.parquet -diff "previous.parquet, tol=0.01, rtol=1e-5"
+```
+
+**Diff Output with Tolerance & Mismatch Breakdown:**
+```text
+Values:
+  Tolerance: threshold/atol=0.001 (for numeric columns)
+  Mismatches found in 12 cells exceeding tolerance across common columns:
+    * revenue: 8 cell(s) differ (max diff: 0.045)
+    * discount: 4 cell(s) differ (max diff: 0.012)
+```
+
+### Python Library Diffing (`df.diff` & `pt.diff`)
+You can also run dataset comparisons directly in Python:
+```python
+import pytae as pt
+
+df1 = pt.read_parquet("current.parquet")
+df2 = pt.read_parquet("previous.parquet")
+
+# Compare with absolute tolerance
+report = df1.diff(df2, tol=0.001)
+print(report)
+
+# Functional pt.diff
+print(pt.diff(df1, df2, tol=1e-4))
+```
+
 ---
 
 <a id="inspection-and-metadata"></a>
@@ -4601,6 +4642,11 @@ def cast(df: Any, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> Dat
     return DataFrame(df).cast(dtypes=dtypes, strict=strict, **kwargs)
 
 
+def diff(left: Any, right: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
+    """Compare schema and contents between two datasets with optional numeric tolerance."""
+    return DataFrame(left).diff(right, tol=tol, rtol=rtol)
+
+
 
 def concat(
     items: Sequence[Any],
@@ -4744,6 +4790,7 @@ __all__ = [
     "fill_null",
     "fill_nan",
     "cast",
+    "diff",
     "agg",
     "join",
     "concat",
@@ -5514,6 +5561,9 @@ class PolarsPtAccessor:
     def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
 
+    def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
+        return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
+
     def pick(
         self,
         spec: str,
@@ -5710,6 +5760,9 @@ class PandasPtAccessor:
 
     def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
+
+    def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
+        return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
 
     def pick(
         self,
@@ -6064,6 +6117,9 @@ _CLI_FLAGS = {
     "--pager",
     "-round",
     "--round",
+    "-tol",
+    "--tol",
+    "--threshold",
     "-h",
     "--help",
     "-fmt",
@@ -6277,9 +6333,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--diff",
         dest="diff",
         default=None,
-        metavar="PATH",
+        metavar="SPEC",
         action=_OrderedStore,
-        help="compare schema and contents against another dataset file",
+        help="compare schema and contents against another dataset file; "
+        "supports optional tolerance: -diff target.parquet:0.001, -diff \"target.parquet, tol=1e-4\", "
+        "or combine with -tol VALUE",
     )
     parser.add_argument(
         "-value_counts",
@@ -6708,6 +6766,17 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="round numeric columns to N decimal places before printing/copying; "
         "non-numeric columns are left unchanged",
+    )
+    parser.add_argument(
+        "-tol",
+        "--tol",
+        "--threshold",
+        dest="tol",
+        type=float,
+        default=None,
+        metavar="VALUE",
+        help="numeric difference tolerance / threshold for dataset comparison (-diff); "
+        "e.g. -tol 0.001 or --threshold 1e-4",
     )
     return parser
 
@@ -7550,18 +7619,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "diff": KeywordHelp(
         name="diff",
-        flag="-diff, --diff PATH",
-        syntax="pytae <file1> -diff <file2>",
-        summary="Compare schema and contents between two tabular datasets.",
-        description=("Compares column lists, types, row counts, and value differences between two files."),
+        flag="-diff, --diff SPEC [-tol VALUE]",
+        syntax="pytae <file1> -diff <file2>[:tol] [-tol VALUE]",
+        summary="Compare schema and values between two tabular datasets with optional numeric tolerance.",
+        description=(
+            "Compares column lists, types, row counts, null counts, and value differences "
+            "between two datasets. Supports an optional numeric threshold / tolerance for floating-point comparisons."
+        ),
         options=[
-            "PATH : Second file path to compare against.",
+            "-diff target.csv : Exact comparison of all common columns.",
+            "-diff target.csv:0.001 : Numeric comparison with absolute tolerance 0.001.",
+            "-diff \"target.csv, tol=1e-4\" : Key-value specification for tolerance.",
+            "-tol 0.001, --threshold 0.001 : CLI flag setting the numeric threshold.",
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet",
-            "pytae staging.csv -diff prod.parquet",
+            "pytae staging.csv -diff prod.parquet:0.001",
+            "pytae new.parquet -diff old.parquet -tol 1e-5",
         ],
-        see_also=["-meta", "-describe"],
+        see_also=["-meta", "-cols", "-dtype"],
     ),
     "head": KeywordHelp(
         name="head",
@@ -8789,6 +8865,81 @@ def normalize_sql(query: str) -> str:
         i += 1
     return "".join(out_chars)
 
+
+def parse_diff_spec(
+    raw: str, default_tol: float = 0.0, default_rtol: float = 0.0
+) -> tuple[Path, float, float]:
+    """Parse -diff spec into (target_path, tol, rtol).
+
+    Supported formats:
+      - 'path/to/file.parquet'
+      - 'path/to/file.parquet:0.01' (colon numeric threshold shorthand)
+      - 'file.parquet, tol=0.01'
+      - 'path=file.parquet, tol=0.01, rtol=1e-5'
+      - 'file.parquet, threshold=0.01'
+    """
+    spec = raw.strip()
+    if not spec:
+        raise ValueError("-diff: target file path cannot be empty")
+
+    tol = default_tol
+    rtol = default_rtol
+
+    # Check for key=value or comma-separated syntax
+    if "," in spec:
+        from pytae._text import tokenize as _tok
+
+        tokens = _tok(spec, ",", keep_quotes=True, track_brackets=True)
+        path_str = None
+        for tok in tokens:
+            tok = tok.strip()
+            if not tok:
+                continue
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                k = k.strip().lower()
+                v = v.strip().strip("'\"")
+                if k in ("path", "target", "file", "right"):
+                    path_str = v
+                elif k in ("tol", "tolerance", "threshold", "atol"):
+                    try:
+                        tol = float(v)
+                    except ValueError:
+                        raise ValueError(f"-diff: invalid numeric tolerance '{v}'")
+                elif k == "rtol":
+                    try:
+                        rtol = float(v)
+                    except ValueError:
+                        raise ValueError(f"-diff: invalid relative tolerance rtol='{v}'")
+                else:
+                    raise ValueError(f"-diff: unknown option '{k}' in spec '{spec}'")
+            else:
+                if path_str is None:
+                    path_str = tok.strip().strip("'\"")
+                else:
+                    try:
+                        tol = float(tok)
+                    except ValueError:
+                        raise ValueError(f"-diff: unrecognized token '{tok}'")
+        if not path_str:
+            raise ValueError(f"-diff: no target path specified in '{spec}'")
+        return Path(path_str), tol, rtol
+
+    # Check for colon notation: file.csv:0.01
+    if ":" in spec:
+        r_idx = spec.rfind(":")
+        # Avoid drive letters on Windows like C:\
+        if r_idx > 1:
+            cand_tol = spec[r_idx + 1 :].strip()
+            try:
+                tol_val = float(cand_tol)
+                path_str = spec[:r_idx].strip().strip("'\"")
+                return Path(path_str), tol_val, rtol
+            except ValueError:
+                pass
+
+    return Path(spec.strip("'\"")), tol, rtol
+
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
 ################################################################################
@@ -9632,22 +9783,33 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
 
 def _compute_diff(
     left_df: pd.DataFrame,
-    right_path: Path,
+    right_target: Any,
     left_name: str,
     *,
+    tol: float = 0.0,
+    rtol: float = 0.0,
     sep: str | None = None,
     encoding: str | None = None,
 ) -> str:
-    """Compare the current pipeline result against another tabular file."""
-    if not right_path.exists():
-        return f"Diff target not found: {right_path}"
-    try:
-        reader = get_reader(right_path, sep=sep, encoding=encoding)
-        right_df = reader.to_dataframe()
-    except UnicodeError as exc:
-        return _encoding_error_message(right_path, encoding, exc)
-    except Exception as exc:
-        return f"Cannot read diff target '{right_path}': {exc}"
+    """Compare the current pipeline result against another tabular file or DataFrame."""
+    if isinstance(right_target, pd.DataFrame):
+        right_df = right_target
+        right_name = getattr(right_target, "_name", "<right>")
+    elif hasattr(right_target, "to_pandas"):
+        right_df = right_target.to_pandas()
+        right_name = getattr(right_target, "_name", "<right>")
+    else:
+        right_path = Path(right_target)
+        if not right_path.exists():
+            return f"Diff target not found: {right_path}"
+        try:
+            reader = get_reader(right_path, sep=sep, encoding=encoding)
+            right_df = reader.to_dataframe()
+            right_name = right_path.name
+        except UnicodeError as exc:
+            return _encoding_error_message(right_path, encoding, exc)
+        except Exception as exc:
+            return f"Cannot read diff target '{right_path}': {exc}"
 
     r1, c1 = left_df.shape
     r2, c2 = right_df.shape
@@ -9657,7 +9819,7 @@ def _compute_diff(
     lines: list[str] = [
         "Comparing:",
         f"  Left (source):  {left_name} ({r1:,} rows, {c1} cols)",
-        f"  Right (target): {right_path.name} ({r2:,} rows, {c2} cols)",
+        f"  Right (target): {right_name} ({r2:,} rows, {c2} cols)",
         "",
         "Shape:",
         f"  Rows: {r1:,} vs {r2:,} ({'+' if r1 >= r2 else ''}{r1 - r2:,})",
@@ -9705,19 +9867,71 @@ def _compute_diff(
     if r1 == r2 and common_cols:
         try:
             mismatches = 0
+            col_mismatches: dict[str, tuple[int, float | None]] = {}
             for c in common_cols:
                 s1 = left_df[c]
                 s2 = right_df[c]
-                diff = ~((s1 == s2) | (s1.isna() & s2.isna()))
-                mismatches += int(diff.sum())
+                is_num1 = pd.api.types.is_numeric_dtype(s1)
+                is_num2 = pd.api.types.is_numeric_dtype(s2)
+                if (tol > 0 or rtol > 0) and is_num1 and is_num2:
+                    both_na = s1.isna() & s2.isna()
+                    v1 = pd.to_numeric(s1, errors="coerce")
+                    v2 = pd.to_numeric(s2, errors="coerce")
+                    abs_diff = (v1 - v2).abs()
+                    within_tol = abs_diff <= (tol + rtol * v2.abs())
+                    match = both_na | within_tol.fillna(False)
+                    diff = ~match
+                    cnt = int(diff.sum())
+                    if cnt > 0:
+                        max_d = float(abs_diff[diff].max()) if not abs_diff[diff].empty else None
+                        col_mismatches[c] = (cnt, max_d)
+                        mismatches += cnt
+                else:
+                    diff = ~((s1 == s2) | (s1.isna() & s2.isna()))
+                    cnt = int(diff.sum())
+                    if cnt > 0:
+                        max_d = None
+                        if is_num1 and is_num2:
+                            try:
+                                v1 = pd.to_numeric(s1, errors="coerce")
+                                v2 = pd.to_numeric(s2, errors="coerce")
+                                abs_diff = (v1 - v2).abs()
+                                max_d = float(abs_diff[diff].max()) if not abs_diff[diff].empty else None
+                            except Exception:
+                                pass
+                        col_mismatches[c] = (cnt, max_d)
+                        mismatches += cnt
+
             lines.append("")
             lines.append("Values:")
+            if tol > 0 or rtol > 0:
+                tol_desc = []
+                if tol > 0:
+                    tol_desc.append(f"threshold/atol={tol:g}")
+                if rtol > 0:
+                    tol_desc.append(f"rtol={rtol:g}")
+                lines.append(f"  Tolerance: {', '.join(tol_desc)} (for numeric columns)")
+
             if mismatches == 0 and cols1 == cols2:
-                lines.append("  Identical: all cell values match exactly.")
+                if tol > 0 or rtol > 0:
+                    lines.append("  Identical: all cell values match within tolerance.")
+                else:
+                    lines.append("  Identical: all cell values match exactly.")
             elif mismatches == 0:
-                lines.append("  Matching: all cell values in common columns match.")
+                if tol > 0 or rtol > 0:
+                    lines.append("  Matching: all cell values in common columns match within tolerance.")
+                else:
+                    lines.append("  Matching: all cell values in common columns match.")
             else:
-                lines.append(f"  Mismatches found in {mismatches:,} cells across common columns.")
+                if tol > 0 or rtol > 0:
+                    lines.append(f"  Mismatches found in {mismatches:,} cells exceeding tolerance across common columns:")
+                else:
+                    lines.append(f"  Mismatches found in {mismatches:,} cells across common columns:")
+                for c, (cnt, max_d) in col_mismatches.items():
+                    if max_d is not None:
+                        lines.append(f"    * {c}: {cnt:,} cell(s) differ (max diff: {max_d:g})")
+                    else:
+                        lines.append(f"    * {c}: {cnt:,} cell(s) differ")
         except Exception:
             pass
 
@@ -10136,11 +10350,20 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
-            diff_path = Path(args.diff)
+            from pytae.cli_parsing import parse_diff_spec
+
+            default_tol = getattr(args, "tol", None) or 0.0
+            try:
+                diff_path, diff_tol, diff_rtol = parse_diff_spec(args.diff, default_tol=default_tol)
+            except ValueError as exc:
+                return _fail(parser, batch, str(exc))
+
             diff_str = _compute_diff(
                 pipeline.dataframe(),
                 diff_path,
                 path.name if path is not None else "<pipeline>",
+                tol=diff_tol,
+                rtol=diff_rtol,
                 sep=args.dlim,
                 encoding=args.encoding,
             )
@@ -11223,6 +11446,33 @@ class DataFrame:
             Additional column-to-type assignments (e.g. x=int, y='float').
         """
         return DataFrame(cast_polars(self._df, dtypes=dtypes, strict=strict, **kwargs))
+
+    def diff(
+        self,
+        other: Any,
+        tol: float = 0.0,
+        rtol: float = 0.0,
+    ) -> str:
+        """Compare schema and contents against another DataFrame or dataset file with optional tolerance.
+
+        Parameters
+        ----------
+        other : DataFrame, pl.DataFrame, pd.DataFrame, str, or Path
+            Dataset or file path to compare against.
+        tol : float, default 0.0
+            Absolute numeric threshold / tolerance for numeric comparisons.
+        rtol : float, default 0.0
+            Relative numeric threshold / tolerance for numeric comparisons.
+
+        Returns
+        -------
+        str
+            A structured human-readable comparison report.
+        """
+        from pytae.cli_run import _compute_diff
+
+        left_df = self.to_pandas()
+        return _compute_diff(left_df, other, "<left>", tol=tol, rtol=rtol)
 
     def pick(
         self,
@@ -18706,6 +18956,117 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
 
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
+
+################################################################################
+# FILE: tests/test_cli_diff_tol.py
+################################################################################
+import pandas as pd
+import pytest
+
+import pytae as pt
+from pytae import cli
+
+
+def test_cli_diff_numeric_tolerance_colon(tmp_path, capsys):
+    f1 = tmp_path / "f1.csv"
+    f2 = tmp_path / "f2.csv"
+
+    # Differences within 0.01 tolerance
+    df1 = pd.DataFrame({"id": [1, 2, 3], "val": [10.001, 20.004, 30.002]})
+    df2 = pd.DataFrame({"id": [1, 2, 3], "val": [10.000, 20.000, 30.000]})
+    df1.to_csv(f1, index=False)
+    df2.to_csv(f2, index=False)
+
+    # Without tolerance -> mismatches
+    exit_code = cli.main([str(f1), "-diff", str(f2)])
+    assert exit_code == 0
+    out1 = capsys.readouterr().out
+    assert "Mismatches found" in out1
+    assert "val: 3 cell(s) differ" in out1
+
+    # With colon tolerance 0.01 -> matches within tolerance
+    exit_code = cli.main([str(f1), "-diff", f"{f2}:0.01"])
+    assert exit_code == 0
+    out2 = capsys.readouterr().out
+    assert "Tolerance: threshold/atol=0.01" in out2
+    assert "all cell values match within tolerance" in out2
+
+
+def test_cli_diff_numeric_tolerance_flag(tmp_path, capsys):
+    f1 = tmp_path / "f1.csv"
+    f2 = tmp_path / "f2.csv"
+
+    df1 = pd.DataFrame({"metric": [1.0005, 2.0002]})
+    df2 = pd.DataFrame({"metric": [1.0000, 2.0000]})
+    df1.to_csv(f1, index=False)
+    df2.to_csv(f2, index=False)
+
+    # -tol flag
+    exit_code = cli.main([str(f1), "-diff", str(f2), "-tol", "0.001"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Tolerance: threshold/atol=0.001" in out
+    assert "Identical: all cell values match within tolerance" in out
+
+    # --threshold flag
+    exit_code2 = cli.main([str(f1), "-diff", str(f2), "--threshold", "0.0003"])
+    assert exit_code2 == 0
+    out2 = capsys.readouterr().out
+    assert "Mismatches found in 1 cells exceeding tolerance" in out2
+    assert "metric: 1 cell(s) differ (max diff: 0.0005)" in out2
+
+
+def test_cli_diff_spec_key_value(tmp_path, capsys):
+    f1 = tmp_path / "f1.csv"
+    f2 = tmp_path / "f2.csv"
+
+    df1 = pd.DataFrame({"x": [100.0, 200.0], "label": ["a", "b"]})
+    df2 = pd.DataFrame({"x": [104.0, 202.0], "label": ["a", "b"]})
+    df1.to_csv(f1, index=False)
+    df2.to_csv(f2, index=False)
+
+    # rtol relative tolerance
+    spec = f"path={f2}, rtol=0.05"
+    exit_code = cli.main([str(f1), "-diff", spec])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Tolerance: rtol=0.05" in out
+    assert "Identical: all cell values match within tolerance" in out
+
+
+def test_python_dataframe_diff():
+    df1 = pt.DataFrame({"id": [1, 2], "val": [10.05, 20.02]})
+    df2 = pt.DataFrame({"id": [1, 2], "val": [10.00, 20.00]})
+
+    # df.diff without tol
+    res1 = df1.diff(df2)
+    assert "Mismatches found in 2 cells" in res1
+    assert "val: 2 cell(s) differ (max diff: 0.05)" in res1
+
+    # df.diff with tol=0.1
+    res2 = df1.diff(df2, tol=0.1)
+    assert "Tolerance: threshold/atol=0.1" in res2
+    assert "Identical: all cell values match within tolerance" in res2
+
+    # pt.diff functional
+    res3 = pt.diff(df1, df2, tol=0.1)
+    assert "Identical: all cell values match within tolerance" in res3
+
+    # Pandas accessor .pt.diff
+    pd1 = df1.to_pandas()
+    pd2 = df2.to_pandas()
+    res4 = pd1.pt.diff(pd2, tol=0.1)
+    assert "Identical: all cell values match within tolerance" in res4
+
+
+def test_cli_diff_invalid_tolerance(tmp_path, capsys):
+    f1 = tmp_path / "f1.csv"
+    f1.write_text("a\n1\n")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main([str(f1), "-diff", "f2.csv, tol=invalid_number"])
+    assert exc.value.code == 2
+    assert "invalid numeric tolerance" in capsys.readouterr().err
 
 ################################################################################
 # FILE: tests/test_cli_enhancements.py

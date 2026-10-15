@@ -308,6 +308,11 @@ def cast(df: Any, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> Dat
     return DataFrame(df).cast(dtypes=dtypes, strict=strict, **kwargs)
 
 
+def diff(left: Any, right: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
+    """Compare schema and contents between two datasets with optional numeric tolerance."""
+    return DataFrame(left).diff(right, tol=tol, rtol=rtol)
+
+
 
 def concat(
     items: Sequence[Any],
@@ -451,6 +456,7 @@ __all__ = [
     "fill_null",
     "fill_nan",
     "cast",
+    "diff",
     "agg",
     "join",
     "concat",
