@@ -677,3 +677,30 @@ def test_mutate_grouped_interleaved_callable_and_string():
     assert list(res["a"]) == [2, 4, 6]
     assert list(res["b"]) == [12, 14, 16]
 
+
+def test_mutate_consecutive_callables_consuming_each_other():
+    df = pt.DataFrame({"x": [1, 2, 3]})
+    # One callable consuming another callable's output
+    res = df.mutate(
+        a=lambda d: d["x"] + 1,
+        b=lambda d: d["a"] * 2,
+        c=lambda d: d["b"] + 100,
+    )
+    assert list(res["a"]) == [2, 3, 4]
+    assert list(res["b"]) == [4, 6, 8]
+    assert list(res["c"]) == [104, 106, 108]
+
+
+def test_mutate_grouped_consecutive_callables_consuming_each_other():
+    df = pt.DataFrame({"grp": ["A", "A", "B"], "x": [1, 2, 10]})
+    # Grouped callables consuming each other sequentially
+    res = df.by("grp").mutate(
+        a=lambda g: g["x"] + 1,
+        b=lambda g: g["a"] * 2,
+        c=lambda g: g["b"] + 100,
+    )
+    assert list(res["a"]) == [2, 3, 11]
+    assert list(res["b"]) == [4, 6, 22]
+    assert list(res["c"]) == [104, 106, 122]
+
+
