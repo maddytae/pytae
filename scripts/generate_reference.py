@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Generate and update reference/pytae_reference.txt with latest documentation and code."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -71,6 +72,7 @@ TABLE OF CONTENTS
 8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
 9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
 10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
+    10.1 CORE PHILOSOPHY & MISSING DATA ARCHITECTURE (docs/pytae.md)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -81,36 +83,37 @@ TABLE OF CONTENTS
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
-command-line tool built on top of Pandas, PyArrow, Polars, and Matplotlib.
+command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
+seamless Pandas interoperability, PyArrow, and Matplotlib.
 
 Key principles:
-1. Dual Calling Convention (100% Pandas-Based): Every library verb operates 
-   natively on standard Pandas DataFrames without external engine overhead. 
-   Importing `pytae` in Python is pure Pandas and never loads Polars into memory.
-   Verbs exist both as a functional form `pt.verb(df, ...)` and as a Pandas 
-   DataFrame accessor `df.pt.verb(...)`, enabling seamless method chaining with 
-   standard Pandas methods: `df.rename(...).pt.filter(...).pt.by("species").pt.agg(...)`.
-2. Unix Pipeline CLI (100% Polars-Based): The command-line tool `pytae` executes 
-   natively via an internal multithreaded SIMD Polars engine with lazy evaluation, 
-   streaming files and intermediate operations in vector memory at 10x–20x speedups:
-   `pytae data.parquet -filter "..." -mutate "..." -select "..." -head 10`.
-3. Fast & Zero-Cost Metadata Inspection: For formats containing file-level metadata 
+1. Unified SIMD Vector Engine: Every library verb and CLI operation executes 
+   natively on Polars vector memory, delivering 10x–20x performance speedups, 
+   zero-copy operations, and lazy evaluation (`pt.scan()`).
+2. Zero Data Loss by Default: Missing values (`null`/`NaN`) are preserved across 
+   analytical operations (`agg`, `pivot`, `mutate`, `freq`) by default (`dropna=False`).
+   The `dropna()` / `drop_nulls()` verb defaults to `how='all'` (dropping only 100%
+   blank rows), protecting partial-row business data from accidental loss.
+3. Seamless Pandas & Polars Interoperability: Works seamlessly with both Pandas and 
+   Polars DataFrames. Use `df.pt.<verb>()` or `pt.<verb>(df)`. Converts back to 
+   Pandas anytime via `.to_pandas()` while preserving original indices.
+4. Fast & Zero-Cost Metadata Inspection: For formats containing file-level metadata 
    (Parquet, SAS7BDAT), commands like `-shape`, `-cols`, `-dtype`, `-head` inspect 
    headers without parsing full table rows.
-4. Expressive & Human-Friendly: Minimizes boilerplate. Filtering supports 
+5. Expressive & Human-Friendly: Minimizes boilerplate. Filtering supports 
    intervals `[3000, 4000]`, string operations, and keyword arguments. Grouped 
    aggregations express grouping via standalone `pt.by()` and concise aggregations 
    (e.g. `body_mass_g=mean`, `n=n`) without tedious `.groupby().agg()` boilerplate.
-5. Non-Destructive: All library verbs return copies of DataFrames and never 
+6. Non-Destructive: All library verbs return copies of DataFrames and never 
    mutate inputs in place. Original indices are preserved during filtering.
-6. Honest Error Handling ("Be generous in what you accept, but strictly honest 
+7. Honest Error Handling ("Be generous in what you accept, but strictly honest 
    when ambiguous"): Flexible inputs are accepted where unambiguous, but collisions, 
    conflicts, and invalid arguments raise clear exceptions rather than silently 
    inventing artificial column suffixes or guessing.
-7. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
+8. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
    is `wide()`, 2D aggregation is `pivot()`, column selection is `select()`, 
    grouping is strictly standalone `pt.by()`.
-8. Plotting Without Implicit Aggregation (Path A): Plotters focus purely on 
+9. Plotting Without Implicit Aggregation (Path A): Plotters focus purely on 
    visual representation—data should be aggregated explicitly first via `agg` 
    or `pivot` before plotting, avoiding hidden or surprising aggregations.
 
@@ -124,8 +127,11 @@ Installation (PyPI: https://pypi.org/project/pytae/):
 Importing:
   import pytae as pt
   import pandas as pd
+  import polars as pl
 
 Top-Level Functions exported by `pytae`:
+  - pt.scan(path, **kwargs) -> DataFrame (Lazy query graph)
+  - pt.read(path, **kwargs) -> DataFrame (Eager ingestion)
   - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)
@@ -136,6 +142,9 @@ Top-Level Functions exported by `pytae`:
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
   - pt.distinct(df, *cols, keep="first")
+  - pt.dropna(df, *cols, how=None, drop_nans=True)
+  - pt.drop_nulls(df, *cols, how=None, drop_nans=True)
+  - pt.drop_na(df, *cols, how=None, drop_nans=True)
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
@@ -155,7 +164,7 @@ Top-Level Functions exported by `pytae`:
   - pt.finalize(plotter=None, **kwargs)
 
 DataFrame Accessor (`df.pt`):
-  Importing pytae automatically registers the `.pt` accessor on `pd.DataFrame`.
+  Importing pytae automatically registers the `.pt` accessor on `pd.DataFrame` and `pl.DataFrame`.
   Methods on `df.pt`:
     df.pt.select(...)
     df.pt.filter(...)
@@ -165,6 +174,9 @@ DataFrame Accessor (`df.pt`):
     df.pt.arrange(...)
     df.pt.pick(...)
     df.pt.distinct(...)
+    df.pt.dropna(...)
+    df.pt.drop_nulls(...)
+    df.pt.drop_na(...)
     df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
@@ -620,6 +632,9 @@ Examples:
 
 4.11. Other Utilities
 --------------------------------------------------------------------------------
+- pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...) / pt.drop_nulls(...) / pt.drop_na(...):
+  Drops rows with missing values (Arrow null and float NaN). Defaults to how='all' (Zero Data Loss) when cols is empty,
+  or how='any' when columns are explicitly passed. Supports aliases drop_nulls and drop_na across library and CLI.
 - pt.cols(df, ascending=True):
   Returns list of column names (ascending=True for A-Z, False for Z-A, None for file order).
 - pt.glimpse(df, width=None) / df.pt.glimpse(width=None):
@@ -722,7 +737,7 @@ In-Terminal ASCII Visualizations:
 
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
-  -dropna [COLS]        Drop rows containing NaN
+  -dropna, -drop_nulls [COLS]  Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by
 
 Column Transformation Flags:
@@ -1207,6 +1222,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 
 def _format_notebook(nb_path: Path) -> str:
     import json
+
     nb = json.loads(nb_path.read_text(encoding="utf-8"))
     out_lines: list[str] = [f"# Notebook: {nb_path.name}\n"]
     for cell in nb.get("cells", []):
@@ -1278,8 +1294,7 @@ def generate_reference() -> None:
     parts.append(lib_md.read_text(encoding="utf-8").rstrip() + "\n")
 
     lib_docs = sorted(
-        list((REPO_ROOT / "docs" / "library").glob("*.md"))
-        + list((REPO_ROOT / "docs" / "library").glob("*.ipynb")),
+        list((REPO_ROOT / "docs" / "library").glob("*.md")) + list((REPO_ROOT / "docs" / "library").glob("*.ipynb")),
         key=lambda p: p.stem,
     )
     for doc_path in lib_docs:
@@ -1303,6 +1318,17 @@ def generate_reference() -> None:
     parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
     parts.append("################################################################################")
     parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    # Section 10.1: Missing Data Architecture & Core Philosophy (docs/pytae.md)
+    pytae_md = REPO_ROOT / "docs" / "pytae.md"
+    if pytae_md.exists():
+        parts.append("================================================================================")
+        parts.append("10.1 CORE PHILOSOPHY & MISSING DATA ARCHITECTURE (docs/pytae.md)")
+        parts.append("================================================================================\n")
+        parts.append("################################################################################")
+        parts.append(f"# FILE: {pytae_md.relative_to(REPO_ROOT)}")
+        parts.append("################################################################################")
+        parts.append(pytae_md.read_text(encoding="utf-8").rstrip() + "\n")
 
     # Section 11: Repository Directory Tree (from manual_tree)
     if manual_tree:
