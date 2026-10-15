@@ -16,7 +16,6 @@ import polars as pl
 
 from pytae._parsing import (
     _extract_arrange_specs,
-    _Lit,
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
     _rewrite_fallback_col_refs,
@@ -810,26 +809,6 @@ def _ast_to_polars_expr(
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
 
-        # 0. lit(...) or pt.lit(...) or pytae.lit(...)
-        if (isinstance(node.func, ast.Name) and node.func.id == "lit") or (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "lit"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id in ("pt", "pytae")
-        ):
-            if len(node.args) == 1:
-                arg = node.args[0]
-                if isinstance(arg, ast.Constant):
-                    return pl.lit(arg.value)
-                if isinstance(arg, ast.Name):
-                    return pl.lit(arg.id)
-                try:
-                    return pl.lit(ast.literal_eval(arg))
-                except Exception:
-                    pass
-            elif len(node.args) == 0:
-                return pl.lit(None)
-
         # 1. Attribute method calls (e.g. name.str.upper(), val.cumsum(), val.fillna(0))
         if isinstance(node.func, ast.Attribute):
             attr_name = node.func.attr
@@ -913,21 +892,7 @@ def _ast_to_polars_expr(
                 expr = col_expr.replace(mapping, default=default_expr)  # type: ignore[call-arg]
             return expr.over(by) if by else expr
 
-        # 3. lit / pt.lit
-        if func_name in ("lit", "pt.lit") and len(node.args) >= 1:
-            arg = node.args[0]
-            if isinstance(arg, ast.Constant):
-                val = arg.value
-            elif isinstance(arg, ast.Name):
-                val = arg.id
-            else:
-                try:
-                    val = ast.literal_eval(arg)
-                except Exception:
-                    val = getattr(arg, "value", getattr(arg, "id", str(arg)))
-            return pl.lit(val)
-
-        # 4. case_when
+        # 3. case_when
         if func_name == "case_when":
             if not node.args and not node.keywords:
                 raise ValueError("case_when expects at least one (condition, value) pair")
@@ -1111,9 +1076,6 @@ def mutate_polars(
             expanded_pairs = [(raw_col, raw_val)]
 
         for col_name, val in expanded_pairs:
-            if isinstance(val, _Lit):
-                cur = cur.with_columns(pl.lit(val.value).alias(col_name))
-                continue
             if not isinstance(val, str):
                 cur = cur.with_columns(pl.lit(val).alias(col_name))
                 continue

@@ -11,7 +11,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from pytae._parsing import lit
 from pytae.accessor import PandasPtAccessor, PolarsPtAccessor
 from pytae.dataframe import DataFrame, GroupedDataFrame
 from pytae.other_utilities import format_glimpse
@@ -325,6 +324,12 @@ def slice_min(*args: Any, **kwargs: Any) -> None:
     raise AttributeError("pt.slice_min() has been removed; use pt.pick(..., order='min') instead")
 
 
+def lit(*args: Any, **kwargs: Any) -> None:
+    raise AttributeError(
+        "pt.lit() has been removed; pass quoted string literals directly (e.g. status=\"'active'\") instead"
+    )
+
+
 class _VerbDescriptor:
     def __init__(self, func: Any) -> None:
         self.func = func
@@ -454,7 +459,6 @@ __all__ = [
     "hist",
     "clean_columns",
     "replace_values",
-    "lit",
     "everything",
     "PolarsPtAccessor",
     "PandasPtAccessor",

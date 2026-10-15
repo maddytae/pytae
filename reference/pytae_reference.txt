@@ -54,7 +54,7 @@ TABLE OF CONTENTS
     6.10. How do columns with spaces work across expressions?
     6.11. Why did `-sort` or `-sort_by` fail? (Use `-arrange`)
     6.12. How do I inspect metadata without reading data into RAM?
-    6.13. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
+    6.13. How do I assign literal constants in `mutate()`? (Use quoted strings e.g. status="'active'")
     6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
@@ -145,7 +145,6 @@ Top-Level Functions exported by `pytae`:
   - pt.by(df, *cols)
   - pt.ungroup(df)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
-  - pt.lit(val)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
   - pt.distinct(df, *cols, keep="first")
@@ -404,12 +403,11 @@ Comprehensive Feature Set (The 12 Mutate Capabilities):
             mass_kg="body_mass_g / 1000",
             category=lambda df: df.apply(classify, axis=1),
         )
-   11. Literal Constants with `pt.lit()` (Python API):
-       In `mutate()`, all string arguments are evaluated as formulas/column expressions,
-       never as string literals:
-       To assign an explicit literal constant value in Python kwargs without awkward nested quotes,
-       use `pt.lit()`:
-       df.pt.mutate(source=pt.lit("tag"), status=pt.lit("active"))
+   11. Literal Constants (Python API & CLI):
+       In `mutate()`, standard identifiers refer to columns/expressions.
+       To assign an explicit literal string constant, wrap it in inner quotes:
+       df.pt.mutate(source="'tag'", status="'active'")
+       Numbers and booleans are passed directly: df.pt.mutate(count=10, flag=True).
    12. Multi-Column Transforms (`[prefix](col1, col2)[suffix] = expr`):
        Apply the same formula across multiple columns at once using parenthesized target specs and `_` as the current column placeholder:
        - In-place overwrite: `df.pt.mutate("(rev, cost) = _ * 1.08")`
@@ -900,9 +898,11 @@ Pytae standardizes strictly on `-arrange` for row ordering.
 --------------------------------------------------------------
 For Parquet files, use `-meta` or inspection flags (`-shape`, `-cols`, `-dtype`, `-head`).
 
-6.13. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
------------------------------------------------------------------------
-In Python kwargs: `df.pt.mutate(source=pt.lit("active"))` to prevent evaluation as a column reference.
+6.13. How do I assign literal constants in `mutate()`?
+-------------------------------------------------------
+In Python kwargs: use inner quotes `df.pt.mutate(source="'active'")`.
+Unquoted `source="active"` references a column named `active`.
+Numbers and booleans: `df.pt.mutate(count=10, flag=True)`.
 
 6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
 ---------------------------------------------------------------------------------------------------------
@@ -977,8 +977,8 @@ master_df = (
         # 10b. Row-level function via lambda df: df.apply(..., axis=1)
         category=lambda df: df.apply(classify_penguin, axis=1),
         
-        # 11. Literal constant via pt.lit()
-        analysis=pt.lit("species"),
+        # 11. Literal constant via inner quotes
+        analysis="'species'",
     )
 )
 ```
@@ -4074,7 +4074,7 @@ In shell environments:
 - Enclose the entire argument in double quotes: `-mutate "..."`.
 - Inside the expression, use single quotes `'...'` for string literals:
   - Example: `-mutate "status = 'active'"`
-  - **No `pt.lit()` needed**: `pt.lit()` is purely a Python keyword-argument helper and is **never needed in the CLI**. Standard inner single quotes `'...'` already define string literals.
+  - Standard inner single quotes `'...'` define string literals, matching standard SQL.
 - Do NOT quote column names:
   - Correct: `mass_kg = body_mass_g / 1000`
   - Incorrect: `mass_kg = 'body_mass_g' / 1000`
@@ -8226,9 +8226,9 @@ master_df = penguins.pt.by("species").pt.mutate(
     group_size="n",
     # 2. lambda: custom callable inspecting the accumulated DataFrame
     is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5),
-    # analysis='species', #if we don't use pt.lit, it will just assign value of speciec column
-    # analysis='species2', #it will throw error because there is not 'species2 column'
-    analysis=pt.lit("species"),
+    # analysis='species', # unquoted string copies the existing 'species' column
+    # analysis="'species'", # quoted string assigns the literal string constant 'species'
+    analysis="'species'",
 )
 
 cols_to_show = [
@@ -8263,23 +8263,11 @@ master_df[cols_to_show].head(8)
 | Adelie    | AD             |     3.625 |            3.70066 |  -0.0756623 |          152 | 110.65   | Standard     | Medium        | Female          | False          | False       | False      | species    |
 | Adelie    | AD             |     4.675 |            3.70066 |   0.974338  |          152 | 122.945  | Heavy        | Large         | Male            | True           | True        | False      | species    |
 
-## Assigning Literal Constants with `pt.lit()`
-In `mutate()`, all string arguments are evaluated as **formulas and column expressions**, never as raw string literals:
-- If you write `status="active"`, pytae searches for a column named `active`. Because no such column exists, it raises `KeyError: name 'active' is not defined`.
-- Worse, if a column named `original` happens to exist, writing `source="original"` will silently copy that column instead of assigning the word `"original"`.
-
-To assign a standalone literal constant value directly as a keyword argument without awkward nested quotes (`status="'active'"`), wrap it in `pt.lit()`:
-- `.pt.mutate(status=pt.lit("active"), source=pt.lit("original"))`
-
-> **When is `pt.lit()` NOT needed?**
-> 1. **Inside conditional helpers (`if_else`, `case_when`, `coalesce`)**: `pt.lit()` is **completely irrelevant here**. Inside formula expressions, standard inner single quotes `'...'` already distinguish string literals from column references:
->    ```python
->    df.pt.mutate(size="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')")
->    ```
-> 2. **In the CLI**: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard inner single quotes are always used:
->    ```bash
->    pytae data.parquet -mutate "status = 'active'"
->    ```
+## Assigning Literal Constants in `mutate()`
+In `mutate()`, standard identifiers refer to **columns or expressions**, following standard SQL and programming conventions:
+- Unquoted string `source="original"`: references a column named `original` and copies it.
+- Quoted string `source="'original'"`: assigns the literal string constant `'original'`.
+- Non-string scalars (`int`, `float`, `bool`): assigned directly as literal values (e.g. `count=10`, `factor=1.5`, `flag=True`).
 
 ```python
 import pandas as pd
@@ -8291,8 +8279,8 @@ df = pd.DataFrame({"original": [100, 200], "val": [1, 2]})
 # 1. Unquoted string matching an existing column -> copies that column!
 print("Copied column 'original':\n", df.pt.mutate(source="original"))
 
-# 2. With pt.lit(): assigns literal string constants cleanly and safely
-print("\nWith pt.lit():\n", df.pt.mutate(source=pt.lit("original"), status=pt.lit("active")))
+# 2. Quoted string -> assigns literal string constant cleanly and safely
+print("\nLiteral string constants:\n", df.pt.mutate(source="'original'", status="'active'"))
 ```
 
 **Output:**
@@ -8302,7 +8290,7 @@ Copied column 'original':
 0       100    1     100
 1       200    2     200
 
-With pt.lit():
+Literal string constants:
     original  val    source  status
 0       100    1  original  active
 1       200    2  original  active
@@ -11039,7 +11027,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from pytae._parsing import lit
 from pytae.accessor import PandasPtAccessor, PolarsPtAccessor
 from pytae.dataframe import DataFrame, GroupedDataFrame
 from pytae.other_utilities import format_glimpse
@@ -11353,6 +11340,12 @@ def slice_min(*args: Any, **kwargs: Any) -> None:
     raise AttributeError("pt.slice_min() has been removed; use pt.pick(..., order='min') instead")
 
 
+def lit(*args: Any, **kwargs: Any) -> None:
+    raise AttributeError(
+        "pt.lit() has been removed; pass quoted string literals directly (e.g. status=\"'active'\") instead"
+    )
+
+
 class _VerbDescriptor:
     def __init__(self, func: Any) -> None:
         self.func = func
@@ -11482,7 +11475,6 @@ __all__ = [
     "hist",
     "clean_columns",
     "replace_values",
-    "lit",
     "everything",
     "PolarsPtAccessor",
     "PandasPtAccessor",
@@ -11675,21 +11667,6 @@ def _parse_filter_string(raw: str) -> list[tuple[str, Any]]:
 # -----------------------------------------------------------------------------
 # Mutate Parsing
 # -----------------------------------------------------------------------------
-
-
-class _Lit:
-    """Sentinel wrapper produced by `lit(value)` to force literal scalar assignment in mutate()."""
-
-    def __init__(self, value: Any) -> None:
-        self.value = value
-
-    def __repr__(self) -> str:
-        return f"lit({self.value!r})"
-
-
-def lit(value: Any) -> _Lit:
-    """Wrap a value to force it to be treated as a literal in mutate expressions."""
-    return _Lit(value)
 
 
 def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
@@ -18596,22 +18573,18 @@ except Exception:
 from __future__ import annotations
 
 from pytae._parsing import (
-    _Lit,
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
     _rewrite_fallback_col_refs,
     _strip_at_refs,
-    lit,
     parse_mutate_spec,
 )
 
 __all__ = [
-    "_Lit",
     "_replace_underscore_placeholder",
     "_resolve_multi_target_cols",
     "_rewrite_fallback_col_refs",
     "_strip_at_refs",
-    "lit",
     "parse_mutate_spec",
 ]
 
@@ -20336,7 +20309,6 @@ import polars as pl
 
 from pytae._parsing import (
     _extract_arrange_specs,
-    _Lit,
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
     _rewrite_fallback_col_refs,
@@ -21130,26 +21102,6 @@ def _ast_to_polars_expr(
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
 
-        # 0. lit(...) or pt.lit(...) or pytae.lit(...)
-        if (isinstance(node.func, ast.Name) and node.func.id == "lit") or (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "lit"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id in ("pt", "pytae")
-        ):
-            if len(node.args) == 1:
-                arg = node.args[0]
-                if isinstance(arg, ast.Constant):
-                    return pl.lit(arg.value)
-                if isinstance(arg, ast.Name):
-                    return pl.lit(arg.id)
-                try:
-                    return pl.lit(ast.literal_eval(arg))
-                except Exception:
-                    pass
-            elif len(node.args) == 0:
-                return pl.lit(None)
-
         # 1. Attribute method calls (e.g. name.str.upper(), val.cumsum(), val.fillna(0))
         if isinstance(node.func, ast.Attribute):
             attr_name = node.func.attr
@@ -21233,21 +21185,7 @@ def _ast_to_polars_expr(
                 expr = col_expr.replace(mapping, default=default_expr)  # type: ignore[call-arg]
             return expr.over(by) if by else expr
 
-        # 3. lit / pt.lit
-        if func_name in ("lit", "pt.lit") and len(node.args) >= 1:
-            arg = node.args[0]
-            if isinstance(arg, ast.Constant):
-                val = arg.value
-            elif isinstance(arg, ast.Name):
-                val = arg.id
-            else:
-                try:
-                    val = ast.literal_eval(arg)
-                except Exception:
-                    val = getattr(arg, "value", getattr(arg, "id", str(arg)))
-            return pl.lit(val)
-
-        # 4. case_when
+        # 3. case_when
         if func_name == "case_when":
             if not node.args and not node.keywords:
                 raise ValueError("case_when expects at least one (condition, value) pair")
@@ -21431,9 +21369,6 @@ def mutate_polars(
             expanded_pairs = [(raw_col, raw_val)]
 
         for col_name, val in expanded_pairs:
-            if isinstance(val, _Lit):
-                cur = cur.with_columns(pl.lit(val.value).alias(col_name))
-                continue
             if not isinstance(val, str):
                 cur = cur.with_columns(pl.lit(val).alias(col_name))
                 continue
@@ -29418,46 +29353,34 @@ def test_mutate_scalar_if_else_and_case_when():
 
 
 def test_mutate_lit_constant_when_column_exists():
-    # Verify that pt.lit('original') prevents silent column copying when a column named 'original' exists
     df = pd.DataFrame({"original": [10, 20], "val": [1, 2]})
 
-    # Without pt.lit(), passing source="original" copies the column
+    # Without inner quotes, passing source="original" copies the column
     assert list(df.pt.mutate(source="original")["source"]) == [10, 20]
 
-    # With pt.lit() helper
-    res_pt_lit = df.pt.mutate(source=pt.lit("original"))
-    assert list(res_pt_lit["source"]) == ["original", "original"]
+    # With inner quotes source="'original'", assigns literal string
+    res_quoted = df.pt.mutate(source="'original'")
+    assert list(res_quoted["source"]) == ["original", "original"]
 
-    # String expression with pt.lit('original')
-    res_str_pt = df.pt.mutate(source="pt.lit('original')")
-    assert list(res_str_pt["source"]) == ["original", "original"]
-
-    # String expression with lit('original')
-    res_str_quoted = df.pt.mutate(source="lit('original')")
-    assert list(res_str_quoted["source"]) == ["original", "original"]
-
-    # String expression with bare pt.lit(original)
-    res_str_bare_pt = df.pt.mutate(source="pt.lit(original)")
-    assert list(res_str_bare_pt["source"]) == ["original", "original"]
-
-    # String expression with bare lit(original)
-    res_str_bare = df.pt.mutate(source="lit(original)")
-    assert list(res_str_bare["source"]) == ["original", "original"]
-
-    # Positional string expression
-    res_pos = df.pt.mutate("source = pt.lit(original)")
+    # Positional string expression with inner quotes
+    res_pos = df.pt.mutate("source = 'original'")
     assert list(res_pos["source"]) == ["original", "original"]
 
-    # Grouped mutation with pt.lit()
-    res_grp = df.pt.by("val").pt.mutate(source=pt.lit("original"))
+    # Grouped mutation with quoted literal
+    res_grp = df.pt.by("val").pt.mutate(source="'original'")
     assert list(res_grp["source"]) == ["original", "original"]
 
-    res_grp_str = df.pt.by("val").pt.mutate("source = pt.lit('original')")
+    res_grp_str = df.pt.by("val").pt.mutate("source = 'original'")
     assert list(res_grp_str["source"]) == ["original", "original"]
 
-    # Non-string literals
-    res_num = df.pt.mutate(source=pt.lit(42))
+    # Native Python non-string literals (int, float, bool)
+    res_num = df.pt.mutate(source=42, flag=True)
     assert list(res_num["source"]) == [42, 42]
+    assert list(res_num["flag"]) == [True, True]
+
+    # Calling pt.lit() raises AttributeError pointing to quoted syntax
+    with pytest.raises(AttributeError, match="pt.lit\\(\\) has been removed"):
+        pt.lit("original")
 
 
 def test_mutate_grouped_vectorized_all_stats():

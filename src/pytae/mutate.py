@@ -3,21 +3,17 @@
 from __future__ import annotations
 
 from pytae._parsing import (
-    _Lit,
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
     _rewrite_fallback_col_refs,
     _strip_at_refs,
-    lit,
     parse_mutate_spec,
 )
 
 __all__ = [
-    "_Lit",
     "_replace_underscore_placeholder",
     "_resolve_multi_target_cols",
     "_rewrite_fallback_col_refs",
     "_strip_at_refs",
-    "lit",
     "parse_mutate_spec",
 ]

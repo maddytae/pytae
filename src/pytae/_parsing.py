@@ -170,21 +170,6 @@ def _parse_filter_string(raw: str) -> list[tuple[str, Any]]:
 # -----------------------------------------------------------------------------
 
 
-class _Lit:
-    """Sentinel wrapper produced by `lit(value)` to force literal scalar assignment in mutate()."""
-
-    def __init__(self, value: Any) -> None:
-        self.value = value
-
-    def __repr__(self) -> str:
-        return f"lit({self.value!r})"
-
-
-def lit(value: Any) -> _Lit:
-    """Wrap a value to force it to be treated as a literal in mutate expressions."""
-    return _Lit(value)
-
-
 def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
     lines = [line for line in raw.splitlines() if not line.strip().startswith("#")]
     cleaned = "\n".join(lines)

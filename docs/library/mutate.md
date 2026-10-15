@@ -682,9 +682,9 @@ master_df = penguins.pt.by("species").pt.mutate(
     group_size="n",
     # 2. lambda: custom callable inspecting the accumulated DataFrame
     is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5),
-    # analysis='species', #if we don't use pt.lit, it will just assign value of speciec column
-    # analysis='species2', #it will throw error because there is not 'species2 column'
-    analysis=pt.lit("species"),
+    # analysis='species', # unquoted string copies the existing 'species' column
+    # analysis="'species'", # quoted string assigns the literal string constant 'species'
+    analysis="'species'",
 )
 
 cols_to_show = [
@@ -719,23 +719,11 @@ master_df[cols_to_show].head(8)
 | Adelie    | AD             |     3.625 |            3.70066 |  -0.0756623 |          152 | 110.65   | Standard     | Medium        | Female          | False          | False       | False      | species    |
 | Adelie    | AD             |     4.675 |            3.70066 |   0.974338  |          152 | 122.945  | Heavy        | Large         | Male            | True           | True        | False      | species    |
 
-## Assigning Literal Constants with `pt.lit()`
-In `mutate()`, all string arguments are evaluated as **formulas and column expressions**, never as raw string literals:
-- If you write `status="active"`, pytae searches for a column named `active`. Because no such column exists, it raises `KeyError: name 'active' is not defined`.
-- Worse, if a column named `original` happens to exist, writing `source="original"` will silently copy that column instead of assigning the word `"original"`.
-
-To assign a standalone literal constant value directly as a keyword argument without awkward nested quotes (`status="'active'"`), wrap it in `pt.lit()`:
-- `.pt.mutate(status=pt.lit("active"), source=pt.lit("original"))`
-
-> **When is `pt.lit()` NOT needed?**
-> 1. **Inside conditional helpers (`if_else`, `case_when`, `coalesce`)**: `pt.lit()` is **completely irrelevant here**. Inside formula expressions, standard inner single quotes `'...'` already distinguish string literals from column references:
->    ```python
->    df.pt.mutate(size="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')")
->    ```
-> 2. **In the CLI**: `pt.lit()` is **never needed in the CLI**. In terminal commands, standard inner single quotes are always used:
->    ```bash
->    pytae data.parquet -mutate "status = 'active'"
->    ```
+## Assigning Literal Constants in `mutate()`
+In `mutate()`, standard identifiers refer to **columns or expressions**, following standard SQL and programming conventions:
+- Unquoted string `source="original"`: references a column named `original` and copies it.
+- Quoted string `source="'original'"`: assigns the literal string constant `'original'`.
+- Non-string scalars (`int`, `float`, `bool`): assigned directly as literal values (e.g. `count=10`, `factor=1.5`, `flag=True`).
 
 ```python
 import pandas as pd
@@ -747,8 +735,8 @@ df = pd.DataFrame({"original": [100, 200], "val": [1, 2]})
 # 1. Unquoted string matching an existing column -> copies that column!
 print("Copied column 'original':\n", df.pt.mutate(source="original"))
 
-# 2. With pt.lit(): assigns literal string constants cleanly and safely
-print("\nWith pt.lit():\n", df.pt.mutate(source=pt.lit("original"), status=pt.lit("active")))
+# 2. Quoted string -> assigns literal string constant cleanly and safely
+print("\nLiteral string constants:\n", df.pt.mutate(source="'original'", status="'active'"))
 ```
 
 **Output:**
@@ -758,7 +746,7 @@ Copied column 'original':
 0       100    1     100
 1       200    2     200
 
-With pt.lit():
+Literal string constants:
     original  val    source  status
 0       100    1  original  active
 1       200    2  original  active

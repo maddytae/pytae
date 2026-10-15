@@ -63,7 +63,7 @@ TABLE OF CONTENTS
     6.10. How do columns with spaces work across expressions?
     6.11. Why did `-sort` or `-sort_by` fail? (Use `-arrange`)
     6.12. How do I inspect metadata without reading data into RAM?
-    6.13. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
+    6.13. How do I assign literal constants in `mutate()`? (Use quoted strings e.g. status="'active'")
     6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
@@ -154,7 +154,6 @@ Top-Level Functions exported by `pytae`:
   - pt.by(df, *cols)
   - pt.ungroup(df)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
-  - pt.lit(val)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
   - pt.distinct(df, *cols, keep="first")
@@ -413,12 +412,11 @@ Comprehensive Feature Set (The 12 Mutate Capabilities):
             mass_kg="body_mass_g / 1000",
             category=lambda df: df.apply(classify, axis=1),
         )
-   11. Literal Constants with `pt.lit()` (Python API):
-       In `mutate()`, all string arguments are evaluated as formulas/column expressions,
-       never as string literals:
-       To assign an explicit literal constant value in Python kwargs without awkward nested quotes,
-       use `pt.lit()`:
-       df.pt.mutate(source=pt.lit("tag"), status=pt.lit("active"))
+   11. Literal Constants (Python API & CLI):
+       In `mutate()`, standard identifiers refer to columns/expressions.
+       To assign an explicit literal string constant, wrap it in inner quotes:
+       df.pt.mutate(source="'tag'", status="'active'")
+       Numbers and booleans are passed directly: df.pt.mutate(count=10, flag=True).
    12. Multi-Column Transforms (`[prefix](col1, col2)[suffix] = expr`):
        Apply the same formula across multiple columns at once using parenthesized target specs and `_` as the current column placeholder:
        - In-place overwrite: `df.pt.mutate("(rev, cost) = _ * 1.08")`
@@ -911,9 +909,11 @@ Pytae standardizes strictly on `-arrange` for row ordering.
 --------------------------------------------------------------
 For Parquet files, use `-meta` or inspection flags (`-shape`, `-cols`, `-dtype`, `-head`).
 
-6.13. How do I assign literal constants in `mutate()`? (Use `pt.lit()`)
------------------------------------------------------------------------
-In Python kwargs: `df.pt.mutate(source=pt.lit("active"))` to prevent evaluation as a column reference.
+6.13. How do I assign literal constants in `mutate()`?
+-------------------------------------------------------
+In Python kwargs: use inner quotes `df.pt.mutate(source="'active'")`.
+Unquoted `source="active"` references a column named `active`.
+Numbers and booleans: `df.pt.mutate(count=10, flag=True)`.
 
 6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
 ---------------------------------------------------------------------------------------------------------
@@ -988,8 +988,8 @@ master_df = (
         # 10b. Row-level function via lambda df: df.apply(..., axis=1)
         category=lambda df: df.apply(classify_penguin, axis=1),
         
-        # 11. Literal constant via pt.lit()
-        analysis=pt.lit("species"),
+        # 11. Literal constant via inner quotes
+        analysis="'species'",
     )
 )
 ```
