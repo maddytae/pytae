@@ -668,9 +668,7 @@ class DataFrame:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
         Option B Zero Data Loss Philosophy:
@@ -682,15 +680,11 @@ class DataFrame:
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
@@ -1195,22 +1189,16 @@ class GroupedDataFrame:
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN)."""
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 

@@ -16,10 +16,11 @@ from pytae.dataframe import DataFrame, GroupedDataFrame, _plot_impl
 
 
 @pl.api.register_dataframe_namespace("pt")
+@pl.api.register_lazyframe_namespace("pt")
 class PolarsPtAccessor:
-    """Polars DataFrame accessor entering Pytae's fluent data manipulation pipeline."""
+    """Polars DataFrame and LazyFrame accessor entering Pytae's fluent data manipulation pipeline."""
 
-    def __init__(self, obj: pl.DataFrame):
+    def __init__(self, obj: pl.DataFrame | pl.LazyFrame):
         self._obj = obj
 
     def filter(self, *conditions: Any, **kwargs: Any) -> DataFrame:
@@ -34,19 +35,13 @@ class PolarsPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(
@@ -196,7 +191,7 @@ class PolarsPtAccessor:
     def to_pandas(self) -> Any:
         return DataFrame(self._obj).to_pandas()
 
-    def to_polars(self) -> pl.DataFrame:
+    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
         return self._obj
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
@@ -225,19 +220,13 @@ class PandasPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(

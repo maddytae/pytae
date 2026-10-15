@@ -112,3 +112,29 @@ def test_pt_sample_datasets_and_row_sampling():
     # 7. Grouped sampling
     p_grouped = penguins.pt.by("species").sample(2, seed=42)
     assert len(p_grouped) == 6  # 3 species * 2 rows
+
+
+def test_polars_lazyframe_pt_accessor():
+    import polars as pl
+
+    ldf = pl.LazyFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+    # Test entering Pytae from native pl.LazyFrame via .pt
+    plan = ldf.pt.mutate(c="a + b").with_columns(d=pl.col("c") * 2).filter("d > 30").arrange("-d").select("a", "d")
+    assert plan.is_lazy
+    collected = plan.collect()
+    assert isinstance(collected, pt.DataFrame)
+    assert not collected.is_lazy
+    assert list(collected.columns) == ["a", "d"]
+    assert list(collected["a"]) == [3, 2]
+    assert list(collected["d"]) == [66, 44]
+
+
+def test_polars_pt_accessor_first_call_native_verb():
+    import polars as pl
+
+    pldf = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    # Calling native Polars verb directly on .pt accessor enters pytae.DataFrame
+    out = pldf.pt.with_columns(z=pl.col("x") + pl.col("y")).mutate(double_z="z * 2")
+    assert isinstance(out, pt.DataFrame)
+    assert list(out.columns) == ["x", "y", "z", "double_z"]
+    assert list(out["double_z"]) == [10, 14, 18]

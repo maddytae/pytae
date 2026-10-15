@@ -11120,21 +11120,15 @@ def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
-def dropna(
-    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-) -> DataFrame:
+def dropna(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_nulls(
-    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-) -> DataFrame:
+def drop_nulls(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_na(
-    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-) -> DataFrame:
+def drop_na(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
@@ -12099,10 +12093,11 @@ from pytae.dataframe import DataFrame, GroupedDataFrame, _plot_impl
 
 
 @pl.api.register_dataframe_namespace("pt")
+@pl.api.register_lazyframe_namespace("pt")
 class PolarsPtAccessor:
-    """Polars DataFrame accessor entering Pytae's fluent data manipulation pipeline."""
+    """Polars DataFrame and LazyFrame accessor entering Pytae's fluent data manipulation pipeline."""
 
-    def __init__(self, obj: pl.DataFrame):
+    def __init__(self, obj: pl.DataFrame | pl.LazyFrame):
         self._obj = obj
 
     def filter(self, *conditions: Any, **kwargs: Any) -> DataFrame:
@@ -12117,19 +12112,13 @@ class PolarsPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(
@@ -12279,7 +12268,7 @@ class PolarsPtAccessor:
     def to_pandas(self) -> Any:
         return DataFrame(self._obj).to_pandas()
 
-    def to_polars(self) -> pl.DataFrame:
+    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
         return self._obj
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
@@ -12308,19 +12297,13 @@ class PandasPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
     def pick(
@@ -17710,9 +17693,7 @@ class DataFrame:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
         Option B Zero Data Loss Philosophy:
@@ -17724,15 +17705,11 @@ class DataFrame:
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
@@ -18237,22 +18214,16 @@ class GroupedDataFrame:
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
 
-    def dropna(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN)."""
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_na(
-        self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-    ) -> DataFrame:
+    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
@@ -23713,6 +23684,32 @@ def test_pt_sample_datasets_and_row_sampling():
     # 7. Grouped sampling
     p_grouped = penguins.pt.by("species").sample(2, seed=42)
     assert len(p_grouped) == 6  # 3 species * 2 rows
+
+
+def test_polars_lazyframe_pt_accessor():
+    import polars as pl
+
+    ldf = pl.LazyFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+    # Test entering Pytae from native pl.LazyFrame via .pt
+    plan = ldf.pt.mutate(c="a + b").with_columns(d=pl.col("c") * 2).filter("d > 30").arrange("-d").select("a", "d")
+    assert plan.is_lazy
+    collected = plan.collect()
+    assert isinstance(collected, pt.DataFrame)
+    assert not collected.is_lazy
+    assert list(collected.columns) == ["a", "d"]
+    assert list(collected["a"]) == [3, 2]
+    assert list(collected["d"]) == [66, 44]
+
+
+def test_polars_pt_accessor_first_call_native_verb():
+    import polars as pl
+
+    pldf = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    # Calling native Polars verb directly on .pt accessor enters pytae.DataFrame
+    out = pldf.pt.with_columns(z=pl.col("x") + pl.col("y")).mutate(double_z="z * 2")
+    assert isinstance(out, pt.DataFrame)
+    assert list(out.columns) == ["x", "y", "z", "double_z"]
+    assert list(out["double_z"]) == [10, 14, 18]
 
 ################################################################################
 # FILE: tests/test_agg.py

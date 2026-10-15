@@ -158,21 +158,15 @@ def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
-def dropna(
-    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-) -> DataFrame:
+def dropna(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_nulls(
-    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-) -> DataFrame:
+def drop_nulls(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_na(
-    df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True
-) -> DataFrame:
+def drop_na(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
