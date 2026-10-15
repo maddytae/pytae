@@ -587,3 +587,79 @@ def test_mutate_disallow_dot_map_method_syntax():
 
     with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
         df.pt.mutate("[code] = [island name].map({'Biscoe': 'BIS'})")
+
+
+def test_mutate_map_column_and_expr_defaults():
+    df = pt.DataFrame(
+        {
+            "species": ["Adelie", "Gentoo", "Chinstrap"],
+            "alt_name": ["Penguin A", "Penguin G", "Penguin C"],
+        }
+    )
+    # 1. Fallback to column itself (preserves unmapped values)
+    r1 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, species)")
+    assert list(r1["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
+
+    # 2. 2-argument map (unmapped values become null)
+    r2 = df.mutate(mapped="map(species, {'Adelie': 'AD'})")
+    assert list(r2["mapped"]) == ["AD", None, None]
+
+    # 3. Fallback to another column
+    r3 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, alt_name)")
+    assert list(r3["mapped"]) == ["AD", "Penguin G", "Penguin C"]
+
+    # 4. Keyword default=...
+    r4 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, default=species)")
+    assert list(r4["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
+
+
+def test_mutate_smart_fillna_and_fill_null_fill_nan():
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+            "str_col": ["alpha", None, "gamma"],
+        }
+    )
+
+    # 1. fillna(col, val) -> fills both NaN and null by default (nans=True)
+    r1 = df.mutate(clean="fillna(flt, 0.0)")
+    assert list(r1["clean"]) == [1.0, 0.0, 0.0]
+
+    # 2. fillna(col, val, nans=False) -> fills null only, leaves NaN intact
+    r2 = df.mutate(clean="fillna(flt, 0.0, nans=False)")
+    assert r2["clean"][0] == 1.0 and str(r2["clean"][1]) == "nan" and r2["clean"][2] == 0.0
+
+    # 3. fill_null(col, val) -> strict null filling
+    r3 = df.mutate(clean="fill_null(flt, 0.0)")
+    assert r3["clean"][0] == 1.0 and str(r3["clean"][1]) == "nan" and r3["clean"][2] == 0.0
+
+    # 4. fill_nan(col, val) -> strict NaN filling
+    r4 = df.mutate(clean="fill_nan(flt, 0.0)")
+    assert r4["clean"][0] == 1.0 and r4["clean"][1] == 0.0 and r4["clean"][2] is None
+
+    # 5. Method syntax col.fillna(0.0)
+    r5 = df.mutate(clean="flt.fillna(0.0)")
+    assert list(r5["clean"]) == [1.0, 0.0, 0.0]
+
+    # 6. fillna on string column (safely fills null without is_nan error)
+    r6 = df.mutate(clean="fillna(str_col, 'MISSING')")
+    assert list(r6["clean"]) == ["alpha", "MISSING", "gamma"]
+
+    # 7. Method syntax str_col.fill_null('MISSING')
+    r7 = df.mutate(clean="str_col.fill_null('MISSING')")
+    assert list(r7["clean"]) == ["alpha", "MISSING", "gamma"]
+
+
+def test_handle_missing_cleans_float_nans():
+    df = pt.DataFrame(
+        {
+            "flt": [10.0, float("nan"), None, 30.0],
+        }
+    )
+    # numeric_fill=0 fills both NaN and null
+    cleaned = df.handle_missing(numeric_fill=0)
+    assert list(cleaned["flt"]) == [10.0, 0.0, 0.0, 30.0]
+
+    # numeric_fill="mean" computes mean ignoring NaNs and nulls (mean of 10 and 30 is 20)
+    cleaned_mean = df.handle_missing(numeric_fill="mean")
+    assert list(cleaned_mean["flt"]) == [10.0, 20.0, 20.0, 30.0]

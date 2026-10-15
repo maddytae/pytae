@@ -602,15 +602,33 @@ def pivot_polars(
         return _clean_null_col(res)
 
 
+def _is_float_or_numeric_expr(node: ast.AST, schema: Any | None) -> bool:
+    if schema is None:
+        return True
+    if isinstance(node, ast.Name):
+        col_type = schema.get(node.id)
+        if col_type is not None:
+            return getattr(col_type, "is_float", lambda: False)() or getattr(col_type, "is_numeric", lambda: False)()
+    if isinstance(node, ast.BinOp):
+        if isinstance(node.op, ast.Div):
+            return True
+        return _is_float_or_numeric_expr(node.left, schema) or _is_float_or_numeric_expr(node.right, schema)
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id in ("sqrt", "log", "exp", "mean", "std", "var"):
+            return True
+    return True
+
+
 def _ast_to_polars_expr(
     node: ast.AST,
     col_names: set[str],
     col_map: dict[str, str],
     by: list[str] | None = None,
+    schema: Any | None = None,
 ) -> pl.Expr:
     """Recursively convert a Python AST expression node to a Polars Expression."""
     if isinstance(node, ast.Expression):
-        return _ast_to_polars_expr(node.body, col_names, col_map, by)
+        return _ast_to_polars_expr(node.body, col_names, col_map, by, schema)
     if isinstance(node, ast.Constant):
         return pl.lit(node.value)
     if isinstance(node, ast.Name):
@@ -630,8 +648,8 @@ def _ast_to_polars_expr(
             f"if you intended a string literal, quote it like '{node.id}'"
         )
     if isinstance(node, ast.BinOp):
-        left = _ast_to_polars_expr(node.left, col_names, col_map, by)
-        right = _ast_to_polars_expr(node.right, col_names, col_map, by)
+        left = _ast_to_polars_expr(node.left, col_names, col_map, by, schema)
+        right = _ast_to_polars_expr(node.right, col_names, col_map, by, schema)
         if isinstance(node.op, ast.Add):
             return left + right
         if isinstance(node.op, ast.Sub):
@@ -648,7 +666,7 @@ def _ast_to_polars_expr(
             return left**right
         raise ValueError(f"Unsupported binary operator: {type(node.op)}")
     if isinstance(node, ast.UnaryOp):
-        oprnd = _ast_to_polars_expr(node.operand, col_names, col_map, by)
+        oprnd = _ast_to_polars_expr(node.operand, col_names, col_map, by, schema)
         if isinstance(node.op, ast.USub):
             return -oprnd
         if isinstance(node.op, ast.UAdd):
@@ -657,9 +675,9 @@ def _ast_to_polars_expr(
             return ~oprnd
         raise ValueError(f"Unsupported unary operator: {type(node.op)}")
     if isinstance(node, ast.Compare):
-        left = _ast_to_polars_expr(node.left, col_names, col_map, by)
+        left = _ast_to_polars_expr(node.left, col_names, col_map, by, schema)
         for op, comp in zip(node.ops, node.comparators):
-            right = _ast_to_polars_expr(comp, col_names, col_map, by)
+            right = _ast_to_polars_expr(comp, col_names, col_map, by, schema)
             if isinstance(op, ast.Eq):
                 left = left == right
             elif isinstance(op, ast.NotEq):
@@ -676,7 +694,7 @@ def _ast_to_polars_expr(
                 raise ValueError(f"Unsupported comparison operator: {type(op)}")
         return left
     if isinstance(node, ast.BoolOp):
-        vals = [_ast_to_polars_expr(v, col_names, col_map, by) for v in node.values]
+        vals = [_ast_to_polars_expr(v, col_names, col_map, by, schema) for v in node.values]
         res = vals[0]
         for v in vals[1:]:
             if isinstance(node.op, ast.And):
@@ -687,9 +705,9 @@ def _ast_to_polars_expr(
                 raise ValueError(f"Unsupported bool op: {type(node.op)}")
         return res
     if isinstance(node, ast.IfExp):
-        test = _ast_to_polars_expr(node.test, col_names, col_map, by)
-        body = _ast_to_polars_expr(node.body, col_names, col_map, by)
-        orelse = _ast_to_polars_expr(node.orelse, col_names, col_map, by)
+        test = _ast_to_polars_expr(node.test, col_names, col_map, by, schema)
+        body = _ast_to_polars_expr(node.body, col_names, col_map, by, schema)
+        orelse = _ast_to_polars_expr(node.orelse, col_names, col_map, by, schema)
         return pl.when(test).then(body).otherwise(orelse)
     if isinstance(node, ast.Call):
         if isinstance(node.func, ast.Attribute) and node.func.attr == "map":
@@ -723,11 +741,11 @@ def _ast_to_polars_expr(
             elif len(node.args) == 0:
                 return pl.lit(None)
 
-        # 1. Attribute method calls (e.g. name.str.upper(), val.cumsum())
+        # 1. Attribute method calls (e.g. name.str.upper(), val.cumsum(), val.fillna(0))
         if isinstance(node.func, ast.Attribute):
             attr_name = node.func.attr
             if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "str":
-                obj_expr = _ast_to_polars_expr(node.func.value.value, col_names, col_map, by)
+                obj_expr = _ast_to_polars_expr(node.func.value.value, col_names, col_map, by, schema)
                 if attr_name in ("upper", "to_uppercase"):
                     return obj_expr.str.to_uppercase()
                 elif attr_name in ("lower", "to_lowercase"):
@@ -737,7 +755,7 @@ def _ast_to_polars_expr(
                 elif attr_name in ("len", "len_chars"):
                     return obj_expr.str.len_chars()
             elif isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute)):
-                obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by)
+                obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema)
                 if attr_name == "cumsum":
                     expr = obj_expr.cum_sum()
                     return expr.over(by) if by else expr
@@ -750,10 +768,31 @@ def _ast_to_polars_expr(
                 elif attr_name == "cummax":
                     expr = obj_expr.cum_max()
                     return expr.over(by) if by else expr
+                elif attr_name in ("fillna", "fill_null", "fill_nan"):
+                    val_expr = (
+                        _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema) if node.args else pl.lit(0)
+                    )
+                    if attr_name == "fill_null":
+                        expr = obj_expr.fill_null(val_expr)
+                    elif attr_name == "fill_nan":
+                        expr = obj_expr.fill_nan(val_expr)
+                    else:
+                        nans = True
+                        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+                            nans = bool(node.args[1].value)
+                        for kw in node.keywords:
+                            if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
+                                nans = bool(kw.value.value)
+                        is_float = _is_float_or_numeric_expr(node.func.value, schema)
+                        if nans and is_float:
+                            expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
+                        else:
+                            expr = obj_expr.fill_null(val_expr)
+                    return expr.over(by) if by else expr
 
         # 2. Functional map(...)
         if func_name == "map" and len(node.args) >= 2:
-            col_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by)
+            col_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
             mapping_node = node.args[1]
             if isinstance(mapping_node, ast.Dict):
                 mapping: dict[Any, Any] = {}
@@ -765,18 +804,24 @@ def _ast_to_polars_expr(
             else:
                 mapping = ast.literal_eval(mapping_node)
 
-            default_val = None
+            default_node = None
             if len(node.args) > 2:
-                def_node = node.args[2]
-                if isinstance(def_node, ast.Constant):
-                    default_val = def_node.value
-                else:
-                    default_val = ast.literal_eval(def_node)
+                default_node = node.args[2]
+            else:
+                for kw in node.keywords:
+                    if kw.arg == "default":
+                        default_node = kw.value
+                        break
+
+            if default_node is not None:
+                default_expr = _ast_to_polars_expr(default_node, col_names, col_map, by, schema)
+            else:
+                default_expr = pl.lit(None)
 
             if hasattr(pl.Expr, "replace_strict"):
-                expr = col_expr.replace_strict(mapping, default=cast(Any, default_val))
+                expr = col_expr.replace_strict(mapping, default=default_expr)
             else:
-                expr = col_expr.replace(mapping, default=cast(Any, default_val))  # type: ignore[call-arg]
+                expr = col_expr.replace(mapping, default=default_expr)  # type: ignore[call-arg]
             return expr.over(by) if by else expr
 
         # 3. lit / pt.lit
@@ -800,26 +845,26 @@ def _ast_to_polars_expr(
             default_expr = pl.lit(None)
             for kw in node.keywords:
                 if kw.arg == "default":
-                    default_expr = _ast_to_polars_expr(kw.value, col_names, col_map, by)
+                    default_expr = _ast_to_polars_expr(kw.value, col_names, col_map, by, schema)
             pairs: list[tuple[pl.Expr, pl.Expr]] = []
             has_tuple = any(isinstance(a, ast.Tuple) for a in node.args)
             if has_tuple:
                 for i, a in enumerate(node.args):
                     if isinstance(a, ast.Tuple) and len(a.elts) == 2:
-                        c = _ast_to_polars_expr(a.elts[0], col_names, col_map, by)
-                        v = _ast_to_polars_expr(a.elts[1], col_names, col_map, by)
+                        c = _ast_to_polars_expr(a.elts[0], col_names, col_map, by, schema)
+                        v = _ast_to_polars_expr(a.elts[1], col_names, col_map, by, schema)
                         pairs.append((c, v))
                     elif i == len(node.args) - 1:
-                        default_expr = _ast_to_polars_expr(a, col_names, col_map, by)
+                        default_expr = _ast_to_polars_expr(a, col_names, col_map, by, schema)
                     else:
                         raise ValueError("case_when default (non-tuple) must be the last argument")
             else:
                 flat_args = list(node.args)
                 if len(flat_args) % 2 == 1:
-                    default_expr = _ast_to_polars_expr(flat_args.pop(), col_names, col_map, by)
+                    default_expr = _ast_to_polars_expr(flat_args.pop(), col_names, col_map, by, schema)
                 for i in range(0, len(flat_args), 2):
-                    c = _ast_to_polars_expr(flat_args[i], col_names, col_map, by)
-                    v = _ast_to_polars_expr(flat_args[i + 1], col_names, col_map, by)
+                    c = _ast_to_polars_expr(flat_args[i], col_names, col_map, by, schema)
+                    v = _ast_to_polars_expr(flat_args[i + 1], col_names, col_map, by, schema)
                     pairs.append((c, v))
 
             if not pairs:
@@ -852,9 +897,9 @@ def _ast_to_polars_expr(
                 raise TypeError(
                     f"if_else requires exactly 3 arguments (condition, if_true, if_false), got {len(node.args)}"
                 )
-            c = _ast_to_polars_expr(node.args[0], col_names, col_map, by)
-            t = _ast_to_polars_expr(node.args[1], col_names, col_map, by)
-            f = _ast_to_polars_expr(node.args[2], col_names, col_map, by)
+            c = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+            t = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema)
+            f = _ast_to_polars_expr(node.args[2], col_names, col_map, by, schema)
             if (isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)) or (
                 isinstance(node.args[2], ast.Constant) and isinstance(node.args[2].value, str)
             ):
@@ -863,7 +908,7 @@ def _ast_to_polars_expr(
             expr = pl.when(c).then(t).otherwise(f)
             return expr.over(by) if by else expr
 
-        args = [_ast_to_polars_expr(a, col_names, col_map, by) for a in node.args]
+        args = [_ast_to_polars_expr(a, col_names, col_map, by, schema) for a in node.args]
 
         agg_map = {
             "sum": lambda e: e.sum(),
@@ -923,6 +968,31 @@ def _ast_to_polars_expr(
             return args[0].ceil()
         if func_name == "coalesce":
             return pl.coalesce(args)
+        if func_name == "fillna" and len(node.args) >= 2:
+            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+            val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema)
+            nans = True
+            if len(node.args) > 2 and isinstance(node.args[2], ast.Constant):
+                nans = bool(node.args[2].value)
+            for kw in node.keywords:
+                if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
+                    nans = bool(kw.value.value)
+            is_float = _is_float_or_numeric_expr(node.args[0], schema)
+            if nans and is_float:
+                expr = target_expr.fill_nan(val_expr).fill_null(val_expr)
+            else:
+                expr = target_expr.fill_null(val_expr)
+            return expr.over(by) if by else expr
+        if func_name == "fill_null" and len(node.args) >= 2:
+            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+            val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema)
+            expr = target_expr.fill_null(val_expr)
+            return expr.over(by) if by else expr
+        if func_name == "fill_nan" and len(node.args) >= 2:
+            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+            val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema)
+            expr = target_expr.fill_nan(val_expr)
+            return expr.over(by) if by else expr
         if func_name == "n" and len(args) == 0:
             expr = pl.len()
             return expr.over(by) if by else expr
@@ -978,7 +1048,7 @@ def mutate_polars(
             safe_expr, col_map = _rewrite_fallback_col_refs(expr_str, cur_cols)
             try:
                 parsed = ast.parse(safe_expr, mode="eval")
-                expr = _ast_to_polars_expr(parsed, cur_cols, col_map, by=by)
+                expr = _ast_to_polars_expr(parsed, cur_cols, col_map, by=by, schema=_df_schema(cur))
                 if dropna and by:
                     null_mask = pl.any_horizontal([pl.col(c).is_null() for c in by])
                     expr = pl.when(null_mask).then(pl.lit(None)).otherwise(expr)
@@ -1281,11 +1351,16 @@ def handle_missing_polars(
         dtype = schema[c]
         if dtype.is_numeric():
             if numeric_fill == "mean":
-                exprs.append(pl.col(c).fill_null(pl.col(c).mean()))
+                col_expr = pl.col(c).fill_nan(None) if dtype.is_float() else pl.col(c)
+                exprs.append(col_expr.fill_null(col_expr.mean()))
             elif numeric_fill == "median":
-                exprs.append(pl.col(c).fill_null(pl.col(c).median()))
+                col_expr = pl.col(c).fill_nan(None) if dtype.is_float() else pl.col(c)
+                exprs.append(col_expr.fill_null(col_expr.median()))
             elif numeric_fill is not None:
-                exprs.append(pl.col(c).fill_null(numeric_fill))
+                if dtype.is_float():
+                    exprs.append(pl.col(c).fill_nan(numeric_fill).fill_null(numeric_fill))
+                else:
+                    exprs.append(pl.col(c).fill_null(numeric_fill))
             else:
                 exprs.append(pl.col(c))
         elif dtype in (pl.String, pl.Null):

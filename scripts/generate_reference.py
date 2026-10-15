@@ -357,9 +357,14 @@ Comprehensive Feature Set (The 12 Mutate Capabilities):
      Resolves the first non-null candidate per row:
      df.pt.mutate(contact="coalesce(mobile, home, work, 'Unknown')")
   6. Dictionary Lookup (`map`):
-     Recodes values through a mapping dictionary with optional default fallback:
+     Recodes values through a mapping dictionary with optional fallback (supports literal 'OTHER', column itself like species to keep unmatched values, or another column):
+     df.pt.mutate(code="map(species, {'Adelie': 'AD', 'Gentoo': 'GE'}, species)")
      df.pt.mutate(code="map(species, {'Adelie': 'AD', 'Gentoo': 'GE'}, default='OTHER')")
-  7. Caller Scope Variables (`@var`):
+  7. Missing & NaN Value Filling (`fillna`, `fill_null`, `fill_nan`):
+     fillna(col, val, nans=True) fills both float NaN and Arrow nulls by default. Set nans=False to fill null only.
+     df.pt.mutate(clean_rate="fillna(profit / revenue, 0.0)")
+     df.pt.mutate(clean_str="fill_null(notes, 'N/A')")
+  8. Caller Scope Variables (`@var`):
      Reference local variables from caller scope using `@name`:
      threshold = 4000
      df.pt.mutate(heavy="body_mass_g >= @threshold")

@@ -242,23 +242,29 @@ Plain `eval()` has no ternary/`where()` support, so `mutate()` provides three dp
 
 ```python
 # map(column, {key: value, ...}, default) — recode a column through a dictionary lookup
-# unmapped keys become default if given, else NaN
+# unmapped keys become default if given, else null.
+# 'default' can be a literal string ('OTH'), the column itself (island), or another column!
 (
-    penguins.pt.mutate(island_code="map(island, {'Torgersen': 'TOR', 'Biscoe': 'BIS'}, 'OTH')")
-    .pt.select("species", "island", "island_code")
+    penguins.pt.mutate(
+        # Fallback to column itself preserves original names for unmatched rows
+        island_code="map(island, {'Torgersen': 'TOR', 'Biscoe': 'BIS'}, island)",
+        # Or provide a literal fallback string
+        island_other="map(island, {'Torgersen': 'TOR'}, 'OTHER')",
+    )
+    .pt.select("species", "island", "island_code", "island_other")
     .head(5)
 )
 ```
 
 **Output:**
 
-| species   | island    | island_code   |
-|:----------|:----------|:--------------|
-| Adelie    | Torgersen | TOR           |
-| Adelie    | Torgersen | TOR           |
-| Adelie    | Torgersen | TOR           |
-| Adelie    | Torgersen | TOR           |
-| Adelie    | Torgersen | TOR           |
+| species   | island    | island_code   | island_other   |
+|:----------|:----------|:--------------|:---------------|
+| Adelie    | Torgersen | TOR           | TOR            |
+| Adelie    | Torgersen | TOR           | TOR            |
+| Adelie    | Torgersen | TOR           | TOR            |
+| Adelie    | Torgersen | TOR           | TOR            |
+| Adelie    | Torgersen | TOR           | TOR            |
 
 ## First non-null resolution — `coalesce()`
 
@@ -283,6 +289,33 @@ contacts.pt.mutate(preferred_contact="coalesce(mobile, home, work, 'N/A')")
 | nan      | 555-5678 | nan      | 555-5678            |
 | 555-1234 | nan      | nan      | 555-1234            |
 | nan      | nan      | 555-9012 | 555-9012            |
+
+## Missing & NaN Value Filling — `fillna()`, `fill_null()`, `fill_nan()`
+
+In expressions, `mutate()` provides smart missing-value handlers:
+
+- `fillna(col, val, nans=True)` / `col.fillna(val)`: Fills **both** floating-point `NaN` (e.g. from division by zero) and Arrow `null` with `val` by default. Set `nans=False` to only fill Arrow `null`s.
+- `fill_null(col, val)` / `col.fill_null(val)`: Strict Arrow `null` filling (leaves `NaN` untouched).
+- `fill_nan(col, val)` / `col.fill_nan(val)`: Strict float `NaN` filling (leaves `null` untouched).
+
+```python
+calc_df = pt.DataFrame(
+    {
+        "profit": [100.0, 0.0, None],
+        "revenue": [500.0, 0.0, 100.0],
+    }
+)
+
+(
+    calc_df
+    # 0 / 0 produces NaN; row 3 produces null. fillna cleans both!
+    .mutate(
+        margin="fillna(profit / revenue, 0.0)",
+        # Or using method syntax:
+        margin_alt="(profit / revenue).fillna(0.0)",
+    )
+)
+```
 
 ## Combining expressions and callables in kwargs
 
