@@ -651,3 +651,29 @@ def test_handle_missing_cleans_float_nans():
     # numeric_fill="mean" computes mean ignoring NaNs and nulls (mean of 10 and 30 is 20)
     cleaned_mean = df.handle_missing(numeric_fill="mean")
     assert list(cleaned_mean["flt"]) == [10.0, 20.0, 20.0, 30.0]
+
+
+def test_mutate_interleaved_callable_and_string_expression():
+    df = pt.DataFrame({"x": [1, 2, 3]})
+    # String expression 'b' references column 'a' created by callable in the same mutate call
+    res = df.mutate(a=lambda d: d["x"] * 2, b="a + 10")
+    assert list(res["a"]) == [2, 4, 6]
+    assert list(res["b"]) == [12, 14, 16]
+
+
+def test_mutate_interleaved_string_callable_string():
+    df = pt.DataFrame({"x": [1, 2, 3]})
+    # String 'a', Callable 'b' using 'a', String 'c' using 'b'
+    res = df.mutate("a = x * 2", b=lambda d: d["a"] + 5, c="b * 10")
+    assert list(res["a"]) == [2, 4, 6]
+    assert list(res["b"]) == [7, 9, 11]
+    assert list(res["c"]) == [70, 90, 110]
+
+
+def test_mutate_grouped_interleaved_callable_and_string():
+    df = pt.DataFrame({"grp": ["k", "k", "m"], "x": [1, 2, 3]})
+    # Grouped mutate: callable 'a' then string 'b' referencing 'a'
+    res = df.by("grp").mutate(a=lambda g: g["x"] * 2, b="a + 10")
+    assert list(res["a"]) == [2, 4, 6]
+    assert list(res["b"]) == [12, 14, 16]
+

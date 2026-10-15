@@ -149,6 +149,20 @@ def compute_score(d):
 penguins.mutate(custom_score=compute_score)
 ```
 
+### Interleaving Callables and String Expressions in `mutate`
+Callables and string expressions execute strictly in insertion order. Downstream string expressions can immediately reference columns created by upstream callables, and downstream callables receive a DataFrame containing columns created by preceding expressions:
+
+```python
+# 'b' uses callable result 'a', and 'c' uses 'b' in the same mutate() call
+df = df.mutate(
+    a=lambda d: d["x"] * 2,
+    b="a + 10",
+    c=lambda d: d["b"] * 3
+)
+```
+
+Consecutive string expressions are automatically batched into a single Polars compilation pass for maximum vectorization performance.
+
 ---
 
 <a id="interoperability"></a>

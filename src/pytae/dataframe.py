@@ -852,23 +852,17 @@ class DataFrame:
         if params:
             merged_params.update(params)
 
-        callable_kwargs: dict[str, Any] = {}
-        other_kwargs: dict[str, Any] = {}
-        for k, v in kwargs.items():
-            if callable(v):
-                callable_kwargs[k] = v
-            else:
-                other_kwargs[k] = v
+        steps: list[tuple[str, Any]] = []
+        current_spec: dict[str, Any] = {}
 
-        parsed_spec: dict[str, Any] = {}
         for s in specs:
             if isinstance(s, str):
                 entries = _parse_mutate_spec_entries(s)
                 for k, v, _ in entries:
-                    parsed_spec[k] = v
+                    current_spec[k] = v
             elif isinstance(s, dict):
                 for k, v in s.items():
-                    parsed_spec[str(k)] = v
+                    current_spec[str(k)] = v
             elif callable(s):
                 raise TypeError(
                     "mutate() expects callables as keyword arguments with the column name, "
@@ -877,24 +871,35 @@ class DataFrame:
             else:
                 raise TypeError(f"mutate() received unexpected positional argument of type {type(s).__name__}.")
 
-        for k, v in other_kwargs.items():
-            parsed_spec[k] = v
-
-        res_df = mutate_polars(self._df, parsed_spec, by=None, params=merged_params) if parsed_spec else self._df
-        res = DataFrame(res_df, orig_col_map=self._orig_col_map)
-        res._orig_index = self._orig_index
-
-        for col_name, fn in callable_kwargs.items():
-            col_res = fn(res)
-            if hasattr(col_res, "to_numpy"):
-                res = DataFrame(
-                    res._df.with_columns(pl.Series(col_name, col_res.to_numpy())), orig_col_map=self._orig_col_map
-                )
+        for k, v in kwargs.items():
+            if callable(v):
+                if current_spec:
+                    steps.append(("spec", current_spec))
+                    current_spec = {}
+                steps.append(("callable", (k, v)))
             else:
-                res = DataFrame(
-                    res._df.with_columns(pl.Series(col_name, list(col_res))), orig_col_map=self._orig_col_map
-                )
-            res._orig_index = self._orig_index
+                current_spec[k] = v
+
+        if current_spec:
+            steps.append(("spec", current_spec))
+
+        res = self
+        for step_type, step_data in steps:
+            if step_type == "spec":
+                res_df = mutate_polars(res._df, step_data, by=None, params=merged_params) if step_data else res._df
+                res = DataFrame(res_df, orig_col_map=res._orig_col_map)
+                res._orig_index = self._orig_index
+            elif step_type == "callable":
+                col_name, fn = step_data
+                col_res = fn(res)
+                if hasattr(col_res, "to_numpy"):
+                    new_series = pl.Series(col_name, col_res.to_numpy())
+                else:
+                    new_series = pl.Series(col_name, list(col_res))
+                new_map = dict(res._orig_col_map)
+                new_map[col_name] = col_name
+                res = DataFrame(res._df.with_columns(new_series), orig_col_map=new_map)
+                res._orig_index = self._orig_index
 
         return res
 
@@ -1203,23 +1208,17 @@ class GroupedDataFrame:
         if params:
             merged_params.update(params)
 
-        callable_kwargs: dict[str, Any] = {}
-        other_kwargs: dict[str, Any] = {}
-        for k, v in kwargs.items():
-            if callable(v):
-                callable_kwargs[k] = v
-            else:
-                other_kwargs[k] = v
+        steps: list[tuple[str, Any]] = []
+        current_spec: dict[str, Any] = {}
 
-        parsed_spec: dict[str, Any] = {}
         for s in specs:
             if isinstance(s, str):
                 entries = _parse_mutate_spec_entries(s)
                 for k, v, _ in entries:
-                    parsed_spec[k] = v
+                    current_spec[k] = v
             elif isinstance(s, dict):
                 for k, v in s.items():
-                    parsed_spec[str(k)] = v
+                    current_spec[str(k)] = v
             elif callable(s):
                 raise TypeError(
                     "mutate() expects callables as keyword arguments with the column name, "
@@ -1228,20 +1227,33 @@ class GroupedDataFrame:
             else:
                 raise TypeError(f"mutate() received unexpected positional argument of type {type(s).__name__}.")
 
-        for k, v in other_kwargs.items():
-            parsed_spec[k] = v
+        for k, v in kwargs.items():
+            if callable(v):
+                if current_spec:
+                    steps.append(("spec", current_spec))
+                    current_spec = {}
+                steps.append(("callable", (k, v)))
+            else:
+                current_spec[k] = v
 
-        res_df = (
-            mutate_polars(self._df, parsed_spec, by=self._by, params=merged_params, dropna=dropna)
-            if parsed_spec
-            else self._df
-        )
-        res = DataFrame(res_df, orig_col_map=self._orig_col_map)
+        if current_spec:
+            steps.append(("spec", current_spec))
+
+        res = DataFrame(self._df, orig_col_map=self._orig_col_map)
         res._orig_index = self._orig_index
 
-        if callable_kwargs:
-            pdf = res.to_pandas()
-            for col_name, fn in callable_kwargs.items():
+        for step_type, step_data in steps:
+            if step_type == "spec":
+                res_df = (
+                    mutate_polars(res._df, step_data, by=self._by, params=merged_params, dropna=dropna)
+                    if step_data
+                    else res._df
+                )
+                res = DataFrame(res_df, orig_col_map=res._orig_col_map)
+                res._orig_index = self._orig_index
+            elif step_type == "callable":
+                col_name, fn = step_data
+                pdf = res.to_pandas()
                 pieces = []
                 for _, group in pdf.groupby(self._by, sort=False, dropna=dropna):
                     import pandas as pd
@@ -1256,8 +1268,10 @@ class GroupedDataFrame:
                 import pandas as pd
 
                 full_col = pd.concat(pieces).reindex(pdf.index)
+                new_map = dict(res._orig_col_map)
+                new_map[col_name] = col_name
                 res = DataFrame(
-                    res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=self._orig_col_map
+                    res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=new_map
                 )
                 res._orig_index = self._orig_index
 

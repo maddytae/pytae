@@ -24,11 +24,20 @@
 
 1. **Strict Table Shape Preservation**:
    - `mutate` never drops rows. Any row filtering or row deduplication must be done using `filter` or `distinct`.
-2. **Left-to-Right Sequential Resolution**:
+2. **Left-to-Right Sequential Resolution & Interleaved Callables**:
    - New columns defined on the left are immediately available for downstream calculations on the right within the same `mutate` call:
    ```python
    # 'total' can immediately be used in 'tax'
    df.mutate(total="price * qty", tax="total * 0.08")
+   ```
+   - Python callables (functions or lambdas) and string expressions can be freely interleaved in insertion order. Downstream expressions can seamlessly reference columns created by upstream callables:
+   ```python
+   # 'b' uses callable result 'a', and 'c' uses 'b'
+   df.mutate(
+       a=lambda d: d["x"] * 2,
+       b="a + 10",
+       c=lambda d: d["b"] * 3
+   )
    ```
 3. **Literal Values**:
    - Native Python types (`int`, `float`, `bool`) are converted directly to constant columns: `count=10, flag=True`.
