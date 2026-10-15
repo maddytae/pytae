@@ -73,10 +73,9 @@ TABLE OF CONTENTS
     Recipe 5: Multi-File Join, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
-8.  CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)
-9.  INTERACTIVE LIBRARY NOTEBOOK WALKTHROUGHS (docs/library/ & docs/library.md)
+8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
+9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
-    10.1 CORE PHILOSOPHY & MISSING DATA ARCHITECTURE (docs/pytae.md)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -1122,7 +1121,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ```
 
 ================================================================================
-10. REPOSITORY DIRECTORY TREE
+11. REPOSITORY DIRECTORY TREE
 ================================================================================
 
 .
@@ -1130,39 +1129,24 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ├── changelog.md
 ├── contributing.md
 ├── docs
-│   ├── cli
-│   │   ├── agg.md
-│   │   ├── arrange.md
-│   │   ├── clean_replace.md
-│   │   ├── diff.md
-│   │   ├── distinct.md
-│   │   ├── export_io.md
-│   │   ├── filter.md
-│   │   ├── inspect.md
-│   │   ├── multi_file.md
-│   │   ├── mutate.md
-│   │   ├── other_utilities.md
-│   │   ├── pick.md
-│   │   ├── pivot.md
-│   │   ├── plotting.md
-│   │   ├── reshape.md
-│   │   ├── select.md
-│   │   └── sql.md
-│   ├── cli.md
 │   ├── comparison_to_pandas_and_dplyr.md
-│   ├── library
+│   ├── detailed_docs
 │   │   ├── agg.md
 │   │   ├── arrange.md
+│   │   ├── cli_only.md
 │   │   ├── distinct.md
 │   │   ├── filter.md
+│   │   ├── library_only.md
 │   │   ├── mutate.md
 │   │   ├── other_utilities.md
 │   │   ├── pick.md
 │   │   ├── pivot.md
 │   │   ├── plotting.ipynb
+│   │   ├── plotting.md
+│   │   ├── read_write.md
 │   │   ├── reshape.md
 │   │   └── select.md
-│   └── library.md
+│   └── pytae.md
 ├── pyproject.toml
 ├── readme.md
 ├── reference
@@ -1288,9 +1272,9 @@ def _format_notebook(nb_path: Path) -> str:
 def generate_reference() -> None:
     parts: list[str] = []
 
-    # MANUAL_TEXT contains sections 1 to 7 and section 10 (directory tree)
-    # Split MANUAL_TEXT so sections 8 and 9 (docs) sit before the directory tree
-    tree_marker = "================================================================================\n10. REPOSITORY DIRECTORY TREE"
+    # MANUAL_TEXT contains sections 1 to 7 and section 11 (directory tree)
+    # Split MANUAL_TEXT so sections 8, 9, 10 sit before the directory tree
+    tree_marker = "================================================================================\n11. REPOSITORY DIRECTORY TREE"
     if tree_marker in MANUAL_TEXT:
         manual_pre, manual_tree = MANUAL_TEXT.split(tree_marker, 1)
         parts.append(manual_pre.strip())
@@ -1299,33 +1283,15 @@ def generate_reference() -> None:
         manual_tree = ""
         parts.append(manual_pre.strip())
 
-    # Section 8: CLI Feature Documentation Guides (docs/cli/ & docs/cli.md)
+    # Section 8: Detailed Feature Documentation Guides (docs/detailed_docs/)
     parts.append("\n================================================================================")
-    parts.append("8. CLI FEATURE DOCUMENTATION GUIDES (docs/cli/ & docs/cli.md)")
+    parts.append("8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)")
     parts.append("================================================================================\n")
-    cli_files = [REPO_ROOT / "docs" / "cli.md"] + sorted((REPO_ROOT / "docs" / "cli").glob("*.md"))
-    for f in cli_files:
-        rel_path = f.relative_to(REPO_ROOT)
-        parts.append("################################################################################")
-        parts.append(f"# FILE: {rel_path}")
-        parts.append("################################################################################")
-        parts.append(f.read_text(encoding="utf-8").rstrip() + "\n")
-
-    # Section 9: Library Feature Guides & Walkthroughs (docs/library/ & docs/library.md)
-    parts.append("================================================================================")
-    parts.append("9. LIBRARY FEATURE GUIDES & WALKTHROUGHS (docs/library/ & docs/library.md)")
-    parts.append("================================================================================\n")
-    lib_md = REPO_ROOT / "docs" / "library.md"
-    parts.append("################################################################################")
-    parts.append(f"# FILE: {lib_md.relative_to(REPO_ROOT)}")
-    parts.append("################################################################################")
-    parts.append(lib_md.read_text(encoding="utf-8").rstrip() + "\n")
-
-    lib_docs = sorted(
-        list((REPO_ROOT / "docs" / "library").glob("*.md")) + list((REPO_ROOT / "docs" / "library").glob("*.ipynb")),
+    detailed_docs = sorted(
+        list((REPO_ROOT / "docs" / "detailed_docs").glob("*.md")) + list((REPO_ROOT / "docs" / "detailed_docs").glob("*.ipynb")),
         key=lambda p: p.stem,
     )
-    for doc_path in lib_docs:
+    for doc_path in detailed_docs:
         rel_path = doc_path.relative_to(REPO_ROOT)
         parts.append("################################################################################")
         if doc_path.suffix == ".ipynb":
@@ -1337,6 +1303,17 @@ def generate_reference() -> None:
             parts.append("################################################################################")
             parts.append(doc_path.read_text(encoding="utf-8").rstrip() + "\n")
 
+    # Section 9: Master Documentation & Architecture Guide (docs/pytae.md)
+    pytae_md = REPO_ROOT / "docs" / "pytae.md"
+    if pytae_md.exists():
+        parts.append("================================================================================")
+        parts.append("9. MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)")
+        parts.append("================================================================================\n")
+        parts.append("################################################################################")
+        parts.append(f"# FILE: {pytae_md.relative_to(REPO_ROOT)}")
+        parts.append("################################################################################")
+        parts.append(pytae_md.read_text(encoding="utf-8").rstrip() + "\n")
+
     # Section 10: Philosophy & Comparison Rosetta Stone (docs/comparison_to_pandas_and_dplyr.md)
     parts.append("================================================================================")
     parts.append("10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)")
@@ -1346,17 +1323,6 @@ def generate_reference() -> None:
     parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
     parts.append("################################################################################")
     parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n")
-
-    # Section 10.1: Missing Data Architecture & Core Philosophy (docs/pytae.md)
-    pytae_md = REPO_ROOT / "docs" / "pytae.md"
-    if pytae_md.exists():
-        parts.append("================================================================================")
-        parts.append("10.1 CORE PHILOSOPHY & MISSING DATA ARCHITECTURE (docs/pytae.md)")
-        parts.append("================================================================================\n")
-        parts.append("################################################################################")
-        parts.append(f"# FILE: {pytae_md.relative_to(REPO_ROOT)}")
-        parts.append("################################################################################")
-        parts.append(pytae_md.read_text(encoding="utf-8").rstrip() + "\n")
 
     # Section 11: Repository Directory Tree (from manual_tree)
     if manual_tree:

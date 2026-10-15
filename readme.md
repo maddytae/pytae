@@ -8,7 +8,7 @@
 Fast, ergonomic tabular data manipulation, feature engineering, and visualization powered natively and completely by **Polars** across both Python library and CLI.
 
 `pytae` offers **one and only one right way** to perform tabular operations with zero code duplication:
-1. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame. Once entered, chain verbs naturally without repeatedly calling `.pt` (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
+1. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read_parquet("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame. Once entered, chain verbs naturally without repeatedly calling `.pt` (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
 2. **Unix Pipeline CLI (`pytae`)**: Blazing-fast multithreaded SIMD vector engine sharing the exact same Polars core. Ingests tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filters, transforms, aggregates, reshapes, and executes analytical ANSI SQL queries (`-sql`) with zero boilerplate.
 
 👉 **New to Pytae?** Check out **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Naming Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)**.
@@ -26,13 +26,13 @@ pip install "pytae[plot]"       # Includes matplotlib for plotting
 
 ## Quick Start: Python Library (Polars-Powered)
 
-Read directly with `pt.read()`, wrap existing data with `pt(df)`, or chain off Pandas via `.pt`:
+Read directly with `pt.read_parquet()`, wrap existing data with `pt(df)`, or chain off Pandas via `.pt`:
 
 ```python
 import pytae as pt
 
 # Read directly with Polars-powered fast auto-detection
-df = pt.read("sales_report.parquet")
+df = pt.read_parquet("sales_report.parquet")
 
 # Or chain directly off pandas or polars - only one .pt call needed!
 summary = (
@@ -44,7 +44,7 @@ summary = (
 )
 ```
 
-👉 **Full Library API Hub**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md)
+👉 **Full Master Documentation Hub**: [docs/pytae.md](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)
 
 ---
 
@@ -108,43 +108,25 @@ pytae current.parquet -diff baseline.parquet
 ## Documentation Directory
 
 ### Guides & Specifications
-- **Architecture & Rosetta Stone**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
-- **Library API Guide**: [docs/library.md](https://github.com/maddytae/pytae/blob/master/docs/library.md) (Complete reference for the pure Pandas Python API: `df.pt` and `pt.*`)
-- **CLI Reference Hub**: [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md) (Complete reference for the Polars-powered command-line pipeline)
+- **Master Reference & Architecture Hub**: [docs/pytae.md](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)
+- **Rosetta Stone & Philosophy**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
 
-### Library Feature Guides (`docs/library/`)
-Explore step-by-step Python API guides with inline outputs:
-- [Row Filtering](https://github.com/maddytae/pytae/blob/master/docs/library/filter.md) (`pt.filter()`, callables, intervals, set membership)
-- [Column Selection](https://github.com/maddytae/pytae/blob/master/docs/library/select.md) (`pt.select()`, negative drops `-col`, slices, regex, dtypes)
-- [Feature Engineering](https://github.com/maddytae/pytae/blob/master/docs/library/mutate.md) (`pt.mutate()`, formulas, `(col1, col2) = _ * 2`, helpers)
-- [Row Sorting](https://github.com/maddytae/pytae/blob/master/docs/library/arrange.md) (`pt.arrange()`, `-col`, `desc`, bracketed spaced columns)
-- [Row Picking](https://github.com/maddytae/pytae/blob/master/docs/library/pick.md) (`pt.pick()`, top/bottom N or proportion per group via `pt.by()`)
-- [Distinct Rows](https://github.com/maddytae/pytae/blob/master/docs/library/distinct.md) (`pt.distinct()`, deduplication across column subsets)
-- [Pure Reshaping](https://github.com/maddytae/pytae/blob/master/docs/library/reshape.md) (`pt.long()`, `pt.wide()`, pure 1-to-1 unmelting)
-- [2D Pivot Tables](https://github.com/maddytae/pytae/blob/master/docs/library/pivot.md) (`pt.pivot()`, Excel-style `r, c, v, a` matrices, flat 1D headers)
-- [Aggregations & Grouping](https://github.com/maddytae/pytae/blob/master/docs/library/agg.md) (`pt.by()`, `pt.agg()`, group summaries & grand totals)
-- [Plotting & Figures](https://github.com/maddytae/pytae/blob/master/docs/library/plotting.ipynb) (`pt.Plotter`, `df.pt.plot()`, interactive notebook walkthrough)
-- [Utilities & Cleaning](https://github.com/maddytae/pytae/blob/master/docs/library/other_utilities.md) (`glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `to_clip`)
-
-### CLI Feature Guides (`docs/cli/`)
-Explore step-by-step CLI pipeline guides with terminal outputs:
-- [Row Filtering](https://github.com/maddytae/pytae/blob/master/docs/cli/filter.md) (`-filter`, `-dropna`, intervals, set membership)
-- [Column Selection](https://github.com/maddytae/pytae/blob/master/docs/cli/select.md) (`-select`, negative drops `-col`, slices, regex, dtypes)
-- [Feature Engineering](https://github.com/maddytae/pytae/blob/master/docs/cli/mutate.md) (`-mutate`, formulas, `(col1, col2) = _ * 2`, helpers)
-- [Row Sorting](https://github.com/maddytae/pytae/blob/master/docs/cli/arrange.md) (`-arrange`, `-col`, `desc`, bracketed spaced columns)
-- [Row Picking](https://github.com/maddytae/pytae/blob/master/docs/cli/pick.md) (`-pick`, top/bottom N or proportion per group with `-by`)
-- [Distinct Rows](https://github.com/maddytae/pytae/blob/master/docs/cli/distinct.md) (`-distinct`, deduplication across column subsets)
-- [Pure Reshaping](https://github.com/maddytae/pytae/blob/master/docs/cli/reshape.md) (`-long`, `-wide`, pure 1-to-1 unmelting)
-- [2D Pivot Tables](https://github.com/maddytae/pytae/blob/master/docs/cli/pivot.md) (`-pivot`, Excel-style `r, c, v, a` matrices, flat 1D headers)
-- [Aggregations & Grouping](https://github.com/maddytae/pytae/blob/master/docs/cli/agg.md) (`-by`, `-agg`, grand totals)
-- [Plotting & Figures](https://github.com/maddytae/pytae/blob/master/docs/cli/plotting.md) (`-plot`, `-finalize`)
-- [Inspection & Metadata](https://github.com/maddytae/pytae/blob/master/docs/cli/inspect.md) (`-shape`, `-cols`, `-meta`, `-freq`, `-hist`, `-value_counts`)
-- [Data Cleaning](https://github.com/maddytae/pytae/blob/master/docs/cli/clean_replace.md) (`-clean_columns`, `-replace_values`, `-handle_missing`)
-- [SQL Engine](https://github.com/maddytae/pytae/blob/master/docs/cli/sql.md) (`-sql`, Polars SQLContext queries, CTEs, joins)
-- [Dataset Diffing](https://github.com/maddytae/pytae/blob/master/docs/cli/diff.md) (`-diff`, schema drift, shape deltas, cell mismatches)
-- [File I/O & Export](https://github.com/maddytae/pytae/blob/master/docs/cli/export_io.md) (`-o`, `-out_dir`, STDIN, compression)
-- [Multi-File Pipelines](https://github.com/maddytae/pytae/blob/master/docs/cli/multi_file.md) (`-file`, `-join`, `-concat`)
-- [Other Utilities & Modifiers](https://github.com/maddytae/pytae/blob/master/docs/cli/other_utilities.md) (`-nrows`, `-limit`, `-dlim`, `-encoding`, `-pretty`, `-round`, `-pager`, `-progress`)
+### Detailed Topic Guides (`docs/detailed_docs/`)
+Unified documentation covering both the Python library and CLI:
+- [Data Ingestion & Sinks](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/read_write.md) (`pt.read_parquet`, `pt.read_csv`, `pt.scan_*`, `to_parquet`, `-o`, `-od`, `-fmt`, `-progress`)
+- [Feature Engineering](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/mutate.md) (`mutate`, formulas, sequential assignments, quoted strings, `across`)
+- [Row Filtering](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/filter.md) (`filter`, intervals, set membership, callables, pushdown)
+- [Column Selection](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/select.md) (`select`, negative drops `-col`, regex, pattern matches, rename)
+- [Row Sorting](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/arrange.md) (`arrange`, `-col`, `desc`, bracketed spaced columns)
+- [Row Picking](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/pick.md) (`pick`, top/bottom N or proportion per group via `by`)
+- [Distinct Rows](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/distinct.md) (`distinct`, deduplication across column subsets, `keep`)
+- [Table Reshaping](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/reshape.md) (`long`, `wide`, pure 1-to-1 unmelting)
+- [2D Pivot Tables](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/pivot.md) (`pivot`, `r, c, v, a` matrices, flat 1D headers)
+- [Aggregations & Grouping](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/agg.md) (`by`, `agg`, `dropna=False` zero data loss retention)
+- [Visualizations & Plotting](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting.md) (`df.plot()`, `-plot`, `-finalize`, interactive walkthrough)
+- [Utilities & Inspection](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/other_utilities.md) (`fillna`, `fill_null`, `fill_nan`, `dropna`, `handle_missing`, `cols`, `glimpse`, `freq`, `hist`)
+- [CLI Terminal Superpowers](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli_only.md) (`-diff`, `-inspect`, `-meta`, `-file`, `-join`, `-concat`, `-sql`, batch globs)
+- [Python Library Architecture](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library_only.md) (`pt()`, `.pt` accessor on Polars & Pandas, lazy evaluation pushdowns, callables)
 
 ---
 

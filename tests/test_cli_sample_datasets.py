@@ -3,7 +3,7 @@
 Unlike the tiny hand-crafted frames in test_cli_order.py (kept deliberately
 minimal for exact, easy-to-verify assertions), these exercise the CLI against
 real, messier data: multiple categories, real NaNs, larger row counts. This is
-also where docs/cli.md's "Sample datasets" section examples are regression
+also where docs/pytae.md's "Sample datasets" section examples are regression
 tested, so a broken documented command fails CI instead of only being caught
 by manually re-running the docs.
 """
@@ -31,7 +31,7 @@ def sample_dataset_dir(tmp_path_factory):
     return directory
 
 
-# Mirrors docs/cli.md's "Sample datasets" section — keep in sync with those examples.
+# Mirrors docs/pytae.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
     ("penguins.parquet", ["-filter", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
     ("penguins.parquet", ["-pivot", "r=species,c=island,v=sex,a=n"]),

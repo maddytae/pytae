@@ -289,6 +289,7 @@ def test_compressed_txt_and_dat(tmp_path):
 
 def test_dedicated_readers_and_scanners(tmp_path):
     import polars as pl
+
     import pytae as pt
 
     raw = pl.DataFrame({"x": [1, 2, 3], "y": ["a", "b", "c"]})

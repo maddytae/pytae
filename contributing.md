@@ -93,7 +93,7 @@ python scripts/run_notebooks.py
 ```
 
 > [!NOTE]
-> Interactive tutorial notebooks in `docs/library/` are not run on every commit because they exercise end-to-end plotting and file IO. They run automatically in CI on tag releases, or manually via `python scripts/run_notebooks.py`.
+> Interactive tutorial notebooks in `docs/detailed_docs/` are not run on every commit because they exercise end-to-end plotting and file IO. They run automatically in CI on tag releases, or manually via `python scripts/run_notebooks.py`.
 
 ---
 
@@ -101,5 +101,5 @@ python scripts/run_notebooks.py
 
 1. **Write Unit Tests**: Every bug fix, new feature, or error condition must be backed by unit tests in `tests/`.
 2. **Keep Errors Informative**: Avoid generic error messages. Use `difflib.get_close_matches` where appropriate to suggest typos.
-3. **Update Documentation**: If updating a CLI flag or library verb, update the corresponding documentation in `docs/cli/` and `docs/library/`.
+3. **Update Documentation**: If updating a CLI flag or library verb, update the corresponding documentation in `docs/detailed_docs/` and `docs/pytae.md`.
 4. **Follow Typing Standards**: pytae is PEP 561 compliant (`py.typed`). All new functions in `src/pytae/` should have comprehensive type annotations.
