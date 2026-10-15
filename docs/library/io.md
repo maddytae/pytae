@@ -3,8 +3,8 @@
 `pytae` provides a unified, high-throughput I/O engine powered by a 100% native multithreaded SIMD Polars core with seamless Apache Arrow memory layouts.
 
 This guide covers:
-- **Eager Reading (`pt.read`)**: Fast, immediate in-memory loading.
-- **Lazy Scanning (`pt.scan`)**: Query pushdown, projection pruning, and predicate skipping.
+- **Eager Readers (`pt.read_parquet`, `pt.read_csv`, etc.)**: Fast, immediate in-memory loading with full Polars parameter autocomplete.
+- **Lazy Scanners (`pt.scan_parquet`, `pt.scan_csv`, etc.)**: Query pushdown, projection pruning, and predicate skipping.
 - **Dual-Mode Execution**: Writing fluent pipelines without manual `.collect()` juggling.
 - **Universal Constructor (`pt.DataFrame`)**: Seamless interop across Polars, Pandas, Arrow, and Python dictionaries.
 - **Writing Data (Sinks)**: Out-of-core streaming exports (`to_parquet`, `to_csv`, `to_pandas`, `to_clip`).
@@ -14,12 +14,12 @@ This guide covers:
 
 ## Table of Contents
 
-- [Eager Ingestion (`pt.read`) vs. Lazy Evaluation (`pt.scan`)](#eager-vs-lazy)
-- [Eager Reading (`pt.read`)](#eager-reading)
+- [Eager Ingestion (`pt.read_*`) vs. Lazy Evaluation (`pt.scan_*`)](#eager-vs-lazy)
+- [Eager Readers (`pt.read_parquet`, `pt.read_csv`, ...)](#eager-reading)
   - [Supported File Formats](#supported-formats)
   - [Custom Delimiters & Encodings](#custom-delimiters)
   - [Remote URLs & Compressed Files](#remote-and-compressed)
-- [Lazy Scanning & Query Pushdowns (`pt.scan`)](#lazy-scanning)
+- [Lazy Scanning & Query Pushdowns (`pt.scan_*`)](#lazy-scanning)
   - [Projection Pushdown (Column Pruning)](#projection-pushdown)
   - [Predicate Pushdown (Row-Group Skipping)](#predicate-pushdown)
   - [Slice Pushdown (Early Termination)](#slice-pushdown)
@@ -47,7 +47,7 @@ This guide covers:
 ---
 
 <a id="eager-vs-lazy"></a>
-## Eager Ingestion (`pt.read`) vs. Lazy Evaluation (`pt.scan`)
+## Eager Ingestion (`pt.read_*`) vs. Lazy Evaluation (`pt.scan_*`)
 
 Traditional data science tools (such as standard Pandas `pd.read_csv` or `pd.read_parquet`) read datasets **eagerly**, loading every row and column into RAM before any filtering or column selection can begin. On larger-than-RAM or multi-gigabyte datasets, this produces excessive I/O wait times and Out-Of-Memory (OOM) crashes.
 
@@ -62,7 +62,8 @@ Pytae provides two complementary paradigms:
              ┌──────────────────┴──────────────────┐
              ▼                                     ▼
      Eager Ingestion                        Lazy Evaluation
-      pt.read(path)                         pt.scan(path)
+   pt.read_parquet(path)                 pt.scan_parquet(path)
+   pt.read_csv(path)                     pt.scan_csv(path)
              │                                     │
              ▼                                     ▼
    Materializes to RAM                     Builds Query Graph
@@ -78,72 +79,75 @@ Pytae provides two complementary paradigms:
 ---
 
 <a id="eager-reading"></a>
-## Eager Reading (`pt.read`)
+## Eager Readers (`pt.read_parquet`, `pt.read_csv`, ...)
 
-`pt.read()` reads data off disk immediately into a `pytae.DataFrame` backed by a native Polars `DataFrame`. It automatically infers the file format from the file extension.
+Pytae provides format-specific eager readers wrapping Polars with full parameter autocomplete and returns a `pytae.DataFrame`:
 
 ```python
 import pytae as pt
 
 # Direct reading from Parquet
-df = pt.read("transactions.parquet")
+df = pt.read_parquet("transactions.parquet")
 
 # Direct reading from CSV
-df_csv = pt.read("customers.csv")
+df_csv = pt.read_csv("customers.csv")
 ```
 
 ### Supported File Formats
 
-| Format | Extension | Underlying Engine | Auto-Detected Defaults |
+| Format | Function | Underlying Engine | Auto-Detected Defaults |
 |:---|:---|:---|:---|
-| **Parquet** | `.parquet`, `.pq` | Native Polars SIMD Parquet | Snappy, ZSTD, Gzip compression |
-| **CSV** | `.csv` | Native Polars Fast CSV | Comma-separated (`,`), UTF-8 |
-| **TSV / Tab Text** | `.tsv`, `.txt` | Native Polars Fast CSV | Tab-separated (`\t`) |
-| **DAT / Pipe Text**| `.dat` | Native Polars Fast CSV | Pipe-separated (`\|`), Latin-1 |
-| **Line JSON** | `.jsonl`, `.ndjson` | Native Polars NDJSON | Newline-delimited JSON records |
-| **Excel** | `.xlsx`, `.xls` | Calamine / OpenXML | Primary worksheet |
-| **Compressed** | `.csv.gz`, `.txt.gz`, `.dat.gz`, `.ndjson.gz` | Native Gzip Stream | Auto-decompression on read |
+| **Parquet** | `pt.read_parquet(source, ...)` | Native Polars SIMD Parquet | Snappy, ZSTD, Gzip compression |
+| **CSV** | `pt.read_csv(source, ...)` | Native Polars Fast CSV | Comma-separated (`,`), UTF-8 |
+| **Line JSON** | `pt.read_ndjson(source, ...)` | Native Polars NDJSON | Newline-delimited JSON records |
+| **JSON** | `pt.read_json(source, ...)` | Native Polars JSON | Standard JSON |
+| **Arrow IPC** | `pt.read_ipc(source, ...)` | Native Arrow IPC | Feather / Arrow IPC stream |
+| **Excel** | `pt.read_excel(source, ...)` | Calamine / OpenXML | Primary worksheet |
+| **Database** | `pt.read_database(query, conn, ...)` | ADBC / ConnectorX | SQL database queries |
 
 ### Custom Delimiters & Encodings
 
-Any additional keyword arguments passed to `pt.read()` are forwarded directly to the underlying Polars reader:
+Keyword arguments are forwarded directly to the underlying Polars reader:
 
 ```python
 # Custom delimiter and encoding
-df = pt.read("data.csv", separator=";", encoding="latin-1")
+df = pt.read_csv("data.csv", separator=";", encoding="latin-1")
+
+# Tab-separated files (TSV)
+df_tsv = pt.read_csv("data.tsv", separator="\t")
 
 # Read specific columns only
-df = pt.read("data.parquet", columns=["user_id", "total_amount"])
+df = pt.read_parquet("data.parquet", columns=["user_id", "total_amount"])
 
 # Limit rows read into memory
-df = pt.read("huge_data.csv", n_rows=1000)
+df = pt.read_csv("huge_data.csv", n_rows=1000)
 ```
 
 ### Remote URLs & Compressed Files
 
-`pt.read()` natively accepts HTTP and HTTPS URLs and compressed archives:
+`pt.read_csv()` and `pt.read_parquet()` natively accept HTTP/HTTPS URLs and compressed archives:
 
 ```python
 # Read directly from public HTTPS URL
 url = "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/penguins.csv"
-penguins = pt.read(url)
+penguins = pt.read_csv(url)
 
 # Read directly from gzipped CSV
-logs = pt.read("access_logs.csv.gz")
+logs = pt.read_csv("access_logs.csv.gz")
 ```
 
 ---
 
 <a id="lazy-scanning"></a>
-## Lazy Scanning & Query Pushdowns (`pt.scan`)
+## Lazy Scanning & Query Pushdowns (`pt.scan_*`)
 
-`pt.scan()` registers the dataset into Polars' query planner without loading row data into RAM. It returns a `pytae.DataFrame` with `is_lazy == True` wrapping a `polars.LazyFrame`.
+`pt.scan_parquet()`, `pt.scan_csv()`, etc. register the dataset into Polars' query planner without loading row data into RAM. They return a `pytae.DataFrame` with `is_lazy == True` wrapping a `polars.LazyFrame`.
 
 ```python
 import pytae as pt
 
 # Instant scan: reads only header/schema metadata (0 rows in RAM!)
-lazy_df = pt.scan("massive_sales.parquet")
+lazy_df = pt.scan_parquet("massive_sales.parquet")
 
 # Build a fluent analytical pipeline
 query = (
@@ -161,7 +165,7 @@ top_stores = query.collect()
 
 ### Hardware Query Optimizations
 
-When using `pt.scan()`, the Polars query optimizer reorganizes operations to minimize hardware disk I/O, CPU decompression cycles, and RAM consumption.
+When using `pt.scan_parquet()` or `pt.scan_csv()`, the Polars query optimizer reorganizes operations to minimize hardware disk I/O, CPU decompression cycles, and RAM consumption.
 
 ```
 Parquet on Disk (100 Columns, 50,000,000 Rows across 100 Row Groups)
@@ -193,10 +197,10 @@ If your pipeline ends with `.head(5)`:
 
 | Scenario | Recommended API | Why? |
 |:---|:---:|:---|
-| **Selective Query on Large File** (filtering rows or selecting specific columns) | `pt.scan()` | **10x–50x faster**: Projection and predicate pushdowns avoid reading 90%+ of the file off disk. |
-| **Quick Peek at Large File** (`.head(5)`) | `pt.scan()` | **Instant (~0.003s)**: Slice pushdown terminates reading after the first batch. |
-| **Full Ingestion of Entire CSV** (all columns, all rows, no filtering) | `pt.read()` | **Faster than `scan().collect()`**: Eager parser reads contiguous bytes into Arrow memory without streaming query-engine chunk coordination. |
-| **Small to Medium Datasets (< 500 MB)** | `pt.read()` | Simpler immediate row access without query planning overhead. |
+| **Selective Query on Large File** (filtering rows or selecting specific columns) | `pt.scan_parquet()` / `pt.scan_csv()` | **10x–50x faster**: Projection and predicate pushdowns avoid reading 90%+ of the file off disk. |
+| **Quick Peek at Large File** (`.head(5)`) | `pt.scan_parquet()` / `pt.scan_csv()` | **Instant (~0.003s)**: Slice pushdown terminates reading after the first batch. |
+| **Full Ingestion of Entire CSV** (all columns, all rows, no filtering) | `pt.read_csv()` | **Faster than `scan().collect()`**: Eager parser reads contiguous bytes into Arrow memory without streaming query-engine chunk coordination. |
+| **Small to Medium Datasets (< 500 MB)** | `pt.read_parquet()` / `pt.read_csv()` | Simpler immediate row access without query planning overhead. |
 
 ---
 
@@ -207,7 +211,7 @@ In native Polars, `pl.DataFrame` and `pl.LazyFrame` are two separate classes wit
 
 In `pytae`, **both eager and lazy tables are wrapped in the universal `pytae.DataFrame` container**:
 - Every fluent verb (`.select()`, `.filter()`, `.mutate()`, `.arrange()`, `.dropna()`, `.by()`, `.agg()`) works identically on both eager and lazy data.
-- If you start with `pt.scan()`, operations chain invisibly as a lazy query graph.
+- If you start with `pt.scan_parquet()` or `pt.scan_csv()`, operations chain invisibly as a lazy query graph.
 
 <a id="zero-cost-metadata"></a>
 ### Zero-Cost Schema & Metadata Inspection
@@ -341,7 +345,7 @@ Just like `df.head()` and `df.tail()`, you can randomly sample rows from any Dat
 ```python
 import pytae as pt
 
-df = pt.read("transactions.parquet")
+df = pt.read_parquet("transactions.parquet")
 
 # 1. Sample N rows (default is 5)
 sampled = df.sample(10)
@@ -379,8 +383,8 @@ Join two tables on shared or distinct keys with `df1.join(df2)` or `pt.join(df1,
 ```python
 import pytae as pt
 
-orders = pt.read("orders.parquet")
-customers = pt.read("customers.csv")
+orders = pt.read_parquet("orders.parquet")
+customers = pt.read_csv("customers.csv")
 
 # Fluent method chain: join -> filter -> mutate -> arrange
 result = (
@@ -441,12 +445,12 @@ res = orders.join(users, on="cust_id:user_id", how="left")
 ```
 
 #### Lazy Join Query Optimization
-When joining two lazy datasets created via `pt.scan()`, Pytae preserves the lazy execution graph. Polars optimizes join predicate pushdowns across both files before reading rows from disk:
+When joining two lazy datasets created via `pt.scan_parquet()` / `pt.scan_csv()`, Pytae preserves the lazy execution graph. Polars optimizes join predicate pushdowns across both files before reading rows from disk:
 
 ```python
 # Zero upfront memory: Polars plans the join and pushes filters down to disk
 lazy_joined = (
-    pt.scan("orders_100M.parquet").join(pt.scan("customers.csv"), on="customer_id").filter("region == 'EMEA'").collect()
+    pt.scan_parquet("orders_100M.parquet").join(pt.scan_csv("customers.csv"), on="customer_id").filter("region == 'EMEA'").collect()
 )
 ```
 
@@ -503,8 +507,20 @@ res = (
 
 | Function / Method | Signature | Description |
 |:---|:---|:---|
-| **`pt.read()`** | `pt.read(path, **kwargs) -> DataFrame` | Eager reader (Parquet, CSV, TSV, DAT, JSONL, Excel, URLs). |
-| **`pt.scan()`** | `pt.scan(path, **kwargs) -> DataFrame` | Lazy reader with query pushdown (Parquet, CSV, TSV, JSONL, Arrow). |
+| **`pt.read_parquet()`** | `pt.read_parquet(source, **kwargs) -> DataFrame` | Eager reader for Parquet files. |
+| **`pt.read_csv()`** | `pt.read_csv(source, **kwargs) -> DataFrame` | Eager reader for CSV, TSV (with separator='\t'), compressed CSVs. |
+| **`pt.read_ndjson()`** | `pt.read_ndjson(source, **kwargs) -> DataFrame` | Eager reader for NDJSON / JSON Lines. |
+| **`pt.read_json()`** | `pt.read_json(source, **kwargs) -> DataFrame` | Eager reader for JSON files. |
+| **`pt.read_ipc()`** | `pt.read_ipc(source, **kwargs) -> DataFrame` | Eager reader for Arrow IPC / Feather files. |
+| **`pt.read_excel()`** | `pt.read_excel(source, **kwargs) -> DataFrame` | Eager reader for Excel files. |
+| **`pt.read_database()`**| `pt.read_database(query, conn, **kwargs) -> DataFrame` | Eager reader for SQL database queries. |
+| **`pt.scan_parquet()`** | `pt.scan_parquet(source, **kwargs) -> DataFrame` | Lazy scanner for Parquet with query pushdown. |
+| **`pt.scan_csv()`** | `pt.scan_csv(source, **kwargs) -> DataFrame` | Lazy scanner for CSV with query pushdown. |
+| **`pt.scan_ndjson()`** | `pt.scan_ndjson(source, **kwargs) -> DataFrame` | Lazy scanner for NDJSON with query pushdown. |
+| **`pt.scan_ipc()`** | `pt.scan_ipc(source, **kwargs) -> DataFrame` | Lazy scanner for Arrow IPC with query pushdown. |
+| **`df.fillna()`** | `df.fillna(value, *cols, subset=None, nans=True) -> DataFrame` | Fills missing values (Arrow null and/or float NaN). |
+| **`df.fill_null()`** | `df.fill_null(value, *cols, subset=None) -> DataFrame` | Fills only Arrow null values. |
+| **`df.fill_nan()`** | `df.fill_nan(value, *cols, subset=None) -> DataFrame` | Fills only float NaN values. |
 | **`pt.DataFrame()`**| `pt.DataFrame(data) -> DataFrame` | Universal container constructor (Polars, Pandas, Arrow, dicts). |
 | **`pt.join()`** | `pt.join(left, other, on=None, how='inner', ...) -> DataFrame` | Joins two tabular datasets via Polars multithreading. |
 | **`df.join()`** | `df.join(other, on=None, how='inner', ...) -> DataFrame` | Joins this DataFrame with another dataset in a fluent chain. |

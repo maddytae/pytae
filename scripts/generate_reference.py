@@ -134,8 +134,20 @@ Importing:
   import polars as pl
 
 Top-Level Functions exported by `pytae`:
-  - pt.scan(path, **kwargs) -> DataFrame (Lazy query graph)
-  - pt.read(path, **kwargs) -> DataFrame (Eager ingestion)
+  - pt.read_parquet(source, **kwargs) -> DataFrame (Eager Parquet reader)
+  - pt.read_csv(source, **kwargs) -> DataFrame (Eager CSV reader)
+  - pt.read_ndjson(source, **kwargs) -> DataFrame (Eager NDJSON reader)
+  - pt.read_json(source, **kwargs) -> DataFrame (Eager JSON reader)
+  - pt.read_ipc(source, **kwargs) -> DataFrame (Eager Arrow IPC reader)
+  - pt.read_excel(source, **kwargs) -> DataFrame (Eager Excel reader)
+  - pt.read_database(query, conn, **kwargs) -> DataFrame (Eager SQL query)
+  - pt.scan_parquet(source, **kwargs) -> DataFrame (Lazy Parquet scanner)
+  - pt.scan_csv(source, **kwargs) -> DataFrame (Lazy CSV scanner)
+  - pt.scan_ndjson(source, **kwargs) -> DataFrame (Lazy NDJSON scanner)
+  - pt.scan_ipc(source, **kwargs) -> DataFrame (Lazy Arrow IPC scanner)
+  - pt.fillna(df, value, *cols, subset=None, nans=True) -> DataFrame (Fill null/NaN)
+  - pt.fill_null(df, value, *cols, subset=None) -> DataFrame (Fill null)
+  - pt.fill_nan(df, value, *cols, subset=None) -> DataFrame (Fill float NaN)
   - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)

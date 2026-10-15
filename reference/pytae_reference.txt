@@ -125,8 +125,20 @@ Importing:
   import polars as pl
 
 Top-Level Functions exported by `pytae`:
-  - pt.scan(path, **kwargs) -> DataFrame (Lazy query graph)
-  - pt.read(path, **kwargs) -> DataFrame (Eager ingestion)
+  - pt.read_parquet(source, **kwargs) -> DataFrame (Eager Parquet reader)
+  - pt.read_csv(source, **kwargs) -> DataFrame (Eager CSV reader)
+  - pt.read_ndjson(source, **kwargs) -> DataFrame (Eager NDJSON reader)
+  - pt.read_json(source, **kwargs) -> DataFrame (Eager JSON reader)
+  - pt.read_ipc(source, **kwargs) -> DataFrame (Eager Arrow IPC reader)
+  - pt.read_excel(source, **kwargs) -> DataFrame (Eager Excel reader)
+  - pt.read_database(query, conn, **kwargs) -> DataFrame (Eager SQL query)
+  - pt.scan_parquet(source, **kwargs) -> DataFrame (Lazy Parquet scanner)
+  - pt.scan_csv(source, **kwargs) -> DataFrame (Lazy CSV scanner)
+  - pt.scan_ndjson(source, **kwargs) -> DataFrame (Lazy NDJSON scanner)
+  - pt.scan_ipc(source, **kwargs) -> DataFrame (Lazy Arrow IPC scanner)
+  - pt.fillna(df, value, *cols, subset=None, nans=True) -> DataFrame (Fill null/NaN)
+  - pt.fill_null(df, value, *cols, subset=None) -> DataFrame (Fill null)
+  - pt.fill_nan(df, value, *cols, subset=None) -> DataFrame (Fill float NaN)
   - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)
@@ -5617,7 +5629,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 
 | Module | Verbs / API | Description | Feature Guide |
 |---|---|---|---|
-| **Data I/O & Joins** | `pt.read()`, `pt.scan()`, `df.join()`, `pt.concat()`, `df.to_parquet()`, `df.to_csv()`, `df.to_clip()`, `pt.sample()` | Eager reading, lazy scanning, pushdowns, relational joins, row stacking, streaming sinks, interop, and dataset sampling | [library/io.md](library/io.md) |
+| **Data I/O & Joins** | `pt.read_parquet()`, `pt.read_csv()`, `pt.scan_parquet()`, `pt.scan_csv()`, `df.join()`, `pt.concat()`, `df.to_parquet()`, `df.to_csv()`, `df.to_clip()`, `pt.sample()` | Format-specific eager reading, lazy scanning, pushdowns, relational joins, row stacking, streaming sinks, interop, and dataset sampling | [library/io.md](library/io.md) |
 | **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.md](library/filter.md) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.md](library/select.md) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, multi-column transforms (`(col1, col2) = _ * 2`), window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.md](library/mutate.md) |
@@ -5628,7 +5640,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.md](library/pivot.md) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.md](library/agg.md) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
-| **Utilities** | `glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, ASCII frequency bars & histograms, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.md](library/other_utilities.md) |
+| **Utilities** | `glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `fillna`, `dropna`, `cols`, `to_clip` | Transposed column overview, ASCII frequency bars & histograms, header normalization, scoped cell value replacement, NA imputation/filling/dropping, clipboard | [library/other_utilities.md](library/other_utilities.md) |
 
 ---
 
@@ -6991,8 +7003,8 @@ Caught expected error: "unknown column 'speceis' (did you mean 'species'?)"
 `pytae` provides a unified, high-throughput I/O engine powered by a 100% native multithreaded SIMD Polars core with seamless Apache Arrow memory layouts.
 
 This guide covers:
-- **Eager Reading (`pt.read`)**: Fast, immediate in-memory loading.
-- **Lazy Scanning (`pt.scan`)**: Query pushdown, projection pruning, and predicate skipping.
+- **Eager Readers (`pt.read_parquet`, `pt.read_csv`, etc.)**: Fast, immediate in-memory loading with full Polars parameter autocomplete.
+- **Lazy Scanners (`pt.scan_parquet`, `pt.scan_csv`, etc.)**: Query pushdown, projection pruning, and predicate skipping.
 - **Dual-Mode Execution**: Writing fluent pipelines without manual `.collect()` juggling.
 - **Universal Constructor (`pt.DataFrame`)**: Seamless interop across Polars, Pandas, Arrow, and Python dictionaries.
 - **Writing Data (Sinks)**: Out-of-core streaming exports (`to_parquet`, `to_csv`, `to_pandas`, `to_clip`).
@@ -7002,12 +7014,12 @@ This guide covers:
 
 ## Table of Contents
 
-- [Eager Ingestion (`pt.read`) vs. Lazy Evaluation (`pt.scan`)](#eager-vs-lazy)
-- [Eager Reading (`pt.read`)](#eager-reading)
+- [Eager Ingestion (`pt.read_*`) vs. Lazy Evaluation (`pt.scan_*`)](#eager-vs-lazy)
+- [Eager Readers (`pt.read_parquet`, `pt.read_csv`, ...)](#eager-reading)
   - [Supported File Formats](#supported-formats)
   - [Custom Delimiters & Encodings](#custom-delimiters)
   - [Remote URLs & Compressed Files](#remote-and-compressed)
-- [Lazy Scanning & Query Pushdowns (`pt.scan`)](#lazy-scanning)
+- [Lazy Scanning & Query Pushdowns (`pt.scan_*`)](#lazy-scanning)
   - [Projection Pushdown (Column Pruning)](#projection-pushdown)
   - [Predicate Pushdown (Row-Group Skipping)](#predicate-pushdown)
   - [Slice Pushdown (Early Termination)](#slice-pushdown)
@@ -7035,7 +7047,7 @@ This guide covers:
 ---
 
 <a id="eager-vs-lazy"></a>
-## Eager Ingestion (`pt.read`) vs. Lazy Evaluation (`pt.scan`)
+## Eager Ingestion (`pt.read_*`) vs. Lazy Evaluation (`pt.scan_*`)
 
 Traditional data science tools (such as standard Pandas `pd.read_csv` or `pd.read_parquet`) read datasets **eagerly**, loading every row and column into RAM before any filtering or column selection can begin. On larger-than-RAM or multi-gigabyte datasets, this produces excessive I/O wait times and Out-Of-Memory (OOM) crashes.
 
@@ -7050,7 +7062,8 @@ Pytae provides two complementary paradigms:
              ┌──────────────────┴──────────────────┐
              ▼                                     ▼
      Eager Ingestion                        Lazy Evaluation
-      pt.read(path)                         pt.scan(path)
+   pt.read_parquet(path)                 pt.scan_parquet(path)
+   pt.read_csv(path)                     pt.scan_csv(path)
              │                                     │
              ▼                                     ▼
    Materializes to RAM                     Builds Query Graph
@@ -7066,72 +7079,75 @@ Pytae provides two complementary paradigms:
 ---
 
 <a id="eager-reading"></a>
-## Eager Reading (`pt.read`)
+## Eager Readers (`pt.read_parquet`, `pt.read_csv`, ...)
 
-`pt.read()` reads data off disk immediately into a `pytae.DataFrame` backed by a native Polars `DataFrame`. It automatically infers the file format from the file extension.
+Pytae provides format-specific eager readers wrapping Polars with full parameter autocomplete and returns a `pytae.DataFrame`:
 
 ```python
 import pytae as pt
 
 # Direct reading from Parquet
-df = pt.read("transactions.parquet")
+df = pt.read_parquet("transactions.parquet")
 
 # Direct reading from CSV
-df_csv = pt.read("customers.csv")
+df_csv = pt.read_csv("customers.csv")
 ```
 
 ### Supported File Formats
 
-| Format | Extension | Underlying Engine | Auto-Detected Defaults |
+| Format | Function | Underlying Engine | Auto-Detected Defaults |
 |:---|:---|:---|:---|
-| **Parquet** | `.parquet`, `.pq` | Native Polars SIMD Parquet | Snappy, ZSTD, Gzip compression |
-| **CSV** | `.csv` | Native Polars Fast CSV | Comma-separated (`,`), UTF-8 |
-| **TSV / Tab Text** | `.tsv`, `.txt` | Native Polars Fast CSV | Tab-separated (`\t`) |
-| **DAT / Pipe Text**| `.dat` | Native Polars Fast CSV | Pipe-separated (`\|`), Latin-1 |
-| **Line JSON** | `.jsonl`, `.ndjson` | Native Polars NDJSON | Newline-delimited JSON records |
-| **Excel** | `.xlsx`, `.xls` | Calamine / OpenXML | Primary worksheet |
-| **Compressed** | `.csv.gz`, `.txt.gz`, `.dat.gz`, `.ndjson.gz` | Native Gzip Stream | Auto-decompression on read |
+| **Parquet** | `pt.read_parquet(source, ...)` | Native Polars SIMD Parquet | Snappy, ZSTD, Gzip compression |
+| **CSV** | `pt.read_csv(source, ...)` | Native Polars Fast CSV | Comma-separated (`,`), UTF-8 |
+| **Line JSON** | `pt.read_ndjson(source, ...)` | Native Polars NDJSON | Newline-delimited JSON records |
+| **JSON** | `pt.read_json(source, ...)` | Native Polars JSON | Standard JSON |
+| **Arrow IPC** | `pt.read_ipc(source, ...)` | Native Arrow IPC | Feather / Arrow IPC stream |
+| **Excel** | `pt.read_excel(source, ...)` | Calamine / OpenXML | Primary worksheet |
+| **Database** | `pt.read_database(query, conn, ...)` | ADBC / ConnectorX | SQL database queries |
 
 ### Custom Delimiters & Encodings
 
-Any additional keyword arguments passed to `pt.read()` are forwarded directly to the underlying Polars reader:
+Keyword arguments are forwarded directly to the underlying Polars reader:
 
 ```python
 # Custom delimiter and encoding
-df = pt.read("data.csv", separator=";", encoding="latin-1")
+df = pt.read_csv("data.csv", separator=";", encoding="latin-1")
+
+# Tab-separated files (TSV)
+df_tsv = pt.read_csv("data.tsv", separator="\t")
 
 # Read specific columns only
-df = pt.read("data.parquet", columns=["user_id", "total_amount"])
+df = pt.read_parquet("data.parquet", columns=["user_id", "total_amount"])
 
 # Limit rows read into memory
-df = pt.read("huge_data.csv", n_rows=1000)
+df = pt.read_csv("huge_data.csv", n_rows=1000)
 ```
 
 ### Remote URLs & Compressed Files
 
-`pt.read()` natively accepts HTTP and HTTPS URLs and compressed archives:
+`pt.read_csv()` and `pt.read_parquet()` natively accept HTTP/HTTPS URLs and compressed archives:
 
 ```python
 # Read directly from public HTTPS URL
 url = "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/penguins.csv"
-penguins = pt.read(url)
+penguins = pt.read_csv(url)
 
 # Read directly from gzipped CSV
-logs = pt.read("access_logs.csv.gz")
+logs = pt.read_csv("access_logs.csv.gz")
 ```
 
 ---
 
 <a id="lazy-scanning"></a>
-## Lazy Scanning & Query Pushdowns (`pt.scan`)
+## Lazy Scanning & Query Pushdowns (`pt.scan_*`)
 
-`pt.scan()` registers the dataset into Polars' query planner without loading row data into RAM. It returns a `pytae.DataFrame` with `is_lazy == True` wrapping a `polars.LazyFrame`.
+`pt.scan_parquet()`, `pt.scan_csv()`, etc. register the dataset into Polars' query planner without loading row data into RAM. They return a `pytae.DataFrame` with `is_lazy == True` wrapping a `polars.LazyFrame`.
 
 ```python
 import pytae as pt
 
 # Instant scan: reads only header/schema metadata (0 rows in RAM!)
-lazy_df = pt.scan("massive_sales.parquet")
+lazy_df = pt.scan_parquet("massive_sales.parquet")
 
 # Build a fluent analytical pipeline
 query = (
@@ -7149,7 +7165,7 @@ top_stores = query.collect()
 
 ### Hardware Query Optimizations
 
-When using `pt.scan()`, the Polars query optimizer reorganizes operations to minimize hardware disk I/O, CPU decompression cycles, and RAM consumption.
+When using `pt.scan_parquet()` or `pt.scan_csv()`, the Polars query optimizer reorganizes operations to minimize hardware disk I/O, CPU decompression cycles, and RAM consumption.
 
 ```
 Parquet on Disk (100 Columns, 50,000,000 Rows across 100 Row Groups)
@@ -7181,10 +7197,10 @@ If your pipeline ends with `.head(5)`:
 
 | Scenario | Recommended API | Why? |
 |:---|:---:|:---|
-| **Selective Query on Large File** (filtering rows or selecting specific columns) | `pt.scan()` | **10x–50x faster**: Projection and predicate pushdowns avoid reading 90%+ of the file off disk. |
-| **Quick Peek at Large File** (`.head(5)`) | `pt.scan()` | **Instant (~0.003s)**: Slice pushdown terminates reading after the first batch. |
-| **Full Ingestion of Entire CSV** (all columns, all rows, no filtering) | `pt.read()` | **Faster than `scan().collect()`**: Eager parser reads contiguous bytes into Arrow memory without streaming query-engine chunk coordination. |
-| **Small to Medium Datasets (< 500 MB)** | `pt.read()` | Simpler immediate row access without query planning overhead. |
+| **Selective Query on Large File** (filtering rows or selecting specific columns) | `pt.scan_parquet()` / `pt.scan_csv()` | **10x–50x faster**: Projection and predicate pushdowns avoid reading 90%+ of the file off disk. |
+| **Quick Peek at Large File** (`.head(5)`) | `pt.scan_parquet()` / `pt.scan_csv()` | **Instant (~0.003s)**: Slice pushdown terminates reading after the first batch. |
+| **Full Ingestion of Entire CSV** (all columns, all rows, no filtering) | `pt.read_csv()` | **Faster than `scan().collect()`**: Eager parser reads contiguous bytes into Arrow memory without streaming query-engine chunk coordination. |
+| **Small to Medium Datasets (< 500 MB)** | `pt.read_parquet()` / `pt.read_csv()` | Simpler immediate row access without query planning overhead. |
 
 ---
 
@@ -7195,7 +7211,7 @@ In native Polars, `pl.DataFrame` and `pl.LazyFrame` are two separate classes wit
 
 In `pytae`, **both eager and lazy tables are wrapped in the universal `pytae.DataFrame` container**:
 - Every fluent verb (`.select()`, `.filter()`, `.mutate()`, `.arrange()`, `.dropna()`, `.by()`, `.agg()`) works identically on both eager and lazy data.
-- If you start with `pt.scan()`, operations chain invisibly as a lazy query graph.
+- If you start with `pt.scan_parquet()` or `pt.scan_csv()`, operations chain invisibly as a lazy query graph.
 
 <a id="zero-cost-metadata"></a>
 ### Zero-Cost Schema & Metadata Inspection
@@ -7329,7 +7345,7 @@ Just like `df.head()` and `df.tail()`, you can randomly sample rows from any Dat
 ```python
 import pytae as pt
 
-df = pt.read("transactions.parquet")
+df = pt.read_parquet("transactions.parquet")
 
 # 1. Sample N rows (default is 5)
 sampled = df.sample(10)
@@ -7367,8 +7383,8 @@ Join two tables on shared or distinct keys with `df1.join(df2)` or `pt.join(df1,
 ```python
 import pytae as pt
 
-orders = pt.read("orders.parquet")
-customers = pt.read("customers.csv")
+orders = pt.read_parquet("orders.parquet")
+customers = pt.read_csv("customers.csv")
 
 # Fluent method chain: join -> filter -> mutate -> arrange
 result = (
@@ -7429,12 +7445,12 @@ res = orders.join(users, on="cust_id:user_id", how="left")
 ```
 
 #### Lazy Join Query Optimization
-When joining two lazy datasets created via `pt.scan()`, Pytae preserves the lazy execution graph. Polars optimizes join predicate pushdowns across both files before reading rows from disk:
+When joining two lazy datasets created via `pt.scan_parquet()` / `pt.scan_csv()`, Pytae preserves the lazy execution graph. Polars optimizes join predicate pushdowns across both files before reading rows from disk:
 
 ```python
 # Zero upfront memory: Polars plans the join and pushes filters down to disk
 lazy_joined = (
-    pt.scan("orders_100M.parquet").join(pt.scan("customers.csv"), on="customer_id").filter("region == 'EMEA'").collect()
+    pt.scan_parquet("orders_100M.parquet").join(pt.scan_csv("customers.csv"), on="customer_id").filter("region == 'EMEA'").collect()
 )
 ```
 
@@ -7491,8 +7507,20 @@ res = (
 
 | Function / Method | Signature | Description |
 |:---|:---|:---|
-| **`pt.read()`** | `pt.read(path, **kwargs) -> DataFrame` | Eager reader (Parquet, CSV, TSV, DAT, JSONL, Excel, URLs). |
-| **`pt.scan()`** | `pt.scan(path, **kwargs) -> DataFrame` | Lazy reader with query pushdown (Parquet, CSV, TSV, JSONL, Arrow). |
+| **`pt.read_parquet()`** | `pt.read_parquet(source, **kwargs) -> DataFrame` | Eager reader for Parquet files. |
+| **`pt.read_csv()`** | `pt.read_csv(source, **kwargs) -> DataFrame` | Eager reader for CSV, TSV (with separator='\t'), compressed CSVs. |
+| **`pt.read_ndjson()`** | `pt.read_ndjson(source, **kwargs) -> DataFrame` | Eager reader for NDJSON / JSON Lines. |
+| **`pt.read_json()`** | `pt.read_json(source, **kwargs) -> DataFrame` | Eager reader for JSON files. |
+| **`pt.read_ipc()`** | `pt.read_ipc(source, **kwargs) -> DataFrame` | Eager reader for Arrow IPC / Feather files. |
+| **`pt.read_excel()`** | `pt.read_excel(source, **kwargs) -> DataFrame` | Eager reader for Excel files. |
+| **`pt.read_database()`**| `pt.read_database(query, conn, **kwargs) -> DataFrame` | Eager reader for SQL database queries. |
+| **`pt.scan_parquet()`** | `pt.scan_parquet(source, **kwargs) -> DataFrame` | Lazy scanner for Parquet with query pushdown. |
+| **`pt.scan_csv()`** | `pt.scan_csv(source, **kwargs) -> DataFrame` | Lazy scanner for CSV with query pushdown. |
+| **`pt.scan_ndjson()`** | `pt.scan_ndjson(source, **kwargs) -> DataFrame` | Lazy scanner for NDJSON with query pushdown. |
+| **`pt.scan_ipc()`** | `pt.scan_ipc(source, **kwargs) -> DataFrame` | Lazy scanner for Arrow IPC with query pushdown. |
+| **`df.fillna()`** | `df.fillna(value, *cols, subset=None, nans=True) -> DataFrame` | Fills missing values (Arrow null and/or float NaN). |
+| **`df.fill_null()`** | `df.fill_null(value, *cols, subset=None) -> DataFrame` | Fills only Arrow null values. |
+| **`df.fill_nan()`** | `df.fill_nan(value, *cols, subset=None) -> DataFrame` | Fills only float NaN values. |
 | **`pt.DataFrame()`**| `pt.DataFrame(data) -> DataFrame` | Universal container constructor (Polars, Pandas, Arrow, dicts). |
 | **`pt.join()`** | `pt.join(left, other, on=None, how='inner', ...) -> DataFrame` | Joins two tabular datasets via Polars multithreading. |
 | **`df.join()`** | `df.join(other, on=None, how='inner', ...) -> DataFrame` | Joins this DataFrame with another dataset in a fluent chain. |
@@ -10392,7 +10420,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 This document outlines Pytae's foundational philosophy regarding missing data, detailing the design, implementation, and behavior of `dropna` / `drop_nulls` across both the **Python Library API** and the **Command-Line Interface (CLI)**.
 
 > [!NOTE]
-> For complete documentation on reading files (`pt.read`), lazy scanning (`pt.scan`), streaming sinks (`to_parquet`, `to_csv`), system clipboard, and supported file formats, see the **[Data Input & Output (I/O) Guide](library/io.md)**.
+> For complete documentation on reading files (`pt.read_parquet`, `pt.read_csv`, etc.), lazy scanning (`pt.scan_parquet`, `pt.scan_csv`, etc.), streaming sinks (`to_parquet`, `to_csv`), system clipboard, and supported file formats, see the **[Data Input & Output (I/O) Guide](library/io.md)**.
 
 ---
 
@@ -10619,7 +10647,7 @@ Pytae provides complete 100% interchangeability across terminology:
 import pytae as pt
 
 # Lazy scan or eager DataFrame
-df = pt.read("transactions.parquet")
+df = pt.read_parquet("transactions.parquet")
 
 # Drops ONLY rows where all columns are null or NaN
 clean_df = df.dropna()
@@ -10644,7 +10672,7 @@ pytae transactions.parquet -drop_nulls -shape
 ```python
 import pytae as pt
 
-df = pt.read("penguins.parquet")
+df = pt.read_parquet("penguins.parquet")
 
 # Drops rows where body_mass_g OR sex is missing (how='any' on specified subset)
 complete_cases = df.dropna("body_mass_g", "sex")
@@ -10670,7 +10698,7 @@ pytae penguins.parquet -drop_nulls "body_mass_g, sex" -shape
 ```python
 import pytae as pt
 
-df = pt.read("penguins.parquet")
+df = pt.read_parquet("penguins.parquet")
 
 # Drops any row that contains ANY null or NaN in ANY column (344 -> 333 rows)
 strict_complete = df.dropna(how="any")
@@ -11015,7 +11043,21 @@ from pytae._parsing import lit
 from pytae.accessor import PandasPtAccessor, PolarsPtAccessor
 from pytae.dataframe import DataFrame, GroupedDataFrame
 from pytae.other_utilities import format_glimpse
-from pytae.readers import read, scan
+from pytae.readers import (
+    read,
+    read_csv,
+    read_database,
+    read_excel,
+    read_ipc,
+    read_json,
+    read_ndjson,
+    read_parquet,
+    scan,
+    scan_csv,
+    scan_ipc,
+    scan_ndjson,
+    scan_parquet,
+)
 from pytae.select import everything
 
 __version__ = "3.10.0"
@@ -11053,7 +11095,7 @@ def sample(
     if isinstance(data_or_name, str) and (n is None and frac is None and fraction is None):
         if data_or_name in _DATASET_NAMES:
             if data_or_name not in _cache:
-                _cache[data_or_name] = read(DATA_PATH / f"{data_or_name}.parquet")
+                _cache[data_or_name] = read_parquet(DATA_PATH / f"{data_or_name}.parquet")
             return _cache[data_or_name].copy()
         available = ", ".join(_DATASET_NAMES) or "(none)"
         raise KeyError(f"unknown dataset {data_or_name!r}; available: {available}")
@@ -11168,6 +11210,18 @@ def drop_nulls(df: Any, *cols: Any, subset: Any = None, how: str | None = None, 
 
 def drop_na(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+
+
+def fillna(df: Any, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+    return DataFrame(df).fillna(value, *cols, subset=subset, nans=nans)
+
+
+def fill_null(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+    return DataFrame(df).fill_null(value, *cols, subset=subset)
+
+
+def fill_nan(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+    return DataFrame(df).fill_nan(value, *cols, subset=subset)
 
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
@@ -11324,6 +11378,9 @@ class _PytaeModule(ModuleType):
     dropna = _VerbDescriptor(dropna)
     drop_nulls = _VerbDescriptor(drop_nulls)
     drop_na = _VerbDescriptor(drop_na)
+    fillna = _VerbDescriptor(fillna)
+    fill_null = _VerbDescriptor(fill_null)
+    fill_nan = _VerbDescriptor(fill_nan)
     by = _VerbDescriptor(by)
 
     ungroup = _VerbDescriptor(ungroup)
@@ -11345,6 +11402,18 @@ class _PytaeModule(ModuleType):
     lit = _VerbDescriptor(lit)
     sample = _VerbDescriptor(sample)
     sample_data = _VerbDescriptor(sample_data)
+    read_parquet = _VerbDescriptor(read_parquet)
+    read_csv = _VerbDescriptor(read_csv)
+    read_ndjson = _VerbDescriptor(read_ndjson)
+    read_json = _VerbDescriptor(read_json)
+    read_ipc = _VerbDescriptor(read_ipc)
+    read_excel = _VerbDescriptor(read_excel)
+    read_database = _VerbDescriptor(read_database)
+    scan_parquet = _VerbDescriptor(scan_parquet)
+    scan_csv = _VerbDescriptor(scan_csv)
+    scan_ndjson = _VerbDescriptor(scan_ndjson)
+    scan_ipc = _VerbDescriptor(scan_ipc)
+    read = _VerbDescriptor(read)
     scan = _VerbDescriptor(scan)
 
 
@@ -11370,6 +11439,17 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "DataFrame",
     "GroupedDataFrame",
+    "read_parquet",
+    "read_csv",
+    "read_ndjson",
+    "read_json",
+    "read_ipc",
+    "read_excel",
+    "read_database",
+    "scan_parquet",
+    "scan_csv",
+    "scan_ndjson",
+    "scan_ipc",
     "read",
     "scan",
     "sample_data",
@@ -11385,6 +11465,9 @@ __all__ = [
     "dropna",
     "drop_nulls",
     "drop_na",
+    "fillna",
+    "fill_null",
+    "fill_nan",
     "agg",
     "join",
     "concat",
@@ -12159,6 +12242,15 @@ class PolarsPtAccessor:
     def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+
     def pick(
         self,
         spec: str,
@@ -12343,6 +12435,15 @@ class PandasPtAccessor:
 
     def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
 
     def pick(
         self,
@@ -17082,6 +17183,8 @@ from pytae.polars_engine import (
     concat_polars,
     distinct_polars,
     dropna_polars,
+    fillna_polars,
+    fill_nan_polars,
     filter_polars,
     handle_missing_polars,
     join_polars,
@@ -17751,6 +17854,43 @@ class DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        """Fill missing values (Arrow null and/or float NaN).
+
+        Parameters
+        ----------
+        value : scalar or dict
+            Fill value. If a dictionary is provided, maps column names to fill values.
+        *cols : str
+            Column names to fill (if value is a scalar).
+        subset : sequence of str, optional
+            Alternative way to specify columns.
+        nans : bool, default True
+            If True, cleans both float NaN and Arrow null on numeric columns.
+            If False, only replaces Arrow null.
+        """
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
+        return self.fillna(value, *cols, subset=subset, nans=False)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Fill only float NaNs, leaving Arrow nulls unchanged."""
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
+        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
+
     def pick(
         self,
         spec: str,
@@ -18264,6 +18404,30 @@ class GroupedDataFrame:
     def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        """Fill missing values (Arrow null and/or float NaN)."""
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
+        return self.fillna(value, *cols, subset=subset, nans=False)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Fill only float NaNs, leaving Arrow nulls unchanged."""
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
+        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
 
     def pick(
         self,
@@ -20401,6 +20565,95 @@ def dropna_polars(
         cond = ~pl.any_horizontal(is_null_exprs)
 
     return df.filter(cond)
+
+
+def fillna_polars(
+    df: Any,
+    value: Any = None,
+    *cols: Any,
+    subset: Any = None,
+    nans: bool = True,
+) -> Any:
+    """Fill missing values (Arrow null and/or float NaN) in a Polars DataFrame or LazyFrame."""
+    import polars as pl
+
+    if value is None:
+        raise TypeError("fillna() missing required argument: 'value'")
+
+    schema = _df_schema(df)
+    target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
+
+    # 1. Dictionary fill: {col_name: fill_value}
+    if isinstance(value, dict):
+        exprs = []
+        for col_name, fill_val in value.items():
+            c = str(col_name)
+            if c in schema:
+                dt = schema[c]
+                is_float = dt.is_float()
+                if nans and is_float and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
+                    exprs.append(pl.col(c).fill_nan(fill_val).fill_null(fill_val))
+                else:
+                    exprs.append(pl.col(c).fill_null(fill_val))
+        return df.with_columns(exprs) if exprs else df
+
+    # 2. Targeted subset/cols with a scalar value
+    if target_cols:
+        exprs = []
+        for c in target_cols:
+            col_str = str(c)
+            if col_str in schema:
+                dt = schema[col_str]
+                is_float = dt.is_float()
+                if nans and is_float and isinstance(value, (int, float)) and not isinstance(value, bool):
+                    exprs.append(pl.col(col_str).fill_nan(value).fill_null(value))
+                else:
+                    exprs.append(pl.col(col_str).fill_null(value))
+        return df.with_columns(exprs) if exprs else df
+
+    # 3. Whole table fill with scalar value
+    if nans and isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            res = df.fill_nan(value)
+        except Exception:
+            res = df
+        return res.fill_null(value)
+    else:
+        return df.fill_null(value)
+
+
+def fill_nan_polars(
+    df: Any,
+    value: Any = None,
+    *cols: Any,
+    subset: Any = None,
+) -> Any:
+    """Fill only float NaNs in a Polars DataFrame or LazyFrame, leaving Arrow nulls unchanged."""
+    import polars as pl
+
+    if value is None:
+        raise TypeError("fill_nan() missing required argument: 'value'")
+
+    schema = _df_schema(df)
+    target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
+
+    if isinstance(value, dict):
+        exprs = []
+        for col_name, fill_val in value.items():
+            c = str(col_name)
+            if c in schema and schema[c].is_float():
+                exprs.append(pl.col(c).fill_nan(fill_val))
+        return df.with_columns(exprs) if exprs else df
+
+    if target_cols:
+        exprs = []
+        for c in target_cols:
+            col_str = str(c)
+            if col_str in schema and schema[col_str].is_float():
+                exprs.append(pl.col(col_str).fill_nan(value))
+        return df.with_columns(exprs) if exprs else df
+
+    return df.fill_nan(value)
 
 
 def rename_polars(df: Any, mapping: dict[str, str]) -> Any:
@@ -23034,106 +23287,116 @@ def _write_parquet(
     print()
 
 
-def read(path: str | Path, **kwargs: Any) -> Any:
-    """Universal high-performance reader powered by Polars.
-
-    Auto-detects format from extension:
-    - .parquet, .pq
-    - .csv
-    - .tsv
-    - .txt
-    - .dat
-    - .jsonl, .ndjson
-    - .xlsx, .xls
-    - .gz compressed files (.csv.gz, etc.)
-    """
+def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a CSV file into a pytae.DataFrame (wraps polars.read_csv)."""
     import polars as pl
 
     from pytae.dataframe import DataFrame
 
-    is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
-    if is_url:
-        target_path: str | Path = path
-        clean_url = str(path).split("?")[0].split("#")[0]
-        suffix, compression = _split_path_suffixes(Path(clean_url))
-    else:
-        p = Path(path)
-        target_path = p
-        suffix, compression = _split_path_suffixes(p)
-
-    if suffix in (".parquet", ".pq"):
-        return DataFrame(pl.read_parquet(target_path, **kwargs))
-    elif suffix in (".csv",):
-        return DataFrame(pl.read_csv(target_path, **kwargs))
-    elif suffix in (".tsv", ".txt"):
-        sep = kwargs.pop("separator", "\t")
-        return DataFrame(pl.read_csv(target_path, separator=sep, **kwargs))
-    elif suffix in (".dat",):
-        sep = kwargs.pop("separator", "|")
-        encoding = kwargs.pop("encoding", "latin-1")
-        return DataFrame(pl.read_csv(target_path, separator=sep, encoding=encoding, **kwargs))
-    elif suffix in (".jsonl", ".ndjson"):
-        return DataFrame(pl.read_ndjson(target_path, **kwargs))
-    elif suffix in (".xlsx", ".xls"):
-        try:
-            return DataFrame(pl.read_excel(target_path, **kwargs))
-        except Exception:
-            import pandas as pd
-
-            return DataFrame(pd.read_excel(target_path, **kwargs))
-    else:
-        try:
-            return DataFrame(pl.read_csv(target_path, **kwargs))
-        except Exception as exc:
-            raise ValueError(f"pt.read: unsupported file format for path '{target_path}'") from exc
+    return DataFrame(pl.read_csv(source, *args, **kwargs))
 
 
-def scan(path: str | Path, **kwargs: Any) -> Any:
-    """Universal high-performance lazy scanner powered by Polars.
-
-    Returns a pytae.DataFrame wrapping a polars.LazyFrame.
-    Auto-detects format from extension:
-    - .parquet, .pq -> pl.scan_parquet
-    - .csv -> pl.scan_csv
-    - .tsv, .txt -> pl.scan_csv(..., separator='\\t')
-    - .dat -> pl.scan_csv(..., separator='|')
-    - .jsonl, .ndjson -> pl.scan_ndjson
-    - .ipc, .arrow -> pl.scan_ipc
-    """
+def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a Parquet file into a pytae.DataFrame (wraps polars.read_parquet)."""
     import polars as pl
 
     from pytae.dataframe import DataFrame
 
-    is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
-    if is_url:
-        target_path: str | Path = path
-        clean_url = str(path).split("?")[0].split("#")[0]
-        suffix, compression = _split_path_suffixes(Path(clean_url))
-    else:
-        p = Path(path)
-        target_path = p
-        suffix, compression = _split_path_suffixes(p)
+    return DataFrame(pl.read_parquet(source, *args, **kwargs))
 
-    if suffix in (".parquet", ".pq"):
-        return DataFrame(pl.scan_parquet(target_path, **kwargs))
-    elif suffix in (".csv",):
-        return DataFrame(pl.scan_csv(target_path, **kwargs))
-    elif suffix in (".tsv", ".txt"):
-        sep = kwargs.pop("separator", "\t")
-        return DataFrame(pl.scan_csv(target_path, separator=sep, **kwargs))
-    elif suffix in (".dat",):
-        sep = kwargs.pop("separator", "|")
-        encoding = kwargs.pop("encoding", "latin-1")
-        return DataFrame(pl.scan_csv(target_path, separator=sep, encoding=encoding, **kwargs))
-    elif suffix in (".jsonl", ".ndjson"):
-        return DataFrame(pl.scan_ndjson(target_path, **kwargs))
-    elif suffix in (".ipc", ".arrow"):
-        return DataFrame(pl.scan_ipc(target_path, **kwargs))
-    else:
-        try:
-            return DataFrame(pl.scan_csv(target_path, **kwargs))
-        except Exception as exc:
-            raise ValueError(f"pt.scan: unsupported file format for lazy scanning of '{target_path}'") from exc
+
+def read_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a newline-delimited JSON (NDJSON/JSONL) file into a pytae.DataFrame (wraps polars.read_ndjson)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_ndjson(source, *args, **kwargs))
+
+
+def read_json(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a JSON file into a pytae.DataFrame (wraps polars.read_json)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_json(source, *args, **kwargs))
+
+
+def read_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read an Arrow IPC / Feather file into a pytae.DataFrame (wraps polars.read_ipc)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_ipc(source, *args, **kwargs))
+
+
+def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read an Excel file into a pytae.DataFrame (wraps polars.read_excel)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    try:
+        return DataFrame(pl.read_excel(source, *args, **kwargs))
+    except Exception:
+        import pandas as pd
+
+        return DataFrame(pd.read_excel(source, *args, **kwargs))
+
+
+def read_database(query: Any, connection: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read SQL query results into a pytae.DataFrame (wraps polars.read_database)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_database(query, connection, *args, **kwargs))
+
+
+def scan_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan a CSV file into a lazy pytae.DataFrame (wraps polars.scan_csv)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_csv(source, *args, **kwargs))
+
+
+def scan_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan a Parquet file into a lazy pytae.DataFrame (wraps polars.scan_parquet)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_parquet(source, *args, **kwargs))
+
+
+def scan_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan an NDJSON file into a lazy pytae.DataFrame (wraps polars.scan_ndjson)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_ndjson(source, *args, **kwargs))
+
+
+def scan_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan an Arrow IPC / Feather file into a lazy pytae.DataFrame (wraps polars.scan_ipc)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_ipc(source, *args, **kwargs))
+
+
+def read(*args: Any, **kwargs: Any) -> None:
+    raise AttributeError("pt.read() has been removed; use pt.read_parquet(), pt.read_csv(), etc. instead")
+
+
+def scan(*args: Any, **kwargs: Any) -> None:
+    raise AttributeError("pt.scan() has been removed; use pt.scan_parquet(), pt.scan_csv(), etc. instead")
 
 ################################################################################
 # FILE: src/pytae/select.py
@@ -28028,6 +28291,130 @@ def test_cli_sql_works_without_duckdb(tmp_path, capsys, monkeypatch):
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
 ################################################################################
+# FILE: tests/test_fillna.py
+################################################################################
+from __future__ import annotations
+
+import math
+from pathlib import Path
+import pandas as pd
+import polars as pl
+import pytest
+
+import pytae as pt
+
+
+def test_df_fillna_scalar_default_nans_true():
+    # Both NaN and null are filled by default
+    df = pt.DataFrame({
+        "flt": [1.0, float("nan"), None],
+        "txt": ["a", None, "c"],
+        "num": [10, None, 30],
+    })
+    res = df.fillna(0.0)
+    assert res["flt"].to_list() == [1.0, 0.0, 0.0]
+    # String column untouched because 0.0 is float
+    assert res["txt"].to_list() == ["a", None, "c"]
+    assert res["num"].to_list() == [10.0, 0.0, 30.0]
+
+
+def test_df_fillna_scalar_nans_false():
+    # Only null is filled; NaN remains intact
+    df = pt.DataFrame({
+        "flt": [1.0, float("nan"), None],
+        "txt": ["a", None, "c"],
+    })
+    res = df.fillna(0.0, nans=False)
+    flt_vals = res["flt"].to_list()
+    assert flt_vals[0] == 1.0
+    assert math.isnan(flt_vals[1])
+    assert flt_vals[2] == 0.0
+
+
+def test_df_fillna_dict():
+    df = pt.DataFrame({
+        "flt": [1.0, float("nan"), None],
+        "txt": ["a", None, "c"],
+        "num": [10, None, 30],
+    })
+    res = df.fillna({"flt": -1.0, "txt": "MISSING", "num": 0})
+    assert res["flt"].to_list() == [1.0, -1.0, -1.0]
+    assert res["txt"].to_list() == ["a", "MISSING", "c"]
+    assert res["num"].to_list() == [10, 0, 30]
+
+
+def test_df_fillna_subset_and_cols():
+    df = pt.DataFrame({
+        "flt1": [1.0, float("nan"), None],
+        "flt2": [2.0, float("nan"), None],
+    })
+    # Target flt1 only via *cols
+    r1 = df.fillna(0.0, "flt1")
+    assert r1["flt1"].to_list() == [1.0, 0.0, 0.0]
+    assert math.isnan(r1["flt2"].to_list()[1])
+    assert r1["flt2"].to_list()[2] is None
+
+    # Target flt2 only via subset=
+    r2 = df.fillna(99.0, subset=["flt2"])
+    assert r2["flt2"].to_list() == [2.0, 99.0, 99.0]
+    assert math.isnan(r2["flt1"].to_list()[1])
+
+
+def test_df_fillna_missing_column_raises_key_error():
+    df = pt.DataFrame({"a": [1, 2, 3]})
+    with pytest.raises(KeyError, match="fillna: column\\(s\\) \\['non_existent'\\] not found"):
+        df.fillna(0, "non_existent")
+
+
+def test_df_fillna_missing_value_raises_type_error():
+    df = pt.DataFrame({"a": [1, 2, 3]})
+    with pytest.raises(TypeError, match="fillna\\(\\) missing required argument: 'value'"):
+        df.fillna()
+
+
+def test_df_fill_null_and_fill_nan():
+    df = pt.DataFrame({
+        "flt": [1.0, float("nan"), None],
+    })
+    # fill_null fills null only (nans=False)
+    r_null = df.fill_null(0.0)
+    assert math.isnan(r_null["flt"].to_list()[1])
+    assert r_null["flt"].to_list()[2] == 0.0
+
+    # fill_nan fills NaN only, leaving null intact
+    r_nan = df.fill_nan(0.0)
+    assert r_nan["flt"].to_list()[0] == 1.0
+    assert r_nan["flt"].to_list()[1] == 0.0
+    assert r_nan["flt"].to_list()[2] is None
+
+
+def test_functional_and_accessor_fillna():
+    # 1. Polars accessor
+    pldf = pl.DataFrame({"x": [1.0, float("nan"), None]})
+    res_pl = pldf.pt.fillna(0.0)
+    assert isinstance(res_pl, pt.DataFrame)
+    assert res_pl["x"].to_list() == [1.0, 0.0, 0.0]
+
+    # 2. Pandas accessor
+    pddf = pd.DataFrame({"x": [1.0, float("nan"), None]})
+    res_pd = pddf.pt.fillna(0.0)
+    assert isinstance(res_pd, pt.DataFrame)
+    assert res_pd["x"].to_list() == [1.0, 0.0, 0.0]
+
+    # 3. Top-level pt.fillna
+    res_fn = pt.fillna(pldf, 5.0)
+    assert res_fn["x"].to_list() == [1.0, 5.0, 5.0]
+
+
+def test_grouped_dataframe_fillna():
+    df = pt.DataFrame({
+        "grp": ["A", "A", "B", "B"],
+        "val": [1.0, float("nan"), None, 4.0],
+    })
+    res = df.by("grp").fillna(0.0)
+    assert res["val"].to_list() == [1.0, 0.0, 0.0, 4.0]
+
+################################################################################
 # FILE: tests/test_import.py
 ################################################################################
 import os
@@ -28378,7 +28765,7 @@ def sample_parquet(tmp_path: Path) -> Path:
 
 
 def test_scan_csv(sample_csv: Path):
-    df = pt.scan(sample_csv)
+    df = pt.scan_csv(sample_csv)
     assert df.is_lazy
     assert "id" in df.columns
     assert "score" in df.columns
@@ -28406,7 +28793,7 @@ def test_scan_csv(sample_csv: Path):
 
 
 def test_scan_parquet(sample_parquet: Path):
-    df = pt.scan(sample_parquet)
+    df = pt.scan_parquet(sample_parquet)
     assert df.is_lazy
     assert df.columns == ["id", "category", "val1", "val2"]
     assert df.shape == (5, 4)
@@ -28425,7 +28812,7 @@ def test_scan_parquet(sample_parquet: Path):
 
 
 def test_lazy_explain(sample_parquet: Path):
-    df = pt.scan(sample_parquet).filter("val1 > 20").select("id", "category")
+    df = pt.scan_parquet(sample_parquet).filter("val1 > 20").select("id", "category")
     assert df.is_lazy
     explanation = df.explain()
     assert isinstance(explanation, str)
@@ -28446,7 +28833,7 @@ def test_lazy_conversion():
 
 
 def test_lazy_verbs(sample_parquet: Path):
-    df = pt.scan(sample_parquet)
+    df = pt.scan_parquet(sample_parquet)
 
     # distinct
     d = df.distinct("category")
@@ -28485,7 +28872,7 @@ def test_lazy_verbs(sample_parquet: Path):
 
 
 def test_lazy_grouped_operations(sample_parquet: Path):
-    df = pt.scan(sample_parquet)
+    df = pt.scan_parquet(sample_parquet)
 
     # Grouped mutate on LazyFrame
     g_mut = df.by("category").mutate(mean_val1="mean(val1)")
@@ -28503,7 +28890,7 @@ def test_lazy_grouped_operations(sample_parquet: Path):
 
 
 def test_lazy_sinking(tmp_path: Path, sample_parquet: Path):
-    df = pt.scan(sample_parquet).filter("val1 >= 30")
+    df = pt.scan_parquet(sample_parquet).filter("val1 >= 30")
     assert df.is_lazy
 
     out_pq = tmp_path / "output.parquet"
@@ -28542,6 +28929,33 @@ def test_cli_lazy_execution(sample_parquet: Path, tmp_path: Path):
     assert list(res.columns) == ["id", "calc"]
     assert len(res) == 4
     assert res["calc"].to_list() == [200, 300, 400, 500]
+
+
+def test_read_and_scan_deprecation():
+    with pytest.raises(AttributeError, match="pt.read\\(\\) has been removed; use pt.read_parquet"):
+        pt.read("some_file.parquet")
+
+    with pytest.raises(AttributeError, match="pt.scan\\(\\) has been removed; use pt.scan_parquet"):
+        pt.scan("some_file.parquet")
+
+
+def test_lazy_fillna():
+    ldf = pl.LazyFrame({"x": [1.0, float("nan"), None], "y": ["A", None, "B"]})
+    df = pt.DataFrame(ldf)
+    assert df.is_lazy
+
+    filled = df.fillna(0.0)
+    assert filled.is_lazy
+    collected = filled.collect()
+    assert collected["x"].to_list() == [1.0, 0.0, 0.0]
+    assert collected["y"].to_list() == ["A", None, "B"]
+
+    # Dict fill on lazy frame
+    d_filled = df.fillna({"x": 99.0, "y": "MISSING"})
+    assert d_filled.is_lazy
+    c2 = d_filled.collect()
+    assert c2["x"].to_list() == [1.0, 99.0, 99.0]
+    assert c2["y"].to_list() == ["A", "MISSING", "B"]
 
 ################################################################################
 # FILE: tests/test_mutate.py
@@ -31752,6 +32166,66 @@ def test_compressed_txt_and_dat(tmp_path):
     dreader = get_reader(dat_gz)
     assert dreader.columns() == ["a", "b"]
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
+
+
+def test_dedicated_readers_and_scanners(tmp_path):
+    import polars as pl
+    import pytae as pt
+
+    raw = pl.DataFrame({"x": [1, 2, 3], "y": ["a", "b", "c"]})
+
+    # 1. Parquet
+    pq_path = tmp_path / "test.parquet"
+    raw.write_parquet(pq_path)
+    df_pq = pt.read_parquet(pq_path)
+    assert isinstance(df_pq, pt.DataFrame)
+    assert not df_pq.is_lazy
+    assert df_pq["x"].to_list() == [1, 2, 3]
+
+    lazy_pq = pt.scan_parquet(pq_path)
+    assert lazy_pq.is_lazy
+    assert lazy_pq.collect()["x"].to_list() == [1, 2, 3]
+
+    # 2. CSV
+    csv_path = tmp_path / "test.csv"
+    raw.write_csv(csv_path)
+    df_csv = pt.read_csv(csv_path)
+    assert isinstance(df_csv, pt.DataFrame)
+    assert not df_csv.is_lazy
+    assert df_csv["y"].to_list() == ["a", "b", "c"]
+
+    lazy_csv = pt.scan_csv(csv_path)
+    assert lazy_csv.is_lazy
+    assert lazy_csv.collect()["y"].to_list() == ["a", "b", "c"]
+
+    # 3. NDJSON
+    ndjson_path = tmp_path / "test.ndjson"
+    raw.write_ndjson(ndjson_path)
+    df_nd = pt.read_ndjson(ndjson_path)
+    assert isinstance(df_nd, pt.DataFrame)
+    assert df_nd["x"].to_list() == [1, 2, 3]
+
+    lazy_nd = pt.scan_ndjson(ndjson_path)
+    assert lazy_nd.is_lazy
+    assert lazy_nd.collect()["x"].to_list() == [1, 2, 3]
+
+    # 4. JSON
+    json_path = tmp_path / "test.json"
+    raw.write_json(json_path)
+    df_json = pt.read_json(json_path)
+    assert isinstance(df_json, pt.DataFrame)
+    assert df_json["x"].to_list() == [1, 2, 3]
+
+    # 5. IPC
+    ipc_path = tmp_path / "test.arrow"
+    raw.write_ipc(ipc_path)
+    df_ipc = pt.read_ipc(ipc_path)
+    assert isinstance(df_ipc, pt.DataFrame)
+    assert df_ipc["x"].to_list() == [1, 2, 3]
+
+    lazy_ipc = pt.scan_ipc(ipc_path)
+    assert lazy_ipc.is_lazy
+    assert lazy_ipc.collect()["x"].to_list() == [1, 2, 3]
 
 ################################################################################
 # FILE: tests/test_select.py

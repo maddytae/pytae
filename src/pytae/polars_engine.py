@@ -247,6 +247,95 @@ def dropna_polars(
     return df.filter(cond)
 
 
+def fillna_polars(
+    df: Any,
+    value: Any = None,
+    *cols: Any,
+    subset: Any = None,
+    nans: bool = True,
+) -> Any:
+    """Fill missing values (Arrow null and/or float NaN) in a Polars DataFrame or LazyFrame."""
+    import polars as pl
+
+    if value is None:
+        raise TypeError("fillna() missing required argument: 'value'")
+
+    schema = _df_schema(df)
+    target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
+
+    # 1. Dictionary fill: {col_name: fill_value}
+    if isinstance(value, dict):
+        exprs = []
+        for col_name, fill_val in value.items():
+            c = str(col_name)
+            if c in schema:
+                dt = schema[c]
+                is_float = dt.is_float()
+                if nans and is_float and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
+                    exprs.append(pl.col(c).fill_nan(fill_val).fill_null(fill_val))
+                else:
+                    exprs.append(pl.col(c).fill_null(fill_val))
+        return df.with_columns(exprs) if exprs else df
+
+    # 2. Targeted subset/cols with a scalar value
+    if target_cols:
+        exprs = []
+        for c in target_cols:
+            col_str = str(c)
+            if col_str in schema:
+                dt = schema[col_str]
+                is_float = dt.is_float()
+                if nans and is_float and isinstance(value, (int, float)) and not isinstance(value, bool):
+                    exprs.append(pl.col(col_str).fill_nan(value).fill_null(value))
+                else:
+                    exprs.append(pl.col(col_str).fill_null(value))
+        return df.with_columns(exprs) if exprs else df
+
+    # 3. Whole table fill with scalar value
+    if nans and isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            res = df.fill_nan(value)
+        except Exception:
+            res = df
+        return res.fill_null(value)
+    else:
+        return df.fill_null(value)
+
+
+def fill_nan_polars(
+    df: Any,
+    value: Any = None,
+    *cols: Any,
+    subset: Any = None,
+) -> Any:
+    """Fill only float NaNs in a Polars DataFrame or LazyFrame, leaving Arrow nulls unchanged."""
+    import polars as pl
+
+    if value is None:
+        raise TypeError("fill_nan() missing required argument: 'value'")
+
+    schema = _df_schema(df)
+    target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
+
+    if isinstance(value, dict):
+        exprs = []
+        for col_name, fill_val in value.items():
+            c = str(col_name)
+            if c in schema and schema[c].is_float():
+                exprs.append(pl.col(c).fill_nan(fill_val))
+        return df.with_columns(exprs) if exprs else df
+
+    if target_cols:
+        exprs = []
+        for c in target_cols:
+            col_str = str(c)
+            if col_str in schema and schema[col_str].is_float():
+                exprs.append(pl.col(col_str).fill_nan(value))
+        return df.with_columns(exprs) if exprs else df
+
+    return df.fill_nan(value)
+
+
 def rename_polars(df: Any, mapping: dict[str, str]) -> Any:
     """Rename columns in a Polars DataFrame or LazyFrame."""
     return df.rename(mapping)

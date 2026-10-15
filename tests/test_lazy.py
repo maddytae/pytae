@@ -41,7 +41,7 @@ def sample_parquet(tmp_path: Path) -> Path:
 
 
 def test_scan_csv(sample_csv: Path):
-    df = pt.scan(sample_csv)
+    df = pt.scan_csv(sample_csv)
     assert df.is_lazy
     assert "id" in df.columns
     assert "score" in df.columns
@@ -69,7 +69,7 @@ def test_scan_csv(sample_csv: Path):
 
 
 def test_scan_parquet(sample_parquet: Path):
-    df = pt.scan(sample_parquet)
+    df = pt.scan_parquet(sample_parquet)
     assert df.is_lazy
     assert df.columns == ["id", "category", "val1", "val2"]
     assert df.shape == (5, 4)
@@ -88,7 +88,7 @@ def test_scan_parquet(sample_parquet: Path):
 
 
 def test_lazy_explain(sample_parquet: Path):
-    df = pt.scan(sample_parquet).filter("val1 > 20").select("id", "category")
+    df = pt.scan_parquet(sample_parquet).filter("val1 > 20").select("id", "category")
     assert df.is_lazy
     explanation = df.explain()
     assert isinstance(explanation, str)
@@ -109,7 +109,7 @@ def test_lazy_conversion():
 
 
 def test_lazy_verbs(sample_parquet: Path):
-    df = pt.scan(sample_parquet)
+    df = pt.scan_parquet(sample_parquet)
 
     # distinct
     d = df.distinct("category")
@@ -148,7 +148,7 @@ def test_lazy_verbs(sample_parquet: Path):
 
 
 def test_lazy_grouped_operations(sample_parquet: Path):
-    df = pt.scan(sample_parquet)
+    df = pt.scan_parquet(sample_parquet)
 
     # Grouped mutate on LazyFrame
     g_mut = df.by("category").mutate(mean_val1="mean(val1)")
@@ -166,7 +166,7 @@ def test_lazy_grouped_operations(sample_parquet: Path):
 
 
 def test_lazy_sinking(tmp_path: Path, sample_parquet: Path):
-    df = pt.scan(sample_parquet).filter("val1 >= 30")
+    df = pt.scan_parquet(sample_parquet).filter("val1 >= 30")
     assert df.is_lazy
 
     out_pq = tmp_path / "output.parquet"
@@ -205,3 +205,31 @@ def test_cli_lazy_execution(sample_parquet: Path, tmp_path: Path):
     assert list(res.columns) == ["id", "calc"]
     assert len(res) == 4
     assert res["calc"].to_list() == [200, 300, 400, 500]
+
+
+def test_read_and_scan_deprecation():
+    with pytest.raises(AttributeError, match="pt.read\\(\\) has been removed; use pt.read_parquet"):
+        pt.read("some_file.parquet")
+
+    with pytest.raises(AttributeError, match="pt.scan\\(\\) has been removed; use pt.scan_parquet"):
+        pt.scan("some_file.parquet")
+
+
+def test_lazy_fillna():
+    ldf = pl.LazyFrame({"x": [1.0, float("nan"), None], "y": ["A", None, "B"]})
+    df = pt.DataFrame(ldf)
+    assert df.is_lazy
+
+    filled = df.fillna(0.0)
+    assert filled.is_lazy
+    collected = filled.collect()
+    assert collected["x"].to_list() == [1.0, 0.0, 0.0]
+    assert collected["y"].to_list() == ["A", None, "B"]
+
+    # Dict fill on lazy frame
+    d_filled = df.fillna({"x": 99.0, "y": "MISSING"})
+    assert d_filled.is_lazy
+    c2 = d_filled.collect()
+    assert c2["x"].to_list() == [1.0, 99.0, 99.0]
+    assert c2["y"].to_list() == ["A", "MISSING", "B"]
+

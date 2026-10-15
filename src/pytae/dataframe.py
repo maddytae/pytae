@@ -19,6 +19,8 @@ from pytae.polars_engine import (
     concat_polars,
     distinct_polars,
     dropna_polars,
+    fillna_polars,
+    fill_nan_polars,
     filter_polars,
     handle_missing_polars,
     join_polars,
@@ -688,6 +690,43 @@ class DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        """Fill missing values (Arrow null and/or float NaN).
+
+        Parameters
+        ----------
+        value : scalar or dict
+            Fill value. If a dictionary is provided, maps column names to fill values.
+        *cols : str
+            Column names to fill (if value is a scalar).
+        subset : sequence of str, optional
+            Alternative way to specify columns.
+        nans : bool, default True
+            If True, cleans both float NaN and Arrow null on numeric columns.
+            If False, only replaces Arrow null.
+        """
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
+        return self.fillna(value, *cols, subset=subset, nans=False)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Fill only float NaNs, leaving Arrow nulls unchanged."""
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
+        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
+
     def pick(
         self,
         spec: str,
@@ -1201,6 +1240,30 @@ class GroupedDataFrame:
     def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Alias for dropna()."""
         return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        """Fill missing values (Arrow null and/or float NaN)."""
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
+        return self.fillna(value, *cols, subset=subset, nans=False)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        """Fill only float NaNs, leaving Arrow nulls unchanged."""
+        if cols or subset is not None:
+            target = list(subset) if subset is not None else list(cols)
+            avail = set(self.columns)
+            missing = [str(c) for c in target if str(c) not in avail]
+            if missing:
+                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
+        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
 
     def pick(
         self,

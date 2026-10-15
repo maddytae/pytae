@@ -3,7 +3,7 @@
 This document outlines Pytae's foundational philosophy regarding missing data, detailing the design, implementation, and behavior of `dropna` / `drop_nulls` across both the **Python Library API** and the **Command-Line Interface (CLI)**.
 
 > [!NOTE]
-> For complete documentation on reading files (`pt.read`), lazy scanning (`pt.scan`), streaming sinks (`to_parquet`, `to_csv`), system clipboard, and supported file formats, see the **[Data Input & Output (I/O) Guide](library/io.md)**.
+> For complete documentation on reading files (`pt.read_parquet`, `pt.read_csv`, etc.), lazy scanning (`pt.scan_parquet`, `pt.scan_csv`, etc.), streaming sinks (`to_parquet`, `to_csv`), system clipboard, and supported file formats, see the **[Data Input & Output (I/O) Guide](library/io.md)**.
 
 ---
 
@@ -230,7 +230,7 @@ Pytae provides complete 100% interchangeability across terminology:
 import pytae as pt
 
 # Lazy scan or eager DataFrame
-df = pt.read("transactions.parquet")
+df = pt.read_parquet("transactions.parquet")
 
 # Drops ONLY rows where all columns are null or NaN
 clean_df = df.dropna()
@@ -255,7 +255,7 @@ pytae transactions.parquet -drop_nulls -shape
 ```python
 import pytae as pt
 
-df = pt.read("penguins.parquet")
+df = pt.read_parquet("penguins.parquet")
 
 # Drops rows where body_mass_g OR sex is missing (how='any' on specified subset)
 complete_cases = df.dropna("body_mass_g", "sex")
@@ -281,7 +281,7 @@ pytae penguins.parquet -drop_nulls "body_mass_g, sex" -shape
 ```python
 import pytae as pt
 
-df = pt.read("penguins.parquet")
+df = pt.read_parquet("penguins.parquet")
 
 # Drops any row that contains ANY null or NaN in ANY column (344 -> 333 rows)
 strict_complete = df.dropna(how="any")

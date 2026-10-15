@@ -1027,103 +1027,114 @@ def _write_parquet(
     print()
 
 
-def read(path: str | Path, **kwargs: Any) -> Any:
-    """Universal high-performance reader powered by Polars.
-
-    Auto-detects format from extension:
-    - .parquet, .pq
-    - .csv
-    - .tsv
-    - .txt
-    - .dat
-    - .jsonl, .ndjson
-    - .xlsx, .xls
-    - .gz compressed files (.csv.gz, etc.)
-    """
+def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a CSV file into a pytae.DataFrame (wraps polars.read_csv)."""
     import polars as pl
 
     from pytae.dataframe import DataFrame
 
-    is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
-    if is_url:
-        target_path: str | Path = path
-        clean_url = str(path).split("?")[0].split("#")[0]
-        suffix, compression = _split_path_suffixes(Path(clean_url))
-    else:
-        p = Path(path)
-        target_path = p
-        suffix, compression = _split_path_suffixes(p)
-
-    if suffix in (".parquet", ".pq"):
-        return DataFrame(pl.read_parquet(target_path, **kwargs))
-    elif suffix in (".csv",):
-        return DataFrame(pl.read_csv(target_path, **kwargs))
-    elif suffix in (".tsv", ".txt"):
-        sep = kwargs.pop("separator", "\t")
-        return DataFrame(pl.read_csv(target_path, separator=sep, **kwargs))
-    elif suffix in (".dat",):
-        sep = kwargs.pop("separator", "|")
-        encoding = kwargs.pop("encoding", "latin-1")
-        return DataFrame(pl.read_csv(target_path, separator=sep, encoding=encoding, **kwargs))
-    elif suffix in (".jsonl", ".ndjson"):
-        return DataFrame(pl.read_ndjson(target_path, **kwargs))
-    elif suffix in (".xlsx", ".xls"):
-        try:
-            return DataFrame(pl.read_excel(target_path, **kwargs))
-        except Exception:
-            import pandas as pd
-
-            return DataFrame(pd.read_excel(target_path, **kwargs))
-    else:
-        try:
-            return DataFrame(pl.read_csv(target_path, **kwargs))
-        except Exception as exc:
-            raise ValueError(f"pt.read: unsupported file format for path '{target_path}'") from exc
+    return DataFrame(pl.read_csv(source, *args, **kwargs))
 
 
-def scan(path: str | Path, **kwargs: Any) -> Any:
-    """Universal high-performance lazy scanner powered by Polars.
-
-    Returns a pytae.DataFrame wrapping a polars.LazyFrame.
-    Auto-detects format from extension:
-    - .parquet, .pq -> pl.scan_parquet
-    - .csv -> pl.scan_csv
-    - .tsv, .txt -> pl.scan_csv(..., separator='\\t')
-    - .dat -> pl.scan_csv(..., separator='|')
-    - .jsonl, .ndjson -> pl.scan_ndjson
-    - .ipc, .arrow -> pl.scan_ipc
-    """
+def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a Parquet file into a pytae.DataFrame (wraps polars.read_parquet)."""
     import polars as pl
 
     from pytae.dataframe import DataFrame
 
-    is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
-    if is_url:
-        target_path: str | Path = path
-        clean_url = str(path).split("?")[0].split("#")[0]
-        suffix, compression = _split_path_suffixes(Path(clean_url))
-    else:
-        p = Path(path)
-        target_path = p
-        suffix, compression = _split_path_suffixes(p)
+    return DataFrame(pl.read_parquet(source, *args, **kwargs))
 
-    if suffix in (".parquet", ".pq"):
-        return DataFrame(pl.scan_parquet(target_path, **kwargs))
-    elif suffix in (".csv",):
-        return DataFrame(pl.scan_csv(target_path, **kwargs))
-    elif suffix in (".tsv", ".txt"):
-        sep = kwargs.pop("separator", "\t")
-        return DataFrame(pl.scan_csv(target_path, separator=sep, **kwargs))
-    elif suffix in (".dat",):
-        sep = kwargs.pop("separator", "|")
-        encoding = kwargs.pop("encoding", "latin-1")
-        return DataFrame(pl.scan_csv(target_path, separator=sep, encoding=encoding, **kwargs))
-    elif suffix in (".jsonl", ".ndjson"):
-        return DataFrame(pl.scan_ndjson(target_path, **kwargs))
-    elif suffix in (".ipc", ".arrow"):
-        return DataFrame(pl.scan_ipc(target_path, **kwargs))
-    else:
-        try:
-            return DataFrame(pl.scan_csv(target_path, **kwargs))
-        except Exception as exc:
-            raise ValueError(f"pt.scan: unsupported file format for lazy scanning of '{target_path}'") from exc
+
+def read_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a newline-delimited JSON (NDJSON/JSONL) file into a pytae.DataFrame (wraps polars.read_ndjson)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_ndjson(source, *args, **kwargs))
+
+
+def read_json(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a JSON file into a pytae.DataFrame (wraps polars.read_json)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_json(source, *args, **kwargs))
+
+
+def read_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read an Arrow IPC / Feather file into a pytae.DataFrame (wraps polars.read_ipc)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_ipc(source, *args, **kwargs))
+
+
+def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read an Excel file into a pytae.DataFrame (wraps polars.read_excel)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    try:
+        return DataFrame(pl.read_excel(source, *args, **kwargs))
+    except Exception:
+        import pandas as pd
+
+        return DataFrame(pd.read_excel(source, *args, **kwargs))
+
+
+def read_database(query: Any, connection: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read SQL query results into a pytae.DataFrame (wraps polars.read_database)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.read_database(query, connection, *args, **kwargs))
+
+
+def scan_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan a CSV file into a lazy pytae.DataFrame (wraps polars.scan_csv)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_csv(source, *args, **kwargs))
+
+
+def scan_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan a Parquet file into a lazy pytae.DataFrame (wraps polars.scan_parquet)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_parquet(source, *args, **kwargs))
+
+
+def scan_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan an NDJSON file into a lazy pytae.DataFrame (wraps polars.scan_ndjson)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_ndjson(source, *args, **kwargs))
+
+
+def scan_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan an Arrow IPC / Feather file into a lazy pytae.DataFrame (wraps polars.scan_ipc)."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(pl.scan_ipc(source, *args, **kwargs))
+
+
+def read(*args: Any, **kwargs: Any) -> None:
+    raise AttributeError("pt.read() has been removed; use pt.read_parquet(), pt.read_csv(), etc. instead")
+
+
+def scan(*args: Any, **kwargs: Any) -> None:
+    raise AttributeError("pt.scan() has been removed; use pt.scan_parquet(), pt.scan_csv(), etc. instead")
+

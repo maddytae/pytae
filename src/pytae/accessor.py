@@ -44,6 +44,15 @@ class PolarsPtAccessor:
     def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+
     def pick(
         self,
         spec: str,
@@ -228,6 +237,15 @@ class PandasPtAccessor:
 
     def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
+
+    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
+
+    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
 
     def pick(
         self,

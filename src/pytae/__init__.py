@@ -15,7 +15,21 @@ from pytae._parsing import lit
 from pytae.accessor import PandasPtAccessor, PolarsPtAccessor
 from pytae.dataframe import DataFrame, GroupedDataFrame
 from pytae.other_utilities import format_glimpse
-from pytae.readers import read, scan
+from pytae.readers import (
+    read,
+    read_csv,
+    read_database,
+    read_excel,
+    read_ipc,
+    read_json,
+    read_ndjson,
+    read_parquet,
+    scan,
+    scan_csv,
+    scan_ipc,
+    scan_ndjson,
+    scan_parquet,
+)
 from pytae.select import everything
 
 __version__ = "3.10.0"
@@ -53,7 +67,7 @@ def sample(
     if isinstance(data_or_name, str) and (n is None and frac is None and fraction is None):
         if data_or_name in _DATASET_NAMES:
             if data_or_name not in _cache:
-                _cache[data_or_name] = read(DATA_PATH / f"{data_or_name}.parquet")
+                _cache[data_or_name] = read_parquet(DATA_PATH / f"{data_or_name}.parquet")
             return _cache[data_or_name].copy()
         available = ", ".join(_DATASET_NAMES) or "(none)"
         raise KeyError(f"unknown dataset {data_or_name!r}; available: {available}")
@@ -168,6 +182,18 @@ def drop_nulls(df: Any, *cols: Any, subset: Any = None, how: str | None = None, 
 
 def drop_na(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+
+
+def fillna(df: Any, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+    return DataFrame(df).fillna(value, *cols, subset=subset, nans=nans)
+
+
+def fill_null(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+    return DataFrame(df).fill_null(value, *cols, subset=subset)
+
+
+def fill_nan(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
+    return DataFrame(df).fill_nan(value, *cols, subset=subset)
 
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
@@ -324,6 +350,9 @@ class _PytaeModule(ModuleType):
     dropna = _VerbDescriptor(dropna)
     drop_nulls = _VerbDescriptor(drop_nulls)
     drop_na = _VerbDescriptor(drop_na)
+    fillna = _VerbDescriptor(fillna)
+    fill_null = _VerbDescriptor(fill_null)
+    fill_nan = _VerbDescriptor(fill_nan)
     by = _VerbDescriptor(by)
 
     ungroup = _VerbDescriptor(ungroup)
@@ -345,6 +374,18 @@ class _PytaeModule(ModuleType):
     lit = _VerbDescriptor(lit)
     sample = _VerbDescriptor(sample)
     sample_data = _VerbDescriptor(sample_data)
+    read_parquet = _VerbDescriptor(read_parquet)
+    read_csv = _VerbDescriptor(read_csv)
+    read_ndjson = _VerbDescriptor(read_ndjson)
+    read_json = _VerbDescriptor(read_json)
+    read_ipc = _VerbDescriptor(read_ipc)
+    read_excel = _VerbDescriptor(read_excel)
+    read_database = _VerbDescriptor(read_database)
+    scan_parquet = _VerbDescriptor(scan_parquet)
+    scan_csv = _VerbDescriptor(scan_csv)
+    scan_ndjson = _VerbDescriptor(scan_ndjson)
+    scan_ipc = _VerbDescriptor(scan_ipc)
+    read = _VerbDescriptor(read)
     scan = _VerbDescriptor(scan)
 
 
@@ -370,6 +411,17 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "DataFrame",
     "GroupedDataFrame",
+    "read_parquet",
+    "read_csv",
+    "read_ndjson",
+    "read_json",
+    "read_ipc",
+    "read_excel",
+    "read_database",
+    "scan_parquet",
+    "scan_csv",
+    "scan_ndjson",
+    "scan_ipc",
     "read",
     "scan",
     "sample_data",
@@ -385,6 +437,9 @@ __all__ = [
     "dropna",
     "drop_nulls",
     "drop_na",
+    "fillna",
+    "fill_null",
+    "fill_nan",
     "agg",
     "join",
     "concat",

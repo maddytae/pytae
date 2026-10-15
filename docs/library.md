@@ -70,7 +70,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 
 | Module | Verbs / API | Description | Feature Guide |
 |---|---|---|---|
-| **Data I/O & Joins** | `pt.read()`, `pt.scan()`, `df.join()`, `pt.concat()`, `df.to_parquet()`, `df.to_csv()`, `df.to_clip()`, `pt.sample()` | Eager reading, lazy scanning, pushdowns, relational joins, row stacking, streaming sinks, interop, and dataset sampling | [library/io.md](library/io.md) |
+| **Data I/O & Joins** | `pt.read_parquet()`, `pt.read_csv()`, `pt.scan_parquet()`, `pt.scan_csv()`, `df.join()`, `pt.concat()`, `df.to_parquet()`, `df.to_csv()`, `df.to_clip()`, `pt.sample()` | Format-specific eager reading, lazy scanning, pushdowns, relational joins, row stacking, streaming sinks, interop, and dataset sampling | [library/io.md](library/io.md) |
 | **Filtering** | `pt.filter()`, `df.pt.filter()` | Clean filters via callables (lambdas), expressions, dicts, or kwargs (comparisons, intervals, list membership, string ops, null checks) | [library/filter.md](library/filter.md) |
 | **Selection** | `pt.select()`, `df.pt.select()` | Pick and reorder columns by name, slices, regex, pattern matching, or data types | [library/select.md](library/select.md) |
 | **Mutating** | `pt.mutate()`, `df.pt.mutate()` | Create/overwrite columns via formulas, multi-column transforms (`(col1, col2) = _ * 2`), window transforms via standalone `pt.by()`, `if_else()`, `case_when()`, `coalesce()`, `map()`, or `@locals` | [library/mutate.md](library/mutate.md) |
@@ -81,7 +81,7 @@ Detailed guides with step-by-step walkthroughs, outputs, and edge cases are main
 | **2D Pivot Tables** | `pt.pivot()`, `df.pt.pivot()` | Excel-style multi-dimensional aggregation matrices with automatic reset index and flat 1D columns (`r=`, `c=`, `v=`, `a=`) | [library/pivot.md](library/pivot.md) |
 | **Aggregation** | `pt.agg()`, `df.pt.agg()` | Summary statistics grouped beforehand via standalone `pt.by()` (`n` for row counts), or whole table | [library/agg.md](library/agg.md) |
 | **Plotting** | `pt.Plotter`, `df.pt.plot()` | Method-chainable visualizations, secondary axes, multi-panel mosaic dashboards, and small multiples | [library/plotting.ipynb](library/plotting.ipynb) |
-| **Utilities** | `glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `cols`, `to_clip` | Transposed column overview, ASCII frequency bars & histograms, header normalization, scoped cell value replacement, NA imputation, clipboard | [library/other_utilities.md](library/other_utilities.md) |
+| **Utilities** | `glimpse`, `freq`, `hist`, `clean_columns`, `replace_values`, `handle_missing`, `fillna`, `dropna`, `cols`, `to_clip` | Transposed column overview, ASCII frequency bars & histograms, header normalization, scoped cell value replacement, NA imputation/filling/dropping, clipboard | [library/other_utilities.md](library/other_utilities.md) |
 
 ---
 

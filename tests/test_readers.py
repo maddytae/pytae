@@ -285,3 +285,64 @@ def test_compressed_txt_and_dat(tmp_path):
     dreader = get_reader(dat_gz)
     assert dreader.columns() == ["a", "b"]
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
+
+
+def test_dedicated_readers_and_scanners(tmp_path):
+    import polars as pl
+    import pytae as pt
+
+    raw = pl.DataFrame({"x": [1, 2, 3], "y": ["a", "b", "c"]})
+
+    # 1. Parquet
+    pq_path = tmp_path / "test.parquet"
+    raw.write_parquet(pq_path)
+    df_pq = pt.read_parquet(pq_path)
+    assert isinstance(df_pq, pt.DataFrame)
+    assert not df_pq.is_lazy
+    assert df_pq["x"].to_list() == [1, 2, 3]
+
+    lazy_pq = pt.scan_parquet(pq_path)
+    assert lazy_pq.is_lazy
+    assert lazy_pq.collect()["x"].to_list() == [1, 2, 3]
+
+    # 2. CSV
+    csv_path = tmp_path / "test.csv"
+    raw.write_csv(csv_path)
+    df_csv = pt.read_csv(csv_path)
+    assert isinstance(df_csv, pt.DataFrame)
+    assert not df_csv.is_lazy
+    assert df_csv["y"].to_list() == ["a", "b", "c"]
+
+    lazy_csv = pt.scan_csv(csv_path)
+    assert lazy_csv.is_lazy
+    assert lazy_csv.collect()["y"].to_list() == ["a", "b", "c"]
+
+    # 3. NDJSON
+    ndjson_path = tmp_path / "test.ndjson"
+    raw.write_ndjson(ndjson_path)
+    df_nd = pt.read_ndjson(ndjson_path)
+    assert isinstance(df_nd, pt.DataFrame)
+    assert df_nd["x"].to_list() == [1, 2, 3]
+
+    lazy_nd = pt.scan_ndjson(ndjson_path)
+    assert lazy_nd.is_lazy
+    assert lazy_nd.collect()["x"].to_list() == [1, 2, 3]
+
+    # 4. JSON
+    json_path = tmp_path / "test.json"
+    raw.write_json(json_path)
+    df_json = pt.read_json(json_path)
+    assert isinstance(df_json, pt.DataFrame)
+    assert df_json["x"].to_list() == [1, 2, 3]
+
+    # 5. IPC
+    ipc_path = tmp_path / "test.arrow"
+    raw.write_ipc(ipc_path)
+    df_ipc = pt.read_ipc(ipc_path)
+    assert isinstance(df_ipc, pt.DataFrame)
+    assert df_ipc["x"].to_list() == [1, 2, 3]
+
+    lazy_ipc = pt.scan_ipc(ipc_path)
+    assert lazy_ipc.is_lazy
+    assert lazy_ipc.collect()["x"].to_list() == [1, 2, 3]
+
