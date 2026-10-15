@@ -23,11 +23,13 @@ def test_agg_df_sum():
 
 
 def test_all_agg():
-    df = pd.DataFrame({
-        "id": ["a", "b", "c", "d", "e", "", "f", "f"],
-        "balance": [10, 20, 0, 21, 15, 10, 20, 25],
-        "country": ["sg", "cn", "ca", "np", "in", "in", "in", "in"],
-    })
+    df = pd.DataFrame(
+        {
+            "id": ["a", "b", "c", "d", "e", "", "f", "f"],
+            "balance": [10, 20, 0, 21, 15, 10, 20, 25],
+            "country": ["sg", "cn", "ca", "np", "in", "in", "in", "in"],
+        }
+    )
     df["id"] = df["id"].replace("", np.nan)
 
     # Default dropna=False keeps NA groups
@@ -49,11 +51,13 @@ def test_all_agg():
 
 
 def test_all_agg_drop_na():
-    df = pd.DataFrame({
-        "id": ["a", "b", "c", "d", "e", "", "f", "f"],
-        "balance": [10, 20, 0, 21, 15, 10, 20, 25],
-        "country": ["sg", "cn", "ca", "np", "in", "in", "in", "in"],
-    })
+    df = pd.DataFrame(
+        {
+            "id": ["a", "b", "c", "d", "e", "", "f", "f"],
+            "balance": [10, 20, 0, 21, 15, 10, 20, 25],
+            "country": ["sg", "cn", "ca", "np", "in", "in", "in", "in"],
+        }
+    )
     df["id"] = df["id"].replace("", np.nan)
 
     result = pt.agg(pt.by(df, "id", "country"), a=["sum", "min", "mean", "min", "max", "n"], dropna=True)
@@ -105,11 +109,13 @@ def test_agg_df_rejects_dictionary():
 
 
 def test_agg_df_numeric_group_by():
-    df = pd.DataFrame({
-        "year": [2023, 2023, 2024],
-        "sales": [100.0, 200.0, 300.0],
-        "units": [10, 20, 30],
-    })
+    df = pd.DataFrame(
+        {
+            "year": [2023, 2023, 2024],
+            "sales": [100.0, 200.0, 300.0],
+            "units": [10, 20, 30],
+        }
+    )
     res = df.pt.by("year").pt.agg(a=["sum", "n"])
     assert list(res.columns) == ["year", "n", "sales", "units"]
     assert list(res["year"]) == [2023, 2024]
@@ -119,10 +125,12 @@ def test_agg_df_numeric_group_by():
 
 
 def test_agg_df_whole_table_summary():
-    df = pd.DataFrame({
-        "sales": [100.0, 200.0, 300.0],
-        "units": [10, 20, 30],
-    })
+    df = pd.DataFrame(
+        {
+            "sales": [100.0, 200.0, 300.0],
+            "units": [10, 20, 30],
+        }
+    )
     res = df.pt.agg(a=["sum", "mean", "n"])
     assert len(res) == 1
     assert list(res.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
@@ -132,11 +140,13 @@ def test_agg_df_whole_table_summary():
 
 
 def test_agg_df_string_spec_with_brackets():
-    df = pd.DataFrame({
-        "smoker status": ["Yes", "Yes", "No"],
-        "tip amount": [2.0, 4.0, 3.0],
-        "total bill": [10.0, 20.0, 30.0],
-    })
+    df = pd.DataFrame(
+        {
+            "smoker status": ["Yes", "Yes", "No"],
+            "tip amount": [2.0, 4.0, 3.0],
+            "total bill": [10.0, 20.0, 30.0],
+        }
+    )
     # 1. Single string spec with brackets
     res1 = df.pt.by("[smoker status]").pt.agg("[tip amount] = mean, [total bill] = mean, n = n")
     assert list(res1.columns) == ["smoker status", "tip amount", "total bill", "n"]
@@ -159,7 +169,9 @@ def test_agg_df_string_spec_with_brackets():
     assert list(res4["total bill"]) == [30.0, 15.0]
 
     # 5. Named aggregation with brackets in output and source
-    res5 = df.pt.by("[smoker status]").pt.agg("[avg bill] = [total bill]:mean, [bill sum] = [total bill]:sum, [count] = n")
+    res5 = df.pt.by("[smoker status]").pt.agg(
+        "[avg bill] = [total bill]:mean, [bill sum] = [total bill]:sum, [count] = n"
+    )
     assert list(res5.columns) == ["smoker status", "avg bill", "bill sum", "count"]
     assert list(res5["avg bill"]) == [30.0, 15.0]
     assert list(res5["bill sum"]) == [30.0, 30.0]
@@ -187,8 +199,7 @@ def test_agg_df_whole_frame_string_spec():
 def test_agg_df_user_pipeline_tips():
     tips = pt.sample("tips")
     res = (
-        tips
-        .pt.filter(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
+        tips.pt.filter(day=["Sat", "Sun"], time="Dinner", size=">= 2", total_bill="> 10")
         .pt.select("smoker", "tip", "total_bill")
         .rename(columns={"total_bill": "total bill"})
         .pt.by("smoker")
@@ -239,6 +250,7 @@ def test_agg_df_output_name_collides_with_group_col():
     with pytest.raises(ValueError, match="collides with group column"):
         df.pt.by("Region").pt.agg("Region = Sales:sum")
 
+
 def test_agg_df_duplicate_output_cols():
     # Issue 1: duplicate output column name in named_aggs / output_cols
     df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
@@ -254,11 +266,13 @@ def test_agg_df_list_collision_with_group_col():
 
 
 def test_agg_df_comma_separated_by_string():
-    df = pd.DataFrame({
-        "day": ["Thur", "Thur", "Fri"],
-        "sex": ["Male", "Female", "Male"],
-        "total_bill": [10.0, 20.0, 30.0],
-    })
+    df = pd.DataFrame(
+        {
+            "day": ["Thur", "Thur", "Fri"],
+            "sex": ["Male", "Female", "Male"],
+            "total_bill": [10.0, 20.0, 30.0],
+        }
+    )
     res = df.pt.by("day", "sex").pt.agg(total_bill="mean")
     assert list(res.columns) == ["day", "sex", "total_bill"]
     assert len(res) == 3
@@ -266,4 +280,3 @@ def test_agg_df_comma_separated_by_string():
 
 if __name__ == "__main__":
     pytest.main()
-

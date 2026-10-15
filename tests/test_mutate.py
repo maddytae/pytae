@@ -323,11 +323,13 @@ def test_mutate_grouped_single_col():
 
 
 def test_mutate_grouped_multi_col():
-    df = pd.DataFrame({
-        "g1": ["a", "a", "a", "b"],
-        "g2": ["x", "x", "y", "x"],
-        "val": [10.0, 30.0, 5.0, 100.0],
-    })
+    df = pd.DataFrame(
+        {
+            "g1": ["a", "a", "a", "b"],
+            "g2": ["x", "x", "y", "x"],
+            "val": [10.0, 30.0, 5.0, 100.0],
+        }
+    )
     res1 = df.pt.by("g1", "g2").pt.mutate("m = mean(val), cnt = n")
     assert list(res1["m"]) == [20.0, 20.0, 5.0, 100.0]
     assert list(res1["cnt"]) == [2, 2, 1, 1]
@@ -497,11 +499,13 @@ def test_mutate_lit_constant_when_column_exists():
 
 
 def test_mutate_grouped_vectorized_all_stats():
-    df = pd.DataFrame({
-        "grp": ["a", "a", "a", "b", "b"],
-        "val": [10.0, 20.0, 30.0, 100.0, 200.0],
-        "name": ["alice", "bob", "charlie", "dave", "eve"],
-    })
+    df = pd.DataFrame(
+        {
+            "grp": ["a", "a", "a", "b", "b"],
+            "val": [10.0, 20.0, 30.0, 100.0, 200.0],
+            "name": ["alice", "bob", "charlie", "dave", "eve"],
+        }
+    )
     res = df.pt.by("grp").pt.mutate(
         "avg = mean(val), tot = sum(val), med = median(val), "
         "lo = min(val), hi = max(val), sd = std(val), vr = var(val), "
@@ -546,11 +550,13 @@ def test_mutate_multi_col_suffix_and_prefix():
 
 
 def test_mutate_multi_col_selectors_and_grouped():
-    df = pd.DataFrame({
-        "species": ["Adelie", "Adelie", "Gentoo", "Gentoo"],
-        "bill_length_mm": [30.0, 50.0, 40.0, 60.0],
-        "bill_depth_mm": [10.0, 20.0, 15.0, 25.0],
-    })
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Gentoo", "Gentoo"],
+            "bill_length_mm": [30.0, 50.0, 40.0, 60.0],
+            "bill_depth_mm": [10.0, 20.0, 15.0, 25.0],
+        }
+    )
     res_sw = df.pt.mutate("(startswith=bill_) = _ / 10")
     assert list(res_sw["bill_length_mm"]) == [3.0, 5.0, 4.0, 6.0]
     assert list(res_sw["bill_depth_mm"]) == [1.0, 2.0, 1.5, 2.5]
@@ -581,4 +587,3 @@ def test_mutate_disallow_dot_map_method_syntax():
 
     with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
         df.pt.mutate("[code] = [island name].map({'Biscoe': 'BIS'})")
-

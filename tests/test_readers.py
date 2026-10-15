@@ -285,4 +285,3 @@ def test_compressed_txt_and_dat(tmp_path):
     dreader = get_reader(dat_gz)
     assert dreader.columns() == ["a", "b"]
     pd.testing.assert_frame_equal(dreader.to_dataframe(), df)
-

@@ -10,11 +10,7 @@ import pytae as pt
 
 def test_pt_accessor_select_then_agg():
     penguins = pt.sample("penguins")
-    out = (
-        penguins
-        .pt.by("species", "island")
-        .pt.agg(a=["mean", "n"])
-    )
+    out = penguins.pt.by("species", "island").pt.agg(a=["mean", "n"])
     assert list(out.columns)[:3] == ["species", "island", "n"]
 
 
@@ -27,6 +23,7 @@ def test_pandas_rename_then_pt_agg():
 
 def test_pt_accessor_agg_df_deprecated():
     import pytest
+
     df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
     with pytest.raises(AttributeError, match="df.pt.agg_df.*removed; use df.pt.agg"):
         df.pt.agg_df("g")
@@ -57,4 +54,3 @@ def test_pt_accessor_to_clip(monkeypatch):
     df.pt.to_clip()
     assert len(clip_called) == 1
     assert clip_called[0][1].get("index") is False
-

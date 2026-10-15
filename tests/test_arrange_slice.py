@@ -11,11 +11,13 @@ from tests.cli_helpers import _write_csv
 
 
 def test_library_arrange_basic_and_directions():
-    df = pd.DataFrame({
-        "grp": ["b", "a", "b", "a"],
-        "val": [10, 20, 30, 40],
-        "cost": [100, 50, 200, 150],
-    })
+    df = pd.DataFrame(
+        {
+            "grp": ["b", "a", "b", "a"],
+            "val": [10, 20, 30, 40],
+            "cost": [100, 50, 200, 150],
+        }
+    )
 
     # Default asc
     res1 = df.pt.arrange("grp", "val")
@@ -38,10 +40,12 @@ def test_library_arrange_basic_and_directions():
 
 
 def test_library_arrange_bracket_spaced_columns():
-    df = pd.DataFrame({
-        "first name": ["Charlie", "Alice", "Bob"],
-        "annual salary": [50000, 70000, 60000],
-    })
+    df = pd.DataFrame(
+        {
+            "first name": ["Charlie", "Alice", "Bob"],
+            "annual salary": [50000, 70000, 60000],
+        }
+    )
 
     res = df.pt.arrange("[annual salary] desc")
     assert list(res["first name"]) == ["Alice", "Bob", "Charlie"]
@@ -53,10 +57,12 @@ def test_library_arrange_bracket_spaced_columns():
 
 
 def test_library_pick_canonical():
-    df = pd.DataFrame({
-        "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
-        "body_mass_g": [3000, 4000, 3500, 5000, 5500],
-    })
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
+            "body_mass_g": [3000, 4000, 3500, 5000, 5500],
+        }
+    )
 
     # Global pick (order=max)
     top1 = df.pt.pick("body_mass_g", n=1)
@@ -80,22 +86,29 @@ def test_library_pick_canonical():
 
 def test_library_slice_max_and_min_removed():
     import pytest
+
     df = pd.DataFrame({"x": [1, 2, 3]})
     with pytest.raises(AttributeError, match=r"df\.pt\.slice_max\(\) has been removed; use df\.pt\.pick\(\) instead"):
         df.pt.slice_max("x")
-    with pytest.raises(AttributeError, match=r"df\.pt\.slice_min\(\) has been removed; use df\.pt\.pick\(..., order='min'\) instead"):
+    with pytest.raises(
+        AttributeError, match=r"df\.pt\.slice_min\(\) has been removed; use df\.pt\.pick\(..., order='min'\) instead"
+    ):
         df.pt.slice_min("x")
     with pytest.raises(AttributeError, match=r"pt\.slice_max\(\) has been removed; use pt\.pick\(\) instead"):
         pt.slice_max(df, "x")
-    with pytest.raises(AttributeError, match=r"pt\.slice_min\(\) has been removed; use pt\.pick\(..., order='min'\) instead"):
+    with pytest.raises(
+        AttributeError, match=r"pt\.slice_min\(\) has been removed; use pt\.pick\(..., order='min'\) instead"
+    ):
         pt.slice_min(df, "x")
 
 
 def test_cli_arrange_and_pick(tmp_path, capsys):
-    df = pd.DataFrame({
-        "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
-        "body_mass_g": [3000, 4000, 3500, 5000, 5500],
-    })
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
+            "body_mass_g": [3000, 4000, 3500, 5000, 5500],
+        }
+    )
     path = _write_csv(tmp_path, df)
 
     # -arrange with direction
@@ -119,6 +132,7 @@ def test_cli_arrange_and_pick(tmp_path, capsys):
 
 def test_cli_slice_max_min_fatal_error(tmp_path, capsys):
     import pytest
+
     df = pd.DataFrame({"x": [1, 2, 3]})
     path = _write_csv(tmp_path, df)
 
@@ -134,10 +148,12 @@ def test_cli_slice_max_min_fatal_error(tmp_path, capsys):
 
 
 def test_cli_distinct_and_dropna(tmp_path, capsys):
-    df = pd.DataFrame({
-        "a": [1, 1, 2, None],
-        "b": [10, 20, 30, 40],
-    })
+    df = pd.DataFrame(
+        {
+            "a": [1, 1, 2, None],
+            "b": [10, 20, 30, 40],
+        }
+    )
     path = _write_csv(tmp_path, df)
 
     # -distinct drops duplicate rows
@@ -155,10 +171,12 @@ def test_cli_distinct_and_dropna(tmp_path, capsys):
 
 def test_pick_with_nan_by_keys():
     """Verify that rows with NaN in grouping keys are not dropped by pick."""
-    df = pd.DataFrame({
-        "group": ["A", "A", None, None],
-        "val": [10, 20, 100, 200],
-    })
+    df = pd.DataFrame(
+        {
+            "group": ["A", "A", None, None],
+            "val": [10, 20, 100, 200],
+        }
+    )
     # pick (order=max) with ties=False
     res_max = pt.pick(pt.by(df, "group"), "val", n=1)
     assert len(res_max) == 2
@@ -172,18 +190,22 @@ def test_pick_with_nan_by_keys():
     assert res_min["group"].isna().sum() == 1
 
     # pick with ties=True
-    df_ties = pd.DataFrame({
-        "group": ["A", "A", None, None],
-        "val": [20, 20, 200, 200],
-    })
+    df_ties = pd.DataFrame(
+        {
+            "group": ["A", "A", None, None],
+            "val": [20, 20, 200, 200],
+        }
+    )
     res_max_ties = pt.pick(pt.by(df_ties, "group"), "val", n=1, with_ties=True)
     assert len(res_max_ties) == 4
 
 
 def test_pick_edge_cases():
-    df = pd.DataFrame({
-        "val": [10, 20, None],
-    })
+    df = pd.DataFrame(
+        {
+            "val": [10, 20, None],
+        }
+    )
     # n <= 0 returns empty DataFrame
     res = pt.pick(df, "val", n=0)
     assert len(res) == 0
@@ -195,10 +217,12 @@ def test_pick_edge_cases():
 
 
 def test_pick_prop():
-    df = pd.DataFrame({
-        "group": ["A"] * 10 + ["B"] * 20,
-        "val": list(range(10)) + list(range(20)),
-    })
+    df = pd.DataFrame(
+        {
+            "group": ["A"] * 10 + ["B"] * 20,
+            "val": list(range(10)) + list(range(20)),
+        }
+    )
     # Overall 10% of 30 is 3
     res_top = pt.pick(df, "val", prop=0.1)
     assert len(res_top) == 3
@@ -217,12 +241,14 @@ def test_pick_prop():
 
     # Error if both n and prop given
     import pytest
+
     with pytest.raises(ValueError, match="specify either 'n' or 'prop'"):
         pt.pick(df, "val", n=2, prop=0.1)
 
 
 def test_cli_pick_syntax_and_prop(tmp_path, capsys):
     from pytae import cli
+
     df = pd.DataFrame({"x": list(range(100)), "grp": ["g1"] * 50 + ["g2"] * 50})
     path = str(tmp_path / "data.parquet")
     df.to_parquet(path)
@@ -238,5 +264,3 @@ def test_cli_pick_syntax_and_prop(tmp_path, capsys):
     # bare col defaults to n=1
     assert cli.main([path, "-pick", "x", "-shape"]) == 0
     assert "(1, 2)" in capsys.readouterr().out
-
-

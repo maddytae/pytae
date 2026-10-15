@@ -27,6 +27,7 @@ def test_handle_missing_default_fill(tmp_path, capsys):
     assert "." in out
     assert "0.0" in out
 
+
 def test_replace_whole_df_exact_match(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
@@ -36,7 +37,8 @@ def test_replace_whole_df_exact_match(tmp_path, capsys):
     assert "the magic" in out
     assert "bravo" in out
     assert "not a magician exactly" in out  # untouched: not an exact whole-cell match
-    assert "analphabet" in out              # untouched: not an exact whole-cell match
+    assert "analphabet" in out  # untouched: not an exact whole-cell match
+
 
 def test_replace_scoped_columns_only(tmp_path, capsys):
     df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
@@ -47,6 +49,7 @@ def test_replace_scoped_columns_only(tmp_path, capsys):
     out = capsys.readouterr().out.strip().splitlines()
     assert out[1].split() == ["bravo", "alpha"]
 
+
 def test_replace_exact_false_matches_substring(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
@@ -56,6 +59,7 @@ def test_replace_exact_false_matches_substring(tmp_path, capsys):
     assert "not the magic exactly" in out
     assert "anbravobet" in out
 
+
 def test_replace_unknown_column_errors(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
@@ -64,11 +68,13 @@ def test_replace_unknown_column_errors(tmp_path, capsys):
     assert exc_info.value.code == 2
     assert "-replace_values" in capsys.readouterr().err
 
+
 def test_replace_requires_v(tmp_path):
     path = _write_csv(tmp_path, _replace_frame())
 
     with pytest.raises(SystemExit):
         cli.main([path, "-replace_values", "c=col a"])
+
 
 def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
     df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
@@ -84,10 +90,12 @@ def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
     assert unquoted == quoted
     assert "bravo" in unquoted
 
+
 def test_replace_values_equals_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
     with pytest.raises(SystemExit, match="use ':'"):
         cli.main([path, "-replace_values", "v=1=2"])
+
 
 def test_rename_quoting_is_optional(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
@@ -100,10 +108,12 @@ def test_rename_quoting_is_optional(tmp_path):
     assert list(pd.read_csv(out1).columns) == ["new col", "b"]
     assert list(pd.read_csv(out2).columns) == ["new col", "b"]
 
+
 def test_rename_equals_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
     with pytest.raises(SystemExit, match="use ':'"):
         cli.main([path, "-rename", "old col=new col"])
+
 
 def test_rename_multiple_pairs(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"old col": [1, 2], "b": [3, 4]}))
@@ -116,6 +126,7 @@ def test_rename_multiple_pairs(tmp_path):
     assert list(pd.read_csv(out1).columns) == ["new col", "beta"]
     assert list(pd.read_csv(out2).columns) == ["new col", "beta"]
 
+
 def test_rename_pipeline_head(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"island": ["Torgersen"], "species": ["Adelie"]}))
     cli.main([path, "-rename", "island:kailand", "-head"])
@@ -123,12 +134,14 @@ def test_rename_pipeline_head(tmp_path, capsys):
     assert "kailand" in out
     assert "island" not in out
 
+
 def test_rename_pipeline_show_all(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"island": ["Torgersen"], "species": ["Adelie"]}))
     cli.main([path, "-rename", "island:kailand"])
     out = capsys.readouterr().out
     assert "kailand" in out
     assert "island" not in out
+
 
 def test_rename_pipeline_chained_with_select(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3]}))
@@ -138,6 +151,7 @@ def test_rename_pipeline_chained_with_select(tmp_path, capsys):
     assert "b" in out
     assert "c" not in out
 
+
 def test_rename_repeated_flags(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
     cli.main([path, "-rename", "a:alpha", "-rename", "b:beta", "-head"])
@@ -145,10 +159,12 @@ def test_rename_repeated_flags(tmp_path, capsys):
     assert "alpha" in out
     assert "beta" in out
 
+
 def test_rename_unknown_column_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
     with pytest.raises(SystemExit):
         cli.main([path, "-rename", "unknown_col:x", "-head"])
+
 
 def test_clean_columns_strip_fill_case(tmp_path, capsys):
     path = _write_csv(tmp_path, _messy_headers_frame())
@@ -158,6 +174,7 @@ def test_clean_columns_strip_fill_case(tmp_path, capsys):
     header = capsys.readouterr().out.strip().splitlines()[0].split()
     assert header == ["col_a", "col___b", "col_a", "100%_match!"]
 
+
 def test_clean_columns_custom_fill_char(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
 
@@ -165,6 +182,7 @@ def test_clean_columns_custom_fill_char(tmp_path, capsys):
 
     header = capsys.readouterr().out.strip().splitlines()[0].split()
     assert header == ["col$a"]
+
 
 def test_clean_columns_proper_case(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
@@ -174,6 +192,7 @@ def test_clean_columns_proper_case(tmp_path, capsys):
     header = capsys.readouterr().out.strip().splitlines()[0]
     assert header == "Col A"
 
+
 def test_clean_columns_squeeze_and_strip_special_and_dedupe(tmp_path, capsys):
     path = _write_csv(tmp_path, _messy_headers_frame())
 
@@ -181,6 +200,7 @@ def test_clean_columns_squeeze_and_strip_special_and_dedupe(tmp_path, capsys):
 
     header = capsys.readouterr().out.strip().splitlines()[0].split()
     assert header == ["col_a", "col_b", "col_a_1", "100_match"]
+
 
 def test_clean_columns_no_fill_leaves_whitespace(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
@@ -190,17 +210,20 @@ def test_clean_columns_no_fill_leaves_whitespace(tmp_path, capsys):
     header = capsys.readouterr().out.strip().splitlines()[0]
     assert header == "COL A"
 
+
 def test_clean_columns_unknown_key_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
 
     with pytest.raises(SystemExit, match="unknown key"):
         cli.main([path, "-clean_columns", "bogus=true"])
 
+
 def test_clean_columns_case_without_value_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"col a": [1]}))
 
     with pytest.raises(SystemExit):
         cli.main([path, "-clean_columns", "case"])
+
 
 def test_clean_columns_strip_special_removes_quotes(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"'col a'": [1], '"col b"': [2]}))
@@ -210,6 +233,7 @@ def test_clean_columns_strip_special_removes_quotes(tmp_path, capsys):
     header = capsys.readouterr().out.strip().splitlines()
     assert header == ["col a", "col b"]
 
+
 def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"co-op's data": [1]}))
 
@@ -217,4 +241,3 @@ def test_clean_columns_strip_special_keeps_fill_character(tmp_path, capsys):
 
     header = capsys.readouterr().out.strip()
     assert header == "co-ops-data"
-

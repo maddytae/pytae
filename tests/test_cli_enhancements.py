@@ -171,10 +171,12 @@ def test_cli_plot_error_clean_exit(tmp_path):
 def test_library_freq_and_hist():
     import pytae as pt
 
-    df = pd.DataFrame({
-        "species": ["Adelie", "Adelie", "Gentoo", None],
-        "body_mass_g": [3000, 3200, 4000, 5000],
-    })
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Gentoo", None],
+            "body_mass_g": [3000, 3200, 4000, 5000],
+        }
+    )
 
     # df.pt.freq("species") retains NA by default (dropna=False)
     f_all = df.pt.freq("species")

@@ -42,11 +42,25 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
-_DATA_SUFFIXES = frozenset((".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".jsonl", ".ndjson", ".gz", ".yaml", ".yml"))
-_FORMAT_SHORTHANDS = frozenset((
-    "csv", "parquet", "pq", "txt", "dat", "jsonl", "ndjson",
-    "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
-))
+_DATA_SUFFIXES = frozenset(
+    (".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".jsonl", ".ndjson", ".gz", ".yaml", ".yml")
+)
+_FORMAT_SHORTHANDS = frozenset(
+    (
+        "csv",
+        "parquet",
+        "pq",
+        "txt",
+        "dat",
+        "jsonl",
+        "ndjson",
+        "csv.gz",
+        "txt.gz",
+        "dat.gz",
+        "jsonl.gz",
+        "ndjson.gz",
+    )
+)
 
 
 def _is_path_like(token: str) -> bool:
@@ -67,24 +81,114 @@ def _is_path_like(token: str) -> bool:
 
 
 _CLI_FLAGS = {
-    "-version", "--version", "-head", "--head", "-tail", "--tail", "-shape", "--shape",
-    "-cols", "--cols", "-dtype", "--dtype", "-nulls", "--nulls", "-describe", "--describe",
-    "-info", "--info", "-meta", "--meta", "-diff", "--diff", "-value_counts", "--value_counts",
-    "-distinct", "--distinct", "-sample", "--sample", "-seed", "--seed", "-frac", "--frac",
-    "-arrange", "--arrange", "-pick", "--pick",
-    "-by", "--by", "-nrows", "--nrows",
-    "-limit", "--limit", "-select", "--select", "-agg", "--agg",
-    "-handle_missing", "--handle_missing",
-    "-dropna", "--dropna", "-glimpse", "--glimpse",
-    "-clean_columns", "--clean_columns", "-long", "--long", "-wide", "--wide", "-pivot", "--pivot",
-    "-o", "--output", "-out_dir", "--out_dir",
-    "-od", "--out-dir", "-dlim", "--dlim", "-encoding", "--encoding", "-rename", "--rename",
-    "-file", "--file", "-filter", "--filter", "-mutate", "--mutate",
-    "-sql", "--sql", "-replace_values", "--replace_values", "-merge", "--merge",
-    "-concat", "--concat", "-progress", "--progress", "-time", "--time", "-pretty", "--pretty",
-    "-pager", "--pager", "-round", "--round", "-h", "--help",
-    "-fmt", "--fmt", "-freq", "--freq", "-hist", "--hist",
-    "-plot", "--plot", "-finalize", "--finalize",
+    "-version",
+    "--version",
+    "-head",
+    "--head",
+    "-tail",
+    "--tail",
+    "-shape",
+    "--shape",
+    "-cols",
+    "--cols",
+    "-dtype",
+    "--dtype",
+    "-nulls",
+    "--nulls",
+    "-describe",
+    "--describe",
+    "-info",
+    "--info",
+    "-meta",
+    "--meta",
+    "-diff",
+    "--diff",
+    "-value_counts",
+    "--value_counts",
+    "-distinct",
+    "--distinct",
+    "-sample",
+    "--sample",
+    "-seed",
+    "--seed",
+    "-frac",
+    "--frac",
+    "-arrange",
+    "--arrange",
+    "-pick",
+    "--pick",
+    "-by",
+    "--by",
+    "-nrows",
+    "--nrows",
+    "-limit",
+    "--limit",
+    "-select",
+    "--select",
+    "-agg",
+    "--agg",
+    "-handle_missing",
+    "--handle_missing",
+    "-dropna",
+    "--dropna",
+    "-glimpse",
+    "--glimpse",
+    "-clean_columns",
+    "--clean_columns",
+    "-long",
+    "--long",
+    "-wide",
+    "--wide",
+    "-pivot",
+    "--pivot",
+    "-o",
+    "--output",
+    "-out_dir",
+    "--out_dir",
+    "-od",
+    "--out-dir",
+    "-dlim",
+    "--dlim",
+    "-encoding",
+    "--encoding",
+    "-rename",
+    "--rename",
+    "-file",
+    "--file",
+    "-filter",
+    "--filter",
+    "-mutate",
+    "--mutate",
+    "-sql",
+    "--sql",
+    "-replace_values",
+    "--replace_values",
+    "-merge",
+    "--merge",
+    "-concat",
+    "--concat",
+    "-progress",
+    "--progress",
+    "-time",
+    "--time",
+    "-pretty",
+    "--pretty",
+    "-pager",
+    "--pager",
+    "-round",
+    "--round",
+    "-h",
+    "--help",
+    "-fmt",
+    "--fmt",
+    "-freq",
+    "--freq",
+    "-hist",
+    "--hist",
+    "-plot",
+    "--plot",
+    "-finalize",
+    "--finalize",
 }
 
 
@@ -157,6 +261,7 @@ def _is_stdin_piped() -> bool:
         if fileno is not None:
             try:
                 import os
+
                 return not os.isatty(fileno())
             except Exception:
                 pass
@@ -185,185 +290,524 @@ def build_parser() -> argparse.ArgumentParser:
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
     )
-    parser.add_argument("path", nargs="*", default=None,
-                         help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
-                              "'clip' to read from system clipboard, "
-                              "a .yaml/.yml connection config (Databricks table or remote SSH file), "
-                              "or glob patterns/multiple files for batch operations; "
-                              "omit when piping from stdin or using -file with -merge/-concat/-sql")
+    parser.add_argument(
+        "path",
+        nargs="*",
+        default=None,
+        help="path to a .parquet, .csv, .txt, .dat, or .sas7bdat file, "
+        "'clip' to read from system clipboard, "
+        "a .yaml/.yml connection config (Databricks table or remote SSH file), "
+        "or glob patterns/multiple files for batch operations; "
+        "omit when piping from stdin or using -file with -merge/-concat/-sql",
+    )
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("-head", "--head", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
-                         action=_OrderedValue, help="print the first N rows (default 5)")
-    parser.add_argument("-tail", "--tail", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
-                         action=_OrderedValue, help="print the last N rows (default 5)")
+    parser.add_argument(
+        "-head",
+        "--head",
+        nargs="?",
+        const=5,
+        type=parse_positive_int,
+        default=None,
+        metavar="N",
+        action=_OrderedValue,
+        help="print the first N rows (default 5)",
+    )
+    parser.add_argument(
+        "-tail",
+        "--tail",
+        nargs="?",
+        const=5,
+        type=parse_positive_int,
+        default=None,
+        metavar="N",
+        action=_OrderedValue,
+        help="print the last N rows (default 5)",
+    )
     parser.add_argument("-shape", "--shape", action=_OrderedFlag, help="print (rows, cols)")
-    parser.add_argument("-cols", "--cols", nargs="?", const="file", default=None, metavar="ORDER",
-                         type=parse_list_order, action=_OrderedValue,
-                         help="print column names; optional asc|desc sorts names (default: file order)")
-    parser.add_argument("-dtype", "--dtype", nargs="?", const="file", default=None, metavar="ORDER",
-                         type=parse_list_order, action=_OrderedValue,
-                         help="print column dtypes; optional asc|desc sorts by name (default: file order)")
-    parser.add_argument("-nulls", "--nulls", nargs="?", const="file", default=None, metavar="ORDER",
-                         type=parse_list_order, action=_OrderedValue,
-                         help="print null/NaN count per column; optional asc|desc sorts by name (default: file order)")
-    parser.add_argument("-describe", "--describe", dest="describe", action=_OrderedFlag,
-                         help="print pandas describe() summary (count/mean/std/min/quartiles/max)")
-    parser.add_argument("-info", "--info", dest="info", action=_OrderedFlag,
-                         help="print pandas info() (columns, non-null counts, dtypes, memory)")
-    parser.add_argument("-glimpse", "--glimpse", dest="glimpse", action=_OrderedFlag,
-                         help="print a transposed overview of DataFrame columns, dtypes, and sample values")
-    parser.add_argument("-meta", "--meta", dest="meta", action=_OrderedFlag,
-                         help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data")
-    parser.add_argument("-diff", "--diff", dest="diff", default=None, metavar="PATH", action=_OrderedStore,
-                         help="compare schema and contents against another dataset file")
-    parser.add_argument("-value_counts", "--value_counts", dest="value_counts", action=_OrderedFlag,
-                         help="show pandas value_counts across current working columns (use -select to choose columns)")
-    parser.add_argument("-freq", "--freq", dest="freq", action=_OrderedStore, default=None, metavar="COLUMN",
-                         help="render horizontal frequency bars with counts and percentages for a categorical column")
-    parser.add_argument("-hist", "--hist", dest="hist", action=_OrderedStore, default=None, metavar="COLUMN[:BINS]",
-                         help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)")
-    parser.add_argument("-distinct", "--distinct", dest="distinct", nargs="?", const="", default=None,
-                         metavar="SPEC", action=_OrderedValue,
-                         help="drop duplicate rows, optionally restricted to specific columns and keep mode, e.g. -distinct, -distinct \"col1,col2\", or -distinct \"keep=last\"")
-    parser.add_argument("-sample", "--sample", nargs="?", const=5, type=parse_positive_int, default=None, metavar="N",
-                         action=_OrderedValue, help="print N randomly sampled rows (default 5)")
-    parser.add_argument("-seed", "--seed", dest="seed", type=int, default=None, metavar="N",
-                         help="random seed for -sample, for reproducible rows (default: random each run)")
-    parser.add_argument("-frac", "--frac", dest="frac", type=parse_fraction, default=None, metavar="P",
-                         help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
-                              "requires -sample and overrides its N")
-    parser.add_argument("-arrange", "--arrange", dest="arrange", default=None, metavar="SPEC",
-                         action=_OrderedStore,
-                         help="sort rows by one or more columns with direction, e.g. -arrange \"species,mass desc\" or -arrange \"-mass\"")
-    parser.add_argument("-pick", "--pick", dest="pick", default=None, metavar="SPEC",
-                         action=_OrderedStore,
-                         help="pick top/bottom rows by column, e.g. -pick \"mass,n=3\" or -pick \"mass,prop=0.1,order=min\"")
-    parser.add_argument("-by", "--by", dest="by", default=None, metavar="COLUMNS",
-                         help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
-                              "Used by -agg, -mutate, -pick.")
-    parser.add_argument("-nrows", "--nrows", "-limit", "--limit", dest="nrows", type=parse_positive_int, default=None, metavar="N",
-                         help="cap the number of rows loaded (default: no cap)")
-    parser.add_argument("--select", "-select", dest="select", action=_OrderedAppend, default=None, metavar="SPEC",
-                         help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
-                              "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
-                              "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
-                              'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"')
-    parser.add_argument("-agg", "--agg", dest="agg", nargs="?", const="sum", default=None,
-                         metavar="AGGFUNC", action=_OrderedValue,
-                         help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
-                              "without -by, computes a whole-table summary (grand total). "
-                              "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
-                              "(v1 = sum, total = v1:sum, count = n). Defaults to sum.")
-    parser.add_argument("-handle_missing", "--handle_missing", dest="handle_missing", nargs="?", const=".", default=None,
-                         metavar="FILL", action=_OrderedValue,
-                         help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
-                              "columns, 0 for numeric columns")
-    parser.add_argument("-dropna", "--dropna", dest="dropna", nargs="?", const="", default=None,
-                         metavar="COLS", action=_OrderedValue,
-                         help="drop rows containing NaN (bare -dropna drops rows with any NaN; "
-                              "-dropna \"col1,col2\" drops rows where specified columns are NaN)")
-    parser.add_argument("-clean_columns", "--clean_columns", dest="clean_columns", action=_OrderedStore,
-                         metavar="KEY=VALUE,...",
-                         help="clean column header names, in order strip -> strip_special -> squeeze -> "
-                              "fill -> case -> dedupe: strip/squeeze/strip_special/dedupe are bools (bare "
-                              "key means true, e.g. \"strip\"), fill[=STR] replaces whitespace in a header "
-                              "(bare \"fill\" defaults to '_', omit entirely for no fill), "
-                              "case=lower|upper|proper (always needs a value); e.g. "
-                              "\"strip,fill,case=lower\" or \"fill='$',case=proper,dedupe=true\"")
-    parser.add_argument("-long", "--long", dest="long", nargs="?", const="", default=None,
-                         metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="melt numeric columns to long form (pytae long()); defaults c=variable, "
-                              "v=value; e.g. c=metric,v=reading")
-    parser.add_argument("-wide", "--wide", dest="wide", nargs="?", const="", default=None,
-                         metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="pivot long form to wide for 1-to-1 reshaping (pytae wide()); defaults c=variable, v=value; "
-                              "for aggregation or 2D contingency tables, use -pivot")
-    parser.add_argument("-pivot", "--pivot", dest="pivot", nargs="?", const="", default=None,
-                         metavar="KEY=VALUE,...", action=_OrderedValue,
-                         help="2-D pivot table (pytae pivot()); r=row_cols (optional), c=col_cols "
-                              "(optional), v=value_cols (optional; defaults to counts), a=aggfunc (default sum; n=size), "
-                              "dropna=false (default), f_v=val; e.g. -pivot \"r=Region,c=Year,v=Sales,a=sum\"")
-    parser.add_argument("-o", "--output", dest="output", default=None, metavar="TARGET",
-                         help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
-                              "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
-                              "or 'clip'/'clipboard' to copy to system clipboard")
-    parser.add_argument("-out_dir", "--out_dir", "-od", "--out-dir", dest="out_dir", type=Path, default=None, metavar="DIR",
-                         help="target directory for exported files (created if it does not exist); requires -o/--output")
-    parser.add_argument("-fmt", "--fmt", dest="fmt", default=None, metavar="FORMAT",
-                         help="input format when reading from STDIN or extensionless files: csv, parquet, jsonl, txt, tsv")
-    parser.add_argument("-dlim", "--dlim", dest="dlim", default=None, metavar="CHAR",
-                         help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
-                              "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat")
-    parser.add_argument("-encoding", "--encoding", dest="encoding", default=None, metavar="ENC",
-                         help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
-                              "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
-                              "not used for .parquet")
-    parser.add_argument("-rename", "--rename", dest="rename", action=_OrderedAppend, default=None, metavar="OLD:NEW,...",
-                         help="rename columns at this point in the pipeline (or during conversion), e.g. \"old_a:new_a,old_b:new_b\"")
-    parser.add_argument("-file", "--file", dest="file", default=None, metavar="PATH=ALIAS;...",
-                         help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
-                              "';'-separated entries, each PATH=ALIAS optionally followed by "
-                              ",dlim=/,encoding= overrides for that file, e.g. "
-                              "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
-                              "requires -merge, -concat, or -sql as the first operation, and can't be "
-                              "combined with the positional path")
-    parser.add_argument("-filter", "--filter", dest="filter", action=_OrderedAppend, default=None, metavar="CONDITIONS",
-                         help="filter rows at this point in the pipeline using pytae filter(); conditions like "
-                              "\"col = 'val', col > 5\"")
-    parser.add_argument("-mutate", "--mutate", dest="mutate", action=_OrderedAppend, default=None, metavar="SPEC",
-                         help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
-                              "\"new_col = expression\" or multi-column \"(col1, col2) = _ * 2\" entries, comma-separated; "
-                              "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
-                              "\"bmi = body_mass_g / bill_length_mm ** 2\" or \"(startswith=bill_) = _ / 10\"")
-    parser.add_argument("-sql", "--sql", dest="sql", action=_OrderedAppend, default=None, metavar="QUERY",
-                         help="run a SQL query (via Polars SQLContext) against the current view at this point in "
-                              "the pipeline; the view is queryable as table `data`; standard SQL identifier "
-                              "quoting applies (double quotes for names with spaces, e.g. \"col a\"; single "
-                              "quotes are string literals, not identifiers), e.g. "
-                              "\"select \\\"col a\\\" from data where \\\"col a\\\" > 10\"; "
-                              "in -file/-merge mode, may be used instead of -merge as the first op, with "
-                              "every -file alias queryable by its own name (e.g. \"select * from df1 "
-                              "inner join df2 on df1.\\\"col a\\\" = df2.cola\") — `data` becomes queryable "
-                              "too once something later in the pipeline has produced a current view")
-    parser.add_argument("-replace_values", "--replace_values", dest="replace_values", action=_OrderedAppend, default=None, metavar="SPEC",
-                         help="replace values at this point in the pipeline; key=value tokens: v= (required) "
-                              "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
-                              "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
-                              "default true) — true matches whole cell values, false matches a substring "
-                              "anywhere in the cell, e.g. \"v='old:new',exact=false\"")
-    parser.add_argument("-merge", "--merge", dest="merge", action=_OrderedAppend, default=None, metavar="KEY=VALUE,...",
-                         help="merge two frames into the pipeline (pandas merge()); repeatable, to fold in "
-                              "one more file at a time; must be the first op when using -file (unless -sql/"
-                              "-concat starts it instead); key=value tokens: left=/right= (required — -file "
-                              "aliases, or 'data' for the pipeline's current result so far), "
-                              "on= (required; shared column name(s), or 'left:right' pairs if they "
-                              "differ between sides — quote on= if it has more than one column/pair, e.g. "
-                              "\"on='col a:cola,colb:colb'\"), how= (optional, default 'inner': "
-                              "inner/left/right/outer/cross), validate= (optional, e.g. one_to_one)")
-    parser.add_argument("-concat", "--concat", dest="concat", action=_OrderedAppend, default=None, metavar="KEY=VALUE,...",
-                         help="stack frames row-wise into the pipeline (pandas concat(), always with "
-                              "ignore_index=True); repeatable; must be the first op when using -file "
-                              "(unless -sql/-merge starts it instead); key=value tokens: frames= (required) "
-                              "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
-                              "current result so far), quoted since it has internal commas, e.g. "
-                              "\"frames='df1,df2,df3'\"")
-    parser.add_argument("-plot", "--plot", dest="plot", action=_OrderedStore, default=None, metavar="SPEC",
-                         help="render visualization using pytae Plotter; e.g. -plot \"kind=scatter, x=col1, y=col2\"")
-    parser.add_argument("-finalize", "--finalize", dest="finalize", default=None, metavar="SPEC",
-                         help="layout/legend options for -plot, e.g. -finalize \"consolidate_legends=True, style=True\"")
-    parser.add_argument("-progress", "--progress", nargs="?", const=200_000, type=parse_positive_int,
-                         default=None, metavar="N",
-                         help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)")
-    parser.add_argument("-time", "--time", dest="time", nargs="?", const=1, type=parse_positive_int,
-                         default=None, metavar="N",
-                         help="measure and print pipeline execution time (default: 1 run; optional N runs the pipeline N times and reports avg/min/max/total)")
-    parser.add_argument("-pretty", "--pretty", action="store_true",
-                         help="[deprecated] table formatting is now automatically detected (boxed table for terminal, bare unbordered for pipes)")
-    parser.add_argument("-pager", "--pager", action="store_true",
-                         help="pipe long table or inspect outputs through system pager ($PAGER or less)")
-    parser.add_argument("-round", "--round", dest="round_ndigits", type=int, default=None, metavar="N",
-                         help="round numeric columns to N decimal places before printing/copying; "
-                              "non-numeric columns are left unchanged")
+    parser.add_argument(
+        "-cols",
+        "--cols",
+        nargs="?",
+        const="file",
+        default=None,
+        metavar="ORDER",
+        type=parse_list_order,
+        action=_OrderedValue,
+        help="print column names; optional asc|desc sorts names (default: file order)",
+    )
+    parser.add_argument(
+        "-dtype",
+        "--dtype",
+        nargs="?",
+        const="file",
+        default=None,
+        metavar="ORDER",
+        type=parse_list_order,
+        action=_OrderedValue,
+        help="print column dtypes; optional asc|desc sorts by name (default: file order)",
+    )
+    parser.add_argument(
+        "-nulls",
+        "--nulls",
+        nargs="?",
+        const="file",
+        default=None,
+        metavar="ORDER",
+        type=parse_list_order,
+        action=_OrderedValue,
+        help="print null/NaN count per column; optional asc|desc sorts by name (default: file order)",
+    )
+    parser.add_argument(
+        "-describe",
+        "--describe",
+        dest="describe",
+        action=_OrderedFlag,
+        help="print pandas describe() summary (count/mean/std/min/quartiles/max)",
+    )
+    parser.add_argument(
+        "-info",
+        "--info",
+        dest="info",
+        action=_OrderedFlag,
+        help="print pandas info() (columns, non-null counts, dtypes, memory)",
+    )
+    parser.add_argument(
+        "-glimpse",
+        "--glimpse",
+        dest="glimpse",
+        action=_OrderedFlag,
+        help="print a transposed overview of DataFrame columns, dtypes, and sample values",
+    )
+    parser.add_argument(
+        "-meta",
+        "--meta",
+        dest="meta",
+        action=_OrderedFlag,
+        help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data",
+    )
+    parser.add_argument(
+        "-diff",
+        "--diff",
+        dest="diff",
+        default=None,
+        metavar="PATH",
+        action=_OrderedStore,
+        help="compare schema and contents against another dataset file",
+    )
+    parser.add_argument(
+        "-value_counts",
+        "--value_counts",
+        dest="value_counts",
+        action=_OrderedFlag,
+        help="show pandas value_counts across current working columns (use -select to choose columns)",
+    )
+    parser.add_argument(
+        "-freq",
+        "--freq",
+        dest="freq",
+        action=_OrderedStore,
+        default=None,
+        metavar="COLUMN",
+        help="render horizontal frequency bars with counts and percentages for a categorical column",
+    )
+    parser.add_argument(
+        "-hist",
+        "--hist",
+        dest="hist",
+        action=_OrderedStore,
+        default=None,
+        metavar="COLUMN[:BINS]",
+        help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)",
+    )
+    parser.add_argument(
+        "-distinct",
+        "--distinct",
+        dest="distinct",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help='drop duplicate rows, optionally restricted to specific columns and keep mode, e.g. -distinct, -distinct "col1,col2", or -distinct "keep=last"',
+    )
+    parser.add_argument(
+        "-sample",
+        "--sample",
+        nargs="?",
+        const=5,
+        type=parse_positive_int,
+        default=None,
+        metavar="N",
+        action=_OrderedValue,
+        help="print N randomly sampled rows (default 5)",
+    )
+    parser.add_argument(
+        "-seed",
+        "--seed",
+        dest="seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="random seed for -sample, for reproducible rows (default: random each run)",
+    )
+    parser.add_argument(
+        "-frac",
+        "--frac",
+        dest="frac",
+        type=parse_fraction,
+        default=None,
+        metavar="P",
+        help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
+        "requires -sample and overrides its N",
+    )
+    parser.add_argument(
+        "-arrange",
+        "--arrange",
+        dest="arrange",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedStore,
+        help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc" or -arrange "-mass"',
+    )
+    parser.add_argument(
+        "-pick",
+        "--pick",
+        dest="pick",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedStore,
+        help='pick top/bottom rows by column, e.g. -pick "mass,n=3" or -pick "mass,prop=0.1,order=min"',
+    )
+    parser.add_argument(
+        "-by",
+        "--by",
+        dest="by",
+        default=None,
+        metavar="COLUMNS",
+        help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
+        "Used by -agg, -mutate, -pick.",
+    )
+    parser.add_argument(
+        "-nrows",
+        "--nrows",
+        "-limit",
+        "--limit",
+        dest="nrows",
+        type=parse_positive_int,
+        default=None,
+        metavar="N",
+        help="cap the number of rows loaded (default: no cap)",
+    )
+    parser.add_argument(
+        "--select",
+        "-select",
+        dest="select",
+        action=_OrderedAppend,
+        default=None,
+        metavar="SPEC",
+        help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
+        "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
+        "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
+        'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"',
+    )
+    parser.add_argument(
+        "-agg",
+        "--agg",
+        dest="agg",
+        nargs="?",
+        const="sum",
+        default=None,
+        metavar="AGGFUNC",
+        action=_OrderedValue,
+        help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
+        "without -by, computes a whole-table summary (grand total). "
+        "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
+        "(v1 = sum, total = v1:sum, count = n). Defaults to sum.",
+    )
+    parser.add_argument(
+        "-handle_missing",
+        "--handle_missing",
+        dest="handle_missing",
+        nargs="?",
+        const=".",
+        default=None,
+        metavar="FILL",
+        action=_OrderedValue,
+        help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
+        "columns, 0 for numeric columns",
+    )
+    parser.add_argument(
+        "-dropna",
+        "--dropna",
+        dest="dropna",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="COLS",
+        action=_OrderedValue,
+        help="drop rows containing NaN (bare -dropna drops rows with any NaN; "
+        '-dropna "col1,col2" drops rows where specified columns are NaN)',
+    )
+    parser.add_argument(
+        "-clean_columns",
+        "--clean_columns",
+        dest="clean_columns",
+        action=_OrderedStore,
+        metavar="KEY=VALUE,...",
+        help="clean column header names, in order strip -> strip_special -> squeeze -> "
+        "fill -> case -> dedupe: strip/squeeze/strip_special/dedupe are bools (bare "
+        'key means true, e.g. "strip"), fill[=STR] replaces whitespace in a header '
+        "(bare \"fill\" defaults to '_', omit entirely for no fill), "
+        "case=lower|upper|proper (always needs a value); e.g. "
+        '"strip,fill,case=lower" or "fill=\'$\',case=proper,dedupe=true"',
+    )
+    parser.add_argument(
+        "-long",
+        "--long",
+        dest="long",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="KEY=VALUE,...",
+        action=_OrderedValue,
+        help="melt numeric columns to long form (pytae long()); defaults c=variable, v=value; e.g. c=metric,v=reading",
+    )
+    parser.add_argument(
+        "-wide",
+        "--wide",
+        dest="wide",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="KEY=VALUE,...",
+        action=_OrderedValue,
+        help="pivot long form to wide for 1-to-1 reshaping (pytae wide()); defaults c=variable, v=value; "
+        "for aggregation or 2D contingency tables, use -pivot",
+    )
+    parser.add_argument(
+        "-pivot",
+        "--pivot",
+        dest="pivot",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="KEY=VALUE,...",
+        action=_OrderedValue,
+        help="2-D pivot table (pytae pivot()); r=row_cols (optional), c=col_cols "
+        "(optional), v=value_cols (optional; defaults to counts), a=aggfunc (default sum; n=size), "
+        'dropna=false (default), f_v=val; e.g. -pivot "r=Region,c=Year,v=Sales,a=sum"',
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output",
+        default=None,
+        metavar="TARGET",
+        help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
+        "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
+        "or 'clip'/'clipboard' to copy to system clipboard",
+    )
+    parser.add_argument(
+        "-out_dir",
+        "--out_dir",
+        "-od",
+        "--out-dir",
+        dest="out_dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="target directory for exported files (created if it does not exist); requires -o/--output",
+    )
+    parser.add_argument(
+        "-fmt",
+        "--fmt",
+        dest="fmt",
+        default=None,
+        metavar="FORMAT",
+        help="input format when reading from STDIN or extensionless files: csv, parquet, jsonl, txt, tsv",
+    )
+    parser.add_argument(
+        "-dlim",
+        "--dlim",
+        dest="dlim",
+        default=None,
+        metavar="CHAR",
+        help="field delimiter for reading/writing .csv/.txt/.dat (default: ',' for .csv, "
+        "tab for .txt, '|' for .dat); not used for .parquet or .sas7bdat",
+    )
+    parser.add_argument(
+        "-encoding",
+        "--encoding",
+        dest="encoding",
+        default=None,
+        metavar="ENC",
+        help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
+        "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
+        "not used for .parquet",
+    )
+    parser.add_argument(
+        "-rename",
+        "--rename",
+        dest="rename",
+        action=_OrderedAppend,
+        default=None,
+        metavar="OLD:NEW,...",
+        help='rename columns at this point in the pipeline (or during conversion), e.g. "old_a:new_a,old_b:new_b"',
+    )
+    parser.add_argument(
+        "-file",
+        "--file",
+        dest="file",
+        default=None,
+        metavar="PATH=ALIAS;...",
+        help="load multiple named files for -merge/-concat/-sql, instead of the positional path; "
+        "';'-separated entries, each PATH=ALIAS optionally followed by "
+        ",dlim=/,encoding= overrides for that file, e.g. "
+        "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
+        "requires -merge, -concat, or -sql as the first operation, and can't be "
+        "combined with the positional path",
+    )
+    parser.add_argument(
+        "-filter",
+        "--filter",
+        dest="filter",
+        action=_OrderedAppend,
+        default=None,
+        metavar="CONDITIONS",
+        help="filter rows at this point in the pipeline using pytae filter(); conditions like \"col = 'val', col > 5\"",
+    )
+    parser.add_argument(
+        "-mutate",
+        "--mutate",
+        dest="mutate",
+        action=_OrderedAppend,
+        default=None,
+        metavar="SPEC",
+        help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
+        '"new_col = expression" or multi-column "(col1, col2) = _ * 2" entries, comma-separated; '
+        "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
+        '"bmi = body_mass_g / bill_length_mm ** 2" or "(startswith=bill_) = _ / 10"',
+    )
+    parser.add_argument(
+        "-sql",
+        "--sql",
+        dest="sql",
+        action=_OrderedAppend,
+        default=None,
+        metavar="QUERY",
+        help="run a SQL query (via Polars SQLContext) against the current view at this point in "
+        "the pipeline; the view is queryable as table `data`; standard SQL identifier "
+        'quoting applies (double quotes for names with spaces, e.g. "col a"; single '
+        "quotes are string literals, not identifiers), e.g. "
+        '"select \\"col a\\" from data where \\"col a\\" > 10"; '
+        "in -file/-merge mode, may be used instead of -merge as the first op, with "
+        'every -file alias queryable by its own name (e.g. "select * from df1 '
+        'inner join df2 on df1.\\"col a\\" = df2.cola") — `data` becomes queryable '
+        "too once something later in the pipeline has produced a current view",
+    )
+    parser.add_argument(
+        "-replace_values",
+        "--replace_values",
+        dest="replace_values",
+        action=_OrderedAppend,
+        default=None,
+        metavar="SPEC",
+        help="replace values at this point in the pipeline; key=value tokens: v= (required) "
+        "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
+        "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
+        "default true) — true matches whole cell values, false matches a substring "
+        "anywhere in the cell, e.g. \"v='old:new',exact=false\"",
+    )
+    parser.add_argument(
+        "-merge",
+        "--merge",
+        dest="merge",
+        action=_OrderedAppend,
+        default=None,
+        metavar="KEY=VALUE,...",
+        help="merge two frames into the pipeline (pandas merge()); repeatable, to fold in "
+        "one more file at a time; must be the first op when using -file (unless -sql/"
+        "-concat starts it instead); key=value tokens: left=/right= (required — -file "
+        "aliases, or 'data' for the pipeline's current result so far), "
+        "on= (required; shared column name(s), or 'left:right' pairs if they "
+        "differ between sides — quote on= if it has more than one column/pair, e.g. "
+        "\"on='col a:cola,colb:colb'\"), how= (optional, default 'inner': "
+        "inner/left/right/outer/cross), validate= (optional, e.g. one_to_one)",
+    )
+    parser.add_argument(
+        "-concat",
+        "--concat",
+        dest="concat",
+        action=_OrderedAppend,
+        default=None,
+        metavar="KEY=VALUE,...",
+        help="stack frames row-wise into the pipeline (pandas concat(), always with "
+        "ignore_index=True); repeatable; must be the first op when using -file "
+        "(unless -sql/-merge starts it instead); key=value tokens: frames= (required) "
+        "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
+        "current result so far), quoted since it has internal commas, e.g. "
+        "\"frames='df1,df2,df3'\"",
+    )
+    parser.add_argument(
+        "-plot",
+        "--plot",
+        dest="plot",
+        action=_OrderedStore,
+        default=None,
+        metavar="SPEC",
+        help='render visualization using pytae Plotter; e.g. -plot "kind=scatter, x=col1, y=col2"',
+    )
+    parser.add_argument(
+        "-finalize",
+        "--finalize",
+        dest="finalize",
+        default=None,
+        metavar="SPEC",
+        help='layout/legend options for -plot, e.g. -finalize "consolidate_legends=True, style=True"',
+    )
+    parser.add_argument(
+        "-progress",
+        "--progress",
+        nargs="?",
+        const=200_000,
+        type=parse_positive_int,
+        default=None,
+        metavar="N",
+        help="show row-count progress while converting large files (default: 200000 rows per chunk; optional N sets chunk size)",
+    )
+    parser.add_argument(
+        "-time",
+        "--time",
+        dest="time",
+        nargs="?",
+        const=1,
+        type=parse_positive_int,
+        default=None,
+        metavar="N",
+        help="measure and print pipeline execution time (default: 1 run; optional N runs the pipeline N times and reports avg/min/max/total)",
+    )
+    parser.add_argument(
+        "-pretty",
+        "--pretty",
+        action="store_true",
+        help="[deprecated] table formatting is now automatically detected (boxed table for terminal, bare unbordered for pipes)",
+    )
+    parser.add_argument(
+        "-pager",
+        "--pager",
+        action="store_true",
+        help="pipe long table or inspect outputs through system pager ($PAGER or less)",
+    )
+    parser.add_argument(
+        "-round",
+        "--round",
+        dest="round_ndigits",
+        type=int,
+        default=None,
+        metavar="N",
+        help="round numeric columns to N decimal places before printing/copying; "
+        "non-numeric columns are left unchanged",
+    )
     return parser
 
 
@@ -397,6 +841,7 @@ def main(argv: list[str] | None = None) -> int:
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
         from pytae.cli_help import get_keyword_help
+
         topic = raw_argv[1]
         msg = get_keyword_help(topic)
         print(msg)
@@ -504,28 +949,79 @@ def main(argv: list[str] | None = None) -> int:
         else:
             parser.error("the following arguments are required: path")
 
-    show_all = not any([args.shape, args.cols, args.dtype, args.nulls, args.describe, args.info, args.glimpse,
-                         args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
-                         args.head is not None, args.tail is not None, args.sample is not None,
-                         args.arrange is not None, args.pick is not None,
-                         args.agg is not None, args.handle_missing is not None, args.dropna is not None,
-                         args.long is not None, args.wide is not None, args.pivot is not None,
-                         args.select, args.filter, args.sql, args.replace_values,
-                         args.rename, args.clean_columns is not None, args.merge, args.concat,
-                         args.meta, args.diff is not None, args.plot is not None])
+    show_all = not any(
+        [
+            args.shape,
+            args.cols,
+            args.dtype,
+            args.nulls,
+            args.describe,
+            args.info,
+            args.glimpse,
+            args.value_counts,
+            args.distinct is not None,
+            args.freq is not None,
+            args.hist is not None,
+            args.head is not None,
+            args.tail is not None,
+            args.sample is not None,
+            args.arrange is not None,
+            args.pick is not None,
+            args.agg is not None,
+            args.handle_missing is not None,
+            args.dropna is not None,
+            args.long is not None,
+            args.wide is not None,
+            args.pivot is not None,
+            args.select,
+            args.filter,
+            args.sql,
+            args.replace_values,
+            args.rename,
+            args.clean_columns is not None,
+            args.merge,
+            args.concat,
+            args.meta,
+            args.diff is not None,
+            args.plot is not None,
+        ]
+    )
 
-    wants_df = any([args.cols, args.dtype, args.nulls, args.describe, show_all,
-                     args.value_counts, args.distinct is not None, args.freq is not None, args.hist is not None,
-                     args.head is not None, args.tail is not None, args.sample is not None,
-                     args.arrange is not None, args.pick is not None,
-                     args.agg is not None, args.handle_missing is not None, args.dropna is not None,
-                     args.long is not None, args.wide is not None, args.pivot is not None,
-                     args.clean_columns is not None, args.merge, args.concat, args.plot is not None])
+    wants_df = any(
+        [
+            args.cols,
+            args.dtype,
+            args.nulls,
+            args.describe,
+            show_all,
+            args.value_counts,
+            args.distinct is not None,
+            args.freq is not None,
+            args.hist is not None,
+            args.head is not None,
+            args.tail is not None,
+            args.sample is not None,
+            args.arrange is not None,
+            args.pick is not None,
+            args.agg is not None,
+            args.handle_missing is not None,
+            args.dropna is not None,
+            args.long is not None,
+            args.wide is not None,
+            args.pivot is not None,
+            args.clean_columns is not None,
+            args.merge,
+            args.concat,
+            args.plot is not None,
+        ]
+    )
     if is_clip and args.shape and wants_df:
-        parser.error("-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-                     "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
-                     "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
-                     "run -shape separately")
+        parser.error(
+            "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
+            "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
+            "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-merge/-concat/-freq/-hist/-plot; "
+            "run -shape separately"
+        )
     if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
         parser.error("-by requires -agg, -mutate, -pick")
     if args.frac is not None and args.sample is None:
@@ -563,7 +1059,11 @@ def main(argv: list[str] | None = None) -> int:
             for p in paths:
                 clean_name = p.name[:-3] if p.name.lower().endswith(".gz") else p.name
                 dest_name = f"{Path(clean_name).stem}{ext}"
-                dest = (args.out_dir / dest_name).resolve() if args.out_dir is not None else p.with_name(dest_name).resolve()
+                dest = (
+                    (args.out_dir / dest_name).resolve()
+                    if args.out_dir is not None
+                    else p.with_name(dest_name).resolve()
+                )
                 if dest in dest_map:
                     parser.error(
                         f"-o {out_target}: multiple input files resolve to the same destination path '{dest}': "
@@ -579,24 +1079,44 @@ def main(argv: list[str] | None = None) -> int:
                 if not entry_path.exists():
                     parser.error(f"-file: file not found: {entry_path}")
                 try:
-                    reader = get_reader(entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000)
+                    reader = get_reader(
+                        entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000
+                    )
                 except ValueError as exc:
                     parser.error(f"-file: {exc}")
                 try:
                     if args.progress:
-                        frames[entry["alias"]] = reader.to_dataframe(nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000)
+                        frames[entry["alias"]] = reader.to_dataframe(
+                            nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000
+                        )
                     else:
                         frames[entry["alias"]] = reader.to_polars(nrows=args.nrows)
                 except UnicodeError as exc:
                     parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
                 except Exception as exc:
                     if "utf-8" in str(exc).lower():
-                        parser.error(_encoding_error_message(entry_path, entry["encoding"], UnicodeDecodeError("utf-8", b"", 0, 1, str(exc))))
+                        parser.error(
+                            _encoding_error_message(
+                                entry_path, entry["encoding"], UnicodeDecodeError("utf-8", b"", 0, 1, str(exc))
+                            )
+                        )
                     parser.error(f"-file: {exc}")
-            failed = _process_path(None, args, parser, False, show_all=show_all, select_specs=select_specs,
-                                    filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
-                                    replace_specs=replace_specs, rename_specs=rename_specs, frames=frames,
-                                    merge_specs=merge_specs, concat_specs=concat_specs)
+            failed = _process_path(
+                None,
+                args,
+                parser,
+                False,
+                show_all=show_all,
+                select_specs=select_specs,
+                filter_specs=filter_specs,
+                mutate_specs=mutate_specs,
+                sql_specs=sql_specs,
+                replace_specs=replace_specs,
+                rename_specs=rename_specs,
+                frames=frames,
+                merge_specs=merge_specs,
+                concat_specs=concat_specs,
+            )
             return 1 if failed else 0
 
         code = 0
@@ -604,9 +1124,19 @@ def main(argv: list[str] | None = None) -> int:
             if batch:
                 print(f"== {path} ==")
             try:
-                failed = _process_path(path, args, parser, batch, show_all=show_all, select_specs=select_specs,
-                                        filter_specs=filter_specs, mutate_specs=mutate_specs, sql_specs=sql_specs,
-                                        replace_specs=replace_specs, rename_specs=rename_specs)
+                failed = _process_path(
+                    path,
+                    args,
+                    parser,
+                    batch,
+                    show_all=show_all,
+                    select_specs=select_specs,
+                    filter_specs=filter_specs,
+                    mutate_specs=mutate_specs,
+                    sql_specs=sql_specs,
+                    replace_specs=replace_specs,
+                    rename_specs=rename_specs,
+                )
             except UnicodeError as exc:
                 failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
             if failed:

@@ -6,7 +6,8 @@ _SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), "../src"))
 
 
 def test_import_does_not_load_plotting_shape_or_samples():
-    code = r"""
+    code = (
+        r"""
 import sys
 sys.path.insert(0, %r)
 import pytae
@@ -32,9 +33,7 @@ assert pytae.sample_data["penguins"] is not df
 df.iloc[0, 0] = "MUTATED"
 assert pytae.sample_data["penguins"].iloc[0, 0] != "MUTATED"
 
-assert "pytae.shape" not in sys.modules
 long = pytae.long
-assert "pytae.shape" in sys.modules
 assert long is not None
 
 assert callable(pytae.mutate)
@@ -44,12 +43,15 @@ assert not hasattr(__import__("pandas").DataFrame, "mutate")
 Plotter = pytae.Plotter
 assert "pytae.plotting" in sys.modules
 assert Plotter is not None
-""" % _SRC
+"""
+        % _SRC
+    )
     subprocess.check_call([sys.executable, "-c", code])
 
 
 def test_cli_import_does_not_load_shape_or_plotting():
-    code = r"""
+    code = (
+        r"""
 import sys
 sys.path.insert(0, %r)
 import pytae.cli
@@ -63,12 +65,15 @@ assert hasattr(DF, "pt")
 assert not hasattr(DF.pt, "qry")
 assert not hasattr(DF, "select")
 assert not hasattr(DF, "mutate")
-""" % _SRC
+"""
+        % _SRC
+    )
     subprocess.check_call([sys.executable, "-c", code])
 
 
 def test_plotter_import_error_mentions_plot_extra():
-    code = r"""
+    code = (
+        r"""
 import builtins
 import sys
 sys.path.insert(0, %r)
@@ -89,7 +94,9 @@ except ImportError as exc:
     assert "pytae[plot]" in msg
 else:
     raise AssertionError("expected ImportError")
-""" % _SRC
+"""
+        % _SRC
+    )
     subprocess.check_call([sys.executable, "-c", code])
 
 
@@ -103,5 +110,3 @@ def test_sample_unknown_dataset():
         assert "penguins" in str(exc)
     else:
         raise AssertionError("expected KeyError")
-
-

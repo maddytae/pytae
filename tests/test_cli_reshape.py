@@ -20,6 +20,7 @@ def test_long_melts_numeric_columns(tmp_path, capsys):
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["grp", "variable", "value"]
 
+
 def test_long_renames_melt_columns(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
@@ -28,6 +29,7 @@ def test_long_renames_melt_columns(tmp_path, capsys):
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
+
 
 def test_wide_pivots_long_frame(tmp_path, capsys):
     df = pd.DataFrame(
@@ -45,6 +47,7 @@ def test_wide_pivots_long_frame(tmp_path, capsys):
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["id", "ca", "cn", "sg"]
 
+
 def test_long_quoted_names_with_spaces(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]})
     path = _write_csv(tmp_path, df)
@@ -53,6 +56,7 @@ def test_long_quoted_names_with_spaces(tmp_path, capsys):
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature name", "amount col"]
+
 
 def test_wide_quoted_names_with_spaces(tmp_path, capsys):
     df = pd.DataFrame(
@@ -69,6 +73,7 @@ def test_wide_quoted_names_with_spaces(tmp_path, capsys):
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["id", "cn", "sg"]
+
 
 def test_wide_rejects_a_arg(tmp_path):
     df = pd.DataFrame(
@@ -101,12 +106,14 @@ def test_wide_duplicate_keys_fail_cleanly(tmp_path, capsys):
     assert "duplicate entries" in captured.err.lower()
     assert "-pivot" in captured.err
 
+
 def test_wide_unknown_column_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"id": ["a"], "balance": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-wide", "c=country,v=balance"])
     assert exc_info.value.code == 2
+
 
 def test_wide_rejects_dropna_kwarg(tmp_path):
     path = _write_csv(
@@ -135,10 +142,12 @@ def test_crosstab_unrecognized_argument(tmp_path):
 
 
 def test_cli_pivot_rich_metrics_1d(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "East", "West"],
-        "Sales": [100.0, 200.0, 300.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Sales": [100.0, 200.0, 300.0],
+        }
+    )
     p = _write_csv(tmp_path, df)
     exit_code = cli.main([p, "-pivot", "r=Region, v='avg_sales=Sales:mean, count=n'", "-cols"])
     assert exit_code == 0
@@ -147,23 +156,33 @@ def test_cli_pivot_rich_metrics_1d(tmp_path, capsys):
 
 
 def test_cli_pivot_rich_metrics_2d_unquoted(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "East", "West"],
-        "Year": [2020, 2021, 2020],
-        "Sales": [100.0, 200.0, 300.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Year": [2020, 2021, 2020],
+            "Sales": [100.0, 200.0, 300.0],
+        }
+    )
     p = _write_csv(tmp_path, df)
     exit_code = cli.main([p, "-pivot", "r=Region, c=Year, v=rev=Sales:sum, count=n", "-cols"])
     assert exit_code == 0
     cols = capsys.readouterr().out.strip().splitlines()
-    assert cols == ["Region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"] or cols == ["Region", "rev_2020", "rev_2021", "count_2020", "count_2021"]
+    assert cols == ["Region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"] or cols == [
+        "Region",
+        "rev_2020",
+        "rev_2021",
+        "count_2020",
+        "count_2021",
+    ]
 
 
 def test_cli_pivot_multi_func(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "East", "West"],
-        "Sales": [100.0, 200.0, 300.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Sales": [100.0, 200.0, 300.0],
+        }
+    )
     p = _write_csv(tmp_path, df)
     exit_code = cli.main([p, "-pivot", "r=Region, v=Sales:[mean, sum]", "-cols"])
     assert exit_code == 0
@@ -172,11 +191,13 @@ def test_cli_pivot_multi_func(tmp_path, capsys):
 
 
 def test_cli_pivot_optional_v(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "East", "West"],
-        "Year": [2020, 2021, 2020],
-        "Store": ["S1", "S2", "S1"],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Year": [2020, 2021, 2020],
+            "Store": ["S1", "S2", "S1"],
+        }
+    )
     p = _write_csv(tmp_path, df)
 
     # 2D table without v
@@ -193,11 +214,13 @@ def test_cli_pivot_optional_v(tmp_path, capsys):
 
 
 def test_cli_pivot_f_v(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "East", "West"],
-        "Quarter": ["Q1", "Q1", "Q2"],
-        "Sales": [100.0, 200.0, 300.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Quarter": ["Q1", "Q1", "Q2"],
+            "Sales": [100.0, 200.0, 300.0],
+        }
+    )
     p = _write_csv(tmp_path, df)
 
     # f_v=0 works
@@ -216,12 +239,14 @@ def test_cli_pivot_f_v(tmp_path, capsys):
 
 
 def test_cli_pivot_single_metric_2d_no_prefix(tmp_path, capsys):
-    df = pd.DataFrame({
-        "cola": ["A1", "A2"],
-        "colb": ["B1", "B2"],
-        "colc": ["C1", "C2"],
-        "colv": [10.0, 20.0],
-    })
+    df = pd.DataFrame(
+        {
+            "cola": ["A1", "A2"],
+            "colb": ["B1", "B2"],
+            "colc": ["C1", "C2"],
+            "colv": [10.0, 20.0],
+        }
+    )
     p = _write_csv(tmp_path, df)
     # pytae x.parquet -pivot "r=cola,colb,c=colc,v=colv:sum"
     exit_code = cli.main([p, "-pivot", "r=cola,colb,c=colc,v=colv:sum", "-cols"])
@@ -231,18 +256,15 @@ def test_cli_pivot_single_metric_2d_no_prefix(tmp_path, capsys):
 
 
 def test_cli_pivot_default_f_v_is_null_for_metrics(tmp_path, capsys):
-    df = pd.DataFrame({
-        "island": ["Torgersen", "Biscoe"],
-        "sex": ["male", "female"],
-        "mass": [100.0, 200.0],
-    })
+    df = pd.DataFrame(
+        {
+            "island": ["Torgersen", "Biscoe"],
+            "sex": ["male", "female"],
+            "mass": [100.0, 200.0],
+        }
+    )
     p = _write_csv(tmp_path, df)
     exit_code = cli.main([p, "-pivot", "r=island,c=sex,v=mass:sum"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "NaN" in out or "null" in out
-
-
-
-
-

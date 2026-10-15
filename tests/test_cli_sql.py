@@ -20,6 +20,7 @@ def test_sql_query_via_data_alias(tmp_path, capsys):
     assert "y" in out
     assert "x" not in out
 
+
 def test_sql_spaced_column_name_needs_double_quotes(tmp_path, capsys):
     # Standard SQL identifier quoting: double quotes for names with spaces, not single quotes.
     path = _write_csv(tmp_path, pd.DataFrame({"bill length mm": [1, 20, 3], "species": ["a", "b", "c"]}))
@@ -29,6 +30,7 @@ def test_sql_spaced_column_name_needs_double_quotes(tmp_path, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip().splitlines()[-1].strip() == "b"
+
 
 def test_sql_only_data_is_registered_no_file_derived_alias(tmp_path, capsys):
     # The file is already named on the command line; -sql does not also register a
@@ -41,6 +43,7 @@ def test_sql_only_data_is_registered_no_file_derived_alias(tmp_path, capsys):
     assert exc_info.value.code == 2
     assert "-sql" in capsys.readouterr().err
 
+
 def test_sql_reserved_word_table_is_not_registered(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
 
@@ -49,18 +52,18 @@ def test_sql_reserved_word_table_is_not_registered(tmp_path, capsys):
     assert exc_info.value.code == 2
     assert "-sql" in capsys.readouterr().err
 
+
 def test_sql_chains_after_select(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    exit_code = cli.main(
-        [path, "-select", "keep,flt", "-sql", 'select "keep" from data where "flt" = \'A\'', "-shape"]
-    )
+    exit_code = cli.main([path, "-select", "keep,flt", "-sql", 'select "keep" from data where "flt" = \'A\'', "-shape"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
+
 
 def test_sql_invalid_query_errors(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
@@ -69,6 +72,7 @@ def test_sql_invalid_query_errors(tmp_path, capsys):
         cli.main([path, "-sql", "not valid sql"])
     assert exc_info.value.code == 2
     assert "-sql" in capsys.readouterr().err
+
 
 def test_sql_first_op_scans_parquet_directly(tmp_path, capsys):
     # -sql as the very first op queries table data via Polars SQLContext.
@@ -81,6 +85,7 @@ def test_sql_first_op_scans_parquet_directly(tmp_path, capsys):
     assert exit_code == 0
     assert out[1:] == ["y", "z"]
 
+
 def test_sql_first_op_respects_nrows(tmp_path, capsys):
     path = tmp_path / "data.parquet"
     pd.DataFrame({"a": range(10)}).to_parquet(path, index=False)
@@ -90,6 +95,7 @@ def test_sql_first_op_respects_nrows(tmp_path, capsys):
     out = capsys.readouterr().out.strip().splitlines()
     assert exit_code == 0
     assert len(out) - 1 == 3  # header + 3 rows
+
 
 def test_sql_first_op_with_progress_still_works(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
@@ -102,6 +108,7 @@ def test_sql_first_op_with_progress_still_works(tmp_path, capsys):
     table_lines = [line for line in out.strip().splitlines() if "reading" not in line]
     assert len(table_lines) - 1 == 2
 
+
 def test_sql_first_op_with_custom_encoding_still_works(tmp_path, capsys):
     path = tmp_path / "data.csv"
     pd.DataFrame({"a": [1, 2], "name": ["café", "naïve"]}).to_csv(path, index=False, encoding="latin-1")
@@ -112,36 +119,52 @@ def test_sql_first_op_with_custom_encoding_still_works(tmp_path, capsys):
     assert exit_code == 0
     assert "café" in out
 
+
 def test_sql_can_join_file_aliases_directly(tmp_path, capsys):
     left, right = _write_two_csvs(tmp_path)
 
-    cli.main([
-        "-file", f"{left}=df1;{right}=df2",
-        "-sql", 'select * from df1 inner join df2 on df1."col a" = df2.cola',
-    ])
+    cli.main(
+        [
+            "-file",
+            f"{left}=df1;{right}=df2",
+            "-sql",
+            'select * from df1 inner join df2 on df1."col a" = df2.cola',
+        ]
+    )
 
     out = capsys.readouterr().out
     assert "val_l" in out and "val_r" in out
 
+
 def test_sql_after_merge_can_query_data(tmp_path, capsys):
     left, right = _write_two_csvs(tmp_path)
 
-    cli.main([
-        "-file", f"{left}=df1;{right}=df2",
-        "-merge", "left=df1,right=df2,on=col a:cola",
-        "-sql", "select count(*) as n from data",
-    ])
+    cli.main(
+        [
+            "-file",
+            f"{left}=df1;{right}=df2",
+            "-merge",
+            "left=df1,right=df2,on=col a:cola",
+            "-sql",
+            "select count(*) as n from data",
+        ]
+    )
 
     assert capsys.readouterr().out.strip().splitlines()[-1].strip() == "2"
+
 
 def test_sql_as_first_op_satisfies_file_requirement(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     # no -merge at all — -sql alone should be accepted as the founding op
-    exit_code = cli.main([
-        "-file", f"{left}=df1;{right}=df2",
-        "-sql", "select * from df1",
-    ])
+    exit_code = cli.main(
+        [
+            "-file",
+            f"{left}=df1;{right}=df2",
+            "-sql",
+            "select * from df1",
+        ]
+    )
     assert exit_code == 0
 
 
@@ -196,7 +219,3 @@ def test_cli_sql_works_without_duckdb(tmp_path, capsys, monkeypatch):
     exit_code = cli.main([str(path), "-sql", "select y from data where x >= 20", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
-
-
-
-

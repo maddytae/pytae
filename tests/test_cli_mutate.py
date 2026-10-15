@@ -16,9 +16,7 @@ def test_mutate_then_select_new_column(tmp_path, capsys):
         pd.DataFrame({"body_mass_g": [3000.0, 4000.0], "bill_length_mm": [30.0, 40.0]}),
     )
 
-    exit_code = cli.main(
-        [path, "-mutate", "bmi = body_mass_g / bill_length_mm ** 2", "-select", "bmi", "-shape"]
-    )
+    exit_code = cli.main([path, "-mutate", "bmi = body_mass_g / bill_length_mm ** 2", "-select", "bmi", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
@@ -27,8 +25,14 @@ def test_mutate_multiple_entries_and_chained_reference(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000.0, 4000.0]}))
 
     cli.main(
-        [path, "-mutate", "mass_kg = body_mass_g / 1000, mass_lb = mass_kg * 2.20462",
-         "-select", "mass_kg,mass_lb", "-head"]
+        [
+            path,
+            "-mutate",
+            "mass_kg = body_mass_g / 1000, mass_lb = mass_kg * 2.20462",
+            "-select",
+            "mass_kg,mass_lb",
+            "-head",
+        ]
     )
     out = capsys.readouterr().out
     assert "mass_kg" in out and "mass_lb" in out
@@ -121,12 +125,18 @@ def test_mutate_grouped_cli(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["x", "x", "y", "y"], "val": [10.0, 20.0, 30.0, 40.0]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([
-        path, "-by", "grp",
-        "-mutate", "avg = mean(val), diff = val - avg, cnt = n",
-        "-select", "grp,val,avg,diff,cnt",
-        "-head",
-    ])
+    exit_code = cli.main(
+        [
+            path,
+            "-by",
+            "grp",
+            "-mutate",
+            "avg = mean(val), diff = val - avg, cnt = n",
+            "-select",
+            "grp,val,avg,diff,cnt",
+            "-head",
+        ]
+    )
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "15.0" in out and "35.0" in out
@@ -137,12 +147,18 @@ def test_mutate_grouped_with_spaced_columns_cli(tmp_path, capsys):
     df = pd.DataFrame({"grp": ["a", "a"], "total bill": [10.0, 30.0]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([
-        path, "-by", "grp",
-        "-mutate", "diff = [total bill] - mean([total bill])",
-        "-select", "diff",
-        "-head",
-    ])
+    exit_code = cli.main(
+        [
+            path,
+            "-by",
+            "grp",
+            "-mutate",
+            "diff = [total bill] - mean([total bill])",
+            "-select",
+            "diff",
+            "-head",
+        ]
+    )
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "-10.0" in out and "10.0" in out
@@ -163,11 +179,15 @@ def test_mutate_multi_col_cli(tmp_path, capsys):
     df = pd.DataFrame({"rev": [10, 20], "cost": [4, 8]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([
-        path,
-        "-mutate", "(rev, cost)_2x = _ * 2, profit = rev_2x - cost_2x",
-        "-select", "rev_2x,cost_2x,profit",
-    ])
+    exit_code = cli.main(
+        [
+            path,
+            "-mutate",
+            "(rev, cost)_2x = _ * 2, profit = rev_2x - cost_2x",
+            "-select",
+            "rev_2x,cost_2x,profit",
+        ]
+    )
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "20" in out and "40" in out
@@ -178,12 +198,16 @@ def test_mutate_cli_map_with_spaces(tmp_path, capsys):
     df = pd.DataFrame({"island name": ["Biscoe", "Dream", "Torgersen"]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([
-        path,
-        "-mutate", "[island code] = map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')",
-        "-select", "island code",
-        "-head",
-    ])
+    exit_code = cli.main(
+        [
+            path,
+            "-mutate",
+            "[island code] = map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')",
+            "-select",
+            "island code",
+            "-head",
+        ]
+    )
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "BIS" in out and "DRM" in out and "TOR" in out

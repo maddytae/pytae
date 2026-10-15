@@ -21,6 +21,7 @@ def _sample_df() -> pd.DataFrame:
 # 1. Tests for filter()
 # ==============================================================================
 
+
 def test_filter_callable_lambda():
     df = _sample_df()
     # Bare lambda on df.pt
@@ -50,6 +51,7 @@ def test_filter_rejects_mixing_callable():
 # 2. Tests for distinct()
 # ==============================================================================
 
+
 def test_distinct_all_columns():
     df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "x", "y"]})
     res = df.pt.distinct()
@@ -70,7 +72,9 @@ def test_distinct_positional_args():
 
 def test_distinct_rejects_lists():
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-    with pytest.raises(TypeError, match="distinct\\(\\) takes column names as positional arguments.*Lists are not accepted"):
+    with pytest.raises(
+        TypeError, match="distinct\\(\\) takes column names as positional arguments.*Lists are not accepted"
+    ):
         df.pt.distinct(["a", "b"])
 
 
@@ -91,6 +95,7 @@ def test_distinct_keep_options():
 
 def test_cli_distinct_keep(tmp_path, capsys):
     from pytae import cli
+
     df = pd.DataFrame({"a": [1, 1, 2], "b": [10, 20, 30]})
     path = str(tmp_path / "test.csv")
     df.to_csv(path, index=False)
@@ -118,9 +123,12 @@ def test_cli_distinct_keep(tmp_path, capsys):
 # 3. Tests for by() and ungroup()
 # ==============================================================================
 
+
 def test_by_rejects_lists():
     df = _sample_df()
-    with pytest.raises(TypeError, match="df\\.pt\\.by\\(\\) takes column names as positional arguments.*Lists are not accepted"):
+    with pytest.raises(
+        TypeError, match="df\\.pt\\.by\\(\\) takes column names as positional arguments.*Lists are not accepted"
+    ):
         df.pt.by(["species", "island"])
 
 
@@ -202,4 +210,3 @@ def test_by_chains_into_pick():
     assert set(res["mass"]) == {4200, 5200, 3900}
     assert "_pt_by" not in res.attrs
     assert "_pt_by" not in df.attrs
-

@@ -22,11 +22,13 @@ from pytae.polars_engine import (
 
 
 def test_filter_polars_operators():
-    df = pl.DataFrame({
-        "a": [1, 2, 3, 4, 5],
-        "b": ["apple", "banana", "cherry", "date", "elderberry"],
-        "c": [10.5, None, 20.5, None, 30.5],
-    })
+    df = pl.DataFrame(
+        {
+            "a": [1, 2, 3, 4, 5],
+            "b": ["apple", "banana", "cherry", "date", "elderberry"],
+            "c": [10.5, None, 20.5, None, 30.5],
+        }
+    )
 
     # Numeric comparison
     res = filter_polars(df, [("a", (">", 2))])
@@ -66,11 +68,13 @@ def test_filter_polars_operators():
 
 
 def test_select_polars():
-    df = pl.DataFrame({
-        "x": [1, 2],
-        "y": [3, 4],
-        "z": [5, 6],
-    })
+    df = pl.DataFrame(
+        {
+            "x": [1, 2],
+            "y": [3, 4],
+            "z": [5, 6],
+        }
+    )
     res = select_polars(df, ["z", "x"], {})
     assert res.columns == ["z", "x"]
 
@@ -82,20 +86,24 @@ def test_select_polars():
 
 
 def test_arrange_polars():
-    df = pl.DataFrame({
-        "grp": ["B", "A", "B", "A"],
-        "val": [10, 20, 5, 15],
-    })
+    df = pl.DataFrame(
+        {
+            "grp": ["B", "A", "B", "A"],
+            "val": [10, 20, 5, 15],
+        }
+    )
     res = arrange_polars(df, "grp, val desc")
     assert res["grp"].to_list() == ["A", "A", "B", "B"]
     assert res["val"].to_list() == [20, 15, 10, 5]
 
 
 def test_distinct_polars():
-    df = pl.DataFrame({
-        "k": [1, 1, 2, 2, 3],
-        "v": ["a", "b", "c", "d", "e"],
-    })
+    df = pl.DataFrame(
+        {
+            "k": [1, 1, 2, 2, 3],
+            "v": ["a", "b", "c", "d", "e"],
+        }
+    )
     res_first = distinct_polars(df, cols=["k"], keep="first")
     assert res_first["v"].to_list() == ["a", "c", "e"]
 
@@ -107,10 +115,12 @@ def test_distinct_polars():
 
 
 def test_dropna_and_rename_polars():
-    df = pl.DataFrame({
-        "a": [1, None, 3],
-        "b": ["x", "y", None],
-    })
+    df = pl.DataFrame(
+        {
+            "a": [1, None, 3],
+            "b": ["x", "y", None],
+        }
+    )
     res_drop = dropna_polars(df, cols=["a"])
     assert res_drop["a"].to_list() == [1, 3]
 
@@ -119,12 +129,14 @@ def test_dropna_and_rename_polars():
 
 
 def test_pivot_polars():
-    df = pl.DataFrame({
-        "region": ["East", "East", "West", "West"],
-        "year": [2020, 2021, 2020, 2021],
-        "sales": [100, 200, 300, 400],
-        "profit": [10, 20, 30, 40],
-    })
+    df = pl.DataFrame(
+        {
+            "region": ["East", "East", "West", "West"],
+            "year": [2020, 2021, 2020, 2021],
+            "sales": [100, 200, 300, 400],
+            "profit": [10, 20, 30, 40],
+        }
+    )
     # Single value, sorted columns
     res = pivot_polars(df, r="region", c="year", v="sales", a="sum")
     assert res.columns == ["region", "2020", "2021"]
@@ -138,10 +150,12 @@ def test_pivot_polars():
     assert "profit_2020" in res_multi.columns
 
     # Count aggregation a="n" defaults missing to 0
-    df_counts = pl.DataFrame({
-        "item": ["apple", "apple", "banana"],
-        "store": ["S1", "S2", "S1"],
-    })
+    df_counts = pl.DataFrame(
+        {
+            "item": ["apple", "apple", "banana"],
+            "store": ["S1", "S2", "S1"],
+        }
+    )
     res_cnt = pivot_polars(df_counts, r="item", c="store", a="n")
     assert res_cnt.columns == ["item", "S1", "S2"]
     assert res_cnt["S1"].to_list() == [1, 1]
@@ -149,11 +163,13 @@ def test_pivot_polars():
 
 
 def test_mutate_polars():
-    df = pl.DataFrame({
-        "val": [100.0, 200.0, 300.0],
-        "count with space": [1, 2, 3],
-        "grp": ["G1", "G1", "G2"],
-    })
+    df = pl.DataFrame(
+        {
+            "val": [100.0, 200.0, 300.0],
+            "count with space": [1, 2, 3],
+            "grp": ["G1", "G1", "G2"],
+        }
+    )
     spec = {
         "x": "val / 1e6",
         "mult": "val * 2.0",
@@ -171,22 +187,30 @@ def test_mutate_polars():
 
 def test_cli_end_to_end_polars_pipeline(tmp_path, capsys):
     p = tmp_path / "test.parquet"
-    df = pd.DataFrame({
-        "category": ["A", "B", "A", "B", "A"],
-        "region": ["East", "West", "East", "West", "North"],
-        "val": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "flag": ["yes", "no", "yes", "yes", "no"],
-    })
+    df = pd.DataFrame(
+        {
+            "category": ["A", "B", "A", "B", "A"],
+            "region": ["East", "West", "East", "West", "North"],
+            "val": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "flag": ["yes", "no", "yes", "yes", "no"],
+        }
+    )
     df.to_parquet(p, index=False)
 
     # CLI chain: filter -> select -> mutate with 1e6 -> pivot
-    code = cli.main([
-        str(p),
-        "-filter", "flag == 'yes'",
-        "-select", "category,region,val",
-        "-mutate", "v = val / 1e6",
-        "-pivot", "r=category,c=region,v=v,a=sum",
-    ])
+    code = cli.main(
+        [
+            str(p),
+            "-filter",
+            "flag == 'yes'",
+            "-select",
+            "category,region,val",
+            "-mutate",
+            "v = val / 1e6",
+            "-pivot",
+            "r=category,c=region,v=v,a=sum",
+        ]
+    )
     assert code == 0
     out = capsys.readouterr().out
     assert "East" in out
@@ -194,10 +218,12 @@ def test_cli_end_to_end_polars_pipeline(tmp_path, capsys):
 
 
 def test_pick_polars():
-    df = pl.DataFrame({
-        "grp": ["A", "A", "A", "B", "B", "B"],
-        "val": [10, 30, 20, 5, 40, 15],
-    })
+    df = pl.DataFrame(
+        {
+            "grp": ["A", "A", "A", "B", "B", "B"],
+            "val": [10, 30, 20, 5, 40, 15],
+        }
+    )
     # Ungrouped max
     res_max = pick_polars(df, "val", n=2, order="max")
     assert res_max["val"].to_list() == [40, 30]
@@ -217,10 +243,12 @@ def test_pick_polars():
 
 
 def test_value_counts_polars():
-    df = pl.DataFrame({
-        "item": ["apple", "banana", "apple", "cherry", None, "banana", "apple"],
-        "count": [1, 2, 1, 3, 4, 2, 1],
-    })
+    df = pl.DataFrame(
+        {
+            "item": ["apple", "banana", "apple", "cherry", None, "banana", "apple"],
+            "count": [1, 2, 1, 3, 4, 2, 1],
+        }
+    )
     # Single column
     res = value_counts_polars(df.select("item"), dropna=True)
     assert res.columns == ["item", "count"]
@@ -238,11 +266,13 @@ def test_value_counts_polars():
 
 
 def test_long_and_wide_polars():
-    df = pl.DataFrame({
-        "id": [1, 2],
-        "q1": [10, 20],
-        "q2": [30, 40],
-    })
+    df = pl.DataFrame(
+        {
+            "id": [1, 2],
+            "q1": [10, 20],
+            "q2": [30, 40],
+        }
+    )
     # Long (unpivot)
     long_res = long_polars(df, cols=["q1", "q2"], id_vars=["id"])
     assert long_res.columns == ["id", "variable", "value"]
@@ -259,11 +289,13 @@ def test_long_and_wide_polars():
 
 
 def test_handle_missing_polars():
-    df = pl.DataFrame({
-        "s": [" hello ", None, "world "],
-        "n": [10.0, None, 30.0],
-        "b": [True, None, False],
-    })
+    df = pl.DataFrame(
+        {
+            "s": [" hello ", None, "world "],
+            "n": [10.0, None, 30.0],
+            "b": [True, None, False],
+        }
+    )
     res = handle_missing_polars(df, fillna=".")
     assert res["s"].to_list() == ["hello", ".", "world"]
     assert res["n"].to_list() == [10.0, 0.0, 30.0]
@@ -272,19 +304,23 @@ def test_handle_missing_polars():
 
 
 def test_clean_columns_polars():
-    df = pl.DataFrame({
-        "  col a  ": [1],
-        "col   b": [2],
-    })
+    df = pl.DataFrame(
+        {
+            "  col a  ": [1],
+            "col   b": [2],
+        }
+    )
     res = clean_columns_polars(df, strip=True, squeeze=True, fill="_", case="lower")
     assert res.columns == ["col_a", "col_b"]
 
 
 def test_mutate_polars_map_and_disallow_dot_map():
-    df = pl.DataFrame({
-        "island name": ["Biscoe", "Dream", "Torgersen"],
-        "species": ["Adelie", "Gentoo", "Chinstrap"],
-    })
+    df = pl.DataFrame(
+        {
+            "island name": ["Biscoe", "Dream", "Torgersen"],
+            "species": ["Adelie", "Gentoo", "Chinstrap"],
+        }
+    )
     res = mutate_polars(df, {"island code": "map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')"})
     assert res["island code"].to_list() == ["BIS", "DRM", "TOR"]
 
@@ -361,11 +397,13 @@ def test_cli_tty_boxed_output(tmp_path, monkeypatch, capsys):
 
 
 def test_pivot_polars_rich_metrics_1d():
-    df = pl.DataFrame({
-        "region": ["East", "East", "West", "West", "East"],
-        "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
-        "profit": [10.0, 25.0, 35.0, 50.0, 20.0],
-    })
+    df = pl.DataFrame(
+        {
+            "region": ["East", "East", "West", "West", "East"],
+            "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+            "profit": [10.0, 25.0, 35.0, 50.0, 20.0],
+        }
+    )
     res = pivot_polars(df, r="region", v="rev = sales:sum, avg_sales = sales:mean, orders = n")
     assert res.columns == ["region", "rev", "avg_sales", "orders"]
     assert res["region"].to_list() == ["East", "West"]
@@ -375,11 +413,13 @@ def test_pivot_polars_rich_metrics_1d():
 
 
 def test_pivot_polars_rich_metrics_2d():
-    df = pl.DataFrame({
-        "region": ["East", "East", "West", "West", "East"],
-        "year": [2020, 2020, 2020, 2021, 2021],
-        "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
-    })
+    df = pl.DataFrame(
+        {
+            "region": ["East", "East", "West", "West", "East"],
+            "year": [2020, 2020, 2020, 2021, 2021],
+            "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+        }
+    )
     res = pivot_polars(df, r="region", c="year", v="rev = sales:sum, orders = n")
     assert res.columns == ["region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"]
     assert res["region"].to_list() == ["East", "West"]
@@ -390,10 +430,12 @@ def test_pivot_polars_rich_metrics_2d():
 
 
 def test_pivot_polars_multi_func_single_col():
-    df = pl.DataFrame({
-        "region": ["East", "East", "West"],
-        "sales": [100.0, 200.0, 300.0],
-    })
+    df = pl.DataFrame(
+        {
+            "region": ["East", "East", "West"],
+            "sales": [100.0, 200.0, 300.0],
+        }
+    )
     res = pivot_polars(df, r="region", v="sales:[mean, sum]")
     assert res.columns == ["region", "sales_mean", "sales_sum"]
     assert res["sales_mean"].to_list() == [150.0, 300.0]
@@ -401,10 +443,12 @@ def test_pivot_polars_multi_func_single_col():
 
 
 def test_pivot_polars_whole_table_and_c_only():
-    df = pl.DataFrame({
-        "year": [2020, 2020, 2021],
-        "sales": [100.0, 200.0, 300.0],
-    })
+    df = pl.DataFrame(
+        {
+            "year": [2020, 2020, 2021],
+            "sales": [100.0, 200.0, 300.0],
+        }
+    )
     # Whole table
     res_whole = pivot_polars(df, v="total = sales:sum, count = n")
     assert res_whole.columns == ["total", "count"]
@@ -419,12 +463,14 @@ def test_pivot_polars_whole_table_and_c_only():
 
 
 def test_pivot_polars_optional_v_and_fill_aliases():
-    df = pl.DataFrame({
-        "region": ["East", "East", "West", "West", "East"],
-        "year": [2020, 2021, 2020, 2020, 2020],
-        "quarter": ["Q1", "Q1", "Q2", "Q2", "Q2"],
-        "sales": [10.0, 20.0, 30.0, 40.0, 50.0],
-    })
+    df = pl.DataFrame(
+        {
+            "region": ["East", "East", "West", "West", "East"],
+            "year": [2020, 2021, 2020, 2020, 2020],
+            "quarter": ["Q1", "Q1", "Q2", "Q2", "Q2"],
+            "sales": [10.0, 20.0, 30.0, 40.0, 50.0],
+        }
+    )
 
     # 2D contingency table with v omitted
     res_2d = pivot_polars(df, r="region", c="year")
@@ -450,7 +496,10 @@ def test_pivot_polars_optional_v_and_fill_aliases():
     assert res_0d["n"].to_list() == [5]
 
     # Incompatible agg func without v
-    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts."):
+    with pytest.raises(
+        ValueError,
+        match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts.",
+    ):
         pivot_polars(df, r="region", c="year", a="mean")
 
     # f_v parameter
@@ -466,22 +515,26 @@ def test_pivot_polars_optional_v_and_fill_aliases():
 
 
 def test_pivot_polars_single_metric_in_2d_no_prefix():
-    df = pl.DataFrame({
-        "region": ["East", "East", "West"],
-        "store": ["S1", "S2", "S1"],
-        "year": [2020, 2021, 2020],
-        "sales": [10.0, 20.0, 30.0],
-    })
+    df = pl.DataFrame(
+        {
+            "region": ["East", "East", "West"],
+            "store": ["S1", "S2", "S1"],
+            "year": [2020, 2021, 2020],
+            "sales": [10.0, 20.0, 30.0],
+        }
+    )
     res = pivot_polars(df, r="region,store", c="year", v="sales:sum")
     assert res.columns == ["region", "store", "2020", "2021"]
 
 
 def test_pivot_polars_default_f_v_is_null_for_metrics():
-    df = pl.DataFrame({
-        "island": ["Torgersen", "Biscoe"],
-        "sex": ["male", "female"],
-        "mass": [100.0, 200.0],
-    })
+    df = pl.DataFrame(
+        {
+            "island": ["Torgersen", "Biscoe"],
+            "sex": ["male", "female"],
+            "mass": [100.0, 200.0],
+        }
+    )
     # Default: metrics have null for unobserved intersections
     res = pivot_polars(df, r="island", c="sex", v="mass:sum")
     female_vals = dict(zip(res["island"].to_list(), res["female"].to_list()))
@@ -524,7 +577,3 @@ def test_write_dataframe_polars(tmp_path):
     assert json_path.exists()
     read_json = pl.read_ndjson(json_path)
     assert read_json["b"].to_list() == ["x", "y", "z"]
-
-
-
-

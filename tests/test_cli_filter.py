@@ -147,4 +147,3 @@ def test_filter_cli_bracket_interval(tmp_path, capsys):
     exit_code = cli.main([path, "-filter", "body_mass_g = [3000, 3200]", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 1)"
-

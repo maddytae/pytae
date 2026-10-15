@@ -19,6 +19,7 @@ def test_order_head_then_shape(tmp_path, capsys):
     assert exit_code == 0
     assert out.strip() == "(3, 2)"
 
+
 def test_sample_with_seed_is_reproducible(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(100), "b": range(100, 200)}))
 
@@ -30,6 +31,7 @@ def test_sample_with_seed_is_reproducible(tmp_path, capsys):
 
     assert first == second
 
+
 def test_sample_frac_selects_expected_row_count(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(100), "b": range(100, 200)}))
 
@@ -39,12 +41,14 @@ def test_sample_frac_selects_expected_row_count(tmp_path, capsys):
     assert exit_code == 0
     assert out.strip() == "(10, 2)"
 
+
 def test_frac_requires_sample(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10, 20)}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-frac", "0.5", "-head"])
     assert exc_info.value.code == 2
+
 
 def test_shape_cannot_be_followed_by_another_flag(tmp_path):
     # -shape returns a tuple in pandas terms (not a DataFrame), so nothing may
@@ -55,6 +59,7 @@ def test_shape_cannot_be_followed_by_another_flag(tmp_path):
         cli.main([path, "-shape", "-head", "3"])
     assert exc_info.value.code == 2
 
+
 @pytest.mark.parametrize("op", ["cols", "dtype", "nulls", "info"])
 def test_non_df_ops_cannot_be_followed_by_another_flag(tmp_path, op):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(3), "b": range(3, 6)}))
@@ -62,6 +67,7 @@ def test_non_df_ops_cannot_be_followed_by_another_flag(tmp_path, op):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, f"-{op}", "-head", "1"])
     assert exc_info.value.code == 2
+
 
 def test_head_then_cols_prints_only_names(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(8), "b": range(8)}))
@@ -71,6 +77,7 @@ def test_head_then_cols_prints_only_names(tmp_path, capsys):
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["a", "b"]
+
 
 def test_empty_parquet_head_keeps_columns(tmp_path, capsys):
     path = tmp_path / "empty.parquet"
@@ -83,6 +90,7 @@ def test_empty_parquet_head_keeps_columns(tmp_path, capsys):
     assert "a" in captured.out and "b" in captured.out
     assert "Empty DataFrame" in captured.out
 
+
 def test_info_prints_pandas_info(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}))
 
@@ -94,6 +102,7 @@ def test_info_prints_pandas_info(tmp_path, capsys):
     assert "a" in out and "b" in out
     assert "2 entries" in out or "2 rows" in out or "RangeIndex: 2" in out
 
+
 def test_head_then_info_prints_only_info(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10)}))
 
@@ -104,6 +113,7 @@ def test_head_then_info_prints_only_info(tmp_path, capsys):
     assert "RangeIndex: 3" in out
     assert "DataFrame" in out
 
+
 def test_describe_prints_pandas_summary(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
 
@@ -113,12 +123,14 @@ def test_describe_prints_pandas_summary(tmp_path, capsys):
     assert exit_code == 0
     assert "count" in out and "mean" in out
 
+
 def test_stats_flag_removed(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-stats"])
     assert exc_info.value.code == 2
+
 
 def test_nonpositive_head_is_usage_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3]}))
@@ -128,6 +140,7 @@ def test_nonpositive_head_is_usage_error(tmp_path):
             cli.main([path, "-head", n])
         assert exc_info.value.code == 2
 
+
 def test_cli_long_short_aliases(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["a"], "n": [1], "x": [10]}))
 
@@ -135,6 +148,7 @@ def test_cli_long_short_aliases(tmp_path, capsys):
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["grp", "feature", "amount"]
+
 
 def test_cli_wide_short_aliases(tmp_path, capsys):
     df = pd.DataFrame({"id": ["a", "b"], "country": ["sg", "cn"], "balance": [10, 20]})
@@ -145,6 +159,7 @@ def test_cli_wide_short_aliases(tmp_path, capsys):
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
     assert captured.out.strip().splitlines() == ["id", "cn", "sg"]
+
 
 def test_order_unique_then_shape_uses_deduplicated_frame(tmp_path, capsys):
     df = pd.DataFrame(
@@ -195,6 +210,7 @@ def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
     # value_counts result has two columns: key + count.
     assert "(2, 2)" in out
 
+
 def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
     df = pd.DataFrame(
         {
@@ -215,6 +231,7 @@ def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
     assert exit_code_drop == 0
     assert "(1, 2)" in out_drop
 
+
 def test_value_counts_uses_selected_multiple_columns(tmp_path, capsys):
     df = pd.DataFrame(
         {
@@ -230,6 +247,7 @@ def test_value_counts_uses_selected_multiple_columns(tmp_path, capsys):
     assert exit_code == 0
     # Two key columns + count, three unique key combinations.
     assert "(3, 3)" in out
+
 
 def test_value_counts_without_argument_uses_selected_columns(tmp_path, capsys):
     df = pd.DataFrame(
@@ -258,6 +276,7 @@ def test_value_counts_collision_fails_cleanly(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "columns contain both 'count' and 'n'" in err
 
+
 def test_order_arrange_then_shape_uses_sorted_frame(tmp_path, capsys):
     df = pd.DataFrame(
         {
@@ -272,6 +291,7 @@ def test_order_arrange_then_shape_uses_sorted_frame(tmp_path, capsys):
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "(3, 2)" in out
+
 
 def test_arrange_respects_select_and_descending(tmp_path, capsys):
     df = pd.DataFrame(
@@ -291,6 +311,7 @@ def test_arrange_respects_select_and_descending(tmp_path, capsys):
     assert "b" in out
     assert "3" in out
 
+
 def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
     df = pd.DataFrame(
         {
@@ -306,6 +327,7 @@ def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
     # Header should appear once: only final sorted value_counts table is printed.
     assert out.count("grp") == 1
 
+
 def test_cols_default_is_file_order(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"c": [1], "a": [2], "b": [3]}))
 
@@ -315,6 +337,7 @@ def test_cols_default_is_file_order(tmp_path, capsys):
     assert exit_code == 0
     assert out.strip().splitlines() == ["c", "a", "b"]
 
+
 def test_cols_asc_and_desc(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"c": [1], "a": [2], "b": [3]}))
 
@@ -323,6 +346,7 @@ def test_cols_asc_and_desc(tmp_path, capsys):
 
     assert cli.main([path, "-cols", "desc"]) == 0
     assert capsys.readouterr().out.strip().splitlines() == ["c", "b", "a"]
+
 
 def test_dtype_optional_name_order(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"c": [1], "a": ["x"]}))
@@ -334,6 +358,7 @@ def test_dtype_optional_name_order(tmp_path, capsys):
     assert cli.main([path, "-dtype", "asc"]) == 0
     assert capsys.readouterr().out.splitlines()[0].startswith("a")
 
+
 def test_arrange_default_is_ascending(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a", "c"], "val": [2, 1, 3]}))
 
@@ -344,6 +369,7 @@ def test_arrange_default_is_ascending(tmp_path, capsys):
     assert "a" in out
     assert "1" in out
 
+
 def test_arrange_explicit_asc(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a"], "val": [2, 1]}))
 
@@ -353,6 +379,7 @@ def test_arrange_explicit_asc(tmp_path, capsys):
     assert exit_code == 0
     assert "a" in out
     assert "1" in out
+
 
 def test_sort_by_flag_deprecated(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2]}))
@@ -367,12 +394,14 @@ def test_sort_by_flag_deprecated(tmp_path, capsys):
     assert exc_info.value.code == 2
     assert "'-sort_by' has been deprecated; use '-arrange' instead" in capsys.readouterr().err
 
+
 def test_cols_rejects_invalid_order(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-cols", "foo"])
     assert exc_info.value.code == 2
+
 
 def test_repeated_select_negative_subtracts_sequentially(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
@@ -381,6 +410,7 @@ def test_repeated_select_negative_subtracts_sequentially(tmp_path, capsys):
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]
+
 
 def test_unquoted_spec_with_a_space_gets_a_quoting_hint(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"n": [1, 2]}))
@@ -394,6 +424,7 @@ def test_unquoted_spec_with_a_space_gets_a_quoting_hint(tmp_path, capsys):
     assert "unrecognized arguments: col name" in err or "unrecognized arguments: name" in err
     assert "wrap the whole spec in quotes" in err
 
+
 def test_typo_flag_does_not_get_the_quoting_hint(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"n": [1, 2]}))
 
@@ -404,6 +435,7 @@ def test_typo_flag_does_not_get_the_quoting_hint(tmp_path, capsys):
     assert "unrecognized arguments" in err
     assert "wrap the whole spec in quotes" not in err
 
+
 def test_describe_then_shape_is_describe_table(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
 
@@ -412,6 +444,7 @@ def test_describe_then_shape_is_describe_table(tmp_path, capsys):
     assert exit_code == 0
     # pandas describe() of two numeric columns is 8 stats × 2
     assert capsys.readouterr().out.strip() == "(8, 2)"
+
 
 def test_clip_suppresses_stdout_for_dataframe_ops(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
@@ -430,6 +463,7 @@ def test_clip_suppresses_stdout_for_dataframe_ops(tmp_path, capsys, monkeypatch)
     assert captured.out == ""
     assert copied["called"] is True
 
+
 def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
     copied = {}
@@ -442,11 +476,13 @@ def test_clip_shape_alone_succeeds(tmp_path, capsys, monkeypatch):
     assert captured.out == ""
     assert copied["text"] == "(2, 2)"
 
+
 def test_clip_shape_and_df_flag_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-head", "1", "-shape", "-o", "clip"])
     assert exc_info.value.code == 2
+
 
 def test_cli_convert_csv_to_parquet(tmp_path, capsys):
     src = tmp_path / "data.csv"
@@ -463,6 +499,7 @@ def test_cli_convert_csv_to_parquet(tmp_path, capsys):
     assert list(result.columns) == ["a", "b"]
     assert len(result) == 2
 
+
 def test_cli_output_bare_format(tmp_path, capsys):
     src = tmp_path / "input.csv"
     pd.DataFrame({"x": [10, 20]}).to_csv(src, index=False)
@@ -473,6 +510,7 @@ def test_cli_output_bare_format(tmp_path, capsys):
     assert dest.exists()
     assert len(pd.read_parquet(dest)) == 2
 
+
 def test_cli_output_shape_to_file_errors(tmp_path):
     src = tmp_path / "data.csv"
     pd.DataFrame({"a": [1]}).to_csv(src, index=False)
@@ -481,6 +519,7 @@ def test_cli_output_shape_to_file_errors(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([str(src), "-shape", "-o", str(dest)])
     assert exc_info.value.code == 2
+
 
 def test_cli_removed_flags_migration_errors(tmp_path):
     src = tmp_path / "data.csv"
@@ -789,6 +828,7 @@ def test_cli_meta_clip(tmp_path, monkeypatch):
     copied = []
     monkeypatch.setattr(cli, "_process_path", cli._process_path)
     import pytae.cli_run as cli_run
+
     monkeypatch.setattr(cli_run, "_copy_to_clipboard", lambda text: copied.append(text))
 
     exit_code = cli.main([str(p), "-meta", "-o", "clip"])
@@ -839,6 +879,7 @@ def test_cli_diff_clip(tmp_path, monkeypatch):
 
     copied = []
     import pytae.cli_run as cli_run
+
     monkeypatch.setattr(cli_run, "_copy_to_clipboard", lambda text: copied.append(text))
 
     exit_code = cli.main([str(f1), "-diff", str(f2), "-o", "clip"])
@@ -919,6 +960,7 @@ def test_cli_pager(tmp_path, monkeypatch):
 
     paged = []
     import pydoc
+
     monkeypatch.setattr(pydoc, "pager", lambda text: paged.append(text))
 
     exit_code = cli.main([str(p), "-head", "3", "-pager"])
@@ -993,10 +1035,3 @@ def test_cli_time_single_and_multi_runs(tmp_path, capsys):
     exit_help = cli.main(["-h", "time"])
     assert exit_help == 0
     assert "PYTAE CLI KEYWORD HELP: -time" in capsys.readouterr().out
-
-
-
-
-
-
-

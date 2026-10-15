@@ -24,6 +24,7 @@ _SAMPLE_DATASET_NAMES = ("penguins", "tips", "titanic", "diamonds", "mpg", "flig
 def sample_dataset_dir(tmp_path_factory):
     """Write every bundled sample dataset to parquet once, shared across this module's tests."""
     import pytae
+
     directory = tmp_path_factory.mktemp("sample_datasets")
     for name in _SAMPLE_DATASET_NAMES:
         pytae.sample_data[name].to_parquet(directory / f"{name}.parquet")
@@ -88,9 +89,17 @@ def test_agg_groups_by_diamonds_cut_categories(sample_parquet, capsys):
 def test_group_by_agg_sum_matches_known_flights_totals(sample_parquet, capsys):
     path = sample_parquet("flights")
 
-    exit_code = cli.main([
-        path, "-by", "year", "-agg", "passengers = sum", "-head", "3",
-    ])
+    exit_code = cli.main(
+        [
+            path,
+            "-by",
+            "year",
+            "-agg",
+            "passengers = sum",
+            "-head",
+            "3",
+        ]
+    )
 
     out = capsys.readouterr().out
     assert exit_code == 0

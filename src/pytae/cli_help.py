@@ -21,13 +21,13 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "sql": KeywordHelp(
         name="sql",
         flag="-sql, --sql QUERY",
-        syntax="pytae <path> -sql \"<QUERY>\" [other flags...]",
+        syntax='pytae <path> -sql "<QUERY>" [other flags...]',
         summary="Run full analytical SQL queries via Polars SQLContext directly against data.",
         description=(
             "Executes zero-copy, vectorized SQL queries via embedded Polars SQLContext.\n"
             "- In single-file pipelines, the current dataset view is queryable as table `data`.\n"
             "- In multi-file mode (-file), each file alias (e.g. df1, df2) is queryable directly by name.\n"
-            "- Standard SQL identifier quoting applies: double quotes for names with spaces (\"col a\"),\n"
+            '- Standard SQL identifier quoting applies: double quotes for names with spaces ("col a"),\n'
             "  and single quotes for string literals ('Gentoo').\n"
             "- To run queries from a file, prefix the filename with '@' (e.g. -sql @query.sql)."
         ),
@@ -41,14 +41,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -sql "select species, count(*) as n, round(avg(body_mass_g), 1) as avg_mass from data group by species"',
             'pytae penguins.parquet -sql "select [bill length mm], body_mass_g from data" -head 3',
             'pytae -file "sales.parquet=s; stores.parquet=st" -sql "select s.*, st.city from s join st using (store_id)"',
-            'pytae sales.parquet -sql @queries/quarterly_report.sql -o report.csv',
+            "pytae sales.parquet -sql @queries/quarterly_report.sql -o report.csv",
         ],
         see_also=["-filter", "-agg", "-pivot", "-file"],
     ),
     "filter": KeywordHelp(
         name="filter",
         flag="-filter, --filter CONDITIONS",
-        syntax="pytae <path> -filter \"<CONDITIONS>\"",
+        syntax='pytae <path> -filter "<CONDITIONS>"',
         summary="Filter DataFrame rows using expressions, interval bounds, and string checks.",
         description=(
             "Filters rows at this point in the pipeline using pytae filter().\n"
@@ -65,7 +65,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -filter \"species == 'Gentoo', body_mass_g > 5000\"",
-            "pytae penguins.parquet -filter \"body_mass_g = [4000, 5000]\" -shape",
+            'pytae penguins.parquet -filter "body_mass_g = [4000, 5000]" -shape',
             "pytae penguins.parquet -filter \"island in ['Biscoe', 'Dream']\"",
             "pytae data.csv -filter \"[customer name] = 'Acme Corp'\"",
         ],
@@ -74,7 +74,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "select": KeywordHelp(
         name="select",
         flag="-select, --select SPEC",
-        syntax="pytae <path> -select \"<SPEC>\"",
+        syntax='pytae <path> -select "<SPEC>"',
         summary="Select, reorder, slice, or exclude columns.",
         description=(
             "Restricts and reorders columns at this point in the pipeline.\n"
@@ -94,24 +94,24 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "exclude_dtype=numeric : Exclude columns matching a datatype.",
         ],
         examples=[
-            "pytae penguins.parquet -select \"species,island,body_mass_g\"",
-            "pytae penguins.parquet -select \"bill_length_mm:body_mass_g\"",
-            "pytae penguins.parquet -select \"-sex, -year\"",
-            "pytae penguins.parquet -select \"contains=bill, species\"",
-            "pytae penguins.parquet -select \"dtype=numeric\"",
+            'pytae penguins.parquet -select "species,island,body_mass_g"',
+            'pytae penguins.parquet -select "bill_length_mm:body_mass_g"',
+            'pytae penguins.parquet -select "-sex, -year"',
+            'pytae penguins.parquet -select "contains=bill, species"',
+            'pytae penguins.parquet -select "dtype=numeric"',
         ],
         see_also=["-cols", "-filter", "-clean_columns"],
     ),
     "mutate": KeywordHelp(
         name="mutate",
         flag="-mutate, --mutate SPEC",
-        syntax="pytae <path> -mutate \"<col1 = expr1, (colA, colB) = _ * 2>\"",
+        syntax='pytae <path> -mutate "<col1 = expr1, (colA, colB) = _ * 2>"',
         summary="Create, modify, or engineer columns using vectorized expressions, multi-column transforms, or grouped window transforms.",
         description=(
             "Evaluates column assignments sequentially from left to right.\n"
             "Expressions support standard arithmetic, boolean logic, pandas Series methods,\n"
             "multi-column transforms via '(col1, col2) = expr' or '(startswith=prefix) = expr' using '_' as the column placeholder,\n"
-            "and vectorized window aggregations when combined with -by (e.g. -by species -mutate \"avg = mean(mass)\")."
+            'and vectorized window aggregations when combined with -by (e.g. -by species -mutate "avg = mean(mass)").'
         ),
         options=[
             "new_col = expr : Define or overwrite a column calculated from existing columns.",
@@ -122,11 +122,11 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "-by <col> : Evaluate window aggregations (mean, sum, min, max, std, var, n) per group without collapsing rows.",
         ],
         examples=[
-            "pytae penguins.parquet -mutate \"mass_kg = body_mass_g / 1000\" -head 3",
-            "pytae penguins.parquet -mutate \"(bill_length_mm, bill_depth_mm) = _ / 10\"",
-            "pytae penguins.parquet -mutate \"(startswith=bill_)_cm = _ / 10\"",
-            "pytae penguins.parquet -by species -mutate \"(dtype=numeric) = (_ - mean(_)) / std(_)\"",
-            "pytae penguins.parquet -by species -mutate \"avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass\"",
+            'pytae penguins.parquet -mutate "mass_kg = body_mass_g / 1000" -head 3',
+            'pytae penguins.parquet -mutate "(bill_length_mm, bill_depth_mm) = _ / 10"',
+            'pytae penguins.parquet -mutate "(startswith=bill_)_cm = _ / 10"',
+            'pytae penguins.parquet -by species -mutate "(dtype=numeric) = (_ - mean(_)) / std(_)"',
+            'pytae penguins.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass"',
             "pytae penguins.parquet -mutate \"source = '2024_survey'\"",
         ],
         see_also=["-agg", "-by", "-select"],
@@ -134,7 +134,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "arrange": KeywordHelp(
         name="arrange",
         flag="-arrange, --arrange SPEC",
-        syntax="pytae <path> -arrange \"<col1 [desc], -col2, ...>\"",
+        syntax='pytae <path> -arrange "<col1 [desc], -col2, ...>"',
         summary="Sort rows by one or more columns with inline ascending or descending directions.",
         description=(
             "Sorts rows by column specifications in order.\n"
@@ -147,16 +147,16 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "[col with space] desc : Sort by spaced column header.",
         ],
         examples=[
-            "pytae penguins.parquet -arrange \"body_mass_g desc\" -head 5",
-            "pytae penguins.parquet -arrange \"species, -body_mass_g\"",
-            "pytae penguins.parquet -arrange \"island, bill_length_mm asc\"",
+            'pytae penguins.parquet -arrange "body_mass_g desc" -head 5',
+            'pytae penguins.parquet -arrange "species, -body_mass_g"',
+            'pytae penguins.parquet -arrange "island, bill_length_mm asc"',
         ],
         see_also=["-pick", "-head"],
     ),
     "pick": KeywordHelp(
         name="pick",
         flag="-pick, --pick SPEC",
-        syntax="pytae <path> [-by <cols>] -pick \"<col>[,n=N|,prop=P][,order=max|min]\"",
+        syntax='pytae <path> [-by <cols>] -pick "<col>[,n=N|,prop=P][,order=max|min]"',
         summary="Pick top or bottom rows ordered by a column, optionally grouped by column(s).",
         description=(
             "Selects rows with the highest (order=max, default) or lowest (order=min) values of a column.\n"
@@ -171,10 +171,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -pick body_mass_g",
-            "pytae penguins.parquet -pick \"body_mass_g,n=5\"",
-            "pytae penguins.parquet -pick \"body_mass_g,n=3,order=min\"",
-            "pytae penguins.parquet -pick \"body_mass_g,prop=0.1\"",
-            "pytae penguins.parquet -by species -pick \"body_mass_g,n=2\"",
+            'pytae penguins.parquet -pick "body_mass_g,n=5"',
+            'pytae penguins.parquet -pick "body_mass_g,n=3,order=min"',
+            'pytae penguins.parquet -pick "body_mass_g,prop=0.1"',
+            'pytae penguins.parquet -by species -pick "body_mass_g,n=2"',
         ],
         see_also=["-arrange", "-head", "-tail"],
     ),
@@ -199,17 +199,17 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
-            "pytae penguins.parquet -by \"species,island\" -agg \"mean,sum,n\"",
-            "pytae penguins.parquet -agg \"mean,n\"   # Whole-table summary (grand total)",
-            "pytae penguins.parquet -by species -agg \"total_mass = body_mass_g:sum, n = n\"",
-            "pytae penguins.parquet -by sex -agg \"body_mass_g = mean, dropna = false\"",
+            'pytae penguins.parquet -by "species,island" -agg "mean,sum,n"',
+            'pytae penguins.parquet -agg "mean,n"   # Whole-table summary (grand total)',
+            'pytae penguins.parquet -by species -agg "total_mass = body_mass_g:sum, n = n"',
+            'pytae penguins.parquet -by sex -agg "body_mass_g = mean, dropna = false"',
         ],
         see_also=["-by", "-pivot", "-mutate", "-dropna"],
     ),
     "pivot": KeywordHelp(
         name="pivot",
         flag="-pivot, --pivot [KEY=VALUE,...]",
-        syntax="pytae <path> -pivot \"r=rows,c=cols,v=values,a=func,f_v=val\"",
+        syntax='pytae <path> -pivot "r=rows,c=cols,v=values,a=func,f_v=val"',
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
             "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
@@ -227,9 +227,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
         examples=[
-            "pytae penguins.parquet -pivot \"r=island,c=species\"   # 2D cross-tabulation count matrix",
-            "pytae penguins.parquet -pivot \"r=island,sex\"   # 1D frequency table",
-            "pytae penguins.parquet -pivot \"r=island,c=species,v=body_mass_g,a=mean\"",
+            'pytae penguins.parquet -pivot "r=island,c=species"   # 2D cross-tabulation count matrix',
+            'pytae penguins.parquet -pivot "r=island,sex"   # 1D frequency table',
+            'pytae penguins.parquet -pivot "r=island,c=species,v=body_mass_g,a=mean"',
             "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, count=n'\"   # 1D summary",
             "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=n'\"",
             "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,f_v=0\"",
@@ -253,7 +253,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -long",
-            "pytae penguins.parquet -long \"c=measurement,v=value\"",
+            'pytae penguins.parquet -long "c=measurement,v=value"',
             "pytae data.csv -long \"cols='q1,q2,q3,q4',c=quarter,v=revenue\"",
         ],
         see_also=["-wide", "-pivot"],
@@ -274,8 +274,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae tall.csv -wide",
-            "pytae tall.csv -wide \"c=metric,v=measurement\"",
-            "pytae tall.csv -wide \"c=quarter,v=revenue,r=customer_id\"",
+            'pytae tall.csv -wide "c=metric,v=measurement"',
+            'pytae tall.csv -wide "c=quarter,v=revenue,r=customer_id"',
         ],
         see_also=["-long", "-pivot"],
     ),
@@ -295,20 +295,19 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
-            "pytae penguins.parquet -by \"species,island\" -agg \"mean,n\"",
-            "pytae penguins.parquet -by species -pick \"body_mass_g,n=2\"",
-            "pytae penguins.parquet -by species -mutate \"avg = mean(body_mass_g)\"",
+            'pytae penguins.parquet -by "species,island" -agg "mean,n"',
+            'pytae penguins.parquet -by species -pick "body_mass_g,n=2"',
+            'pytae penguins.parquet -by species -mutate "avg = mean(body_mass_g)"',
         ],
         see_also=["-agg", "-mutate", "-pick"],
     ),
     "clean_columns": KeywordHelp(
         name="clean_columns",
         flag="-clean_columns, --clean_columns SPEC",
-        syntax="pytae <path> -clean_columns \"<KEY=VALUE,...>\"",
+        syntax='pytae <path> -clean_columns "<KEY=VALUE,...>"',
         summary="Systematically sanitize, normalize, and rename messy column headers.",
         description=(
-            "Sanitizes headers in deterministic order:\n"
-            "strip -> strip_special -> squeeze -> fill -> case -> dedupe."
+            "Sanitizes headers in deterministic order:\nstrip -> strip_special -> squeeze -> fill -> case -> dedupe."
         ),
         options=[
             "strip : Trim leading/trailing whitespace (bare boolean flag).",
@@ -319,9 +318,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "dedupe : Disambiguate duplicate column names with '_1', '_2' suffixes.",
         ],
         examples=[
-            "pytae dirty.csv -clean_columns \"strip,fill,case=lower,dedupe\"",
+            'pytae dirty.csv -clean_columns "strip,fill,case=lower,dedupe"',
             "pytae dirty.csv -clean_columns \"fill='_',case=lower\"",
-            "pytae dirty.csv -clean_columns \"case=upper\"",
+            'pytae dirty.csv -clean_columns "case=upper"',
         ],
         see_also=["-rename", "-select", "-cols"],
     ),
@@ -330,9 +329,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         flag="-replace_values, --replace_values SPEC",
         syntax="pytae <path> -replace_values \"v='old:new',c='col1,col2',exact=true\"",
         summary="Search and replace cell values across the entire DataFrame or specific columns.",
-        description=(
-            "Wraps pandas cell replacement with flexible scope and matching modes."
-        ),
+        description=("Wraps pandas cell replacement with flexible scope and matching modes."),
         options=[
             "v='old1:new1,old2:new2' : Mapping of replacement pairs (REQUIRED).",
             "c='col1,col2' : Restrict replacement to specific columns (default: entire DataFrame).",
@@ -348,7 +345,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "file": KeywordHelp(
         name="file",
         flag="-file, --file PATH=ALIAS;...",
-        syntax="pytae -file \"path1=alias1; path2=alias2\" [operation]",
+        syntax='pytae -file "path1=alias1; path2=alias2" [operation]',
         summary="Load multiple tabular datasets for multi-file joins (-merge, -concat, or -sql).",
         description=(
             "Replaces the positional path to enable multi-dataset pipelines.\n"
@@ -361,20 +358,18 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             ",encoding=ENC : Override text encoding per file.",
         ],
         examples=[
-            "pytae -file \"orders.parquet=o; cust.csv=c\" -merge \"left=o,right=c,on=cust_id\" -head 5",
-            "pytae -file \"2023.parquet=df1; 2024.parquet=df2\" -concat \"frames='df1,df2'\" -o combined.parquet",
-            "pytae -file \"orders.parquet=o; items.parquet=i\" -sql \"select o.*, i.name from o join i using (item_id)\"",
+            'pytae -file "orders.parquet=o; cust.csv=c" -merge "left=o,right=c,on=cust_id" -head 5',
+            'pytae -file "2023.parquet=df1; 2024.parquet=df2" -concat "frames=\'df1,df2\'" -o combined.parquet',
+            'pytae -file "orders.parquet=o; items.parquet=i" -sql "select o.*, i.name from o join i using (item_id)"',
         ],
         see_also=["-merge", "-concat", "-sql"],
     ),
     "merge": KeywordHelp(
         name="merge",
         flag="-merge, --merge KEY=VALUE,...",
-        syntax="pytae -file \"...\" -merge \"left=alias1,right=alias2,on=key[,how=inner]\"",
+        syntax='pytae -file "..." -merge "left=alias1,right=alias2,on=key[,how=inner]"',
         summary="Merge/join two datasets in the pipeline (pandas merge).",
-        description=(
-            "Combines two datasets by key columns. Repeatable to join additional files sequentially."
-        ),
+        description=("Combines two datasets by key columns. Repeatable to join additional files sequentially."),
         options=[
             "left=alias : Left dataset alias (or 'data' for current pipeline state).",
             "right=alias : Right dataset alias.",
@@ -384,24 +379,22 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "validate=one_to_one|one_to_many : Join cardinality assertion.",
         ],
         examples=[
-            "pytae -file \"orders.parquet=o; users.csv=u\" -merge \"left=o,right=u,on=user_id\"",
-            "pytae -file \"a.csv=a; b.csv=b\" -merge \"left=a,right=b,on='id:user_id',how=left\"",
+            'pytae -file "orders.parquet=o; users.csv=u" -merge "left=o,right=u,on=user_id"',
+            'pytae -file "a.csv=a; b.csv=b" -merge "left=a,right=b,on=\'id:user_id\',how=left"',
         ],
         see_also=["-file", "-concat", "-sql"],
     ),
     "concat": KeywordHelp(
         name="concat",
         flag="-concat, --concat KEY=VALUE,...",
-        syntax="pytae -file \"...\" -concat \"frames='alias1,alias2,...'\"",
+        syntax='pytae -file "..." -concat "frames=\'alias1,alias2,...\'"',
         summary="Stack multiple datasets vertically row-wise into one pipeline DataFrame.",
-        description=(
-            "Concatenates two or more datasets along rows (pandas concat with ignore_index=True)."
-        ),
+        description=("Concatenates two or more datasets along rows (pandas concat with ignore_index=True)."),
         options=[
             "frames='alias1,alias2,...' : Comma-separated list of dataset aliases to stack.",
         ],
         examples=[
-            "pytae -file \"jan.csv=m1; feb.csv=m2; mar.csv=m3\" -concat \"frames='m1,m2,m3'\" -o q1.parquet",
+            'pytae -file "jan.csv=m1; feb.csv=m2; mar.csv=m3" -concat "frames=\'m1,m2,m3\'" -o q1.parquet',
         ],
         see_also=["-file", "-merge"],
     ),
@@ -432,9 +425,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         flag="-freq, --freq COLUMN",
         syntax="pytae <path> -freq <COLUMN>",
         summary="Render in-terminal horizontal frequency bars with counts and percentages.",
-        description=(
-            "Displays a text-based distribution chart for categorical columns directly in your terminal."
-        ),
+        description=("Displays a text-based distribution chart for categorical columns directly in your terminal."),
         options=[
             "COLUMN : Categorical column name to profile.",
         ],
@@ -449,16 +440,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         flag="-hist, --hist COLUMN[:BINS]",
         syntax="pytae <path> -hist <COLUMN[:BINS]>",
         summary="Render in-terminal distribution histogram for numeric columns.",
-        description=(
-            "Displays ASCII bar distribution and bin counts for numeric columns."
-        ),
+        description=("Displays ASCII bar distribution and bin counts for numeric columns."),
         options=[
             "COLUMN : Numeric column to bin.",
             "COLUMN:BINS : Optional bin count (default: 10, e.g. body_mass_g:15).",
         ],
         examples=[
             "pytae penguins.parquet -hist body_mass_g",
-            "pytae penguins.parquet -hist \"body_mass_g:15\"",
+            'pytae penguins.parquet -hist "body_mass_g:15"',
             "pytae penguins.parquet -hist bill_length_mm:5",
         ],
         see_also=["-freq", "-describe"],
@@ -483,9 +472,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         flag="-diff, --diff PATH",
         syntax="pytae <file1> -diff <file2>",
         summary="Compare schema and contents between two tabular datasets.",
-        description=(
-            "Compares column lists, types, row counts, and value differences between two files."
-        ),
+        description=("Compares column lists, types, row counts, and value differences between two files."),
         options=[
             "PATH : Second file path to compare against.",
         ],
@@ -579,16 +566,16 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "dropna": KeywordHelp(
         name="dropna",
         flag="-dropna, --dropna [COLS]",
-        syntax="pytae <path> -dropna [\"col1,col2\"]",
+        syntax='pytae <path> -dropna ["col1,col2"]',
         summary="Drop rows containing missing (NaN) values.",
         description="Bare -dropna drops rows with any missing value; -dropna 'col1,col2' checks only specified columns.",
         options=[
             "Bare flag : Drop row if ANY column contains NaN.",
-            "\"col1,col2\" : Drop row if specified columns contain NaN.",
+            '"col1,col2" : Drop row if specified columns contain NaN.',
         ],
         examples=[
             "pytae penguins.parquet -dropna",
-            "pytae penguins.parquet -dropna \"sex, body_mass_g\"",
+            'pytae penguins.parquet -dropna "sex, body_mass_g"',
         ],
         see_also=["-handle_missing", "-nulls"],
     ),
@@ -601,28 +588,28 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=["FILL : String replacement scalar (default: '.')."],
         examples=[
             "pytae penguins.parquet -handle_missing",
-            "pytae penguins.parquet -handle_missing \"NA\"",
+            'pytae penguins.parquet -handle_missing "NA"',
         ],
         see_also=["-dropna", "-nulls"],
     ),
     "distinct": KeywordHelp(
         name="distinct",
         flag="-distinct, --distinct [SPEC]",
-        syntax="pytae <path> -distinct [\"col1,col2[,keep=first|last|false]\"]",
+        syntax='pytae <path> -distinct ["col1,col2[,keep=first|last|false]"]',
         summary="Drop duplicate rows (across all or specific columns, with keep control).",
         description="Drops duplicate records, with configurable duplicate retention (first, last, or drop all).",
         options=[
             "Bare flag : Deduplicate across all columns (default keep=first).",
-            "\"col1,col2\" : Deduplicate restricted to specified subset of columns.",
+            '"col1,col2" : Deduplicate restricted to specified subset of columns.',
             "keep=first : Keep first occurrence of duplicates (default).",
             "keep=last : Keep last occurrence of duplicates.",
             "keep=false / keep=none : Drop all occurrences of duplicates.",
         ],
         examples=[
-            "pytae penguins.parquet -select \"species,island\" -distinct",
-            "pytae penguins.parquet -distinct \"species,island\"",
-            "pytae penguins.parquet -distinct \"species,island,keep=last\"",
-            "pytae penguins.parquet -distinct \"keep=last\"",
+            'pytae penguins.parquet -select "species,island" -distinct',
+            'pytae penguins.parquet -distinct "species,island"',
+            'pytae penguins.parquet -distinct "species,island,keep=last"',
+            'pytae penguins.parquet -distinct "keep=last"',
         ],
         see_also=["-dropna", "-filter"],
     ),

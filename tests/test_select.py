@@ -206,12 +206,14 @@ def test_select_negative_typo_raises_hint():
 
 
 def test_select_bracketed_names_and_slices():
-    df = pd.DataFrame({
-        "species": [1],
-        "island name": [2],
-        "bill length mm": [3],
-        "body mass g": [4],
-    })
+    df = pd.DataFrame(
+        {
+            "species": [1],
+            "island name": [2],
+            "bill length mm": [3],
+            "body mass g": [4],
+        }
+    )
     # Single bracketed name
     assert list(pt.select(df, "[island name]").columns) == ["island name"]
     # Multiple bracketed names
@@ -219,7 +221,11 @@ def test_select_bracketed_names_and_slices():
     # Comma-separated bracketed string
     assert list(pt.select(df, "species, [bill length mm]").columns) == ["species", "bill length mm"]
     # Bracketed slice
-    assert list(pt.select(df, "[island name]:[body mass g]").columns) == ["island name", "bill length mm", "body mass g"]
+    assert list(pt.select(df, "[island name]:[body mass g]").columns) == [
+        "island name",
+        "bill length mm",
+        "body mass g",
+    ]
     # Bracketed negation
     assert list(pt.select(df, "-[island name]").columns) == ["species", "bill length mm", "body mass g"]
 

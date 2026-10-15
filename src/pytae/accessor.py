@@ -34,6 +34,9 @@ class PolarsPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
+    def dropna(self, *cols: Any) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols)
+
     def pick(
         self,
         spec: str,
@@ -43,9 +46,7 @@ class PolarsPtAccessor:
         with_ties: bool = False,
         na_last: bool = True,
     ) -> DataFrame:
-        return DataFrame(self._obj).pick(
-            spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last
-        )
+        return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         return DataFrame(self._obj).by(*cols)
@@ -66,9 +67,7 @@ class PolarsPtAccessor:
         f_v: Any = None,
         **kwargs: Any,
     ) -> DataFrame:
-        return DataFrame(self._obj).pivot(
-            r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs
-        )
+        return DataFrame(self._obj).pivot(r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs)
 
     def long(
         self,
@@ -107,6 +106,7 @@ class PolarsPtAccessor:
 
     def glimpse(self, width: int | None = None) -> pl.DataFrame:
         from pytae.other_utilities import format_glimpse
+
         print(format_glimpse(self._obj.to_pandas(), width=width))
         return self._obj
 
@@ -154,6 +154,9 @@ class PandasPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
+    def dropna(self, *cols: Any) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols)
+
     def pick(
         self,
         spec: str,
@@ -163,9 +166,7 @@ class PandasPtAccessor:
         with_ties: bool = False,
         na_last: bool = True,
     ) -> DataFrame:
-        return DataFrame(self._obj).pick(
-            spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last
-        )
+        return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         return DataFrame(self._obj).by(*cols)
@@ -175,7 +176,9 @@ class PandasPtAccessor:
 
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         if "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+            raise TypeError(
+                "df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
+            )
         return DataFrame(self._obj).agg(*specs, a=a, dropna=dropna, **kwargs)
 
     def pivot(
@@ -188,9 +191,7 @@ class PandasPtAccessor:
         f_v: Any = None,
         **kwargs: Any,
     ) -> DataFrame:
-        return DataFrame(self._obj).pivot(
-            r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs
-        )
+        return DataFrame(self._obj).pivot(r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs)
 
     def long(
         self,
@@ -229,6 +230,7 @@ class PandasPtAccessor:
 
     def glimpse(self, width: int | None = None) -> pd.DataFrame:
         from pytae.other_utilities import format_glimpse
+
         print(format_glimpse(self._obj, width=width))
         return self._obj
 
@@ -246,6 +248,7 @@ class PandasPtAccessor:
 
     def safe_reset_index(self) -> pd.DataFrame:
         from pytae.other_utilities import safe_reset_index
+
         return safe_reset_index(self._obj)
 
     def to_pandas(self) -> pd.DataFrame:

@@ -10,12 +10,14 @@ from typing import Any
 
 import polars as pl
 
+from pytae._parsing import _parse_filter_string, _parse_mutate_spec_entries
 from pytae._text import unquote_name as _unquote_name
 from pytae.polars_engine import (
     agg_polars,
     arrange_polars,
     clean_columns_polars,
     distinct_polars,
+    dropna_polars,
     filter_polars,
     handle_missing_polars,
     long_polars,
@@ -24,6 +26,7 @@ from pytae.polars_engine import (
     pivot_polars,
     replace_values_polars,
     select_polars,
+    wide_polars,
 )
 
 
@@ -58,12 +61,14 @@ class ColumnNames(list[str]):
     def get_indexer_for(self, target: Any) -> Any:
         try:
             import pandas as pd
+
             return pd.Index(self).get_indexer_for(target)
         except Exception:
             return [self.index(x) if x in self else -1 for x in target]
 
     def _get_level_values(self, i: int) -> Any:
         import pandas as pd
+
         return pd.Index(self)
 
 
@@ -77,6 +82,7 @@ class _IlocIndexer:
         if isinstance(item, int):
             row_dict = self._df._df.row(item, named=True)
             import pandas as pd
+
             return pd.Series(row_dict)
         elif isinstance(item, tuple) and len(item) == 2:
             row_idx, col_idx = item
@@ -107,6 +113,7 @@ class _LocIndexer:
 
     def __getitem__(self, item: Any) -> Any:
         import polars as pl
+
         if isinstance(item, tuple):
             rows = item[0]
             if isinstance(rows, pl.Series):
@@ -156,12 +163,13 @@ class DataFrame:
                 if pdf[col].dtype == object:
                     vals = pdf[col].tolist()
                     import pandas as pd
+
                     str_vals = ["nan" if pd.isna(x) else str(x) for x in vals]
                     if len(set(vals)) != len(set(str_vals)):
                         collisions.add(str(col))
             return collisions
 
-        if isinstance(data, pl.DataFrame):
+        if isinstance(data, (pl.DataFrame, pl.LazyFrame)):
             self._df = data
         elif isinstance(data, DataFrame):
             self._df = data._df
@@ -175,6 +183,7 @@ class DataFrame:
         elif hasattr(data, "to_pandas") and not isinstance(data, (str, Path)):
             try:
                 import pandas as pd
+
                 if isinstance(data, pd.DataFrame):
                     self._orig_col_map = {str(c): c for c in data.columns}
                     self._col_collisions = _detect_collisions(data)
@@ -207,6 +216,7 @@ class DataFrame:
         else:
             try:
                 import pandas as pd
+
                 if isinstance(data, pd.DataFrame):
                     self._orig_col_map = {str(c): c for c in data.columns}
                     self._col_collisions = _detect_collisions(data)
@@ -234,31 +244,63 @@ class DataFrame:
         return self
 
     @property
+    def is_lazy(self) -> bool:
+        """Return True if this DataFrame is backed by a lazy Polars execution plan."""
+        return isinstance(self._df, pl.LazyFrame)
+
+    def lazy(self) -> DataFrame:
+        """Convert eager DataFrame to a lazy execution plan."""
+        if isinstance(self._df, pl.LazyFrame):
+            return self
+        return DataFrame(self._df.lazy(), orig_col_map=self._orig_col_map)
+
+    def collect(self, **kwargs: Any) -> DataFrame:
+        """Execute the lazy plan and materialize into an eager DataFrame."""
+        if isinstance(self._df, pl.LazyFrame):
+            return DataFrame(self._df.collect(**kwargs), orig_col_map=self._orig_col_map)
+        return self
+
+    def explain(self, *args: Any, **kwargs: Any) -> str:
+        """Return the unoptimized or optimized physical plan as a string."""
+        if isinstance(self._df, pl.LazyFrame):
+            return self._df.explain(*args, **kwargs)
+        return self._df.lazy().explain(*args, **kwargs)
+
+    @property
     def attrs(self) -> dict[str, Any]:
         """Custom metadata attribute dictionary."""
         return {}
 
     @property
     def shape(self) -> tuple[int, int]:
+        if self.is_lazy:
+            n_rows = self._df.select(pl.len()).collect().item()
+            n_cols = len(self._df.collect_schema().names())
+            return (n_rows, n_cols)
         return self._df.shape
 
     @property
     def columns(self) -> ColumnNames:
+        cols = self._df.collect_schema().names() if self.is_lazy else self._df.columns
         if self._orig_col_map:
-            return ColumnNames([self._orig_col_map.get(c, c) for c in self._df.columns])
-        return ColumnNames(self._df.columns)
+            return ColumnNames([self._orig_col_map.get(c, c) for c in cols])
+        return ColumnNames(cols)
 
     @property
     def dtypes(self) -> list[pl.DataType]:
+        if self.is_lazy:
+            return list(self._df.collect_schema().values())
         return list(self._df.dtypes)
 
     @property
     def schema(self) -> pl.Schema:
+        if self.is_lazy:
+            return self._df.collect_schema()
         return self._df.schema
 
     @property
     def index(self) -> Any:
-        return self._orig_index if self._orig_index is not None else range(len(self._df))
+        return self._orig_index if self._orig_index is not None else range(len(self))
 
     @property
     def iloc(self) -> _IlocIndexer:
@@ -293,8 +335,18 @@ class DataFrame:
         return self._df.to_numpy(*args, **kwargs)
 
     def select_dtypes(self, *args: Any, **kwargs: Any) -> DataFrame:
-        """Filter columns based on data types using Pandas compatibility bridge."""
-        return DataFrame(self.to_pandas().select_dtypes(*args, **kwargs))
+        """Filter columns based on data types."""
+        from pytae.select import _matches_dtype
+
+        include = kwargs.get("include", args[0] if len(args) > 0 else None)
+        exclude = kwargs.get("exclude", args[1] if len(args) > 1 else None)
+        matched = list(self.columns)
+        schema = self._df.schema
+        if include is not None:
+            matched = [c for c in matched if _matches_dtype(schema[c], include)]
+        if exclude is not None:
+            matched = [c for c in matched if not _matches_dtype(schema[c], exclude)]
+        return self.select(*matched)
 
     def safe_reset_index(self) -> DataFrame:
         """Polars DataFrames have no index; returns self."""
@@ -318,17 +370,27 @@ class DataFrame:
         raise AttributeError("df.pt.agg_df() has been removed; use df.pt.agg() instead")
 
     def __len__(self) -> int:
+        if self.is_lazy:
+            return self._df.select(pl.len()).collect().item()
         return len(self._df)
 
     def __iter__(self) -> Any:
         return iter(self.columns)
 
     def __getitem__(self, item: Any) -> Any:
+        if self.is_lazy:
+            if isinstance(item, str):
+                return DataFrame(self._df.select(item))
+            if isinstance(item, (list, tuple)):
+                return DataFrame(self._df.select(list(item)))
+            return DataFrame(self._df.select(item))
         if isinstance(item, pl.Series) and item.dtype == pl.Boolean:
             return DataFrame(self._df.filter(item), orig_col_map=self._orig_col_map)
         if isinstance(item, (list, tuple)) and item and isinstance(item[0], bool):
             return DataFrame(self._df.filter(pl.Series(item)), orig_col_map=self._orig_col_map)
-        col_key = str(item) if not isinstance(item, (pl.Series, list, tuple)) and str(item) in self._df.columns else item
+        col_key = (
+            str(item) if not isinstance(item, (pl.Series, list, tuple)) and str(item) in self._df.columns else item
+        )
         if isinstance(col_key, int) and col_key not in self._df.columns:
             raise KeyError(col_key)
         res = self._df[col_key]
@@ -340,6 +402,8 @@ class DataFrame:
         return repr(self._df)
 
     def _repr_html_(self) -> str:
+        if self.is_lazy:
+            return f"<pre>{self.explain()}</pre>"
         return self._df._repr_html_()
 
     def head(self, n: int = 5) -> DataFrame:
@@ -358,18 +422,18 @@ class DataFrame:
             if kwargs or len(conditions) > 1:
                 raise TypeError("callable/lambda predicates cannot be mixed with other filter arguments")
             cond = conditions[0]
-            mask = cond(self)
+            eager_self = self.collect() if self.is_lazy else self
+            mask = cond(eager_self)
             if isinstance(mask, pl.Series):
-                return DataFrame(self._df.filter(mask))
+                return DataFrame(eager_self._df.filter(mask))
             elif hasattr(mask, "values"):
-                return DataFrame(self._df.filter(pl.Series(mask.values)))
+                return DataFrame(eager_self._df.filter(pl.Series(mask.values)))
             else:
-                return DataFrame(self._df.filter(pl.Series(list(mask))))
+                return DataFrame(eager_self._df.filter(pl.Series(list(mask))))
 
         cond_pairs: list[tuple[str, Any]] = []
         for cond in conditions:
             if isinstance(cond, str):
-                from pytae.filter import _parse_filter_string
                 cond_pairs.extend(_parse_filter_string(cond))
             elif isinstance(cond, dict):
                 cond_pairs.extend(cond.items())
@@ -401,10 +465,16 @@ class DataFrame:
                     f"Lists are not accepted, got {type(c).__name__}."
                 )
         if cols:
-            missing = [str(c) for c in cols if str(c) not in self._df.columns]
+            avail = set(self.columns)
+            missing = [str(c) for c in cols if str(c) not in avail]
             if missing:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
+
+    def dropna(self, *cols: Any) -> DataFrame:
+        """Drop rows containing null values across all or specified columns."""
+        resolved = list(cols) if cols else None
+        return DataFrame(dropna_polars(self._df, cols=resolved))
 
     def pick(
         self,
@@ -455,12 +525,17 @@ class DataFrame:
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Create or transform columns using vectorized expressions, math, if_else, map, shift."""
         if "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.mutate() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+            raise TypeError(
+                "df.pt.mutate() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
+            )
 
         if not specs and not kwargs:
-            raise ValueError('mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"')
+            raise ValueError(
+                'mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"'
+            )
 
         import inspect
+
         _here = inspect.currentframe()
         caller_frame = None if _here is None else _here.f_back
         del _here
@@ -494,7 +569,6 @@ class DataFrame:
         parsed_spec: dict[str, Any] = {}
         for s in specs:
             if isinstance(s, str):
-                from pytae.mutate import _parse_mutate_spec_entries
                 entries = _parse_mutate_spec_entries(s)
                 for k, v, _ in entries:
                     parsed_spec[k] = v
@@ -507,9 +581,7 @@ class DataFrame:
                     "e.g. df.pt.mutate(new_col=lambda d: d['x'] * 2)"
                 )
             else:
-                raise TypeError(
-                    f"mutate() received unexpected positional argument of type {type(s).__name__}."
-                )
+                raise TypeError(f"mutate() received unexpected positional argument of type {type(s).__name__}.")
 
         for k, v in other_kwargs.items():
             parsed_spec[k] = v
@@ -521,9 +593,13 @@ class DataFrame:
         for col_name, fn in callable_kwargs.items():
             col_res = fn(res)
             if hasattr(col_res, "to_numpy"):
-                res = DataFrame(res._df.with_columns(pl.Series(col_name, col_res.to_numpy())), orig_col_map=self._orig_col_map)
+                res = DataFrame(
+                    res._df.with_columns(pl.Series(col_name, col_res.to_numpy())), orig_col_map=self._orig_col_map
+                )
             else:
-                res = DataFrame(res._df.with_columns(pl.Series(col_name, list(col_res))), orig_col_map=self._orig_col_map)
+                res = DataFrame(
+                    res._df.with_columns(pl.Series(col_name, list(col_res))), orig_col_map=self._orig_col_map
+                )
             res._orig_index = self._orig_index
 
         return res
@@ -548,7 +624,9 @@ class DataFrame:
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         """Aggregate numeric columns or compute custom metrics across the whole DataFrame."""
         if "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+            raise TypeError(
+                "df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
+            )
         return DataFrame(agg_polars(self._df, *specs, by=None, a=a, dropna=dropna, **kwargs))
 
     def pivot(
@@ -588,8 +666,7 @@ class DataFrame:
         **kwargs: Any,
     ) -> DataFrame:
         """Reshape DataFrame from long to wide format (1-to-1 un-melt)."""
-        from pytae.shape import wide as _wide
-        return DataFrame(_wide(self.to_pandas(), r=r, c=c, v=v, **kwargs))
+        return DataFrame(wide_polars(self._df, r=r, c=c, v=v, **kwargs))
 
     def clean_columns(
         self,
@@ -652,7 +729,7 @@ class DataFrame:
 
     def cols(self, ascending: bool | None = True) -> list[str]:
         """Return sorted or natural column names."""
-        columns = list(self._df.columns)
+        columns = list(self.columns)
         if ascending is True:
             return sorted(columns)
         elif ascending is False:
@@ -665,17 +742,20 @@ class DataFrame:
     def glimpse(self, width: int | None = None) -> DataFrame:
         """Print an R tibble / tidyverse-style schema and preview of the DataFrame."""
         from pytae.other_utilities import format_glimpse
+
         print(format_glimpse(self.to_pandas(), width=width))
         return self
 
     def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
         """Calculate frequency distribution of unique column values."""
         from pytae.other_utilities import freq as _freq
+
         return DataFrame(_freq(self.to_pandas(), col=col, dropna=dropna))
 
     def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
         """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column."""
         from pytae.other_utilities import hist as _hist
+
         return DataFrame(_hist(self.to_pandas(), col=col, bins=bins))
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -689,7 +769,9 @@ class DataFrame:
     def to_pandas(self, *args: Any, **kwargs: Any) -> Any:
         """Convert to pandas DataFrame, preserving tracked index and column metadata."""
         import pandas as pd
-        pdf = self._df.to_pandas(*args, **kwargs)
+
+        eager_df = self._df.collect() if self.is_lazy else self._df
+        pdf = eager_df.to_pandas(*args, **kwargs)
         if self._orig_index is not None and len(self._orig_index) == len(pdf):
             pdf.index = pd.Index(self._orig_index)
         if self._orig_col_map:
@@ -697,12 +779,15 @@ class DataFrame:
         return pdf
 
     def to_polars(self) -> pl.DataFrame:
-        """Extract the underlying Polars DataFrame."""
+        """Extract the underlying Polars DataFrame (collecting if lazy)."""
+        if self.is_lazy:
+            return self._df.collect()
         return self._df
 
     def to_clip(self) -> None:
         """Copy DataFrame to system clipboard via TSV without index."""
-        tsv_str = self._df.write_csv(separator="\t")
+        eager_df = self._df.collect() if self.is_lazy else self._df
+        tsv_str = eager_df.write_csv(separator="\t")
         system = platform.system()
         try:
             if system == "Darwin":
@@ -719,10 +804,24 @@ class DataFrame:
 
     def to_parquet(self, path: str | Path, **kwargs: Any) -> None:
         kwargs.pop("index", None)
+        if self.is_lazy:
+            try:
+                self._df.sink_parquet(path, **kwargs)
+                return
+            except Exception:
+                self._df.collect().write_parquet(path, **kwargs)
+                return
         self._df.write_parquet(path, **kwargs)
 
     def to_csv(self, path: str | Path, **kwargs: Any) -> None:
         kwargs.pop("index", None)
+        if self.is_lazy:
+            try:
+                self._df.sink_csv(path, **kwargs)
+                return
+            except Exception:
+                self._df.collect().write_csv(path, **kwargs)
+                return
         self._df.write_csv(path, **kwargs)
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
@@ -731,11 +830,11 @@ class DataFrame:
 
 
 class GroupedDataFrame:
-    """A lazy grouped container backed by a Polars DataFrame and grouping key columns."""
+    """A lazy grouped container backed by a Polars DataFrame or LazyFrame and grouping key columns."""
 
     def __init__(
         self,
-        df: pl.DataFrame,
+        df: Any,
         by_cols: list[str],
         orig_col_map: dict[str, Any] | None = None,
         orig_index: Any = None,
@@ -766,6 +865,7 @@ class GroupedDataFrame:
 
     def to_pandas(self) -> Any:
         import pandas as pd
+
         pdf = self._df.to_pandas()
         if self._orig_index is not None and len(self._orig_index) == len(pdf):
             pdf.index = pd.Index(self._orig_index)
@@ -774,14 +874,19 @@ class GroupedDataFrame:
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Calculate windowed mutations across the established groups."""
         if "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.mutate() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+            raise TypeError(
+                "df.pt.mutate() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
+            )
 
         if not specs and not kwargs:
-            raise ValueError('mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"')
+            raise ValueError(
+                'mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"'
+            )
 
         dropna = kwargs.pop("dropna", False)
 
         import inspect
+
         _here = inspect.currentframe()
         caller_frame = None if _here is None else _here.f_back
         del _here
@@ -815,7 +920,6 @@ class GroupedDataFrame:
         parsed_spec: dict[str, Any] = {}
         for s in specs:
             if isinstance(s, str):
-                from pytae.mutate import _parse_mutate_spec_entries
                 entries = _parse_mutate_spec_entries(s)
                 for k, v, _ in entries:
                     parsed_spec[k] = v
@@ -828,14 +932,16 @@ class GroupedDataFrame:
                     "e.g. df.pt.mutate(new_col=lambda d: d['x'] * 2)"
                 )
             else:
-                raise TypeError(
-                    f"mutate() received unexpected positional argument of type {type(s).__name__}."
-                )
+                raise TypeError(f"mutate() received unexpected positional argument of type {type(s).__name__}.")
 
         for k, v in other_kwargs.items():
             parsed_spec[k] = v
 
-        res_df = mutate_polars(self._df, parsed_spec, by=self._by, params=merged_params, dropna=dropna) if parsed_spec else self._df
+        res_df = (
+            mutate_polars(self._df, parsed_spec, by=self._by, params=merged_params, dropna=dropna)
+            if parsed_spec
+            else self._df
+        )
         res = DataFrame(res_df, orig_col_map=self._orig_col_map)
         res._orig_index = self._orig_index
 
@@ -845,6 +951,7 @@ class GroupedDataFrame:
                 pieces = []
                 for _, group in pdf.groupby(self._by, sort=False, dropna=dropna):
                     import pandas as pd
+
                     part_res = fn(group)
                     if isinstance(part_res, pd.Series):
                         pieces.append(part_res)
@@ -853,8 +960,11 @@ class GroupedDataFrame:
                     else:
                         pieces.append(pd.Series([part_res] * len(group), index=group.index))
                 import pandas as pd
+
                 full_col = pd.concat(pieces).reindex(pdf.index)
-                res = DataFrame(res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=self._orig_col_map)
+                res = DataFrame(
+                    res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=self._orig_col_map
+                )
                 res._orig_index = self._orig_index
 
         return res
@@ -862,10 +972,15 @@ class GroupedDataFrame:
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         """Aggregate numeric columns or compute metrics grouped by the established keys."""
         if "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
-        return DataFrame(
-            agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs)
-        )
+            raise TypeError(
+                "df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
+            )
+        return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
+
+    def dropna(self, *cols: Any) -> DataFrame:
+        """Drop rows containing null values across all or specified columns."""
+        resolved = list(cols) if cols else None
+        return DataFrame(dropna_polars(self._df, cols=resolved))
 
     def pick(
         self,
@@ -902,11 +1017,10 @@ def _plot_impl(pdf: Any, *args: Any, **kwargs: Any) -> Any:
     try:
         from pytae.plotting import Plotter
     except ImportError as exc:
-        raise ImportError(
-            "plot() requires matplotlib. Install with: pip install 'pytae[plot]'"
-        ) from exc
+        raise ImportError("plot() requires matplotlib. Install with: pip install 'pytae[plot]'") from exc
 
     import pandas as pd
+
     if not isinstance(pdf, pd.DataFrame):
         if hasattr(pdf, "to_pandas"):
             pdf = pdf.to_pandas()
@@ -914,25 +1028,16 @@ def _plot_impl(pdf: Any, *args: Any, **kwargs: Any) -> Any:
             pdf = pd.DataFrame(pdf)
 
     by_col = kwargs.get("by") if kwargs.get("by") is not None else kwargs.get("col")
-    has_facet_trigger = (
-        kwargs.get("ncols") is not None
-        or kwargs.get("facet") is True
-        or "col" in kwargs
-    )
-    is_plot_call = bool(
-        {"kind", "x", "y", "column"}.intersection(kwargs.keys())
-    )
+    has_facet_trigger = kwargs.get("ncols") is not None or kwargs.get("facet") is True or "col" in kwargs
+    is_plot_call = bool({"kind", "x", "y", "column"}.intersection(kwargs.keys()))
 
-    if (
-        by_col is not None
-        and by_col in pdf.columns
-        and has_facet_trigger
-        and is_plot_call
-    ):
+    if by_col is not None and by_col in pdf.columns and has_facet_trigger and is_plot_call:
         if "mosaic" in kwargs or (len(args) > 0 and args[0] is not None):
             raise ValueError("Cannot combine 'mosaic' with faceting ('by' with 'ncols'/'facet'/'col').")
         if "nrows" in kwargs:
-            raise ValueError("Cannot combine 'nrows' with faceting ('by' with 'ncols'/'facet'/'col'). Use 'ncols' to control grid columns.")
+            raise ValueError(
+                "Cannot combine 'nrows' with faceting ('by' with 'ncols'/'facet'/'col'). Use 'ncols' to control grid columns."
+            )
 
         facet_kwargs = dict(kwargs)
         facet_kwargs.pop("by", None)
@@ -961,6 +1066,7 @@ def _plot_impl(pdf: Any, *args: Any, **kwargs: Any) -> Any:
 try:
     import pandas as pd
     import pandas._testing.asserters as _asserters
+
     _orig_assert_frame_equal = _asserters.assert_frame_equal
 
     def _pt_assert_frame_equal(left: Any, right: Any, *args: Any, **kwargs: Any) -> Any:
@@ -972,16 +1078,20 @@ try:
 
     _asserters.assert_frame_equal = _pt_assert_frame_equal
     import pandas.testing as _pd_testing
+
     _pd_testing.assert_frame_equal = _pt_assert_frame_equal
 
     _orig_pd_melt = getattr(pd, "melt", None)
     if _orig_pd_melt is not None:
+
         def _compat_pd_melt(frame: Any, *args: Any, **kwargs: Any) -> Any:
             if hasattr(frame, "to_pandas") and not isinstance(frame, pd.DataFrame):
                 frame = frame.to_pandas()
             return _orig_pd_melt(frame, *args, **kwargs)
+
         pd.melt = _compat_pd_melt
         import pandas.core.reshape.melt as _prm
+
         _prm.melt = _compat_pd_melt
 except Exception:
     pass

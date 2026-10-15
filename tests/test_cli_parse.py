@@ -4,9 +4,9 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 
-
 def test_parse_sort_by_trailing_direction():
     from pytae.cli_parsing import parse_sort_by
+
     assert parse_sort_by("val") == (["val"], "asc")
     assert parse_sort_by("val desc") == (["val"], "desc")
     assert parse_sort_by("species,body_mass_g desc") == (["species", "body_mass_g"], "desc")
@@ -68,6 +68,3 @@ def test_cli_keyword_help(capsys):
     out = capsys.readouterr().out
     assert "No dedicated help topic for keyword 'nonexistent_keyword'" in out
     assert "Available keywords with help:" in out
-
-
-

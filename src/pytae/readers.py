@@ -93,8 +93,13 @@ class ParquetReader:
         df = pd.concat(parts, ignore_index=True) if parts else self._empty()
         return df.tail(n)
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
-                     chunk_size: int | None = None) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
         if not progress and nrows is None:
             df = pd.read_parquet(self.path, columns=columns)
             if "_pt_by" in df.attrs:
@@ -128,7 +133,16 @@ class ParquetReader:
 
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
+
         return pl.read_parquet(self.path, columns=columns, n_rows=nrows)
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        lf = pl.scan_parquet(self.path)
+        if columns is not None:
+            lf = lf.select(columns)
+        return lf
 
 
 class CsvReader:
@@ -238,6 +252,7 @@ class CsvReader:
 
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
+
         return pl.read_csv(
             self.path,
             separator=self.sep,
@@ -247,6 +262,20 @@ class CsvReader:
             null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
             truncate_ragged_lines=True,
         )
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        lf = pl.scan_csv(
+            self.path,
+            separator=self.sep,
+            encoding=self.encoding or "utf8",
+            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+            truncate_ragged_lines=True,
+        )
+        if columns is not None:
+            lf = lf.select(columns)
+        return lf
 
 
 class TxtReader:
@@ -358,6 +387,7 @@ class TxtReader:
 
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
+
         return pl.read_csv(
             self.path,
             separator=self.sep,
@@ -367,6 +397,20 @@ class TxtReader:
             null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
             truncate_ragged_lines=True,
         )
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        lf = pl.scan_csv(
+            self.path,
+            separator=self.sep,
+            encoding=self.encoding or "utf8",
+            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+            truncate_ragged_lines=True,
+        )
+        if columns is not None:
+            lf = lf.select(columns)
+        return lf
 
 
 class SasReader:
@@ -406,8 +450,13 @@ class SasReader:
                 reader.read(skip)  # advance past rows we don't need
             return reader.read(min(n, total))
 
-    def to_dataframe(self, columns: list[str] | None = None, progress: bool = False, nrows: int | None = None,
-                     chunk_size: int | None = None) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
         if not progress and nrows is None:
             df = pd.read_sas(self.path, format="sas7bdat", encoding=self.encoding)
             return df[columns] if columns else df
@@ -430,6 +479,7 @@ class SasReader:
 
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
+
         return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
 
 
@@ -530,6 +580,7 @@ class JsonlReader:
 
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
+
         try:
             df = pl.read_ndjson(self.path)
             if nrows is not None:
@@ -539,6 +590,17 @@ class JsonlReader:
             return df
         except Exception:
             return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        try:
+            lf = pl.scan_ndjson(self.path)
+            if columns is not None:
+                lf = lf.select(columns)
+            return lf
+        except Exception:
+            return self.to_polars(columns=columns).lazy()
 
 
 class StdinReader:
@@ -613,7 +675,11 @@ class StdinReader:
 
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
+
         return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        return self.to_polars(columns=columns).lazy()
 
 
 class DataFrameReader:
@@ -654,12 +720,16 @@ class DataFrameReader:
 
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
+
         df = pl.from_pandas(self._df)
         if nrows is not None:
             df = df.head(nrows)
         if columns is not None:
             df = df.select(columns)
         return df
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        return self.to_polars(columns=columns).lazy()
 
 
 _READERS = {
@@ -686,7 +756,9 @@ _TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
 _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
-def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE):
+def get_reader(
+    path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE
+):
     suffix, compression = _split_path_suffixes(path)
     if suffix in _YAML_SUFFIXES:
         global _EXTERNAL_CONNECTIONS_MODULE
@@ -703,9 +775,7 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
                     "connection reader not found; set PYTAE_CONNECTIONS_PATH to a connections.py file "
                     f"(looked for '{module_path}')"
                 )
-            module_spec = importlib.util.spec_from_file_location(
-                "_pytae_external_connections", module_path
-            )
+            module_spec = importlib.util.spec_from_file_location("_pytae_external_connections", module_path)
             if module_spec is None or module_spec.loader is None:
                 raise ImportError(f"cannot load connections module from '{module_path}'")
             _EXTERNAL_CONNECTIONS_MODULE = importlib.util.module_from_spec(module_spec)
@@ -714,7 +784,9 @@ def get_reader(path: Path, *, sep: str | None = None, encoding: str | None = Non
     try:
         cls = _READERS[suffix]
     except KeyError:
-        supported = ", ".join(sorted((*_READERS, *_YAML_SUFFIXES, ".csv.gz", ".txt.gz", ".dat.gz", ".jsonl.gz", ".ndjson.gz")))
+        supported = ", ".join(
+            sorted((*_READERS, *_YAML_SUFFIXES, ".csv.gz", ".txt.gz", ".dat.gz", ".jsonl.gz", ".ndjson.gz"))
+        )
         raise ValueError(f"unsupported file type '{path.suffix or path.name}'; supported: {supported}") from None
     if cls is CsvReader:
         return CsvReader(path, sep=sep or ",", encoding=encoding, chunk_size=chunk_size, compression=compression)
@@ -804,11 +876,19 @@ def write_dataframe(
         _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)
     elif suffix == ".csv":
         _write_delimited(
-            df, dest, sep=sep or ",", encoding=encoding, progress=progress, chunk_size=chunk_size, index=index, compression=compression
+            df,
+            dest,
+            sep=sep or ",",
+            encoding=encoding,
+            progress=progress,
+            chunk_size=chunk_size,
+            index=index,
+            compression=compression,
         )
     elif suffix in _TXT_DEFAULT_SEP:
         _write_delimited(
-            df, dest,
+            df,
+            dest,
             sep=sep or _TXT_DEFAULT_SEP[suffix],
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
             progress=progress,
@@ -840,7 +920,7 @@ def _write_delimited(
         return
     done = 0
     for start in range(0, total, chunk_size):
-        chunk = df.iloc[start:start + chunk_size]
+        chunk = df.iloc[start : start + chunk_size]
         chunk.to_csv(
             dest,
             sep=sep,
@@ -870,7 +950,7 @@ def _write_jsonl(
         return
     done = 0
     for start in range(0, total, chunk_size):
-        chunk = df.iloc[start:start + chunk_size]
+        chunk = df.iloc[start : start + chunk_size]
         chunk.to_json(
             dest,
             orient="records",
@@ -992,9 +1072,58 @@ def read(path: str | Path, **kwargs: Any) -> Any:
             return DataFrame(pl.read_excel(target_path, **kwargs))
         except Exception:
             import pandas as pd
+
             return DataFrame(pd.read_excel(target_path, **kwargs))
     else:
         try:
             return DataFrame(pl.read_csv(target_path, **kwargs))
         except Exception as exc:
             raise ValueError(f"pt.read: unsupported file format for path '{target_path}'") from exc
+
+
+def scan(path: str | Path, **kwargs: Any) -> Any:
+    """Universal high-performance lazy scanner powered by Polars.
+
+    Returns a pytae.DataFrame wrapping a polars.LazyFrame.
+    Auto-detects format from extension:
+    - .parquet, .pq -> pl.scan_parquet
+    - .csv -> pl.scan_csv
+    - .tsv, .txt -> pl.scan_csv(..., separator='\\t')
+    - .dat -> pl.scan_csv(..., separator='|')
+    - .jsonl, .ndjson -> pl.scan_ndjson
+    - .ipc, .arrow -> pl.scan_ipc
+    """
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
+    if is_url:
+        target_path: str | Path = path
+        clean_url = str(path).split("?")[0].split("#")[0]
+        suffix, compression = _split_path_suffixes(Path(clean_url))
+    else:
+        p = Path(path)
+        target_path = p
+        suffix, compression = _split_path_suffixes(p)
+
+    if suffix in (".parquet", ".pq"):
+        return DataFrame(pl.scan_parquet(target_path, **kwargs))
+    elif suffix in (".csv",):
+        return DataFrame(pl.scan_csv(target_path, **kwargs))
+    elif suffix in (".tsv", ".txt"):
+        sep = kwargs.pop("separator", "\t")
+        return DataFrame(pl.scan_csv(target_path, separator=sep, **kwargs))
+    elif suffix in (".dat",):
+        sep = kwargs.pop("separator", "|")
+        encoding = kwargs.pop("encoding", "latin-1")
+        return DataFrame(pl.scan_csv(target_path, separator=sep, encoding=encoding, **kwargs))
+    elif suffix in (".jsonl", ".ndjson"):
+        return DataFrame(pl.scan_ndjson(target_path, **kwargs))
+    elif suffix in (".ipc", ".arrow"):
+        return DataFrame(pl.scan_ipc(target_path, **kwargs))
+    else:
+        try:
+            return DataFrame(pl.scan_csv(target_path, **kwargs))
+        except Exception as exc:
+            raise ValueError(f"pt.scan: unsupported file format for lazy scanning of '{target_path}'") from exc

@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 # Assuming the current working directory is where the project root is
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import pytae as pt
 from pytae import sample
@@ -15,15 +15,17 @@ def test_long():
 
     penguins = sample("penguins")
 
-    
-    result = pt.long(penguins, c='features')
-    
+    result = pt.long(penguins, c="features")
 
-    numeric_cols = penguins.select_dtypes(include=['number']).columns.tolist()
-    expected_df = pd.melt(penguins, id_vars=[col for col in penguins.columns if col not in numeric_cols],
-                        value_vars=numeric_cols, var_name='features', 
-                                                 value_name='value')
-    
+    numeric_cols = penguins.select_dtypes(include=["number"]).columns.tolist()
+    expected_df = pd.melt(
+        penguins,
+        id_vars=[col for col in penguins.columns if col not in numeric_cols],
+        value_vars=numeric_cols,
+        var_name="features",
+        value_name="value",
+    )
+
     pd.testing.assert_frame_equal(result, expected_df)
 
 
@@ -81,8 +83,6 @@ def test_wide_disallows_none_values():
         pt.wide(df, c="country", v=None)
 
 
-
-
 def test_long_raises_when_no_numeric_columns():
     df = pd.DataFrame({"a": ["x", "y"], "b": ["p", "q"]})
     with pytest.raises(ValueError, match="no numeric columns to melt"):
@@ -90,11 +90,13 @@ def test_long_raises_when_no_numeric_columns():
 
 
 def test_long_with_non_numeric_cols():
-    df = pd.DataFrame({
-        "id": ["1", "2"],
-        "phone_home": ["123", "456"],
-        "phone_work": ["789", "012"],
-    })
+    df = pd.DataFrame(
+        {
+            "id": ["1", "2"],
+            "phone_home": ["123", "456"],
+            "phone_work": ["789", "012"],
+        }
+    )
     res = df.pt.long(cols=["phone_home", "phone_work"], c="phone_type", v="number")
     assert list(res.columns) == ["id", "phone_type", "number"]
     assert len(res) == 4
@@ -102,11 +104,13 @@ def test_long_with_non_numeric_cols():
 
 
 def test_long_with_id_vars():
-    df = pd.DataFrame({
-        "user": ["alice", "bob"],
-        "color": ["red", "blue"],
-        "size": ["M", "L"],
-    })
+    df = pd.DataFrame(
+        {
+            "user": ["alice", "bob"],
+            "color": ["red", "blue"],
+            "size": ["M", "L"],
+        }
+    )
     res = df.pt.long(id_vars=["user"])
     assert list(res.columns) == ["user", "variable", "value"]
     assert len(res) == 4
@@ -120,12 +124,14 @@ def test_long_unknown_col_raises_helpful_error():
 
 
 def test_wide_with_explicit_r():
-    df = pd.DataFrame({
-        "region": ["East", "West"],
-        "rep": ["Alice", "Bob"],
-        "quarter": ["Q1", "Q2"],
-        "sales": [100, 200],
-    })
+    df = pd.DataFrame(
+        {
+            "region": ["East", "West"],
+            "rep": ["Alice", "Bob"],
+            "quarter": ["Q1", "Q2"],
+            "sales": [100, 200],
+        }
+    )
     res = df.pt.wide(r="region", c="quarter", v="sales")
     assert "region" in res.columns
     assert "Q1" in res.columns
@@ -138,11 +144,13 @@ def test_wide_with_explicit_r():
 
 def test_wide_bracketed_names_and_column_validation():
     # Lib Issue 6: wide unquotes bracketed names and checks column existence
-    df = pd.DataFrame({
-        "region name": ["East", "West"],
-        "quarter": ["Q1", "Q2"],
-        "sales": [1, 2],
-    })
+    df = pd.DataFrame(
+        {
+            "region name": ["East", "West"],
+            "quarter": ["Q1", "Q2"],
+            "sales": [1, 2],
+        }
+    )
     res = df.pt.wide(r="[region name]", c="quarter", v="sales")
     assert "region name" in res.columns
     assert "Q1" in res.columns
@@ -198,6 +206,7 @@ def test_long_output_name_collisions():
     with pytest.raises(ValueError, match="collides with kept id column"):
         df.pt.long(cols=["a"], id_vars=["b"], c="var", v="b")
 
+
 def test_wide_no_id_columns():
     # Issue 4: wide() where index_cols is empty
     df = pd.DataFrame({"metric": ["Sales", "Profit"], "val": [100, 20]})
@@ -215,15 +224,17 @@ def test_wide_no_id_columns():
 
 def test_long_bracketed_column_names():
     # Issue 11: long() bracket tokenization for cols and id_vars
-    df = pd.DataFrame({
-        "order id": [1, 2],
-        "total bill": [10.5, 20.0],
-        "tip amount": [2.0, 3.5],
-    })
+    df = pd.DataFrame(
+        {
+            "order id": [1, 2],
+            "total bill": [10.5, 20.0],
+            "tip amount": [2.0, 3.5],
+        }
+    )
     res = df.pt.long(id_vars="[order id]", cols="[total bill], [tip amount]")
     assert list(res.columns) == ["order id", "variable", "value"]
     assert len(res) == 4
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main()

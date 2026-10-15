@@ -11,11 +11,11 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from pytae._parsing import lit
 from pytae.accessor import PandasPtAccessor, PolarsPtAccessor
 from pytae.dataframe import DataFrame, GroupedDataFrame
-from pytae.mutate import lit
 from pytae.other_utilities import format_glimpse
-from pytae.readers import read
+from pytae.readers import read, scan
 from pytae.select import everything
 
 __version__ = "3.10.0"
@@ -67,6 +67,7 @@ sample_data = _SampleData()
 # Functional API (accepts Pytae DataFrame, Polars DataFrame, or Pandas DataFrame)
 # -----------------------------------------------------------------------------
 
+
 def select(df: Any, *args: Any, **kwargs: Any) -> DataFrame:
     return DataFrame(df).select(*args, **kwargs)
 
@@ -95,6 +96,10 @@ def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
+def dropna(df: Any, *cols: Any) -> DataFrame:
+    return DataFrame(df).dropna(*cols)
+
+
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
     return DataFrame(df).by(*cols)
 
@@ -107,7 +112,9 @@ def ungroup(df: Any) -> DataFrame:
 
 def agg(df: Any, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
     if "by" in kwargs or "_by" in kwargs:
-        raise TypeError("agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+        raise TypeError(
+            "agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
+        )
     if isinstance(df, GroupedDataFrame):
         return df.agg(*specs, a=a, dropna=dropna, **kwargs)
     return DataFrame(df).agg(*specs, a=a, dropna=dropna, **kwargs)
@@ -193,15 +200,6 @@ class _VerbDescriptor:
         pass
 
 
-class _LongDescriptor:
-    def __get__(self, instance: Any, owner: Any = None) -> Any:
-        import pytae.shape  # noqa: F401
-        return long
-
-    def __set__(self, instance: Any, value: Any) -> None:
-        pass
-
-
 # Make module callable as pt(data) -> DataFrame, and dispatch verbs via descriptors to prevent submodule shadowing
 class _PytaeModule(ModuleType):
     def __call__(self, data: Any = None) -> DataFrame:
@@ -213,11 +211,12 @@ class _PytaeModule(ModuleType):
     arrange = _VerbDescriptor(arrange)
     pick = _VerbDescriptor(pick)
     distinct = _VerbDescriptor(distinct)
+    dropna = _VerbDescriptor(dropna)
     by = _VerbDescriptor(by)
     ungroup = _VerbDescriptor(ungroup)
     agg = _VerbDescriptor(agg)
     pivot = _VerbDescriptor(pivot)
-    long = _LongDescriptor()
+    long = _VerbDescriptor(long)
     wide = _VerbDescriptor(wide)
     clean_columns = _VerbDescriptor(clean_columns)
     replace_values = _VerbDescriptor(replace_values)
@@ -231,6 +230,7 @@ class _PytaeModule(ModuleType):
     lit = _VerbDescriptor(lit)
     sample = _VerbDescriptor(sample)
     sample_data = _VerbDescriptor(sample_data)
+    scan = _VerbDescriptor(scan)
 
 
 sys.modules[__name__].__class__ = _PytaeModule
@@ -240,6 +240,7 @@ def __getattr__(name: str) -> Any:
     if name in ("Plotter", "plot", "finalize"):
         try:
             from .plotting import Plotter, finalize, plot
+
             if name == "Plotter":
                 return Plotter
             elif name == "plot":
@@ -247,9 +248,7 @@ def __getattr__(name: str) -> Any:
             else:
                 return finalize
         except ImportError as exc:
-            raise ImportError(
-                f"{name} requires matplotlib. Install with: pip install 'pytae[plot]'"
-            ) from exc
+            raise ImportError(f"{name} requires matplotlib. Install with: pip install 'pytae[plot]'") from exc
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -257,6 +256,7 @@ __all__ = [
     "DataFrame",
     "GroupedDataFrame",
     "read",
+    "scan",
     "sample_data",
     "sample",
     "select",
@@ -267,6 +267,7 @@ __all__ = [
     "arrange",
     "pick",
     "distinct",
+    "dropna",
     "agg",
     "long",
     "wide",

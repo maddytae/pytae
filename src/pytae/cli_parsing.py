@@ -50,20 +50,17 @@ def parse_distinct_spec(raw: str | None) -> tuple[list[str], str | bool]:
 
     for token in tokens:
         if token.startswith("keep="):
-            val = token[len("keep="):].strip().strip("'\"").lower()
+            val = token[len("keep=") :].strip().strip("'\"").lower()
             if val in ("first", "last"):
                 keep = val
             elif val in ("false", "none"):
                 keep = False
             else:
-                raise SystemExit(
-                    f"-distinct: invalid keep value '{val}'. Expected 'first', 'last', 'false', or 'none'"
-                )
+                raise SystemExit(f"-distinct: invalid keep value '{val}'. Expected 'first', 'last', 'false', or 'none'")
         else:
             cols.append(_unquote_name(token))
 
     return cols, keep
-
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
@@ -89,7 +86,8 @@ def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
     raw = (raw or "").strip()
     if not raw:
         raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
-    from pytae.arrange import _extract_arrange_specs
+    from pytae._parsing import _extract_arrange_specs
+
     cols, asc_list = _extract_arrange_specs((raw,))
     if not cols:
         raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
@@ -151,7 +149,9 @@ def parse_pick_spec(raw: str, flag_name: str = "-pick") -> tuple[str, int | None
                 raise SystemExit(f"{flag_name}: invalid order value '{ord_val}'; must be 'max' or 'min'")
             order = ord_val
         else:
-            raise SystemExit(f"{flag_name}: unrecognized parameter '{param}'; expected 'n=N', 'prop=P', or 'order=max|min'")
+            raise SystemExit(
+                f"{flag_name}: unrecognized parameter '{param}'; expected 'n=N', 'prop=P', or 'order=max|min'"
+            )
 
     if n is None and prop is None:
         n = 1
@@ -258,13 +258,17 @@ def parse_rename(raw: str) -> dict[str, str]:
         if ":" in pair:
             old, new = pair.split(":", 1)
         elif "=" in pair:
-            raise SystemExit(f"invalid -rename mapping '{pair}'; use ':' (e.g. -rename 'old:new'). '=' is not supported.")
+            raise SystemExit(
+                f"invalid -rename mapping '{pair}'; use ':' (e.g. -rename 'old:new'). '=' is not supported."
+            )
         else:
             raise SystemExit(f"invalid -rename mapping '{pair}'; expected old:new")
         old_clean = _unquote_name(old)
         new_clean = _unquote_name(new)
         if old_clean in mapping and mapping[old_clean] != new_clean:
-            raise SystemExit(f"invalid -rename: conflicting mappings for '{old_clean}': '{mapping[old_clean]}' and '{new_clean}'")
+            raise SystemExit(
+                f"invalid -rename: conflicting mappings for '{old_clean}': '{mapping[old_clean]}' and '{new_clean}'"
+            )
         mapping[old_clean] = new_clean
     return mapping
 
@@ -312,6 +316,14 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             val = m_cmp.group(3).strip()
             entries.append((col, f"{op} {val}"))
             continue
+        # Direct comparison with in / not in: col in ['a', 'b'], col not in ['a', 'b']
+        m_in = re.match(r"^([^>=<!:]+?)\s+(not\s+in|in)\s+(.+)$", raw_entry, flags=re.IGNORECASE)
+        if m_in:
+            col = m_in.group(1).strip()
+            op = "not in" if "not" in m_in.group(2).lower() else "in"
+            val = m_in.group(3).strip()
+            entries.append((col, f"{op} {val}"))
+            continue
         # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
         m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
         if m_eq:
@@ -322,7 +334,9 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
         # If colon was used, give a helpful error
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
         if len(pieces) >= 2:
-            raise SystemExit(f"invalid -filter condition '{raw_entry}': use '=' (e.g. -filter 'species = Adelie'). Colon ':' is not supported.")
+            raise SystemExit(
+                f"invalid -filter condition '{raw_entry}': use '=' (e.g. -filter 'species = Adelie'). Colon ':' is not supported."
+            )
         raise SystemExit(f"invalid -filter conditions: missing '=' in entry '{raw_entry}'")
     return entries
 
@@ -354,6 +368,17 @@ def parse_filter(raw: str) -> list[tuple[str, Any]]:
                 conditions.append((key, val_strip))
                 continue
 
+        m_in = re.match(r"^(not\s+in|in)\s*(.+)$", val_strip, flags=re.IGNORECASE)
+        if m_in:
+            op = "not in" if "not" in m_in.group(1).lower() else "in"
+            sub_raw = m_in.group(2).strip()
+            try:
+                sub_val = ast.literal_eval(sub_raw)
+            except (ValueError, SyntaxError):
+                sub_val = [s.strip().strip("'\"") for s in sub_raw.strip("[]()").split(",") if s.strip()]
+            conditions.append((key, (op, sub_val)))
+            continue
+
         op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
         if op_match:
             op = op_match.group(1)
@@ -374,7 +399,9 @@ def parse_filter(raw: str) -> list[tuple[str, Any]]:
             ) from exc
         conditions.append((key, value))
     if not conditions:
-        raise SystemExit("-filter expects keyword entries, e.g. \"col = ('>', 5)\" or \"col > 5\" (quotes around column name optional)")
+        raise SystemExit(
+            '-filter expects keyword entries, e.g. "col = (\'>\', 5)" or "col > 5" (quotes around column name optional)'
+        )
     return conditions
 
 
@@ -390,10 +417,7 @@ def parse_agg(raw: str):
     if not raw:
         return "sum"
     if raw.startswith("{") or (raw.startswith("[") and "=" not in raw):
-        raise SystemExit(
-            "-agg: use a name (mean), a comma list (mean,sum), or a mapping "
-            "(col = mean, n = n)"
-        )
+        raise SystemExit("-agg: use a name (mean), a comma list (mean,sum), or a mapping (col = mean, n = n)")
     entries = [e for e in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if e]
     if not entries:
         raise SystemExit("-agg: expected a name, a comma list, or a mapping")
@@ -422,7 +446,9 @@ def parse_agg(raw: str):
                     dropna_flag = parse_bool_text(value)
                     continue
             elif ":" in entry:
-                raise SystemExit(f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported.")
+                raise SystemExit(
+                    f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported."
+                )
             else:
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             if not key or not value:
@@ -432,9 +458,7 @@ def parse_agg(raw: str):
             out["__dropna__"] = dropna_flag
         return out
     if any(mapped):
-        raise SystemExit(
-            "-agg: mix of names and col=aggfunc mappings; use one or the other"
-        )
+        raise SystemExit("-agg: mix of names and col=aggfunc mappings; use one or the other")
     names = [_unquote_name(e) for e in entries]
     return names[0] if len(names) == 1 else names
 
@@ -453,10 +477,7 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     if not raw:
         raise SystemExit("-agg: expected key=value specs, e.g. column=value,aggfunc=sum,as=v")
     if raw.startswith("{"):
-        raise SystemExit(
-            "-agg: use key=value specs, e.g. column=value,aggfunc=sum,as=v "
-            "(not a dict literal)"
-        )
+        raise SystemExit("-agg: use key=value specs, e.g. column=value,aggfunc=sum,as=v (not a dict literal)")
     rows: list[tuple[str, str, str]] = []
     for group in _split_groups(raw, ";"):
         canon = parse_reshape_kwargs(group, keys=_AGG_KEYS, flag="-agg")
@@ -563,7 +584,9 @@ def parse_value_map(raw: str) -> dict[str, str]:
         if ":" in pair:
             old, new = pair.split(":", 1)
         elif "=" in pair:
-            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; use ':' (expected old:new). '=' is not supported.")
+            raise SystemExit(
+                f"-replace_values: invalid v= mapping '{pair}'; use ':' (expected old:new). '=' is not supported."
+            )
         else:
             raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
         mapping[_unquote_name(old)] = _unquote_name(new)
@@ -645,9 +668,7 @@ def parse_clean_columns_arg(raw: str) -> dict:
     """
     raw = (raw or "").strip()
     if not raw:
-        raise SystemExit(
-            "-clean_columns: expected at least one key, e.g. \"strip\" or \"case=lower\""
-        )
+        raise SystemExit('-clean_columns: expected at least one key, e.g. "strip" or "case=lower"')
     kwargs: dict = {}
     for token in _split_tokens(raw):
         key, has_value, value = token.partition("=")
@@ -879,5 +900,3 @@ def normalize_sql(query: str) -> str:
         out_chars.append(ch)
         i += 1
     return "".join(out_chars)
-
-

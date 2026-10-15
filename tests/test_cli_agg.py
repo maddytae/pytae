@@ -113,9 +113,7 @@ def test_agg_named_output_with_spaced_group(tmp_path, capsys):
     df = pd.DataFrame({"Scenario Name": ["A", "A", "B"], "value": [1, 2, 3]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main(
-        [path, "-by", "Scenario Name", "-agg", "v = value:sum"]
-    )
+    exit_code = cli.main([path, "-by", "Scenario Name", "-agg", "v = value:sum"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -166,6 +164,7 @@ def test_agg_then_arrange_prints_only_final_table(tmp_path, capsys):
 
 def test_parse_agg_name_list_and_mapping():
     from pytae.cli_parsing import parse_agg
+
     assert parse_agg("mean") == "mean"
     assert parse_agg("mean,sum,n") == ["mean", "sum", "n"]
     assert parse_agg("val = sum, n = n") == {"val": "sum", "n": "n"}
@@ -206,4 +205,3 @@ def test_agg_mapping_named_a_does_not_collide_with_kwargs(tmp_path, capsys):
     assert exit_code == 0
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["grp", "a"]
-

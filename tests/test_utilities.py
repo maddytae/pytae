@@ -33,7 +33,9 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     assert hasattr(df.pt, "to_clip")
 
     copied_series: dict[str, Any] = {}
-    monkeypatch.setattr(pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True))
+    monkeypatch.setattr(
+        pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True)
+    )
     df["a"].to_clip()
     assert copied_series.get("called") is True
 
@@ -72,7 +74,6 @@ def test_handle_missing_custom_numeric_fill_and_cols():
     assert result2["txt"].tolist() == ["hello", "N/A"]
 
 
-
 def test_cols_sort_orders():
     df = pd.DataFrame({"c": [1], "a": [2], "b": [3]})
     assert pt.cols(df) == ["a", "b", "c"]
@@ -80,7 +81,6 @@ def test_cols_sort_orders():
     assert pt.cols(df, ascending=None) == ["c", "a", "b"]
     with pytest.raises(ValueError, match="Invalid ascending"):
         pt.cols(df, ascending="nope")
-
 
 
 def test_clean_columns_strip_fill_case():
@@ -168,10 +168,12 @@ def test_handle_missing_all_null_object_column():
 
 
 def test_glimpse_formatting_and_chaining(capsys):
-    df = pd.DataFrame({
-        "species": ["Adelie", "Gentoo", None],
-        "mass": [3700.0, 5200.0, 4100.0],
-    })
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Gentoo", None],
+            "mass": [3700.0, 5200.0, 4100.0],
+        }
+    )
     out_str = pt.format_glimpse(df, width=80)
     assert "Rows: 3" in out_str
     assert "Columns: 2" in out_str
@@ -229,6 +231,3 @@ def test_dedupe_removed():
     df = pd.DataFrame({"a": [1, 2]})
     assert not hasattr(pt, "dedupe")
     assert not hasattr(df.pt, "dedupe")
-
-
-

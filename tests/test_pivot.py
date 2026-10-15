@@ -8,14 +8,16 @@ from pytae import cli
 
 @pytest.fixture
 def sales_df():
-    return pd.DataFrame({
-        "Region": ["East", "East", "West", "West", "East"],
-        "Store": ["S1", "S2", "S1", "S2", "S1"],
-        "Year": [2023, 2023, 2023, 2024, 2024],
-        "Quarter": ["Q1", "Q2", "Q1", "Q1", "Q2"],
-        "Sales": [100.0, 200.0, 300.0, 400.0, 150.0],
-        "Profit": [10.0, 25.0, 35.0, 50.0, 20.0],
-    })
+    return pd.DataFrame(
+        {
+            "Region": ["East", "East", "West", "West", "East"],
+            "Store": ["S1", "S2", "S1", "S2", "S1"],
+            "Year": [2023, 2023, 2023, 2024, 2024],
+            "Quarter": ["Q1", "Q2", "Q1", "Q1", "Q2"],
+            "Sales": [100.0, 200.0, 300.0, 400.0, 150.0],
+            "Profit": [10.0, 25.0, 35.0, 50.0, 20.0],
+        }
+    )
 
 
 def test_pivot_both_r_and_c(sales_df):
@@ -97,11 +99,13 @@ def test_pivot_agg_n_alias(sales_df):
 
 def test_pivot_agg_n_fill_zero_by_default():
     # If a combination has 0 occurrences, it should be 0 and int64
-    df = pd.DataFrame({
-        "Island": ["Biscoe", "Biscoe", "Dream"],
-        "Species": ["Adelie", "Gentoo", "Chinstrap"],
-        "Sex": ["M", "F", "M"],
-    })
+    df = pd.DataFrame(
+        {
+            "Island": ["Biscoe", "Biscoe", "Dream"],
+            "Species": ["Adelie", "Gentoo", "Chinstrap"],
+            "Sex": ["M", "F", "M"],
+        }
+    )
     res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n")
     assert list(res.columns) == ["Island", "Adelie", "Chinstrap", "Gentoo"]
     assert res["Adelie"].dtype == "int64"
@@ -144,11 +148,13 @@ def test_pivot_agg_n_neither_r_nor_c(sales_df):
 
 
 def test_pivot_agg_n_explicit_nan_fill():
-    df = pd.DataFrame({
-        "Island": ["Biscoe", "Dream"],
-        "Species": ["Adelie", "Chinstrap"],
-        "Sex": ["M", "F"],
-    })
+    df = pd.DataFrame(
+        {
+            "Island": ["Biscoe", "Dream"],
+            "Species": ["Adelie", "Chinstrap"],
+            "Sex": ["M", "F"],
+        }
+    )
     res = df.pt.pivot(r="Island", c="Species", v="Sex", a="n", f_v=np.nan)
     # When explicit NaN fill is requested, missing combinations are <NA> of Int64 dtype
     assert res["Adelie"].dtype == "Int64"
@@ -164,11 +170,13 @@ def test_pivot_f_v_explicit(sales_df):
 
 
 def test_pivot_dropna_false_default():
-    df_na = pd.DataFrame({
-        "Region": ["East", np.nan, "West"],
-        "Year": [2023, 2023, np.nan],
-        "Sales": [10.0, 20.0, 30.0],
-    })
+    df_na = pd.DataFrame(
+        {
+            "Region": ["East", np.nan, "West"],
+            "Year": [2023, 2023, np.nan],
+            "Sales": [10.0, 20.0, 30.0],
+        }
+    )
     res = df_na.pt.pivot(r="Region", c="Year", v="Sales", a="sum")
     # Region has NaN, so there should be a row with NaN in Region
     assert res["Region"].isna().any()
@@ -178,7 +186,16 @@ def test_pivot_dropna_false_default():
 
 
 def test_pivot_aliases_rejected(sales_df):
-    for bad_kw in ({"rows": "Region"}, {"cols": "Year"}, {"values": "Sales"}, {"aggfunc": "mean"}, {"index": "Region"}, {"columns": "Year"}, {"fill": 0.0}, {"fill_value": 0.0}):
+    for bad_kw in (
+        {"rows": "Region"},
+        {"cols": "Year"},
+        {"values": "Sales"},
+        {"aggfunc": "mean"},
+        {"index": "Region"},
+        {"columns": "Year"},
+        {"fill": 0.0},
+        {"fill_value": 0.0},
+    ):
         with pytest.raises(TypeError, match="pivot\\(\\) got unexpected keyword argument\\(s\\)"):
             sales_df.pt.pivot(r="Region", c="Year", v="Sales", **bad_kw)
 
@@ -210,10 +227,16 @@ def test_pivot_optional_v(sales_df):
     assert res_0d["n"].iloc[0] == 5
 
     # v omitted but incompatible agg function requested
-    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts."):
+    with pytest.raises(
+        ValueError,
+        match="pivot\\(\\): value column 'v' is required when aggregation function is 'mean'. Omit 'v' for row counts.",
+    ):
         sales_df.pt.pivot(r="Region", c="Year", a="mean")
 
-    with pytest.raises(ValueError, match="pivot\\(\\): value column 'v' is required when aggregation function is 'median'. Omit 'v' for row counts."):
+    with pytest.raises(
+        ValueError,
+        match="pivot\\(\\): value column 'v' is required when aggregation function is 'median'. Omit 'v' for row counts.",
+    ):
         sales_df.pt.pivot(r="Region", c="Year", a="median")
 
 
@@ -239,11 +262,13 @@ def test_wide_r_spec(sales_df):
 
 
 def test_cli_pivot_basic(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "East", "West"],
-        "Year": [2023, 2024, 2023],
-        "Sales": [100, 150, 200],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Year": [2023, 2024, 2023],
+            "Sales": [100, 150, 200],
+        }
+    )
     path = str(tmp_path / "data.csv")
     df.to_csv(path, index=False)
 
@@ -257,10 +282,12 @@ def test_cli_pivot_basic(tmp_path, capsys):
 
 
 def test_cli_pivot_r_only(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "East", "West"],
-        "Sales": [100, 150, 200],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Sales": [100, 150, 200],
+        }
+    )
     path = str(tmp_path / "data.csv")
     df.to_csv(path, index=False)
 
@@ -273,10 +300,12 @@ def test_cli_pivot_r_only(tmp_path, capsys):
 
 
 def test_cli_pivot_c_only(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Year": [2023, 2024, 2023],
-        "Sales": [100, 150, 200],
-    })
+    df = pd.DataFrame(
+        {
+            "Year": [2023, 2024, 2023],
+            "Sales": [100, 150, 200],
+        }
+    )
     path = str(tmp_path / "data.csv")
     df.to_csv(path, index=False)
 
@@ -298,11 +327,13 @@ def test_cli_pivot_unknown_column(tmp_path):
 
 
 def test_cli_pivot_export_parquet(tmp_path):
-    df = pd.DataFrame({
-        "Region": ["East", "West"],
-        "Year": [2023, 2024],
-        "Sales": [100, 200],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "West"],
+            "Year": [2023, 2024],
+            "Sales": [100, 200],
+        }
+    )
     in_path = str(tmp_path / "in.csv")
     out_path = str(tmp_path / "out.parquet")
     df.to_csv(in_path, index=False)
@@ -317,12 +348,14 @@ def test_cli_pivot_export_parquet(tmp_path):
 
 
 def test_pivot_no_cartesian_product_unobserved_combinations():
-    doc = pd.DataFrame({
-        "Region": ["East", "East", "East", "East", "West", "West"],
-        "Store": ["Store A", "Store A", "Store B", "Store B", "Store C", "Store C"],
-        "Year": [2023, 2024, 2023, 2024, 2023, 2024],
-        "Sales": [700.0, 850.0, 800.0, 950.0, 900.0, 1100.0],
-    })
+    doc = pd.DataFrame(
+        {
+            "Region": ["East", "East", "East", "East", "West", "West"],
+            "Store": ["Store A", "Store A", "Store B", "Store B", "Store C", "Store C"],
+            "Year": [2023, 2024, 2023, 2024, 2023, 2024],
+            "Sales": [700.0, 850.0, 800.0, 950.0, 900.0, 1100.0],
+        }
+    )
     res_sum = doc.pt.pivot(r=["Region", "Store"], c="Year", v="Sales", a="sum")
     # Only observed Region-Store pairs should exist (3 rows), not 6
     assert len(res_sum) == 3
@@ -333,12 +366,14 @@ def test_pivot_no_cartesian_product_unobserved_combinations():
 
 
 def test_pivot_multi_c_cols_a_n_preserves_outer_keys():
-    df = pd.DataFrame({
-        "Region": ["East", "East", "East", "East"],
-        "Year": [2023, 2023, 2023, 2024],
-        "Quarter": ["Q1", "Q1", "Q2", "Q1"],
-        "Sales": [1, 1, 1, 1],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "East", "East"],
+            "Year": [2023, 2023, 2023, 2024],
+            "Quarter": ["Q1", "Q1", "Q2", "Q1"],
+            "Sales": [1, 1, 1, 1],
+        }
+    )
     out = df.pt.pivot(r="Region", c=["Year", "Quarter"], v="Sales", a="n")
     assert "2023_Q1" in out.columns
     assert "2023_Q2" in out.columns
@@ -359,11 +394,13 @@ def test_pivot_header_deduplication():
 
 
 def test_pivot_c_only_multi_values_keeps_metric_index():
-    df = pd.DataFrame({
-        "Year": [2023, 2024, 2023],
-        "Sales": [100.0, 150.0, 200.0],
-        "Profit": [10.0, 15.0, 20.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Year": [2023, 2024, 2023],
+            "Sales": [100.0, 150.0, 200.0],
+            "Profit": [10.0, 15.0, 20.0],
+        }
+    )
     out = df.pt.pivot(c="Year", v=["Sales", "Profit"], a="sum")
     assert "metric" in out.columns
     assert set(out["metric"]) == {"Sales", "Profit"}
@@ -397,11 +434,13 @@ def test_pivot_v_in_dimensions_validation():
 
 
 def test_cli_pivot_fill_numeric(tmp_path, capsys):
-    df = pd.DataFrame({
-        "Region": ["East", "West"],
-        "Store": ["A", "B"],
-        "Sales": [4.0, 2.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "West"],
+            "Store": ["A", "B"],
+            "Sales": [4.0, 2.0],
+        }
+    )
     path = str(tmp_path / "sales.csv")
     df.to_csv(path, index=False)
     exit_code = cli.main([path, "-pivot", "r=Region,c=Store,v=Sales,a=sum,f_v=0", "-round", "1"])
@@ -420,11 +459,13 @@ def test_cli_pivot_unknown_agg_fails_cleanly(tmp_path):
 
 
 def test_wide_cols_and_values_aliases_rejected(tmp_path):
-    df = pd.DataFrame({
-        "id": ["a", "b"],
-        "country": ["sg", "cn"],
-        "balance": [10, 20],
-    })
+    df = pd.DataFrame(
+        {
+            "id": ["a", "b"],
+            "country": ["sg", "cn"],
+            "balance": [10, 20],
+        }
+    )
     with pytest.raises(TypeError, match="wide\\(\\) got unexpected keyword argument\\(s\\)"):
         df.pt.wide(cols="country", values="balance")
 
@@ -458,12 +499,14 @@ def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):
 
 def test_pivot_multi_key_empty_string_component():
     # Issue 3: multi-key pivot keeps empty string level rather than dropping it
-    df = pd.DataFrame({
-        "r": ["r1", "r1", "r1"],
-        "y": [2023, 2023, 2024],
-        "q": ["", "Q1", "Q2"],
-        "v": [15, 10, 20],
-    })
+    df = pd.DataFrame(
+        {
+            "r": ["r1", "r1", "r1"],
+            "y": [2023, 2023, 2024],
+            "q": ["", "Q1", "Q2"],
+            "v": [15, 10, 20],
+        }
+    )
     piv = df.pt.pivot(r="r", c=["y", "q"], v="v", a="sum")
     assert "2023_" in piv.columns
     assert "2023_Q1" in piv.columns
@@ -472,11 +515,13 @@ def test_pivot_multi_key_empty_string_component():
 
 def test_pivot_repeated_columns_in_dimensions_and_values():
     # Issue 3: Repeated column in pivot dimensions or values
-    df = pd.DataFrame({
-        "Region": ["East", "West"],
-        "Year": [2023, 2024],
-        "Sales": [100, 200],
-    })
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "West"],
+            "Year": [2023, 2024],
+            "Sales": [100, 200],
+        }
+    )
     with pytest.raises(ValueError, match="cannot appear multiple times in grouping dimensions"):
         df.pt.pivot(r="Region", c="Region", v="Sales")
 
@@ -532,10 +577,12 @@ def test_pivot_multi_func_single_col(sales_df):
 
 
 def test_pivot_bracketed_column_spaced():
-    df = pd.DataFrame({
-        "Store Region": ["East", "East", "West"],
-        "gross sales": [100.0, 200.0, 300.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Store Region": ["East", "East", "West"],
+            "gross sales": [100.0, 200.0, 300.0],
+        }
+    )
     res = df.pt.pivot(r="[Store Region]", v="total = [gross sales]:sum, count = n")
     assert list(res.columns) == ["Store Region", "total", "count"]
     assert res.loc[res["Store Region"] == "East", "total"].iloc[0] == 300.0
@@ -571,6 +618,10 @@ def test_pivot_single_metric_in_2d_no_prefix(sales_df):
 
     # In contrast, multiple values DO prefix column headers
     res_multi = sales_df.pt.pivot(r="Region", c="Year", v="Sales:sum, Profit:mean")
-    assert list(res_multi.columns) == ["Region", "Sales_sum_2023", "Sales_sum_2024", "Profit_mean_2023", "Profit_mean_2024"]
-
-
+    assert list(res_multi.columns) == [
+        "Region",
+        "Sales_sum_2023",
+        "Sales_sum_2024",
+        "Profit_mean_2023",
+        "Profit_mean_2024",
+    ]

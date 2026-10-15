@@ -11,7 +11,6 @@ from typing import Any
 
 import pandas as pd
 
-from pytae.agg import agg
 from pytae.cli_parsing import (
     parse_agg,
     parse_clean_columns_arg,
@@ -23,7 +22,6 @@ from pytae.cli_parsing import (
     unknown_columns_message,
 )
 from pytae.cli_pipeline import _Pipeline
-from pytae.other_utilities import clean_columns, handle_missing
 from pytae.readers import (
     DataFrameReader,
     StdinReader,
@@ -35,12 +33,15 @@ from pytae.readers import (
 
 def _apply_round(df: Any, ndigits: int | None) -> Any:
     """Round numeric columns to ndigits; non-numeric columns pass through unchanged."""
+    import polars as pl
+
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
     if ndigits is None:
         return df
     if isinstance(df, pd.DataFrame):
         return df.round(ndigits)
     try:
-        import polars as pl
         import polars.selectors as cs
 
         if isinstance(df, pl.DataFrame):
@@ -73,6 +74,9 @@ def _format_table(
         is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
     import polars as pl
+
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
 
     if is_tty:
         if isinstance(df, pl.DataFrame):
@@ -223,7 +227,6 @@ def _compute_hist(source_df: pd.DataFrame, hist_arg: str | None) -> pd.DataFrame
     return pd.DataFrame(data)
 
 
-
 def _copy_to_clipboard(text: str) -> None:
     """Copy text to the system clipboard via pbcopy/clip/xclip; warns on stderr if none is available."""
     if sys.platform == "darwin":
@@ -292,13 +295,17 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
             schema = pf.schema_arrow
             max_name_len = max(len(name) for name in schema.names) if schema.names else 10
             lines.append(f"  {'#':<4} {'Column':<{max_name_len}}  {'Type'}")
-            lines.append(f"  {'-'*4} {'-'*max_name_len}  {'-'*20}")
+            lines.append(f"  {'-' * 4} {'-' * max_name_len}  {'-' * 20}")
             for idx, field in enumerate(schema):
                 lines.append(f"  {idx:<4} {field.name:<{max_name_len}}  {field.type}")
         except Exception as exc:
             lines.append(f"Error reading Parquet metadata: {exc}")
     else:
-        fmt_name = "CSV" if suffix == ".csv" else ("JSON Lines" if suffix in (".jsonl", ".ndjson") else suffix.lstrip(".").upper())
+        fmt_name = (
+            "CSV"
+            if suffix == ".csv"
+            else ("JSON Lines" if suffix in (".jsonl", ".ndjson") else suffix.lstrip(".").upper())
+        )
         comp_str = f" ({compression})" if compression else ""
         lines.append(f"Format: {fmt_name}{comp_str}")
         try:
@@ -421,16 +428,12 @@ def _list_order_names(names, order):
     return list(names)
 
 
-
 def _list_order_index(series: pd.Series, order) -> pd.Series:
     if order == "asc":
         return series.sort_index(ascending=True)
     if order == "desc":
         return series.sort_index(ascending=False)
     return series
-
-
-
 
 
 def cmd_convert(
@@ -482,7 +485,9 @@ def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError)
     return f"can't decode '{path}' with encoding '{used}'; try -encoding {suggestions}"
 
 
-def _resolve_alias(alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipeline, flag: str) -> tuple[pd.DataFrame | None, str | None]:
+def _resolve_alias(
+    alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipeline, flag: str
+) -> tuple[pd.DataFrame | None, str | None]:
     """Look up a -merge/-concat alias: a -file alias, or 'data' for the pipeline's current
     result so far (lets repeated -merge/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
@@ -531,7 +536,10 @@ def _process_path(
                 return _fail(parser, batch, f"clipboard error: {exc}")
             reader = DataFrameReader(clip_df, path="<clipboard>")
             pipeline = _Pipeline(
-                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+                reader,
+                nrows=args.nrows,
+                progress=args.progress,
+                chunk_size=chunk_size,
             )
         elif str(path) == "-":
             data_bytes = sys.stdin.buffer.read()
@@ -547,7 +555,10 @@ def _process_path(
                 return _fail(parser, batch, str(exc))
 
             pipeline = _Pipeline(
-                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+                reader,
+                nrows=args.nrows,
+                progress=args.progress,
+                chunk_size=chunk_size,
             )
         elif path is None or not path.exists():
             return _fail(parser, batch, f"file not found: {path}")
@@ -558,7 +569,10 @@ def _process_path(
                 return _fail(parser, batch, str(exc))
 
             pipeline = _Pipeline(
-                reader, nrows=args.nrows, progress=args.progress, chunk_size=chunk_size,
+                reader,
+                nrows=args.nrows,
+                progress=args.progress,
+                chunk_size=chunk_size,
             )
     else:
         pipeline = _Pipeline(frames=frames)
@@ -676,18 +690,27 @@ def _process_path(
                 missing_left = [c for c in spec["left_on"] if c not in left_df.columns]
                 missing_right = [c for c in spec["right_on"] if c not in right_df.columns]
                 if missing_left:
-                    return _fail(parser, batch, unknown_columns_message("-merge (left)", missing_left, list(left_df.columns)))
+                    return _fail(
+                        parser, batch, unknown_columns_message("-merge (left)", missing_left, list(left_df.columns))
+                    )
                 if missing_right:
-                    return _fail(parser, batch, unknown_columns_message("-merge (right)", missing_right, list(right_df.columns)))
+                    return _fail(
+                        parser, batch, unknown_columns_message("-merge (right)", missing_right, list(right_df.columns))
+                    )
             import polars as pl
+
             left_pl = left_df if isinstance(left_df, pl.DataFrame) else pl.from_pandas(left_df)
             right_pl = right_df if isinstance(right_df, pl.DataFrame) else pl.from_pandas(right_df)
             how: Any = "full" if spec["how"] == "outer" else spec["how"]
             val_map = {
-                "1:1": "1:1", "one_to_one": "1:1",
-                "1:m": "1:m", "one_to_many": "1:m",
-                "m:1": "m:1", "many_to_one": "m:1",
-                "m:m": "m:m", "many_to_many": "m:m",
+                "1:1": "1:1",
+                "one_to_one": "1:1",
+                "1:m": "1:m",
+                "one_to_many": "1:m",
+                "m:1": "m:1",
+                "many_to_one": "m:1",
+                "m:m": "m:m",
+                "many_to_many": "m:m",
             }
             validate_arg: Any = val_map.get(spec["validate"], "m:m") if spec["validate"] else "m:m"
             try:
@@ -698,7 +721,14 @@ def _process_path(
                 elif spec["left_on"] == spec["right_on"]:
                     res_pl = left_pl.join(right_pl, on=spec["left_on"], how=how, validate=validate_arg, coalesce=True)
                 else:
-                    res_pl = left_pl.join(right_pl, left_on=spec["left_on"], right_on=spec["right_on"], how=how, validate=validate_arg, coalesce=False)
+                    res_pl = left_pl.join(
+                        right_pl,
+                        left_on=spec["left_on"],
+                        right_on=spec["right_on"],
+                        how=how,
+                        validate=validate_arg,
+                        coalesce=False,
+                    )
             except Exception as exc:
                 return _fail(parser, batch, f"-merge: {exc}")
             pipeline._pldf = res_pl
@@ -719,6 +749,7 @@ def _process_path(
                     return _fail(parser, batch, err or f"-concat: missing frame '{alias}'")
                 dfs.append(df)
             import polars as pl
+
             pl_dfs = [df if isinstance(df, pl.DataFrame) else pl.from_pandas(df) for df in dfs]
             try:
                 res_pl = pl.concat(pl_dfs, how="diagonal_relaxed")
@@ -750,10 +781,7 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=dtypes: s.to_clipboard()
         elif op == "nulls":
-            if pipeline._pldf is not None:
-                nulls_s = pipeline._pldf.null_count().to_pandas().iloc[0]
-            else:
-                nulls_s = pipeline.dataframe().isna().sum()
+            nulls_s = pipeline.polars_frame().null_count().to_pandas().iloc[0]
             nulls = _list_order_index(nulls_s, args.nulls)
             if should_print(idx):
                 _output_text(nulls.to_string(), args)
@@ -763,7 +791,9 @@ def _process_path(
             described = pipeline.dataframe().describe()
             pipeline._df = described
             if should_print(idx):
-                _output_text(_format_table(_apply_round(described, args.round_ndigits), index=True, pretty=args.pretty), args)
+                _output_text(
+                    _format_table(_apply_round(described, args.round_ndigits), index=True, pretty=args.pretty), args
+                )
             if is_clip:
                 clip_action = lambda d=described: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
         elif op == "info":
@@ -774,20 +804,29 @@ def _process_path(
                 clip_action = lambda s=info_str: _copy_to_clipboard(s)
         elif op == "glimpse":
             from pytae.other_utilities import format_glimpse
+
             glimpse_str = format_glimpse(pipeline.dataframe())
             if should_print(idx):
                 _output_text(glimpse_str, args)
             if is_clip:
                 clip_action = lambda s=glimpse_str: _copy_to_clipboard(s)
         elif op == "meta":
-            meta_str = _extract_metadata(path if path is not None else Path("<merged>"), sep=args.dlim, encoding=args.encoding)
+            meta_str = _extract_metadata(
+                path if path is not None else Path("<merged>"), sep=args.dlim, encoding=args.encoding
+            )
             if should_print(idx):
                 _output_text(meta_str, args)
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
             diff_path = Path(args.diff)
-            diff_str = _compute_diff(pipeline.dataframe(), diff_path, path.name if path is not None else "<pipeline>", sep=args.dlim, encoding=args.encoding)
+            diff_str = _compute_diff(
+                pipeline.dataframe(),
+                diff_path,
+                path.name if path is not None else "<pipeline>",
+                sep=args.dlim,
+                encoding=args.encoding,
+            )
             if should_print(idx):
                 _output_text(diff_str, args)
             if is_clip:
@@ -795,10 +834,15 @@ def _process_path(
         elif op == "value_counts":
             avail_cols = pipeline.columns()
             if "count" in avail_cols and "n" in avail_cols:
-                return _fail(parser, batch, "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers")
+                return _fail(
+                    parser,
+                    batch,
+                    "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers",
+                )
             dropna_val = False if args.dropna is None else args.dropna
             try:
                 from pytae.polars_engine import value_counts_polars
+
                 pl_res = value_counts_polars(pipeline.polars_frame(), cols=avail_cols, dropna=dropna_val)
                 pipeline._pldf = pl_res
                 pipeline._df = None
@@ -814,7 +858,11 @@ def _process_path(
                         result.columns = [col, count_name]
                     else:
                         count_name = "count" if "count" not in avail_cols else "n"
-                        result = source_df.value_counts(subset=avail_cols, dropna=dropna_val).rename(count_name).reset_index()
+                        result = (
+                            source_df.value_counts(subset=avail_cols, dropna=dropna_val)
+                            .rename(count_name)
+                            .reset_index()
+                        )
                     pipeline._df = result
                     pipeline._pldf = None
                 except Exception as exc:
@@ -847,6 +895,8 @@ def _process_path(
         elif op == "head":
             head_val = _next_op_val("head", args.head)
             frame = pipeline.head(head_val)
+            if hasattr(frame, "collect"):
+                frame = frame.collect()
             if should_print(idx):
                 _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
@@ -856,6 +906,8 @@ def _process_path(
         elif op == "tail":
             tail_val = _next_op_val("tail", args.tail)
             frame = pipeline.tail(tail_val)
+            if hasattr(frame, "collect"):
+                frame = frame.collect()
             if should_print(idx):
                 _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
@@ -867,7 +919,10 @@ def _process_path(
             sampled = pipeline.sample(sample_val, seed=args.seed, frac=args.frac)
             n = len(sampled)
             if should_print(idx):
-                _output_text(_format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)", args)
+                _output_text(
+                    _format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty) if n else "(no rows)",
+                    args,
+                )
             if is_clip and n:
                 df = sampled.to_pandas() if hasattr(sampled, "to_pandas") else sampled
                 clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
@@ -896,29 +951,25 @@ def _process_path(
             avail_cols = pipeline.columns()
             if by_cols and any(c not in avail_cols for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
-            df_cur = pipeline.dataframe()
             try:
-                from pytae.by import by as _by
-                work_df = _by(df_cur.copy(deep=False), *by_cols) if by_cols else df_cur
-                result = agg(work_df, agg_val, dropna=False)
+                from pytae.polars_engine import agg_polars
+
+                pl_res = agg_polars(pipeline.polars_frame(), agg_val, by=by_cols, dropna=False)
+                pipeline._pldf = pl_res
+                pipeline._df = None
             except Exception as e:
                 return _fail(parser, batch, str(e))
-            pipeline._df = result
-            if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
-            if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+            emit_frame(idx)
         elif op == "handle_missing":
             hm_val = _next_op_val("handle_missing", args.handle_missing)
             try:
                 from pytae.polars_engine import handle_missing_polars
+
                 pl_res = handle_missing_polars(pipeline.polars_frame(), fillna=hm_val)
                 pipeline._pldf = pl_res
                 pipeline._df = None
-            except Exception:
-                result = handle_missing(pipeline.dataframe(), fillna=hm_val)
-                pipeline._df = result
-                pipeline._pldf = None
+            except Exception as exc:
+                return _fail(parser, batch, str(exc))
             emit_frame(idx)
         elif op == "dropna":
             dropna_val = _next_op_val("dropna", getattr(args, "dropna", None))
@@ -931,16 +982,18 @@ def _process_path(
             opts = parse_clean_columns_arg(cc_val)
             try:
                 from pytae.polars_engine import clean_columns_polars
+
                 pl_res = clean_columns_polars(pipeline.polars_frame(), **opts)
                 pipeline._pldf = pl_res
                 pipeline._df = None
             except Exception:
+                from pytae.other_utilities import clean_columns
+
                 result = clean_columns(pipeline.dataframe(), **opts)
                 pipeline._df = result
                 pipeline._pldf = None
             emit_frame(idx)
         elif op == "long":
-            from pytae.shape import long as long_fn
             long_val = _next_op_val("long", args.long)
             long_kwargs = parse_long_arg(long_val)
             cols_arg = long_kwargs.get("cols")
@@ -952,22 +1005,14 @@ def _process_path(
                     return _fail(parser, batch, unknown_columns_message("-long", missing, avail_cols))
             try:
                 from pytae.polars_engine import long_polars
+
                 pl_res = long_polars(pipeline.polars_frame(), **long_kwargs)
                 pipeline._pldf = pl_res
                 pipeline._df = None
-            except (KeyError, ValueError) as exc:
+            except Exception as exc:
                 return _fail(parser, batch, str(exc))
-            except Exception:
-                source_df = pipeline.dataframe()
-                try:
-                    result = long_fn(source_df, **long_kwargs)
-                    pipeline._df = result
-                    pipeline._pldf = None
-                except (KeyError, ValueError) as exc:
-                    return _fail(parser, batch, str(exc))
             emit_frame(idx)
         elif op == "wide":
-            from pytae.shape import wide as wide_fn
             wide_val = _next_op_val("wide", args.wide)
             wide_kwargs = parse_wide_arg(wide_val)
             to_check = [wide_kwargs.get("c", "variable"), wide_kwargs.get("v", "value")]
@@ -980,22 +1025,14 @@ def _process_path(
                 return _fail(parser, batch, unknown_columns_message("-wide", missing, avail_cols))
             try:
                 from pytae.polars_engine import wide_polars
+
                 pl_res = wide_polars(pipeline.polars_frame(), **wide_kwargs)
                 pipeline._pldf = pl_res
                 pipeline._df = None
-            except (KeyError, ValueError) as exc:
+            except Exception as exc:
                 return _fail(parser, batch, str(exc))
-            except Exception:
-                source_df = pipeline.dataframe()
-                try:
-                    result = wide_fn(source_df, **wide_kwargs)
-                    pipeline._df = result
-                    pipeline._pldf = None
-                except (KeyError, ValueError) as exc:
-                    return _fail(parser, batch, str(exc))
             emit_frame(idx)
         elif op == "pivot":
-            from pytae.shape import pivot as pivot_fn
             pivot_val = _next_op_val("pivot", getattr(args, "pivot", None))
             pivot_kwargs = parse_pivot_arg(pivot_val)
             if "dropna" not in pivot_kwargs:
@@ -1006,7 +1043,8 @@ def _process_path(
                 if val:
                     to_check.extend(parse_columns(val) if isinstance(val, str) else list(val))
             if pivot_kwargs.get("v"):
-                from pytae.shape import parse_pivot_metrics
+                from pytae._parsing import parse_pivot_metrics
+
                 parsed_metrics = parse_pivot_metrics(pivot_kwargs["v"], a=pivot_kwargs.get("a", "sum"))
                 for m in parsed_metrics:
                     if m.src_col is not None:
@@ -1017,17 +1055,12 @@ def _process_path(
                 return _fail(parser, batch, unknown_columns_message("-pivot", missing, available_cols))
             try:
                 from pytae.polars_engine import pivot_polars
+
                 pl_res = pivot_polars(pipeline.polars_frame(), **pivot_kwargs)
                 pipeline._pldf = pl_res
                 pipeline._df = None
-            except Exception:
-                source_df = pipeline.dataframe()
-                try:
-                    result = pivot_fn(source_df, **pivot_kwargs)
-                    pipeline._df = result
-                    pipeline._pldf = None
-                except Exception as exc:
-                    return _fail(parser, batch, str(exc))
+            except Exception as exc:
+                return _fail(parser, batch, str(exc))
             emit_frame(idx)
         elif op == "plot":
             plot_spec = _next_op_val("plot", getattr(args, "plot", None))
@@ -1038,6 +1071,7 @@ def _process_path(
             import matplotlib
 
             from pytae.plotting import Plotter
+
             if is_image_out or not should_print(idx):
                 matplotlib.use("Agg")
             import matplotlib.pyplot as plt
@@ -1079,12 +1113,26 @@ def _process_path(
         fmt = out_target.lower()
         out_dir: Path | None = getattr(args, "out_dir", None)
         valid_formats = (
-            "csv", "parquet", "pq", "txt", "dat", "jsonl", "ndjson",
-            "csv.gz", "txt.gz", "dat.gz", "jsonl.gz", "ndjson.gz",
+            "csv",
+            "parquet",
+            "pq",
+            "txt",
+            "dat",
+            "jsonl",
+            "ndjson",
+            "csv.gz",
+            "txt.gz",
+            "dat.gz",
+            "jsonl.gz",
+            "ndjson.gz",
         )
         if fmt in valid_formats:
             if path is None or str(path) == "-":
-                return _fail(parser, batch, f"-o {out_target}: when reading from STDIN or -file mode, an explicit output file path is required")
+                return _fail(
+                    parser,
+                    batch,
+                    f"-o {out_target}: when reading from STDIN or -file mode, an explicit output file path is required",
+                )
             ext = ".parquet" if fmt == "pq" else f".{fmt}"
             clean_name = path.name[:-3] if path.name.lower().endswith(".gz") else path.name
             dest_name = f"{Path(clean_name).stem}{ext}"
@@ -1110,5 +1158,3 @@ def _process_path(
             return _fail(parser, batch, str(exc))
 
     return False
-
-

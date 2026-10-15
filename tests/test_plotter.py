@@ -149,7 +149,6 @@ def test_supported_kwargs_kde_alias_matches_density():
     assert Plotter.supported_kwargs("kde") == Plotter.supported_kwargs("density")
 
 
-
 def test_save_writes_figure(tmp_path):
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
     out = tmp_path / "out.png"
@@ -192,6 +191,7 @@ def test_plotter_init_with_dataframe():
 
 def test_df_pt_plot_accessor():
     import pytae  # noqa: F401 registers df.pt
+
     df = pd.DataFrame({"x": ["a", "b", "c"], "y": [10, 20, 30]})
     p = df.pt.plot(kind="bar", x="x", y="y").finalize()
     assert isinstance(p, Plotter)
@@ -199,10 +199,12 @@ def test_df_pt_plot_accessor():
 
 
 def test_box_plot_distribution_not_aggregated():
-    df = pd.DataFrame({
-        "group": ["A", "A", "A", "B", "B", "B"],
-        "val": [1, 2, 9, 10, 11, 20],
-    })
+    df = pd.DataFrame(
+        {
+            "group": ["A", "A", "A", "B", "B", "B"],
+            "val": [1, 2, 9, 10, 11, 20],
+        }
+    )
     p = Plotter(df).plot(kind="box", x="group", y="val")
     box_data = p.get_data("A")
     assert set(box_data.columns) == {"A", "B"}
@@ -252,6 +254,7 @@ def test_facet_sharex_sharey():
 
 def test_pt_plot_top_level_function():
     import pytae as pt
+
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
     p = pt.plot(df, kind="bar", x="day", y="bill").finalize()
     assert isinstance(p, Plotter)
@@ -269,11 +272,13 @@ def test_plotter_nrows_ncols_without_mosaic():
 
 
 def test_scatter_continuous_c_preserves_numeric_ticks():
-    df = pd.DataFrame({
-        "x": list(range(50)),
-        "y": list(range(50)),
-        "val": [float(i * 1.5) for i in range(50)],
-    })
+    df = pd.DataFrame(
+        {
+            "x": list(range(50)),
+            "y": list(range(50)),
+            "val": [float(i * 1.5) for i in range(50)],
+        }
+    )
     p = Plotter(df).plot(kind="scatter", x="x", y="y", c="val", cmap="viridis").finalize()
     # Colorbar axis should have normal small number of ticks, not 50 category ticks
     cb_axes = [ax for ax in p.fig.axes if ax != p.axd["A"]]
@@ -283,6 +288,7 @@ def test_scatter_continuous_c_preserves_numeric_ticks():
 
 def test_pt_finalize_function_explicit_and_implicit():
     import pytae as pt
+
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
 
     # 1. Explicit plotter passed
@@ -309,6 +315,7 @@ def test_pt_finalize_function_explicit_and_implicit():
 
 def test_plotter_pt_namespace_chaining():
     import pytae as pt
+
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
 
     # Fluent .pt namespace throughout the entire pipeline
@@ -319,6 +326,7 @@ def test_plotter_pt_namespace_chaining():
 
 def test_control_kwargs_secondary_y_and_print_clip(capsys):
     import pytae as pt
+
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20], "tip": [2, 4]})
 
     # secondary_y=True should automatically route to A^
@@ -335,11 +343,14 @@ def test_control_kwargs_secondary_y_and_print_clip(capsys):
 
 def test_auto_facet_by_and_ncols():
     import pytae as pt
-    df = pd.DataFrame({
-        "grp": ["g1", "g1", "g2", "g2", "g3", "g3"],
-        "x": [1, 2, 1, 2, 1, 2],
-        "y": [10, 20, 15, 25, 12, 22],
-    })
+
+    df = pd.DataFrame(
+        {
+            "grp": ["g1", "g1", "g2", "g2", "g3", "g3"],
+            "x": [1, 2, 1, 2, 1, 2],
+            "y": [10, 20, 15, 25, 12, 22],
+        }
+    )
 
     # 1. Top-level pt.plot with by and ncols auto-facets
     p1 = pt.plot(df, by="grp", ncols=3, kind="scatter", x="x", y="y", title="Facet Title").finalize()
@@ -367,6 +378,7 @@ def test_plot_line_color_string_and_list():
     import matplotlib.colors as mcolors
 
     import pytae as pt
+
     df = pd.DataFrame({"day": ["Thur", "Fri", "Sat"], "bill": [10, 20, 30], "tip": [2, 4, 6]})
 
     # String color
@@ -384,12 +396,15 @@ def test_plot_line_color_string_and_list():
 
 def test_plot_scatter_by_title_labels_kwargs():
     import pytae as pt
-    df = pd.DataFrame({
-        "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
-        "bill_len": [39.1, 46.5, 40.3, 48.0],
-        "bill_dep": [18.7, 14.5, 18.0, 15.0],
-        "size_col": [20, 40, 25, 45],
-    })
+
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
+            "bill_len": [39.1, 46.5, 40.3, 48.0],
+            "bill_dep": [18.7, 14.5, 18.0, 15.0],
+            "size_col": [20, 40, 25, 45],
+        }
+    )
 
     p = (
         pt.Plotter(df)
@@ -415,20 +430,27 @@ def test_plot_scatter_by_title_labels_kwargs():
 
 def test_heatmap_title_vmin_vmax_and_contrast():
     import pytae as pt
-    df = pd.DataFrame({
-        "A": [1.0, 0.0, -1.0],
-        "B": [0.0, 1.0, 0.5],
-        "C": [-1.0, 0.5, 1.0],
-    })
-    p = pt.Plotter(df).plot(
-        kind="heatmap",
-        annot=True,
-        fmt=".2f",
-        cmap="coolwarm",
-        title="Correlation Heatmap",
-        vmin=-1,
-        vmax=1,
-    ).finalize()
+
+    df = pd.DataFrame(
+        {
+            "A": [1.0, 0.0, -1.0],
+            "B": [0.0, 1.0, 0.5],
+            "C": [-1.0, 0.5, 1.0],
+        }
+    )
+    p = (
+        pt.Plotter(df)
+        .plot(
+            kind="heatmap",
+            annot=True,
+            fmt=".2f",
+            cmap="coolwarm",
+            title="Correlation Heatmap",
+            vmin=-1,
+            vmax=1,
+        )
+        .finalize()
+    )
     ax = p.axd["A"]
     assert ax.get_title() == "Correlation Heatmap"
     images = ax.get_images()
@@ -445,6 +467,7 @@ def test_unknown_palette_warning():
     import pytest
 
     import pytae as pt
+
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
     with pytest.warns(UserWarning, match="Unknown palette 'non_existent_palette'"):
         pt.Plotter(df).plot(kind="bar", x="day", y="bill", palette="non_existent_palette").finalize()
@@ -454,6 +477,7 @@ def test_facet_layout_kwargs_conflict_error():
     import pytest
 
     import pytae as pt
+
     df = pd.DataFrame({"grp": ["g1", "g2"], "x": [1, 2], "y": [3, 4]})
 
     with pytest.raises(ValueError, match="Cannot combine 'mosaic' with faceting"):
@@ -476,6 +500,7 @@ def test_plotter_init_immediate_plot_and_unexpected_kwargs():
     import pytest
 
     import pytae as pt
+
     df = pd.DataFrame({"day": ["Thur", "Fri"], "bill": [10, 20]})
 
     # Passing plot kwargs to Plotter constructor draws immediately
@@ -489,10 +514,13 @@ def test_plotter_init_immediate_plot_and_unexpected_kwargs():
 
 def test_box_palette_colors():
     import pytae as pt
-    df = pd.DataFrame({
-        "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
-        "body_mass": [3000, 4500, 3200, 4700],
-    })
+
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Gentoo", "Adelie", "Gentoo"],
+            "body_mass": [3000, 4500, 3200, 4700],
+        }
+    )
     p = pt.Plotter(df).plot(kind="box", x="species", y="body_mass", palette="Set1").finalize()
     ax = p.axd["A"]
     assert len(ax.patches) == 2
@@ -561,13 +589,17 @@ def test_plotter_line_style_and_width_handling():
 
 
 def test_plotter_grouped_scatter_xlim_ylim_rot_fontsize_s_col():
-    df = pd.DataFrame({
-        "x": [1, 2, 3, 4],
-        "y": [10, 20, 30, 40],
-        "g": ["a", "a", "b", "b"],
-        "sz": [15, 25, 35, 45],
-    })
-    p = pt.Plotter(df).plot(kind="scatter", x="x", y="y", by="g", s="sz", xlim=(0, 10), ylim=(0, 50), rot=45, fontsize=9)
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 3, 4],
+            "y": [10, 20, 30, 40],
+            "g": ["a", "a", "b", "b"],
+            "sz": [15, 25, 35, 45],
+        }
+    )
+    p = pt.Plotter(df).plot(
+        kind="scatter", x="x", y="y", by="g", s="sz", xlim=(0, 10), ylim=(0, 50), rot=45, fontsize=9
+    )
     ax = p.axd["A"]
     assert ax.get_xlim() == (0, 10)
     assert ax.get_ylim() == (0, 50)
@@ -575,10 +607,12 @@ def test_plotter_grouped_scatter_xlim_ylim_rot_fontsize_s_col():
 
 
 def test_plotter_color_string_and_box_color_list():
-    df = pd.DataFrame({
-        "g": ["a", "b", "a", "b"],
-        "v": [10, 20, 30, 40],
-    })
+    df = pd.DataFrame(
+        {
+            "g": ["a", "b", "a", "b"],
+            "v": [10, 20, 30, 40],
+        }
+    )
     # Grouped scatter with color="crimson" string
     p1 = pt.Plotter(df).plot(kind="scatter", x="v", y="v", by="g", color="crimson")
     assert len(p1.axd["A"].collections) == 2
@@ -590,6 +624,7 @@ def test_plotter_color_string_and_box_color_list():
 
 def test_plotter_heatmap_numpy_int_annotation_formatting():
     import numpy as np
+
     df = pd.DataFrame({"a": [np.int64(0), np.int64(100)], "b": [np.int64(100), np.int64(0)]})
     p = pt.Plotter(df).plot(kind="heatmap", annot=True, fmt=".2f", cmap="viridis")
     texts = [t.get_text() for t in p.axd["A"].texts]
@@ -599,6 +634,7 @@ def test_plotter_heatmap_numpy_int_annotation_formatting():
 
 def test_plotter_ungrouped_scatter_color_and_array_c():
     import numpy as np
+
     df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
     # c is string color name not in columns
     p1 = pt.Plotter(df).plot(kind="scatter", x="x", y="y", c="red")
@@ -700,11 +736,13 @@ def test_plotter_heatmap_matrix_honors_annot_and_numeric():
 
 
 def test_plotter_grouped_bar_by_value_equals_x_name():
-    df = pd.DataFrame({
-        "year": [2020, 2020, 2021],
-        "metric": ["year", "sales", "sales"],
-        "value": [1, 10, 12],
-    })
+    df = pd.DataFrame(
+        {
+            "year": [2020, 2020, 2021],
+            "metric": ["year", "sales", "sales"],
+            "value": [1, 10, 12],
+        }
+    )
     with pytest.raises(ValueError, match="collides with x-axis column name"):
         pt.Plotter(df).plot(kind="bar", x="year", y="value", by="metric")
 
@@ -832,11 +870,13 @@ def test_plotter_integer_coords_on_integer_columns():
 
 def test_plotter_dropna_in_line_bar_heatmap():
     # Issue 6: dropna dropped NA values before reshaping/plotting
-    df = pd.DataFrame({
-        "x": ["a", "b", None, "c"],
-        "g": ["g1", "g1", "g2", "g2"],
-        "y": [1.0, 2.0, 3.0, 4.0],
-    })
+    df = pd.DataFrame(
+        {
+            "x": ["a", "b", None, "c"],
+            "g": ["g1", "g1", "g2", "g2"],
+            "y": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
     # Line with dropna=True drops None row in x
     p_line = pt.Plotter(df).plot(kind="line", x="x", y="y", by="g", dropna=True)
     table_line = p_line.get_data("A")
@@ -855,10 +895,12 @@ def test_plotter_dropna_in_line_bar_heatmap():
 
 def test_plotter_grouped_kde_singleton_raises_value_error():
     # Issue 7: Grouped kde requires at least 2 non-null observations in each group
-    df = pd.DataFrame({
-        "g": ["A", "A", "B"],  # B has only 1 observation
-        "v": [10.0, 20.0, 30.0],
-    })
+    df = pd.DataFrame(
+        {
+            "g": ["A", "A", "B"],  # B has only 1 observation
+            "v": [10.0, 20.0, 30.0],
+        }
+    )
     with pytest.raises(ValueError, match="at least two non-null observations in each group.*'B'"):
         pt.Plotter(df).plot(kind="kde", column="v", by="g")
 
@@ -910,6 +952,7 @@ def test_plotter_by_column_validation():
 def test_plotter_hist_and_kde_no_dropna_warning():
     # Issue 13: dropna is supported in hist and kde without warning
     import warnings
+
     df = pd.DataFrame({"g": ["a", "a", None], "v": [1.0, 2.0, 3.0]})
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
@@ -920,16 +963,19 @@ def test_plotter_hist_and_kde_no_dropna_warning():
 
 def test_plotter_wide_data_optional_y():
     # When plotting wide data (e.g. from pivot), y is optional
-    df = pd.DataFrame({
-        "day": ["Thur", "Fri"],
-        "Lunch": [10.0, 15.0],
-        "Dinner": [20.0, 25.0],
-    })
+    df = pd.DataFrame(
+        {
+            "day": ["Thur", "Fri"],
+            "Lunch": [10.0, 15.0],
+            "Dinner": [20.0, 25.0],
+        }
+    )
     p_barh = df.pt.plot(kind="barh", x="day")
     assert p_barh.axd["A"].has_data()
 
     p_line = df.pt.plot(kind="line", x="day")
     assert p_line.axd["A"].has_data()
+
 
 def test_plotter_remap_coord_pandas2_and_3():
     from unittest.mock import MagicMock
@@ -951,4 +997,3 @@ def test_plotter_remap_coord_pandas2_and_3():
     mock_cols_pd3.get_loc.side_effect = lambda k: ["x", 0, "g"].index(k)
     assert _remap_coord_if_needed(mock_cols_pd3, 0) == 1
     assert _remap_coord_if_needed(mock_cols_pd3, "x") == "x"
-

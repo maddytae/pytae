@@ -75,4 +75,3 @@ def unquote_name(raw: str) -> str:
             raw = raw[1:-1].strip()
             changed = True
     return raw
-

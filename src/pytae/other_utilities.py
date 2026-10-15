@@ -41,105 +41,30 @@ def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def handle_missing(
-    df: pd.DataFrame,
-    fillna: str = ".",
+    df: Any,
+    fillna: str | None = ".",
     numeric_fill: Any = 0,
     cols: Sequence[str] | None = None,
     preserve_categories: bool = True,
-) -> pd.DataFrame:
-    """Fill missing values across columns with type-appropriate defaults.
+    **kwargs: Any,
+) -> Any:
+    """Fill missing values across columns with type-appropriate defaults."""
+    from pytae.dataframe import DataFrame
 
-    - String/object columns: filled with `fillna` (default '.') and stripped.
-    - Categorical columns: category preserved (adds `fillna` category if needed) and filled.
-    - Numeric columns: filled with `numeric_fill` (default 0). Can also be "mean", "median", or None.
-    - Bool/datetime columns: left untouched by default to avoid corruption.
-
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        The DataFrame to process.
-    fillna : str, default '.'
-        Fill value for string, object, and categorical columns.
-    numeric_fill : number, "mean", "median", or None, default 0
-        Fill value for numeric columns. If None, numeric columns are not filled.
-    cols : sequence of str, optional
-        Specific columns to handle. If None, all applicable columns are processed.
-    preserve_categories : bool, default True
-        If True, categorical columns keep their categorical dtype instead of being
-        converted to object.
-    """
-    df = df.copy()
-    target_cols = set(cols) if cols is not None else set(df.columns)
-
-    # Categorical columns
-    cat_cols = [c for c in df.columns if c in target_cols and isinstance(df[c].dtype, pd.CategoricalDtype)]
-    for c in cat_cols:
-        if preserve_categories:
-            if fillna not in df[c].cat.categories:
-                df[c] = df[c].cat.add_categories([fillna])
-            df[c] = df[c].fillna(fillna)
-        else:
-            df[c] = df[c].astype("object").fillna(fillna).str.strip()
-
-    # String / object columns (excluding categorical)
-    def _is_string_col(s: pd.Series) -> bool:
-        if isinstance(s.dtype, pd.CategoricalDtype):
-            return False
-        if s.dtype == object:
-            non_na = s.dropna()
-            if len(non_na) == 0:
-                return True
-            return non_na.map(type).eq(str).all()
-        return pd.api.types.is_string_dtype(s)
-
-    str_cols = [c for c in df.columns if c in target_cols and _is_string_col(df[c])]
-    for c in str_cols:
-        df[c] = df[c].fillna(fillna)
-        if hasattr(df[c], "str") and callable(getattr(df[c].str, "strip", None)):
-            df[c] = df[c].str.strip()
-
-    # Numeric columns
-    if numeric_fill is not None:
-        num_cols = [c for c in df.select_dtypes(include="number").columns if c in target_cols]
-        for c in num_cols:
-            if numeric_fill == "mean":
-                df[c] = df[c].fillna(df[c].mean())
-            elif numeric_fill == "median":
-                df[c] = df[c].fillna(df[c].median())
-            else:
-                df[c] = df[c].fillna(numeric_fill)
-
-    return df
+    return DataFrame(df).handle_missing(
+        fillna=fillna,
+        numeric_fill=numeric_fill,
+        cols=cols,
+        preserve_categories=preserve_categories,
+        **kwargs,
+    )
 
 
-def cols(df: pd.DataFrame, ascending: bool | None = True) -> list:
-    '''
-    Return the column names of the DataFrame sorted or in original order.
-    
-    Parameters:
-    df (pd.DataFrame): The DataFrame whose columns are to be returned.
-    ascending (bool or None, optional): 
-        - True (default): Sort alphabetically A-Z.
-        - False: Sort alphabetically Z-A.
-        - None: Return columns in their original DataFrame order (unsorted).
-    
-    Returns:
-    list: A list of column names in the specified order.
-    
-    Raises:
-    ValueError: If an invalid ascending parameter is provided.
-    '''
-    columns = df.columns.to_list()
-    
-    if ascending is True:
-        return sorted(columns)
-    elif ascending is False:
-        return sorted(columns, reverse=True)
-    elif ascending is None:
-        return columns
-    else:
-        raise ValueError(f"Invalid ascending value '{ascending}'. Must be True, False, or None")
+def cols(df: Any, ascending: bool | None = True) -> list[str]:
+    """Return the column names of the DataFrame sorted or in original order."""
+    from pytae.dataframe import DataFrame
 
+    return DataFrame(df).cols(ascending=ascending)
 
 
 def clean_column_names(
@@ -215,42 +140,27 @@ def clean_columns(
     """Clean column header names (see clean_column_names() for the per-key behavior)."""
     df = df.copy()
     df.columns = clean_column_names(
-        list(df.columns), strip=strip, strip_special=strip_special,
-        squeeze=squeeze, fill=fill, case=case, dedupe=dedupe,
+        list(df.columns),
+        strip=strip,
+        strip_special=strip_special,
+        squeeze=squeeze,
+        fill=fill,
+        case=case,
+        dedupe=dedupe,
     )
     return df
 
 
 def replace_values(
-    df: pd.DataFrame,
+    df: Any,
     v: dict[Any, Any],
     c: str | Sequence[str] | None = None,
     exact: bool = True,
-) -> pd.DataFrame:
-    """Replace values (pandas replace()), optionally scoped to specific columns.
-    Parameter names match the -replace_values CLI flag's v=/c=/exact= keys.
+) -> Any:
+    """Replace values optionally scoped to specific columns."""
+    from pytae.dataframe import DataFrame
 
-    v: dict of {old: new}.
-    c: a column name, list of column names, or None for the whole DataFrame.
-    exact: True (default) matches whole cell values; False matches a substring
-        anywhere in the cell (v's keys are regex-escaped, so they're treated
-        as literal text, not patterns).
-    """
-    df = df.copy()
-    to_replace = v if exact else {re.escape(str(old)): new for old, new in v.items()}
-    target_cols = ([c] if isinstance(c, str) else list(c)) if c is not None else list(df.columns)
-    if not exact:
-        non_string_cols = [col for col in target_cols if not pd.api.types.is_string_dtype(df[col])]
-        if non_string_cols:
-            raise ValueError(
-                f"replace_values: exact=False (substring match) only works on string/object "
-                f"columns; non-string column(s): {non_string_cols}"
-            )
-    if c is not None:
-        df[target_cols] = df[target_cols].replace(to_replace, regex=not exact)
-    else:
-        df = df.replace(to_replace, regex=not exact)
-    return df
+    return DataFrame(df).replace_values(v=v, c=c, exact=exact)
 
 
 def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
@@ -265,6 +175,7 @@ def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
     """
     if width is None:
         import shutil
+
         width = shutil.get_terminal_size(fallback=(80, 24)).columns
 
     lines = [
@@ -295,7 +206,7 @@ def format_glimpse(df: pd.DataFrame, width: int | None = None) -> str:
         remaining_width = max(width - len(prefix), 10)
         vals_str = ", ".join(sample_vals)
         if len(vals_str) > remaining_width:
-            vals_str = vals_str[:remaining_width - 3].rstrip(", ") + "..."
+            vals_str = vals_str[: remaining_width - 3].rstrip(", ") + "..."
         lines.append(prefix + vals_str)
 
     return "\n".join(lines)
@@ -311,50 +222,14 @@ def glimpse(df: pd.DataFrame, width: int | None = None) -> pd.DataFrame:
 
 
 def distinct(
-    df: pd.DataFrame,
+    df: Any,
     *cols: Any,
-    keep: str | bool = "first",
-) -> pd.DataFrame:
-    """Drop duplicate rows, optionally restricted to specific key columns, resetting index.
+    keep: str = "first",
+) -> Any:
+    """Drop duplicate rows, optionally restricted to specific key columns."""
+    from pytae.dataframe import DataFrame
 
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        Input DataFrame.
-    *cols : str
-        Column names to consider for identifying duplicate rows as positional arguments
-        (e.g. df.pt.distinct('species', 'island')). If omitted, all columns are used.
-        Lists are not accepted; pass column names as separate arguments.
-    keep : {'first', 'last', False}, default 'first'
-        Determines which duplicates (if any) to keep:
-        - 'first' : Drop duplicates except for the first occurrence.
-        - 'last' : Drop duplicates except for the last occurrence.
-        - False : Drop all duplicates.
-
-    Returns:
-    --------
-    pd.DataFrame
-        Distinct DataFrame with a reset 0-indexed RangeIndex.
-    """
-    valid_cols: list[str] = []
-    for c in cols:
-        if isinstance(c, (list, tuple, Sequence)) and not isinstance(c, str):
-            raise TypeError(
-                "distinct() takes column names as positional arguments: df.pt.distinct('col1', 'col2'). "
-                "Lists are not accepted."
-            )
-        if not isinstance(c, str):
-            raise TypeError(f"distinct() column names must be strings, got {type(c).__name__}: {c!r}")
-        clean = _unquote_name(c.strip())
-        if clean not in df.columns:
-            raise KeyError(
-                f"distinct: column(s) ['{clean}'] not found in DataFrame. "
-                f"Available columns: {list(df.columns)}"
-            )
-        valid_cols.append(clean)
-
-    subset = valid_cols if valid_cols else None
-    return df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)
+    return DataFrame(df).distinct(*cols, keep=keep)
 
 
 def freq(
@@ -388,10 +263,7 @@ def freq(
         target_col = _unquote_name(str(col).strip())
 
     if target_col not in df.columns:
-        raise KeyError(
-            f"freq: column '{target_col}' not found in DataFrame. "
-            f"Available columns: {list(df.columns)}"
-        )
+        raise KeyError(f"freq: column '{target_col}' not found in DataFrame. Available columns: {list(df.columns)}")
 
     counts = df[target_col].value_counts(dropna=dropna)
     total = counts.sum()
@@ -467,10 +339,7 @@ def hist(
         raise ValueError(f"hist: bins must be a positive integer, got {bins!r}")
 
     if target_col not in df.columns:
-        raise KeyError(
-            f"hist: column '{target_col}' not found in DataFrame. "
-            f"Available columns: {list(df.columns)}"
-        )
+        raise KeyError(f"hist: column '{target_col}' not found in DataFrame. Available columns: {list(df.columns)}")
 
     s = pd.to_numeric(df[target_col], errors="coerce").dropna()
     if s.empty:

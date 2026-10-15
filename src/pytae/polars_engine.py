@@ -14,17 +14,41 @@ from typing import Any, Literal, cast
 
 import polars as pl
 
+from pytae._parsing import (
+    _extract_arrange_specs,
+    _Lit,
+    _replace_underscore_placeholder,
+    _resolve_multi_target_cols,
+    _rewrite_fallback_col_refs,
+    _strip_at_refs,
+)
 from pytae._text import unquote_name as _unquote_name
-from pytae.arrange import _extract_arrange_specs
-from pytae.mutate import _rewrite_fallback_col_refs
-from pytae.select import select as _select_pandas
+from pytae.select import resolve_select_columns
+
+
+def _df_columns(df: Any) -> list[str]:
+    if isinstance(df, pl.LazyFrame):
+        return df.collect_schema().names()
+    return list(df.columns)
+
+
+def _df_schema(df: Any) -> pl.Schema:
+    if isinstance(df, pl.LazyFrame):
+        return df.collect_schema()
+    return df.schema
 
 
 def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -> pl.Expr:
     """Convert a pytae filter condition tuple/value into a Polars Expression."""
     col_expr = pl.col(col)
     is_numeric = schema is not None and col in schema and schema[col].is_numeric()
-    is_string = schema is not None and col in schema and schema[col] == pl.String
+    is_string = schema is not None and col in schema and schema[col] in (pl.String, pl.Utf8)
+    is_date = schema is not None and col in schema and schema[col] == pl.Date
+    is_datetime = (
+        schema is not None
+        and col in schema
+        and (schema[col] == pl.Datetime or getattr(schema[col], "base_type", None) == pl.Datetime)
+    )
 
     def _coerce_val(val: Any) -> Any:
         if is_numeric and isinstance(val, str):
@@ -37,6 +61,20 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                     pass
         elif is_string and not isinstance(val, str):
             return str(val)
+        elif is_date and isinstance(val, str):
+            from datetime import datetime
+
+            try:
+                return datetime.fromisoformat(val).date()
+            except ValueError:
+                pass
+        elif is_datetime and isinstance(val, str):
+            from datetime import datetime
+
+            try:
+                return datetime.fromisoformat(val)
+            except ValueError:
+                pass
         return val
 
     if isinstance(cond, list):
@@ -117,8 +155,8 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
     return col_expr == _coerce_val(cond)
 
 
-def filter_polars(df: pl.DataFrame, conditions: list[tuple[str, Any]] | dict) -> pl.DataFrame:
-    """Filter a Polars DataFrame using pytae filter specifications."""
+def filter_polars(df: Any, conditions: list[tuple[str, Any]] | dict) -> Any:
+    """Filter a Polars DataFrame or LazyFrame using pytae filter specifications."""
     cond_items: list[tuple[str, Any]]
     if isinstance(conditions, dict):
         cond_items = list(conditions.items())
@@ -128,7 +166,7 @@ def filter_polars(df: pl.DataFrame, conditions: list[tuple[str, Any]] | dict) ->
     if not cond_items:
         return df
 
-    schema = df.schema
+    schema = _df_schema(df)
     combined_expr: pl.Expr | None = None
     for col, cond in cond_items:
         expr = _cond_to_polars_expr(col, cond, schema=schema)
@@ -138,23 +176,21 @@ def filter_polars(df: pl.DataFrame, conditions: list[tuple[str, Any]] | dict) ->
     return df.filter(combined_expr)
 
 
-def select_polars(df: pl.DataFrame, names: list[str], kwargs: dict) -> pl.DataFrame:
-    """Select and order columns in a Polars DataFrame using pytae selection syntax."""
-    # Resolve exact target columns and order using a lightweight 0-row Pandas dummy frame
-    dummy = df.head(0).to_pandas()
-    target_cols = list(_select_pandas(dummy, *names, **kwargs).columns)
+def select_polars(df: Any, names: list[str], kwargs: dict) -> Any:
+    """Select and order columns in a Polars DataFrame or LazyFrame using pytae selection syntax."""
+    target_cols = resolve_select_columns(_df_columns(df), _df_schema(df), *names, **kwargs)
     return df.select(target_cols)
 
 
-def arrange_polars(df: pl.DataFrame, spec: str, na_last: bool = True) -> pl.DataFrame:
-    """Sort rows in a Polars DataFrame by one or more column expressions."""
-    cols, asc = _extract_arrange_specs((spec,), available_cols=set(df.columns))
+def arrange_polars(df: Any, spec: str, na_last: bool = True) -> Any:
+    """Sort rows in a Polars DataFrame or LazyFrame by one or more column expressions."""
+    cols, asc = _extract_arrange_specs((spec,), available_cols=set(_df_columns(df)))
     descending = [not a for a in asc]
     return df.sort(cols, descending=descending, nulls_last=na_last)
 
 
-def distinct_polars(df: pl.DataFrame, cols: list[str] | None = None, keep: str | bool = "first") -> pl.DataFrame:
-    """Drop duplicate rows in a Polars DataFrame."""
+def distinct_polars(df: Any, cols: list[str] | None = None, keep: str | bool = "first") -> Any:
+    """Drop duplicate rows in a Polars DataFrame or LazyFrame."""
     pl_keep: Literal["first", "last", "any", "none"]
     if keep == "first":
         pl_keep = "first"
@@ -167,13 +203,13 @@ def distinct_polars(df: pl.DataFrame, cols: list[str] | None = None, keep: str |
     return df.unique(subset=cols if cols else None, keep=pl_keep, maintain_order=True)
 
 
-def dropna_polars(df: pl.DataFrame, cols: list[str] | None = None) -> pl.DataFrame:
+def dropna_polars(df: Any, cols: list[str] | None = None) -> Any:
     """Drop rows containing null values in specified or all columns."""
     return df.drop_nulls(subset=cols)
 
 
-def rename_polars(df: pl.DataFrame, mapping: dict[str, str]) -> pl.DataFrame:
-    """Rename columns in a Polars DataFrame."""
+def rename_polars(df: Any, mapping: dict[str, str]) -> Any:
+    """Rename columns in a Polars DataFrame or LazyFrame."""
     return df.rename(mapping)
 
 
@@ -220,7 +256,12 @@ def pivot_polars(
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
     if kwargs:
-        raise TypeError(f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, f_v are accepted")
+        raise TypeError(
+            f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, f_v are accepted"
+        )
+
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
 
     all_cols = list(df.columns)
 
@@ -229,7 +270,12 @@ def pivot_polars(
             return []
         if isinstance(spec, str):
             from pytae._text import tokenize as _tok
-            return [_unquote_name(item.strip()) for item in _tok(spec, ",", keep_quotes=True, track_brackets=True) if item.strip()]
+
+            return [
+                _unquote_name(item.strip())
+                for item in _tok(spec, ",", keep_quotes=True, track_brackets=True)
+                if item.strip()
+            ]
         if isinstance(spec, (list, tuple, set)):
             return [_unquote_name(item) if isinstance(item, str) else item for item in spec]
         return [str(spec)]
@@ -248,6 +294,7 @@ def pivot_polars(
     for col in r_cols:
         if col not in df.columns:
             import difflib
+
             close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""
             raise KeyError(f"pivot(): r (rows) column '{col}' not found in DataFrame{hint}")
@@ -255,6 +302,7 @@ def pivot_polars(
     for col in c_cols:
         if col not in df.columns:
             import difflib
+
             close = difflib.get_close_matches(str(col), [str(x) for x in all_cols], n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""
             raise KeyError(f"pivot(): c (cols) column '{col}' not found in DataFrame{hint}")
@@ -266,7 +314,8 @@ def pivot_polars(
     if dups:
         raise ValueError(f"pivot(): column(s) {dups} cannot appear multiple times in grouping dimensions (r/c)")
 
-    from pytae.shape import parse_pivot_metrics
+    from pytae._parsing import parse_pivot_metrics
+
     metrics = parse_pivot_metrics(v, a=a, df_cols=all_cols)
     if not metrics:
         raise ValueError("pivot(): value column 'v' is required (e.g. v='Sales')")
@@ -274,11 +323,16 @@ def pivot_polars(
     for m in metrics:
         if m.src_col is not None and m.src_col not in df.columns:
             import difflib
+
             close = difflib.get_close_matches(str(m.src_col), [str(x) for x in all_cols], n=1)
             hint = f" (did you mean '{close[0]}'?)" if close else ""
             raise KeyError(f"pivot(): value column '{m.src_col}' not found in DataFrame{hint}")
 
-    overlap = [m.src_col for m in metrics if m.src_col is not None and ((r_cols and m.src_col in r_cols) or (c_cols and m.src_col in c_cols))]
+    overlap = [
+        m.src_col
+        for m in metrics
+        if m.src_col is not None and ((r_cols and m.src_col in r_cols) or (c_cols and m.src_col in c_cols))
+    ]
     if overlap:
         if all(m.aggfunc in ("size", "len") for m in metrics if m.src_col in overlap):
             raise ValueError(
@@ -302,7 +356,9 @@ def pivot_polars(
                         "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
                     )
                 else:
-                    raise ValueError(f"pivot(): resulting column header '{m.out_name}' collides with row grouping column.")
+                    raise ValueError(
+                        f"pivot(): resulting column header '{m.out_name}' collides with row grouping column."
+                    )
 
     def _clean_null_col(r_df: pl.DataFrame) -> pl.DataFrame:
         if "null" in r_df.columns:
@@ -347,7 +403,9 @@ def pivot_polars(
                     sort_columns=True,
                 )
             else:
-                grouped = m_df.group_by([*r_cols, *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                grouped = m_df.group_by([*r_cols, *pivot_on]).agg(
+                    _polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col)
+                )
                 piv_m = grouped.pivot(
                     on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
                     index=r_cols,
@@ -423,7 +481,9 @@ def pivot_polars(
                     sort_columns=True,
                 ).drop("__dummy__")
             else:
-                grouped = m_df.group_by(["__dummy__", *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                grouped = m_df.group_by(["__dummy__", *pivot_on]).agg(
+                    _polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col)
+                )
                 piv_m = grouped.pivot(
                     on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
                     index="__dummy__",
@@ -468,7 +528,9 @@ def pivot_polars(
                         sort_columns=True,
                     )
                 else:
-                    grouped = m_df.group_by(["metric", *pivot_on]).agg(_polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col))
+                    grouped = m_df.group_by(["metric", *pivot_on]).agg(
+                        _polars_agg_expr(pl.col(val_col), agg_fn).alias(val_col)
+                    )
                     piv_m = grouped.pivot(
                         on=pivot_on[0] if len(pivot_on) == 1 else pivot_on,
                         index="metric",
@@ -519,6 +581,7 @@ def _ast_to_polars_expr(
             expr = pl.len()
             return expr.over(by) if by else expr
         import difflib
+
         close = difflib.get_close_matches(str(node.id), [str(c) for c in col_names], n=1)
         hint = f" (did you mean '{close[0]}'?)" if close else ""
         raise KeyError(
@@ -541,7 +604,7 @@ def _ast_to_polars_expr(
         if isinstance(node.op, ast.Mod):
             return left % right
         if isinstance(node.op, ast.Pow):
-            return left ** right
+            return left**right
         raise ValueError(f"Unsupported binary operator: {type(node.op)}")
     if isinstance(node, ast.UnaryOp):
         oprnd = _ast_to_polars_expr(node.operand, col_names, col_map, by)
@@ -557,17 +620,17 @@ def _ast_to_polars_expr(
         for op, comp in zip(node.ops, node.comparators):
             right = _ast_to_polars_expr(comp, col_names, col_map, by)
             if isinstance(op, ast.Eq):
-                left = (left == right)
+                left = left == right
             elif isinstance(op, ast.NotEq):
-                left = (left != right)
+                left = left != right
             elif isinstance(op, ast.Lt):
-                left = (left < right)
+                left = left < right
             elif isinstance(op, ast.LtE):
-                left = (left <= right)
+                left = left <= right
             elif isinstance(op, ast.Gt):
-                left = (left > right)
+                left = left > right
             elif isinstance(op, ast.GtE):
-                left = (left >= right)
+                left = left >= right
             else:
                 raise ValueError(f"Unsupported comparison operator: {type(op)}")
         return left
@@ -600,14 +663,11 @@ def _ast_to_polars_expr(
             func_name = node.func.attr
 
         # 0. lit(...) or pt.lit(...) or pytae.lit(...)
-        if (
-            (isinstance(node.func, ast.Name) and node.func.id == "lit")
-            or (
-                isinstance(node.func, ast.Attribute)
-                and node.func.attr == "lit"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id in ("pt", "pytae")
-            )
+        if (isinstance(node.func, ast.Name) and node.func.id == "lit") or (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "lit"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in ("pt", "pytae")
         ):
             if len(node.args) == 1:
                 arg = node.args[0]
@@ -725,7 +785,12 @@ def _ast_to_polars_expr(
                 raise ValueError("case_when expects at least one (condition, value) pair")
 
             any_str = any(
-                (isinstance(a, ast.Tuple) and len(a.elts) == 2 and isinstance(a.elts[1], ast.Constant) and isinstance(a.elts[1].value, str))
+                (
+                    isinstance(a, ast.Tuple)
+                    and len(a.elts) == 2
+                    and isinstance(a.elts[1], ast.Constant)
+                    and isinstance(a.elts[1].value, str)
+                )
                 for a in node.args
             ) or any(isinstance(a, ast.Constant) and isinstance(a.value, str) for a in node.args)
             if any_str:
@@ -743,11 +808,15 @@ def _ast_to_polars_expr(
         # 5. if_else
         if func_name == "if_else":
             if len(node.args) != 3:
-                raise TypeError(f"if_else requires exactly 3 arguments (condition, if_true, if_false), got {len(node.args)}")
+                raise TypeError(
+                    f"if_else requires exactly 3 arguments (condition, if_true, if_false), got {len(node.args)}"
+                )
             c = _ast_to_polars_expr(node.args[0], col_names, col_map, by)
             t = _ast_to_polars_expr(node.args[1], col_names, col_map, by)
             f = _ast_to_polars_expr(node.args[2], col_names, col_map, by)
-            if (isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)) or (isinstance(node.args[2], ast.Constant) and isinstance(node.args[2].value, str)):
+            if (isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)) or (
+                isinstance(node.args[2], ast.Constant) and isinstance(node.args[2].value, str)
+            ):
                 t = t.cast(pl.String) if hasattr(t, "cast") else t
                 f = f.cast(pl.String) if hasattr(f, "cast") else f
             expr = pl.when(c).then(t).otherwise(f)
@@ -777,7 +846,11 @@ def _ast_to_polars_expr(
                 arg1 = node.args[1]
                 if isinstance(arg1, ast.Constant) and isinstance(arg1.value, (int, float)):
                     shift_n = int(arg1.value)
-                elif isinstance(arg1, ast.UnaryOp) and isinstance(arg1.op, ast.USub) and isinstance(arg1.operand, ast.Constant):
+                elif (
+                    isinstance(arg1, ast.UnaryOp)
+                    and isinstance(arg1.op, ast.USub)
+                    and isinstance(arg1.operand, ast.Constant)
+                ):
                     shift_n = -int(arg1.operand.value)  # type: ignore[attr-defined]
             expr = args[0].shift(shift_n)
             return expr.over(by) if by else expr
@@ -826,20 +899,18 @@ def mutate_polars(
     """Evaluate mutate expressions on a Polars DataFrame using native Polars vectorization."""
     cur = df
     for raw_col, raw_val in parsed_spec.items():
+        cur_cols = set(_df_columns(cur))
         m_multi = re.match(r"^([^()]*)\(([^()]*)\)([^()]*)$", raw_col)
-        if m_multi and isinstance(raw_val, str) and raw_col not in cur.columns:
+        if m_multi and isinstance(raw_val, str) and raw_col not in cur_cols:
             prefix, inner_spec, suffix = m_multi.groups()
-            from pytae.mutate import _replace_underscore_placeholder, _resolve_multi_target_cols
-            target_cols = _resolve_multi_target_cols(cur.to_pandas(), inner_spec, by)
+            target_cols = _resolve_multi_target_cols(cur, inner_spec, by)
             expanded_pairs = [
-                (f"{prefix}{tc}{suffix}", _replace_underscore_placeholder(raw_val, tc))
-                for tc in target_cols
+                (f"{prefix}{tc}{suffix}", _replace_underscore_placeholder(raw_val, tc)) for tc in target_cols
             ]
         else:
             expanded_pairs = [(raw_col, raw_val)]
 
         for col_name, val in expanded_pairs:
-            from pytae.mutate import _Lit
             if isinstance(val, _Lit):
                 cur = cur.with_columns(pl.lit(val.value).alias(col_name))
                 continue
@@ -849,7 +920,7 @@ def mutate_polars(
 
             expr_str = val.strip()
             if "@" in expr_str:
-                at_tokens = re.findall(r"@([a-zA-Z_][a-zA-Z0-9_]*)", expr_str)
+                _, at_tokens = _strip_at_refs(expr_str)
                 for var_name in at_tokens:
                     if params and var_name in params:
                         val_p = params[var_name]
@@ -857,21 +928,36 @@ def mutate_polars(
                     else:
                         all_avail = list(params.keys()) if params else []
                         import difflib
+
                         close = difflib.get_close_matches(var_name, all_avail, n=1)
                         hint = f" (did you mean '@{close[0]}'?)" if close else ""
                         raise KeyError(f"local variable '@{var_name}' is not defined{hint}")
 
-            safe_expr, col_map = _rewrite_fallback_col_refs(expr_str, set(cur.columns))
+            cur_cols = set(_df_columns(cur))
+            safe_expr, col_map = _rewrite_fallback_col_refs(expr_str, cur_cols)
             try:
                 parsed = ast.parse(safe_expr, mode="eval")
-                expr = _ast_to_polars_expr(parsed, set(cur.columns), col_map, by=by)
+                expr = _ast_to_polars_expr(parsed, cur_cols, col_map, by=by)
                 if dropna and by:
                     null_mask = pl.any_horizontal([pl.col(c).is_null() for c in by])
                     expr = pl.when(null_mask).then(pl.lit(None)).otherwise(expr)
                 cur = cur.with_columns(expr.alias(col_name))
             except (pl.exceptions.InvalidOperationError, pl.exceptions.ComputeError) as exc:
                 msg = str(exc).lower()
-                if any(term in msg for term in ("unsupported", "cannot", "arithmetic", "operator", "divide", "division", "add", "sub", "mul")):
+                if any(
+                    term in msg
+                    for term in (
+                        "unsupported",
+                        "cannot",
+                        "arithmetic",
+                        "operator",
+                        "divide",
+                        "division",
+                        "add",
+                        "sub",
+                        "mul",
+                    )
+                ):
                     raise TypeError(str(exc)) from exc
                 raise
     return cur
@@ -886,11 +972,12 @@ def pick_polars(
     with_ties: bool = False,
     na_last: bool = True,
     by: list[str] | None = None,
-) -> pl.DataFrame:
+) -> Any:
     """Select the rows with the largest (or smallest) values of a column, optionally grouped by 'by'."""
     clean_col = _unquote_name(col.strip())
-    if clean_col not in df.columns:
-        raise KeyError(f"pick: column '{clean_col}' not found in DataFrame. Available columns: {list(df.columns)}")
+    df_cols = _df_columns(df)
+    if clean_col not in df_cols:
+        raise KeyError(f"pick: column '{clean_col}' not found in DataFrame. Available columns: {df_cols}")
 
     if n is not None and prop is not None:
         raise ValueError("pick: specify either 'n' or 'prop', not both")
@@ -901,14 +988,14 @@ def pick_polars(
     clean_order = order.strip().lower() if isinstance(order, str) else "max"
     if clean_order not in ("max", "min"):
         raise ValueError(f"pick: order must be 'max' or 'min', got {order!r}")
-    is_desc = (clean_order == "max")
+    is_desc = clean_order == "max"
 
     if prop is not None:
         if not (0 < prop <= 1):
             raise ValueError(f"pick: 'prop' must be between 0 and 1, got {prop}")
 
     if by:
-        unknown_by = [c for c in by if c not in df.columns]
+        unknown_by = [c for c in by if c not in df_cols]
         if unknown_by:
             raise KeyError(f"pick: grouping column(s) {unknown_by} not found in DataFrame")
 
@@ -935,7 +1022,8 @@ def pick_polars(
 
     sorted_df = df.sort(clean_col, descending=is_desc, nulls_last=na_last)
     if prop is not None:
-        valid_cnt = sorted_df.select(pl.col(clean_col).drop_nulls().len()).item()
+        cnt_expr = sorted_df.select(pl.col(clean_col).drop_nulls().len())
+        valid_cnt = cnt_expr.collect().item() if isinstance(cnt_expr, pl.LazyFrame) else cnt_expr.item()
         k = max(1, int(valid_cnt * prop))
         if with_ties:
             return sorted_df.filter(pl.col(clean_col).rank(method="min", descending=is_desc) <= k)
@@ -950,14 +1038,17 @@ def pick_polars(
 
 
 def value_counts_polars(
-    df: pl.DataFrame,
+    df: Any,
     cols: list[str] | None = None,
     dropna: bool = False,
-) -> pl.DataFrame:
-    """Compute value counts across specified or all columns in a Polars DataFrame."""
-    target_cols = cols if cols is not None else list(df.columns)
+) -> Any:
+    """Compute value counts across specified or all columns in a Polars DataFrame or LazyFrame."""
+    df_cols = _df_columns(df)
+    target_cols = cols if cols is not None else df_cols
     if "count" in target_cols and "n" in target_cols:
-        raise ValueError("-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers")
+        raise ValueError(
+            "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers"
+        )
 
     count_name = "count" if "count" not in target_cols else "n"
 
@@ -980,21 +1071,27 @@ def long_polars(
     if kwargs:
         raise TypeError(f"long_polars() got unexpected keyword argument(s): {list(kwargs.keys())}")
 
-    all_cols = list(df.columns)
+    all_cols = _df_columns(df)
 
     def _norm_spec(spec: str | Sequence[str] | None, param_name: str) -> list[str] | None:
         if spec is None:
             return None
         if isinstance(spec, str):
             from pytae._text import tokenize as _tok
-            items = [_unquote_name(item.strip()) for item in _tok(spec, ",", keep_quotes=True, track_brackets=True) if item.strip()]
+
+            items = [
+                _unquote_name(item.strip())
+                for item in _tok(spec, ",", keep_quotes=True, track_brackets=True)
+                if item.strip()
+            ]
         elif isinstance(spec, (list, tuple, set)):
             items = [_unquote_name(item) if isinstance(item, str) else item for item in spec]
         else:
             raise TypeError(f"{param_name} must be a column name or sequence of names, got {type(spec).__name__}")
         for item in items:
-            if item not in df.columns:
+            if item not in all_cols:
                 import difflib
+
                 close = difflib.get_close_matches(str(item), [str(col) for col in all_cols], n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
                 raise KeyError(f"long(): {param_name} column '{item}' not found in DataFrame{hint}")
@@ -1016,7 +1113,8 @@ def long_polars(
         if not melt_cols:
             raise ValueError("long(): no columns left to melt after keeping id_vars")
     else:
-        numeric_cols = [col for col, dtype in df.schema.items() if dtype.is_numeric()]
+        schema = _df_schema(df)
+        numeric_cols = [col for col, dtype in schema.items() if dtype.is_numeric()]
         if not numeric_cols:
             raise ValueError(
                 "long(): no numeric columns to melt. "
@@ -1027,7 +1125,9 @@ def long_polars(
         keep_ids = [col for col in all_cols if col not in melt_cols]
 
     if c == v:
-        raise ValueError(f"long(): output variable column 'c' ({c!r}) and value column 'v' ({v!r}) cannot have the same name")
+        raise ValueError(
+            f"long(): output variable column 'c' ({c!r}) and value column 'v' ({v!r}) cannot have the same name"
+        )
     if c in keep_ids:
         raise ValueError(f"long(): output variable column 'c' ({c!r}) collides with kept id column(s)")
     if v in keep_ids:
@@ -1039,13 +1139,15 @@ def long_polars(
 
 
 def wide_polars(
-    df: pl.DataFrame,
+    df: Any,
     r: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Reshape a long Polars DataFrame into wide format (1-to-1 pivot)."""
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
     for bad_arg in ("a", "agg", "aggfunc", "dropna"):
         if bad_arg in kwargs:
             raise ValueError(
@@ -1060,7 +1162,9 @@ def wide_polars(
 
     c = _unquote_name(c)
     if v is None:
-        raise ValueError("wide(): value column 'v' cannot be None. Specify the column to spread via v= (e.g. v='value').")
+        raise ValueError(
+            "wide(): value column 'v' cannot be None. Specify the column to spread via v= (e.g. v='value')."
+        )
     v = _unquote_name(v)
     if c == v:
         raise ValueError(f"wide(): 'c' and 'v' cannot be the same column ('{c}')")
@@ -1072,7 +1176,10 @@ def wide_polars(
     if r is not None:
         if isinstance(r, str):
             from pytae._text import tokenize as _tok
-            r_cols = [_unquote_name(col.strip()) for col in _tok(r, ",", keep_quotes=True, track_brackets=True) if col.strip()]
+
+            r_cols = [
+                _unquote_name(col.strip()) for col in _tok(r, ",", keep_quotes=True, track_brackets=True) if col.strip()
+            ]
         else:
             r_cols = [_unquote_name(col) if isinstance(col, str) else col for col in r]
         for col in r_cols:
@@ -1085,13 +1192,24 @@ def wide_polars(
     else:
         r_cols = [col for col in df.columns if col not in [c, v]]
 
+    distinct_c_vals = set(str(x) for x in df[c].unique().to_list())
+    colliding = [col for col in r_cols if str(col) in distinct_c_vals]
+    if colliding:
+        raise ValueError(
+            f"Resetting index failed: index level name(s) {colliding} collide with existing column name(s). "
+            "Rename the column or index before resetting."
+        )
+
     try:
-        return df.pivot(
+        res = df.pivot(
             on=c,
             index=r_cols if r_cols else None,
             values=v,
             sort_columns=True,
         )
+        if r_cols:
+            res = res.sort(r_cols)
+        return res
     except Exception as exc:
         raise ValueError(
             f"wide() encountered duplicate entries for row 'r' {r_cols} and column '{c}'. "
@@ -1101,23 +1219,25 @@ def wide_polars(
 
 
 def handle_missing_polars(
-    df: pl.DataFrame,
+    df: Any,
     fillna: str | None = ".",
     numeric_fill: Any = 0,
     cols: Sequence[str] | None = None,
     preserve_categories: bool = True,
     **kwargs: Any,
-) -> pl.DataFrame:
-    """Fill missing values in a Polars DataFrame with type-appropriate defaults."""
-    target_cols = set(cols) if cols is not None else set(df.columns)
+) -> Any:
+    """Fill missing values in a Polars DataFrame or LazyFrame with type-appropriate defaults."""
+    df_cols = _df_columns(df)
+    schema = _df_schema(df)
+    target_cols = set(cols) if cols is not None else set(df_cols)
     exprs: list[pl.Expr] = []
 
-    for c in df.columns:
+    for c in df_cols:
         if c not in target_cols:
             exprs.append(pl.col(c))
             continue
 
-        dtype = df.schema[c]
+        dtype = schema[c]
         if dtype.is_numeric():
             if numeric_fill == "mean":
                 exprs.append(pl.col(c).fill_null(pl.col(c).mean()))
@@ -1143,22 +1263,24 @@ def handle_missing_polars(
 
 
 def replace_values_polars(
-    df: pl.DataFrame,
+    df: Any,
     v: dict[Any, Any],
     c: str | Sequence[str] | None = None,
     exact: bool = True,
-) -> pl.DataFrame:
-    """Replace values in a Polars DataFrame (exact or substring)."""
-    target_cols = ([c] if isinstance(c, str) else list(c)) if c is not None else list(df.columns)
+) -> Any:
+    """Replace values in a Polars DataFrame or LazyFrame (exact or substring)."""
+    df_cols = _df_columns(df)
+    schema = _df_schema(df)
+    target_cols = ([c] if isinstance(c, str) else list(c)) if c is not None else list(df_cols)
     if not exact:
-        non_string_cols = [col for col in target_cols if df.schema[col] not in (pl.String, pl.Utf8)]
+        non_string_cols = [col for col in target_cols if schema[col] not in (pl.String, pl.Utf8)]
         if non_string_cols:
             raise ValueError(
                 f"replace_values: exact=False (substring match) only works on string/object "
                 f"columns; non-string column(s): {non_string_cols}"
             )
         exprs: list[pl.Expr] = []
-        for col in df.columns:
+        for col in df_cols:
             if col in target_cols:
                 col_expr = pl.col(col)
                 for old_val, new_val in v.items():
@@ -1169,7 +1291,7 @@ def replace_values_polars(
         return df.with_columns(exprs)
 
     exprs = []
-    for col in df.columns:
+    for col in df_cols:
         if col in target_cols:
             mapping = {k: v_val for k, v_val in v.items()}
             exprs.append(pl.col(col).replace(mapping))
@@ -1178,10 +1300,11 @@ def replace_values_polars(
     return df.with_columns(exprs)
 
 
-def clean_columns_polars(df: pl.DataFrame, **opts: Any) -> pl.DataFrame:
-    """Clean column header names in a Polars DataFrame."""
+def clean_columns_polars(df: Any, **opts: Any) -> Any:
+    """Clean column header names in a Polars DataFrame or LazyFrame."""
     from pytae.other_utilities import clean_column_names
-    old_cols = list(df.columns)
+
+    old_cols = _df_columns(df)
     new_cols = clean_column_names(old_cols, **opts)
     if new_cols == old_cols:
         return df
@@ -1192,16 +1315,18 @@ def clean_columns_polars(df: pl.DataFrame, **opts: Any) -> pl.DataFrame:
 
 
 def agg_polars(
-    df: pl.DataFrame,
+    df: Any,
     *specs: Any,
     by: list[str] | Sequence[str] | None = None,
     a: Any = None,
     dropna: bool = False,
     **kwargs: Any,
-) -> pl.DataFrame:
-    """Aggregate a Polars DataFrame by group or across the whole table."""
+) -> Any:
+    """Aggregate a Polars DataFrame or LazyFrame by group or across the whole table."""
     if "by" in kwargs or "_by" in kwargs:
-        raise TypeError("agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+        raise TypeError(
+            "agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
+        )
 
     if isinstance(a, dict):
         raise TypeError("agg() no longer accepts dictionaries. Use kwargs (col='sum') or strings.")
@@ -1240,6 +1365,7 @@ def agg_polars(
     for item in raw_items:
         if isinstance(item, str) and ("=" in item or ":" in item):
             from pytae.cli_parsing import parse_agg
+
             parsed = parse_agg(item)
             if isinstance(parsed, dict):
                 active_kwargs.update(parsed)
@@ -1250,6 +1376,11 @@ def agg_polars(
 
     if kwargs:
         active_kwargs.update(kwargs)
+
+    if "__dropna__" in active_kwargs:
+        dropna = active_kwargs.pop("__dropna__")
+        if by_cols and dropna:
+            work_df = work_df.drop_nulls(subset=by_cols)
 
     if active_kwargs and remaining_specs and specs:
         raise ValueError("agg(): cannot mix whole-frame aggregation with keyword arguments")
@@ -1305,8 +1436,20 @@ def agg_polars(
                 flat_fns.append(str(item).strip())
 
         known_aggs = {
-            "sum", "mean", "median", "min", "max", "std", "var",
-            "first", "last", "n", "count", "size", "nunique", "n_unique"
+            "sum",
+            "mean",
+            "median",
+            "min",
+            "max",
+            "std",
+            "var",
+            "first",
+            "last",
+            "n",
+            "count",
+            "size",
+            "nunique",
+            "n_unique",
         }
         for fn in flat_fns:
             if fn not in known_aggs:
@@ -1315,10 +1458,12 @@ def agg_polars(
         unique_fns = list(dict.fromkeys(flat_fns))
         has_n = any(f in ("n", "count", "size") for f in unique_fns)
         rem_fns = [f for f in unique_fns if f not in ("n", "count", "size")]
-        num_cols = [c for c, dt in work_df.schema.items() if dt.is_numeric() and c not in by_cols]
+        num_cols = [c for c, dt in _df_schema(work_df).items() if dt.is_numeric() and c not in by_cols]
 
         if has_n and "n" in num_cols:
-            raise ValueError("agg(): cannot compute 'n' (row count) because the input already has a numeric column named 'n'")
+            raise ValueError(
+                "agg(): cannot compute 'n' (row count) because the input already has a numeric column named 'n'"
+            )
         if has_n and "n" in by_cols:
             raise ValueError("agg(): count 'n' collides with group column 'n'")
 
@@ -1338,5 +1483,3 @@ def agg_polars(
     else:
         res = work_df.select(exprs)
     return res
-
-
