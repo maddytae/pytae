@@ -166,6 +166,9 @@ class Plotter:
             {"kind", "x", "y", "column"}.intersection(kwargs.keys())
         )
 
+        if df is not None and hasattr(df, "to_pandas") and not isinstance(df, (str, list, tuple)):
+            df = df.to_pandas()
+
         if (
             not kwargs.get("_is_facet_grid")
             and isinstance(df, pd.DataFrame)
@@ -195,6 +198,8 @@ class Plotter:
             return
         self._initialized = True
         Plotter._last_active = self
+        if df is not None and hasattr(df, "to_pandas") and not isinstance(df, (str, list, tuple)):
+            df = df.to_pandas()
         if df is not None and not isinstance(df, pd.DataFrame):
             # df was passed as mosaic string or grid list e.g. Plotter("AB")
             if mosaic is None:
@@ -253,6 +258,8 @@ class Plotter:
 
     def data(self, df):
         Plotter._last_active = self
+        if df is not None and hasattr(df, "to_pandas") and not isinstance(df, (str, list, tuple)):
+            df = df.to_pandas()
         self.df = df
         self.last_kwargs = {}  # Reset kwargs when new data is chained!
         return self

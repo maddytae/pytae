@@ -945,3 +945,56 @@ def _write_parquet(
             done += batch.num_rows
             _print_progress(done, total, "writing")
     print()
+
+
+def read(path: str | Path, **kwargs: Any) -> Any:
+    """Universal high-performance reader powered by Polars.
+
+    Auto-detects format from extension:
+    - .parquet, .pq
+    - .csv
+    - .tsv
+    - .txt
+    - .dat
+    - .jsonl, .ndjson
+    - .xlsx, .xls
+    - .gz compressed files (.csv.gz, etc.)
+    """
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
+    if is_url:
+        target_path: str | Path = path
+        clean_url = str(path).split("?")[0].split("#")[0]
+        suffix, compression = _split_path_suffixes(Path(clean_url))
+    else:
+        p = Path(path)
+        target_path = p
+        suffix, compression = _split_path_suffixes(p)
+
+    if suffix in (".parquet", ".pq"):
+        return DataFrame(pl.read_parquet(target_path, **kwargs))
+    elif suffix in (".csv",):
+        return DataFrame(pl.read_csv(target_path, **kwargs))
+    elif suffix in (".tsv", ".txt"):
+        sep = kwargs.pop("separator", "\t")
+        return DataFrame(pl.read_csv(target_path, separator=sep, **kwargs))
+    elif suffix in (".dat",):
+        sep = kwargs.pop("separator", "|")
+        encoding = kwargs.pop("encoding", "latin-1")
+        return DataFrame(pl.read_csv(target_path, separator=sep, encoding=encoding, **kwargs))
+    elif suffix in (".jsonl", ".ndjson"):
+        return DataFrame(pl.read_ndjson(target_path, **kwargs))
+    elif suffix in (".xlsx", ".xls"):
+        try:
+            return DataFrame(pl.read_excel(target_path, **kwargs))
+        except Exception:
+            import pandas as pd
+            return DataFrame(pd.read_excel(target_path, **kwargs))
+    else:
+        try:
+            return DataFrame(pl.read_csv(target_path, **kwargs))
+        except Exception as exc:
+            raise ValueError(f"pt.read: unsupported file format for path '{target_path}'") from exc

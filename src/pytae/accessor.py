@@ -1,241 +1,60 @@
-"""DataFrame accessor `df.pt` — mix with pandas methods in one chain.
+"""DataFrame accessor `df.pt` registered on both Polars and Pandas DataFrames.
 
-    df.rename(columns={...}).pt.agg_df(a="mean")
-    df.pt.select("species", contains="bill").head()
-    df.pt.select("species", "body_mass_g").pt.agg_df(a=["mean", "n"])
+Allows entering Pytae's fluent grammar directly:
+    df.pt.filter("amount > 0").by("region").mutate(prev="shift(amount, 1)").arrange("-amount")
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import pandas as pd
+import polars as pl
 
-from .agg import agg as _agg
-from .arrange import arrange as _arrange
-from .arrange import pick as _pick
-from .by import by as _by
-from .by import ungroup as _ungroup
-from .filter import filter as _filter
-from .mutate import mutate as _mutate
-from .other_utilities import (
-    clean_columns as _clean_columns,
-)
-from .other_utilities import (
-    cols as _cols,
-)
-from .other_utilities import (
-    distinct as _distinct,
-)
-from .other_utilities import (
-    freq as _freq,
-)
-from .other_utilities import (
-    glimpse as _glimpse,
-)
-from .other_utilities import (
-    handle_missing as _handle_missing,
-)
-from .other_utilities import (
-    hist as _hist,
-)
-from .other_utilities import (
-    replace_values as _replace_values,
-)
-from .select import select as _select
+from pytae.dataframe import DataFrame, GroupedDataFrame, _plot_impl
 
 
-@pd.api.extensions.register_dataframe_accessor("pt")
-class PtAccessor:
-    """Pandas DataFrame accessor (`df.pt`) providing ergonomic tabular verbs:
-    - select: Column selection, slicing, negative exclusion, and type filtering.
-    - filter: Row filtering via string expressions, dicts, intervals, and kwargs.
-    - mutate: Feature engineering, formulas, and grouped transforms (`by=`).
-    - arrange: Order rows by column(s) with inline direction ('desc', '-col').
-    - pick: Group-aware top/bottom-N row slicing.
-    - agg: Grouped aggregations (`by=`) and whole-table summaries (`by=None`).
-    - long / wide: Reshaping (melting to rows and unmelting to columns).
-    - pivot: 2D pivot tables with Excel-style (r, c, v, a) syntax.
-    - clean_columns: Standardizing and normalizing column header names.
-    - replace_values: Cell value replacement (exact or substring).
-    - handle_missing: Missing value imputation with type-safe defaults.
-    - cols: Column names sorted alphabetically or preserved in order.
-    - glimpse: Transposed summary of columns, dtypes, and inline sample values.
-    - plot: Method-chainable visualization engine with faceting and mosaics.
-    """
+@pl.api.register_dataframe_namespace("pt")
+class PolarsPtAccessor:
+    """Polars DataFrame accessor entering Pytae's fluent data manipulation pipeline."""
 
-    def __init__(self, pandas_obj: pd.DataFrame):
-        self._obj = pandas_obj
+    def __init__(self, obj: pl.DataFrame):
+        self._obj = obj
 
-    def select(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Select, reorder, or exclude columns by name, pattern, slice, or dtype.
+    def filter(self, *conditions: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).filter(*conditions, **kwargs)
 
-        Supports exact names, negative prefixes ('-col', '~col'), negative slices
-        ('-start:end'), regex, dtype filters ('dtype=numeric'), and 'exclude=' kwargs.
-        """
-        return _select(self._obj, *args, **kwargs)
+    def select(self, *names: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).select(*names, **kwargs)
 
-    def by(self, *cols: Any) -> pd.DataFrame:
-        """Set active grouping columns on the DataFrame for downstream operations.
+    def arrange(self, *specs: str, na_last: bool = True) -> DataFrame:
+        return DataFrame(self._obj).arrange(*specs, na_last=na_last)
 
-        Downstream verbs such as .pt.mutate(), .pt.agg(), and .pt.pick()
-        will automatically inherit these grouping columns.
-
-        Parameters:
-        -----------
-        *cols : str
-            Column names to group by as positional arguments (e.g. df.pt.by('species', 'island')).
-            Lists or non-string arguments are not accepted.
-        """
-        return _by(self._obj, *cols)
-
-    def ungroup(self) -> pd.DataFrame:
-        """Clear active grouping columns from the DataFrame."""
-        return _ungroup(self._obj)
-
-    def filter(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Filter rows using human-readable conditions, dicts, callables, or kwargs.
-
-        Supports bare callables/lambdas (e.g. df.pt.filter(lambda d: d['mass'] > 4000)),
-        comparisons ('>', '<=', '=='), intervals ('[min, max]'), set
-        membership (['a', 'b']), string operations ('startswith', 'contains'),
-        and safe handling of column names with spaces.
-        """
-        return _filter(self._obj, *args, **kwargs)
-
-    def mutate(
-        self,
-        *args: Any,
-        dropna: bool = False,
-        observed: bool = True,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Create or overwrite columns using formulas, callables, or grouped window transforms.
-
-        Expressions evaluate sequentially via pandas eval() with automatic fallback.
-        Inherits active grouping if set via `df.pt.by(...)`. Aggregations (mean, sum, n, etc.)
-        evaluate per group and broadcast back to each row without collapsing the dataset.
-        """
-        if "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.mutate() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
-        return _mutate(self._obj, *args, dropna=dropna, observed=observed, **kwargs)
-
-    def arrange(
-        self,
-        *cols: Any,
-        ascending: bool | Sequence[bool] | None = None,
-        na_last: bool = True,
-    ) -> pd.DataFrame:
-        """Order rows by one or more columns, supporting inline direction ('desc', 'asc', '-col')
-        and brackets for spaced column names ('[col with space] desc').
-        """
-        return _arrange(self._obj, *cols, ascending=ascending, na_last=na_last)
+    def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
+        return DataFrame(self._obj).distinct(*cols, keep=keep)
 
     def pick(
         self,
-        col: str,
+        spec: str,
         n: int | None = None,
         prop: float | None = None,
         order: str = "max",
-        *,
         with_ties: bool = False,
         na_last: bool = True,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Select top (or bottom) rows by column, inheriting grouping set via `df.pt.by(...)`."""
-        if "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.pick() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
-        if kwargs:
-            raise TypeError(f"df.pt.pick() got unexpected keyword argument(s): {list(kwargs.keys())}")
-        return _pick(self._obj, col, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
+    ) -> DataFrame:
+        return DataFrame(self._obj).pick(
+            spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last
+        )
 
-    def slice_max(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Removed: Use df.pt.pick() instead."""
-        raise AttributeError("df.pt.slice_max() has been removed; use df.pt.pick() instead")
+    def by(self, *cols: Any) -> GroupedDataFrame:
+        return DataFrame(self._obj).by(*cols)
 
-    def slice_min(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Removed: Use df.pt.pick(..., order='min') instead."""
-        raise AttributeError("df.pt.slice_min() has been removed; use df.pt.pick(..., order='min') instead")
+    def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).mutate(*specs, **kwargs)
 
-    def distinct(
-        self,
-        *cols: Any,
-        keep: str | bool = "first",
-    ) -> pd.DataFrame:
-        """Drop duplicate rows, optionally restricted to specific columns, resetting index.
-
-        Parameters:
-        -----------
-        *cols : str
-            Column name(s) to consider for identifying duplicate rows as positional arguments.
-            If omitted, all columns are used.
-        keep : {'first', 'last', False}, default 'first'
-            Determines which duplicates (if any) to keep.
-
-        Returns:
-        --------
-        pd.DataFrame
-            Distinct DataFrame with a reset 0-indexed RangeIndex.
-        """
-        return _distinct(self._obj, *cols, keep=keep)
-
-    def agg(
-        self,
-        *args: Any,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Aggregate numeric columns, inheriting grouping set via active `df.pt.by(...)`.
-
-        When no active grouping is set, computes a whole-table summary (1 row). Supports
-        whole-frame functions ('mean', ['mean', 'n']), column mapping strings with brackets
-        ('tip = mean, [total bill] = mean, n = n'), and keyword arguments.
-        Automatically clears active grouping context upon completion.
-        """
-        if "group_by" in kwargs or "by" in kwargs or "_by" in kwargs:
-            raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using df.pt.by('col').")
-
-        result = _agg(self._obj, *args, **kwargs)
-        if "_pt_by" in result.attrs:
-            del result.attrs["_pt_by"]
-        return result
-
-    def agg_df(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
-        """Removed: Use df.pt.agg() instead."""
-        raise AttributeError("df.pt.agg_df() has been removed; use df.pt.agg() instead")
-
-    def long(
-        self,
-        cols: str | Sequence[str] | None = None,
-        id_vars: str | Sequence[str] | None = None,
-        c: str = "variable",
-        v: str = "value",
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Melt columns to rows (unpivot wide format into long format).
-
-        Default melts all numeric columns, storing variable names in `c` (default 'variable')
-        and values in `v` (default 'value').
-        """
-        from .shape import long as _long
-        return _long(self._obj, cols=cols, id_vars=id_vars, c=c, v=v, **kwargs)
-
-    def wide(
-        self,
-        r: str | Sequence[str] | None = None,
-        c: str = "variable",
-        v: str = "value",
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Pivot long-form records back to wide format (columns).
-
-        Row identifier(s) are specified by `r`. Headers are created from `c` (default 'variable'),
-        cells from `v` (default 'value').
-        Strictly 1-to-1 structural reshaping without aggregation.
-        For multi-dimensional aggregation, use `df.pt.pivot()`.
-        """
-        from .shape import wide as _wide
-        return _wide(self._obj, r=r, c=c, v=v, **kwargs)
+    def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).agg(*specs, a=a, dropna=dropna, **kwargs)
 
     def pivot(
         self,
@@ -246,150 +65,197 @@ class PtAccessor:
         dropna: bool = False,
         f_v: Any = None,
         **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Summarize and aggregate DataFrame across dimensions (Excel-style pivot table).
-
-        Parameters:
-        -----------
-        r : str or sequence of str, optional
-            Row dimension(s) to group by.
-        c : str or sequence of str, optional
-            Column dimension(s) to spread as headers.
-        v : str or sequence of str, optional
-            Value column(s) to aggregate. If omitted, defaults to row counts (`n`).
-        a : str, default 'sum'
-            Aggregation function ('sum', 'mean', 'median', 'min', 'max', 'count', 'std', etc.).
-            'n' is accepted for group row count.
-        dropna : bool, default False
-            Whether to drop NA categories from grouping keys.
-        f_v : any, optional
-            Value to replace missing grid intersections with (e.g. 0).
-            Defaults to 0 when computing counts (`v` omitted or `a='n'`).
-
-        Returns:
-        --------
-        pd.DataFrame
-            Clean, flattened DataFrame with standard RangeIndex and 1D column names.
-        """
-        from .shape import pivot as _pivot
-        return _pivot(self._obj, r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs)
-
-    def handle_missing(
-        self,
-        fillna: str = ".",
-        numeric_fill: Any = 0,
-        cols: Sequence[str] | None = None,
-        preserve_categories: bool = True,
-    ) -> pd.DataFrame:
-        """Fill missing values with type-appropriate defaults across columns."""
-        return _handle_missing(
-            self._obj,
-            fillna=fillna,
-            numeric_fill=numeric_fill,
-            cols=cols,
-            preserve_categories=preserve_categories,
+    ) -> DataFrame:
+        return DataFrame(self._obj).pivot(
+            r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs
         )
 
-    def cols(self, ascending: bool | None = True) -> list:
-        """Return the column names sorted alphabetically (True/False) or in original order (None)."""
-        return _cols(self._obj, ascending=ascending)
+    def long(
+        self,
+        cols: str | Sequence[str] | None = None,
+        id_vars: str | Sequence[str] | None = None,
+        c: str = "variable",
+        v: str = "value",
+    ) -> DataFrame:
+        return DataFrame(self._obj).long(cols=cols, id_vars=id_vars, c=c, v=v)
 
-    def clean_columns(self, **kwargs: Any) -> pd.DataFrame:
-        """Clean and standardize column header names (strip, squeeze, fill, case, dedupe)."""
-        return _clean_columns(self._obj, **kwargs)
+    def wide(
+        self,
+        r: str | Sequence[str] | None = None,
+        c: str = "variable",
+        v: str = "value",
+        **kwargs: Any,
+    ) -> DataFrame:
+        return DataFrame(self._obj).wide(r=r, c=c, v=v, **kwargs)
+
+    def clean_columns(self, **opts: Any) -> DataFrame:
+        return DataFrame(self._obj).clean_columns(**opts)
 
     def replace_values(
-        self, v: dict[Any, Any], c: str | Sequence[str] | None = None, exact: bool = True
-    ) -> pd.DataFrame:
-        """Replace cell values via `{old: new}` mapping, optionally scoped to columns `c`."""
-        return _replace_values(self._obj, v, c=c, exact=exact)
+        self,
+        v: dict[Any, Any],
+        c: str | Sequence[str] | None = None,
+        exact: bool = True,
+    ) -> DataFrame:
+        return DataFrame(self._obj).replace_values(v=v, c=c, exact=exact)
 
-    def glimpse(self, width: int | None = None) -> pd.DataFrame:
-        """Print a transposed overview of DataFrame columns, dtypes, and sample values.
+    def handle_missing(self, **opts: Any) -> DataFrame:
+        return DataFrame(self._obj).handle_missing(**opts)
 
-        Returns the original DataFrame for method chaining.
-        """
-        return _glimpse(self._obj, width=width)
+    def cols(self, ascending: bool | None = True) -> list[str]:
+        return DataFrame(self._obj).cols(ascending=ascending)
 
-    def freq(self, col: str | None = None, *, dropna: bool = False) -> pd.DataFrame:
-        """Compute a frequency table with ASCII distribution bars and percentages for a column."""
-        return _freq(self._obj, col=col, dropna=dropna)
+    def glimpse(self, width: int | None = None) -> pl.DataFrame:
+        from pytae.other_utilities import format_glimpse
+        print(format_glimpse(self._obj.to_pandas(), width=width))
+        return self._obj
 
-    def hist(self, col: str | None = None, bins: int = 10) -> pd.DataFrame:
-        """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column.
+    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
+        return DataFrame(self._obj).freq(col=col, dropna=dropna)
 
-        Supports `'col'`, `'col:bins'` (e.g. `'body_mass_g:10'`), or `bins=10`.
-        """
-        return _hist(self._obj, col=col, bins=bins)
+    def hist(self, col: str | None = None, bins: int = 10) -> None:
+        return DataFrame(self._obj).hist(col=col, bins=bins)
+
+    def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return DataFrame(self._obj).pipe(func, *args, **kwargs)
 
     def to_clip(self) -> None:
-        """Copy the DataFrame to the system clipboard (tab-separated, no index)."""
+        return DataFrame(self._obj).to_clip()
+
+    def to_pandas(self) -> Any:
+        return DataFrame(self._obj).to_pandas()
+
+    def to_polars(self) -> pl.DataFrame:
+        return self._obj
+
+    def plot(self, *args: Any, **kwargs: Any) -> Any:
+        return _plot_impl(self._obj, *args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(DataFrame(self._obj), name)
+
+
+@pd.api.extensions.register_dataframe_accessor("pt")
+class PandasPtAccessor:
+    """Pandas DataFrame accessor providing a seamless zero-friction bridge into Pytae's Polars engine."""
+
+    def __init__(self, obj: pd.DataFrame):
+        self._obj = obj
+
+    def filter(self, *conditions: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).filter(*conditions, **kwargs)
+
+    def select(self, *names: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).select(*names, **kwargs)
+
+    def arrange(self, *specs: str, na_last: bool = True) -> DataFrame:
+        return DataFrame(self._obj).arrange(*specs, na_last=na_last)
+
+    def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
+        return DataFrame(self._obj).distinct(*cols, keep=keep)
+
+    def pick(
+        self,
+        spec: str,
+        n: int | None = None,
+        prop: float | None = None,
+        order: str = "max",
+        with_ties: bool = False,
+        na_last: bool = True,
+    ) -> DataFrame:
+        return DataFrame(self._obj).pick(
+            spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last
+        )
+
+    def by(self, *cols: Any) -> GroupedDataFrame:
+        return DataFrame(self._obj).by(*cols)
+
+    def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).mutate(*specs, **kwargs)
+
+    def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
+        if "by" in kwargs or "_by" in kwargs:
+            raise TypeError("df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col').")
+        return DataFrame(self._obj).agg(*specs, a=a, dropna=dropna, **kwargs)
+
+    def pivot(
+        self,
+        r: str | Sequence[str] | None = None,
+        c: str | Sequence[str] | None = None,
+        v: str | Sequence[str] | None = None,
+        a: str = "sum",
+        dropna: bool = False,
+        f_v: Any = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        return DataFrame(self._obj).pivot(
+            r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs
+        )
+
+    def long(
+        self,
+        cols: str | Sequence[str] | None = None,
+        id_vars: str | Sequence[str] | None = None,
+        c: str = "variable",
+        v: str = "value",
+    ) -> DataFrame:
+        return DataFrame(self._obj).long(cols=cols, id_vars=id_vars, c=c, v=v)
+
+    def wide(
+        self,
+        r: str | Sequence[str] | None = None,
+        c: str = "variable",
+        v: str = "value",
+        **kwargs: Any,
+    ) -> DataFrame:
+        return DataFrame(self._obj).wide(r=r, c=c, v=v, **kwargs)
+
+    def clean_columns(self, **opts: Any) -> DataFrame:
+        return DataFrame(self._obj).clean_columns(**opts)
+
+    def replace_values(
+        self,
+        v: dict[Any, Any],
+        c: str | Sequence[str] | None = None,
+        exact: bool = True,
+    ) -> DataFrame:
+        return DataFrame(self._obj).replace_values(v=v, c=c, exact=exact)
+
+    def handle_missing(self, **opts: Any) -> DataFrame:
+        return DataFrame(self._obj).handle_missing(**opts)
+
+    def cols(self, ascending: bool | None = True) -> list[str]:
+        return DataFrame(self._obj).cols(ascending=ascending)
+
+    def glimpse(self, width: int | None = None) -> pd.DataFrame:
+        from pytae.other_utilities import format_glimpse
+        print(format_glimpse(self._obj, width=width))
+        return self._obj
+
+    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
+        return DataFrame(self._obj).freq(col=col, dropna=dropna)
+
+    def hist(self, col: str | None = None, bins: int = 10) -> None:
+        return DataFrame(self._obj).hist(col=col, bins=bins)
+
+    def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return DataFrame(self._obj).pipe(func, *args, **kwargs)
+
+    def to_clip(self) -> None:
         return self._obj.to_clipboard(index=False)
 
     def safe_reset_index(self) -> pd.DataFrame:
-        """Reset index, ensuring no index level name collides with existing columns."""
-        from .other_utilities import safe_reset_index as _safe_reset_index
-        return _safe_reset_index(self._obj)
+        from pytae.other_utilities import safe_reset_index
+        return safe_reset_index(self._obj)
+
+    def to_pandas(self) -> pd.DataFrame:
+        return self._obj
+
+    def to_polars(self) -> pl.DataFrame:
+        return DataFrame(self._obj).to_polars()
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
-        """Create a pytae Plotter pre-loaded with this DataFrame.
+        return _plot_impl(self._obj, *args, **kwargs)
 
-        Can be called with layout parameters to start a pipeline:
-            df.pt.plot(mosaic="AB", figsize=(10, 5)).plot(on="A", ...)
-
-        Or with direct plot arguments to plot immediately:
-            df.pt.agg("day", total_bill="mean").pt.plot(kind="bar", x="day", y="total_bill").pt.finalize()
-
-        Or with faceting parameters (e.g. by="species", ncols=3) to automatically
-        produce a small-multiples grid across groups:
-            df.pt.plot(by="species", ncols=3, kind="scatter", x="a", y="b").pt.finalize()
-        """
-        try:
-            from .plotting import Plotter
-        except ImportError as exc:
-            raise ImportError(
-                "df.pt.plot() requires matplotlib. Install with: pip install 'pytae[plot]'"
-            ) from exc
-
-        by_col = kwargs.get("by") if kwargs.get("by") is not None else kwargs.get("col")
-        has_facet_trigger = (
-            kwargs.get("ncols") is not None
-            or kwargs.get("facet") is True
-            or "col" in kwargs
-        )
-        is_plot_call = bool(
-            {"kind", "x", "y", "column"}.intersection(kwargs.keys())
-        )
-
-        if (
-            isinstance(self._obj, pd.DataFrame)
-            and by_col is not None
-            and by_col in self._obj
-            and has_facet_trigger
-            and is_plot_call
-        ):
-            if "mosaic" in kwargs or (len(args) > 0 and args[0] is not None):
-                raise ValueError("Cannot combine 'mosaic' with faceting ('by' with 'ncols'/'facet'/'col').")
-            if "nrows" in kwargs:
-                raise ValueError("Cannot combine 'nrows' with faceting ('by' with 'ncols'/'facet'/'col'). Use 'ncols' to control grid columns.")
-
-            facet_kwargs = dict(kwargs)
-            facet_kwargs.pop("by", None)
-            facet_kwargs.pop("col", None)
-            facet_kwargs.pop("facet", None)
-            ncols = facet_kwargs.pop("ncols", None)
-            return Plotter.facet(self._obj, by=by_col, ncols=ncols, **facet_kwargs)
-
-        save_path = kwargs.pop("save", None)
-        plotter_keys = {"mosaic", "figsize", "aggregate", "sharex", "sharey", "nrows", "ncols"}
-        init_kwargs = {k: v for k, v in kwargs.items() if k in plotter_keys}
-        plot_kwargs = {k: v for k, v in kwargs.items() if k not in plotter_keys}
-
-        plotter = Plotter(*args, **init_kwargs)
-        plotter.data(self._obj)
-        if plot_kwargs:
-            plotter.plot(**plot_kwargs)
-        if save_path:
-            plotter.finalize().save(save_path)
-        return plotter
-
+    def __getattr__(self, name: str) -> Any:
+        return getattr(DataFrame(self._obj), name)

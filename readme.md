@@ -5,11 +5,11 @@
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
-Fast, ergonomic **Pandas-based** Python tools and high-performance **Polars-based** CLI for tabular data manipulation, feature engineering, SQL queries, and visualization.
+Fast, ergonomic tabular data manipulation, feature engineering, and visualization powered natively and completely by **Polars** across both Python library and CLI.
 
-`pytae` offers **one and only one right way** to perform every tabular operation across two complementary, specialized workflows:
-1. **Python Library & DataFrame Accessor (`df.pt`) — 100% Pandas-Based**: Zero external engine overhead. Operates directly on standard Pandas DataFrames with expressive, chainable verbs (`filter`, `select`, `mutate`, `arrange`, `distinct`, `by`, `ungroup`, `pick`, `agg`, `long`, `wide`, `pivot`, `plot`). Importing `pytae` in Python is pure Pandas and never loads Polars into memory.
-2. **Unix Pipeline CLI (`pytae`) — 100% Polars-Based**: Blazing-fast multithreaded SIMD vector engine. Ingests tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filters, transforms, aggregates, reshapes, and executes analytical ANSI SQL queries (`-sql`) natively in Polars vector memory with zero boilerplate.
+`pytae` offers **one and only one right way** to perform tabular operations with zero code duplication:
+1. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame. Once entered, chain verbs naturally without repeatedly calling `.pt` (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
+2. **Unix Pipeline CLI (`pytae`)**: Blazing-fast multithreaded SIMD vector engine sharing the exact same Polars core. Ingests tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filters, transforms, aggregates, reshapes, and executes analytical ANSI SQL queries (`-sql`) with zero boilerplate.
 
 👉 **New to Pytae?** Check out **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Naming Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)**.
 
@@ -18,34 +18,29 @@ Fast, ergonomic **Pandas-based** Python tools and high-performance **Polars-base
 ## Installation
 
 ```bash
-pip install pytae              # Core Pandas library and Polars-powered CLI
+pip install pytae              # Polars-native library and CLI
 pip install "pytae[plot]"       # Includes matplotlib for plotting
 ```
 
 ---
 
-## Quick Start: Python Library (Pure Pandas)
+## Quick Start: Python Library (Polars-Powered)
 
-Use verbs as standalone functions (`pt.verb(df, ...)`) or chain them via `.pt`:
+Read directly with `pt.read()`, wrap existing data with `pt(df)`, or chain off Pandas via `.pt`:
 
 ```python
 import pytae as pt
 
-penguins = pt.sample("penguins")
+# Read directly with Polars-powered fast auto-detection
+df = pt.read("sales_report.parquet")
 
-# Clean, method-chainable pipeline with zero index wrestling
+# Or chain directly off pandas or polars - only one .pt call needed!
 summary = (
-    penguins
-    .pt.filter(lambda d: d["body_mass_g"] >= 3500)
-    .pt.by("species")
-    .pt.mutate(
-        mass_kg="body_mass_g / 1000",
-        avg_mass="mean(body_mass_g)",
-        diff="body_mass_g - avg_mass",
-    )
-    .pt.arrange("species, -mass_kg")
-    .pt.select("species", "island", "mass_kg", "diff")
-    .pt.agg(mean_mass="mass_kg:mean", n="n")
+    df.filter("amount > 0")
+    .by("region")
+    .mutate(pct_total="amount / sum(amount)", prev_sale="shift(amount, 1)")
+    .arrange("-amount")
+    .to_pandas()  # or .to_polars(), .to_clip()
 )
 ```
 

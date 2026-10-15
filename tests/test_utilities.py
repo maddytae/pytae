@@ -53,9 +53,9 @@ def test_handle_missing_preserves_categorical():
     s = pd.Series(pd.Categorical(["A", None, "B"]))
     df = pd.DataFrame({"cat": s, "val": [1.0, None, 3.0]})
     result = pt.handle_missing(df, fillna="Missing")
-    assert isinstance(result["cat"].dtype, pd.CategoricalDtype)
+    assert isinstance(result.to_pandas()["cat"].dtype, pd.CategoricalDtype)
     assert result["cat"].tolist() == ["A", "Missing", "B"]
-    assert "Missing" in result["cat"].cat.categories
+    assert "Missing" in result.to_pandas()["cat"].cat.categories
 
 
 def test_handle_missing_custom_numeric_fill_and_cols():
@@ -200,23 +200,23 @@ def test_distinct_all_columns():
     res_func = pt.distinct(df)
     res_acc = df.pt.distinct()
     expected = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
-    pd.testing.assert_frame_equal(res_func, expected)
-    pd.testing.assert_frame_equal(res_acc, expected)
+    pd.testing.assert_frame_equal(res_func.to_pandas(), expected)
+    pd.testing.assert_frame_equal(res_acc.to_pandas(), expected)
 
 
 def test_distinct_subset_columns():
     df = pd.DataFrame({"id": [1, 1, 2], "val": [10, 20, 30]})
     res = df.pt.distinct("id")
     expected = pd.DataFrame({"id": [1, 2], "val": [10, 30]})
-    pd.testing.assert_frame_equal(res, expected)
+    pd.testing.assert_frame_equal(res.to_pandas(), expected)
 
     res_last = df.pt.distinct("id", keep="last")
     expected_last = pd.DataFrame({"id": [1, 2], "val": [20, 30]})
-    pd.testing.assert_frame_equal(res_last, expected_last)
+    pd.testing.assert_frame_equal(res_last.to_pandas(), expected_last)
 
     res_false = df.pt.distinct("id", keep=False)
     expected_false = pd.DataFrame({"id": [2], "val": [30]})
-    pd.testing.assert_frame_equal(res_false, expected_false)
+    pd.testing.assert_frame_equal(res_false.to_pandas(), expected_false)
 
 
 def test_distinct_unknown_column_raises():

@@ -20,7 +20,7 @@ def sales_df():
 
 def test_pivot_both_r_and_c(sales_df):
     res = sales_df.pt.pivot(r="Region", c="Year", v="Sales", a="sum")
-    assert isinstance(res, pd.DataFrame)
+    assert isinstance(res, (pt.DataFrame, pd.DataFrame))
     assert list(res.columns) == ["Region", "2023", "2024"]
     assert res.columns.name is None
     assert list(res.index) == [0, 1]

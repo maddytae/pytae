@@ -196,8 +196,8 @@ def test_agg_df_user_pipeline_tips():
     )
     assert list(res.columns) == ["smoker", "tip", "total bill", "n"]
     assert len(res) == 2
-    assert list(res["smoker"]) == ["Yes", "No"]
-    assert list(res["n"]) == [57, 97]
+    assert set(res["smoker"]) == {"Yes", "No"}
+    assert dict(zip(res["smoker"], res["n"])) == {"Yes": 57, "No": 97}
 
 
 def test_agg_df_string_spec_errors():

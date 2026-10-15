@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.10.0] - 2026-10-15
+
+### Added
+- **Full Polars-Native Library Architecture**:
+  - `pytae` is now natively and completely powered by **Polars** across both Python library and CLI, sharing a unified core execution engine with zero code duplication.
+  - First-class `pt.DataFrame` container backed directly by Polars `pl.DataFrame`, providing blazing-fast SIMD vector execution.
+  - Fluid chaining: calling `.pt` off any Pandas or Polars DataFrame enters `pt.DataFrame` on the first call, allowing subsequent chained verbs (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`) to be called directly without repeatedly invoking `.pt`.
+  - Seamless universal reader `pt.read()` with auto-detection of formats (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.ipc`, `.xlsx`) powered by Polars.
+  - Native constructors: `pt(pandas_df)` or `pt(polars_df)` automatically detects and wraps tabular data into `pt.DataFrame`.
+  - Effortless exports: `.to_pandas()`, `.to_polars()`, and `.to_clip()` (system clipboard export via Polars string serialization).
+  - Preserved metadata and Pandas testing interoperability hooks (`pd.testing.assert_frame_equal` and `pd.melt`).
+
 ## [3.9.0] - 2026-10-14
 
 ### Added

@@ -15,7 +15,6 @@ assert "pytae.plotting" not in sys.modules
 assert "pytae.shape" not in sys.modules
 assert "matplotlib" not in sys.modules
 assert "duckdb" not in sys.modules
-assert "polars" not in sys.modules
 assert pytae._cache == {}
 assert "penguins" in pytae.sample_data
 assert list(pytae.sample_data.keys())
