@@ -168,3 +168,4 @@ pytae -file "q1.csv=q1; q2.csv=q2; q3.csv=q3" \
   -by quarter \
   -agg "revenue = amount:sum"
 ```
+

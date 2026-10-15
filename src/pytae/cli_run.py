@@ -512,6 +512,7 @@ def _process_path(
     select_specs: list[tuple[list[str], dict]],
     filter_specs: list[list[tuple[str, Any]]] | None = None,
     mutate_specs: list[str] | None = None,
+    cast_specs: list[str] | None = None,
     sql_specs: list[str] | None = None,
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]] | None = None,
     rename_specs: list[dict[str, str]] | None = None,
@@ -611,6 +612,7 @@ def _process_path(
     select_iter = iter(select_specs)
     filter_iter = iter(filter_specs if filter_specs is not None else (qry_specs or []))
     mutate_iter = iter(mutate_specs or [])
+    cast_iter = iter(cast_specs or [])
     sql_iter = iter(sql_specs or [])
     replace_iter = iter(replace_specs or [])
     rename_iter = iter(rename_specs or [])
@@ -656,6 +658,11 @@ def _process_path(
                 if any(c not in avail_cols for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "cast":
+            err = pipeline.apply_cast(next(cast_iter))
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

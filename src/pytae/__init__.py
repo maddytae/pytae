@@ -304,6 +304,11 @@ def join(
     )
 
 
+def cast(df: Any, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+    return DataFrame(df).cast(dtypes=dtypes, strict=strict, **kwargs)
+
+
+
 def concat(
     items: Sequence[Any],
     how: str = "vertical",
@@ -445,6 +450,7 @@ __all__ = [
     "fillna",
     "fill_null",
     "fill_nan",
+    "cast",
     "agg",
     "join",
     "concat",

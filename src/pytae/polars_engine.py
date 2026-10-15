@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
 import polars as pl
@@ -707,6 +707,86 @@ def _is_float_or_numeric_expr(node: ast.AST, schema: Any | None) -> bool:
     return True
 
 
+def _parse_dtype_spec(spec: Any) -> pl.DataType:
+    """Parse a type specification (type object, string, or Polars DataType) into a Polars DataType."""
+    if isinstance(spec, pl.DataType):
+        return spec
+    if isinstance(spec, type) and issubclass(spec, pl.DataType):
+        return spec()
+
+    if isinstance(spec, str):
+        s = spec.strip().lower()
+    elif spec in (int,):
+        s = "int"
+    elif spec in (float,):
+        s = "float"
+    elif spec in (str,):
+        s = "str"
+    elif spec in (bool,):
+        s = "bool"
+    else:
+        s = str(spec).strip().lower()
+
+    dtype_map = {
+        "int": pl.Int64,
+        "int64": pl.Int64,
+        "i64": pl.Int64,
+        "integer": pl.Int64,
+        "bigint": pl.Int64,
+        "int32": pl.Int32,
+        "i32": pl.Int32,
+        "int16": pl.Int16,
+        "i16": pl.Int16,
+        "smallint": pl.Int16,
+        "int8": pl.Int8,
+        "i8": pl.Int8,
+        "tinyint": pl.Int8,
+        "uint64": pl.UInt64,
+        "u64": pl.UInt64,
+        "uint32": pl.UInt32,
+        "u32": pl.UInt32,
+        "uint16": pl.UInt16,
+        "u16": pl.UInt16,
+        "uint8": pl.UInt8,
+        "u8": pl.UInt8,
+        "float": pl.Float64,
+        "float64": pl.Float64,
+        "f64": pl.Float64,
+        "double": pl.Float64,
+        "float32": pl.Float32,
+        "f32": pl.Float32,
+        "str": pl.String,
+        "string": pl.String,
+        "varchar": pl.String,
+        "text": pl.String,
+        "bool": pl.Boolean,
+        "boolean": pl.Boolean,
+        "date": pl.Date,
+        "datetime": pl.Datetime,
+        "timestamp": pl.Datetime,
+    }
+    if s in dtype_map:
+        return dtype_map[s]
+
+    if isinstance(spec, str) and hasattr(pl, spec):
+        cand = getattr(pl, spec)
+        if isinstance(cand, pl.DataType):
+            return cand
+        if isinstance(cand, type) and issubclass(cand, pl.DataType):
+            return cand()
+    raise ValueError(f"Unsupported dtype '{spec}'. Supported types: int, float, str, bool, int32, float32, date, datetime, etc.")
+
+
+def _extract_dtype_from_ast(dt_node: ast.AST) -> pl.DataType:
+    if isinstance(dt_node, ast.Constant):
+        return _parse_dtype_spec(dt_node.value)
+    if isinstance(dt_node, ast.Name):
+        return _parse_dtype_spec(dt_node.id)
+    if isinstance(dt_node, ast.Attribute):
+        return _parse_dtype_spec(dt_node.attr)
+    raise ValueError(f"Cannot parse dtype from expression {ast.dump(dt_node)}")
+
+
 def _ast_to_polars_expr(
     node: ast.AST,
     col_names: set[str],
@@ -856,6 +936,10 @@ def _ast_to_polars_expr(
                             expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
                         else:
                             expr = obj_expr.fill_null(val_expr)
+                    return expr.over(by) if by else expr
+                elif attr_name == "cast" and len(node.args) >= 1:
+                    target_dt = _extract_dtype_from_ast(node.args[0])
+                    expr = obj_expr.cast(target_dt)
                     return expr.over(by) if by else expr
 
         # 2. Functional map(...)
@@ -1049,6 +1133,41 @@ def _ast_to_polars_expr(
             return expr.over(by) if by else expr
         if func_name == "n" and len(args) == 0:
             expr = pl.len()
+            return expr.over(by) if by else expr
+        if func_name in ("int", "int64", "i64") and len(args) == 1:
+            expr = args[0].cast(pl.Int64)
+            return expr.over(by) if by else expr
+        if func_name in ("int32", "i32") and len(args) == 1:
+            expr = args[0].cast(pl.Int32)
+            return expr.over(by) if by else expr
+        if func_name in ("int16", "i16") and len(args) == 1:
+            expr = args[0].cast(pl.Int16)
+            return expr.over(by) if by else expr
+        if func_name in ("int8", "i8") and len(args) == 1:
+            expr = args[0].cast(pl.Int8)
+            return expr.over(by) if by else expr
+        if func_name in ("uint64", "u64") and len(args) == 1:
+            expr = args[0].cast(pl.UInt64)
+            return expr.over(by) if by else expr
+        if func_name in ("uint32", "u32") and len(args) == 1:
+            expr = args[0].cast(pl.UInt32)
+            return expr.over(by) if by else expr
+        if func_name in ("float", "float64", "f64") and len(args) == 1:
+            expr = args[0].cast(pl.Float64)
+            return expr.over(by) if by else expr
+        if func_name in ("float32", "f32") and len(args) == 1:
+            expr = args[0].cast(pl.Float32)
+            return expr.over(by) if by else expr
+        if func_name in ("str", "string") and len(args) == 1:
+            expr = args[0].cast(pl.String)
+            return expr.over(by) if by else expr
+        if func_name in ("bool", "boolean") and len(args) == 1:
+            expr = args[0].cast(pl.Boolean)
+            return expr.over(by) if by else expr
+        if func_name == "cast" and len(node.args) == 2:
+            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+            target_dt = _extract_dtype_from_ast(node.args[1])
+            expr = target_expr.cast(target_dt)
             return expr.over(by) if by else expr
 
     raise ValueError(f"Unsupported AST node: {type(node)}")
@@ -1896,3 +2015,49 @@ def concat_polars(
         return pl.concat(pl_dfs, how="vertical", **kwargs)
     except (pl.exceptions.SchemaError, pl.exceptions.ShapeError, Exception):
         return pl.concat(pl_dfs, how="diagonal_relaxed", **kwargs)
+
+
+def cast_polars(
+    df: Any,
+    dtypes: Mapping[str, Any] | str | None = None,
+    strict: bool = True,
+    **kwargs: Any,
+) -> Any:
+    """Cast column data types on a Polars DataFrame or LazyFrame."""
+    target_map: dict[str, pl.DataType] = {}
+    if dtypes is not None:
+        if isinstance(dtypes, str):
+            from pytae._text import tokenize as _tok
+
+            tokens = _tok(dtypes, ",", keep_quotes=True, track_brackets=True)
+            for token in tokens:
+                token = token.strip()
+                if not token:
+                    continue
+                if ":" in token:
+                    c, dt = token.split(":", 1)
+                elif "=" in token:
+                    c, dt = token.split("=", 1)
+                else:
+                    raise ValueError(f"cast(): invalid spec '{token}'. Expected 'col:type' or 'col=type'")
+                target_map[_unquote_name(c.strip())] = _parse_dtype_spec(dt.strip().strip("'\""))
+        elif isinstance(dtypes, Mapping):
+            for c, dt in dtypes.items():
+                target_map[_unquote_name(str(c))] = _parse_dtype_spec(dt)
+        else:
+            raise TypeError(f"cast(): dtypes must be a dict or string specification, got {type(dtypes)}")
+
+    for c, dt in kwargs.items():
+        target_map[_unquote_name(str(c))] = _parse_dtype_spec(dt)
+
+    if not target_map:
+        return df
+
+    pl_df = _to_polars_frame(df)
+    avail_cols = set(_df_columns(pl_df))
+    for c in target_map:
+        if c not in avail_cols:
+            raise KeyError(f"column '{c}' not found in DataFrame for cast")
+
+    return pl_df.cast(target_map, strict=strict)
+

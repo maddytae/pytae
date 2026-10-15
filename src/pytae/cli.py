@@ -171,6 +171,8 @@ _CLI_FLAGS = {
     "--join",
     "-concat",
     "--concat",
+    "-cast",
+    "--cast",
     "-progress",
     "--progress",
     "-time",
@@ -728,6 +730,16 @@ def build_parser() -> argparse.ArgumentParser:
         "anywhere in the cell, e.g. \"v='old:new',exact=false\"",
     )
     parser.add_argument(
+        "-cast",
+        "--cast",
+        dest="cast",
+        action=_OrderedAppend,
+        default=None,
+        metavar="SPEC",
+        help="cast column data types (Polars cast()); comma-separated 'col:type' or 'col=type' pairs, "
+        "e.g. \"age:int, score:float\" or \"id:str\"",
+    )
+    parser.add_argument(
         "-join",
         "--join",
         dest="join",
@@ -981,6 +993,8 @@ def main(argv: list[str] | None = None) -> int:
             args.pivot is not None,
             args.select,
             args.filter,
+            args.mutate,
+            args.cast,
             args.sql,
             args.replace_values,
             args.rename,
@@ -1015,6 +1029,7 @@ def main(argv: list[str] | None = None) -> int:
             args.long is not None,
             args.wide is not None,
             args.pivot is not None,
+            args.cast,
             args.clean_columns is not None,
             args.join,
             args.concat,
@@ -1037,6 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
     mutate_specs = list(args.mutate or [])
+    cast_specs = list(args.cast or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
     join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
@@ -1116,6 +1132,7 @@ def main(argv: list[str] | None = None) -> int:
                 select_specs=select_specs,
                 filter_specs=filter_specs,
                 mutate_specs=mutate_specs,
+                cast_specs=cast_specs,
                 sql_specs=sql_specs,
                 replace_specs=replace_specs,
                 rename_specs=rename_specs,
@@ -1139,6 +1156,7 @@ def main(argv: list[str] | None = None) -> int:
                     select_specs=select_specs,
                     filter_specs=filter_specs,
                     mutate_specs=mutate_specs,
+                    cast_specs=cast_specs,
                     sql_specs=sql_specs,
                     replace_specs=replace_specs,
                     rename_specs=rename_specs,

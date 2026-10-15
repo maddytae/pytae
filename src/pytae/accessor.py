@@ -53,6 +53,9 @@ class PolarsPtAccessor:
     def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
         return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
 
+    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
+
     def pick(
         self,
         spec: str,
@@ -246,6 +249,9 @@ class PandasPtAccessor:
 
     def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
         return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+
+    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
 
     def pick(
         self,

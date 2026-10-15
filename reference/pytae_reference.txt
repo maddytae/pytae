@@ -2149,6 +2149,29 @@ When combined with `.by()`, operations compute window statistics partitioned by 
 )
 ```
 
+### 6. Column Type Casting Inside `mutate`
+
+Pytae makes inline type conversion natural and ergonomic by supporting Python's standard conversion functions and Polars `.cast()`:
+
+```python
+# Convert types with standard functions
+penguins.mutate(
+    year_int="int(year)",
+    mass_f32="float32(body_mass_g)",
+    code_str="str(id)",
+    is_large="bool(heavy_flag)"
+)
+
+# Convert using .cast() method syntax
+penguins.mutate(
+    year_int="year.cast('int')",
+    rate_flt="rate.cast('float32')"
+)
+
+# Multi-column batch casting with across syntax
+penguins.mutate("(col1, col2, col3) = int(_)")
+```
+
 ---
 
 ## CLI Usage
@@ -2170,6 +2193,9 @@ pytae penguins.parquet \
   -by species \
   -mutate "species_avg = mean(body_mass_g), diff = body_mass_g - species_avg" \
   -head 5
+
+# Type casting inside mutate
+pytae data.csv -mutate "id = str(id), score = int(score)" -head 3
 ```
 
 ### Quoting Tips in Shell
@@ -2202,6 +2228,7 @@ Pytae provides a powerful suite of inspection, data cleaning, header sanitizatio
 | **Smart Handle Missing**| `df.handle_missing(fillna=".")` | `-handle_missing "."` | Fills strings with `.` and numerics with `0` for reports |
 | **Clean Headers** | `df.clean_columns(case="lower")` | `-clean_columns "case=lower"`| Sanitizes column names (strip, squeeze, case, dedupe) |
 | **Replace Values** | `df.replace_values({"M": "Male"})` | `-replace_values "M=Male"` | Exact or substring value replacement across columns |
+| **Type Casting** | `df.cast(age=int)` / `df.cast({'age': int})` | `-cast "age:int"` | Casts column datatypes via Polars SIMD engine |
 | **Clipboard Copy** | `df.to_clip()` | `-o clip` | Copies table to system clipboard (no index) |
 
 ---
@@ -2380,6 +2407,57 @@ df.replace_values({"temporary": "temp"}, c="notes", exact=False)
 ```
 ```bash
 pytae penguins.parquet -replace_values "Male=M, Female=F" -head 5
+```
+
+---
+
+## Type Casting (`cast`)
+
+Pytae provides dedicated whole-table type casting with SIMD acceleration powered by Polars. You can specify casts via keyword arguments, dictionary mappings, or string specifications:
+
+### Python Usage
+
+```python
+import pytae as pt
+
+df = pt.DataFrame({
+    "id": [1, 2, 3],
+    "price": ["19.99", "29.50", "4.00"],
+    "in_stock": [1, 0, 1]
+})
+
+# Keyword syntax
+df.cast(id=str, price=float, in_stock=bool)
+
+# Dictionary syntax (supports string aliases like 'int32', 'float32', 'date')
+df.cast({"id": "str", "price": "float32", "in_stock": bool})
+
+# Comma-separated string syntax
+df.cast("id:str, price:float, in_stock:bool")
+
+# Functional or accessor
+pt.cast(df, price=float)
+df.pt.cast(price=float)
+```
+
+### Supported Type Aliases
+- **Integers**: `int`, `int64`, `i64`, `int32`, `i32`, `int16`, `i16`, `int8`, `i8`, `uint64`, `u64`, `uint32`, `u32`, `uint16`, `uint8`
+- **Floats**: `float`, `float64`, `f64`, `double`, `float32`, `f32`
+- **Strings**: `str`, `string`, `varchar`, `text`
+- **Booleans**: `bool`, `boolean`
+- **Dates & Times**: `date`, `datetime`, `timestamp`
+- **Polars Types**: Any `pl.DataType` (e.g., `pl.Int64`, `pl.Date`)
+
+### CLI Usage
+
+In the CLI, `-cast` takes a comma-separated list of `col:type` or `col=type` pairs:
+
+```bash
+# Cast single or multiple columns
+pytae sales.csv -cast "id:str, price:float, in_stock:bool" -head 5
+
+# Chain with inspection
+pytae sales.csv -cast "price:float" -dtype
 ```
 
 ################################################################################
@@ -3716,7 +3794,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Slicing** | **[Top / Bottom Records (`pick`)](detailed_docs/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
 | **Reshaping** | **[Table Reshaping (`long` & `wide`)](detailed_docs/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins** | **[Relational Joins & Stacking (`join`)](detailed_docs/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon key notation, `validate` |
-| **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `fillna`, `fill_null`, `fill_nan`, `dropna`, `handle_missing`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
+| **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `cast`, `fillna`, `fill_null`, `fill_nan`, `dropna`, `handle_missing`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
 | **Plotting** | **[Visualizations & Charts (`plotting`)](detailed_docs/plotting.md)** | Terminal ASCII charts (`freq`, `hist`) and Matplotlib publication figures (`.plot()`, `-plot`) |
 | **CLI Only** | **[CLI Terminal Features (`cli_only`)](detailed_docs/cli_only.md)** | `-diff`, `-inspect`, `-meta`, `-file` multi-file pipelines, `-sql`, batch globbing, completions |
 | **Library Only**| **[Python Library Architecture (`library_only`)](detailed_docs/library_only.md)** | Constructor `pt()`, `.pt` accessor on Polars & Pandas, lazy evaluation pushdowns, callables |
@@ -4519,6 +4597,11 @@ def join(
     )
 
 
+def cast(df: Any, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+    return DataFrame(df).cast(dtypes=dtypes, strict=strict, **kwargs)
+
+
+
 def concat(
     items: Sequence[Any],
     how: str = "vertical",
@@ -4660,6 +4743,7 @@ __all__ = [
     "fillna",
     "fill_null",
     "fill_nan",
+    "cast",
     "agg",
     "join",
     "concat",
@@ -5427,6 +5511,9 @@ class PolarsPtAccessor:
     def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
         return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
 
+    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
+
     def pick(
         self,
         spec: str,
@@ -5620,6 +5707,9 @@ class PandasPtAccessor:
 
     def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
         return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+
+    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
 
     def pick(
         self,
@@ -5962,6 +6052,8 @@ _CLI_FLAGS = {
     "--join",
     "-concat",
     "--concat",
+    "-cast",
+    "--cast",
     "-progress",
     "--progress",
     "-time",
@@ -6519,6 +6611,16 @@ def build_parser() -> argparse.ArgumentParser:
         "anywhere in the cell, e.g. \"v='old:new',exact=false\"",
     )
     parser.add_argument(
+        "-cast",
+        "--cast",
+        dest="cast",
+        action=_OrderedAppend,
+        default=None,
+        metavar="SPEC",
+        help="cast column data types (Polars cast()); comma-separated 'col:type' or 'col=type' pairs, "
+        "e.g. \"age:int, score:float\" or \"id:str\"",
+    )
+    parser.add_argument(
         "-join",
         "--join",
         dest="join",
@@ -6772,6 +6874,8 @@ def main(argv: list[str] | None = None) -> int:
             args.pivot is not None,
             args.select,
             args.filter,
+            args.mutate,
+            args.cast,
             args.sql,
             args.replace_values,
             args.rename,
@@ -6806,6 +6910,7 @@ def main(argv: list[str] | None = None) -> int:
             args.long is not None,
             args.wide is not None,
             args.pivot is not None,
+            args.cast,
             args.clean_columns is not None,
             args.join,
             args.concat,
@@ -6828,6 +6933,7 @@ def main(argv: list[str] | None = None) -> int:
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
     filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
     mutate_specs = list(args.mutate or [])
+    cast_specs = list(args.cast or [])
     sql_specs = list(args.sql or [])
     replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
     join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
@@ -6907,6 +7013,7 @@ def main(argv: list[str] | None = None) -> int:
                 select_specs=select_specs,
                 filter_specs=filter_specs,
                 mutate_specs=mutate_specs,
+                cast_specs=cast_specs,
                 sql_specs=sql_specs,
                 replace_specs=replace_specs,
                 rename_specs=rename_specs,
@@ -6930,6 +7037,7 @@ def main(argv: list[str] | None = None) -> int:
                     select_specs=select_specs,
                     filter_specs=filter_specs,
                     mutate_specs=mutate_specs,
+                    cast_specs=cast_specs,
                     sql_specs=sql_specs,
                     replace_specs=replace_specs,
                     rename_specs=rename_specs,
@@ -7522,6 +7630,21 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -dtype asc",
         ],
         see_also=["-cols", "-info", "-nulls"],
+    ),
+    "cast": KeywordHelp(
+        name="cast",
+        flag="-cast, --cast SPEC",
+        syntax='pytae <path> -cast "col1:type, col2:type"',
+        summary="Cast column data types using Polars native SIMD engine.",
+        description="Converts column data types using comma-separated 'col:type' or 'col=type' pairs. Supported types include int, int32, float, float32, str, bool, date, datetime, etc.",
+        options=[
+            '"col:type, col2:type" : Comma-separated column-to-type pairs.',
+        ],
+        examples=[
+            'pytae data.csv -cast "age:int, score:float"',
+            'pytae data.csv -cast "id:str"',
+        ],
+        see_also=["-mutate", "-dtype"],
     ),
     "nulls": KeywordHelp(
         name="nulls",
@@ -8871,6 +8994,17 @@ class _Pipeline:
         except Exception as exc:
             return f"-mutate: {exc}"
 
+    def apply_cast(self, spec: str) -> str | None:
+        """Cast column types using Polars native SIMD vectorization. Returns an error message or None."""
+        try:
+            from pytae.polars_engine import cast_polars
+
+            self._pldf = cast_polars(self.polars_lazy_frame(), dtypes=spec)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-cast: {exc}"
+
     def apply_dropna(self, spec: str | None) -> str | None:
         """Drop rows containing missing values (null/NaN). Returns an error message or None."""
         from pytae.cli_parsing import parse_dropna_spec, unknown_columns_message
@@ -9688,6 +9822,7 @@ def _process_path(
     select_specs: list[tuple[list[str], dict]],
     filter_specs: list[list[tuple[str, Any]]] | None = None,
     mutate_specs: list[str] | None = None,
+    cast_specs: list[str] | None = None,
     sql_specs: list[str] | None = None,
     replace_specs: list[tuple[list[str] | None, dict[str, str], bool]] | None = None,
     rename_specs: list[dict[str, str]] | None = None,
@@ -9787,6 +9922,7 @@ def _process_path(
     select_iter = iter(select_specs)
     filter_iter = iter(filter_specs if filter_specs is not None else (qry_specs or []))
     mutate_iter = iter(mutate_specs or [])
+    cast_iter = iter(cast_specs or [])
     sql_iter = iter(sql_specs or [])
     replace_iter = iter(replace_specs or [])
     rename_iter = iter(rename_specs or [])
@@ -9832,6 +9968,11 @@ def _process_path(
                 if any(c not in avail_cols for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "cast":
+            err = pipeline.apply_cast(next(cast_iter))
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -10355,6 +10496,7 @@ from pytae._text import unquote_name as _unquote_name
 from pytae.polars_engine import (
     agg_polars,
     arrange_polars,
+    cast_polars,
     clean_columns_polars,
     concat_polars,
     distinct_polars,
@@ -11067,6 +11209,21 @@ class DataFrame:
                 raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
         return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
 
+    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+        """Cast column types using Polars native SIMD vectorization.
+
+        Parameters
+        ----------
+        dtypes : Mapping or str, optional
+            Mapping of column names to target types (e.g. {'x': int, 'y': float})
+            or comma-separated string specification (e.g. 'x:int, y:float').
+        strict : bool, default True
+            Whether to raise an error on invalid type conversions or return nulls.
+        **kwargs : Any
+            Additional column-to-type assignments (e.g. x=int, y='float').
+        """
+        return DataFrame(cast_polars(self._df, dtypes=dtypes, strict=strict, **kwargs))
+
     def pick(
         self,
         spec: str,
@@ -11604,6 +11761,10 @@ class GroupedDataFrame:
             if missing:
                 raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
         return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
+
+    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
+        """Cast column types using Polars native SIMD vectorization."""
+        return DataFrame(cast_polars(self._df, dtypes=dtypes, strict=strict, **kwargs))
 
     def pick(
         self,
@@ -13501,7 +13662,7 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
 import polars as pl
@@ -14199,6 +14360,86 @@ def _is_float_or_numeric_expr(node: ast.AST, schema: Any | None) -> bool:
     return True
 
 
+def _parse_dtype_spec(spec: Any) -> pl.DataType:
+    """Parse a type specification (type object, string, or Polars DataType) into a Polars DataType."""
+    if isinstance(spec, pl.DataType):
+        return spec
+    if isinstance(spec, type) and issubclass(spec, pl.DataType):
+        return spec()
+
+    if isinstance(spec, str):
+        s = spec.strip().lower()
+    elif spec in (int,):
+        s = "int"
+    elif spec in (float,):
+        s = "float"
+    elif spec in (str,):
+        s = "str"
+    elif spec in (bool,):
+        s = "bool"
+    else:
+        s = str(spec).strip().lower()
+
+    dtype_map = {
+        "int": pl.Int64,
+        "int64": pl.Int64,
+        "i64": pl.Int64,
+        "integer": pl.Int64,
+        "bigint": pl.Int64,
+        "int32": pl.Int32,
+        "i32": pl.Int32,
+        "int16": pl.Int16,
+        "i16": pl.Int16,
+        "smallint": pl.Int16,
+        "int8": pl.Int8,
+        "i8": pl.Int8,
+        "tinyint": pl.Int8,
+        "uint64": pl.UInt64,
+        "u64": pl.UInt64,
+        "uint32": pl.UInt32,
+        "u32": pl.UInt32,
+        "uint16": pl.UInt16,
+        "u16": pl.UInt16,
+        "uint8": pl.UInt8,
+        "u8": pl.UInt8,
+        "float": pl.Float64,
+        "float64": pl.Float64,
+        "f64": pl.Float64,
+        "double": pl.Float64,
+        "float32": pl.Float32,
+        "f32": pl.Float32,
+        "str": pl.String,
+        "string": pl.String,
+        "varchar": pl.String,
+        "text": pl.String,
+        "bool": pl.Boolean,
+        "boolean": pl.Boolean,
+        "date": pl.Date,
+        "datetime": pl.Datetime,
+        "timestamp": pl.Datetime,
+    }
+    if s in dtype_map:
+        return dtype_map[s]
+
+    if isinstance(spec, str) and hasattr(pl, spec):
+        cand = getattr(pl, spec)
+        if isinstance(cand, pl.DataType):
+            return cand
+        if isinstance(cand, type) and issubclass(cand, pl.DataType):
+            return cand()
+    raise ValueError(f"Unsupported dtype '{spec}'. Supported types: int, float, str, bool, int32, float32, date, datetime, etc.")
+
+
+def _extract_dtype_from_ast(dt_node: ast.AST) -> pl.DataType:
+    if isinstance(dt_node, ast.Constant):
+        return _parse_dtype_spec(dt_node.value)
+    if isinstance(dt_node, ast.Name):
+        return _parse_dtype_spec(dt_node.id)
+    if isinstance(dt_node, ast.Attribute):
+        return _parse_dtype_spec(dt_node.attr)
+    raise ValueError(f"Cannot parse dtype from expression {ast.dump(dt_node)}")
+
+
 def _ast_to_polars_expr(
     node: ast.AST,
     col_names: set[str],
@@ -14348,6 +14589,10 @@ def _ast_to_polars_expr(
                             expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
                         else:
                             expr = obj_expr.fill_null(val_expr)
+                    return expr.over(by) if by else expr
+                elif attr_name == "cast" and len(node.args) >= 1:
+                    target_dt = _extract_dtype_from_ast(node.args[0])
+                    expr = obj_expr.cast(target_dt)
                     return expr.over(by) if by else expr
 
         # 2. Functional map(...)
@@ -14541,6 +14786,41 @@ def _ast_to_polars_expr(
             return expr.over(by) if by else expr
         if func_name == "n" and len(args) == 0:
             expr = pl.len()
+            return expr.over(by) if by else expr
+        if func_name in ("int", "int64", "i64") and len(args) == 1:
+            expr = args[0].cast(pl.Int64)
+            return expr.over(by) if by else expr
+        if func_name in ("int32", "i32") and len(args) == 1:
+            expr = args[0].cast(pl.Int32)
+            return expr.over(by) if by else expr
+        if func_name in ("int16", "i16") and len(args) == 1:
+            expr = args[0].cast(pl.Int16)
+            return expr.over(by) if by else expr
+        if func_name in ("int8", "i8") and len(args) == 1:
+            expr = args[0].cast(pl.Int8)
+            return expr.over(by) if by else expr
+        if func_name in ("uint64", "u64") and len(args) == 1:
+            expr = args[0].cast(pl.UInt64)
+            return expr.over(by) if by else expr
+        if func_name in ("uint32", "u32") and len(args) == 1:
+            expr = args[0].cast(pl.UInt32)
+            return expr.over(by) if by else expr
+        if func_name in ("float", "float64", "f64") and len(args) == 1:
+            expr = args[0].cast(pl.Float64)
+            return expr.over(by) if by else expr
+        if func_name in ("float32", "f32") and len(args) == 1:
+            expr = args[0].cast(pl.Float32)
+            return expr.over(by) if by else expr
+        if func_name in ("str", "string") and len(args) == 1:
+            expr = args[0].cast(pl.String)
+            return expr.over(by) if by else expr
+        if func_name in ("bool", "boolean") and len(args) == 1:
+            expr = args[0].cast(pl.Boolean)
+            return expr.over(by) if by else expr
+        if func_name == "cast" and len(node.args) == 2:
+            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema)
+            target_dt = _extract_dtype_from_ast(node.args[1])
+            expr = target_expr.cast(target_dt)
             return expr.over(by) if by else expr
 
     raise ValueError(f"Unsupported AST node: {type(node)}")
@@ -15388,6 +15668,51 @@ def concat_polars(
         return pl.concat(pl_dfs, how="vertical", **kwargs)
     except (pl.exceptions.SchemaError, pl.exceptions.ShapeError, Exception):
         return pl.concat(pl_dfs, how="diagonal_relaxed", **kwargs)
+
+
+def cast_polars(
+    df: Any,
+    dtypes: Mapping[str, Any] | str | None = None,
+    strict: bool = True,
+    **kwargs: Any,
+) -> Any:
+    """Cast column data types on a Polars DataFrame or LazyFrame."""
+    target_map: dict[str, pl.DataType] = {}
+    if dtypes is not None:
+        if isinstance(dtypes, str):
+            from pytae._text import tokenize as _tok
+
+            tokens = _tok(dtypes, ",", keep_quotes=True, track_brackets=True)
+            for token in tokens:
+                token = token.strip()
+                if not token:
+                    continue
+                if ":" in token:
+                    c, dt = token.split(":", 1)
+                elif "=" in token:
+                    c, dt = token.split("=", 1)
+                else:
+                    raise ValueError(f"cast(): invalid spec '{token}'. Expected 'col:type' or 'col=type'")
+                target_map[_unquote_name(c.strip())] = _parse_dtype_spec(dt.strip().strip("'\""))
+        elif isinstance(dtypes, Mapping):
+            for c, dt in dtypes.items():
+                target_map[_unquote_name(str(c))] = _parse_dtype_spec(dt)
+        else:
+            raise TypeError(f"cast(): dtypes must be a dict or string specification, got {type(dtypes)}")
+
+    for c, dt in kwargs.items():
+        target_map[_unquote_name(str(c))] = _parse_dtype_spec(dt)
+
+    if not target_map:
+        return df
+
+    pl_df = _to_polars_frame(df)
+    avail_cols = set(_df_columns(pl_df))
+    for c in target_map:
+        if c not in avail_cols:
+            raise KeyError(f"column '{c}' not found in DataFrame for cast")
+
+    return pl_df.cast(target_map, strict=strict)
 
 ################################################################################
 # FILE: src/pytae/readers.py
@@ -17776,6 +18101,153 @@ def test_cli_pick_syntax_and_prop(tmp_path, capsys):
     # bare col defaults to n=1
     assert cli.main([path, "-pick", "x", "-shape"]) == 0
     assert "(1, 2)" in capsys.readouterr().out
+
+################################################################################
+# FILE: tests/test_cast.py
+################################################################################
+import polars as pl
+import pytest
+
+import pytae as pt
+from pytae.dataframe import DataFrame
+
+
+def test_dataframe_cast_kwargs():
+    df = DataFrame({"a": [1.0, 2.0, 3.0], "b": ["10", "20", "30"]})
+    res = df.cast(a=int, b=int)
+    assert res.schema["a"] == pl.Int64
+    assert res.schema["b"] == pl.Int64
+    assert res["a"].to_list() == [1, 2, 3]
+    assert res["b"].to_list() == [10, 20, 30]
+
+
+def test_dataframe_cast_dict():
+    df = DataFrame({"a": [1.0, 2.0], "b": ["10", "20"]})
+    res = df.cast({"a": "int32", "b": float})
+    assert res.schema["a"] == pl.Int32
+    assert res.schema["b"] == pl.Float64
+    assert res["a"].to_list() == [1, 2]
+    assert res["b"].to_list() == [10.0, 20.0]
+
+
+def test_dataframe_cast_str_spec():
+    df = DataFrame({"x": ["1", "2"], "y": [3.14, 2.71]})
+    res = df.cast("x:int, y:int")
+    assert res.schema["x"] == pl.Int64
+    assert res.schema["y"] == pl.Int64
+    assert res["x"].to_list() == [1, 2]
+    assert res["y"].to_list() == [3, 2]
+
+    # Test equals syntax
+    res2 = df.cast("x=int, y=str")
+    assert res2.schema["x"] == pl.Int64
+    assert res2.schema["y"] == pl.String
+
+
+def test_functional_and_accessor_cast():
+    df = DataFrame({"a": [1.0, 2.0]})
+    # Functional pt.cast()
+    res1 = pt.cast(df, a=int)
+    assert res1.schema["a"] == pl.Int64
+
+    # Polars accessor df.pt.cast()
+    pl_df = pl.DataFrame({"a": [1.0, 2.0]})
+    res2 = pl_df.pt.cast(a=int)
+    assert res2.schema["a"] == pl.Int64
+
+    # Pandas accessor df.pt.cast()
+    pd_df = pl_df.to_pandas()
+    res3 = pd_df.pt.cast(a=int)
+    assert res3.schema["a"] == pl.Int64
+
+
+def test_grouped_dataframe_cast():
+    df = DataFrame({"grp": ["x", "x", "y"], "val": [1.5, 2.5, 3.5]})
+    res = df.by("grp").cast(val=int)
+    assert res.schema["val"] == pl.Int64
+    assert res["val"].to_list() == [1, 2, 3]
+
+
+def test_mutate_inline_cast_python_types():
+    df = DataFrame({
+        "s_num": ["10", "20", "30"],
+        "f_num": [1.9, 2.1, 3.8],
+        "i_num": [0, 1, 0],
+    })
+
+    # int(x), float(x), str(x), bool(x)
+    res = df.mutate(
+        i_from_s="int(s_num)",
+        i_from_f="int(f_num)",
+        f_from_s="float(s_num)",
+        s_from_f="str(f_num)",
+        b_from_i="bool(i_num)",
+    )
+    assert res.schema["i_from_s"] == pl.Int64
+    assert res.schema["i_from_f"] == pl.Int64
+    assert res.schema["f_from_s"] == pl.Float64
+    assert res.schema["s_from_f"] == pl.String
+    assert res.schema["b_from_i"] == pl.Boolean
+
+    assert res["i_from_s"].to_list() == [10, 20, 30]
+    assert res["i_from_f"].to_list() == [1, 2, 3]
+    assert res["f_from_s"].to_list() == [10.0, 20.0, 30.0]
+    assert res["b_from_i"].to_list() == [False, True, False]
+
+
+def test_mutate_inline_cast_method_and_function():
+    df = DataFrame({"val": ["100", "200"]})
+    res = df.mutate(
+        m_cast="val.cast('int')",
+        f_cast="cast(val, 'int')",
+        i32_cast="int32(val)",
+        f32_cast="float32(val)",
+    )
+    assert res.schema["m_cast"] == pl.Int64
+    assert res.schema["f_cast"] == pl.Int64
+    assert res.schema["i32_cast"] == pl.Int32
+    assert res.schema["f32_cast"] == pl.Float32
+    assert res["m_cast"].to_list() == [100, 200]
+    assert res["f_cast"].to_list() == [100, 200]
+
+
+def test_mutate_multi_column_cast():
+    df = DataFrame({"a": ["1", "2"], "b": ["3", "4"]})
+    res = df.mutate("(a, b) = int(_)")
+    assert res.schema["a"] == pl.Int64
+    assert res.schema["b"] == pl.Int64
+    assert res["a"].to_list() == [1, 2]
+    assert res["b"].to_list() == [3, 4]
+
+
+def test_cast_errors():
+    df = DataFrame({"a": [1, 2]})
+    with pytest.raises(KeyError, match="column 'nonexistent' not found"):
+        df.cast(nonexistent=int)
+
+    with pytest.raises(ValueError, match="Unsupported dtype"):
+        df.cast(a="invalid_type_xyz")
+
+    with pytest.raises(ValueError, match="invalid spec"):
+        df.cast("a:int, invalid_token")
+
+
+def test_cli_cast(tmp_path):
+    from pytae.cli import main
+
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text("a,b\n1.0,10\n2.0,20\n", encoding="utf-8")
+
+    out_file = tmp_path / "out.csv"
+    # Run pytae data.csv -cast "a:int, b:int" -o out.csv
+    exit_code = main([str(csv_file), "-cast", "a:int, b:int", "-o", str(out_file)])
+    assert exit_code == 0
+
+    read_back = pt.read_csv(out_file)
+    assert read_back.schema["a"] == pl.Int64
+    assert read_back.schema["b"] == pl.Int64
+    assert read_back["a"].to_list() == [1, 2]
+    assert read_back["b"].to_list() == [10, 20]
 
 ################################################################################
 # FILE: tests/test_cli_agg.py

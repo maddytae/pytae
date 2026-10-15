@@ -118,6 +118,29 @@ When combined with `.by()`, operations compute window statistics partitioned by 
 )
 ```
 
+### 6. Column Type Casting Inside `mutate`
+
+Pytae makes inline type conversion natural and ergonomic by supporting Python's standard conversion functions and Polars `.cast()`:
+
+```python
+# Convert types with standard functions
+penguins.mutate(
+    year_int="int(year)",
+    mass_f32="float32(body_mass_g)",
+    code_str="str(id)",
+    is_large="bool(heavy_flag)"
+)
+
+# Convert using .cast() method syntax
+penguins.mutate(
+    year_int="year.cast('int')",
+    rate_flt="rate.cast('float32')"
+)
+
+# Multi-column batch casting with across syntax
+penguins.mutate("(col1, col2, col3) = int(_)")
+```
+
 ---
 
 ## CLI Usage
@@ -139,6 +162,9 @@ pytae penguins.parquet \
   -by species \
   -mutate "species_avg = mean(body_mass_g), diff = body_mass_g - species_avg" \
   -head 5
+
+# Type casting inside mutate
+pytae data.csv -mutate "id = str(id), score = int(score)" -head 3
 ```
 
 ### Quoting Tips in Shell
