@@ -24,13 +24,13 @@ Drop duplicate rows across the intermediate DataFrame with full control over col
 | `-distinct "...keep=last"` | `keep=last` | Keep last occurrence instead of first |
 | `-distinct "...keep=false"` | `keep=false` or `keep=none` | Drop all duplicate occurrences |
 
-`-distinct` keeps unique combinations and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.distinct(df, *cols, keep="first")` or `df.pt.distinct(*cols, keep="first")`.
+`-distinct` keeps unique combinations and resets the index to `0, 1, ...`. In the Python library, the equivalent is `df.distinct(*cols, keep="first")` (or `pt.distinct(df, *cols, keep="first")`).
 
 ---
 
 ## Deduplicating Across All Columns
 
-Run `-distinct` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.pt.distinct()` or pandas `df.drop_duplicates()`):
+Run `-distinct` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.distinct()` or pandas `df.drop_duplicates()`):
 
 ```bash
 # Keep only unique species and island pairs

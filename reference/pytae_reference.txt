@@ -1786,13 +1786,13 @@ Drop duplicate rows across the intermediate DataFrame with full control over col
 | `-distinct "...keep=last"` | `keep=last` | Keep last occurrence instead of first |
 | `-distinct "...keep=false"` | `keep=false` or `keep=none` | Drop all duplicate occurrences |
 
-`-distinct` keeps unique combinations and resets the index to `0, 1, ...`. In the Python library, the equivalent is `pt.distinct(df, *cols, keep="first")` or `df.pt.distinct(*cols, keep="first")`.
+`-distinct` keeps unique combinations and resets the index to `0, 1, ...`. In the Python library, the equivalent is `df.distinct(*cols, keep="first")` (or `pt.distinct(df, *cols, keep="first")`).
 
 ---
 
 ## Deduplicating Across All Columns
 
-Run `-distinct` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.pt.distinct()` or pandas `df.drop_duplicates()`):
+Run `-distinct` as a bare flag to eliminate identical rows across the entire working dataset (equivalent to `df.distinct()` or pandas `df.drop_duplicates()`):
 
 ```bash
 # Keep only unique species and island pairs
@@ -2476,7 +2476,7 @@ $ sex               <str>     'Male', 'Female', 'Female', NA, 'Female', 'Male...
 ```
 
 > [!TIP]
-> Unlike `-head`, which wraps across screen lines when dealing with wide tables (20–100+ columns), `-glimpse` guarantees that every column and its data type fit neatly on one line. It is also available in Python via `df.pt.glimpse()`.
+> Unlike `-head`, which wraps across screen lines when dealing with wide tables (20–100+ columns), `-glimpse` guarantees that every column and its data type fit neatly on one line. It is also available in Python via `df.glimpse()`.
 
 ---
 
@@ -5165,10 +5165,10 @@ pytae -file "customers.csv=c; orders.parquet=o" \
 
 ### Calling Styles
 
-1. **Grouped aggregation**: `df.pt.by("species").pt.agg("mean")` or `df.pt.by("species").pt.agg(["sum", "mean", "n"])
-2. **Keyword column mappings**: `df.pt.by("species").pt.agg(count="n", bill_length_mm="mean", body_mass_g=["sum", "mean"])
-3. **Named output columns**: `df.pt.by("species").pt.agg(total="body_mass_g:sum")
-4. **Whole-table summary**: `df.pt.agg("mean")` (computes grand totals across the entire table)
+1. **Grouped aggregation**: `df.by("species").agg("mean")` or `df.by("species").agg(["sum", "mean", "n"])
+2. **Keyword column mappings**: `df.by("species").agg(count="n", bill_length_mm="mean", body_mass_g=["sum", "mean"])
+3. **Named output columns**: `df.by("species").agg(total="body_mass_g:sum")
+4. **Whole-table summary**: `df.agg("mean")` (computes grand totals across the entire table)
 
 ---
 
@@ -5190,9 +5190,9 @@ titanic = pt.sample_data['titanic']
 ```python
 # mean + n: regardless of list order, n always comes first before aggregated columns
 (penguins
- .pt.select('species', 'island', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'island')
- .pt.agg(a=['mean', 'n'])  # notice n comes first
+ .select('species', 'island', 'bill_length_mm', 'body_mass_g')
+ .by('species', 'island')
+ .agg(a=['mean', 'n'])  # notice n comes first
 )
 ```
 Output:
@@ -5215,9 +5215,9 @@ shape: (5, 5)
 # Multiple numeric aggregations — column names get suffix: col_sum, col_mean, col_max
 # also works with a single string if you only need one aggfunc
 (penguins
- .pt.select('species', 'bill_length_mm', 'body_mass_g')
- .pt.by('species')
- .pt.agg(a=['sum', 'mean', 'max', 'n'])
+ .select('species', 'bill_length_mm', 'body_mass_g')
+ .by('species')
+ .agg(a=['sum', 'mean', 'max', 'n'])
 )
 ```
 Output:
@@ -5242,8 +5242,8 @@ shape: (3, 8)
 ```python
 # Keyword arguments — mean for bill_length, sum+mean for body_mass, count named 'n'
 (penguins
- .pt.by('species')
- .pt.agg(
+ .by('species')
+ .agg(
      bill_length_mm='mean',
      body_mass_g=['sum', 'mean'],
      n='n',
@@ -5270,9 +5270,9 @@ shape: (3, 5)
 # Note: the count keyword can be named anything — 'cnt', 'count', even 'maddy'
 (
     tips
-    .pt.select('smoker', 'time', 'total_bill', 'tip')
-    .pt.by('smoker', 'time')
-    .pt.agg(cnt='n', total_bill='mean', tip=['mean', 'max'])
+    .select('smoker', 'time', 'total_bill', 'tip')
+    .by('smoker', 'time')
+    .agg(cnt='n', total_bill='mean', tip=['mean', 'max'])
 )
 ```
 Output:
@@ -5295,9 +5295,9 @@ shape: (4, 6)
 # Here maddy='n' creates a column called 'maddy' that holds the group count
 (
     penguins
-    .pt.select('species', 'island', 'body_mass_g')
-    .pt.by('species')
-    .pt.agg(maddy='n', body_mass_g='sum')
+    .select('species', 'island', 'body_mass_g')
+    .by('species')
+    .agg(maddy='n', body_mass_g='sum')
 )
 ```
 Output:
@@ -5318,9 +5318,9 @@ shape: (3, 3)
 # Multiple count columns as keyword arguments — each count gets its own name
 (
     penguins
-    .pt.select('species', 'island', 'body_mass_g')
-    .pt.by('species')
-    .pt.agg(count='n', countv2='n', body_mass_g='mean')
+    .select('species', 'island', 'body_mass_g')
+    .by('species')
+    .agg(count='n', countv2='n', body_mass_g='mean')
 )
 ```
 Output:
@@ -5341,9 +5341,9 @@ shape: (3, 4)
 # median is a standard aggfunc — works in list form or as keyword argument
 (
     penguins
-    .pt.select('species', 'island', 'bill_length_mm', 'body_mass_g')
-    .pt.by('species')
-    .pt.agg(a=['median', 'mean', 'n'])
+    .select('species', 'island', 'bill_length_mm', 'body_mass_g')
+    .by('species')
+    .agg(a=['median', 'mean', 'n'])
 )
 ```
 Output:
@@ -5366,9 +5366,9 @@ shape: (3, 6)
 ```python
 # Default dropna=False keeps missing grouping keys in their own group (no silent data loss)
 (penguins
- .pt.select('species', 'sex', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'sex')
- .pt.agg(a=['mean', 'n'])
+ .select('species', 'sex', 'bill_length_mm', 'body_mass_g')
+ .by('species', 'sex')
+ .agg(a=['mean', 'n'])
 )
 ```
 Output:
@@ -5393,9 +5393,9 @@ shape: (8, 5)
 ```python
 # Pass dropna=True to exclude groups with NaN keys
 (penguins
- .pt.select('species', 'sex', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'sex')
- .pt.agg(a=['mean', 'n'], dropna=True)
+ .select('species', 'sex', 'bill_length_mm', 'body_mass_g')
+ .by('species', 'sex')
+ .agg(a=['mean', 'n'], dropna=True)
 )
 ```
 Output:
@@ -5420,9 +5420,9 @@ shape: (6, 5)
 ```python
 # Count only — useful for frequency tables on categorical columns
 (penguins
- .pt.select(exclude_dtype='number')
- .pt.by('species', 'island')
- .pt.agg(a='n')
+ .select(exclude_dtype='number')
+ .by('species', 'island')
+ .agg(a='n')
 )
 ```
 Output:
@@ -5448,10 +5448,10 @@ Because  operations return DataFrames, you can chain them seamlessly with standa
 ```python
 (
     penguins
-    .pt.filter('body_mass_g > 3000')
-    .pt.select('species', 'sex', 'body_mass_g')
-    .pt.by('species', 'sex')
-    .pt.agg(a=['mean', 'max', 'n'])
+    .filter('body_mass_g > 3000')
+    .select('species', 'sex', 'body_mass_g')
+    .by('species', 'sex')
+    .agg(a=['mean', 'max', 'n'])
     .sort_values('body_mass_g_mean', ascending=False)
 )
 ```
@@ -5487,8 +5487,8 @@ tips_spaced = tips.rename(columns={'total_bill': 'total bill'})
 # Single string mapping with bracketed spaced columns
 (
     tips_spaced
-    .pt.by('smoker')
-    .pt.agg("tip = mean, [total bill] = mean, n = n")
+    .by('smoker')
+    .agg("tip = mean, [total bill] = mean, n = n")
 )
 ```
 Output:
@@ -5508,8 +5508,8 @@ shape: (2, 4)
 # Multiple positional string specifications
 (
     tips_spaced
-    .pt.by('smoker')
-    .pt.agg("tip = mean", "[total bill] = mean", "n = n")
+    .by('smoker')
+    .agg("tip = mean", "[total bill] = mean", "n = n")
 )
 ```
 Output:
@@ -5529,8 +5529,8 @@ shape: (2, 4)
 # Custom output names and bracketed source column
 (
     tips_spaced
-    .pt.by('smoker')
-    .pt.agg("[avg bill] = [total bill]:mean, [total tip] = tip:sum, [table count] = n")
+    .by('smoker')
+    .agg("[avg bill] = [total bill]:mean, [total tip] = tip:sum, [table count] = n")
 )
 ```
 Output:
@@ -5551,10 +5551,10 @@ shape: (2, 4)
 (
     tips
     .rename(columns={'total_bill': 'total bill'})
-    .pt.filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
-    .pt.select('smoker', 'tip', '[total bill]')
-    .pt.by('smoker')
-    .pt.agg("tip = mean, [total bill] = mean, n = n")
+    .filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
+    .select('smoker', 'tip', '[total bill]')
+    .by('smoker')
+    .agg("tip = mean, [total bill] = mean, n = n")
 )
 ```
 Output:
@@ -5581,7 +5581,7 @@ shape: (2, 4)
 
 | Method | Key Params | Purpose |
 |---|---|---|
-| `.pt.arrange(*cols, ascending=None, na_last=True)` | `*cols`, `ascending`, `na_last` | Sort rows ascending / descending |
+| `.arrange(*cols, ascending=None, na_last=True)` | `*cols`, `ascending`, `na_last` | Sort rows ascending / descending |
 
 ---
 
@@ -5599,14 +5599,14 @@ tips = pt.sample_data['tips']
 
 ## 1. `arrange()` — Basic Sorting
 
-By default, `.pt.arrange()` sorts in ascending order.
+By default, `.arrange()` sorts in ascending order.
 
 ```python
 # Sort ascending by body mass
 (
     penguins
-    .pt.arrange("body_mass_g")
-    .pt.select("species", "island", "body_mass_g")
+    .arrange("body_mass_g")
+    .select("species", "island", "body_mass_g")
     .head(5)
 )
 ```
@@ -5634,8 +5634,8 @@ Specify descending order either by appending `desc` or prefixing the column name
 # Using explicit 'desc'
 (
     penguins
-    .pt.arrange("body_mass_g desc")
-    .pt.select("species", "island", "body_mass_g")
+    .arrange("body_mass_g desc")
+    .select("species", "island", "body_mass_g")
     .head(5)
 )
 ```
@@ -5659,8 +5659,8 @@ shape: (5, 3)
 # Using leading minus '-' shorthand
 (
     penguins
-    .pt.arrange("-body_mass_g")
-    .pt.select("species", "island", "body_mass_g")
+    .arrange("-body_mass_g")
+    .select("species", "island", "body_mass_g")
     .head(5)
 )
 ```
@@ -5688,8 +5688,8 @@ Pass multiple column specifications either as separate arguments or as a comma-s
 # Multi-column: species ascending, body_mass_g descending
 (
     penguins
-    .pt.arrange("species", "body_mass_g desc")
-    .pt.select("species", "island", "body_mass_g")
+    .arrange("species", "body_mass_g desc")
+    .select("species", "island", "body_mass_g")
     .head(6)
 )
 ```
@@ -5714,8 +5714,8 @@ shape: (6, 3)
 # Comma-separated string with shorthand minus
 (
     penguins
-    .pt.arrange("species, -body_mass_g")
-    .pt.select("species", "island", "body_mass_g")
+    .arrange("species, -body_mass_g")
+    .select("species", "island", "body_mass_g")
     .head(6)
 )
 ```
@@ -5747,8 +5747,8 @@ spaced_penguins = penguins.rename(columns={"bill_length_mm": "bill length mm"})
 # Sort by bracketed column name descending
 (
     spaced_penguins
-    .pt.arrange("[bill length mm] desc")
-    .pt.select("species", "[bill length mm]")
+    .arrange("[bill length mm] desc")
+    .select("species", "[bill length mm]")
     .head(5)
 )
 ```
@@ -5801,13 +5801,13 @@ shape: (4, 3)
 
 Remove duplicate records across the intermediate DataFrame with full control over column subsets.
 
-`pytae` provides both the method-chaining accessor `df.pt.distinct(*cols, keep='first')` and the functional verb `pt.distinct(df, *cols)`. In the CLI, the equivalent flag is `-distinct` (or `-distinct COLS`).
+`pytae` provides both direct method chaining `df.distinct(*cols, keep='first')` and the functional verb `pt.distinct(df, *cols)`. In the CLI, the equivalent flag is `-distinct` (or `-distinct COLS`).
 
 | Operation | Pytae Method Chain | CLI Equivalent |
 |---|---|---|
-| All Columns | `df.pt.distinct()` | `-distinct` |
-| Specific Columns | `df.pt.distinct('col1', 'col2')` | `-distinct "col1,col2"` |
-| Keep Last / None | `df.pt.distinct(keep='last')` | N/A |
+| All Columns | `df.distinct()` | `-distinct` |
+| Specific Columns | `df.distinct('col1', 'col2')` | `-distinct "col1,col2"` |
+| Keep Last / None | `df.distinct(keep='last')` | N/A |
 
 ---
 
@@ -5824,7 +5824,7 @@ penguins = pt.sample_data['penguins']
 tips = pt.sample_data['tips']
 ```
 
-## 1. Deduplicating Across All Columns (`.pt.distinct()`)
+## 1. Deduplicating Across All Columns (`.distinct()`)
 
 Eliminate identical rows across all selected columns. The index is automatically reset:
 
@@ -5832,8 +5832,8 @@ Eliminate identical rows across all selected columns. The index is automatically
 # Keep only unique species and island pairs
 (
     penguins
-    .pt.select("species", "island")
-    .pt.distinct()
+    .select("species", "island")
+    .distinct()
 )
 ```
 Output:
@@ -5860,8 +5860,8 @@ Pass column names to restrict duplicate checks to specific identifiers, keeping 
 # Keep the first recorded penguin for each unique species and island combination
 (
     penguins
-    .pt.select("species", "island", "body_mass_g", "sex")
-    .pt.distinct("species", "island")
+    .select("species", "island", "body_mass_g", "sex")
+    .distinct("species", "island")
 )
 ```
 Output:
@@ -5882,16 +5882,16 @@ shape: (5, 4)
 
 ## 3. Chaining in Pipelines
 
-`df.pt.distinct()` flows seamlessly inside multi-step pipelines without dropping out of `.pt`:
+`df.distinct()` flows seamlessly inside multi-step pipelines in fluent method chains:
 
 ```python
 # Filter heavy penguins -> select columns -> deduplicate -> arrange
 (
     penguins
-    .pt.filter("body_mass_g > 4000")
-    .pt.select("species", "island")
-    .pt.distinct()
-    .pt.arrange("species", "island")
+    .filter("body_mass_g > 4000")
+    .select("species", "island")
+    .distinct()
+    .arrange("species", "island")
 )
 ```
 Output:
@@ -5918,8 +5918,8 @@ Optionally retain the last occurrence instead of the first:
 # Retain the last record for each day and time
 (
     tips
-    .pt.select("day", "time", "total_bill", "tip")
-    .pt.distinct("day", "time", keep="last")
+    .select("day", "time", "total_bill", "tip")
+    .distinct("day", "time", keep="last")
 )
 ```
 Output:
@@ -5976,10 +5976,10 @@ shape: (5, 2)
 
 `filter` supports multiple flexible calling styles to fit interactive analysis, programmatic pipelines, and column names with spaces:
 
-- **Keyword arguments**: `df.pt.filter(species='Adelie', body_mass_g='> 5000')`
-- **String expressions** (matches CLI `-filter` syntax; handles spaces directly): `df.pt.filter("bill length mm > 40, species = 'Adelie'")`
-- **Plain dictionaries** (ideal for dynamic keys or columns with spaces): `df.pt.filter({"bill length mm": "> 40", "species": "Adelie"})`
-- **Mixed calling**: `df.pt.filter("bill length mm > 40", {"island": "Biscoe"}, species="Gentoo")`
+- **Keyword arguments**: `df.filter(species='Adelie', body_mass_g='> 5000')`
+- **String expressions** (matches CLI `-filter` syntax; handles spaces directly): `df.filter("bill length mm > 40, species = 'Adelie'")`
+- **Plain dictionaries** (ideal for dynamic keys or columns with spaces): `df.filter({"bill length mm": "> 40", "species": "Adelie"})`
+- **Mixed calling**: `df.filter("bill length mm > 40", {"island": "Biscoe"}, species="Gentoo")`
 - **Library function**: `pt.filter(df, species='Adelie', body_mass_g='> 5000')`
 
 ### Supported Condition Types
@@ -6017,13 +6017,13 @@ titanic = pt.sample_data['titanic']
 
 ## Flexible calling styles: kwargs, string expressions, and dictionaries
 
-`filter()` accepts conditions as keyword arguments, string expressions matching the CLI `-filter` syntax, plain dictionaries, or any mix of the three. Both the DataFrame accessor (`df.pt.filter(...)`) and the top-level library verb (`pt.filter(df, ...)`) are supported.
+`filter()` accepts conditions as keyword arguments, string expressions matching the CLI `-filter` syntax, plain dictionaries, or any mix of the three. Both direct method chaining (`df.filter(...)`) and the top-level library verb (`pt.filter(df, ...)`) are supported.
 
 ```python
 # 1. Keyword arguments — clean and pythonic
 (
     penguins
-    .pt.filter(species='Adelie', island='Dream')
+    .filter(species='Adelie', island='Dream')
     .sample(10)
 )
 ```
@@ -6035,16 +6035,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream  ┆ 36.5           ┆ 18.0          ┆ 182.0             ┆ 3150.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 38.3           ┆ 19.2          ┆ 189.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 35.6           ┆ 17.5          ┆ 191.0             ┆ 3175.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.9          ┆ 190.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 35.7           ┆ 18.0          ┆ 202.0             ┆ 3550.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 40.6           ┆ 17.2          ┆ 187.0             ┆ 3475.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 37.3           ┆ 16.8          ┆ 192.0             ┆ 3000.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.8          ┆ 195.0             ┆ 3450.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6052,7 +6052,7 @@ shape: (10, 7)
 # 2. String expressions — matches pytae CLI -qry syntax; supports comma-separated conditions
 (
     penguins
-    .pt.filter("species = 'Adelie', body_mass_g > 4000")
+    .filter("species = 'Adelie', body_mass_g > 4000")
     .sample(10)
 )
 ```
@@ -6064,16 +6064,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Adelie  ┆ Torgersen ┆ 34.6           ┆ 21.1          ┆ 198.0             ┆ 4400.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.8           ┆ 19.1          ┆ 184.0             ┆ 4650.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 39.2           ┆ 19.6          ┆ 195.0             ┆ 4675.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male │
 │ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.8          ┆ 190.0             ┆ 4600.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.1          ┆ 186.0             ┆ 4450.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 40.8           ┆ 18.9          ┆ 208.0             ┆ 4300.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 43.2           ┆ 19.0          ┆ 197.0             ┆ 4775.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 42.0           ┆ 19.5          ┆ 200.0             ┆ 4050.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 41.1           ┆ 18.2          ┆ 192.0             ┆ 4050.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 42.8           ┆ 18.5          ┆ 195.0             ┆ 4250.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 42.9           ┆ 17.6          ┆ 196.0             ┆ 4700.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 37.8           ┆ 20.0          ┆ 190.0             ┆ 4250.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0             ┆ 4275.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.2           ┆ 18.6          ┆ 190.0             ┆ 4250.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 39.7           ┆ 17.9          ┆ 193.0             ┆ 4250.0      ┆ Male │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6081,7 +6081,7 @@ shape: (10, 7)
 # 3. Plain dictionaries — useful for programmatic pipelines or dynamic key mapping
 (
     penguins
-    .pt.filter({"species": "Adelie", "island": "Dream"})
+    .filter({"species": "Adelie", "island": "Dream"})
     .sample(10)
 )
 ```
@@ -6093,16 +6093,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream  ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 18.5          ┆ 186.0             ┆ 3100.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 39.6           ┆ 18.8          ┆ 190.0             ┆ 4600.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 37.6           ┆ 19.3          ┆ 181.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 37.0           ┆ 16.9          ┆ 185.0             ┆ 3000.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 37.5           ┆ 18.9          ┆ 179.0             ┆ 2975.0      ┆ null   │
-│ Adelie  ┆ Dream  ┆ 38.3           ┆ 19.2          ┆ 189.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 18.1          ┆ 205.0             ┆ 4300.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 32.1           ┆ 15.5          ┆ 188.0             ┆ 3050.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 37.3           ┆ 16.8          ┆ 192.0             ┆ 3000.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 37.8           ┆ 18.1          ┆ 193.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 38.1           ┆ 17.6          ┆ 187.0             ┆ 3425.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.8          ┆ 195.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6110,7 +6110,7 @@ shape: (10, 7)
 # 4. Mixed calling — combine string expressions, dicts, and kwargs in a single call
 (
     penguins
-    .pt.filter("body_mass_g > 4000", {"island": "Biscoe"}, sex="Female")
+    .filter("body_mass_g > 4000", {"island": "Biscoe"}, sex="Female")
     .sample(10)
 )
 ```
@@ -6123,20 +6123,20 @@ shape: (10, 7)
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
 │ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.5          ┆ 209.0             ┆ 4800.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.3           ┆ 13.7          ┆ 210.0             ┆ 4300.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 13.9          ┆ 210.0             ┆ 4200.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 45.7           ┆ 13.9          ┆ 214.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 47.5           ┆ 14.2          ┆ 209.0             ┆ 4600.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 47.5           ┆ 14.0          ┆ 212.0             ┆ 4875.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 15.5          ┆ 215.0             ┆ 4975.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 43.4           ┆ 14.4          ┆ 218.0             ┆ 4600.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 43.5           ┆ 15.2          ┆ 213.0             ┆ 4650.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.1          ┆ 217.0             ┆ 4375.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 13.7          ┆ 214.0             ┆ 4925.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
-# 5. Top-level function pt.filter(df, ...) — works identically to the .pt accessor
+# 5. Top-level function pt.filter(df, ...) — works identically to DataFrame methods
 pt.filter(penguins, species="Gentoo", body_mass_g="> 5000").sample(10)
 ```
 Output:
@@ -6147,16 +6147,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.2           ┆ 15.2          ┆ 221.0             ┆ 6300.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 16.3          ┆ 220.0             ┆ 5400.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.3          ┆ 224.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 17.3          ┆ 228.0             ┆ 5600.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 55.9           ┆ 17.0          ┆ 228.0             ┆ 5600.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 44.4           ┆ 17.3          ┆ 219.0             ┆ 5250.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 15.7          ┆ 226.0             ┆ 5200.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.7          ┆ 222.0             ┆ 5750.0      ┆ Male │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6173,7 +6173,7 @@ penguins_spaces = penguins.rename(
 # String expressions with brackets handle spaced column names cleanly:
 (
     penguins_spaces
-    .pt.filter("[bill length mm] > 45", "[body mass g] > 4000")
+    .filter("[bill length mm] > 45", "[body mass g] > 4000")
     .sample(10)
 )
 ```
@@ -6185,16 +6185,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Chinstrap ┆ Dream  ┆ 50.5           ┆ 19.6          ┆ 201.0             ┆ 4050.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 49.3           ┆ 19.9          ┆ 203.0             ┆ 4050.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 48.5           ┆ 14.1          ┆ 220.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.5           ┆ 14.8          ┆ 217.0             ┆ 5200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 48.4           ┆ 14.4          ┆ 203.0             ┆ 4625.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 47.2           ┆ 15.5          ┆ 215.0             ┆ 4975.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null   │
+│ Chinstrap ┆ Dream  ┆ 46.0           ┆ 18.9          ┆ 195.0             ┆ 4150.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 52.8           ┆ 20.0          ┆ 205.0             ┆ 4550.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 53.5           ┆ 19.9          ┆ 205.0             ┆ 4500.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 47.6           ┆ 14.5          ┆ 215.0             ┆ 5400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.5          ┆ 209.0             ┆ 4800.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 225.0             ┆ 5400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 50.5           ┆ 15.2          ┆ 216.0             ┆ 5000.0      ┆ Female │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6207,7 +6207,7 @@ penguins_spaces = penguins.rename(
 # String expressions with brackets handle spaced column names cleanly:
 (
     penguins_spaces
-    .pt.filter("[bill length mm] > 45", "[body mass g] > 4000")
+    .filter("[bill length mm] > 45", "[body mass g] > 4000")
     .sample(10)
 )
 ```
@@ -6219,16 +6219,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Chinstrap ┆ Dream  ┆ 54.2           ┆ 20.8          ┆ 201.0             ┆ 4300.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 53.5           ┆ 19.9          ┆ 205.0             ┆ 4500.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 47.6           ┆ 14.5          ┆ 215.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 45.5           ┆ 13.9          ┆ 210.0             ┆ 4200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 45.3           ┆ 13.8          ┆ 208.0             ┆ 4200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.4           ┆ 15.0          ┆ 216.0             ┆ 4700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 52.1           ┆ 17.0          ┆ 230.0             ┆ 5550.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 49.2           ┆ 18.2          ┆ 195.0             ┆ 4400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 48.4           ┆ 16.3          ┆ 220.0             ┆ 5400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 46.6           ┆ 14.2          ┆ 210.0             ┆ 4850.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 47.4           ┆ 14.6          ┆ 212.0             ┆ 4725.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 51.3           ┆ 14.2          ┆ 218.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 52.2           ┆ 17.1          ┆ 228.0             ┆ 5400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 50.8           ┆ 15.7          ┆ 226.0             ┆ 5200.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6238,7 +6238,7 @@ shape: (10, 7)
 # Single equality — keep only Dream island
 (
     penguins
-    .pt.filter(island='Dream')
+    .filter(island='Dream')
     .sample(10)
 )
 ```
@@ -6250,16 +6250,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 37.3           ┆ 17.8          ┆ 191.0             ┆ 3350.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 36.9           ┆ 18.6          ┆ 189.0             ┆ 3500.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.8          ┆ 195.0             ┆ 3450.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 45.2           ┆ 17.8          ┆ 198.0             ┆ 3950.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 40.6           ┆ 17.2          ┆ 187.0             ┆ 3475.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 52.7           ┆ 19.8          ┆ 197.0             ┆ 3725.0      ┆ Male   │
 │ Chinstrap ┆ Dream  ┆ 45.9           ┆ 17.1          ┆ 190.0             ┆ 3575.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 49.0           ┆ 19.6          ┆ 212.0             ┆ 4300.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.7           ┆ 19.7          ┆ 203.0             ┆ 4050.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 46.4           ┆ 18.6          ┆ 190.0             ┆ 3450.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 46.9           ┆ 16.6          ┆ 192.0             ┆ 2700.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 50.1           ┆ 17.9          ┆ 190.0             ┆ 3400.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 51.4           ┆ 19.0          ┆ 201.0             ┆ 3950.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.2           ┆ 18.8          ┆ 202.0             ┆ 3800.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 51.9           ┆ 19.5          ┆ 206.0             ┆ 3950.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6268,10 +6268,10 @@ shape: (10, 7)
 # Kwargs accept a list directly:
 (
     penguins
-    .pt.filter(species=['Adelie', 'Chinstrap'])
-    .pt.select('species', 'island', 'body_mass_g')
-    .pt.by('species', 'island')
-    .pt.agg(a=['mean', 'n'])
+    .filter(species=['Adelie', 'Chinstrap'])
+    .select('species', 'island', 'body_mass_g')
+    .by('species', 'island')
+    .agg(a=['mean', 'n'])
 )
 ```
 Output:
@@ -6293,7 +6293,7 @@ shape: (4, 4)
 # 'not in' — exclude Male penguins via kwargs
 (
     penguins
-    .pt.filter(sex=('not in', ['Male']))
+    .filter(sex=('not in', ['Male']))
     .sample(10)
 )
 ```
@@ -6306,16 +6306,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 38.9           ┆ 17.8          ┆ 181.0            ┆ 3625.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 34.5           ┆ 18.1          ┆ 187.0            ┆ 2900.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 47.0           ┆ 17.3          ┆ 185.0            ┆ 3700.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 46.9           ┆ 16.6          ┆ 192.0            ┆ 2700.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.0          ┆ 195.0            ┆ 3650.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.1           ┆ 13.2          ┆ 211.0            ┆ 4500.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 43.3           ┆ 13.4          ┆ 209.0            ┆ 4400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.1           ┆ 14.5          ┆ 215.0            ┆ 5000.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 14.8          ┆ 220.0            ┆ 5150.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.3           ┆ 13.8          ┆ 208.0            ┆ 4200.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 38.7           ┆ 19.0          ┆ 195.0            ┆ 3450.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 172.0            ┆ 3150.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 36.0           ┆ 17.9          ┆ 190.0            ┆ 3450.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 36.4           ┆ 17.1          ┆ 184.0            ┆ 2850.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 35.0           ┆ 17.9          ┆ 192.0            ┆ 3725.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 39.6           ┆ 20.7          ┆ 191.0            ┆ 3900.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 40.2           ┆ 17.1          ┆ 193.0            ┆ 3400.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 45.5           ┆ 17.0          ┆ 196.0            ┆ 3500.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 45.3           ┆ 13.7          ┆ 210.0            ┆ 4300.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.6           ┆ 14.2          ┆ 210.0            ┆ 4850.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6328,7 +6328,7 @@ Supported comparison operators: `>`, `>=`, `<`, `<=`, `==`, `!=`.
 # Filter penguins with body mass greater than 5000g (string operator)
 (
     penguins
-    .pt.filter(body_mass_g='> 5000')
+    .filter(body_mass_g='> 5000')
     .sample(10)
 )
 ```
@@ -6340,16 +6340,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 49.2           ┆ 15.2          ┆ 221.0             ┆ 6300.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 16.3          ┆ 220.0             ┆ 5400.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 16.3          ┆ 230.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.2          ┆ 218.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 15.7          ┆ 226.0             ┆ 5200.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 52.5           ┆ 15.6          ┆ 221.0             ┆ 5450.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.9          ┆ 224.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 52.1           ┆ 17.0          ┆ 230.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6357,29 +6357,29 @@ shape: (10, 7)
 # Tuple operator syntax: ('>', 5000)
 (
     penguins
-    .pt.filter(body_mass_g=('>', 5000))
+    .filter(body_mass_g=('>', 5000))
     .sample(10)
 )
 ```
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 16.3          ┆ 230.0             ┆ 5700.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.0           ┆ 16.1          ┆ 216.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 14.8          ┆ 220.0             ┆ 5150.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 44.4           ┆ 17.3          ┆ 219.0             ┆ 5250.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male   │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
+│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 59.6           ┆ 17.0          ┆ 230.0             ┆ 6050.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 222.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
 ```python
@@ -6387,8 +6387,8 @@ shape: (10, 7)
 # Gentoo females with large bills — multi-condition kwargs:
 (
     penguins
-    .pt.filter(species='Gentoo', sex='Female', bill_length_mm='>= 45')
-    .pt.select('species', 'island', 'sex', 'bill_length_mm', 'body_mass_g')
+    .filter(species='Gentoo', sex='Female', bill_length_mm='>= 45')
+    .select('species', 'island', 'sex', 'bill_length_mm', 'body_mass_g')
     .sample(10)
 )
 ```
@@ -6400,28 +6400,87 @@ shape: (10, 5)
 │ ---     ┆ ---    ┆ ---    ┆ ---            ┆ ---         │
 │ str     ┆ str    ┆ str    ┆ f64            ┆ f64         │
 ╞═════════╪════════╪════════╪════════════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4650.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.3           ┆ 4300.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.1           ┆ 4500.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 5000.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 46.6           ┆ 4850.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 46.4           ┆ 4700.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.2           ┆ 4750.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 49.1           ┆ 4625.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.4           ┆ 4725.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.9           ┆ 4875.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 48.4           ┆ 4625.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 50.5           ┆ 5000.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.2           ┆ 5200.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.5           ┆ 4875.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.2           ┆ 4375.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.2           ┆ 4925.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.8           ┆ 4850.0      │
 └─────────┴────────┴────────┴────────────────┴─────────────┘
 ```
 
 ## Interval notation
-String intervals let you filter a range on the same column without chaining two `.pt.filter()` calls.
+String intervals let you filter a range on the same column without chaining two `.filter()` calls.
 `(` / `)` = exclusive bound, `[` / `]` = inclusive bound.
 
 ```python
 # Open interval — strictly between 3500 and 4500 g via kwargs:
 (
     penguins
-    .pt.filter(body_mass_g='(3500,4500)')
+    .filter(body_mass_g='(3500,4500)')
+    .sample(10)
+)
+```
+Output:
+```text
+shape: (10, 7)
+┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Biscoe ┆ 40.6           ┆ 18.8          ┆ 193.0             ┆ 3800.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 41.5           ┆ 18.5          ┆ 201.0             ┆ 4000.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 46.0           ┆ 18.9          ┆ 195.0             ┆ 4150.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 49.2           ┆ 18.2          ┆ 195.0             ┆ 4400.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.6           ┆ 19.4          ┆ 193.0             ┆ 3800.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 47.5           ┆ 16.8          ┆ 199.0             ┆ 3900.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 49.0           ┆ 19.5          ┆ 210.0             ┆ 3950.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.9           ┆ 19.1          ┆ 196.0             ┆ 3550.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 18.5          ┆ 201.0             ┆ 4450.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.1          ┆ 217.0             ┆ 4375.0      ┆ Female │
+└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+```
+
+```python
+# Half-open interval — bill_length_mm >= 40 and < 50
+(
+    penguins
+    .filter(bill_length_mm='[40,50)')
+    .sample(10)
+)
+```
+Output:
+```text
+shape: (10, 7)
+┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
+│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
+│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
+│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
+╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
+│ Adelie    ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0            ┆ 4150.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 43.1           ┆ 19.2          ┆ 197.0            ┆ 3500.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 17.8          ┆ 198.0            ┆ 3950.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 46.1           ┆ 18.2          ┆ 178.0            ┆ 3250.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 46.6           ┆ 17.8          ┆ 193.0            ┆ 3800.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.6          ┆ 212.0            ┆ 4300.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 42.5           ┆ 17.3          ┆ 187.0            ┆ 3350.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0            ┆ 4400.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.2           ┆ 13.7          ┆ 214.0            ┆ 4925.0      ┆ Female │
+└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+```
+
+```python
+# Closed interval — body_mass_g between 3500 and 4000 inclusive
+(
+    penguins
+    .filter(body_mass_g='[3500,4000]')
     .sample(10)
 )
 ```
@@ -6435,75 +6494,15 @@ shape: (10, 7)
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
 │ Adelie    ┆ Torgersen ┆ 36.6           ┆ 17.8          ┆ 185.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 41.1           ┆ 18.2          ┆ 192.0            ┆ 4050.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 35.5           ┆ 17.5          ┆ 190.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 36.3           ┆ 19.5          ┆ 190.0            ┆ 3800.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 38.6           ┆ 17.2          ┆ 199.0            ┆ 3750.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0            ┆ 3900.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 51.3           ┆ 18.2          ┆ 197.0            ┆ 3750.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.6          ┆ 212.0            ┆ 4300.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 50.8           ┆ 19.0          ┆ 210.0            ┆ 4100.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 45.7           ┆ 13.9          ┆ 214.0            ┆ 4400.0      ┆ Female │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
-```
-
-```python
-# Half-open interval — bill_length_mm >= 40 and < 50
-(
-    penguins
-    .pt.filter(bill_length_mm='[40,50)')
-    .sample(10)
-)
-```
-Output:
-```text
-shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0            ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 41.4           ┆ 18.6          ┆ 191.0            ┆ 3700.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 41.3           ┆ 20.3          ┆ 194.0            ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 44.1           ┆ 18.0          ┆ 210.0            ┆ 4000.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 17.8          ┆ 198.0            ┆ 3950.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 46.8           ┆ 16.5          ┆ 189.0            ┆ 3650.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.4           ┆ 14.6          ┆ 211.0            ┆ 4800.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.8           ┆ 15.0          ┆ 215.0            ┆ 5650.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 14.8          ┆ 220.0            ┆ 5150.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.3           ┆ 13.8          ┆ 216.0            ┆ 4725.0      ┆ null   │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
-```
-
-```python
-# Closed interval — body_mass_g between 3500 and 4000 inclusive
-(
-    penguins
-    .pt.filter(body_mass_g='[3500,4000]')
-    .sample(10)
-)
-```
-Output:
-```text
-shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 38.9           ┆ 17.8          ┆ 181.0            ┆ 3625.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 38.8           ┆ 17.2          ┆ 180.0            ┆ 3800.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 38.2           ┆ 18.1          ┆ 185.0            ┆ 3950.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 35.3           ┆ 18.9          ┆ 187.0            ┆ 3800.0      ┆ Female │
 │ Adelie    ┆ Dream     ┆ 38.8           ┆ 20.0          ┆ 190.0            ┆ 3950.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 39.6           ┆ 17.2          ┆ 196.0            ┆ 3550.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 41.3           ┆ 20.3          ┆ 194.0            ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 36.9           ┆ 18.6          ┆ 189.0            ┆ 3500.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 37.6           ┆ 17.0          ┆ 185.0            ┆ 3600.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0            ┆ 3700.0      ┆ Female │
 │ Adelie    ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0            ┆ 3900.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 49.5           ┆ 19.0          ┆ 200.0            ┆ 3800.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 47.6           ┆ 18.3          ┆ 195.0            ┆ 3850.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 50.9           ┆ 17.9          ┆ 196.0            ┆ 3675.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 51.3           ┆ 19.2          ┆ 193.0            ┆ 3650.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 52.7           ┆ 19.8          ┆ 197.0            ┆ 3725.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 49.8           ┆ 17.3          ┆ 198.0            ┆ 3675.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6512,7 +6511,7 @@ shape: (10, 7)
 # 'island' values: Biscoe, Dream, Torgersen — (Biscoe, Dream] means Dream only
 (
     penguins
-    .pt.filter(island='(Biscoe,Dream]')
+    .filter(island='(Biscoe,Dream]')
     .sample()
 )
 ```
@@ -6524,11 +6523,11 @@ shape: (5, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 37.5           ┆ 18.9          ┆ 179.0             ┆ 2975.0      ┆ null   │
-│ Chinstrap ┆ Dream  ┆ 45.4           ┆ 18.7          ┆ 188.0             ┆ 3525.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 54.2           ┆ 20.8          ┆ 201.0             ┆ 4300.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 51.5           ┆ 18.7          ┆ 187.0             ┆ 3250.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 46.8           ┆ 16.5          ┆ 189.0             ┆ 3650.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.9          ┆ 190.0             ┆ 3450.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 43.2           ┆ 16.6          ┆ 187.0             ┆ 2900.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 49.7           ┆ 18.6          ┆ 195.0             ┆ 3600.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 18.5          ┆ 201.0             ┆ 4450.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6541,7 +6540,7 @@ shape: (5, 7)
 # species starting with 'Ad' — same idea for endswith/contains
 (
     penguins
-    .pt.filter(species=('startswith', 'Ad'))
+    .filter(species=('startswith', 'Ad'))
     .sample(10)
 )
 ```
@@ -6553,16 +6552,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
 │ Adelie  ┆ Torgersen ┆ 37.8           ┆ 17.3          ┆ 180.0             ┆ 3700.0      ┆ null   │
-│ Adelie  ┆ Biscoe    ┆ 37.6           ┆ 19.1          ┆ 194.0             ┆ 3750.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 35.9           ┆ 16.6          ┆ 190.0             ┆ 3050.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0             ┆ 4450.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 18.8          ┆ 187.0             ┆ 3800.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 37.3           ┆ 17.8          ┆ 191.0             ┆ 3350.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 38.6           ┆ 17.2          ┆ 199.0             ┆ 3750.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 41.1           ┆ 18.6          ┆ 189.0             ┆ 3325.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 38.5           ┆ 17.9          ┆ 190.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 37.6           ┆ 19.3          ┆ 181.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 37.0           ┆ 16.9          ┆ 185.0             ┆ 3000.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 41.6           ┆ 18.0          ┆ 192.0             ┆ 3950.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 38.1           ┆ 16.5          ┆ 198.0             ┆ 3825.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 41.5           ┆ 18.3          ┆ 195.0             ┆ 4300.0      ┆ Male   │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6570,7 +6569,7 @@ shape: (10, 7)
 # Multiple prefixes: species starting with 'Ad' OR 'Ge'
 (
     penguins
-    .pt.filter(species=('startswith', ['Ad', 'Ge']))
+    .filter(species=('startswith', ['Ad', 'Ge']))
     .sample(10)
 )
 ```
@@ -6589,7 +6588,7 @@ shape: (0, 7)
 # regex, search-anywhere (like re.search) — species containing a repeated 'o'
 (
     penguins
-    .pt.filter(species=('regex', r'oo'))
+    .filter(species=('regex', r'oo'))
     .sample(10)
 )
 ```
@@ -6601,16 +6600,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 49.0           ┆ 16.1          ┆ 216.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.5          ┆ 213.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 47.3           ┆ 15.3          ┆ 222.0             ┆ 5250.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.4           ┆ 15.0          ┆ 216.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 42.0           ┆ 13.5          ┆ 210.0             ┆ 4150.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 44.0           ┆ 13.6          ┆ 208.0             ┆ 4350.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 15.8          ┆ 215.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 16.8          ┆ 230.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 47.5           ┆ 14.2          ┆ 209.0             ┆ 4600.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 52.1           ┆ 17.0          ┆ 230.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null   │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 43.5           ┆ 15.2          ┆ 213.0             ┆ 4650.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 14.3          ┆ 215.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 43.4           ┆ 14.4          ┆ 218.0             ┆ 4600.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 41.7           ┆ 14.7          ┆ 210.0             ┆ 4700.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6618,7 +6617,7 @@ shape: (10, 7)
 # isna/notna — rows with a missing 'sex' value (one-element tuple, no value needed)
 (
     penguins
-    .pt.filter(sex=('isna',))
+    .filter(sex=('isna',))
 )
 ```
 Output:
@@ -6650,43 +6649,42 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 1. **Comma-separated string expression**: `"bill_length_mm > 40, bill_length_mm < 50"`
 2. **Multiple positional string arguments**: `"bill_length_mm > 40", "bill_length_mm < 50"`
 3. **Interval notation**: `bill_length_mm='[40,50)'`
-4. **Chained `.pt.filter()` calls**: `.pt.filter(bill_length_mm='> 40').pt.filter(bill_length_mm='< 50')`
+4. **Chained `.filter()` calls**: `.filter(bill_length_mm='> 40').filter(bill_length_mm='< 50')`
 
 ```python
 # Comma-separated string expression on the same column:
 (
     penguins
-    .pt.filter("bill_length_mm > 40, bill_length_mm < 50")
+    .filter("bill_length_mm > 40, bill_length_mm < 50")
     .sample(10)
 )
 ```
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0            ┆ 4500.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 40.2           ┆ 17.1          ┆ 193.0            ┆ 3400.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 41.5           ┆ 18.5          ┆ 201.0            ┆ 4000.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 40.9           ┆ 16.6          ┆ 187.0            ┆ 3200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 15.4          ┆ 215.0            ┆ 5150.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 45.8           ┆ 14.6          ┆ 210.0            ┆ 4200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 42.6           ┆ 13.7          ┆ 213.0            ┆ 4950.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 44.0           ┆ 13.6          ┆ 208.0            ┆ 4350.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 48.7           ┆ 15.7          ┆ 208.0            ┆ 5350.0      ┆ Male   │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0             ┆ 4450.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 42.8           ┆ 18.5          ┆ 195.0             ┆ 4250.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0             ┆ 4400.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 46.2           ┆ 14.4          ┆ 214.0             ┆ 4650.0      ┆ null   │
+│ Gentoo  ┆ Biscoe    ┆ 46.4           ┆ 15.6          ┆ 221.0             ┆ 5000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 44.5           ┆ 14.7          ┆ 214.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 48.5           ┆ 15.0          ┆ 219.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null   │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
 # Multiple string arguments:
 (
     penguins
-    .pt.filter("bill_length_mm > 40", "bill_length_mm < 50")
+    .filter("bill_length_mm > 40", "bill_length_mm < 50")
     .sample(10)
 )
 ```
@@ -6699,25 +6697,25 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0            ┆ 4500.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 40.1           ┆ 18.9          ┆ 188.0            ┆ 4300.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0            ┆ 3700.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0            ┆ 4450.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.3           ┆ 18.5          ┆ 196.0            ┆ 4350.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0            ┆ 4075.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0            ┆ 3450.0      ┆ Female │
 │ Chinstrap ┆ Dream     ┆ 46.5           ┆ 17.9          ┆ 192.0            ┆ 3500.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 48.5           ┆ 17.5          ┆ 191.0            ┆ 3400.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 45.6           ┆ 19.4          ┆ 194.0            ┆ 3525.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0            ┆ 4400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.3           ┆ 15.3          ┆ 222.0            ┆ 5250.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 42.8           ┆ 14.2          ┆ 209.0            ┆ 4700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.5           ┆ 15.0          ┆ 220.0            ┆ 5000.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 49.3           ┆ 19.9          ┆ 203.0            ┆ 4050.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 49.2           ┆ 15.2          ┆ 221.0            ┆ 6300.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 14.3          ┆ 210.0            ┆ 4600.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 44.9           ┆ 13.8          ┆ 212.0            ┆ 4750.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.2           ┆ 15.5          ┆ 215.0            ┆ 4975.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
 ```python
-# Chaining two .pt.filter() calls:
+# Chaining two .filter() calls:
 (
     penguins
-    .pt.filter(bill_length_mm='> 40')
-    .pt.filter(bill_length_mm='< 50')
+    .filter(bill_length_mm='> 40')
+    .filter(bill_length_mm='< 50')
     .sample(10)
 )
 ```
@@ -6730,16 +6728,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream     ┆ 43.2           ┆ 18.5          ┆ 192.0            ┆ 4100.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 43.2           ┆ 19.0          ┆ 197.0            ┆ 4775.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0            ┆ 4150.0      ┆ Male   │
 │ Adelie    ┆ Torgersen ┆ 41.4           ┆ 18.5          ┆ 202.0            ┆ 3875.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 41.5           ┆ 18.3          ┆ 195.0            ┆ 4300.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.3          ┆ 193.0            ┆ 3600.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.1           ┆ 14.5          ┆ 215.0            ┆ 5000.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 14.8          ┆ 220.0            ┆ 5150.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.1           ┆ 14.4          ┆ 210.0            ┆ 4400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.5           ┆ 14.0          ┆ 212.0            ┆ 4875.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.2           ┆ 14.8          ┆ 212.0            ┆ 5200.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 48.5           ┆ 17.5          ┆ 191.0            ┆ 3400.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 43.2           ┆ 16.6          ┆ 187.0            ┆ 2900.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.5           ┆ 19.0          ┆ 200.0            ┆ 3800.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 49.8           ┆ 17.3          ┆ 198.0            ┆ 3675.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.0          ┆ 195.0            ┆ 3650.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 49.0           ┆ 16.1          ┆ 216.0            ┆ 5550.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 48.4           ┆ 16.3          ┆ 220.0            ┆ 5400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 43.3           ┆ 14.0          ┆ 208.0            ┆ 4575.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6750,7 +6748,7 @@ If a column name is misspelled, `filter()` suggests close matches using fuzzy ma
 ```python
 # Intentional typo 'speceis' raises KeyError with a helpful suggestion
 try:
-    penguins.pt.filter(speceis='Adelie')
+    penguins.filter(speceis='Adelie')
 except (KeyError, Exception) as exc:
     print("Caught expected error:", exc)
 ```
@@ -6769,9 +6767,9 @@ Did you mean "species"?
 (
     tips
     .rename(columns={'total_bill': 'total bill'})
-    .pt.filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
-    .pt.by('smoker')
-    .pt.agg("tip = mean, [total bill] = mean, n = n")
+    .filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
+    .by('smoker')
+    .agg("tip = mean, [total bill] = mean, n = n")
 )
 ```
 Output:
@@ -7057,9 +7055,9 @@ shape: (4, 2)
 # `mutate` — Reference
 `mutate` creates or overwrites columns using clean keyword argument syntax (`col="expr"` or `col=callable`). Each entry is evaluated in order via pandas `eval()` — a plain formula per column, or a lambda when needed.
 ### Calling Styles
-1. **Keyword arguments** (most Pythonic): `.pt.mutate(bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")`
-2. **Dictionary unpacking** (for new column names with spaces): `.pt.mutate(**{"body mass kg": "body_mass_g / 1000"})`
-3. **External file specification**: `.pt.mutate("@features.txt")`
+1. **Keyword arguments** (most Pythonic): `.mutate(bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")`
+2. **Dictionary unpacking** (for new column names with spaces): `.mutate(**{"body mass kg": "body_mass_g / 1000"})`
+3. **External file specification**: `.mutate("@features.txt")`
 ---
 
 ```python
@@ -7080,8 +7078,8 @@ penguins = pt.sample_data['penguins']
 # Body mass index style ratio — clean assignment formula via kwargs
 (
     penguins
-    .pt.mutate(bmi='body_mass_g / bill_length_mm ** 2')
-    .pt.select('species', 'body_mass_g', 'bill_length_mm', 'bmi')
+    .mutate(bmi='body_mass_g / bill_length_mm ** 2')
+    .select('species', 'body_mass_g', 'bill_length_mm', 'bmi')
     .sample(10)
 )
 ```
@@ -7093,16 +7091,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie    ┆ 4400.0      ┆ 34.6           ┆ 3.675365 │
-│ Adelie    ┆ 4050.0      ┆ 41.1           ┆ 2.39757  │
-│ Adelie    ┆ 3800.0      ┆ 36.3           ┆ 2.883835 │
-│ Chinstrap ┆ 3750.0      ┆ 51.3           ┆ 1.42494  │
-│ Chinstrap ┆ 3600.0      ┆ 42.4           ┆ 2.002492 │
-│ Chinstrap ┆ 2700.0      ┆ 46.9           ┆ 1.22749  │
-│ Chinstrap ┆ 3600.0      ┆ 45.7           ┆ 1.723733 │
-│ Gentoo    ┆ 5050.0      ┆ 45.0           ┆ 2.493827 │
-│ Gentoo    ┆ 5200.0      ┆ 46.5           ┆ 2.404902 │
-│ Gentoo    ┆ 5850.0      ┆ 55.1           ┆ 1.926871 │
+│ Adelie    ┆ 3250.0      ┆ 40.3           ┆ 2.001121 │
+│ Adelie    ┆ 3800.0      ┆ 35.3           ┆ 3.049539 │
+│ Adelie    ┆ 3450.0      ┆ 36.0           ┆ 2.662037 │
+│ Chinstrap ┆ 4550.0      ┆ 52.8           ┆ 1.632088 │
+│ Chinstrap ┆ 3500.0      ┆ 45.5           ┆ 1.690617 │
+│ Chinstrap ┆ 3775.0      ┆ 50.2           ┆ 1.497992 │
+│ Gentoo    ┆ 5650.0      ┆ 47.8           ┆ 2.472821 │
+│ Gentoo    ┆ 4625.0      ┆ 49.1           ┆ 1.918442 │
+│ Gentoo    ┆ 5650.0      ┆ 49.5           ┆ 2.305887 │
+│ Gentoo    ┆ 4875.0      ┆ 46.9           ┆ 2.216302 │
 └───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7110,7 +7108,7 @@ shape: (10, 4)
 # Column names inside the expression must stay unquoted — quoting one turns it into
 # a string literal, which will break arithmetic
 try:
-    penguins.pt.mutate(bmi="'body_mass_g' / 'bill_length_mm' ** 2")
+    penguins.mutate(bmi="'body_mass_g' / 'bill_length_mm' ** 2")
 except TypeError as exc:
     print(f"TypeError (as expected): {exc}")
 ```
@@ -7126,8 +7124,8 @@ Entries are applied left to right, so a later expression can reference a column 
 # Two independent derived columns in one call via kwargs
 (
     penguins
-    .pt.mutate(heavy='body_mass_g > 4000', mass_kg='body_mass_g / 1000')
-    .pt.select('species', 'body_mass_g', 'mass_kg', 'heavy')
+    .mutate(heavy='body_mass_g > 4000', mass_kg='body_mass_g / 1000')
+    .select('species', 'body_mass_g', 'mass_kg', 'heavy')
     .sample(10)
 )
 ```
@@ -7139,16 +7137,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---     ┆ ---   │
 │ str       ┆ f64         ┆ f64     ┆ bool  │
 ╞═══════════╪═════════════╪═════════╪═══════╡
-│ Adelie    ┆ 3450.0      ┆ 3.45    ┆ false │
-│ Adelie    ┆ 3650.0      ┆ 3.65    ┆ false │
 │ Adelie    ┆ 4150.0      ┆ 4.15    ┆ true  │
-│ Adelie    ┆ 4050.0      ┆ 4.05    ┆ true  │
-│ Adelie    ┆ 4300.0      ┆ 4.3     ┆ true  │
-│ Adelie    ┆ 4000.0      ┆ 4.0     ┆ false │
-│ Chinstrap ┆ 3800.0      ┆ 3.8     ┆ false │
+│ Chinstrap ┆ 3950.0      ┆ 3.95    ┆ false │
+│ Chinstrap ┆ 3450.0      ┆ 3.45    ┆ false │
+│ Chinstrap ┆ 3600.0      ┆ 3.6     ┆ false │
+│ Chinstrap ┆ 3400.0      ┆ 3.4     ┆ false │
+│ Gentoo    ┆ 4100.0      ┆ 4.1     ┆ true  │
+│ Gentoo    ┆ 5050.0      ┆ 5.05    ┆ true  │
+│ Gentoo    ┆ 4200.0      ┆ 4.2     ┆ true  │
 │ Gentoo    ┆ 4400.0      ┆ 4.4     ┆ true  │
-│ Gentoo    ┆ 5000.0      ┆ 5.0     ┆ true  │
-│ Gentoo    ┆ 4750.0      ┆ 4.75    ┆ true  │
+│ Gentoo    ┆ 5650.0      ┆ 5.65    ┆ true  │
 └───────────┴─────────────┴─────────┴───────┘
 ```
 
@@ -7156,8 +7154,8 @@ shape: (10, 4)
 # mass_lb references mass_kg, derived by the keyword just before it
 (
     penguins
-    .pt.mutate(mass_kg='body_mass_g / 1000', mass_lb='mass_kg * 2.20462')
-    .pt.select('species', 'body_mass_g', 'mass_kg', 'mass_lb')
+    .mutate(mass_kg='body_mass_g / 1000', mass_lb='mass_kg * 2.20462')
+    .select('species', 'body_mass_g', 'mass_kg', 'mass_lb')
     .sample(10)
 )
 ```
@@ -7170,15 +7168,15 @@ shape: (10, 4)
 │ str       ┆ f64         ┆ f64     ┆ f64       │
 ╞═══════════╪═════════════╪═════════╪═══════════╡
 │ Adelie    ┆ 3900.0      ┆ 3.9     ┆ 8.598018  │
-│ Adelie    ┆ 4300.0      ┆ 4.3     ┆ 9.479866  │
-│ Chinstrap ┆ 3900.0      ┆ 3.9     ┆ 8.598018  │
-│ Gentoo    ┆ 5700.0      ┆ 5.7     ┆ 12.566334 │
-│ Gentoo    ┆ 5350.0      ┆ 5.35    ┆ 11.794717 │
-│ Gentoo    ┆ 5050.0      ┆ 5.05    ┆ 11.133331 │
-│ Gentoo    ┆ 4600.0      ┆ 4.6     ┆ 10.141252 │
-│ Gentoo    ┆ 4350.0      ┆ 4.35    ┆ 9.590097  │
-│ Gentoo    ┆ 4725.0      ┆ 4.725   ┆ 10.41683  │
-│ Gentoo    ┆ 4700.0      ┆ 4.7     ┆ 10.361714 │
+│ Adelie    ┆ 4600.0      ┆ 4.6     ┆ 10.141252 │
+│ Adelie    ┆ 4700.0      ┆ 4.7     ┆ 10.361714 │
+│ Adelie    ┆ 4075.0      ┆ 4.075   ┆ 8.9838265 │
+│ Adelie    ┆ 3325.0      ┆ 3.325   ┆ 7.330361  │
+│ Adelie    ┆ 3450.0      ┆ 3.45    ┆ 7.605939  │
+│ Chinstrap ┆ 3350.0      ┆ 3.35    ┆ 7.385477  │
+│ Chinstrap ┆ 3950.0      ┆ 3.95    ┆ 8.708249  │
+│ Gentoo    ┆ 4550.0      ┆ 4.55    ┆ 10.031021 │
+│ Gentoo    ┆ 5550.0      ┆ 5.55    ┆ 12.235641 │
 └───────────┴─────────────┴─────────┴───────────┘
 ```
 
@@ -7189,8 +7187,8 @@ String literals *inside* the expression (e.g. `'Adelie'`) need real quotes — c
 # String comparisons inside the expression formula
 (
     penguins
-    .pt.mutate(is_adelie="species == 'Adelie'")
-    .pt.select('species', 'is_adelie')
+    .mutate(is_adelie="species == 'Adelie'")
+    .select('species', 'is_adelie')
     .sample(10)
 )
 ```
@@ -7217,35 +7215,35 @@ shape: (10, 2)
 
 ```python
 # @-prefixed names resolve against the scope that called mutate(), not the module
-# — works identically whether calling pt.mutate() or chaining .pt.mutate()
+# — works identically whether calling pt.mutate() or chaining .mutate()
 threshold = 4000
 
 (
     penguins
-    .pt.mutate(heavy='body_mass_g >= @threshold')
-    .pt.select('species', 'body_mass_g', 'heavy')
+    .mutate(heavy='body_mass_g >= @threshold')
+    .select('species', 'body_mass_g', 'heavy')
     .sample(10)
 )
 ```
 Output:
 ```text
 shape: (10, 3)
-┌─────────┬─────────────┬───────┐
-│ species ┆ body_mass_g ┆ heavy │
-│ ---     ┆ ---         ┆ ---   │
-│ str     ┆ f64         ┆ bool  │
-╞═════════╪═════════════╪═══════╡
-│ Adelie  ┆ 3750.0      ┆ false │
-│ Adelie  ┆ 3300.0      ┆ false │
-│ Adelie  ┆ 3200.0      ┆ false │
-│ Adelie  ┆ 4200.0      ┆ true  │
-│ Adelie  ┆ 3350.0      ┆ false │
-│ Adelie  ┆ 3325.0      ┆ false │
-│ Adelie  ┆ 3175.0      ┆ false │
-│ Gentoo  ┆ 3950.0      ┆ false │
-│ Gentoo  ┆ 4875.0      ┆ true  │
-│ Gentoo  ┆ null        ┆ null  │
-└─────────┴─────────────┴───────┘
+┌───────────┬─────────────┬───────┐
+│ species   ┆ body_mass_g ┆ heavy │
+│ ---       ┆ ---         ┆ ---   │
+│ str       ┆ f64         ┆ bool  │
+╞═══════════╪═════════════╪═══════╡
+│ Adelie    ┆ 3550.0      ┆ false │
+│ Adelie    ┆ 3800.0      ┆ false │
+│ Adelie    ┆ 3550.0      ┆ false │
+│ Chinstrap ┆ 2900.0      ┆ false │
+│ Chinstrap ┆ 3800.0      ┆ false │
+│ Chinstrap ┆ 4500.0      ┆ true  │
+│ Gentoo    ┆ 5700.0      ┆ true  │
+│ Gentoo    ┆ 5400.0      ┆ true  │
+│ Gentoo    ┆ 5000.0      ┆ true  │
+│ Gentoo    ┆ 4750.0      ┆ true  │
+└───────────┴─────────────┴───────┘
 ```
 
 ## Overwriting an existing column
@@ -7254,8 +7252,8 @@ shape: (10, 3)
 # mutate() can overwrite a column in place, e.g. converting units
 (
     penguins
-    .pt.mutate(body_mass_g='body_mass_g / 1000')
-    .pt.select('species', 'body_mass_g')
+    .mutate(body_mass_g='body_mass_g / 1000')
+    .select('species', 'body_mass_g')
     .sample(10)
 )
 ```
@@ -7267,16 +7265,16 @@ shape: (10, 2)
 │ ---       ┆ ---         │
 │ str       ┆ f64         │
 ╞═══════════╪═════════════╡
-│ Adelie    ┆ 3.65        │
-│ Adelie    ┆ 3.8         │
-│ Adelie    ┆ 3.95        │
-│ Chinstrap ┆ 3.8         │
+│ Adelie    ┆ 2.85        │
+│ Adelie    ┆ 3.55        │
+│ Adelie    ┆ 3.075       │
+│ Chinstrap ┆ 3.725       │
+│ Chinstrap ┆ 3.3         │
+│ Chinstrap ┆ 3.4         │
 │ Chinstrap ┆ 3.775       │
-│ Gentoo    ┆ 4.725       │
-│ Gentoo    ┆ 4.925       │
-│ Gentoo    ┆ 4.625       │
-│ Gentoo    ┆ 5.5         │
-│ Gentoo    ┆ 4.575       │
+│ Gentoo    ┆ 4.65        │
+│ Gentoo    ┆ 5.25        │
+│ Gentoo    ┆ 4.875       │
 └───────────┴─────────────┘
 ```
 
@@ -7285,10 +7283,10 @@ Use square brackets `[col name]` to reference column names containing spaces wit
 
 ```python
 import pandas as pd
-spaced = pd.DataFrame({'body mass g': [3750, 4200], 'bill length mm': [39.1, 46.5]})
+spaced = pt.DataFrame({'body mass g': [3750, 4200], 'bill length mm': [39.1, 46.5]})
 
 # Square brackets protect column names that contain spaces
-spaced.pt.mutate(bmi="[body mass g] / [bill length mm] ** 2")
+spaced.mutate(bmi="[body mass g] / [bill length mm] ** 2")
 ```
 Output:
 ```text
@@ -7309,9 +7307,9 @@ shape: (2, 3)
 ```python
 (
     penguins
-    .pt.mutate(bmi='body_mass_g / bill_length_mm ** 2')
-    .pt.filter(bmi='> 2')
-    .pt.select('species', 'island', 'body_mass_g', 'bill_length_mm', 'bmi')
+    .mutate(bmi='body_mass_g / bill_length_mm ** 2')
+    .filter(bmi='> 2')
+    .select('species', 'island', 'body_mass_g', 'bill_length_mm', 'bmi')
     .sample(10)
 )
 ```
@@ -7323,16 +7321,16 @@ shape: (10, 5)
 │ ---     ┆ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str     ┆ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═════════╪═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie  ┆ Biscoe    ┆ 3950.0      ┆ 38.2           ┆ 2.706889 │
-│ Adelie  ┆ Dream     ┆ 3900.0      ┆ 40.9           ┆ 2.331406 │
-│ Adelie  ┆ Dream     ┆ 3950.0      ┆ 38.8           ┆ 2.623818 │
-│ Adelie  ┆ Biscoe    ┆ 3550.0      ┆ 39.0           ┆ 2.333991 │
-│ Adelie  ┆ Torgersen ┆ 3700.0      ┆ 40.9           ┆ 2.211847 │
-│ Adelie  ┆ Torgersen ┆ 4300.0      ┆ 41.5           ┆ 2.496734 │
-│ Adelie  ┆ Dream     ┆ 3450.0      ┆ 36.0           ┆ 2.662037 │
-│ Gentoo  ┆ Biscoe    ┆ 4800.0      ┆ 46.2           ┆ 2.248833 │
-│ Gentoo  ┆ Biscoe    ┆ 5300.0      ┆ 45.2           ┆ 2.594173 │
-│ Gentoo  ┆ Biscoe    ┆ 5950.0      ┆ 45.2           ┆ 2.912327 │
+│ Adelie  ┆ Torgersen ┆ 3625.0      ┆ 38.9           ┆ 2.39557  │
+│ Adelie  ┆ Biscoe    ┆ 3800.0      ┆ 35.3           ┆ 3.049539 │
+│ Adelie  ┆ Biscoe    ┆ 4400.0      ┆ 41.3           ┆ 2.579601 │
+│ Adelie  ┆ Torgersen ┆ 3600.0      ┆ 33.5           ┆ 3.207841 │
+│ Adelie  ┆ Biscoe    ┆ 4600.0      ┆ 45.6           ┆ 2.212219 │
+│ Adelie  ┆ Torgersen ┆ 3450.0      ┆ 40.2           ┆ 2.134848 │
+│ Adelie  ┆ Dream     ┆ 3650.0      ┆ 39.0           ┆ 2.399737 │
+│ Adelie  ┆ Dream     ┆ 4000.0      ┆ 41.5           ┆ 2.322543 │
+│ Gentoo  ┆ Biscoe    ┆ 5250.0      ┆ 44.4           ┆ 2.663136 │
+│ Gentoo  ┆ Biscoe    ┆ 4700.0      ┆ 43.5           ┆ 2.483816 │
 └─────────┴───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7344,8 +7342,8 @@ Plain `eval()` has no ternary/`where()` support, so `mutate()` provides three dp
 # true_value and false_value can be scalars or column names; conditions are vectorized
 (
     penguins
-    .pt.mutate(weight_class="if_else(body_mass_g > 4000, 'heavy', 'light')")
-    .pt.select('species', 'body_mass_g', 'weight_class')
+    .mutate(weight_class="if_else(body_mass_g > 4000, 'heavy', 'light')")
+    .select('species', 'body_mass_g', 'weight_class')
     .sample(10)
 )
 ```
@@ -7357,16 +7355,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---          │
 │ str       ┆ f64         ┆ str          │
 ╞═══════════╪═════════════╪══════════════╡
-│ Adelie    ┆ 3750.0      ┆ light        │
-│ Adelie    ┆ 3600.0      ┆ light        │
-│ Adelie    ┆ 4400.0      ┆ heavy        │
-│ Adelie    ┆ 3350.0      ┆ light        │
-│ Adelie    ┆ 4250.0      ┆ heavy        │
-│ Chinstrap ┆ 3600.0      ┆ light        │
-│ Gentoo    ┆ 6300.0      ┆ heavy        │
-│ Gentoo    ┆ 4800.0      ┆ heavy        │
-│ Gentoo    ┆ 4400.0      ┆ heavy        │
-│ Gentoo    ┆ 6000.0      ┆ heavy        │
+│ Adelie    ┆ 3700.0      ┆ light        │
+│ Adelie    ┆ 2900.0      ┆ light        │
+│ Adelie    ┆ 3700.0      ┆ light        │
+│ Chinstrap ┆ 4050.0      ┆ heavy        │
+│ Chinstrap ┆ 3700.0      ┆ light        │
+│ Chinstrap ┆ 4800.0      ┆ heavy        │
+│ Gentoo    ┆ 5050.0      ┆ heavy        │
+│ Gentoo    ┆ 3950.0      ┆ light        │
+│ Gentoo    ┆ 4725.0      ┆ heavy        │
+│ Gentoo    ┆ 4600.0      ┆ heavy        │
 └───────────┴─────────────┴──────────────┘
 ```
 
@@ -7374,10 +7372,10 @@ shape: (10, 3)
 # case_when supports tuples or flat pairs with default=
 (
     penguins
-    .pt.mutate(
+    .mutate(
         size_class="case_when(body_mass_g >= 4500, 'large', body_mass_g >= 3500, 'medium', default='small')"
     )
-    .pt.select('species', 'body_mass_g', 'size_class')
+    .select('species', 'body_mass_g', 'size_class')
     .sample(10)
 )
 ```
@@ -7389,16 +7387,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---        │
 │ str       ┆ f64         ┆ str        │
 ╞═══════════╪═════════════╪════════════╡
-│ Adelie    ┆ 4150.0      ┆ medium     │
-│ Adelie    ┆ 3550.0      ┆ medium     │
-│ Adelie    ┆ 3500.0      ┆ medium     │
-│ Adelie    ┆ 3050.0      ┆ small      │
+│ Adelie    ┆ 3325.0      ┆ small      │
+│ Adelie    ┆ 3700.0      ┆ medium     │
+│ Adelie    ┆ 3900.0      ┆ medium     │
+│ Adelie    ┆ 4775.0      ┆ large      │
+│ Adelie    ┆ 3450.0      ┆ small      │
+│ Adelie    ┆ 3175.0      ┆ small      │
+│ Chinstrap ┆ 3300.0      ┆ small      │
 │ Chinstrap ┆ 3250.0      ┆ small      │
-│ Chinstrap ┆ 4050.0      ┆ medium     │
-│ Chinstrap ┆ 3650.0      ┆ medium     │
-│ Gentoo    ┆ 5000.0      ┆ large      │
-│ Gentoo    ┆ 5250.0      ┆ large      │
-│ Gentoo    ┆ 4700.0      ┆ large      │
+│ Gentoo    ┆ 5550.0      ┆ large      │
+│ Gentoo    ┆ 4850.0      ┆ large      │
 └───────────┴─────────────┴────────────┘
 ```
 
@@ -7407,10 +7405,10 @@ shape: (10, 3)
 # unmapped keys become default if given, else NaN
 (
     penguins
-    .pt.mutate(
+    .mutate(
         island_code="map(island, {'Torgersen': 'TOR', 'Biscoe': 'BIS'}, 'OTH')"
     )
-    .pt.select('species', 'island', 'island_code')
+    .select('species', 'island', 'island_code')
     .sample(10)
 )
 ```
@@ -7424,10 +7422,10 @@ shape: (10, 3)
 ╞═══════════╪════════╪═════════════╡
 │ Adelie    ┆ Biscoe ┆ BIS         │
 │ Adelie    ┆ Dream  ┆ OTH         │
+│ Adelie    ┆ Dream  ┆ OTH         │
+│ Adelie    ┆ Dream  ┆ OTH         │
 │ Chinstrap ┆ Dream  ┆ OTH         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
+│ Chinstrap ┆ Dream  ┆ OTH         │
 │ Gentoo    ┆ Biscoe ┆ BIS         │
 │ Gentoo    ┆ Biscoe ┆ BIS         │
 │ Gentoo    ┆ Biscoe ┆ BIS         │
@@ -7440,13 +7438,13 @@ shape: (10, 3)
 `coalesce(col1, col2, ..., default)` evaluates candidates left-to-right and returns the first non-null value per row, like SQL `COALESCE()` or `dplyr::coalesce()`:
 
 ```python
-contacts = pd.DataFrame({
+contacts = pt.DataFrame({
     'mobile': [None, '555-1234', None],
     'home': ['555-5678', None, None],
     'work': [None, None, '555-9012'],
 })
 
-contacts.pt.mutate(preferred_contact="coalesce(mobile, home, work, 'N/A')")
+contacts.mutate(preferred_contact="coalesce(mobile, home, work, 'N/A')")
 ```
 Output:
 ```text
@@ -7469,12 +7467,12 @@ shape: (3, 4)
 ```python
 (
     penguins
-    .pt.mutate(
+    .mutate(
         bmi='body_mass_g / bill_length_mm ** 2',
         mass_kg='body_mass_g / 1000',
         is_heavy=lambda df: df['body_mass_g'] > 4000,
     )
-    .pt.select('species', 'bmi', 'mass_kg', 'is_heavy')
+    .select('species', 'bmi', 'mass_kg', 'is_heavy')
     .head(5)
 )
 ```
@@ -7559,10 +7557,10 @@ with open("penguin_features.txt", "w") as f:
     f.write(spec_content)
 
 # Load directly using @filename
-result = penguins.pt.mutate("@penguin_features.txt")
+result = penguins.mutate("@penguin_features.txt")
 out = (
     result
-    .pt.select("species", "mass_kg", "mass_lb")
+    .select("species", "mass_kg", "mass_lb")
     .sample(5)
 )
 
@@ -7575,17 +7573,17 @@ out
 Output:
 ```text
 shape: (5, 3)
-┌───────────┬─────────┬──────────┐
-│ species   ┆ mass_kg ┆ mass_lb  │
-│ ---       ┆ ---     ┆ ---      │
-│ str       ┆ f64     ┆ f64      │
-╞═══════════╪═════════╪══════════╡
-│ Adelie    ┆ 4.725   ┆ 10.41683 │
-│ Adelie    ┆ 3.9     ┆ 8.598018 │
-│ Chinstrap ┆ 3.3     ┆ 7.275246 │
-│ Chinstrap ┆ 4.15    ┆ 9.149173 │
-│ Chinstrap ┆ 3.65    ┆ 8.046863 │
-└───────────┴─────────┴──────────┘
+┌───────────┬─────────┬───────────┐
+│ species   ┆ mass_kg ┆ mass_lb   │
+│ ---       ┆ ---     ┆ ---       │
+│ str       ┆ f64     ┆ f64       │
+╞═══════════╪═════════╪═══════════╡
+│ Chinstrap ┆ 3.4     ┆ 7.495708  │
+│ Chinstrap ┆ 3.95    ┆ 8.708249  │
+│ Gentoo    ┆ 6.3     ┆ 13.889106 │
+│ Gentoo    ┆ 5.25    ┆ 11.574255 │
+│ Gentoo    ┆ 4.6     ┆ 10.141252 │
+└───────────┴─────────┴───────────┘
 ```
 
 ## Columns with spaces — SQL-style brackets `[col]`
@@ -7593,7 +7591,7 @@ shape: (5, 3)
 SQL-style square brackets `[col a]` are supported alongside backticks, avoiding shell backtick substitution hazards:
 
 ```python
-spaced.pt.mutate(ratio='[body mass g] / [bill length mm]')
+spaced.mutate(ratio='[body mass g] / [bill length mm]')
 ```
 Output:
 ```text
@@ -7618,8 +7616,8 @@ You can create columns with spaces directly using string assignment expressions 
 # Create a new column with spaces using bracket string expression (no dict unpacking!)
 (
     spaced
-    .pt.mutate("[body mass ratio] = [body mass g] / [bill length mm]")
-    .pt.select('[body mass g]', '[body mass ratio]')
+    .mutate("[body mass ratio] = [body mass g] / [bill length mm]")
+    .select('[body mass g]', '[body mass ratio]')
     .head()
 )
 ```
@@ -7640,11 +7638,11 @@ shape: (2, 2)
 # Define multiple new columns with spaces at once via string expressions
 (
     penguins
-    .pt.mutate(
+    .mutate(
         "[body mass kg] = body_mass_g / 1000",
         "[bill ratio] = bill_length_mm / bill_depth_mm",
     )
-    .pt.select('species', '[body mass kg]', '[bill ratio]')
+    .select('species', '[body mass kg]', '[bill ratio]')
     .head()
 )
 ```
@@ -7671,16 +7669,16 @@ Note: When loading specs from an external file (`@specs.txt`) or via the CLI (`-
 my bmi = [body mass g] / [bill length mm] ** 2
 ```
 
-## Grouped mutations — `df.pt.by(...).pt.mutate(...)`
+## Grouped mutations — `df.by(...).mutate(...)`
 
-Unlike `pt.agg()` which collapses rows ($N \to K$), `df.pt.by(...).pt.mutate(...)` evaluates window calculations and group-level summaries and broadcasts them back to every row ($N \to N$).
+Unlike `pt.agg()` which collapses rows ($N \to K$), `df.by(...).mutate(...)` evaluates window calculations and group-level summaries and broadcasts them back to every row ($N \to N$).
 
 Supported features:
 - **Injected aggregation functions**: `mean(x)`, `sum(x)`, `median(x)`, `min(x)`, `max(x)`, `std(x)`, `var(x)`
 - **Group row count**: `n` or `n()` (dplyr / Polars convention)
 - **Sequential expressions**: Later expressions within the same `mutate` call can immediately reference earlier group-derived columns (e.g. `diff = tip - avg_tip`)
 - **Arbitrary output column names**: Name target columns cleanly without hardcoded prefixes
-- **Multi-column grouping**: `.pt.by('species', 'island')`
+- **Multi-column grouping**: `.by('species', 'island')`
 - **Spaced column names**: `[total bill]`
 - **Missing group handling**: `dropna=False` retains NA groups
 
@@ -7689,9 +7687,9 @@ Supported features:
 tips = pt.sample("tips")
 (
     tips
-    .pt.select("day", "time", "total_bill", "tip")
-    .pt.by("day")
-    .pt.mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n")
+    .select("day", "time", "total_bill", "tip")
+    .by("day")
+    .mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n")
     .head(6)
 )
 ```
@@ -7717,9 +7715,9 @@ shape: (6, 7)
 (
     tips
     .rename(columns={"total_bill": "total bill"})
-    .pt.select("day", "time", "total bill", "tip")
-    .pt.by("day", "time")
-    .pt.mutate("[avg bill] = mean([total bill]), [bill diff] = [total bill] - [avg bill], count = n()")
+    .select("day", "time", "total bill", "tip")
+    .by("day", "time")
+    .mutate("[avg bill] = mean([total bill]), [bill diff] = [total bill] - [avg bill], count = n()")
     .head(6)
 )
 ```
@@ -7744,9 +7742,9 @@ shape: (6, 7)
 # De-meaning and z-score calculation per group
 (
     penguins
-    .pt.select("species", "body_mass_g")
-    .pt.by("species")
-    .pt.mutate(
+    .select("species", "body_mass_g")
+    .by("species")
+    .mutate(
         "mean_mass = mean(body_mass_g), std_mass = std(body_mass_g), z_score = (body_mass_g - mean_mass) / std_mass"
     )
     .head(6)
@@ -7777,11 +7775,11 @@ In Pytae, `.by()` establishes a single-shot, ephemeral grouping context consumed
 # Comparing species-level mean to overall dataset mean in a single pipeline
 (
     penguins
-    .pt.select("species", "body_mass_g")
-    .pt.by("species")
-    .pt.mutate("species_mean = mean(body_mass_g)")
-    .pt.mutate("overall_mean = mean(body_mass_g)")
-    .pt.mutate("species_vs_overall = species_mean - overall_mean")
+    .select("species", "body_mass_g")
+    .by("species")
+    .mutate("species_mean = mean(body_mass_g)")
+    .mutate("overall_mean = mean(body_mass_g)")
+    .mutate("species_vs_overall = species_mean - overall_mean")
     .head(6)
 )
 ```
@@ -7807,7 +7805,7 @@ shape: (6, 5)
 By default, `dropna=False` computes group statistics across `NA` rows as their own distinct group (no silent data loss). Pass `dropna=True` to exclude rows with `NA` in grouping columns from calculations, filling `NaN` in mutated columns while preserving total row count and index alignment:
 
 ```python
-sample_data = pd.DataFrame({
+sample_data = pt.DataFrame({
     "grp": ["A", "A", None, "B", None],
     "val": [10.0, 20.0, 100.0, 30.0, 200.0]
 })
@@ -7816,16 +7814,16 @@ sample_data = pd.DataFrame({
 print("dropna=False (default):")
 print(
     sample_data
-    .pt.by("grp")
-    .pt.mutate("avg = mean(val), sz = n", dropna=False)
+    .by("grp")
+    .mutate("avg = mean(val), sz = n", dropna=False)
 )
 
 # dropna=True: NA groups receive NaN
 print("\ndropna=True:")
 print(
     sample_data
-    .pt.by("grp")
-    .pt.mutate("avg = mean(val), sz = n", dropna=True)
+    .by("grp")
+    .mutate("avg = mean(val), sz = n", dropna=True)
 )
 ```
 Output:
@@ -7884,8 +7882,8 @@ target_threshold = 4.2
 
 master_df = (
     penguins
-    .pt.by("species")
-    .pt.mutate(
+    .by("species")
+    .mutate(
         # 1. Normal mutate: standard arithmetic derivation
         bill_ratio="bill_length_mm / bill_depth_mm",
         mass_kg="body_mass_g / 1000",
@@ -7959,12 +7957,12 @@ In `mutate()`, all string arguments are evaluated as **formulas and column expre
 - Worse, if a column named `original` happens to exist, writing `source="original"` will silently copy that column instead of assigning the word `"original"`.
 
 To assign a standalone literal constant value directly as a keyword argument without awkward nested quotes (`status="'active'"`), wrap it in `quoted string literals (e.g. status="'active'")`:
-- `.pt.mutate(status=pt.lit("active"), source=pt.lit("original"))`
+- `.mutate(status=pt.lit("active"), source=pt.lit("original"))`
 
 > **When is `quoted string literals (e.g. status="'active'")` NOT needed?**
 > 1. **Inside conditional helpers (`if_else`, `case_when`, `coalesce`)**: `quoted string literals (e.g. status="'active'")` is **completely irrelevant here**. Inside formula expressions, standard inner single quotes `'...'` already distinguish string literals from column references:
 >    ```python
->    df.pt.mutate(size="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')")
+>    df.mutate(size="if_else(mass_kg >= 4.5, 'Heavy', 'Standard')")
 >    ```
 > 2. **In the CLI**: `quoted string literals (e.g. status="'active'")` is **never needed in the CLI**. In terminal commands, standard inner single quotes are always used:
 >    ```bash
@@ -7976,13 +7974,13 @@ import pandas as pd
 import pytae as pt
 
 # Sample dataframe containing a column named 'original'
-df = pd.DataFrame({'original': [100, 200], 'val': [1, 2]})
+df = pt.DataFrame({'original': [100, 200], 'val': [1, 2]})
 
 # 1. Unquoted string matching an existing column -> copies that column!
-print("Copied column 'original':\n", df.pt.mutate(source='original'))
+print("Copied column 'original':\n", df.mutate(source='original'))
 
 # 2. With pt.lit(): assigns literal string constants cleanly and safely
-print("\nWith pt.lit():\n", df.pt.mutate(source="'original'", status="'active'"))
+print("\nWith pt.lit():\n", df.mutate(source="'original'", status="'active'"))
 ```
 Output:
 ```text
@@ -8228,7 +8226,7 @@ titanic = pt.sample_data['titanic']
 
 ```python
 # Alphabetical column list — useful for quick discovery
-penguins.pt.cols()
+penguins.cols()
 ```
 Output:
 ```text
@@ -8243,7 +8241,7 @@ Output:
 
 ```python
 # Descending alphabetical sort — useful when column names form a natural reverse order
-penguins.pt.cols(ascending=False)
+penguins.cols(ascending=False)
 ```
 Output:
 ```text
@@ -8258,14 +8256,14 @@ Output:
 
 ## `glimpse()` — transposed column overview
 
-`.pt.glimpse()` prints a compact, transposed overview of the DataFrame inspired by R/dplyr's `glimpse()`:
+`.glimpse()` prints a compact, transposed overview of the DataFrame inspired by R/dplyr's `glimpse()`:
 - Summarizes row count, column count, and in-memory footprint.
 - Lists every column name alongside its dtype and inline sample values.
 - Non-destructive: prints to stdout and returns `self` (the unchanged DataFrame) so it can be inserted anywhere inside a method chain for debugging.
 
 ```python
 # Direct glimpse overview
-penguins.pt.glimpse()
+penguins.glimpse()
 ```
 Output:
 ```text
@@ -8305,9 +8303,9 @@ shape: (344, 7)
 # Non-destructive: returns self, allowing inspection mid-pipeline
 (
     penguins
-    .pt.filter("body_mass_g > 4000")
-    .pt.glimpse()
-    .pt.select("species", "island", "body_mass_g")
+    .filter("body_mass_g > 4000")
+    .glimpse()
+    .select("species", "island", "body_mass_g")
     .head(3)
 )
 ```
@@ -8404,9 +8402,9 @@ shape: (5, 7)
 # df.to_clip() copies the current DataFrame to clipboard — paste into Excel/Sheets
 # Run this cell then Cmd+V in any spreadsheet application
 (penguins
- .pt.select('species', 'island', 'bill_length_mm', 'body_mass_g')
- .pt.by('species', 'island')
- .pt.agg(a=['mean', 'n'])
+ .select('species', 'island', 'bill_length_mm', 'body_mass_g')
+ .by('species', 'island')
+ .agg(a=['mean', 'n'])
 ).to_clip()
 ```
 
@@ -8422,8 +8420,8 @@ messy = penguins.rename(columns={
 })
 
 (messy
- .pt.clean_columns(strip=True, squeeze=True, strip_special=True, fill='_', case='lower')
- .pt.cols(ascending=None)
+ .clean_columns(strip=True, squeeze=True, strip_special=True, fill='_', case='lower')
+ .cols(ascending=None)
 )
 ```
 Output:
@@ -8441,8 +8439,8 @@ Output:
 # Method chain: clean names, then display them in original column order
 (
     penguins
-    .pt.clean_columns(case='proper')
-    .pt.cols(ascending=None)
+    .clean_columns(case='proper')
+    .cols(ascending=None)
 )
 ```
 Output:
@@ -8581,7 +8579,7 @@ Values:
 
 | Method | Key Params | Purpose |
 |---|---|---|
-| `.pt.by(...).pt.pick(col, n=1, prop=None, order="max")` | `col`, `n`, `prop`, `order`, `by` | Pick top or bottom N rows per group |
+| `.by(...).pick(col, n=1, prop=None, order="max")` | `col`, `n`, `prop`, `order`, `by` | Pick top or bottom N rows per group |
 
 ---
 
@@ -8605,8 +8603,8 @@ Retrieve the rows with the highest values in `col`.
 # Top 3 heaviest penguins overall
 (
     penguins
-    .pt.pick("body_mass_g", n=3)
-    .pt.select("species", "island", "body_mass_g")
+    .pick("body_mass_g", n=3)
+    .select("species", "island", "body_mass_g")
 )
 ```
 Output:
@@ -8631,9 +8629,9 @@ Retrieve the rows with the lowest values in `col`.
 # 3 lightest penguins overall
 (
     penguins
-    # .pt.by('island')
-    .pt.pick("body_mass_g", n=3)
-    .pt.select("species", "island", "body_mass_g")
+    # .by('island')
+    .pick("body_mass_g", n=3)
+    .select("species", "island", "body_mass_g")
 )
 ```
 Output:
@@ -8652,15 +8650,15 @@ shape: (3, 3)
 
 ## 3. Group-Aware Slicing (`pt.by()`)
 
-When preceded by `.pt.by(...)`, `pick` and `pick` extract top or bottom N rows **per group**.
+When preceded by `.by(...)`, `pick` and `pick` extract top or bottom N rows **per group**.
 
 ```python
 # Top heaviest penguin for each species
 (
     penguins
-    .pt.by("species")
-    .pt.pick("body_mass_g", n=1)
-    .pt.select("species", "island", "body_mass_g")
+    .by("species")
+    .pick("body_mass_g", n=1)
+    .select("species", "island", "body_mass_g")
 )
 ```
 Output:
@@ -8681,9 +8679,9 @@ shape: (3, 3)
 # Lightest 2 penguins per island
 (
     penguins
-    .pt.by("island")
-    .pt.pick("body_mass_g", n=2, order="max")
-    .pt.select("island", "species", "body_mass_g")
+    .by("island")
+    .pick("body_mass_g", n=2, order="max")
+    .select("island", "species", "body_mass_g")
 )
 ```
 Output:
@@ -8731,8 +8729,8 @@ Select a fraction of rows (e.g. `prop=0.1` for top 10%) overall or within each g
 # Top 10% heaviest penguins per species
 (
     penguins
-    .pt.by("species")
-    .pt.pick("body_mass_g", prop=0.1)
+    .by("species")
+    .pick("body_mass_g", prop=0.1)
 )
 ```
 Output:
@@ -8762,7 +8760,7 @@ shape: (33, 7)
 ################################################################################
 # Notebook: pivot.ipynb
 
-# `pt.pivot` / `df.pt.pivot` — Excel-Style 2D Pivot Tables
+# `pt.pivot` / `df.pivot` — Excel-Style 2D Pivot Tables
 
 `pt.pivot()` summarizes and aggregates tabular data across dimensions using the intuitive **RCVA** grammar:
 - **`r`** (Rows): Row grouping dimensions (*optional*)
@@ -8805,7 +8803,7 @@ shape: (5, 7)
 Summarize average body mass across islands (rows) and species (columns):
 
 ```python
-penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
+penguins.pivot(r="island", c="species", v="body_mass_g", a="mean")
 ```
 Output:
 ```text
@@ -8826,7 +8824,7 @@ shape: (3, 4)
 Count occurrences across dimensions (the direct successor to cross-tabulation):
 
 ```python
-penguins.pt.pivot(r="island", c="species", v="sex", a="n")
+penguins.pivot(r="island", c="species", v="sex", a="n")
 ```
 Output:
 ```text
@@ -8848,7 +8846,7 @@ Just like dragging fields in Excel, `r` and `c` are completely optional.
 
 ```python
 # Omit c: vertical summary table by row group
-penguins.pt.pivot(r="species", v="body_mass_g", a="mean")
+penguins.pivot(r="species", v="body_mass_g", a="mean")
 ```
 Output:
 ```text
@@ -8866,7 +8864,7 @@ shape: (3, 2)
 
 ```python
 # Omit r: horizontal summary table across column headers
-penguins.pt.pivot(c="species", v="body_mass_g", a="mean")
+penguins.pivot(c="species", v="body_mass_g", a="mean")
 ```
 Output:
 ```text
@@ -8882,7 +8880,7 @@ shape: (1, 3)
 
 ```python
 # Omit both r and c: grand scalar aggregation across the dataset
-penguins.pt.pivot(v="body_mass_g", a="mean")
+penguins.pivot(v="body_mass_g", a="mean")
 ```
 Output:
 ```text
@@ -8902,7 +8900,7 @@ Pass a list of columns to `r`, `c`, or `v`:
 
 ```python
 # Hierarchical rows + multiple metric values
-penguins.pt.pivot(
+penguins.pivot(
     r=["island", "sex"],
     c="species",
     v=["body_mass_g", "flipper_length_mm"],
@@ -8941,10 +8939,10 @@ shape: (12, 8)
 
 ## 5. Seamless Method Chaining & Plotting
 
-Because `pt.pivot` always returns a clean, rectangular DataFrame with a flat RangeIndex, you can immediately chain into further transformations or `.pt.plot()`:
+Because `pt.pivot` always returns a clean, rectangular DataFrame with a flat RangeIndex, you can immediately chain into further transformations or `.plot()`:
 
 ```python
-piv = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean", f_v=0)
+piv = penguins.pivot(r="island", c="species", v="body_mass_g", a="mean", f_v=0)
 # Clean flat columns and standard index ready for downstream manipulation:
 print("Columns:", list(piv.columns))
 print("Index:", list(piv.index))
@@ -8979,7 +8977,7 @@ shape: (3, 4)
 `Plotter` is `pytae`'s method-chainable visualization engine built on top of Matplotlib and `pandas.plot()`. It eliminates visualization boilerplate by providing:
 - **Single Subplot by Default**: Omit `mosaic` for single charts where `on=` is optional
 - **Subplots Without Mosaic**: Use standard `nrows` and `ncols` (e.g. `pt.Plotter(df, nrows=1, ncols=2)`)
-- **Direct Accessor & Functional Chaining**: `df.pt.plot(...)` and `pt.plot(df, ...)`
+- **Direct Accessor & Functional Chaining**: `df.plot(...)` and `pt.plot(df, ...)`
 - **Direct Pipeline Plotting**: Designed to work cleanly with `pt.agg()` and `pt.pivot()`, with built-in `palette=`
 - **True Distribution Semantics**: Unaggregated `box` plots alongside `kde` and `hist`
 - **Secondary Y-Axis Overlays**: Effortless dual axes via `on="A^"` syntax
@@ -9004,7 +9002,7 @@ titanic = pt.sample("titanic")
 When `mosaic` is omitted, `Plotter` automatically creates a **single subplot** (axis `"A"`), and specifying `on="A"` is completely optional.
 
 `pytae` provides three interchangeable entry points depending on your workflow:
-1. **DataFrame Accessor (`df.pt.plot(...)` & `.pt.finalize()`)**: Plugs directly into pandas / pytae transformation chains with consistent `.pt` namespace throughout.
+1. **DataFrame Method (`df.plot(...)` & `.finalize()`)**: Plugs directly into pandas / pytae transformation chains with fluent chaining throughout.
 2. **Functional Style (`pt.plot(df, ...)` & `pt.finalize()`)**: Concise standalone functions for procedural workflows.
 3. **Class Constructor (`pt.Plotter(df)`)**: Object-oriented single-subplot initialization with `.finalize()`.
 
@@ -9014,10 +9012,10 @@ tips = pt.sample("tips")
 # 1.1 DataFrame Accessor: single subplot without mosaic, chained directly from wrangling
 (
     tips
-    .pt.filter("total_bill > 10")
-    .pt.by("day", "sex")
-    .pt.agg(total_bill="mean")
-    .pt.plot(
+    .filter("total_bill > 10")
+    .by("day", "sex")
+    .agg(total_bill="mean")
+    .plot(
         kind="bar",
         x="day",
         y="total_bill",
@@ -9025,12 +9023,12 @@ tips = pt.sample("tips")
         palette="tab10",
         title="Average Bill by Day and Sex"
     )
-    .pt.finalize()
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x1131b9be0>
+<pytae.plotting.Plotter at 0x112fb9be0>
 ```
 
 ```python
@@ -9050,12 +9048,12 @@ pt.finalize(p)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e0360d0>
+<pytae.plotting.Plotter at 0x11de360d0>
 ```
 
 ```python
 # 1.3 Class Constructor: pt.Plotter(df) on a single subplot (no mosaic needed)
-p = pt.Plotter(tips.pt.by("day").pt.agg(total_bill="mean"), figsize=(8, 4.5))
+p = pt.Plotter(tips.by("day").agg(total_bill="mean"), figsize=(8, 4.5))
 (
     p
     .plot(kind="line", x="day", y="total_bill", marker="o", color="crimson", title="Mean Bill Trend")
@@ -9064,7 +9062,7 @@ p = pt.Plotter(tips.pt.by("day").pt.agg(total_bill="mean"), figsize=(8, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e0fefd0>
+<pytae.plotting.Plotter at 0x11df03890>
 ```
 
 ## 2. Plot Kinds & Distribution Semantics
@@ -9079,28 +9077,28 @@ Output:
 # 2.1 Grouped horizontal bar chart with custom aggregation
 (
     tips
-    .pt.pivot(r="day", c="time", v="tip", a="mean")
-    .pt.plot(
+    .pivot(r="day", c="time", v="tip", a="mean")
+    .plot(
         kind="barh",
         x="day",
         palette="tab10",
         title="Mean Tip by Day and Dining Time"
     )
-    .pt.finalize()
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e0629e0>
+<pytae.plotting.Plotter at 0x11de629e0>
 ```
 
 ```python
 # 2.2 Pre-aggregated pie chart with formatted percentages
 (
     tips
-    .pt.by("day")
-    .pt.agg(total_bill="sum")
-    .pt.plot(
+    .by("day")
+    .agg(total_bill="sum")
+    .plot(
         kind="pie",
         y="total_bill",
         by="day",
@@ -9108,12 +9106,12 @@ Output:
         palette="Pastel1",
         title="Total Revenue Share by Day"
     )
-    .pt.finalize()
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e061cd0>
+<pytae.plotting.Plotter at 0x11de61cd0>
 ```
 
 ```python
@@ -9122,7 +9120,7 @@ diamonds = pt.sample("diamonds").sample(1000, random_state=42)
 # 2.3 Hexbin density plot for dense continuous distributions
 (
     diamonds
-    .pt.plot(
+    .plot(
         kind="hexbin",
         x="carat",
         y="price",
@@ -9130,30 +9128,30 @@ diamonds = pt.sample("diamonds").sample(1000, random_state=42)
         cmap="viridis",
         title="Diamond Carat vs Price (Hexbin Density)"
     )
-    .pt.finalize()
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x112114710>
+<pytae.plotting.Plotter at 0x111e64710>
 ```
 
 ```python
 # 2.4 Unaggregated Box Plot: shows real distribution quartiles across categories
 (
     diamonds
-    .pt.plot(
+    .plot(
         kind="box",
         x="cut",
         y="price",
         title="Diamond Price Distribution by Cut"
     )
-    .pt.finalize()
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e122250>
+<pytae.plotting.Plotter at 0x11df26250>
 ```
 
 ```python
@@ -9162,7 +9160,7 @@ titanic = pt.sample("titanic")
 # 2.5 Overlapping histograms split by group (accepts x= or column=)
 (
     titanic
-    .pt.plot(
+    .plot(
         kind="hist",
         x="age",
         by="alive",
@@ -9171,12 +9169,12 @@ titanic = pt.sample("titanic")
         palette="tab10",
         title="Age Distribution by Survival Status"
     )
-    .pt.finalize()
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11315a470>
+<pytae.plotting.Plotter at 0x112f5a470>
 ```
 
 ```python
@@ -9194,7 +9192,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e083950>
+<pytae.plotting.Plotter at 0x11de83850>
 ```
 
 ## 3. Subplots & Multi-Panel Dashboards (With & Without Mosaic)
@@ -9210,7 +9208,7 @@ Additionally, append `^` to an axis identifier (e.g. `on="A^"`) to overlay an in
 p_sub = pt.Plotter(nrows=1, ncols=2, figsize=(11, 4.5))
 (
     p_sub
-    .data(tips.pt.by("day").pt.agg(total_bill="mean"))
+    .data(tips.by("day").agg(total_bill="mean"))
     .plot(on="A", kind="bar", x="day", y="total_bill", palette="tab10", title="Mean Bill by Day")
     .data(tips)
     .plot(on="B", kind="scatter", x="total_bill", y="tip", c="day", cmap="viridis", title="Bill vs Tip")
@@ -9219,7 +9217,7 @@ p_sub = pt.Plotter(nrows=1, ncols=2, figsize=(11, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e520c50>
+<pytae.plotting.Plotter at 0x11e320d50>
 ```
 
 ```python
@@ -9227,16 +9225,16 @@ Output:
 k = pt.Plotter(figsize=(9, 5))
 (
     k
-    .data(tips.pt.by("day").pt.agg(total_bill="mean"))
+    .data(tips.by("day").agg(total_bill="mean"))
     .plot(on="A", kind="bar", x="day", y="total_bill", legend=False, title="Average Bill (Bars) vs Average Tip (Line)")
-    .data(tips.pt.by("day").pt.agg(tip="mean"))
+    .data(tips.by("day").agg(tip="mean"))
     .plot(on="A^", kind="line", x="day", y="tip", color="crimson", marker="o", linewidth=2.5)
     .finalize(consolidate_legends=True, bbox_to_anchor=(0.5, -0.15), ncols=2)
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e520b50>
+<pytae.plotting.Plotter at 0x11e320c50>
 ```
 
 ```python
@@ -9249,9 +9247,9 @@ CD
 p = pt.Plotter(mosaic=mosaic, figsize=(14, 9))
 (
     p
-    .data(titanic.pt.by("pclass").pt.agg(survived="mean"))
+    .data(titanic.by("pclass").agg(survived="mean"))
     .plot(on="A", kind="bar", x="pclass", y="survived", palette="Set1", title="Survival Rate by Class")
-    .data(titanic.pt.by("sex").pt.agg(survived="mean"))
+    .data(titanic.by("sex").agg(survived="mean"))
     .plot(on="B", kind="bar", x="sex", y="survived", palette="tab10", title="Survival Rate by Sex")
     .data(titanic)
     .plot(on="C", kind="hist", x="age", by="alive", bins=20, alpha=0.6, palette="Set2", title="Age Distribution by Survival")
@@ -9261,7 +9259,7 @@ p = pt.Plotter(mosaic=mosaic, figsize=(14, 9))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e521250>
+<pytae.plotting.Plotter at 0x11e321350>
 ```
 
 ```python
@@ -9278,24 +9276,24 @@ p_multi = pt.Plotter(mosaic=mosaic_multi, figsize=(13, 7))
     .data(penguins)
     .plot(on="A", kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species", palette="tab10", title="Penguin Bill Dimensions")
     # Panel B: Tips bar chart
-    .data(tips.pt.by("day").pt.agg(total_bill="mean"))
+    .data(tips.by("day").agg(total_bill="mean"))
     .plot(on="B", kind="bar", x="day", y="total_bill", color="#2a9d8f", title="Mean Bill by Day")
     # Panel C: Titanic survival rate
-    .data(titanic.pt.by("pclass").pt.agg(survived="mean"))
+    .data(titanic.by("pclass").agg(survived="mean"))
     .plot(on="C", kind="bar", x="pclass", y="survived", color="#e76f51", title="Survival Rate by Class")
     .finalize(consolidate_legends=True, bbox_to_anchor=(0.5, -0.05), ncols=3)
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e522f50>
+<pytae.plotting.Plotter at 0x11e323050>
 ```
 
 ## 4. Grid Faceting / Small Multiples (Auto-Faceting with `by` & `ncols`)
 
 Split a dataset across an automated grid of subplots for each distinct level of a categorical column.
 
-`pytae` automatically recognizes faceting whenever `by=` and `ncols=` are passed to **`pt.plot(...)`**, **`df.pt.plot(...)`**, or **`pt.Plotter(...)`**—no need to remember a separate `pt.Plotter.facet` class method! (The explicit `pt.Plotter.facet` is still fully supported as an alias). Leftover grid cells are automatically kept clean.
+`pytae` automatically recognizes faceting whenever `by=` and `ncols=` are passed to **`pt.plot(...)`**, **`df.plot(...)`**, or **`pt.Plotter(...)`**—no need to remember a separate `pt.Plotter.facet` class method! (The explicit `pt.Plotter.facet` is still fully supported as an alias). Leftover grid cells are automatically kept clean.
 
 ```python
 # 4.1 Auto-Faceting with pt.plot(by="species", ncols=3): automatic small multiples grid
@@ -9314,14 +9312,14 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12c0b0f50>
+<pytae.plotting.Plotter at 0x12be95050>
 ```
 
 ```python
-# 4.2 Fluent Accessor Auto-Faceting: df.pt.plot(by="cut", ncols=3)
+# 4.2 Fluent Accessor Auto-Faceting: df.plot(by="cut", ncols=3)
 (
     diamonds
-    .pt.plot(
+    .plot(
         by="cut",
         ncols=2,
         x="price",
@@ -9331,17 +9329,17 @@ Output:
         titles=True,
         sharex=True
     )
-    .pt.finalize()
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12c0b0c50>
+<pytae.plotting.Plotter at 0x12be94d50>
 ```
 
 ## 5. End-to-End Pipelines: Mixing pandas, pytae, and Multi-Panel Mosaics
 
-Because `pytae` methods return standard pandas DataFrames, you can freely mix standard pandas operations (`.dropna()`, `.rename()`, `.sort_values()`, `.query()`) with `pytae` verbs (`.pt.mutate()`, `.pt.filter()`, `.pt.select()`) in a single chained pipeline that ends directly in a multi-panel mosaic dashboard.
+Because `pytae` methods return standard pandas DataFrames, you can freely mix standard pandas operations (`.dropna()`, `.rename()`, `.sort_values()`, `.query()`) with `pytae` verbs (`.mutate()`, `.filter()`, `.select()`) in a single chained pipeline that ends directly in a multi-panel mosaic dashboard.
 
 ```python
 # 5.1 Continuous Accessor Chain: pandas + pytae + mosaic dashboard
@@ -9350,9 +9348,9 @@ wrangle_penguins = (
     # 1. pandas: Drop missing measurements
     .dropna(subset=["bill_length_mm", "bill_depth_mm", "body_mass_g"])
     # 2. pytae: Feature engineering (compute ratio and scaled mass)
-    .pt.mutate(bill_ratio="bill_length_mm / bill_depth_mm", mass_kg="body_mass_g / 1000")
+    .mutate(bill_ratio="bill_length_mm / bill_depth_mm", mass_kg="body_mass_g / 1000")
     # 3. pytae: Expressive filter
-    .pt.filter("mass_kg > 3.0")
+    .filter("mass_kg > 3.0")
     # 4. pandas: Sort observations
     .sort_values("body_mass_g", ascending=False)
 )
@@ -9368,7 +9366,7 @@ wrangle_penguins = (
     .data(wrangle_penguins)
     .plot(on="A", kind="scatter", x="bill_length_mm", y="bill_depth_mm", by="species", palette="Set1", title="Bill Dimensions")
     .plot(on="B", kind="box", x="species", y="body_mass_g", title="Body Mass Distribution")
-    .data(wrangle_penguins.pt.by("species").pt.agg(bill_ratio="mean"))
+    .data(wrangle_penguins.by("species").agg(bill_ratio="mean"))
     .plot(on="C", kind="bar", x="species", y="bill_ratio", palette="tab10", title="Mean Bill Ratio")
     .data(wrangle_penguins)
     .plot(on="D", kind="kde", x="body_mass_g", by="species", title="Body Mass Density")
@@ -9377,7 +9375,7 @@ wrangle_penguins = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e523050>
+<pytae.plotting.Plotter at 0x11e323150>
 ```
 
 ```python
@@ -9385,8 +9383,8 @@ Output:
 cleaned_diamonds = (
     diamonds
     .rename(columns={"table": "table_pct"})
-    .pt.select("cut", "color", "price", "carat")
-    .pt.mutate(price_per_carat="price / carat")
+    .select("cut", "color", "price", "carat")
+    .mutate(price_per_carat="price / carat")
     .query("price_per_carat > 1500")
 )
 
@@ -9398,7 +9396,7 @@ cleaned_diamonds = (
         """,
         figsize=(12, 8)
     )
-    .data(cleaned_diamonds.pt.by("cut", "color").pt.agg(price_per_carat="mean"))
+    .data(cleaned_diamonds.by("cut", "color").agg(price_per_carat="mean"))
     .plot(on="A", kind="bar", x="cut", y="price_per_carat", by="color", palette="tab10", title="Mean Price/Carat by Cut & Color")
     .data(cleaned_diamonds)
     .plot(on="B", kind="box", x="cut", y="price_per_carat", title="Price/Carat Distribution")
@@ -9408,7 +9406,7 @@ cleaned_diamonds = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12c0b0e50>
+<pytae.plotting.Plotter at 0x12be94f50>
 ```
 
 ## 6. Advanced Controls & Customization (`_CONTROL_KWARGS`)
@@ -9427,15 +9425,15 @@ Output:
 | `annot` | `bool` | Annotates heatmap cells with numeric values (see 2.6) |
 | `fmt` | `str` (e.g. `".2f"`, `".1f"`) | Format string specifier for heatmap annotations (see 2.6) |
 
-> **Design Principle:** In line with *"One and only one right way"*, `Plotter` does not perform implicit aggregation. Aggregate or summarize first using `df.pt.agg(...)` or `df.pt.pivot(...)` before plotting.
+> **Design Principle:** In line with *"One and only one right way"*, `Plotter` does not perform implicit aggregation. Aggregate or summarize first using `df.agg(...)` or `df.pivot(...)` before plotting.
 
 ```python
 # 6.1 Control Kwargs: print_data, clip_data, xlabel, and ylabel
 p = (
     tips
-    .pt.by("day", "sex")
-    .pt.agg(total_bill="mean")
-    .pt.plot(
+    .by("day", "sex")
+    .agg(total_bill="mean")
+    .plot(
         kind="bar",
         x="day",
         y="total_bill",
@@ -9447,7 +9445,7 @@ p = (
         print_data=True,  # Prints the exact plotted DataFrame sent to Matplotlib
         clip_data=True    # Copies the plotted DataFrame to system clipboard for pasting
     )
-    .pt.finalize()
+    .finalize()
 )
 
 # You can also retrieve the plotted DataFrame anytime via p.get_data("A")
@@ -9475,10 +9473,10 @@ Retrieved via p.get_data('A'):
 k = pt.Plotter(figsize=(9, 5))
 (
     k
-    .data(tips.pt.by("day").pt.agg(total_bill="mean"))
+    .data(tips.by("day").agg(total_bill="mean"))
     .plot(on="A", kind="bar", x="day", y="total_bill", legend=False,
           xlabel="Day of Week", ylabel="Mean Total Bill ($)", title="Average Bill (Bars) vs Tip (Line)")
-    .data(tips.pt.by("day").pt.agg(tip="mean"))
+    .data(tips.by("day").agg(tip="mean"))
     .plot(kind="line", x="day", y="tip", secondary_y=True,
           color="crimson", marker="o", linewidth=2.5, ylabel="Mean Tip ($)")
     .finalize(consolidate_legends=True, bbox_to_anchor=(0.5, -0.15), ncols=2)
@@ -9492,20 +9490,20 @@ Output:
 
 ```python
 # 6.3 Plotting Pre-Aggregated / Direct Data (No Extra Flags Needed)
-pre_aggregated = pd.DataFrame({
+pre_aggregated = pt.DataFrame({
     "quarter": ["Q1", "Q2", "Q3", "Q4"],
     "revenue": [120, 150, 180, 210]
 })
 
 (
     pre_aggregated
-    .pt.plot(kind="bar", x="quarter", y="revenue", color="#457b9d", title="Quarterly Revenue")
-    .pt.finalize()
+    .plot(kind="bar", x="quarter", y="revenue", color="#457b9d", title="Quarterly Revenue")
+    .finalize()
 )
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12c0ff450>
+<pytae.plotting.Plotter at 0x10c508950>
 ```
 
 ```python
@@ -9534,7 +9532,7 @@ Output:
 p = pt.Plotter(nrows=1, ncols=2, figsize=(11, 4.5))
 (
     p
-    .data(tips.pt.by("day").pt.agg(total_bill="mean"))
+    .data(tips.by("day").agg(total_bill="mean"))
     .plot(on="A", kind="bar", x="day", y="total_bill", palette="tab10", title="Mean Bill by Day")
     .data(tips)
     .plot(on="B", kind="scatter", x="total_bill", y="tip", c="day", cmap="viridis", title="Bill vs Tip")
@@ -9745,8 +9743,8 @@ shape: (3, 2)
 
 | Method | Key params | Purpose |
 |---|---|---|
-| `.pt.long(c='variable', v='value', id_vars=None)` | `c`, `v`, `id_vars` | wide → long (melt) |
-| `.pt.wide(c='variable', v='value', r=None)` | `c`, `v`, `index` (or `r`) | long → wide (pure 1:1 unmelt) |
+| `.long(c='variable', v='value', id_vars=None)` | `c`, `v`, `id_vars` | wide → long (melt) |
+| `.wide(c='variable', v='value', r=None)` | `c`, `v`, `index` (or `r`) | long → wide (pure 1:1 unmelt) |
 
 They are designed to work together as a **strictly complementary 1-to-1 reshaping pair**.
 
@@ -9787,8 +9785,8 @@ Melts all numeric columns to rows by default, preserving non-numeric columns as 
 # Melt numeric columns into (variable, value) pairs
 (
     penguins
-    .pt.select("species", "bill_length_mm", "bill_depth_mm")
-    .pt.long()
+    .select("species", "bill_length_mm", "bill_depth_mm")
+    .long()
     .head()
 )
 ```
@@ -9811,7 +9809,7 @@ shape: (5, 3)
 ```python
 # Customize target column names for variable and value
 (
-    flights.pt.long(c="metric", v="value")
+    flights.long(c="metric", v="value")
     .head()
 )
 ```
@@ -9834,7 +9832,7 @@ shape: (5, 3)
 ```python
 # Explicit id_vars: specify which columns remain fixed
 (
-    healthexp.pt.long(id_vars=["Year", "Country"], c="Metric", v="Amount")
+    healthexp.long(id_vars=["Year", "Country"], c="Metric", v="Amount")
     .head()
 )
 ```
@@ -9860,7 +9858,7 @@ Pivots categorical values in column `c` into column headers, pulling cell values
 
 ```python
 # flights has exactly one row per year + month: perfect 1-to-1 unmelt
-flights_wide = flights.pt.wide(c="month", v="passengers")
+flights_wide = flights.wide(c="month", v="passengers")
 flights_wide.head()
 ```
 Output:
@@ -9881,12 +9879,12 @@ shape: (5, 13)
 
 ```python
 # Explicit index parameter (r= / index=)
-demo_long = pd.DataFrame({
+demo_long = pt.DataFrame({
     "id": [1, 2, 3],
     "quarter": ["Q1", "Q2", "Q3"],
     "sales": [100, 200, 300]
 })
-demo_long.pt.wide(r="id", c="quarter", v="sales")
+demo_long.wide(r="id", c="quarter", v="sales")
 ```
 Output:
 ```text
@@ -9909,7 +9907,7 @@ If your DataFrame contains duplicate index/column pairs, `wide()` refuses to sil
 ```python
 # penguins has multiple individuals per (island, species), so wide() halts:
 try:
-    penguins.pt.wide(r="island", c="species", v="body_mass_g")
+    penguins.wide(r="island", c="species", v="body_mass_g")
 except ValueError as e:
     print("Error caught successfully:")
     print(e)
@@ -9924,7 +9922,7 @@ To summarize duplicate keys across dimensions, use [`pt.pivot`](pivot.ipynb) ins
 
 ```python
 # Proper aggregation with pt.pivot:
-penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
+penguins.pivot(r="island", c="species", v="body_mass_g", a="mean")
 ```
 Output:
 ```text
@@ -9946,13 +9944,13 @@ Because `long` and `wide` are strict bijections, a DataFrame can be unpivoted to
 
 ```python
 # Start with wide flights
-wide_orig = flights.pt.wide(c="month", v="passengers")
+wide_orig = flights.wide(c="month", v="passengers")
 
 # 1. Melt to long
-long_form = wide_orig.pt.long(c="month", v="passengers", id_vars=["year"])
+long_form = wide_orig.long(c="month", v="passengers", id_vars=["year"])
 
 # 2. Reshape back to wide
-wide_restored = long_form.pt.wide(r="year", c="month", v="passengers")
+wide_restored = long_form.wide(r="year", c="month", v="passengers")
 
 # 3. Verify exact match (aligning column order)
 pd.testing.assert_frame_equal(wide_orig[wide_restored.columns], wide_restored)
@@ -10019,7 +10017,7 @@ penguins = pt.sample_data['penguins']
 titanic = pt.sample_data['titanic']
 tips = pt.sample_data['tips']
 
-penguins.pt.cols(ascending=None)  # see column order
+penguins.cols(ascending=None)  # see column order
 ```
 Output:
 ```text
@@ -10038,7 +10036,7 @@ Criteria are a union (OR). Prefer `contains=` for substrings and `regex=` for pa
 ```python
 # All columns that contain 'bill' OR 'mass', plus species
 (penguins
- .pt.select('species', contains=['bill', 'mass'])
+ .select('species', contains=['bill', 'mass'])
  .head()
 )
 ```
@@ -10063,7 +10061,7 @@ shape: (5, 4)
 # island, sex, species are listed explicitly so they come first in that exact order,
 # then contains='mm' adds remaining mm-cols in original df order
 (penguins
- .pt.select('island', 'sex', 'species', contains='mm')
+ .select('island', 'sex', 'species', contains='mm')
  .head()
 )
 ```
@@ -10086,7 +10084,7 @@ shape: (5, 6)
 ```python
 # Columns ending in 'mm' — anchored regex
 (penguins
- .pt.select(regex='mm$')
+ .select(regex='mm$')
  .head()
 )
 ```
@@ -10110,7 +10108,7 @@ shape: (5, 3)
 # Combining contains= with a slice in one call (union)
 # contains='mm' picks the mm-cols; 'island:body_mass_g' slice picks everything between those two cols
 (penguins
- .pt.select('island:body_mass_g', contains='mm')
+ .select('island:body_mass_g', contains='mm')
  .head()
 )
 ```
@@ -10136,7 +10134,7 @@ shape: (5, 5)
 ```python
 # Select from 'bill_length_mm' through 'body_mass_g' (all measurement cols)
 (penguins
- .pt.select('bill_length_mm:body_mass_g')
+ .select('bill_length_mm:body_mass_g')
  .head()
 )
 ```
@@ -10163,7 +10161,7 @@ shape: (5, 4)
 # use more readable ways like list comprehension — this will ensure your co-workers
 # don't stab you in the middle of the night
 (penguins
- .pt.select(regex=r'^(?=.*mm)(?!.*flipper).*')  # regex sorcery
+ .select(regex=r'^(?=.*mm)(?!.*flipper).*')  # regex sorcery
  .head()
 )
 
@@ -10171,7 +10169,7 @@ shape: (5, 4)
 cols_with_mm_not_flipper = [c for c in penguins.columns if 'mm' in c and 'flipper' not in c]
 (
     penguins
-    .pt.select(cols_with_mm_not_flipper)
+    .select(cols_with_mm_not_flipper)
     .head()
 )
 ```
@@ -10197,7 +10195,7 @@ Use `everything()` to move specific columns to the front without dropping any.
 ```python
 # Move 'body_mass_g' and 'species' to front, keep all other columns after
 (penguins
- .pt.select('body_mass_g', 'species', pt.everything())
+ .select('body_mass_g', 'species', pt.everything())
  .head()
 )
 ```
@@ -10222,7 +10220,7 @@ shape: (5, 7)
 ```python
 # Lambda: columns whose name has more than 6 characters
 (penguins
- .pt.select(lambda c: len(c) > 6)
+ .select(lambda c: len(c) > 6)
  .head()
 )
 ```
@@ -10247,7 +10245,7 @@ shape: (5, 5)
 ```python
 # All numeric columns only
 (penguins
- .pt.select(dtype='numeric')
+ .select(dtype='numeric')
  .head()
 )
 ```
@@ -10270,7 +10268,7 @@ shape: (5, 4)
 ```python
 # Drop numeric columns — keep only categorical/string columns
 (penguins
- .pt.select(exclude_dtype='number')
+ .select(exclude_dtype='number')
  .head()
 )
 ```
@@ -10293,7 +10291,7 @@ shape: (5, 3)
 ```python
 # exclude_dtype also accepts a list — exclude multiple dtype families at once
 (penguins
- .pt.select(exclude_dtype=['datetime', 'object'])
+ .select(exclude_dtype=['datetime', 'object'])
  .head()
 )
 ```
@@ -10316,7 +10314,7 @@ shape: (5, 7)
 ```python
 # Titanic: columns starting with 'p' or 'a', plus all numeric; behaviour here is | and not &
 (titanic
- .pt.select(startswith=['p', 'a'], dtype='numeric')
+ .select(startswith=['p', 'a'], dtype='numeric')
  .head()
 )
 ```
@@ -10339,7 +10337,7 @@ shape: (5, 9)
 ```python
 # endswith — select columns whose name ends with a given suffix
 (penguins
- .pt.select(endswith='mm')  # same result as .select(regex='mm$') but more readable
+ .select(endswith='mm')  # same result as .select(regex='mm$') but more readable
  .head()
 )
 ```
@@ -10363,10 +10361,10 @@ shape: (5, 3)
 # Columns containing 'bill' or 'flipper' in name, used in a full chain ;  behaviour here is | and not &
 (
     penguins
-    .pt.filter(species=['Adelie', 'Gentoo'])
-    .pt.select('species', 'island', contains=['bill', 'flipper'])
-    .pt.by('species', 'island')
-    .pt.agg(a=['mean', 'n'])
+    .filter(species=['Adelie', 'Gentoo'])
+    .select('species', 'island', contains=['bill', 'flipper'])
+    .by('species', 'island')
+    .agg(a=['mean', 'n'])
 )
 ```
 Output:
@@ -10390,7 +10388,7 @@ Drop or exclude columns by prefixing names with `-` or `~`, passing a negative s
 ```python
 # Drop single column by negating with '-' or '~'
 (
-    penguins.pt.select('-species')
+    penguins.select('-species')
     .head(3)
 )
 ```
@@ -10411,7 +10409,7 @@ shape: (3, 6)
 ```python
 # Drop multiple columns
 (
-    penguins.pt.select('-species', '-island', '-sex')
+    penguins.select('-species', '-island', '-sex')
     .head(3)
 )
 ```
@@ -10432,7 +10430,7 @@ shape: (3, 4)
 ```python
 # Exclude a contiguous slice of columns
 (
-    penguins.pt.select('-bill_length_mm:body_mass_g')
+    penguins.select('-bill_length_mm:body_mass_g')
     .head(3)
 )
 ```
@@ -10453,7 +10451,7 @@ shape: (3, 3)
 ```python
 # Exclude columns using the exclude= keyword
 (
-    penguins.pt.select(exclude=['species', 'island'])
+    penguins.select(exclude=['species', 'island'])
     .head(3)
 )
 ```
@@ -10474,8 +10472,8 @@ shape: (3, 5)
 ```python
 # Combine positive selection with negative exclusion in a chain
 (penguins
- .pt.select(dtype='numeric')
- .pt.select('-bill_depth_mm')
+ .select(dtype='numeric')
+ .select('-bill_depth_mm')
  .head(3)
 )
 ```
@@ -10501,7 +10499,7 @@ Square brackets `[col name]` allow selecting and manipulating columns with space
 # Select columns with spaces using bracket notation
 penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'})
 (
-    penguins_spaced.pt.select('species', '[bill length mm]', '[body mass g]')
+    penguins_spaced.select('species', '[bill length mm]', '[body mass g]')
     .head()
 )
 ```
@@ -10524,7 +10522,7 @@ shape: (5, 3)
 ```python
 # Comma-separated string with bracketed space columns
 (
-    penguins_spaced.pt.select('species, [bill length mm], [body mass g]')
+    penguins_spaced.select('species, [bill length mm], [body mass g]')
     .head()
 )
 ```
@@ -10547,7 +10545,7 @@ shape: (5, 3)
 ```python
 # Drop a spaced column using negative bracket syntax -[col]
 (
-    penguins_spaced.pt.select('species', '[bill length mm]', '-[bill length mm]')
+    penguins_spaced.select('species', '[bill length mm]', '-[bill length mm]')
     .head()
 )
 ```
@@ -10575,7 +10573,7 @@ Square brackets `[col name]` allow selecting and manipulating columns with space
 # Select columns with spaces using bracket notation
 penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'})
 (
-    penguins_spaced.pt.select('species', '[bill length mm]', '[body mass g]')
+    penguins_spaced.select('species', '[bill length mm]', '[body mass g]')
     .head()
 )
 ```
@@ -10598,7 +10596,7 @@ shape: (5, 3)
 ```python
 # Comma-separated string with bracketed space columns
 (
-    penguins_spaced.pt.select('species, [bill length mm], [body mass g]')
+    penguins_spaced.select('species, [bill length mm], [body mass g]')
     .head()
 )
 ```
@@ -10621,7 +10619,7 @@ shape: (5, 3)
 ```python
 # Drop a spaced column using negative bracket syntax -[col]
 (
-    penguins_spaced.pt.select('species', '[bill length mm]', '-[bill length mm]')
+    penguins_spaced.select('species', '[bill length mm]', '-[bill length mm]')
     .head()
 )
 ```
@@ -10649,7 +10647,7 @@ Square brackets `[col name]` allow selecting and manipulating columns with space
 # Select columns with spaces using bracket notation
 penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'})
 (
-    penguins_spaced.pt.select('species', '[bill length mm]', '[body mass g]')
+    penguins_spaced.select('species', '[bill length mm]', '[body mass g]')
     .head()
 )
 ```
@@ -10672,7 +10670,7 @@ shape: (5, 3)
 ```python
 # Comma-separated string with bracketed space columns
 (
-    penguins_spaced.pt.select('species, [bill length mm], [body mass g]')
+    penguins_spaced.select('species, [bill length mm], [body mass g]')
     .head()
 )
 ```
@@ -10695,7 +10693,7 @@ shape: (5, 3)
 ```python
 # Drop a spaced column using negative bracket syntax -[col]
 (
-    penguins_spaced.pt.select('species', '[bill length mm]', '-[bill length mm]')
+    penguins_spaced.select('species', '[bill length mm]', '-[bill length mm]')
     .head()
 )
 ```
@@ -10728,7 +10726,7 @@ Optional extra: `pip install 'pytae[sql]'` (pulls in `duckdb`).
 | Call style | Meaning |
 |---|---|
 | `pt.sql(df, query)` | Function form; the passed frame is table `data` |
-| `df.pt.sql(query)` | Accessor form; chains with pandas / other `pt` methods |
+| `df.sql(query)` | Direct DataFrame method; chains / other `pt` methods |
 | `# Run queries on table 'data' or 'self'` | Register extra frames as additional tables (like CLI `-file` aliases) |
 
 The name `data` is reserved for the current frame — an extra frame cannot be named `data`.
@@ -10774,7 +10772,7 @@ shape: (3, 3)
 └───────────┴─────────────┴─────┘
 ```
 
-## Accessor form — `df.pt.sql(...)`
+## DataFrame Method — `df.sql(...)`
 
 Same query engine, but chains naturally off any DataFrame.
 
@@ -10782,7 +10780,7 @@ Same query engine, but chains naturally off any DataFrame.
 # `data` inside the query refers to the frame the accessor is called on
 (
     penguins
-    .pt.sql("select * from data where species = 'Adelie'")
+    .sql("select * from data where species = 'Adelie'")
     .head()
 )
 ```
@@ -10807,7 +10805,7 @@ shape: (5, 7)
 SQL standard uses double quotes for identifiers with spaces. `pytae` also accepts SQL-style square brackets `[col a]` and backticks (both converted to standard SQL double quotes before querying DuckDB):
 
 ```python
-spaced = pd.DataFrame({'col a': [1, 20, 3], 'col b': ['x', 'y', 'z']})
+spaced = pt.DataFrame({'col a': [1, 20, 3], 'col b': ['x', 'y', 'z']})
 
 # Double quotes, brackets, and backticks all work
 pt.sql(spaced, 'select [col a], `col b` from data where [col a] > 2')
@@ -10835,9 +10833,9 @@ Pass additional DataFrames as keyword arguments; each becomes a table of that na
 # SQL to aggregate, then a plain pandas method, then another pt accessor call
 (
     tips
-    .pt.sql('select day, time, sum(total_bill) as bill, sum(tip) as tip from data group by day, time')
+    .sql('select day, time, sum(total_bill) as bill, sum(tip) as tip from data group by day, time')
     .sort_values('bill', ascending=False)
-    .pt.mutate(tip_pct='tip / bill * 100')
+    .mutate(tip_pct='tip / bill * 100')
 )
 ```
 Output:
@@ -10865,7 +10863,7 @@ Just like the CLI (`pytae data.parquet -sql @query.txt`), you can pass `@path.tx
 with open('query_demo.txt', 'w') as f:
     f.write('select species, avg(body_mass_g) as avg_mass from data group by species order by avg_mass desc')
 
-out = penguins.pt.sql('@query_demo.txt')
+out = penguins.sql('@query_demo.txt')
 if os.path.exists('query_demo.txt'):
     os.remove('query_demo.txt')
 out
@@ -11064,7 +11062,7 @@ However, in standard **Pandas**, common tasks often suffer from multiple competi
 In R's **`dplyr`**, the grammar of data manipulation is elegant and highly readable (`filter`, `select`, `mutate`, `arrange`, `distinct`, `summarise`), but porting it to Python is notoriously difficult due to Python's lexical scoping, quotation rules, and execution models.
 
 **`pytae` bridges this gap:**
-1. **Zero Redundancy**: Exactly one canonical verb per action across both Python (`df.pt.<verb>()`, `pt.<verb>(df)`) and CLI (`-<verb>`).
+1. **Zero Redundancy**: Exactly one canonical verb per action across both Python (`df.<verb>()`, `pt.<verb>(df)`) and CLI (`-<verb>`). (When working on external Pandas/Polars frames, `df.pt.<verb>()` is also supported).
 2. **Predictable Types**: Output is always flat 1D columns with clean `RangeIndex(0, 1, 2, ...)` — no lingering MultiIndexes or index traps.
 3. **Ergonomic Shell & Code Alignment**: The exact same syntax that powers your interactive Jupyter session runs identically on the command line.
 
@@ -11076,8 +11074,8 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 
 ### 1. `filter` instead of `query` or `qry`
 - **Why `filter`?** `filter` is the canonical, intuitive verb across data science (R `dplyr`, SQL `FILTER`, Polars, Spark). Calling it `filter` provides immediate familiarity.
-- **Why not `df.query()`?** Pandas' native `df.query()` is string-only and passes strings to `numexpr`. In contrast, `df.pt.filter()` supports:
-  - **Bare Callables / Lambdas**: `df.pt.filter(lambda d: d['mass'] > 4000)` with full Python expressions and functions.
+- **Why not `df.query()`?** Pandas' native `df.query()` is string-only and passes strings to `numexpr`. In contrast, `df.filter()` supports:
+  - **Bare Callables / Lambdas**: `df.filter(lambda d: d['mass'] > 4000)` with full Python expressions and functions.
   - **Mathematical Intervals**: `"[3000, 4500]"` or `"(0, 100)"`.
   - **Set Membership & Operators**: lists `['A', 'B']`, tuples `('startswith', 'Ad')`.
   - **Spaced Columns**: bracketed column names `"[bill length mm] > 40"` without backticks.
@@ -11093,17 +11091,17 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and produces multi-level index outputs upon aggregation.
 - In R's `dplyr`, `group_by()` produces a sticky grouped tibble that persists across operations unless the user manually chains `%>% ungroup()`.
 - **In Pytae, grouping is strictly single-shot and auto-ungrouped**:
-  - `.pt.by(*cols)` sets an active grouping context for the *immediate next verb*.
-  - `.pt.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
-  - `.pt.pick()` slices extreme rows per group and returns an ungrouped `DataFrame`.
-  - `.pt.agg()` collapses per group and returns an ungrouped `DataFrame`.
+  - `df.by(*cols)` sets an active grouping context for the *immediate next verb*.
+  - `.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
+  - `.pick()` slices extreme rows per group and returns an ungrouped `DataFrame`.
+  - `.agg()` collapses per group and returns an ungrouped `DataFrame`.
   - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
 - **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
   ```python
   df.by("region").mutate(reg_avg="mean(sales)").mutate(overall_avg="mean(sales)").by("product").mutate(prod_avg="mean(sales)")
   ```
-- **Strict `*args` Only**: `df.pt.by("species", "island")` requires `*args`. Nested lists (`df.pt.by(["species"])`) and `df.pt.by(None)` are strictly rejected with clear errors.
-- **Precedence**: If a second `.pt.by()` is called, it cleanly overwrites the previous grouping context.
+- **Strict `*args` Only**: `df.by("species", "island")` requires `*args`. Nested lists (`df.by(["species"])`) and `df.by(None)` are strictly rejected with clear errors.
+- **Precedence**: If a second `.by()` is called, it cleanly overwrites the previous grouping context.
 
 ### 4. `arrange` instead of `sort` or `sort_by`
 - **Why not `sort`?** Python's list has `.sort()`, and Pandas previously had `.sort()` (deprecated in favor of `.sort_values()`). In CLI flags, `-sort` is ambiguous (does it sort rows, columns, or files?).
@@ -11111,7 +11109,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 
 ### 5. `agg` instead of `summarise` or `summarize`
 - **Why not `summarise`?** In Python, `summarise` vs `summarize` introduces spelling ambiguity (British vs American English). Having both violates "one and only one obvious way".
-- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.pt.agg()` and CLI `-agg`), pytae eliminates legacy confusion while providing declarative named aggregations (`avg_mass="body_mass_g.mean()"`, `n="n"`).
+- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), pytae eliminates legacy confusion while providing declarative named aggregations (`avg_mass="body_mass_g.mean()"`, `n="n"`).
 
 ### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
 - Pytae uses strictly complementary, intuitive English opposites: `long` turns wide tables into tall records; `wide` spreads long records back into headers. Both use identical `c=` (column dimension), `v=` (value column), and `r=` (row identifiers) vocabularies.
@@ -11134,108 +11132,108 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 
 ### 1. Row Filtering
 
-| Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Simple Filter** | `df[df['x'] > 10]` | `filter(df, x > 10)` | `df.pt.filter("x > 10")` | `-filter "x > 10"` |
-| **Callable / Lambda** | `df[df['x'] > 10]` | `filter(df, x > 10)` | `df.pt.filter(lambda d: d['x'] > 10)` | N/A |
-| **Interval / Range** | `df[(df['x'] >= 10) & (df['x'] <= 20)]` | `filter(df, between(x, 10, 20))` | `df.pt.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
-| **List Membership** | `df[df['cat'].isin(['A', 'B'])]` | `filter(df, cat %in% c('A', 'B'))` | `df.pt.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
-| **Spaced Columns** | `df[df['col name'] > 5]` | `filter(df, `col name` > 5)` | `df.pt.filter("[col name] > 5")` | `-filter "[col name] > 5"` |
+| **Simple Filter** | `df[df['x'] > 10]` | `filter(df, x > 10)` | `df.filter("x > 10")` | `-filter "x > 10"` |
+| **Callable / Lambda** | `df[df['x'] > 10]` | `filter(df, x > 10)` | `df.filter(lambda d: d['x'] > 10)` | N/A |
+| **Interval / Range** | `df[(df['x'] >= 10) & (df['x'] <= 20)]` | `filter(df, between(x, 10, 20))` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
+| **List Membership** | `df[df['cat'].isin(['A', 'B'])]` | `filter(df, cat %in% c('A', 'B'))` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Spaced Columns** | `df[df['col name'] > 5]` | `filter(df, `col name` > 5)` | `df.filter("[col name] > 5")` | `-filter "[col name] > 5"` |
 
 ---
 
 ### 2. Feature Engineering & Column Derivations
 
-| Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Formulas** | `df.assign(y=df['a'] / df['b'])` | `mutate(df, y = a / b)` | `df.pt.mutate(y="a / b")` | `-mutate "y = a / b"` |
-| **Multi-Column (`across`)** | `df[['a', 'b']] = df[['a', 'b']] * 1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08))` | `df.pt.mutate("(a, b) = _ * 1.08")` | `-mutate "(a, b) = _ * 1.08"` |
-| **Multi-Column + Suffix** | `for c in ['a','b']: df[f'{c}_usd'] = df[c]*1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08, .names="{.col}_usd"))` | `df.pt.mutate("(a, b)_usd = _ * 1.08")` | `-mutate "(a, b)_usd = _ * 1.08"` |
-| **Sequential** | Requires multiple `.assign()` or statements | `mutate(df, a=1, b=a*2)` | `df.pt.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
-| **If-Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `if_else(x > 0, 'pos', 'neg')` | `df.pt.mutate(flag="if_else(x > 0, 'pos', 'neg')")` | `-mutate "flag=if_else(x > 0, 'pos', 'neg')"` |
-| **Value Mapping / Recoding** | `df['x'].replace({'A': 'B'})` / `df['x'].map({'A': 'B'}).fillna(df['x'])` | `case_match(x, 'A' ~ 'B', .default = x)` | `df.pt.mutate(x="map(x, {'A': 'B'})")` | `-mutate "x = map(x, {'A': 'B'})"` |
-| **Missing Imputation** | `df['x'].fillna(0)` | `coalesce(x, 0)` / `replace_na(x, 0)` | `df.pt.mutate(x="fillna(x, 0)")` | `-mutate "x = fillna(x, 0)"` |
-| **Inline Type Casting** | `df['x'].astype(int)` | `as.integer(x)` | `df.pt.mutate(x="int(x)")` | `-mutate "x = int(x)"` |
-| **Grouped Window** | `df.groupby('g')['x'].transform('mean')` | `df %>% group_by(g) %>% mutate(m = mean(x))` | `df.pt.by("g").pt.mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
-| **Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `lag(x)` | `df.pt.by("g").pt.mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
-| **Diff & Returns** | `df.groupby('g')['x'].diff()` | `x - lag(x)` | `df.pt.by("g").pt.mutate(d="x - shift(x, 1)")` | `-by g -mutate "d = x - shift(x, 1)"` |
-| **Group Baseline (`first`/`last`)** | `df.groupby('g')['x'].transform('first')` | `first(x)` | `df.pt.by("g").pt.mutate(base="first(x)")` | `-by g -mutate "base = first(x)"` |
+| **Formulas** | `df.assign(y=df['a'] / df['b'])` | `mutate(df, y = a / b)` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
+| **Multi-Column (`across`)** | `df[['a', 'b']] = df[['a', 'b']] * 1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08))` | `df.mutate("(a, b) = _ * 1.08")` | `-mutate "(a, b) = _ * 1.08"` |
+| **Multi-Column + Suffix** | `for c in ['a','b']: df[f'{c}_usd'] = df[c]*1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08, .names="{.col}_usd"))` | `df.mutate("(a, b)_usd = _ * 1.08")` | `-mutate "(a, b)_usd = _ * 1.08"` |
+| **Sequential** | Requires multiple `.assign()` or statements | `mutate(df, a=1, b=a*2)` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
+| **If-Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `if_else(x > 0, 'pos', 'neg')` | `df.mutate(flag="if_else(x > 0, 'pos', 'neg')")` | `-mutate "flag=if_else(x > 0, 'pos', 'neg')"` |
+| **Value Mapping / Recoding** | `df['x'].replace({'A': 'B'})` / `df['x'].map({'A': 'B'}).fillna(df['x'])` | `case_match(x, 'A' ~ 'B', .default = x)` | `df.mutate(x="map(x, {'A': 'B'})")` | `-mutate "x = map(x, {'A': 'B'})"` |
+| **Missing Imputation** | `df['x'].fillna(0)` | `coalesce(x, 0)` / `replace_na(x, 0)` | `df.mutate(x="fillna(x, 0)")` | `-mutate "x = fillna(x, 0)"` |
+| **Inline Type Casting** | `df['x'].astype(int)` | `as.integer(x)` | `df.mutate(x="int(x)")` | `-mutate "x = int(x)"` |
+| **Grouped Window** | `df.groupby('g')['x'].transform('mean')` | `df %>% group_by(g) %>% mutate(m = mean(x))` | `df.by("g").mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
+| **Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `lag(x)` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
+| **Diff & Returns** | `df.groupby('g')['x'].diff()` | `x - lag(x)` | `df.by("g").mutate(d="x - shift(x, 1)")` | `-by g -mutate "d = x - shift(x, 1)"` |
+| **Group Baseline (`first`/`last`)** | `df.groupby('g')['x'].transform('first')` | `first(x)` | `df.by("g").mutate(base="first(x)")` | `-by g -mutate "base = first(x)"` |
 
 ---
 
 ### 3. Column Selection & Exclusion
 
-| Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Select Columns** | `df[['a', 'b']]` | `select(df, a, b)` | `df.pt.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `df.drop(columns=['a', 'b'])` | `select(df, -a, -b)` | `df.pt.select("-a", "-b")` | `-select "-a,-b"` |
-| **Pattern Match** | `df.filter(like='score')` | `select(df, contains("score"))` | `df.pt.select(contains="score")` | `-select "contains=score"` |
-| **Reorder with Rest** | `df[['lead'] + [c for c in df if c != 'lead']]` | `select(df, lead, everything())` | `df.pt.select("lead", pt.everything)` | N/A |
+| **Select Columns** | `df[['a', 'b']]` | `select(df, a, b)` | `df.select("a", "b")` | `-select "a,b"` |
+| **Drop Columns** | `df.drop(columns=['a', 'b'])` | `select(df, -a, -b)` | `df.select("-a", "-b")` | `-select "-a,-b"` |
+| **Pattern Match** | `df.filter(like='score')` | `select(df, contains("score"))` | `df.select(contains="score")` | `-select "contains=score"` |
+| **Reorder with Rest** | `df[['lead'] + [c for c in df if c != 'lead']]` | `select(df, lead, everything())` | `df.select("lead", pt.everything)` | N/A |
 
 ---
 
 ### 4. Row Sorting
 
-| Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Ascending** | `df.sort_values('x')` | `arrange(df, x)` | `df.pt.arrange("x")` | `-arrange x` |
-| **Descending** | `df.sort_values('x', ascending=False)` | `arrange(df, desc(x))` | `df.pt.arrange("x desc")` or `df.pt.arrange("-x")` | `-arrange "x desc"` or `-arrange "-x"` |
-| **Multi-Column** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `arrange(df, a, desc(b))` | `df.pt.arrange("a", "-b")` | `-arrange "a, -b"` |
+| **Ascending** | `df.sort_values('x')` | `arrange(df, x)` | `df.arrange("x")` | `-arrange x` |
+| **Descending** | `df.sort_values('x', ascending=False)` | `arrange(df, desc(x))` | `df.arrange("x desc")` or `df.arrange("-x")` | `-arrange "x desc"` or `-arrange "-x"` |
+| **Multi-Column** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `arrange(df, a, desc(b))` | `df.arrange("a", "-b")` | `-arrange "a, -b"` |
 
 ---
 
 ### 5. Picking Top / Bottom Records (`pick`)
 
-| Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Top N Overall** | `df.nlargest(3, 'x')` | `slice_max(df, x, n = 3)` | `df.pt.pick("x", n=3)` | `-pick "x,n=3"` |
-| **Top Proportion** | `df.nlargest(int(len(df)*0.1), 'x')` | `slice_max(df, x, prop = 0.1)` | `df.pt.pick("x", prop=0.1)` | `-pick "x,prop=0.1"` |
-| **Bottom N Overall**| `df.nsmallest(3, 'x')` | `slice_min(df, x, n = 3)` | `df.pt.pick("x", n=3, order="min")` | `-pick "x,n=3,order=min"` |
-| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(2, 'x')).reset_index(drop=True)` | `df %>% group_by(g) %>% slice_max(x, n = 2)` | `df.pt.by("g").pt.pick("x", n=2)` | `-by g -pick "x,n=2"` |
+| **Top N Overall** | `df.nlargest(3, 'x')` | `slice_max(df, x, n = 3)` | `df.pick("x", n=3)` | `-pick "x,n=3"` |
+| **Top Proportion** | `df.nlargest(int(len(df)*0.1), 'x')` | `slice_max(df, x, prop = 0.1)` | `df.pick("x", prop=0.1)` | `-pick "x,prop=0.1"` |
+| **Bottom N Overall**| `df.nsmallest(3, 'x')` | `slice_min(df, x, n = 3)` | `df.pick("x", n=3, order="min")` | `-pick "x,n=3,order=min"` |
+| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(2, 'x')).reset_index(drop=True)` | `df %>% group_by(g) %>% slice_max(x, n = 2)` | `df.by("g").pick("x", n=2)` | `-by g -pick "x,n=2"` |
 
 ---
 
 ### 6. Grouped Aggregation & Grouping Context
 
-| Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Group Context** | `df.groupby(['g1', 'g2'])` | `group_by(df, g1, g2)` | `df.pt.by("g1", "g2")` | `-by "g1,g2"` |
+| **Group Context** | `df.groupby(['g1', 'g2'])` | `group_by(df, g1, g2)` | `df.by("g1", "g2")` | `-by "g1,g2"` |
 | **Clear Grouping**| `df.reset_index()` | `ungroup(df)` | Auto-cleared (not needed) | N/A |
-| **Simple Group Agg** | `df.groupby('g')['x'].mean().reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` | `df.pt.by("g").pt.agg(x="mean")` | `-by g -agg x=mean` |
-| **Keep NA Groups (Default)** | `df.groupby('g', dropna=False)['x'].mean().reset_index()` *(Defaults to dropping NAs!)* | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` *(Keeps NAs by default)* | `df.pt.by("g").pt.agg(x="mean")` *(Defaults to `dropna=False`, non-destructive)* | `-by g -agg x=mean` *(Preserves `NaN` group)* |
-| **With Row Count**| `df.groupby('g').agg(mean_x=('x', 'mean'), n=('x', 'size')).reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x), n = n())` | `df.pt.by("g").pt.agg(mean_x="x:mean", n="n")` | `-by g -agg "mean_x=x:mean, n=n"` |
-| **Whole-Table Total**| `df[['x']].agg('mean').to_frame().T` | `summarise(df, mean_x = mean(x))` | `df.pt.agg(None, x="mean")` | `-agg x=mean` |
+| **Simple Group Agg** | `df.groupby('g')['x'].mean().reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` | `df.by("g").agg(x="mean")` | `-by g -agg x=mean` |
+| **Keep NA Groups (Default)** | `df.groupby('g', dropna=False)['x'].mean().reset_index()` *(Defaults to dropping NAs!)* | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` *(Keeps NAs by default)* | `df.by("g").agg(x="mean")` *(Defaults to `dropna=False`, non-destructive)* | `-by g -agg x=mean` *(Preserves `NaN` group)* |
+| **With Row Count**| `df.groupby('g').agg(mean_x=('x', 'mean'), n=('x', 'size')).reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x), n = n())` | `df.by("g").agg(mean_x="x:mean", n="n")` | `-by g -agg "mean_x=x:mean, n=n"` |
+| **Whole-Table Total**| `df[['x']].agg('mean').to_frame().T` | `summarise(df, mean_x = mean(x))` | `df.agg(None, x="mean")` | `-agg x=mean` |
 
 ---
 
 ### 7. Deduplication & Distinct Records
 
-| Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Distinct All Rows** | `df.drop_duplicates().reset_index(drop=True)` | `distinct(df)` | `df.pt.distinct()` | `-distinct` |
-| **Distinct by Subset** | `df.drop_duplicates(subset=['a', 'b']).reset_index(drop=True)` | `distinct(df, a, b)` | `df.pt.distinct("a", "b")` | `-distinct "a,b"` |
-| **Keep Last Match** | `df.drop_duplicates(keep='last').reset_index(drop=True)` | N/A | `df.pt.distinct(keep="last")` | `-distinct "keep=last"` |
+| **Distinct All Rows** | `df.drop_duplicates().reset_index(drop=True)` | `distinct(df)` | `df.distinct()` | `-distinct` |
+| **Distinct by Subset** | `df.drop_duplicates(subset=['a', 'b']).reset_index(drop=True)` | `distinct(df, a, b)` | `df.distinct("a", "b")` | `-distinct "a,b"` |
+| **Keep Last Match** | `df.drop_duplicates(keep='last').reset_index(drop=True)` | N/A | `df.distinct(keep="last")` | `-distinct "keep=last"` |
 
 ---
 
 ### 8. Reshaping & Pivoting
 
-| Operation | Pandas | tidyr (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | tidyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Wide to Long** | `pd.melt(df, id_vars=['id'], value_vars=['x', 'y'])` | `pivot_longer(df, cols = c(x, y))` | `df.pt.long(id_vars="id", cols=["x", "y"])` | `-long "id_vars=id, cols='x,y'"` |
-| **Long to Wide (1:1)**| `df.pivot(index='id', columns='var', values='val').reset_index()` | `pivot_wider(df, names_from = var, values_from = val)` | `df.pt.wide(r="id", c="var", v="val")` | `-wide "r=id, c=var, v=val"` |
-| **2D Pivot Table** | `pd.pivot_table(df, index='r', columns='c', values='v', aggfunc='mean').reset_index()` | `df %>% group_by(r, c) %>% summarise(...) %>% pivot_wider(...)` | `df.pt.pivot(r="r", c="c", v="v", a="mean")` | `-pivot "r=r, c=c, v=v, a=mean"` |
+| **Wide to Long** | `pd.melt(df, id_vars=['id'], value_vars=['x', 'y'])` | `pivot_longer(df, cols = c(x, y))` | `df.long(id_vars="id", cols=["x", "y"])` | `-long "id_vars=id, cols='x,y'"` |
+| **Long to Wide (1:1)**| `df.pivot(index='id', columns='var', values='val').reset_index()` | `pivot_wider(df, names_from = var, values_from = val)` | `df.wide(r="id", c="var", v="val")` | `-wide "r=id, c=var, v=val"` |
+| **2D Pivot Table** | `pd.pivot_table(df, index='r', columns='c', values='v', aggfunc='mean').reset_index()` | `df %>% group_by(r, c) %>% summarise(...) %>% pivot_wider(...)` | `df.pivot(r="r", c="c", v="v", a="mean")` | `-pivot "r=r, c=c, v=v, a=mean"` |
 
 ---
 
 ### 9. Fast Inspection
 
-| Operation | Pandas | dplyr / tibble (R) | Pytae (`df.pt`) | Pytae CLI |
+| Operation | Pandas | dplyr / tibble (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
-| **Transposed View** | `df.info()` or `df.T.head()` | `glimpse(df)` | `df.pt.glimpse()` | `-glimpse` |
-| **ASCII Freq Bars** | `df['c'].value_counts(dropna=False)` | `count(df, c)` | `df.pt.freq("c")` | `-freq c` |
-| **ASCII Histogram** | `pd.cut(df['x'], 10).value_counts()` | `hist(df$x)` | `df.pt.hist("x:10")` | `-hist x:10` |
-| **Sorted Column List**| `sorted(df.columns)` | `names(df)` | `df.pt.cols()` | `-cols asc` |
+| **Transposed View** | `df.info()` or `df.T.head()` | `glimpse(df)` | `df.glimpse()` | `-glimpse` |
+| **ASCII Freq Bars** | `df['c'].value_counts(dropna=False)` | `count(df, c)` | `df.freq("c")` | `-freq c` |
+| **ASCII Histogram** | `pd.cut(df['x'], 10).value_counts()` | `hist(df$x)` | `df.hist("x:10")` | `-hist x:10` |
+| **Sorted Column List**| `sorted(df.columns)` | `names(df)` | `df.cols()` | `-cols asc` |
 | **Copy to Clipboard**| `df.to_clipboard(index=False)` | `clipr::write_clip(df)` | `df.to_clip()` | `-o clip` |
 
 ---
@@ -18724,6 +18722,35 @@ class GroupedDataFrame:
         if self._orig_index is not None and len(self._orig_index) == len(pdf):
             pdf.index = pd.Index(self._orig_index)
         return pdf
+
+    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
+        """Return the underlying Polars DataFrame or LazyFrame."""
+        return self._df
+
+    def __len__(self) -> int:
+        if isinstance(self._df, pl.LazyFrame):
+            return self._df.select(pl.len()).collect().item()
+        return len(self._df)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        df = DataFrame(self._df, orig_col_map=self._orig_col_map)
+        df._orig_index = self._orig_index
+        attr = getattr(df, name)
+        if callable(attr):
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                res = attr(*args, **kwargs)
+                if isinstance(res, DataFrame):
+                    return GroupedDataFrame(
+                        res._df,
+                        by_cols=self._by,
+                        orig_col_map=res._orig_col_map,
+                        orig_index=res._orig_index,
+                    )
+                return res
+            return wrapper
+        return attr
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Calculate windowed mutations across the established groups."""
@@ -34101,3 +34128,40 @@ def test_by_chains_into_pick():
     assert set(res["mass"]) == {4200, 5200, 3900}
     assert "_pt_by" not in res.attrs
     assert "_pt_by" not in df.attrs
+
+
+def test_pytae_dataframe_direct_operations_no_pt():
+    pt_df = pt.sample("penguins")
+    # All fluent operations work directly without needing .pt
+    res = (
+        pt_df
+        .filter("body_mass_g > 3000")
+        .mutate(mass_kg="body_mass_g / 1000")
+        .select("species", "island", "mass_kg")
+        .arrange("-mass_kg")
+        .distinct("species", "island")
+    )
+    assert len(res) > 0
+    assert "mass_kg" in res.columns
+
+    # Grouped operations work directly without .pt
+    grouped = pt_df.by("species")
+    assert len(grouped) == len(pt_df)
+    assert grouped.shape == pt_df.shape
+    assert "species" in grouped.columns
+
+    # Direct grouped mutate
+    mut = grouped.mutate(c="body_mass_g - mean(body_mass_g)")
+    assert "c" in mut.columns
+
+    # Direct grouped agg
+    summary = grouped.agg("mean")
+    assert len(summary) == 3
+
+    # Direct grouped pick
+    top = grouped.pick("body_mass_g", 1)
+    assert len(top) == 3
+
+    # Chaining from grouped through delegated DataFrame methods
+    filtered_summary = grouped.filter("body_mass_g > 4000").agg("mean")
+    assert len(filtered_summary) == 3

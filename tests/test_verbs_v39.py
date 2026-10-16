@@ -211,3 +211,40 @@ def test_by_chains_into_pick():
     assert set(res["mass"]) == {4200, 5200, 3900}
     assert "_pt_by" not in res.attrs
     assert "_pt_by" not in df.attrs
+
+
+def test_pytae_dataframe_direct_operations_no_pt():
+    pt_df = pt.sample("penguins")
+    # All fluent operations work directly without needing .pt
+    res = (
+        pt_df
+        .filter("body_mass_g > 3000")
+        .mutate(mass_kg="body_mass_g / 1000")
+        .select("species", "island", "mass_kg")
+        .arrange("-mass_kg")
+        .distinct("species", "island")
+    )
+    assert len(res) > 0
+    assert "mass_kg" in res.columns
+
+    # Grouped operations work directly without .pt
+    grouped = pt_df.by("species")
+    assert len(grouped) == len(pt_df)
+    assert grouped.shape == pt_df.shape
+    assert "species" in grouped.columns
+
+    # Direct grouped mutate
+    mut = grouped.mutate(c="body_mass_g - mean(body_mass_g)")
+    assert "c" in mut.columns
+
+    # Direct grouped agg
+    summary = grouped.agg("mean")
+    assert len(summary) == 3
+
+    # Direct grouped pick
+    top = grouped.pick("body_mass_g", 1)
+    assert len(top) == 3
+
+    # Chaining from grouped through delegated DataFrame methods
+    filtered_summary = grouped.filter("body_mass_g > 4000").agg("mean")
+    assert len(filtered_summary) == 3

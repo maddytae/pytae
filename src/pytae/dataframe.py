@@ -1165,6 +1165,35 @@ class GroupedDataFrame:
             pdf.index = pd.Index(self._orig_index)
         return pdf
 
+    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
+        """Return the underlying Polars DataFrame or LazyFrame."""
+        return self._df
+
+    def __len__(self) -> int:
+        if isinstance(self._df, pl.LazyFrame):
+            return self._df.select(pl.len()).collect().item()
+        return len(self._df)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        df = DataFrame(self._df, orig_col_map=self._orig_col_map)
+        df._orig_index = self._orig_index
+        attr = getattr(df, name)
+        if callable(attr):
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                res = attr(*args, **kwargs)
+                if isinstance(res, DataFrame):
+                    return GroupedDataFrame(
+                        res._df,
+                        by_cols=self._by,
+                        orig_col_map=res._orig_col_map,
+                        orig_index=res._orig_index,
+                    )
+                return res
+            return wrapper
+        return attr
+
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Calculate windowed mutations across the established groups."""
         if "by" in kwargs or "_by" in kwargs:

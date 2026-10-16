@@ -390,7 +390,7 @@ $ sex               <str>     'Male', 'Female', 'Female', NA, 'Female', 'Male...
 ```
 
 > [!TIP]
-> Unlike `-head`, which wraps across screen lines when dealing with wide tables (20–100+ columns), `-glimpse` guarantees that every column and its data type fit neatly on one line. It is also available in Python via `df.pt.glimpse()`.
+> Unlike `-head`, which wraps across screen lines when dealing with wide tables (20–100+ columns), `-glimpse` guarantees that every column and its data type fit neatly on one line. It is also available in Python via `df.glimpse()`.
 
 ---
 
