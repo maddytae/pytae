@@ -22,8 +22,7 @@ When contributing code, designing new features, or refactoring existing modules 
   - `wide()` is **strictly for pure 1-to-1 structural unmelting** without aggregation.
   - `pivot()` is for **Excel-style 2D aggregation matrices** across dimensions (`r, c, v, a`).
   - `long()` is for melting columns to rows.
-  - `by()` sets an active, scoped grouping context on the DataFrame.
-  - `ungroup()` clears active grouping.
+  - `by()` sets an active, single-shot grouping context on the DataFrame (auto-clears on completion).
   - `agg()` is for grouped summaries collapsing $N \to K$ rows (or whole-table summaries).
   - `mutate()` is for feature engineering and window calculations preserving $N \to N$ rows.
   - `filter()` is for row filtering.

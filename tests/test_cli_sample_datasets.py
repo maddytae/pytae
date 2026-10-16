@@ -107,11 +107,11 @@ def test_group_by_agg_sum_matches_known_flights_totals(sample_parquet, capsys):
     assert rows == [["1949", "1520"], ["1950", "1676"], ["1951", "2042"]]
 
 
-def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
+def test_fillna_fills_real_titanic_nans(sample_parquet, capsys):
     # titanic has genuine NaNs in numeric (age) and object (deck) columns.
     path = sample_parquet("titanic")
 
-    exit_code = cli.main([path, "-handle_missing", "-select", "age,deck", "-nulls"])
+    exit_code = cli.main([path, "-fillna", "age:0, deck:.", "-select", "age,deck", "-nulls"])
 
     out = capsys.readouterr().out
     assert exit_code == 0

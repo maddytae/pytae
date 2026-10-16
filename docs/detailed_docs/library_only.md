@@ -26,10 +26,7 @@ import pandas as pd
 import polars as pl
 
 # 1. From Python dictionary
-df1 = pt.DataFrame({
-    "species": ["Adelie", "Gentoo"],
-    "mass_g": [3750, 5050]
-})
+df1 = pt.DataFrame({"species": ["Adelie", "Gentoo"], "mass_g": [3750, 5050]})
 
 # 2. From standard Pandas DataFrame
 pd_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
@@ -64,8 +61,7 @@ import pytae as pt
 # Chain directly off any Pandas DataFrame
 pd_df = pd.read_csv("raw.csv")
 clean_df = (
-    pd_df.pt
-    .filter("status == 'active'")
+    pd_df.pt.filter("status == 'active'")
     .mutate(tax="total * 0.08")
     .by("region")
     .agg(total_rev="sum(total)", avg_tax="mean(tax)")
@@ -90,7 +86,7 @@ Pytae operates in two execution modes:
 
 ```python
 df_eager = pt.read_parquet("small.parquet")  # df_eager.is_lazy == False
-df_lazy  = pt.scan_parquet("huge.parquet")   # df_lazy.is_lazy == True
+df_lazy = pt.scan_parquet("huge.parquet")  # df_lazy.is_lazy == True
 ```
 
 ### 1. Zero-Cost Schema & Metadata Inspection
@@ -124,11 +120,7 @@ result = (
 You don't even need to call `.collect()` to write large files:
 ```python
 # Streams out-of-core directly to Parquet or CSV without consuming RAM:
-(
-    pt.scan_parquet("raw_lake/*.parquet")
-    .filter("status == 'valid'")
-    .to_parquet("clean_lake.parquet")
-)
+(pt.scan_parquet("raw_lake/*.parquet").filter("status == 'valid'").to_parquet("clean_lake.parquet"))
 ```
 
 ---
@@ -142,9 +134,11 @@ While string formulas (`"x > 10"`) are vectorized and fast, Pytae allows arbitra
 # Complex boolean filter using Python lambda
 penguins.filter(lambda d: (d["body_mass_g"] > 4000) & (d["species"].str.contains("Ad")))
 
+
 # Custom feature derivation
 def compute_score(d):
     return d["bill_length_mm"] * 1.5 + d["bill_depth_mm"]
+
 
 penguins.mutate(custom_score=compute_score)
 ```
@@ -157,6 +151,7 @@ Inside `mutate()`, `lambda d:` supports both whole-column vectorized functions a
 ```python
 import numpy as np
 
+
 # Scalar row-by-row function -> wrap with map()
 def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
     if origin == dest:
@@ -165,9 +160,11 @@ def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
         return "Special Freight"
     return "Standard Ground"
 
+
 # Vectorized array function -> call directly on columns
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
+
 
 df = df.mutate(
     shipping_mode=lambda d: map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"]),
@@ -181,11 +178,7 @@ Callables and string expressions execute strictly in insertion order. Downstream
 
 ```python
 # 'b' uses callable result 'a', and 'c' uses 'b' in the same mutate() call
-df = df.mutate(
-    a=lambda d: d["x"] * 2,
-    b="a + 10",
-    c=lambda d: d["b"] * 3
-)
+df = df.mutate(a=lambda d: d["x"] * 2, b="a + 10", c=lambda d: d["b"] * 3)
 ```
 
 Consecutive string expressions are automatically batched into a single Polars compilation pass for maximum vectorization performance.
@@ -219,9 +212,9 @@ import pytae as pt
 
 # Load sample datasets as pytae.DataFrames
 penguins = pt.sample("penguins")
-titanic  = pt.sample("titanic")
+titanic = pt.sample("titanic")
 diamonds = pt.sample("diamonds")
-flights  = pt.sample("flights")
+flights = pt.sample("flights")
 
 # Access all available sample names
 print(list(pt.sample_data.keys()))

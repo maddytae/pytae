@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.10.1] - 2026-10-16
+
+### Removed & Simplified
+- **Removal of Obsolete `ungroup()`**:
+  - In Polars and Pytae, `.by()` is an ephemeral, single-shot scoping context for the immediate next operation (`mutate()`, `agg()`, `pick()`).
+  - Because grouping automatically clears upon operation completion and never persists on the resulting `DataFrame`, `ungroup()` was completely redundant and has been removed from `DataFrame`, accessors, and the public API.
+  - Chaining from grouped calculations directly into whole-table calculations or new grouping keys works seamlessly without intermediate cleanup.
+
 ## [3.10.0] - 2026-10-15
 
 ### Added

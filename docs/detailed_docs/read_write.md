@@ -101,8 +101,7 @@ lazy_df = pt.scan_parquet("massive_orders.parquet")
 
 # Build a fluent query pipeline - ZERO rows read yet!
 result = (
-    lazy_df
-    .filter("region == 'EMEA'")
+    lazy_df.filter("region == 'EMEA'")
     .select("order_id", "customer_id", "total_usd")
     .mutate(tax="total_usd * 0.20")
     .arrange("-total_usd")

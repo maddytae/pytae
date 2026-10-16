@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +14,7 @@ from pytae.cli_parsing import (
     parse_agg,
     parse_clean_columns_arg,
     parse_columns,
+    parse_fillna_spec,
     parse_kv_spec,
     parse_long_arg,
     parse_pivot_arg,
@@ -49,12 +49,6 @@ def _apply_round(df: Any, ndigits: int | None) -> Any:
     except Exception:
         pass
     return df
-
-
-def _dataframe_info(df: pd.DataFrame) -> str:
-    buf = io.StringIO()
-    df.info(buf=buf)
-    return buf.getvalue().rstrip()
 
 
 def _format_table(
@@ -120,111 +114,26 @@ def _format_table(
     return str(df)
 
 
-def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> pd.DataFrame:
-    import polars as pl
+def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
+    from pytae.other_utilities import freq
 
-    if isinstance(source_df, pl.DataFrame):
-        cols = list(source_df.columns)
-        if col is None:
-            if len(cols) == 1:
-                col = cols[0]
-            else:
-                raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
-        col = col.strip()
-        if col not in cols:
-            raise SystemExit(unknown_columns_message("-freq", [col], cols))
-
-        counts = source_df.group_by(col).len(name="Count")
-        if dropna:
-            counts = counts.filter(pl.col(col).is_not_null())
-        counts = counts.sort(by=["Count", col], descending=[True, False])
-        bar_max_width = 20
-        cat_vals = counts[col].to_list()
-        cnt_vals = [int(c) for c in counts["Count"].to_list()]
-        total_int = sum(cnt_vals)
-        max_cnt_int = cnt_vals[0] if cnt_vals else 1
-        data = []
-        for category, count in zip(cat_vals, cnt_vals):
-            bar_len = int(round((count / max_cnt_int) * bar_max_width)) if max_cnt_int > 0 else 0
-            bar_str = "█" * bar_len
-            pct_str = f"({(count / total_int * 100):.1f}%)" if total_int > 0 else "(0.0%)"
-            dist_str = f"{bar_str} {pct_str}".strip()
-            data.append({col: str(category), "Count": count, "Distribution": dist_str})
-        return pd.DataFrame(data)
-
-    if col is None:
-        if len(source_df.columns) == 1:
-            col = source_df.columns[0]
-        else:
-            raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
-    col = col.strip()
-    if col not in source_df.columns:
-        raise SystemExit(unknown_columns_message("-freq", [col], list(source_df.columns)))
-
-    counts = source_df[col].value_counts(dropna=dropna)
-    total = counts.sum()
-    max_cnt = counts.max() if not counts.empty else 1
-    bar_max_width = 20
-    data = []
-    for category, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
-        bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
-        dist_str = f"{bar_str} {pct_str}".strip()
-        data.append({col: str(category), "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data)
+    try:
+        return freq(source_df, col=col, dropna=dropna)
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-freq: {exc}")
 
 
-def _compute_hist(source_df: pd.DataFrame, hist_arg: str | None) -> pd.DataFrame:
-    raw = (hist_arg or "").strip()
-    bins = 10
-    col = None
-    if ":" in raw:
-        col_part, _, b_str = raw.partition(":")
-        col = col_part.strip()
-        try:
-            bins = int(b_str.strip())
-        except ValueError:
-            pass
-    elif "," in raw and "bins=" in raw:
-        col_part, _, b_part = raw.partition(",")
-        col = col_part.strip()
-        b_str = b_part.replace("bins=", "").strip()
-        try:
-            bins = int(b_str)
-        except ValueError:
-            pass
-    elif raw:
-        col = raw
-    else:
-        if len(source_df.columns) == 1:
-            col = source_df.columns[0]
-        else:
-            raise SystemExit("-hist: requires a column name (e.g. -hist mass or -hist mass:10)")
+def _compute_hist(source_df: Any, hist_arg: str | None) -> Any:
+    from pytae.other_utilities import hist
 
-    if col not in source_df.columns:
-        raise SystemExit(unknown_columns_message("-hist", [col], list(source_df.columns)))
-
-    s = pd.to_numeric(source_df[col], errors="coerce").dropna()
-    if s.empty:
-        return pd.DataFrame(columns=["Range", "Count", "Distribution"])
-
-    cut_series = pd.cut(s, bins=bins, include_lowest=True)
-    counts = cut_series.value_counts(sort=False)
-    total = len(s)
-    max_cnt = counts.max() if not counts.empty else 1
-    bar_max_width = 20
-    data = []
-    for interval, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
-        bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
-        dist_str = f"{bar_str} {pct_str}".strip()
-        left_fmt = f"{interval.left:.2f}".rstrip("0").rstrip(".")
-        right_fmt = f"{interval.right:.2f}".rstrip("0").rstrip(".")
-        range_str = f"[{left_fmt}, {right_fmt}]"
-        data.append({"Range": range_str, "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data)
+    try:
+        return hist(source_df, col=hist_arg)
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-hist: {exc}")
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -463,7 +372,9 @@ def _compute_diff(
                     lines.append("  Matching: all cell values in common columns match.")
             else:
                 if tol > 0 or rtol > 0:
-                    lines.append(f"  Mismatches found in {mismatches:,} cells exceeding tolerance across common columns:")
+                    lines.append(
+                        f"  Mismatches found in {mismatches:,} cells exceeding tolerance across common columns:"
+                    )
                 else:
                     lines.append(f"  Mismatches found in {mismatches:,} cells across common columns:")
                 for c, (cnt, max_d) in col_mismatches.items():
@@ -480,7 +391,7 @@ def _compute_diff(
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
 # chaining, nothing can follow them except -o clip.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff", "glimpse"})
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "meta", "diff", "glimpse"})
 
 
 def _list_order_names(names, order):
@@ -576,7 +487,6 @@ def _process_path(
     filter_specs: list[list[tuple[str, Any]]] | None = None,
     mutate_specs: list[str] | None = None,
     sql_specs: list[str] | None = None,
-    replace_specs: list[tuple[list[str] | None, dict[str, str], bool]] | None = None,
     rename_specs: list[dict[str, str]] | None = None,
     frames: dict[str, pd.DataFrame] | None = None,
     join_specs: list[dict] | None = None,
@@ -675,7 +585,6 @@ def _process_path(
     filter_iter = iter(filter_specs if filter_specs is not None else (qry_specs or []))
     mutate_iter = iter(mutate_specs or [])
     sql_iter = iter(sql_specs or [])
-    replace_iter = iter(replace_specs or [])
     rename_iter = iter(rename_specs or [])
     join_iter = iter(join_specs or [])
     concat_iter = iter(concat_specs or [])
@@ -724,12 +633,6 @@ def _process_path(
             emit_frame(idx)
         elif op == "sql":
             err = pipeline.apply_sql(next(sql_iter))
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "replace_values":
-            cols, mapping, exact = next(replace_iter)
-            err = pipeline.apply_replace_values(cols, mapping, exact)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -859,12 +762,6 @@ def _process_path(
                 )
             if is_clip:
                 clip_action = lambda d=described: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
-        elif op == "info":
-            info_str = _dataframe_info(pipeline.dataframe())
-            if should_print(idx):
-                _output_text(info_str, args)
-            if is_clip:
-                clip_action = lambda s=info_str: _copy_to_clipboard(s)
         elif op == "glimpse":
             from pytae.other_utilities import format_glimpse
 
@@ -896,43 +793,6 @@ def _process_path(
                 _output_text(diff_str, args)
             if is_clip:
                 clip_action = lambda s=diff_str: _copy_to_clipboard(s)
-        elif op == "value_counts":
-            avail_cols = pipeline.columns()
-            if "count" in avail_cols and "n" in avail_cols:
-                return _fail(
-                    parser,
-                    batch,
-                    "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers",
-                )
-            dropna_val = False if args.dropna is None else args.dropna
-            try:
-                from pytae.polars_engine import value_counts_polars
-
-                pl_res = value_counts_polars(pipeline.polars_frame(), cols=avail_cols, dropna=dropna_val)
-                pipeline._pldf = pl_res
-                pipeline._df = None
-            except ValueError as exc:
-                return _fail(parser, batch, str(exc))
-            except Exception:
-                source_df = pipeline.dataframe()
-                try:
-                    if len(avail_cols) == 1:
-                        col = avail_cols[0]
-                        count_name = "count" if col != "count" else "n"
-                        result = source_df[col].value_counts(dropna=dropna_val).rename(count_name).reset_index()
-                        result.columns = [col, count_name]
-                    else:
-                        count_name = "count" if "count" not in avail_cols else "n"
-                        result = (
-                            source_df.value_counts(subset=avail_cols, dropna=dropna_val)
-                            .rename(count_name)
-                            .reset_index()
-                        )
-                    pipeline._df = result
-                    pipeline._pldf = None
-                except Exception as exc:
-                    return _fail(parser, batch, str(exc))
-            emit_frame(idx)
         elif op == "freq":
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
             source_df = pipeline.current_frame()
@@ -944,7 +804,7 @@ def _process_path(
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "hist":
             hist_arg = _next_op_val("hist", getattr(args, "hist", None))
-            source_df = pipeline.dataframe()
+            source_df = pipeline.current_frame()
             result = _compute_hist(source_df, hist_arg)
             pipeline._df = result
             if should_print(idx):
@@ -1025,19 +885,17 @@ def _process_path(
             except Exception as e:
                 return _fail(parser, batch, str(e))
             emit_frame(idx)
-        elif op == "handle_missing":
-            hm_val = _next_op_val("handle_missing", args.handle_missing)
-            try:
-                from pytae.polars_engine import handle_missing_polars
-
-                pl_res = handle_missing_polars(pipeline.polars_frame(), fillna=hm_val)
-                pipeline._pldf = pl_res
-                pipeline._df = None
-            except Exception as exc:
-                return _fail(parser, batch, str(exc))
+        elif op == "fillna":
+            val_str = _next_op_val("fillna", args.fillna)
+            fill_val, fill_cols, fill_nans = parse_fillna_spec(
+                val_str, flag_name="-fillna", available_cols=pipeline.columns()
+            )
+            err = pipeline.apply_fillna(fill_val, cols=fill_cols, nans=fill_nans)
+            if err:
+                return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op in ("dropna", "drop_nulls", "drop_na"):
-            dropna_val = _next_op_val(op, getattr(args, "dropna", None))
+        elif op == "dropna":
+            dropna_val = _next_op_val("dropna", getattr(args, "dropna", None))
             err = pipeline.apply_dropna(dropna_val)
             if err:
                 return _fail(parser, batch, err)

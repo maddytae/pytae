@@ -70,11 +70,17 @@ def test_pt_accessor_dropna_pandas_and_polars():
     assert len(pdf.pt.dropna("a")) == 2
     assert len(pldf.pt.dropna("a")) == 2
 
-    # Aliases drop_nulls and drop_na
-    assert len(pdf.pt.drop_nulls("a")) == 2
-    assert len(pldf.pt.drop_nulls("a")) == 2
-    assert len(pdf.pt.drop_na("a")) == 2
-    assert len(pldf.pt.drop_na("a")) == 2
+    # Renaming via .pt
+    pdf_renamed = pdf.pt.rename("a:alpha, b:beta")
+    assert list(pdf_renamed.columns) == ["alpha", "beta"]
+    pldf_renamed = pldf.pt.rename(a="alpha")
+    assert "alpha" in pldf_renamed.columns
+
+    # SQL via .pt
+    pdf_sql = pdf.pt.sql("SELECT b FROM data WHERE b IS NOT NULL")
+    assert len(pdf_sql) == 3
+    pldf_sql = pldf.pt.sql("SELECT a FROM data WHERE a IS NOT NULL")
+    assert len(pldf_sql) == 2
 
 
 def test_pt_sample_datasets_and_row_sampling():
@@ -138,3 +144,31 @@ def test_polars_pt_accessor_first_call_native_verb():
     assert isinstance(out, pt.DataFrame)
     assert list(out.columns) == ["x", "y", "z", "double_z"]
     assert list(out["double_z"]) == [10, 14, 18]
+
+
+def test_pt_accessor_by_auto_ungroups(tmp_path):
+    import pytest
+
+    parquet_path = tmp_path / "data.parquet"
+    df_raw = pd.DataFrame({"species": ["A", "A", "B", "B"], "mass": [10.0, 20.0, 100.0, 200.0]})
+    df_raw.to_parquet(parquet_path)
+
+    # 1. Loading from parquet
+    k = pt.read_parquet(parquet_path)
+    assert isinstance(k, pt.DataFrame)
+
+    # 2. k.by() with no arguments raises ValueError
+    with pytest.raises(ValueError, match=r"df\.pt\.by\(\) takes at least one column name"):
+        k.by()
+
+    # 3. .by() scopes the immediate next mutate, which automatically returns an ungrouped DataFrame
+    k_res = (
+        k.by("species")
+        .mutate(group_mean="mean(mass)")
+        .mutate(overall_mean="mean(mass)")
+    )
+    assert isinstance(k_res, pt.DataFrame)
+    assert k_res["group_mean"].to_list() == [15.0, 15.0, 150.0, 150.0]
+    assert k_res["overall_mean"].to_list() == [82.5, 82.5, 82.5, 82.5]
+
+

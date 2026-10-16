@@ -40,26 +40,6 @@ def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
     return df.reset_index()
 
 
-def handle_missing(
-    df: Any,
-    fillna: str | None = ".",
-    numeric_fill: Any = 0,
-    cols: Sequence[str] | None = None,
-    preserve_categories: bool = True,
-    **kwargs: Any,
-) -> Any:
-    """Fill missing values across columns with type-appropriate defaults."""
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(df).handle_missing(
-        fillna=fillna,
-        numeric_fill=numeric_fill,
-        cols=cols,
-        preserve_categories=preserve_categories,
-        **kwargs,
-    )
-
-
 def cols(df: Any, ascending: bool | None = True) -> list[str]:
     """Return the column names of the DataFrame sorted or in original order."""
     from pytae.dataframe import DataFrame
@@ -149,18 +129,6 @@ def clean_columns(
         dedupe=dedupe,
     )
     return df
-
-
-def replace_values(
-    df: Any,
-    v: dict[Any, Any],
-    c: str | Sequence[str] | None = None,
-    exact: bool = True,
-) -> Any:
-    """Replace values optionally scoped to specific columns."""
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(df).replace_values(v=v, c=c, exact=exact)
 
 
 def format_glimpse(df: Any, width: int | None = None) -> str:
@@ -285,17 +253,17 @@ def distinct(
 
 
 def freq(
-    df: pd.DataFrame,
+    df: Any,
     col: str | None = None,
     *,
     dropna: bool = False,
-) -> pd.DataFrame:
+) -> Any:
     """Compute a frequency table with ASCII distribution bars and percentages for a column.
 
     Parameters:
     -----------
-    df : pd.DataFrame
-        Input DataFrame.
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
     col : str, optional
         Column name to inspect. Required unless `df` has only a single column.
     dropna : bool, default False
@@ -303,45 +271,88 @@ def freq(
 
     Returns:
     --------
-    pd.DataFrame
+    DataFrame
         DataFrame with columns `[col, 'Count', 'Distribution']`.
     """
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
     if col is None or (isinstance(col, str) and not col.strip()):
-        if len(df.columns) == 1:
-            target_col = str(df.columns[0])
+        if len(cols) == 1:
+            target_col = str(cols[0])
         else:
             raise ValueError("freq() requires a column name (or a single-column DataFrame)")
     else:
         target_col = _unquote_name(str(col).strip())
 
-    if target_col not in df.columns:
-        raise KeyError(f"freq: column '{target_col}' not found in DataFrame. Available columns: {list(df.columns)}")
+    if target_col not in cols:
+        raise KeyError(f"freq: column '{target_col}' not found in DataFrame. Available columns: {cols}")
 
-    counts = df[target_col].value_counts(dropna=dropna)
-    total = counts.sum()
-    max_cnt = counts.max() if not counts.empty else 1
+    s_df = pldf.select(pl.col(target_col))
+    if dropna:
+        s_df = s_df.filter(pl.col(target_col).is_not_null())
+
+    counted = s_df.group_by(target_col).agg(pl.len().alias("Count")).sort("Count", descending=True)
+
+    total = counted["Count"].sum() if len(counted) > 0 else 0
+    max_cnt = counted["Count"].max() if len(counted) > 0 else 1
     bar_max_width = 20
-    data = []
-    for category, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+
+    cats: list[str] = []
+    counts_list: list[int] = []
+    dists: list[str] = []
+    for row in counted.iter_rows(named=True):
+        val = row[target_col]
+        cat_str = "None" if val is None else str(val)
+        cnt = int(row["Count"])
+        bar_len = int(round((cnt / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
         bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        pct_str = f"({(cnt / total * 100):.1f}%)" if total > 0 else "(0.0%)"
         dist_str = f"{bar_str} {pct_str}".strip()
-        data.append({target_col: str(category), "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data, columns=[target_col, "Count", "Distribution"])
+
+        cats.append(cat_str)
+        counts_list.append(cnt)
+        dists.append(dist_str)
+
+    res_pl = pl.DataFrame(
+        {
+            target_col: cats,
+            "Count": counts_list,
+            "Distribution": dists,
+        }
+    )
+    return DataFrame(res_pl)
 
 
 def hist(
-    df: pd.DataFrame,
+    df: Any,
     col: str | None = None,
     bins: int = 10,
-) -> pd.DataFrame:
+) -> Any:
     """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column.
 
     Parameters:
     -----------
-    df : pd.DataFrame
-        Input DataFrame.
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
     col : str, optional
         Column name or `'col:bins'` specification (e.g. `'body_mass_g'` or `'body_mass_g:10'`).
         Required unless `df` has only a single column.
@@ -350,21 +361,42 @@ def hist(
 
     Returns:
     --------
-    pd.DataFrame
+    DataFrame
         DataFrame with columns `['Range', 'Count', 'Distribution']`.
     """
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
     raw = col.strip() if isinstance(col, str) else ""
     target_col: str | None = None
 
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
     if ":" in raw:
         col_part, _, b_str = raw.rpartition(":")
-        if col_part.strip() and b_str.strip() and col_part.strip() not in df.columns:
+        if col_part.strip() and b_str.strip() and col_part.strip() not in cols:
             target_col = _unquote_name(col_part.strip())
             try:
                 bins = int(b_str.strip())
             except ValueError as exc:
                 raise ValueError(f"hist: invalid bins value '{b_str.strip()}'; must be a positive integer") from exc
-        elif col_part.strip() in df.columns and b_str.strip().isdigit():
+        elif col_part.strip() in cols and b_str.strip().isdigit():
             target_col = col_part.strip()
             bins = int(b_str.strip())
         else:
@@ -382,34 +414,75 @@ def hist(
     elif col is not None and not isinstance(col, str):
         target_col = str(col)
     else:
-        if len(df.columns) == 1:
-            target_col = str(df.columns[0])
+        if len(cols) == 1:
+            target_col = str(cols[0])
         else:
             raise ValueError("hist() requires a column name (e.g. 'mass' or 'mass:10')")
 
     if not isinstance(bins, int) or isinstance(bins, bool) or bins <= 0:
         raise ValueError(f"hist: bins must be a positive integer, got {bins!r}")
 
-    if target_col not in df.columns:
-        raise KeyError(f"hist: column '{target_col}' not found in DataFrame. Available columns: {list(df.columns)}")
+    if target_col not in cols:
+        raise KeyError(f"hist: column '{target_col}' not found in DataFrame. Available columns: {cols}")
 
-    s = pd.to_numeric(df[target_col], errors="coerce").dropna()
-    if s.empty:
-        return pd.DataFrame(columns=["Range", "Count", "Distribution"])
+    s_col = pldf[target_col]
+    s_clean = s_col.cast(pl.Float64, strict=False).drop_nulls().drop_nans()
+    if len(s_clean) == 0:
+        return DataFrame(pl.DataFrame(schema={"Range": pl.String, "Count": pl.Int64, "Distribution": pl.String}))
 
-    cut_series = pd.cut(s, bins=bins, include_lowest=True)
-    counts = cut_series.value_counts(sort=False)
-    total = len(s)
-    max_cnt = counts.max() if not counts.empty else 1
+    min_val = float(s_clean.min())  # type: ignore[arg-type]
+    max_val = float(s_clean.max())  # type: ignore[arg-type]
+    total = len(s_clean)
+
+    if min_val == max_val:
+        left_fmt = f"{min_val:.2f}".rstrip("0").rstrip(".")
+        range_str = f"[{left_fmt}, {left_fmt}]"
+        bar_str = "█" * 20
+        dist_str = f"{bar_str} (100.0%)"
+        data = [{"Range": range_str, "Count": total, "Distribution": dist_str}]
+        return DataFrame(pl.DataFrame(data))
+
+    step = (max_val - min_val) / bins
+    edges = [min_val + i * step for i in range(bins + 1)]
+    bin_counts = [0] * bins
+    vals = s_clean.to_list()
+    for v in vals:
+        if v == max_val:
+            idx = bins - 1
+        else:
+            idx = int((v - min_val) / step)
+            if idx >= bins:
+                idx = bins - 1
+            elif idx < 0:
+                idx = 0
+        bin_counts[idx] += 1
+
+    max_cnt = max(bin_counts) if bin_counts else 1
     bar_max_width = 20
-    data = []
-    for interval, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
-        bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
-        dist_str = f"{bar_str} {pct_str}".strip()
-        left_fmt = f"{interval.left:.2f}".rstrip("0").rstrip(".")
-        right_fmt = f"{interval.right:.2f}".rstrip("0").rstrip(".")
+    ranges = []
+    counts = []
+    distributions = []
+
+    for i in range(bins):
+        left = edges[i]
+        right = edges[i + 1]
+        left_fmt = f"{left:.2f}".rstrip("0").rstrip(".")
+        right_fmt = f"{right:.2f}".rstrip("0").rstrip(".")
         range_str = f"[{left_fmt}, {right_fmt}]"
-        data.append({"Range": range_str, "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data, columns=["Range", "Count", "Distribution"])
+        cnt = bin_counts[i]
+        bar_len = int(round((cnt / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(cnt / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        ranges.append(range_str)
+        counts.append(cnt)
+        distributions.append(dist_str)
+
+    res_df = pl.DataFrame(
+        {
+            "Range": ranges,
+            "Count": counts,
+            "Distribution": distributions,
+        }
+    )
+    return DataFrame(res_df)

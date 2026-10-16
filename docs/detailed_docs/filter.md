@@ -83,6 +83,7 @@ For custom logic requiring complex Python functions or external libraries:
 def is_valid_weight(d):
     return (d["body_mass_g"] > 3500) & (d["sex"] == "Female")
 
+
 penguins.filter(is_valid_weight)
 penguins.filter(lambda d: d["flipper_length_mm"] % 2 == 0)
 ```

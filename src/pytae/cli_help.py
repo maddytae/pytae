@@ -324,23 +324,23 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-rename", "-select", "-cols"],
     ),
-    "replace_values": KeywordHelp(
-        name="replace_values",
-        flag="-replace_values, --replace_values SPEC",
-        syntax="pytae <path> -replace_values \"v='old:new',c='col1,col2',exact=true\"",
-        summary="Search and replace cell values across the entire DataFrame or specific columns.",
-        description=("Wraps pandas cell replacement with flexible scope and matching modes."),
+    "rename": KeywordHelp(
+        name="rename",
+        flag="-rename, --rename SPEC",
+        syntax='pytae <path> -rename "old1:new1,old2:new2"',
+        summary="Rename one or more columns.",
+        description=(
+            "Renames columns at this point in the pipeline.\n"
+            "Accepts comma-separated 'old:new' pairs. Validates that original columns exist."
+        ),
         options=[
-            "v='old1:new1,old2:new2' : Mapping of replacement pairs (REQUIRED).",
-            "c='col1,col2' : Restrict replacement to specific columns (default: entire DataFrame).",
-            "exact=true|false : True matches exact full cell values; False matches substring (regex).",
+            "'old:new, ...' : One or more old_name:new_name mapping pairs.",
         ],
         examples=[
-            "pytae penguins.parquet -replace_values \"v='Biscoe:Biscoe Island'\"",
-            "pytae file.csv -replace_values \"c=status,v='0:Inactive,1:Active'\"",
-            "pytae file.csv -replace_values \"v='N/A:NaN,null:NaN',exact=true\"",
+            'pytae penguins.parquet -rename "species:bird_species"',
+            'pytae penguins.parquet -rename "bill_length_mm:culmen_length, bill_depth_mm:culmen_depth"',
         ],
-        see_also=["-mutate", "-clean_columns", "-handle_missing"],
+        see_also=["-select", "-clean_columns"],
     ),
     "file": KeywordHelp(
         name="file",
@@ -433,7 +433,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -freq species",
             "pytae penguins.parquet -freq island",
         ],
-        see_also=["-hist", "-value_counts", "-describe"],
+        see_also=["-hist", "-describe"],
     ),
     "hist": KeywordHelp(
         name="hist",
@@ -465,7 +465,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae sales.parquet -meta",
         ],
-        see_also=["-shape", "-cols", "-dtype", "-info"],
+        see_also=["-shape", "-cols", "-dtype", "-glimpse"],
     ),
     "diff": KeywordHelp(
         name="diff",
@@ -571,7 +571,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -dtype",
             "pytae penguins.parquet -dtype asc",
         ],
-        see_also=["-cols", "-info", "-nulls"],
+        see_also=["-cols", "-glimpse", "-nulls"],
     ),
     "nulls": KeywordHelp(
         name="nulls",
@@ -584,7 +584,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -nulls",
             "pytae penguins.parquet -nulls desc",
         ],
-        see_also=["-dropna", "-handle_missing"],
+        see_also=["-dropna", "-fillna"],
     ),
     "dropna": KeywordHelp(
         name="dropna",
@@ -600,18 +600,29 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -dropna",
             'pytae penguins.parquet -dropna "sex, body_mass_g"',
         ],
-        see_also=["-handle_missing", "-nulls"],
+        see_also=["-fillna", "-nulls"],
     ),
-    "handle_missing": KeywordHelp(
-        name="handle_missing",
-        flag="-handle_missing, --handle_missing [FILL]",
-        syntax="pytae <path> -handle_missing [FILL]",
-        summary="Impute missing values (FILL for strings, 0 for numeric).",
-        description="Fills missing values: string/categorical filled with FILL (default '.'), numeric filled with 0.",
-        options=["FILL : String replacement scalar (default: '.')."],
+    "fillna": KeywordHelp(
+        name="fillna",
+        flag="-fillna, --fillna SPEC",
+        syntax='pytae <path> -fillna "<SPEC>"',
+        summary="Fill missing values with a scalar, column mapping, or column subset.",
+        description=(
+            "Fills null/missing values across the DataFrame or in specific columns.\n"
+            "- A scalar value fills all type-appropriate columns (e.g. 0 for numeric, 'missing' for string).\n"
+            "- A column mapping 'col1:val1, col2:val2' fills specified columns with specific values.\n"
+            "- A value followed by columns 'val, col1, col2' fills specific columns with that scalar."
+        ),
+        options=[
+            "VAL : Scalar value to fill matching columns (e.g. 0, 'missing').",
+            "'col1:val1, col2:val2' : Column-specific fill values.",
+            "'val, col1, col2' : Fill specific columns with the given scalar value.",
+        ],
         examples=[
-            "pytae penguins.parquet -handle_missing",
-            'pytae penguins.parquet -handle_missing "NA"',
+            "pytae penguins.parquet -fillna 0",
+            'pytae penguins.parquet -fillna "missing"',
+            'pytae penguins.parquet -fillna "sex:unknown, body_mass_g:0"',
+            'pytae penguins.parquet -fillna "0, bill_length_mm, body_mass_g"',
         ],
         see_also=["-dropna", "-nulls"],
     ),

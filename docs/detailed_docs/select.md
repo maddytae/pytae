@@ -42,11 +42,7 @@ penguins.select("!bill_length_mm", "!bill_depth_mm")
 Rename columns on-the-fly without needing a separate `.rename()` call:
 
 ```python
-penguins.select(
-    species="species",
-    weight_g="body_mass_g",
-    location="island"
-)
+penguins.select(species="species", weight_g="body_mass_g", location="island")
 ```
 
 ### 3. Reordering Columns with `pt.everything`

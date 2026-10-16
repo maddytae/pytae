@@ -91,27 +91,28 @@ def test_empty_parquet_head_keeps_columns(tmp_path, capsys):
     assert "Empty DataFrame" in captured.out
 
 
-def test_info_prints_pandas_info(tmp_path, capsys):
+def test_info_redirect_error_and_glimpse(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}))
 
-    exit_code = cli.main([path, "-info"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-info"])
+    assert exc.value.code == 2
+    assert "'-info' has been removed; use '-glimpse' instead" in capsys.readouterr().err
 
+    exit_code = cli.main([path, "-glimpse"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "DataFrame" in out
-    assert "a" in out and "b" in out
-    assert "2 entries" in out or "2 rows" in out or "RangeIndex: 2" in out
+    assert "Rows: 2" in out
+    assert "$ a" in out and "$ b" in out
 
 
-def test_head_then_info_prints_only_info(tmp_path, capsys):
+def test_head_then_glimpse_prints_glimpse(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10)}))
 
-    exit_code = cli.main([path, "-head", "3", "-info"])
-
+    exit_code = cli.main([path, "-head", "3", "-glimpse"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "RangeIndex: 3" in out
-    assert "DataFrame" in out
+    assert "Rows: 3" in out
 
 
 def test_describe_prints_pandas_summary(tmp_path, capsys):
@@ -194,87 +195,24 @@ def test_dedupe_flag_removed(tmp_path, capsys):
     assert "'-dedupe' has been removed; use '-distinct' instead" in capsys.readouterr().err
 
 
-def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "grp": ["x", "x", "y"],
-            "val": [1, 2, 3],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # value_counts result has two columns: key + count.
-    assert "(2, 2)" in out
-
-
-def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "grp": ["x", None, "x"],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    # Without -dropna: includes NA as its own key, yielding x + NA (2 rows).
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "(2, 2)" in out
-
-    # Top-level row-filtering -dropna drops rows with NA (1 row in value_counts).
-    exit_code_drop = cli.main([path, "-dropna", "-select", "grp", "-value_counts", "-shape"])
-    out_drop = capsys.readouterr().out
-    assert exit_code_drop == 0
-    assert "(1, 2)" in out_drop
-
-
-def test_value_counts_uses_selected_multiple_columns(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "num_legs": [2, 4, 4, 6],
-            "num_wings": [2, 0, 0, 0],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-select", "num_legs,num_wings", "-value_counts", "-shape"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # Two key columns + count, three unique key combinations.
-    assert "(3, 3)" in out
-
-
-def test_value_counts_without_argument_uses_selected_columns(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "num_legs": [2, 4, 4, 6],
-            "num_wings": [2, 0, 0, 0],
-            "animal": ["falcon", "dog", "cat", "ant"],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-select", "num_legs,num_wings", "-value_counts", "-shape"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # -select narrows working columns, so no-arg -value_counts uses those two.
-    assert "(3, 3)" in out
-
-
-def test_value_counts_collision_fails_cleanly(tmp_path, capsys):
-    df = pd.DataFrame({"count": [1, 2], "n": [3, 4]})
+def test_value_counts_redirect_error(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x", "y"]})
     path = _write_csv(tmp_path, df)
     with pytest.raises(SystemExit) as exc:
         cli.main([path, "-value_counts"])
     assert exc.value.code == 2
-    err = capsys.readouterr().err
-    assert "columns contain both 'count' and 'n'" in err
+    assert "'-value_counts' has been removed; use '-freq' instead" in capsys.readouterr().err
+
+
+def test_freq_cli_profiling(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x", "y"]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-freq", "grp"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Count" in out and "Distribution" in out
+    assert "x" in out and "y" in out
 
 
 def test_order_arrange_then_shape_uses_sorted_frame(tmp_path, capsys):
@@ -312,7 +250,7 @@ def test_arrange_respects_select_and_descending(tmp_path, capsys):
     assert "3" in out
 
 
-def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
+def test_value_counts_in_pipeline_redirect_error(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", "x", "y"],
@@ -320,12 +258,10 @@ def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-arrange", "count"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # Header should appear once: only final sorted value_counts table is printed.
-    assert out.count("grp") == 1
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-select", "grp", "-value_counts", "-arrange", "count"])
+    assert exc.value.code == 2
+    assert "'-value_counts' has been removed; use '-freq' instead" in capsys.readouterr().err
 
 
 def test_cols_default_is_file_order(tmp_path, capsys):

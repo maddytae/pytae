@@ -68,7 +68,7 @@ def parse_dropna_spec(
     flag_name: str = "-dropna",
     available_cols: Sequence[str] | None = None,
 ) -> tuple[list[str], str | None, bool]:
-    """Parse -dropna / -drop_nulls / -drop_na SPEC into (cols, how, drop_nans).
+    """Parse -dropna SPEC into (cols, how, drop_nans).
 
     Option B Zero Data Loss Philosophy:
       - Bare flag / "": cols=[], how=None (Option B defaults to 'all'), drop_nans=True
@@ -104,6 +104,63 @@ def parse_dropna_spec(
             cols.append(_unquote_name(token))
 
     return cols, how, drop_nans
+
+
+def parse_fillna_spec(
+    raw: str | None,
+    flag_name: str = "-fillna",
+    available_cols: Sequence[str] | None = None,
+) -> tuple[Any, list[str] | None, bool]:
+    """Parse -fillna SPEC into (value, cols, nans).
+
+    Syntax examples:
+      - '0': value=0, cols=None, nans=True
+      - '.': value='.', cols=None, nans=True
+      - 'a:0, b:N/A': value={'a': 0, 'b': 'N/A'}, cols=None, nans=True
+      - '0, a, b': value=0, cols=['a', 'b'], nans=True
+      - '0, a, b, nans=false': value=0, cols=['a', 'b'], nans=False
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit(f"{flag_name}: expected fill value, column mapping (col:val), or 'val, col1, col2'")
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if t.strip()]
+    nans = True
+    clean_tokens: list[str] = []
+    for t in tokens:
+        if re.match(r"^nans\s*[:=]\s*", t, re.IGNORECASE):
+            val = re.sub(r"^nans\s*[:=]\s*", "", t, flags=re.IGNORECASE).strip().strip("'\"").lower()
+            nans = val not in ("false", "0", "no")
+        else:
+            clean_tokens.append(t)
+
+    if not clean_tokens:
+        raise SystemExit(f"{flag_name}: expected fill value")
+
+    # Check if this is a mapping: "a:0, b:N/A"
+    is_mapping = all(":" in t or "=" in t for t in clean_tokens)
+    if is_mapping:
+        mapping: dict[str, Any] = {}
+        for t in clean_tokens:
+            sep = ":" if ":" in t else "="
+            k, _, v = t.partition(sep)
+            k_clean = _unquote_name(k.strip())
+            v_strip = v.strip()
+            try:
+                v_val = ast.literal_eval(v_strip)
+            except Exception:
+                v_val = _unquote_name(v_strip)
+            mapping[k_clean] = v_val
+        return mapping, None, nans
+
+    first_token = clean_tokens[0]
+    try:
+        val = ast.literal_eval(first_token)
+    except Exception:
+        val = _unquote_name(first_token)
+
+    cols = [_unquote_name(c) for c in clean_tokens[1:]] if len(clean_tokens) > 1 else None
+    return val, cols, nans
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
@@ -636,41 +693,6 @@ def parse_pivot_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_PIVOT_KEYS, flag="-pivot")
 
 
-_REPLACE_KEYS = ("c", "v", "exact")
-
-
-def parse_value_map(raw: str) -> dict[str, str]:
-    """Parse a -replace_values v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
-    mapping: dict[str, str] = {}
-    for pair in raw.split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        if ":" in pair:
-            old, new = pair.split(":", 1)
-        elif "=" in pair:
-            raise SystemExit(
-                f"-replace_values: invalid v= mapping '{pair}'; use ':' (expected old:new). '=' is not supported."
-            )
-        else:
-            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
-        mapping[_unquote_name(old)] = _unquote_name(new)
-    if not mapping:
-        raise SystemExit("-replace_values: v= needs at least one old:new pair")
-    return mapping
-
-
-def parse_replace_values_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
-    """Parse -replace_values as key=value tokens: c= (optional column scope), v= (required
-    old:new mapping), exact= (optional bool, default true — whole-cell match vs
-    substring match anywhere in the cell). Returns (cols_or_None, mapping, exact)."""
-    kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace_values")
-    if "v" not in kwargs:
-        raise SystemExit("-replace_values: expected v='old:new,...'")
-    cols = parse_columns(kwargs["c"]) if "c" in kwargs else None
-    mapping = parse_value_map(kwargs["v"])
-    exact = kwargs.get("exact", True)
-    return cols, mapping, exact
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -965,4 +987,3 @@ def normalize_sql(query: str) -> str:
         out_chars.append(ch)
         i += 1
     return "".join(out_chars)
-

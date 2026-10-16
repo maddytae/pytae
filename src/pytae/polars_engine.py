@@ -39,15 +39,25 @@ def _df_schema(df: Any) -> pl.Schema:
 
 def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -> pl.Expr:
     """Convert a pytae filter condition tuple/value into a Polars Expression."""
-    col_expr = pl.col(col)
-    is_numeric = schema is not None and col in schema and schema[col].is_numeric()
-    is_string = schema is not None and col in schema and schema[col] in (pl.String, pl.Utf8)
-    is_date = schema is not None and col in schema and schema[col] == pl.Date
-    is_datetime = (
-        schema is not None
-        and col in schema
-        and (schema[col] == pl.Datetime or getattr(schema[col], "base_type", None) == pl.Datetime)
-    )
+    if schema is not None and col not in schema and ("." in col or "(" in col):
+        cur_cols = set(schema.names())
+        safe_expr, col_map = _rewrite_fallback_col_refs(col, cur_cols)
+        parsed = ast.parse(safe_expr, mode="eval")
+        col_expr = _ast_to_polars_expr(parsed, cur_cols, col_map, schema=schema)
+        is_numeric = False
+        is_string = False
+        is_date = False
+        is_datetime = False
+    else:
+        col_expr = pl.col(col)
+        is_numeric = schema is not None and col in schema and schema[col].is_numeric()
+        is_string = schema is not None and col in schema and schema[col] in (pl.String, pl.Utf8)
+        is_date = schema is not None and col in schema and schema[col] == pl.Date
+        is_datetime = (
+            schema is not None
+            and col in schema
+            and (schema[col] == pl.Datetime or getattr(schema[col], "base_type", None) == pl.Datetime)
+        )
 
     def _coerce_val(val: Any) -> Any:
         if is_numeric and isinstance(val, str):
@@ -252,9 +262,13 @@ def fillna_polars(
     *cols: Any,
     subset: Any = None,
     nans: bool = True,
+    **kwargs: Any,
 ) -> Any:
     """Fill missing values (Arrow null and/or float NaN) in a Polars DataFrame or LazyFrame."""
     import polars as pl
+
+    if value is None and kwargs:
+        value = dict(kwargs)
 
     if value is None:
         raise TypeError("fillna() missing required argument: 'value'")
@@ -262,82 +276,100 @@ def fillna_polars(
     schema = _df_schema(df)
     target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
 
+    def _fill_col_expr(c: str, dt: pl.DataType, fill_val: Any) -> pl.Expr:
+        if dt.is_float() and nans and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
+            return pl.col(c).fill_nan(fill_val).fill_null(fill_val)
+        if dt == pl.Categorical and isinstance(fill_val, str):
+            return pl.col(c).cast(pl.String).fill_null(fill_val).cast(pl.Categorical)
+        if dt == pl.Null:
+            target_dt = (
+                pl.String
+                if isinstance(fill_val, str)
+                else (
+                    pl.Boolean
+                    if isinstance(fill_val, bool)
+                    else (pl.Float64 if isinstance(fill_val, float) else pl.Int64)
+                )
+            )
+            return pl.col(c).cast(target_dt).fill_null(fill_val)
+        return pl.col(c).fill_null(fill_val)
+
+    # If value is a string with col:val or col=val pairs matching schema columns
+    if isinstance(value, str) and not target_cols and (":" in value or "=" in value):
+        from pytae._text import tokenize as _tok
+
+        tokens = [t.strip() for t in _tok(value, ",", keep_quotes=True, track_brackets=True) if t.strip()]
+        parsed_map: dict[str, Any] = {}
+        is_mapping = bool(tokens)
+        for tok in tokens:
+            sep = ":" if ":" in tok else ("=" if "=" in tok else None)
+            if not sep:
+                is_mapping = False
+                break
+            k_raw, v_raw = tok.split(sep, 1)
+            k_clean = _unquote_name(k_raw.strip())
+            if k_clean not in schema:
+                is_mapping = False
+                break
+            v_strip = v_raw.strip()
+            try:
+                v_val = ast.literal_eval(v_strip)
+            except Exception:
+                v_val = _unquote_name(v_strip)
+            parsed_map[k_clean] = v_val
+        if is_mapping:
+            value = parsed_map
+
     # 1. Dictionary fill: {col_name: fill_value}
     if isinstance(value, dict):
-        exprs = []
-        for col_name, fill_val in value.items():
-            c = str(col_name)
-            if c in schema:
-                dt = schema[c]
-                is_float = dt.is_float()
-                if nans and is_float and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
-                    exprs.append(pl.col(c).fill_nan(fill_val).fill_null(fill_val))
-                else:
-                    exprs.append(pl.col(c).fill_null(fill_val))
+        missing = [str(c) for c in value if str(c) not in schema]
+        if missing:
+            raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        exprs = [_fill_col_expr(str(col_name), schema[str(col_name)], fill_val) for col_name, fill_val in value.items()]
         return df.with_columns(exprs) if exprs else df
 
     # 2. Targeted subset/cols with a scalar value
     if target_cols:
-        exprs = []
-        for c in target_cols:
-            col_str = str(c)
-            if col_str in schema:
-                dt = schema[col_str]
-                is_float = dt.is_float()
-                if nans and is_float and isinstance(value, (int, float)) and not isinstance(value, bool):
-                    exprs.append(pl.col(col_str).fill_nan(value).fill_null(value))
-                else:
-                    exprs.append(pl.col(col_str).fill_null(value))
+        missing = [str(c) for c in target_cols if str(c) not in schema]
+        if missing:
+            raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        exprs = [_fill_col_expr(str(c), schema[str(c)], value) for c in target_cols]
         return df.with_columns(exprs) if exprs else df
 
-    # 3. Whole table fill with scalar value
-    if nans and isinstance(value, (int, float)) and not isinstance(value, bool):
-        try:
-            res = df.fill_nan(value)
-        except Exception:
-            res = df
-        return res.fill_null(value)
-    else:
-        return df.fill_null(value)
-
-
-def fill_nan_polars(
-    df: Any,
-    value: Any = None,
-    *cols: Any,
-    subset: Any = None,
-) -> Any:
-    """Fill only float NaNs in a Polars DataFrame or LazyFrame, leaving Arrow nulls unchanged."""
-    import polars as pl
-
-    if value is None:
-        raise TypeError("fill_nan() missing required argument: 'value'")
-
-    schema = _df_schema(df)
-    target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
-
-    if isinstance(value, dict):
-        exprs = []
-        for col_name, fill_val in value.items():
-            c = str(col_name)
-            if c in schema and schema[c].is_float():
-                exprs.append(pl.col(c).fill_nan(fill_val))
+    # 3. Whole-table fill with scalar value (scoped to compatible column types)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        exprs = [_fill_col_expr(c, dt, value) for c, dt in schema.items() if dt.is_numeric()]
         return df.with_columns(exprs) if exprs else df
 
-    if target_cols:
-        exprs = []
-        for c in target_cols:
-            col_str = str(c)
-            if col_str in schema and schema[col_str].is_float():
-                exprs.append(pl.col(col_str).fill_nan(value))
+    if isinstance(value, str):
+        exprs = [
+            _fill_col_expr(c, dt, value)
+            for c, dt in schema.items()
+            if dt in (pl.String, pl.Utf8, pl.Null, pl.Categorical)
+        ]
         return df.with_columns(exprs) if exprs else df
 
-    return df.fill_nan(value)
+    if isinstance(value, bool):
+        exprs = [_fill_col_expr(c, dt, value) for c, dt in schema.items() if dt == pl.Boolean]
+        return df.with_columns(exprs) if exprs else df
+
+    return df.fill_null(value)
 
 
 def rename_polars(df: Any, mapping: dict[str, str]) -> Any:
     """Rename columns in a Polars DataFrame or LazyFrame."""
     return df.rename(mapping)
+
+
+def sql_polars(df: Any, query: str) -> Any:
+    """Execute a SQL query against a Polars DataFrame or LazyFrame (registered as 'data' and 'self')."""
+    from pytae.cli_parsing import normalize_sql
+
+    normalized_query = normalize_sql(query)
+    polars_query = re.sub(r"\bin\s*\[(.*?)\]", r"in (\1)", normalized_query, flags=re.IGNORECASE)
+    ctx = pl.SQLContext(frames={"data": df, "self": df})
+    res_lazy = ctx.execute(polars_query)
+    return res_lazy if isinstance(df, pl.LazyFrame) else res_lazy.collect()
 
 
 def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
@@ -346,7 +378,7 @@ def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
         return col.sum()
     elif fn in ("mean", "avg"):
         return col.mean()
-    elif fn == "median":
+    elif fn in ("median",):
         return col.median()
     elif fn == "min":
         return col.min()
@@ -382,11 +414,9 @@ def pivot_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
-    if "drop_nulls" in kwargs:
-        dropna = kwargs.pop("drop_nulls")
     if kwargs:
         raise TypeError(
-            f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, drop_nulls, f_v are accepted"
+            f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, f_v are accepted"
         )
 
     if isinstance(df, pl.LazyFrame):
@@ -844,11 +874,31 @@ def _ast_to_polars_expr(
         body = _ast_to_polars_expr(node.body, col_names, col_map, by, schema, params)
         orelse = _ast_to_polars_expr(node.orelse, col_names, col_map, by, schema, params)
         return pl.when(test).then(body).otherwise(orelse)
+    if isinstance(node, ast.Attribute):
+        if isinstance(node.value, ast.Attribute) and node.value.attr == "dt":
+            obj_expr = _ast_to_polars_expr(node.value.value, col_names, col_map, by, schema, params)
+            dt_prop = node.attr
+            dt_map = {
+                "year": lambda e: e.dt.year(),
+                "quarter": lambda e: e.dt.quarter(),
+                "month": lambda e: e.dt.month(),
+                "day": lambda e: e.dt.day(),
+                "weekday": lambda e: e.dt.weekday(),
+                "ordinal_day": lambda e: e.dt.ordinal_day(),
+                "dayofyear": lambda e: e.dt.ordinal_day(),
+                "hour": lambda e: e.dt.hour(),
+                "minute": lambda e: e.dt.minute(),
+                "second": lambda e: e.dt.second(),
+                "date": lambda e: e.dt.date(),
+            }
+            if dt_prop in dt_map:
+                return dt_map[dt_prop](obj_expr)
+            raise ValueError(f"Unsupported .dt attribute: '{dt_prop}'")
     if isinstance(node, ast.Call):
         if isinstance(node.func, ast.Attribute) and node.func.attr == "map":
             raise ValueError(
                 "In mutate, '.map()' method syntax is not supported. "
-                "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'}, 'OTHER')"
+                "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'})"
             )
         func_name = ""
         if isinstance(node.func, ast.Name):
@@ -856,19 +906,89 @@ def _ast_to_polars_expr(
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
 
-        # 1. Attribute method calls (e.g. name.str.upper(), val.cumsum(), val.fillna(0))
+        # 1. Attribute method calls (e.g. name.str.upper(), order_date.dt.strftime('%Y-%m'), val.cumsum(), val.fillna(0))
         if isinstance(node.func, ast.Attribute):
             attr_name = node.func.attr
-            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "str":
+            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "dt":
+                obj_expr = _ast_to_polars_expr(node.func.value.value, col_names, col_map, by, schema, params)
+                dt_map = {
+                    "year": lambda e: e.dt.year(),
+                    "quarter": lambda e: e.dt.quarter(),
+                    "month": lambda e: e.dt.month(),
+                    "day": lambda e: e.dt.day(),
+                    "weekday": lambda e: e.dt.weekday(),
+                    "ordinal_day": lambda e: e.dt.ordinal_day(),
+                    "dayofyear": lambda e: e.dt.ordinal_day(),
+                    "hour": lambda e: e.dt.hour(),
+                    "minute": lambda e: e.dt.minute(),
+                    "second": lambda e: e.dt.second(),
+                    "date": lambda e: e.dt.date(),
+                }
+                if attr_name in dt_map:
+                    return dt_map[attr_name](obj_expr)
+                if (
+                    attr_name in ("strftime", "to_string")
+                    and len(node.args) >= 1
+                    and isinstance(node.args[0], ast.Constant)
+                ):
+                    return obj_expr.dt.strftime(str(node.args[0].value))
+                if attr_name == "truncate" and len(node.args) >= 1 and isinstance(node.args[0], ast.Constant):
+                    return obj_expr.dt.truncate(str(node.args[0].value))
+                raise ValueError(f"Unsupported .dt method: '{attr_name}'")
+            elif isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "str":
                 obj_expr = _ast_to_polars_expr(node.func.value.value, col_names, col_map, by, schema, params)
                 if attr_name in ("upper", "to_uppercase"):
                     return obj_expr.str.to_uppercase()
                 elif attr_name in ("lower", "to_lowercase"):
                     return obj_expr.str.to_lowercase()
+                elif attr_name in ("title", "to_titlecase"):
+                    return obj_expr.str.to_titlecase()
                 elif attr_name in ("strip", "strip_chars"):
+                    if node.args and isinstance(node.args[0], ast.Constant):
+                        return obj_expr.str.strip_chars(str(node.args[0].value))
                     return obj_expr.str.strip_chars()
                 elif attr_name in ("len", "len_chars"):
                     return obj_expr.str.len_chars()
+                elif attr_name in ("replace", "replace_all") and len(node.args) >= 2:
+                    literal = True
+                    for kw in node.keywords:
+                        if kw.arg == "literal" and isinstance(kw.value, ast.Constant):
+                            literal = bool(kw.value.value)
+                        elif kw.arg == "regex" and isinstance(kw.value, ast.Constant):
+                            literal = not bool(kw.value.value)
+                    pat = (
+                        str(node.args[0].value)
+                        if isinstance(node.args[0], ast.Constant)
+                        else _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
+                    )
+                    repl = (
+                        str(node.args[1].value)
+                        if isinstance(node.args[1], ast.Constant)
+                        else _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
+                    )
+                    return obj_expr.str.replace_all(pat, repl, literal=literal)
+                elif attr_name == "slice" and len(node.args) >= 1:
+                    offset = (
+                        int(node.args[0].value)
+                        if isinstance(node.args[0], ast.Constant)
+                        else _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
+                    )
+                    if len(node.args) >= 2:
+                        length = (
+                            int(node.args[1].value)
+                            if isinstance(node.args[1], ast.Constant)
+                            else _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
+                        )
+                        return obj_expr.str.slice(offset, length)
+                    return obj_expr.str.slice(offset)
+                elif attr_name == "extract" and len(node.args) >= 1:
+                    pat = str(node.args[0].value) if isinstance(node.args[0], ast.Constant) else ""
+                    grp = (
+                        int(node.args[1].value) if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) else 1
+                    )
+                    return obj_expr.str.extract(pat, group_index=grp)
+                elif attr_name == "zfill" and len(node.args) >= 1 and isinstance(node.args[0], ast.Constant):
+                    return obj_expr.str.zfill(int(node.args[0].value))
                 elif attr_name == "contains" and len(node.args) >= 1:
                     literal = False
                     for kw in node.keywords:
@@ -889,22 +1009,18 @@ def _ast_to_polars_expr(
                         return obj_expr.str.ends_with(str(node.args[0].value))
                     pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
                     return obj_expr.str.ends_with(pat_expr)
-            elif (
-                isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute))
-                and attr_name
-                in (
-                    "is_null",
-                    "is_not_null",
-                    "is_nan",
-                    "is_not_nan",
-                    "cumsum",
-                    "cumprod",
-                    "cummin",
-                    "cummax",
-                    "fillna",
-                    "fill_null",
-                    "fill_nan",
-                )
+            elif isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute)) and attr_name in (
+                "is_null",
+                "is_not_null",
+                "is_nan",
+                "is_not_nan",
+                "cumsum",
+                "cumprod",
+                "cummin",
+                "cummax",
+                "fillna",
+                "first",
+                "last",
             ):
                 obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema, params)
                 if attr_name == "is_null":
@@ -931,28 +1047,29 @@ def _ast_to_polars_expr(
                 elif attr_name == "cummax":
                     expr = obj_expr.cum_max()
                     return expr.over(by) if by else expr
-                elif attr_name in ("fillna", "fill_null", "fill_nan"):
+                elif attr_name == "first":
+                    expr = obj_expr.first()
+                    return expr.over(by) if by else expr
+                elif attr_name == "last":
+                    expr = obj_expr.last()
+                    return expr.over(by) if by else expr
+                elif attr_name == "fillna":
                     val_expr = (
                         _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
                         if node.args
                         else pl.lit(0)
                     )
-                    if attr_name == "fill_null":
-                        expr = obj_expr.fill_null(val_expr)
-                    elif attr_name == "fill_nan":
-                        expr = obj_expr.fill_nan(val_expr)
+                    nans = True
+                    if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+                        nans = bool(node.args[1].value)
+                    for kw in node.keywords:
+                        if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
+                            nans = bool(kw.value.value)
+                    is_float = _is_float_or_numeric_expr(node.func.value, schema)
+                    if nans and is_float:
+                        expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
                     else:
-                        nans = True
-                        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
-                            nans = bool(node.args[1].value)
-                        for kw in node.keywords:
-                            if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
-                                nans = bool(kw.value.value)
-                        is_float = _is_float_or_numeric_expr(node.func.value, schema)
-                        if nans and is_float:
-                            expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
-                        else:
-                            expr = obj_expr.fill_null(val_expr)
+                        expr = obj_expr.fill_null(val_expr)
                     return expr.over(by) if by else expr
 
         # 2. Functional map(...)
@@ -980,13 +1097,13 @@ def _ast_to_polars_expr(
 
             if default_node is not None:
                 default_expr = _ast_to_polars_expr(default_node, col_names, col_map, by, schema, params)
+                if hasattr(pl.Expr, "replace_strict"):
+                    expr = col_expr.replace_strict(mapping, default=default_expr)
+                else:
+                    expr = col_expr.replace(mapping, default=default_expr)  # type: ignore[call-arg]
             else:
-                default_expr = pl.lit(None)
-
-            if hasattr(pl.Expr, "replace_strict"):
-                expr = col_expr.replace_strict(mapping, default=default_expr)
-            else:
-                expr = col_expr.replace(mapping, default=default_expr)  # type: ignore[call-arg]
+                # 2-argument map(col, mapping) preserves unmapped values by default
+                expr = col_expr.replace(mapping)
             return expr.over(by) if by else expr
 
         # 3. case_when
@@ -1070,6 +1187,8 @@ def _ast_to_polars_expr(
             "std": lambda e: e.std(),
             "var": lambda e: e.var(),
             "rank": lambda e: e.rank(),
+            "first": lambda e: e.first(),
+            "last": lambda e: e.last(),
         }
         if func_name in agg_map and len(args) == 1:
             expr = agg_map[func_name](args[0])
@@ -1134,18 +1253,36 @@ def _ast_to_polars_expr(
             else:
                 expr = target_expr.fill_null(val_expr)
             return expr.over(by) if by else expr
-        if func_name == "fill_null" and len(node.args) >= 2:
-            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
-            val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
-            expr = target_expr.fill_null(val_expr)
-            return expr.over(by) if by else expr
-        if func_name == "fill_nan" and len(node.args) >= 2:
-            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
-            val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
-            expr = target_expr.fill_nan(val_expr)
-            return expr.over(by) if by else expr
         if func_name == "n" and len(args) == 0:
             expr = pl.len()
+            return expr.over(by) if by else expr
+        if func_name == "date" and len(args) >= 1:
+            arg_type = schema.get(node.args[0].id) if schema and isinstance(node.args[0], ast.Name) else None
+            if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                expr = args[0].str.to_date(str(node.args[1].value))
+            elif arg_type == pl.Date:
+                expr = args[0]
+            elif isinstance(arg_type, pl.Datetime) or arg_type == pl.Datetime:
+                expr = args[0].dt.date()
+            else:
+                expr = pl.coalesce(
+                    args[0].str.to_date(strict=False),
+                    args[0].str.to_datetime(strict=False).dt.date(),
+                )
+            return expr.over(by) if by else expr
+        if func_name in ("datetime", "timestamp") and len(args) >= 1:
+            arg_type = schema.get(node.args[0].id) if schema and isinstance(node.args[0], ast.Name) else None
+            if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                expr = args[0].str.to_datetime(str(node.args[1].value))
+            elif isinstance(arg_type, pl.Datetime) or arg_type == pl.Datetime:
+                expr = args[0]
+            elif arg_type == pl.Date:
+                expr = args[0].cast(pl.Datetime())
+            else:
+                expr = pl.coalesce(
+                    args[0].str.to_datetime(strict=False),
+                    args[0].str.to_date(strict=False).cast(pl.Datetime()),
+                )
             return expr.over(by) if by else expr
         if func_name in _DTYPE_MAP and len(args) == 1:
             expr = args[0].cast(_DTYPE_MAP[func_name])
@@ -1311,28 +1448,6 @@ def pick_polars(
     return sorted_df.head(n)
 
 
-def value_counts_polars(
-    df: Any,
-    cols: list[str] | None = None,
-    dropna: bool = False,
-) -> Any:
-    """Compute value counts across specified or all columns in a Polars DataFrame or LazyFrame."""
-    df_cols = _df_columns(df)
-    target_cols = cols if cols is not None else df_cols
-    if "count" in target_cols and "n" in target_cols:
-        raise ValueError(
-            "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers"
-        )
-
-    count_name = "count" if "count" not in target_cols else "n"
-
-    work_df = df
-    if dropna:
-        work_df = work_df.drop_nulls(subset=target_cols)
-
-    return work_df.group_by(target_cols).len().rename({"len": count_name}).sort(count_name, descending=True)
-
-
 def long_polars(
     df: pl.DataFrame,
     cols: str | Sequence[str] | None = None,
@@ -1492,93 +1607,6 @@ def wide_polars(
         ) from exc
 
 
-def handle_missing_polars(
-    df: Any,
-    fillna: str | None = ".",
-    numeric_fill: Any = 0,
-    cols: Sequence[str] | None = None,
-    preserve_categories: bool = True,
-    **kwargs: Any,
-) -> Any:
-    """Fill missing values in a Polars DataFrame or LazyFrame with type-appropriate defaults."""
-    df_cols = _df_columns(df)
-    schema = _df_schema(df)
-    target_cols = set(cols) if cols is not None else set(df_cols)
-    exprs: list[pl.Expr] = []
-
-    for c in df_cols:
-        if c not in target_cols:
-            exprs.append(pl.col(c))
-            continue
-
-        dtype = schema[c]
-        if dtype.is_numeric():
-            if numeric_fill == "mean":
-                col_expr = pl.col(c).fill_nan(None) if dtype.is_float() else pl.col(c)
-                exprs.append(col_expr.fill_null(col_expr.mean()))
-            elif numeric_fill == "median":
-                col_expr = pl.col(c).fill_nan(None) if dtype.is_float() else pl.col(c)
-                exprs.append(col_expr.fill_null(col_expr.median()))
-            elif numeric_fill is not None:
-                if dtype.is_float():
-                    exprs.append(pl.col(c).fill_nan(numeric_fill).fill_null(numeric_fill))
-                else:
-                    exprs.append(pl.col(c).fill_null(numeric_fill))
-            else:
-                exprs.append(pl.col(c))
-        elif dtype in (pl.String, pl.Null):
-            fill_str = str(fillna) if fillna is not None else "."
-            exprs.append(pl.col(c).cast(pl.String).fill_null(fill_str).str.strip_chars())
-        elif dtype == pl.Categorical:
-            fill_str = str(fillna) if fillna is not None else "."
-            expr = pl.col(c).cast(pl.String).fill_null(fill_str)
-            if preserve_categories:
-                expr = expr.cast(pl.Categorical)
-            exprs.append(expr)
-        else:
-            exprs.append(pl.col(c))
-
-    return df.with_columns(exprs)
-
-
-def replace_values_polars(
-    df: Any,
-    v: dict[Any, Any],
-    c: str | Sequence[str] | None = None,
-    exact: bool = True,
-) -> Any:
-    """Replace values in a Polars DataFrame or LazyFrame (exact or substring)."""
-    df_cols = _df_columns(df)
-    schema = _df_schema(df)
-    target_cols = ([c] if isinstance(c, str) else list(c)) if c is not None else list(df_cols)
-    if not exact:
-        non_string_cols = [col for col in target_cols if schema[col] not in (pl.String, pl.Utf8)]
-        if non_string_cols:
-            raise ValueError(
-                f"replace_values: exact=False (substring match) only works on string/object "
-                f"columns; non-string column(s): {non_string_cols}"
-            )
-        exprs: list[pl.Expr] = []
-        for col in df_cols:
-            if col in target_cols:
-                col_expr = pl.col(col)
-                for old_val, new_val in v.items():
-                    col_expr = col_expr.str.replace_all(re.escape(str(old_val)), str(new_val))
-                exprs.append(col_expr)
-            else:
-                exprs.append(pl.col(col))
-        return df.with_columns(exprs)
-
-    exprs = []
-    for col in df_cols:
-        if col in target_cols:
-            mapping = {k: v_val for k, v_val in v.items()}
-            exprs.append(pl.col(col).replace(mapping))
-        else:
-            exprs.append(pl.col(col))
-    return df.with_columns(exprs)
-
-
 def clean_columns_polars(df: Any, **opts: Any) -> Any:
     """Clean column header names in a Polars DataFrame or LazyFrame."""
     from pytae.other_utilities import clean_column_names
@@ -1616,8 +1644,6 @@ def agg_polars(
     if a is not None and specs:
         raise TypeError("agg(): multiple values for aggregation spec: both positional args and 'a' were provided")
 
-    if "drop_nulls" in kwargs:
-        dropna = kwargs.pop("drop_nulls")
     by_cols: list[str] = list(by) if by else []
     work_df = df
     if by_cols and dropna:
@@ -1660,10 +1686,6 @@ def agg_polars(
 
     if "__dropna__" in active_kwargs:
         dropna = active_kwargs.pop("__dropna__")
-        if by_cols and dropna:
-            work_df = work_df.drop_nulls(subset=by_cols)
-    if "drop_nulls" in active_kwargs:
-        dropna = active_kwargs.pop("drop_nulls")
         if by_cols and dropna:
             work_df = work_df.drop_nulls(subset=by_cols)
     if "dropna" in active_kwargs:
@@ -2008,5 +2030,3 @@ def concat_polars(
         return pl.concat(pl_dfs, how="vertical", **kwargs)
     except (pl.exceptions.SchemaError, pl.exceptions.ShapeError, Exception):
         return pl.concat(pl_dfs, how="diagonal_relaxed", **kwargs)
-
-

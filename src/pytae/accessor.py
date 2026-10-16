@@ -38,20 +38,8 @@ class PolarsPtAccessor:
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
@@ -96,6 +84,12 @@ class PolarsPtAccessor:
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).mutate(*specs, **kwargs)
 
+    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).rename(*args, columns=columns, **kwargs)
+
+    def sql(self, query: str) -> DataFrame:
+        return DataFrame(self._obj).sql(query)
+
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).agg(*specs, a=a, dropna=dropna, **kwargs)
 
@@ -132,17 +126,6 @@ class PolarsPtAccessor:
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
 
-    def replace_values(
-        self,
-        v: dict[Any, Any],
-        c: str | Sequence[str] | None = None,
-        exact: bool = True,
-    ) -> DataFrame:
-        return DataFrame(self._obj).replace_values(v=v, c=c, exact=exact)
-
-    def handle_missing(self, **opts: Any) -> DataFrame:
-        return DataFrame(self._obj).handle_missing(**opts)
-
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 
@@ -155,7 +138,7 @@ class PolarsPtAccessor:
     def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
         return DataFrame(self._obj).freq(col=col, dropna=dropna)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> None:
+    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
         return DataFrame(self._obj).hist(col=col, bins=bins)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -235,20 +218,8 @@ class PandasPtAccessor:
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
@@ -293,6 +264,12 @@ class PandasPtAccessor:
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).mutate(*specs, **kwargs)
 
+    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).rename(*args, columns=columns, **kwargs)
+
+    def sql(self, query: str) -> DataFrame:
+        return DataFrame(self._obj).sql(query)
+
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         if "by" in kwargs or "_by" in kwargs:
             raise TypeError(
@@ -333,17 +310,6 @@ class PandasPtAccessor:
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
 
-    def replace_values(
-        self,
-        v: dict[Any, Any],
-        c: str | Sequence[str] | None = None,
-        exact: bool = True,
-    ) -> DataFrame:
-        return DataFrame(self._obj).replace_values(v=v, c=c, exact=exact)
-
-    def handle_missing(self, **opts: Any) -> DataFrame:
-        return DataFrame(self._obj).handle_missing(**opts)
-
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 
@@ -356,7 +322,7 @@ class PandasPtAccessor:
     def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
         return DataFrame(self._obj).freq(col=col, dropna=dropna)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> None:
+    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
         return DataFrame(self._obj).hist(col=col, bins=bins)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:

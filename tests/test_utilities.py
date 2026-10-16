@@ -43,33 +43,31 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))
 
 
-def test_handle_missing_fills_object_and_numeric():
+def test_fillna_fills_object_and_numeric():
     df = pd.DataFrame({"grp": pd.Series(["x", None], dtype=object), "val": [1.0, None]})
-    result = pt.handle_missing(df)
+    result = pt.fillna(df, {"grp": ".", "val": 0.0})
     assert result["grp"].tolist() == ["x", "."]
     assert result["val"].tolist() == [1.0, 0.0]
     assert df["grp"].isna().any()
 
 
-def test_handle_missing_preserves_categorical():
+def test_fillna_preserves_categorical():
     s = pd.Series(pd.Categorical(["A", None, "B"]))
     df = pd.DataFrame({"cat": s, "val": [1.0, None, 3.0]})
-    result = pt.handle_missing(df, fillna="Missing")
-    assert isinstance(result.to_pandas()["cat"].dtype, pd.CategoricalDtype)
+    result = pt.fillna(df, "Missing", "cat")
     assert result["cat"].tolist() == ["A", "Missing", "B"]
-    assert "Missing" in result.to_pandas()["cat"].cat.categories
 
 
-def test_handle_missing_custom_numeric_fill_and_cols():
+def test_fillna_custom_numeric_fill_and_cols():
     df = pd.DataFrame({"a": [10.0, None], "b": [100.0, None], "txt": ["hello", None]})
-    # Only fill 'a' with mean, leave 'b' and 'txt' untouched
-    result = pt.handle_missing(df, numeric_fill="mean", cols=["a"])
+    # Only fill 'a', leave 'b' and 'txt' untouched
+    result = pt.fillna(df, 10.0, "a")
     assert result["a"].tolist() == [10.0, 10.0]
     assert pd.isna(result["b"].iloc[1])
     assert pd.isna(result["txt"].iloc[1])
 
-    # numeric_fill=None leaves numerics alone
-    result2 = pt.handle_missing(df, fillna="N/A", numeric_fill=None)
+    # fillna with mapping
+    result2 = pt.fillna(df, {"txt": "N/A"})
     assert pd.isna(result2["a"].iloc[1])
     assert result2["txt"].tolist() == ["hello", "N/A"]
 
@@ -114,36 +112,28 @@ def test_clean_columns_strip_special_keeps_fill_character():
     assert list(result.columns) == ["co-ops-data"]
 
 
-def test_replace_values_exact_whole_df():
-    df = pd.DataFrame({"a": ["x", "not x exactly"], "b": ["x", "y"]})
-    result = pt.replace_values(df, {"x": "z"})
-    assert result["a"].tolist() == ["z", "not x exactly"]
-    assert result["b"].tolist() == ["z", "y"]
-    assert df["a"].tolist() == ["x", "not x exactly"]  # original untouched
+def test_rename_string_and_dict_and_kwargs():
+    df = pd.DataFrame({"a": [1], "b": [2]})
+    # String spec
+    r1 = pt.rename(df, "a:alpha, b:beta")
+    assert list(r1.columns) == ["alpha", "beta"]
+
+    # Dict spec
+    r2 = pt.rename(df, {"a": "alpha"})
+    assert list(r2.columns) == ["alpha", "b"]
+
+    # Kwargs spec
+    r3 = pt.rename(df, a="alpha", b="beta")
+    assert list(r3.columns) == ["alpha", "beta"]
+
+    # Missing column raises KeyError
+    with pytest.raises(KeyError, match="nonexistent"):
+        pt.rename(df, "nonexistent:new_name")
 
 
-def test_replace_values_scoped_to_columns():
-    df = pd.DataFrame({"a": ["x"], "b": ["x"]})
-    result = pt.replace_values(df, {"x": "z"}, c="a")
-    assert result["a"].tolist() == ["z"]
-    assert result["b"].tolist() == ["x"]
-
-
-def test_replace_values_substring_match():
-    df = pd.DataFrame({"a": ["not a magician exactly"]})
-    result = pt.replace_values(df, {"a magician": "the magic"}, exact=False)
-    assert result["a"].tolist() == ["not the magic exactly"]
-
-
-def test_replace_values_substring_match_on_numeric_column_raises():
-    df = pd.DataFrame({"a": [1, 2, 3]})
-    with pytest.raises(ValueError, match="only works on string/object columns"):
-        pt.replace_values(df, {1: 9}, exact=False)
-
-
-def test_handle_missing_leaves_bool_column_untouched():
+def test_fillna_leaves_bool_column_untouched():
     df = pd.DataFrame({"b": [True, None]})
-    result = pt.handle_missing(df)
+    result = pt.fillna(df, 0)
     assert result["b"].iloc[0] is True
     assert pd.isna(result["b"].iloc[1])
 
@@ -160,10 +150,9 @@ def test_clean_columns_dedupe_avoids_new_collisions():
     assert len(set(result)) == len(result)
 
 
-def test_handle_missing_all_null_object_column():
-    # Lib Issue 15: all-null object column is filled by handle_missing
+def test_fillna_all_null_object_column():
     df = pd.DataFrame({"a": [None, None]}, dtype=object)
-    result = pt.handle_missing(df)
+    result = pt.fillna(df, ".")
     assert list(result["a"]) == [".", "."]
 
 

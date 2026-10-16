@@ -8,15 +8,15 @@ from pytae.polars_engine import (
     clean_columns_polars,
     distinct_polars,
     dropna_polars,
+    fillna_polars,
     filter_polars,
-    handle_missing_polars,
     long_polars,
     mutate_polars,
     pick_polars,
     pivot_polars,
     rename_polars,
     select_polars,
-    value_counts_polars,
+    sql_polars,
     wide_polars,
 )
 
@@ -275,27 +275,11 @@ def test_pick_polars():
     assert len(res_prop) == 3
 
 
-def test_value_counts_polars():
-    df = pl.DataFrame(
-        {
-            "item": ["apple", "banana", "apple", "cherry", None, "banana", "apple"],
-            "count": [1, 2, 1, 3, 4, 2, 1],
-        }
-    )
-    # Single column
-    res = value_counts_polars(df.select("item"), dropna=True)
-    assert res.columns == ["item", "count"]
-    assert res["item"].to_list() == ["apple", "banana", "cherry"]
-    assert res["count"].to_list() == [3, 2, 1]
-
-    # With existing 'count' column, count header becomes 'n'
-    res_with_count = value_counts_polars(df, dropna=True)
-    assert "n" in res_with_count.columns
-
-    # Both count and n columns collision
-    df_collision = pl.DataFrame({"count": [1], "n": [2]})
-    with pytest.raises(ValueError, match="columns contain both 'count' and 'n'"):
-        value_counts_polars(df_collision)
+def test_sql_polars():
+    df = pl.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    res = sql_polars(df, "SELECT a * 2 AS doubled, b FROM data WHERE a > 1")
+    assert res["doubled"].to_list() == [4, 6]
+    assert res["b"].to_list() == ["y", "z"]
 
 
 def test_long_and_wide_polars():
@@ -321,19 +305,31 @@ def test_long_and_wide_polars():
         wide_polars(long_res, c="variable", v="value", index="id")
 
 
-def test_handle_missing_polars():
+def test_fillna_polars():
     df = pl.DataFrame(
         {
-            "s": [" hello ", None, "world "],
+            "s": ["hello", None, "world"],
             "n": [10.0, None, 30.0],
             "b": [True, None, False],
         }
     )
-    res = handle_missing_polars(df, fillna=".")
-    assert res["s"].to_list() == ["hello", ".", "world"]
-    assert res["n"].to_list() == [10.0, 0.0, 30.0]
-    # Boolean untouched
-    assert res["b"].to_list() == [True, None, False]
+    # Scalar fill on type-appropriate columns
+    res_num = fillna_polars(df, 0)
+    assert res_num["n"].to_list() == [10.0, 0.0, 30.0]
+    assert res_num["s"].to_list() == ["hello", None, "world"]
+
+    res_str = fillna_polars(df, "missing")
+    assert res_str["s"].to_list() == ["hello", "missing", "world"]
+    assert res_str["n"].to_list() == [10.0, None, 30.0]
+
+    # Mapping
+    res_map = fillna_polars(df, {"s": "none", "n": -1.0})
+    assert res_map["s"].to_list() == ["hello", "none", "world"]
+    assert res_map["n"].to_list() == [10.0, -1.0, 30.0]
+
+    # Subset
+    res_sub = fillna_polars(df, -99.0, cols=["n"])
+    assert res_sub["n"].to_list() == [10.0, -99.0, 30.0]
 
 
 def test_clean_columns_polars():
@@ -610,3 +606,23 @@ def test_write_dataframe_polars(tmp_path):
     assert json_path.exists()
     read_json = pl.read_ndjson(json_path)
     assert read_json["b"].to_list() == ["x", "y", "z"]
+
+
+def test_filter_polars_dt_and_str_methods():
+    import pytae as pt
+
+    df = pt.DataFrame(
+        {
+            "order_date": ["2026-01-15", "2026-07-20", "2026-12-05"],
+            "sku": ["PROD-A-01", "TEST-B-02", "PROD-C-03"],
+        }
+    )
+    # str.startswith
+    res_str = df.filter("sku.str.startswith('PROD')")
+    assert len(res_str) == 2
+    assert list(res_str["sku"]) == ["PROD-A-01", "PROD-C-03"]
+
+    # dt.month
+    res_dt = df.filter("date(order_date).dt.month() > 6")
+    assert len(res_dt) == 2
+    assert list(res_dt["sku"]) == ["TEST-B-02", "PROD-C-03"]

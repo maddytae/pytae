@@ -19,17 +19,15 @@ from pytae.polars_engine import (
     concat_polars,
     distinct_polars,
     dropna_polars,
-    fill_nan_polars,
     fillna_polars,
     filter_polars,
-    handle_missing_polars,
     join_polars,
     long_polars,
     mutate_polars,
     pick_polars,
     pivot_polars,
-    replace_values_polars,
     select_polars,
+    sql_polars,
     wide_polars,
 )
 
@@ -682,21 +680,21 @@ class DataFrame:
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+    def fillna(
+        self,
+        value: Any = None,
+        *cols: Any,
+        subset: Any = None,
+        nans: bool = True,
+        **kwargs: Any,
+    ) -> DataFrame:
         """Fill missing values (Arrow null and/or float NaN).
 
         Parameters
         ----------
-        value : scalar or dict
-            Fill value. If a dictionary is provided, maps column names to fill values.
+        value : scalar, dict, or str, optional
+            Fill value, dictionary mapping column names to fill values, or
+            comma-separated ``"col:val"`` string.
         *cols : str
             Column names to fill (if value is a scalar).
         subset : sequence of str, optional
@@ -704,6 +702,8 @@ class DataFrame:
         nans : bool, default True
             If True, cleans both float NaN and Arrow null on numeric columns.
             If False, only replaces Arrow null.
+        **kwargs : Any
+            Per-column fill values as keyword arguments (e.g. ``df.fillna(a=0, b="N/A")``).
         """
         if cols or subset is not None:
             target = list(subset) if subset is not None else list(cols)
@@ -711,21 +711,7 @@ class DataFrame:
             missing = [str(c) for c in target if str(c) not in avail]
             if missing:
                 raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
-        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
-        return self.fillna(value, *cols, subset=subset, nans=False)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Fill only float NaNs, leaving Arrow nulls unchanged."""
-        if cols or subset is not None:
-            target = list(subset) if subset is not None else list(cols)
-            avail = set(self.columns)
-            missing = [str(c) for c in target if str(c) not in avail]
-            if missing:
-                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
-        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
+        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans, **kwargs))
 
     def diff(
         self,
@@ -890,14 +876,46 @@ class DataFrame:
         return res
 
     def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
-        """Rename columns using mapping dictionary or columns keyword argument."""
+        """Rename columns using string mapping ('old:new, old2:new2'), dict, or keyword arguments."""
         mapping: dict[str, str] = {}
-        if args and isinstance(args[0], dict):
-            mapping.update(args[0])
+        for arg in args:
+            if isinstance(arg, dict):
+                for k, v in arg.items():
+                    mapping[str(k)] = str(v)
+            elif isinstance(arg, str):
+                for pair in arg.split(","):
+                    pair = pair.strip()
+                    if not pair:
+                        continue
+                    if ":" in pair:
+                        old_raw, new_raw = pair.split(":", 1)
+                    elif "=" in pair:
+                        raise ValueError(
+                            f"invalid rename mapping '{pair}'; use ':' (e.g. 'old:new') or keyword arguments"
+                        )
+                    else:
+                        raise ValueError(f"invalid rename mapping '{pair}'; expected 'old:new'")
+                    old_clean = _unquote_name(old_raw.strip())
+                    new_clean = _unquote_name(new_raw.strip())
+                    if old_clean in mapping and mapping[old_clean] != new_clean:
+                        raise ValueError(
+                            f"conflicting rename mappings for '{old_clean}': '{mapping[old_clean]}' and '{new_clean}'"
+                        )
+                    mapping[old_clean] = new_clean
+            else:
+                raise TypeError(f"rename() expects string, dict, or keyword arguments, got {type(arg).__name__}")
         if columns:
-            mapping.update(columns)
+            for k, v in columns.items():
+                mapping[str(k)] = str(v)
         if kwargs:
-            mapping.update(kwargs)
+            for k, v in kwargs.items():
+                mapping[str(k)] = str(v)
+        if not mapping:
+            return self
+        avail = set(self._df.collect_schema().names() if self.is_lazy else self._df.columns)
+        missing = [old for old in mapping if old not in avail]
+        if missing:
+            raise KeyError(f"rename: column(s) {missing} not found in DataFrame")
         new_df = self._df.rename(mapping)
         new_col_map = dict(self._orig_col_map)
         for old, new in mapping.items():
@@ -905,6 +923,10 @@ class DataFrame:
         res = DataFrame(new_df, orig_col_map=new_col_map)
         res._orig_index = self._orig_index
         return res
+
+    def sql(self, query: str) -> DataFrame:
+        """Execute a SQL query against this DataFrame (registered as 'data' and 'self' in Polars SQLContext)."""
+        return DataFrame(sql_polars(self._df, query))
 
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         """Aggregate numeric columns or compute custom metrics across the whole DataFrame."""
@@ -976,42 +998,6 @@ class DataFrame:
             )
         )
 
-    def replace_values(
-        self,
-        v: dict[Any, Any],
-        c: str | Sequence[str] | None = None,
-        exact: bool = True,
-    ) -> DataFrame:
-        """Replace exact values or substrings across columns."""
-        return DataFrame(
-            replace_values_polars(
-                self._df,
-                v=v,
-                c=c,
-                exact=exact,
-            )
-        )
-
-    def handle_missing(
-        self,
-        fillna: str | None = ".",
-        numeric_fill: Any = 0,
-        cols: Sequence[str] | None = None,
-        preserve_categories: bool = True,
-        **kwargs: Any,
-    ) -> DataFrame:
-        """Fill null values with type-appropriate defaults."""
-        return DataFrame(
-            handle_missing_polars(
-                self._df,
-                fillna=fillna,
-                numeric_fill=numeric_fill,
-                cols=cols,
-                preserve_categories=preserve_categories,
-                **kwargs,
-            )
-        )
-
     def cols(self, ascending: bool | None = True) -> list[str]:
         """Return sorted or natural column names."""
         columns = list(self.columns)
@@ -1035,13 +1021,13 @@ class DataFrame:
         """Calculate frequency distribution of unique column values."""
         from pytae.other_utilities import freq as _freq
 
-        return DataFrame(_freq(self.to_pandas(), col=col, dropna=dropna))
+        return DataFrame(_freq(self._df, col=col, dropna=dropna))
 
     def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
         """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column."""
         from pytae.other_utilities import hist as _hist
 
-        return DataFrame(_hist(self.to_pandas(), col=col, bins=bins))
+        return DataFrame(_hist(self._df, col=col, bins=bins))
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Apply a callable function taking DataFrame as its first argument."""
@@ -1141,12 +1127,6 @@ class GroupedDataFrame:
     def by(self, *cols: Any) -> GroupedDataFrame:
         """Overwrite grouping with new keys."""
         return DataFrame(self._df, orig_col_map=self._orig_col_map).by(*cols)
-
-    def ungroup(self) -> DataFrame:
-        """Remove grouping context and return a standard DataFrame."""
-        res = DataFrame(self._df, orig_col_map=self._orig_col_map)
-        res._orig_index = self._orig_index
-        return res
 
     def to_pandas(self) -> Any:
         import pandas as pd
@@ -1256,9 +1236,7 @@ class GroupedDataFrame:
                 full_col = pd.concat(pieces).reindex(pdf.index)
                 new_map = dict(res._orig_col_map)
                 new_map[col_name] = col_name
-                res = DataFrame(
-                    res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=new_map
-                )
+                res = DataFrame(res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=new_map)
                 res._orig_index = self._orig_index
 
         return res
@@ -1271,42 +1249,31 @@ class GroupedDataFrame:
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
 
+    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+        """Rename columns using string mapping, dict, or keyword arguments."""
+        return DataFrame(self._df, orig_col_map=self._orig_col_map).rename(*args, columns=columns, **kwargs)
+
+    def sql(self, query: str) -> DataFrame:
+        """Execute a SQL query against this DataFrame."""
+        return DataFrame(sql_polars(self._df, query))
+
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN)."""
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+    def fillna(
+        self,
+        value: Any = None,
+        *cols: Any,
+        subset: Any = None,
+        nans: bool = True,
+        **kwargs: Any,
+    ) -> DataFrame:
         """Fill missing values (Arrow null and/or float NaN)."""
-        if cols or subset is not None:
-            target = list(subset) if subset is not None else list(cols)
-            avail = set(self.columns)
-            missing = [str(c) for c in target if str(c) not in avail]
-            if missing:
-                raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
-        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
-        return self.fillna(value, *cols, subset=subset, nans=False)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Fill only float NaNs, leaving Arrow nulls unchanged."""
-        if cols or subset is not None:
-            target = list(subset) if subset is not None else list(cols)
-            avail = set(self.columns)
-            missing = [str(c) for c in target if str(c) not in avail]
-            if missing:
-                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
-        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
+        return DataFrame(self._df, orig_col_map=self._orig_col_map).fillna(
+            value, *cols, subset=subset, nans=nans, **kwargs
+        )
 
     def pick(
         self,

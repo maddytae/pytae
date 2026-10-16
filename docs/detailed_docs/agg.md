@@ -43,15 +43,8 @@ import pytae as pt
 
 penguins = pt.sample("penguins")
 
-summary = (
-    penguins
-    .by("species", "island")
-    .agg(
-        n="n",
-        avg_mass="mean(body_mass_g)",
-        max_flipper="max(flipper_length_mm)",
-        unique_sexes="n_distinct(sex)"
-    )
+summary = penguins.by("species", "island").agg(
+    n="n", avg_mass="mean(body_mass_g)", max_flipper="max(flipper_length_mm)", unique_sexes="n_distinct(sex)"
 )
 ```
 
@@ -70,11 +63,7 @@ penguins.by("sex").agg(dropna=True, n="n", avg_mass="mean(body_mass_g)")
 Omit `.by()` to aggregate across the entire table:
 
 ```python
-penguins.agg(
-    total_penguins="n",
-    avg_mass="mean(body_mass_g)",
-    min_mass="min(body_mass_g)"
-)
+penguins.agg(total_penguins="n", avg_mass="mean(body_mass_g)", min_mass="min(body_mass_g)")
 ```
 
 ---

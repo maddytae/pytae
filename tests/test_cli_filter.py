@@ -152,11 +152,13 @@ def test_filter_cli_bracket_interval(tmp_path, capsys):
 def test_filter_cli_str_methods_and_null_checks(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
-        pd.DataFrame({
-            "species": ["Adelie", "Gentoo", "Chinstrap"],
-            "island": ["Torgersen", "Biscoe", "Dream"],
-            "sex": ["MALE", None, "FEMALE"],
-        }),
+        pd.DataFrame(
+            {
+                "species": ["Adelie", "Gentoo", "Chinstrap"],
+                "island": ["Torgersen", "Biscoe", "Dream"],
+                "sex": ["MALE", None, "FEMALE"],
+            }
+        ),
     )
 
     # -filter "island.str.contains('org')"
@@ -173,4 +175,3 @@ def test_filter_cli_str_methods_and_null_checks(tmp_path, capsys):
     exit_code = cli.main([path, "-filter", "sex.is_not_null()", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 3)"
-

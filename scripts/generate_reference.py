@@ -18,7 +18,7 @@ TABLE OF CONTENTS
 3.  SAMPLE DATASETS
 4.  PYTHON LIBRARY REFERENCE (API VERBS)
     4.1.  pt.filter() / df.pt.filter() — Row Filtering (formerly qry)
-    4.2.  pt.by() / df.pt.by() & pt.ungroup() / df.pt.ungroup() — Grouping Context
+    4.2.  pt.by() / df.pt.by() — Single-Shot Scoped Grouping
     4.3.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.4.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
@@ -38,7 +38,6 @@ TABLE OF CONTENTS
           - Transparent Polars Verb Delegation (__getattr__)
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
-          - pt.replace_values() / df.pt.replace_values()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
     4.12. Plotter — Visualization & Dashboarding (Plotting API)
@@ -151,14 +150,11 @@ Top-Level Functions exported by `pytae`:
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)
   - pt.by(df, *cols)
-  - pt.ungroup(df)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
   - pt.distinct(df, *cols, keep="first")
   - pt.dropna(df, *cols, how=None, drop_nans=True)
-  - pt.drop_nulls(df, *cols, how=None, drop_nans=True)
-  - pt.drop_na(df, *cols, how=None, drop_nans=True)
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
@@ -169,7 +165,6 @@ Top-Level Functions exported by `pytae`:
   - pt.freq(df, col=None, *, dropna=False)
   - pt.hist(df, col=None, bins=10)
   - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False)
-  - pt.replace_values(df, v: dict, c=None, exact=True)
   - pt.safe_reset_index(df)
   - pt.sample(data_or_name="penguins", n=None, frac=None, seed=None)
   - pt.sample_data (Mapping of bundled datasets)
@@ -183,15 +178,12 @@ DataFrame Accessor (`df.pt`):
     df.pt.select(...)
     df.pt.filter(...)
     df.pt.by(...)
-    df.pt.ungroup()
     df.pt.mutate(...)
     df.pt.arrange(...)
     df.pt.pick(...)
     df.pt.sample(...)
     df.pt.distinct(...)
     df.pt.dropna(...)
-    df.pt.drop_nulls(...)
-    df.pt.drop_na(...)
     df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
@@ -202,7 +194,6 @@ DataFrame Accessor (`df.pt`):
     df.pt.freq(...)
     df.pt.hist(...)
     df.pt.clean_columns(...)
-    df.pt.replace_values(...)
     df.pt.safe_reset_index(...)
     df.pt.to_clip(...)
     df.pt.plot(...)
@@ -300,28 +291,25 @@ Error Handling:
   KeyError: "unknown column 'speceis' (did you mean 'species'?)"
 
 
-4.2. pt.by() / df.pt.by() & pt.ungroup() — Grouping Context
+4.2. pt.by() / df.pt.by() — Single-Shot Scoped Grouping
 --------------------------------------------------------------------------------
-Sets active grouping state on a DataFrame. In pytae, grouping is STRICTLY STANDALONE:
+Sets active grouping state on a DataFrame. In pytae, grouping is strictly SINGLE-SHOT:
 verbs (`mutate`, `pick`, `agg`) NEVER accept `by=`. They inherit active grouping 
 strictly from `pt.by()`. If passed `by=`, verbs immediately raise a `TypeError`.
 
 Signature:
-  pt.by(df: pd.DataFrame, *cols: str | Sequence[str]) -> pd.DataFrame
-  df.pt.by(*cols: str | Sequence[str]) -> pd.DataFrame
-  pt.ungroup(df: pd.DataFrame) -> pd.DataFrame
-  df.pt.ungroup() -> pd.DataFrame
+  pt.by(df: DataFrame, *cols: str) -> GroupedDataFrame
+  df.pt.by(*cols: str) -> GroupedDataFrame
 
 Key Rules & Behaviors:
-  - Standalone Grouping: Grouping is always established beforehand:
-    (
-        df
-        .pt.by("species", "island")
-        .pt.agg("mean")
-    )
-  - Automatic Cleanup: Calling `agg()` or `pick()` automatically clears grouping 
-    upon completion so the returned DataFrame is ungrouped.
-  - Explicit Ungrouping: Call `df.pt.ungroup()` to clear grouping at any time.
+  - Single-Shot Scoped Grouping: Grouping applies strictly to the immediate next operation.
+    Every operation (`mutate()`, `agg()`, `pick()`) automatically ungroups upon completion,
+    returning a clean, flat, ungrouped DataFrame.
+  - No Ungroup Needed: Because grouping never persists, subsequent operations naturally
+    evaluate across the whole table without requiring `ungroup()`.
+  - Fluent Transition: You can transition between group scopes and overall table scopes in one chain:
+    df.by("region").mutate(r_avg="mean(sales)").mutate(all_avg="mean(sales)").by("product").mutate(p_avg="mean(sales)")
+  - Precedence: If a second `.pt.by()` is called, it cleanly overwrites the previous grouping context.
 
 
 4.3. pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
@@ -675,8 +663,6 @@ Examples:
   Sanitizes missing values with type-safe defaults.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
   Systematically sanitizes DataFrame header names.
-- pt.replace_values(df, v: dict, c: str | list | None = None, exact=True):
-  Replaces cell values in the DataFrame.
 - pt.safe_reset_index(df) / df.pt.safe_reset_index():
   Safely resets DataFrame index, raising an informative ValueError on collision.
 - df.to_clip() / s.to_clip() / df.pt.to_clip():
@@ -765,14 +751,13 @@ In-Terminal ASCII Visualizations:
 
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
-  -dropna, -drop_nulls [COLS]  Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
+  -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
   -mutate SPEC          Create/overwrite columns ("new_col = expr" or multi-column "[prefix](col1, col2)[suffix] = expr" using _ placeholder)
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
-  -replace_values SPEC  Replace values: "v='old:new', c='col', exact=True"
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
@@ -811,7 +796,6 @@ Output & Formatting Flags:
 --------------------------------------------------------------------------------
 1. Mapping / Translation uses COLON (`:`):
    - `-rename`: "old_col:new_col, col_b:col_beta"
-   - `-replace_values`: "v='old_val:new_val', c='col_name'"
 2. Assignment / Specification uses EQUALS (`=`):
    - `-mutate`: "new_col = expression, mass_kg = body_mass_g / 1000"
    - `-filter`: "species = 'Adelie', body_mass_g > 3500"
@@ -875,9 +859,13 @@ Pytae standardizes on canonical modern naming:
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------
-1. Vectorized Functions: `df.pt.mutate(r="ratio(bill_length_mm, bill_depth_mm)")`
-2. Single-Column Scalar: `df.pt.mutate(clean="species.apply(clean_text)")`
-3. Row-Wise Multi-Column: `df.pt.mutate(tier=lambda df: df.apply(classify, axis=1))`
+- Dictionary Value Recoding: Use formula `map(col, mapping[, fallback])` inside string expressions:
+  `df.pt.mutate(code="map(species, {'Adelie': 'AD'}, 'Other')")`
+- Vectorized Array / Math Functions: Pass callables directly on columns:
+  `df.pt.mutate(adj=lambda d: np.maximum(d["a"], 0) * 1.5)`
+- Row-Wise Scalar Functions: Pass callables wrapping scalar functions in Python's standard `map()`:
+  `df.pt.mutate(shipping=lambda d: map(route_order, d["origin"], d["dest"]))`
+(Formula `map()` is strictly for dictionary lookups; `lambda d:` is for Python functions.)
 
 6.6. Can row-level functions access newly created columns in the same `mutate()`?
 ---------------------------------------------------------------------------------
@@ -1289,7 +1277,8 @@ def generate_reference() -> None:
     parts.append("8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)")
     parts.append("================================================================================\n")
     detailed_docs = sorted(
-        list((REPO_ROOT / "docs" / "detailed_docs").glob("*.md")) + list((REPO_ROOT / "docs" / "detailed_docs").glob("*.ipynb")),
+        list((REPO_ROOT / "docs" / "detailed_docs").glob("*.md"))
+        + list((REPO_ROOT / "docs" / "detailed_docs").glob("*.ipynb")),
         key=lambda p: p.stem,
     )
     for doc_path in detailed_docs:

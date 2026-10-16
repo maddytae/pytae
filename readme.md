@@ -87,7 +87,6 @@ pytae current.parquet -diff baseline.parquet
 | :--- | :--- | :--- | :--- |
 | **Filter Rows** | `.pt.filter(...)` | `-filter "..."` | `df.pt.filter(lambda d: d['mass'] > 4000)` |
 | **Group Context** | `.pt.by(*cols)` | `-by ...` | `df.pt.by("species", "island")` |
-| **Clear Grouping**| `.pt.ungroup()` | N/A | `df.pt.ungroup()` |
 | **Drop Null Rows** | `df.dropna(...)` | `-dropna [COLS]` | `pytae data.parquet -dropna "age,income"` |
 | **Sort Rows** | `.pt.arrange(...)` | `-arrange "..."` | `df.pt.arrange("species, -mass_kg")` |
 | **Pick Rows** | `.pt.pick(...)` | `-pick "..."` | `df.pt.pick("mass", n=3, order="max")` |
@@ -98,7 +97,7 @@ pytae current.parquet -diff baseline.parquet
 | **2D Pivot Table** | `.pt.pivot(...)` | `-pivot "..."` | `df.pt.pivot(r="island", c="species", v="mass", a="mean")` |
 | **Pure Reshape** | `.pt.long()`, `.pt.wide()`| `-long`, `-wide` | `df.pt.wide(c="metric", v="val", index="id")` |
 | **Distinct Rows** | `.pt.distinct(*cols)`| `-distinct [COLS]` | `df.pt.distinct("species", "island")` |
-| **SQL Query (CLI)**| N/A (CLI only) | `-sql "..."` | `pytae data.parquet -sql "select * from data order by 1"` |
+| **SQL Queries** | `.pt.sql("...")` | `-sql "..."` | `df.pt.sql("select species, count(*) from data group by 1")` |
 | **Glimpse Table** | `.pt.glimpse()` | `-glimpse` | `df.pt.glimpse()` |
 | **ASCII Freq & Hist**| `.pt.freq()`, `.pt.hist()` | `-freq`, `-hist` | `df.pt.freq("species")`, `df.pt.hist("mass:10")` |
 | **Copy to Clipboard**| `df.to_clip()` | `-o clip` | `df.head().to_clip()` |
@@ -125,7 +124,7 @@ Unified documentation covering both the Python library and CLI:
 - [2D Pivot Tables](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/pivot.md) (`pivot`, `r, c, v, a` matrices, flat 1D headers)
 - [Aggregations & Grouping](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/agg.md) (`by`, `agg`, `dropna=False` zero data loss retention)
 - [Visualizations & Plotting](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting.md) (`df.plot()`, `-plot`, `-finalize`, interactive walkthrough)
-- [Utilities & Inspection](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/other_utilities.md) (`fillna`, `fill_null`, `fill_nan`, `dropna`, `handle_missing`, `cols`, `glimpse`, `freq`, `hist`)
+- [Utilities & Inspection](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/other_utilities.md) (`fillna`, `dropna`, `rename`, `sql`, `cols`, `glimpse`, `freq`, `hist`)
 - [CLI Terminal Superpowers](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli_only.md) (`-diff`, `-inspect`, `-meta`, `-file`, `-join`, `-concat`, `-sql`, batch globs)
 - [Python Library Architecture](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library_only.md) (`pt()`, `.pt` accessor on Polars & Pandas, lazy evaluation pushdowns, callables)
 

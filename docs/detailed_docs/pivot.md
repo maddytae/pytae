@@ -25,12 +25,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 
 # 2D cross-tabulation: Mean body mass by species across islands
-table = penguins.pivot(
-    r="species",
-    c="island",
-    v="body_mass_g",
-    a="mean"
-)
+table = penguins.pivot(r="species", c="island", v="body_mass_g", a="mean")
 ```
 
 **Output:**
@@ -50,13 +45,7 @@ table = penguins.pivot(
 Use `fill_value` to replace cells with zero counts or default values:
 
 ```python
-penguins.pivot(
-    r="species",
-    c="island",
-    v="body_mass_g",
-    a="mean",
-    fill_value=0
-)
+penguins.pivot(r="species", c="island", v="body_mass_g", a="mean", fill_value=0)
 ```
 
 ---

@@ -175,34 +175,29 @@ def dropna(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_nulls(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+def fillna(
+    df: Any,
+    value: Any = None,
+    *cols: Any,
+    subset: Any = None,
+    nans: bool = True,
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
 
-def drop_na(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+def rename(df: Any, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+    return DataFrame(df).rename(*args, columns=columns, **kwargs)
 
 
-def fillna(df: Any, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
-    return DataFrame(df).fillna(value, *cols, subset=subset, nans=nans)
-
-
-def fill_null(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-    return DataFrame(df).fill_null(value, *cols, subset=subset)
-
-
-def fill_nan(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-    return DataFrame(df).fill_nan(value, *cols, subset=subset)
+def sql(df: Any, query: str) -> DataFrame:
+    return DataFrame(df).sql(query)
 
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
     return DataFrame(df).by(*cols)
 
 
-def ungroup(df: Any) -> DataFrame:
-    if isinstance(df, GroupedDataFrame):
-        return df.ungroup()
-    return DataFrame(df)
 
 
 def agg(df: Any, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
@@ -250,14 +245,6 @@ def wide(
 
 def clean_columns(df: Any, **opts: Any) -> DataFrame:
     return DataFrame(df).clean_columns(**opts)
-
-
-def replace_values(df: Any, v: dict[Any, Any], **kwargs: Any) -> DataFrame:
-    return DataFrame(df).replace_values(v, **kwargs)
-
-
-def handle_missing(df: Any, **opts: Any) -> DataFrame:
-    return DataFrame(df).handle_missing(**opts)
 
 
 def cols(df: Any, ascending: bool | None = True) -> list[str]:
@@ -309,7 +296,6 @@ def diff(left: Any, right: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
     return DataFrame(left).diff(right, tol=tol, rtol=rtol)
 
 
-
 def concat(
     items: Sequence[Any],
     how: str = "vertical",
@@ -359,21 +345,15 @@ class _PytaeModule(ModuleType):
     pick = _VerbDescriptor(pick)
     distinct = _VerbDescriptor(distinct)
     dropna = _VerbDescriptor(dropna)
-    drop_nulls = _VerbDescriptor(drop_nulls)
-    drop_na = _VerbDescriptor(drop_na)
     fillna = _VerbDescriptor(fillna)
-    fill_null = _VerbDescriptor(fill_null)
-    fill_nan = _VerbDescriptor(fill_nan)
+    rename = _VerbDescriptor(rename)
+    sql = _VerbDescriptor(sql)
     by = _VerbDescriptor(by)
-
-    ungroup = _VerbDescriptor(ungroup)
     agg = _VerbDescriptor(agg)
     pivot = _VerbDescriptor(pivot)
     long = _VerbDescriptor(long)
     wide = _VerbDescriptor(wide)
     clean_columns = _VerbDescriptor(clean_columns)
-    replace_values = _VerbDescriptor(replace_values)
-    handle_missing = _VerbDescriptor(handle_missing)
     cols = _VerbDescriptor(cols)
     glimpse = _VerbDescriptor(glimpse)
     freq = _VerbDescriptor(freq)
@@ -440,17 +420,14 @@ __all__ = [
     "select",
     "filter",
     "by",
-    "ungroup",
     "mutate",
+    "rename",
+    "sql",
     "arrange",
     "pick",
     "distinct",
     "dropna",
-    "drop_nulls",
-    "drop_na",
     "fillna",
-    "fill_null",
-    "fill_nan",
     "diff",
     "agg",
     "join",
@@ -458,14 +435,12 @@ __all__ = [
     "long",
     "wide",
     "pivot",
-    "handle_missing",
     "cols",
     "freq",
     "glimpse",
     "format_glimpse",
     "hist",
     "clean_columns",
-    "replace_values",
     "everything",
     "PolarsPtAccessor",
     "PandasPtAccessor",

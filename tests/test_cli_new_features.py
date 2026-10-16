@@ -37,21 +37,19 @@ def test_cli_dropna_how_any(capsys):
 
 
 def test_cli_drop_nulls_alias(capsys):
-    # -drop_nulls is an alias for -dropna
-    ret = main([PENGUINS_PATH, "-drop_nulls", "-shape"])
-    assert ret == 0
-    assert "(344, 7)" in capsys.readouterr().out
-
-    ret2 = main([PENGUINS_PATH, "-drop_nulls", "how=any", "-shape"])
-    assert ret2 == 0
-    assert "(333, 7)" in capsys.readouterr().out
+    # -drop_nulls has been removed in favor of -dropna
+    with pytest.raises(SystemExit) as exc:
+        main([PENGUINS_PATH, "-drop_nulls", "-shape"])
+    assert exc.value.code == 2
+    assert "'-drop_nulls' has been removed; use '-dropna' instead" in capsys.readouterr().err
 
 
 def test_cli_drop_na_alias(capsys):
-    # -drop_na is also an alias for -dropna
-    ret = main([PENGUINS_PATH, "-drop_na", "-shape"])
-    assert ret == 0
-    assert "(344, 7)" in capsys.readouterr().out
+    # -drop_na has been removed in favor of -dropna
+    with pytest.raises(SystemExit) as exc:
+        main([PENGUINS_PATH, "-drop_na", "-shape"])
+    assert exc.value.code == 2
+    assert "'-drop_na' has been removed; use '-dropna' instead" in capsys.readouterr().err
 
 
 def test_cli_dropna_specific_columns(capsys):

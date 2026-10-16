@@ -120,7 +120,7 @@ def test_cli_distinct_keep(tmp_path, capsys):
 
 
 # ==============================================================================
-# 3. Tests for by() and ungroup()
+# 3. Tests for by() and Scoped Grouping
 # ==============================================================================
 
 
@@ -173,13 +173,14 @@ def test_by_overwritten_by_second_by():
     assert "_pt_by" not in df.attrs
 
 
-def test_ungroup_clears_by():
+def test_by_auto_clears_after_operation():
     df = _sample_df()
     grouped = df.pt.by("species", "island")
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
-    ungrouped = grouped.pt.ungroup()
-    assert "_pt_by" not in ungrouped.attrs
+    result = grouped.pt.mutate(m="mean(mass)")
+    assert "_pt_by" not in result.attrs
+    assert isinstance(result, pt.DataFrame)
 
 
 def test_by_non_destructive_input_isolation():

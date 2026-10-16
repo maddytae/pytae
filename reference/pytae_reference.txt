@@ -9,7 +9,7 @@ TABLE OF CONTENTS
 3.  SAMPLE DATASETS
 4.  PYTHON LIBRARY REFERENCE (API VERBS)
     4.1.  pt.filter() / df.pt.filter() — Row Filtering (formerly qry)
-    4.2.  pt.by() / df.pt.by() & pt.ungroup() / df.pt.ungroup() — Grouping Context
+    4.2.  pt.by() / df.pt.by() — Single-Shot Scoped Grouping
     4.3.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.4.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
@@ -29,7 +29,6 @@ TABLE OF CONTENTS
           - Transparent Polars Verb Delegation (__getattr__)
           - pt.handle_missing() / df.pt.handle_missing()
           - pt.clean_columns() / df.pt.clean_columns()
-          - pt.replace_values() / df.pt.replace_values()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
     4.12. Plotter — Visualization & Dashboarding (Plotting API)
@@ -142,14 +141,11 @@ Top-Level Functions exported by `pytae`:
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)
   - pt.by(df, *cols)
-  - pt.ungroup(df)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
   - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
   - pt.distinct(df, *cols, keep="first")
   - pt.dropna(df, *cols, how=None, drop_nans=True)
-  - pt.drop_nulls(df, *cols, how=None, drop_nans=True)
-  - pt.drop_na(df, *cols, how=None, drop_nans=True)
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
@@ -160,7 +156,6 @@ Top-Level Functions exported by `pytae`:
   - pt.freq(df, col=None, *, dropna=False)
   - pt.hist(df, col=None, bins=10)
   - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False)
-  - pt.replace_values(df, v: dict, c=None, exact=True)
   - pt.safe_reset_index(df)
   - pt.sample(data_or_name="penguins", n=None, frac=None, seed=None)
   - pt.sample_data (Mapping of bundled datasets)
@@ -174,15 +169,12 @@ DataFrame Accessor (`df.pt`):
     df.pt.select(...)
     df.pt.filter(...)
     df.pt.by(...)
-    df.pt.ungroup()
     df.pt.mutate(...)
     df.pt.arrange(...)
     df.pt.pick(...)
     df.pt.sample(...)
     df.pt.distinct(...)
     df.pt.dropna(...)
-    df.pt.drop_nulls(...)
-    df.pt.drop_na(...)
     df.pt.agg(...)
     df.pt.long(...)
     df.pt.wide(...)
@@ -193,7 +185,6 @@ DataFrame Accessor (`df.pt`):
     df.pt.freq(...)
     df.pt.hist(...)
     df.pt.clean_columns(...)
-    df.pt.replace_values(...)
     df.pt.safe_reset_index(...)
     df.pt.to_clip(...)
     df.pt.plot(...)
@@ -291,28 +282,25 @@ Error Handling:
   KeyError: "unknown column 'speceis' (did you mean 'species'?)"
 
 
-4.2. pt.by() / df.pt.by() & pt.ungroup() — Grouping Context
+4.2. pt.by() / df.pt.by() — Single-Shot Scoped Grouping
 --------------------------------------------------------------------------------
-Sets active grouping state on a DataFrame. In pytae, grouping is STRICTLY STANDALONE:
+Sets active grouping state on a DataFrame. In pytae, grouping is strictly SINGLE-SHOT:
 verbs (`mutate`, `pick`, `agg`) NEVER accept `by=`. They inherit active grouping 
 strictly from `pt.by()`. If passed `by=`, verbs immediately raise a `TypeError`.
 
 Signature:
-  pt.by(df: pd.DataFrame, *cols: str | Sequence[str]) -> pd.DataFrame
-  df.pt.by(*cols: str | Sequence[str]) -> pd.DataFrame
-  pt.ungroup(df: pd.DataFrame) -> pd.DataFrame
-  df.pt.ungroup() -> pd.DataFrame
+  pt.by(df: DataFrame, *cols: str) -> GroupedDataFrame
+  df.pt.by(*cols: str) -> GroupedDataFrame
 
 Key Rules & Behaviors:
-  - Standalone Grouping: Grouping is always established beforehand:
-    (
-        df
-        .pt.by("species", "island")
-        .pt.agg("mean")
-    )
-  - Automatic Cleanup: Calling `agg()` or `pick()` automatically clears grouping 
-    upon completion so the returned DataFrame is ungrouped.
-  - Explicit Ungrouping: Call `df.pt.ungroup()` to clear grouping at any time.
+  - Single-Shot Scoped Grouping: Grouping applies strictly to the immediate next operation.
+    Every operation (`mutate()`, `agg()`, `pick()`) automatically ungroups upon completion,
+    returning a clean, flat, ungrouped DataFrame.
+  - No Ungroup Needed: Because grouping never persists, subsequent operations naturally
+    evaluate across the whole table without requiring `ungroup()`.
+  - Fluent Transition: You can transition between group scopes and overall table scopes in one chain:
+    df.by("region").mutate(r_avg="mean(sales)").mutate(all_avg="mean(sales)").by("product").mutate(p_avg="mean(sales)")
+  - Precedence: If a second `.pt.by()` is called, it cleanly overwrites the previous grouping context.
 
 
 4.3. pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
@@ -666,8 +654,6 @@ Examples:
   Sanitizes missing values with type-safe defaults.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
   Systematically sanitizes DataFrame header names.
-- pt.replace_values(df, v: dict, c: str | list | None = None, exact=True):
-  Replaces cell values in the DataFrame.
 - pt.safe_reset_index(df) / df.pt.safe_reset_index():
   Safely resets DataFrame index, raising an informative ValueError on collision.
 - df.to_clip() / s.to_clip() / df.pt.to_clip():
@@ -756,14 +742,13 @@ In-Terminal ASCII Visualizations:
 
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
-  -dropna, -drop_nulls [COLS]  Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
+  -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
   -mutate SPEC          Create/overwrite columns ("new_col = expr" or multi-column "[prefix](col1, col2)[suffix] = expr" using _ placeholder)
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
-  -replace_values SPEC  Replace values: "v='old:new', c='col', exact=True"
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
@@ -802,7 +787,6 @@ Output & Formatting Flags:
 --------------------------------------------------------------------------------
 1. Mapping / Translation uses COLON (`:`):
    - `-rename`: "old_col:new_col, col_b:col_beta"
-   - `-replace_values`: "v='old_val:new_val', c='col_name'"
 2. Assignment / Specification uses EQUALS (`=`):
    - `-mutate`: "new_col = expression, mass_kg = body_mass_g / 1000"
    - `-filter`: "species = 'Adelie', body_mass_g > 3500"
@@ -864,9 +848,13 @@ Pytae standardizes on canonical modern naming:
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------
-1. Vectorized Functions: `df.pt.mutate(r="ratio(bill_length_mm, bill_depth_mm)")`
-2. Single-Column Scalar: `df.pt.mutate(clean="species.apply(clean_text)")`
-3. Row-Wise Multi-Column: `df.pt.mutate(tier=lambda df: df.apply(classify, axis=1))`
+- Dictionary Value Recoding: Use formula `map(col, mapping[, fallback])` inside string expressions:
+  `df.pt.mutate(code="map(species, {'Adelie': 'AD'}, 'Other')")`
+- Vectorized Array / Math Functions: Pass callables directly on columns:
+  `df.pt.mutate(adj=lambda d: np.maximum(d["a"], 0) * 1.5)`
+- Row-Wise Scalar Functions: Pass callables wrapping scalar functions in Python's standard `map()`:
+  `df.pt.mutate(shipping=lambda d: map(route_order, d["origin"], d["dest"]))`
+(Formula `map()` is strictly for dictionary lookups; `lambda d:` is for Python functions.)
 
 6.6. Can row-level functions access newly created columns in the same `mutate()`?
 ---------------------------------------------------------------------------------
@@ -1158,15 +1146,8 @@ import pytae as pt
 
 penguins = pt.sample("penguins")
 
-summary = (
-    penguins
-    .by("species", "island")
-    .agg(
-        n="n",
-        avg_mass="mean(body_mass_g)",
-        max_flipper="max(flipper_length_mm)",
-        unique_sexes="n_distinct(sex)"
-    )
+summary = penguins.by("species", "island").agg(
+    n="n", avg_mass="mean(body_mass_g)", max_flipper="max(flipper_length_mm)", unique_sexes="n_distinct(sex)"
 )
 ```
 
@@ -1185,11 +1166,7 @@ penguins.by("sex").agg(dropna=True, n="n", avg_mass="mean(body_mass_g)")
 Omit `.by()` to aggregate across the entire table:
 
 ```python
-penguins.agg(
-    total_penguins="n",
-    avg_mass="mean(body_mass_g)",
-    min_mass="min(body_mass_g)"
-)
+penguins.agg(total_penguins="n", avg_mass="mean(body_mass_g)", min_mass="min(body_mass_g)")
 ```
 
 ---
@@ -1486,16 +1463,19 @@ pytae -file "orders.parquet=o; users.csv=u" \
 ---
 
 <a id="batch-cleaning"></a>
-## Batch Header Cleaning & Value Replacements
+## Batch Header Cleaning & Renaming
 
-Clean messy headers or standardize categorical values across datasets:
+Clean messy headers, rename columns, or fill missing values across datasets:
 
 ```bash
 # Sanitize header names
 pytae messy.csv -clean_columns "case=lower, fill=_" -o clean.parquet
 
-# Replace values
-pytae penguins.parquet -replace_values "Adelie=Adelie Penguin, Male=M" -head 5
+# Rename columns
+pytae penguins.parquet -rename "species:bird_species" -head 5
+
+# Fill missing values
+pytae messy.parquet -fillna "0, col_a, col_b" -head 5
 ```
 
 ---
@@ -1689,6 +1669,7 @@ For custom logic requiring complex Python functions or external libraries:
 def is_valid_weight(d):
     return (d["body_mass_g"] > 3500) & (d["sex"] == "Female")
 
+
 penguins.filter(is_valid_weight)
 penguins.filter(lambda d: d["flipper_length_mm"] % 2 == 0)
 ```
@@ -1807,12 +1788,7 @@ lazy_orders = pt.scan_parquet("orders_100M.parquet")
 lazy_custs = pt.scan_csv("customers.csv")
 
 # Filter pushes through the join graph into the raw Parquet read!
-result = (
-    lazy_orders
-    .join(lazy_custs, on="customer_id", how="inner")
-    .filter("region == 'EMEA'")
-    .collect()
-)
+result = lazy_orders.join(lazy_custs, on="customer_id", how="inner").filter("region == 'EMEA'").collect()
 ```
 
 ---
@@ -1904,10 +1880,7 @@ import pandas as pd
 import polars as pl
 
 # 1. From Python dictionary
-df1 = pt.DataFrame({
-    "species": ["Adelie", "Gentoo"],
-    "mass_g": [3750, 5050]
-})
+df1 = pt.DataFrame({"species": ["Adelie", "Gentoo"], "mass_g": [3750, 5050]})
 
 # 2. From standard Pandas DataFrame
 pd_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
@@ -1942,8 +1915,7 @@ import pytae as pt
 # Chain directly off any Pandas DataFrame
 pd_df = pd.read_csv("raw.csv")
 clean_df = (
-    pd_df.pt
-    .filter("status == 'active'")
+    pd_df.pt.filter("status == 'active'")
     .mutate(tax="total * 0.08")
     .by("region")
     .agg(total_rev="sum(total)", avg_tax="mean(tax)")
@@ -1968,7 +1940,7 @@ Pytae operates in two execution modes:
 
 ```python
 df_eager = pt.read_parquet("small.parquet")  # df_eager.is_lazy == False
-df_lazy  = pt.scan_parquet("huge.parquet")   # df_lazy.is_lazy == True
+df_lazy = pt.scan_parquet("huge.parquet")  # df_lazy.is_lazy == True
 ```
 
 ### 1. Zero-Cost Schema & Metadata Inspection
@@ -2002,11 +1974,7 @@ result = (
 You don't even need to call `.collect()` to write large files:
 ```python
 # Streams out-of-core directly to Parquet or CSV without consuming RAM:
-(
-    pt.scan_parquet("raw_lake/*.parquet")
-    .filter("status == 'valid'")
-    .to_parquet("clean_lake.parquet")
-)
+(pt.scan_parquet("raw_lake/*.parquet").filter("status == 'valid'").to_parquet("clean_lake.parquet"))
 ```
 
 ---
@@ -2020,9 +1988,11 @@ While string formulas (`"x > 10"`) are vectorized and fast, Pytae allows arbitra
 # Complex boolean filter using Python lambda
 penguins.filter(lambda d: (d["body_mass_g"] > 4000) & (d["species"].str.contains("Ad")))
 
+
 # Custom feature derivation
 def compute_score(d):
     return d["bill_length_mm"] * 1.5 + d["bill_depth_mm"]
+
 
 penguins.mutate(custom_score=compute_score)
 ```
@@ -2035,6 +2005,7 @@ Inside `mutate()`, `lambda d:` supports both whole-column vectorized functions a
 ```python
 import numpy as np
 
+
 # Scalar row-by-row function -> wrap with map()
 def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
     if origin == dest:
@@ -2043,9 +2014,11 @@ def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
         return "Special Freight"
     return "Standard Ground"
 
+
 # Vectorized array function -> call directly on columns
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
+
 
 df = df.mutate(
     shipping_mode=lambda d: map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"]),
@@ -2059,11 +2032,7 @@ Callables and string expressions execute strictly in insertion order. Downstream
 
 ```python
 # 'b' uses callable result 'a', and 'c' uses 'b' in the same mutate() call
-df = df.mutate(
-    a=lambda d: d["x"] * 2,
-    b="a + 10",
-    c=lambda d: d["b"] * 3
-)
+df = df.mutate(a=lambda d: d["x"] * 2, b="a + 10", c=lambda d: d["b"] * 3)
 ```
 
 Consecutive string expressions are automatically batched into a single Polars compilation pass for maximum vectorization performance.
@@ -2097,9 +2066,9 @@ import pytae as pt
 
 # Load sample datasets as pytae.DataFrames
 penguins = pt.sample("penguins")
-titanic  = pt.sample("titanic")
+titanic = pt.sample("titanic")
 diamonds = pt.sample("diamonds")
-flights  = pt.sample("flights")
+flights = pt.sample("flights")
 
 # Access all available sample names
 print(list(pt.sample_data.keys()))
@@ -2146,11 +2115,7 @@ print(list(pt.sample_data.keys()))
    - Python callables (functions or lambdas) and string expressions can be freely interleaved in insertion order. Downstream expressions can seamlessly reference columns created by upstream callables:
    ```python
    # 'b' uses callable result 'a', and 'c' uses 'b'
-   df.mutate(
-       a=lambda d: d["x"] * 2,
-       b="a + 10",
-       c=lambda d: d["b"] * 3
-   )
+   df.mutate(a=lambda d: d["x"] * 2, b="a + 10", c=lambda d: d["b"] * 3)
    ```
 3. **Literal Values**:
    - Native Python types (`int`, `float`, `bool`) are converted directly to constant columns: `count=10, flag=True`.
@@ -2168,11 +2133,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 
 # Using keyword arguments
-df1 = penguins.mutate(
-    body_mass_kg="body_mass_g / 1000",
-    status="'active'",
-    verified=True
-)
+df1 = penguins.mutate(body_mass_kg="body_mass_g / 1000", status="'active'", verified=True)
 
 # Using single formula string
 df2 = penguins.mutate("body_mass_kg = body_mass_g / 1000, status = 'active'")
@@ -2194,9 +2155,7 @@ penguins.mutate("(bill_length_mm, bill_depth_mm)_cm = _ / 10")
 
 ```python
 # Binary condition
-penguins.mutate(
-    size_category="if_else(body_mass_g > 4000, 'Large', 'Normal')"
-)
+penguins.mutate(size_category="if_else(body_mass_g > 4000, 'Large', 'Normal')")
 
 # Multi-condition with case_when (tuple pairs + default)
 penguins.mutate(
@@ -2223,52 +2182,152 @@ deals.mutate(
 
 ### 4. Smart Missing Imputation Inside `mutate`
 
-Pytae provides smart missing value helpers inside `mutate`:
-- `fillna(col, value, nans=True)`: Replaces both Arrow `null` and floating-point IEEE-754 `NaN`.
-- `fill_null(col, value)`: Replaces only Arrow `null`.
-- `fill_nan(col, value)`: Replaces only floating-point `NaN`.
+Pytae provides vectorized missing value imputation directly inside `mutate`:
+- `fillna(col, value)` / `col.fillna(value)`: Replaces both Arrow `null` and floating-point IEEE-754 `NaN`.
 
 ```python
 penguins.mutate(
     clean_sex="fillna(sex, 'Unknown')",
-    clean_mass="fillna(body_mass_g, 0, nans=True)"
+    clean_mass="fillna(body_mass_g, 0)",
 )
 ```
 
-### 5. Grouped Window Calculations
+### 5. Vectorized Value Mapping & Recoding (`map`)
+
+Use `map(col, mapping[, fallback])` inside `mutate()` to replace cell values using a dictionary mapping. It executes vectorized in the Polars engine with **Zero Data Loss by default**:
+
+> [!NOTE]
+> **Formula `map()` is strictly for dictionary value recoding, not for executing Python functions.**
+> - Use formula `map(col, {'old': 'new'})` to recode categorical or scalar values via a dictionary lookup.
+> - To execute custom Python/NumPy logic or row-wise transformations, pass a callable `lambda d:` as covered in [Section 9](#9-calling-custom-python-numpy--scipy-functions-lambda-d).
+
+```python
+# 1. Two-argument: recode mapped keys, preserve unmapped values intact
+penguins.mutate(
+    species_code="map(species, {'Adelie': 'AD', 'Gentoo': 'GEN'})",
+)
+
+# 2. Three-argument with literal fallback: replace unmapped rows with a constant
+penguins.mutate(
+    species_code="map(species, {'Adelie': 'AD'}, 'Other')",
+)
+
+# 3. Three-argument with column fallback: pull replacement from another column
+deals.mutate(
+    party_code="map(deal_type, {'Direct': 'DIR'}, broker_code)",
+)
+
+# 4. Explicit null fallback: explicitly set unmapped rows to null
+penguins.mutate(
+    strict_code="map(species, {'Adelie': 'AD'}, None)",
+)
+
+# 5. Multi-column batch mapping with across syntax
+df.mutate("(cat_a, cat_b) = map(_, {'0': 'Inactive', '1': 'Active'})")
+```
+
+```bash
+# In CLI:
+pytae penguins.parquet -mutate "code = map(species, {'Adelie': 'AD'})" -head 5
+pytae penguins.parquet -mutate "code = map(species, {'Adelie': 'AD'}, 'Other')" -head 5
+pytae penguins.parquet -mutate "code = map(species, {'Adelie': 'AD'}, island)" -head 5
+```
+
+### 6. Grouped Window & Time-Series Calculations
 
 When combined with `.by()`, operations compute window statistics partitioned by group without collapsing table rows:
 
+#### A. Initial & Final Group Boundaries (`first`, `last`)
+Compute drifts and baselines from the first or last observation in each group (e.g. initial patient vitals or opening stock prices):
+
 ```python
-(
-    penguins
-    .by("species")
-    .mutate(
-        mean_mass="mean(body_mass_g)",
-        mass_dev="body_mass_g - mean(body_mass_g)",
-        rank="rank(body_mass_g, descending=True)"
-    )
+stocks.by("ticker").mutate(
+    baseline="first(price)",
+    drift_from_start="price - first(price)",
+    final_price="last(price)",
 )
 ```
 
-### 6. Column Type Casting Inside `mutate`
+#### B. Sequential Shifts, Differences & Growth Rates (`shift`, `lag`, `lead`)
+Instead of duplicating verbs, Pytae provides `shift()` (with `lag` and `lead` aliases) for time-series operations:
+- **Difference (`diff`)**: `price - shift(price, 1)`
+- **Percentage Change / Growth (`pct_change`)**: `price / shift(price, 1) - 1`
+- **Future Lookahead (`lead`)**: `lead(price, 1)` or `shift(price, -1)`
+
+```python
+stocks.by("ticker").mutate(
+    prev_price="shift(price, 1)",
+    diff="price - shift(price, 1)",
+    daily_return="price / shift(price, 1) - 1",
+    next_price="lead(price, 1)",
+)
+```
+
+#### C. Cumulative Computations (`cumsum`, `cumprod`, `cummin`, `cummax`)
+Cumulative statistics accumulate along group order:
+
+```python
+sales.by("region").mutate(
+    running_total="amount.cumsum()",
+    running_peak="amount.cummax()",
+)
+```
+
+#### D. Grouped Window Statistics & Deviations
+```python
+penguins.by("species").mutate(
+    mean_mass="mean(body_mass_g)",
+    mass_dev="body_mass_g - mean(body_mass_g)",
+    rank="rank(body_mass_g, descending=True)",
+)
+```
+
+#### E. Moving Averages & Rolling Windows (via `-sql` or Polars)
+To avoid unnecessary function proliferation in `mutate()`, rolling computations (e.g. 7-day moving averages, rolling volatility) are performed via standard ANSI SQL window frames on the CLI or Polars in Python:
+
+```bash
+# In CLI: Full SQL window frame support with -sql
+pytae stocks.parquet -sql "
+  SELECT *, 
+         AVG(price) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ma7
+  FROM data
+"
+```
+
+```python
+# In Python: Transparent Polars expression delegation
+import polars as pl
+
+stocks.with_columns(pl.col("price").rolling_mean(window_size=7).over("ticker"))
+```
+
+#### F. Single-Shot Grouping (Why `ungroup()` is Not Needed)
+In Pytae, `.by()` establishes an **ephemeral, single-shot grouping context** for the immediate next operation. Once `mutate()` (or `agg()` / `pick()`) executes, it automatically consumes the grouping and returns a standard, flat, ungrouped `DataFrame`. 
+
+Because grouping is never "sticky" (unlike R's `dplyr`), you never need to call `ungroup()`. You can freely chain from grouped mutations directly into overall table calculations or new grouping keys:
+
+```python
+result = (
+    sales
+    .by("region").mutate(region_avg="mean(amount)")    # 1. Group-level mean
+    .mutate(overall_avg="mean(amount)")                 # 2. Automatically overall table mean
+    .by("product").mutate(product_avg="mean(amount)")   # 3. Newly grouped by product
+)
+```
+
+### 7. Column Type Casting Inside `mutate`
 
 Pytae makes inline type conversion natural and ergonomic by supporting Python's standard conversion functions (`int`, `float`, `str`, `bool`, `int32`, `float32`, etc.):
 
 ```python
 # Convert types with standard functions
-penguins.mutate(
-    year_int="int(year)",
-    mass_f32="float32(body_mass_g)",
-    code_str="str(id)",
-    is_large="bool(heavy_flag)"
-)
+penguins.mutate(year_int="int(year)", mass_f32="float32(body_mass_g)", code_str="str(id)", is_large="bool(heavy_flag)")
 
 # Multi-column batch casting with across syntax
 penguins.mutate("(col1, col2, col3) = int(_)")
 ```
 
-### 7. String Methods & Null Checks Inside `mutate`
+### 8. String Methods & Null Checks Inside `mutate`
 
 Vectorized string operations and null/NaN predicates work directly inside `mutate` formulas:
 - **String matching**: `.str.contains(pat)`, `.str.startswith(pat)` / `.str.starts_with(pat)`, `.str.endswith(pat)` / `.str.ends_with(pat)`
@@ -2277,13 +2336,11 @@ Vectorized string operations and null/NaN predicates work directly inside `mutat
 
 ```python
 penguins.mutate(
-    species_upper="species.str.upper()",
-    is_gentoo="species.str.startswith('Gen')",
-    has_sex="sex.is_not_null()"
+    species_upper="species.str.upper()", is_gentoo="species.str.startswith('Gen')", has_sex="sex.is_not_null()"
 )
 ```
 
-### 8. Calling Custom Python, NumPy & SciPy Functions (`lambda d:`)
+### 9. Calling Custom Python, NumPy & SciPy Functions (`lambda d:`)
 
 In Python scripts, pass a callable (`lambda d: ...`) to `mutate()` to apply any custom Python, NumPy, or SciPy function while keeping full IDE autocomplete and linter/Ruff support:
 
@@ -2293,6 +2350,7 @@ In Python scripts, pass a callable (`lambda d: ...`) to `mutate()` to apply any 
 ```python
 import numpy as np
 
+
 # 1. Row-wise scalar function (uses Python if/else, 'in', 'is not None') -> use map()
 def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
     if origin == dest:
@@ -2301,9 +2359,11 @@ def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
         return "Special Freight"
     return "Standard Ground"
 
+
 # 2. Vectorized array function (operates on whole columns at once) -> call directly
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
+
 
 df = df.mutate(
     shipping_mode=lambda d: map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"]),
@@ -2317,10 +2377,17 @@ Custom callables also work with **`.by()` grouped transformations**:
 
 ```python
 # Grouped custom function per sector
-df = df.by("sector").mutate(
-    z_spread=lambda g: (g["spread"] - g["spread"].mean()) / g["spread"].std()
-)
+df = df.by("sector").mutate(z_spread=lambda g: (g["spread"] - g["spread"].mean()) / g["spread"].std())
 ```
+
+> [!IMPORTANT]
+> **Summary: When to use Formula `map()` vs. `lambda d:`**
+>
+> | Goal | Mechanism | Example |
+> |---|---|---|
+> | **Dictionary Value Recoding** | Formula `map(col, dict[, fallback])` | `df.mutate(code="map(species, {'Adelie': 'AD'})")` |
+> | **Vectorized Array / Math Function** | `lambda d: func(d['x'], d['y'])` | `df.mutate(metric=lambda d: np.maximum(d['a'], d['b']))` |
+> | **Scalar Row-Wise Python Function** | `lambda d: map(func, d['x'], d['y'])` | `df.mutate(label=lambda d: map(classify, d['origin'], d['dest']))` |
 
 ---
 
@@ -2342,6 +2409,18 @@ pytae penguins.parquet -mutate "(bill_length_mm, bill_depth_mm)_cm = _ / 10" -co
 pytae penguins.parquet \
   -by species \
   -mutate "species_avg = mean(body_mass_g), diff = body_mass_g - species_avg" \
+  -head 5
+
+# Time-series differences, lag, and percentage returns per group
+pytae stocks.parquet \
+  -by ticker \
+  -mutate "prev = shift(price, 1), diff = price - shift(price, 1), ret = price / shift(price, 1) - 1" \
+  -head 5
+
+# Baseline drift from first observation
+pytae stocks.parquet \
+  -by ticker \
+  -mutate "baseline = first(price), gain = price - first(price)" \
   -head 5
 
 # Type casting inside mutate
@@ -2371,57 +2450,46 @@ Pytae provides a powerful suite of inspection, data cleaning, header sanitizatio
 | **Glimpse Overview** | `df.glimpse()` | `-glimpse` | Transposed column overview with dtypes and sample values |
 | **Frequency Bars** | `df.freq("species")` | `-freq species` | Value counts with percentages and proportional ASCII bars |
 | **Histogram Bins** | `df.hist("body_mass_g:8")` | `-hist "body_mass_g:8"` | Numeric distribution with bins and ASCII bars |
-| **Smart Imputation** | `df.fillna(0)` / `df.fillna(0, "a", "b")` | `-fillna 0` | Smartly fills both Arrow `null` and float `NaN` |
-| **Null-Only Imputation**| `df.fill_null(0)` | `-fill_null 0` | Fills only Arrow `null` values |
-| **NaN-Only Imputation** | `df.fill_nan(0)` | `-fill_nan 0` | Fills only floating-point IEEE-754 `NaN` values |
+| **Smart Imputation** | `df.fillna(0)` / `df.fillna({"a": 0})` | `-fillna 0` / `-fillna "a:0"`| Smartly fills null/NaN with scalar, mapping, or subset |
 | **Non-Destructive Drop**| `df.dropna()` / `df.dropna("a", "b")` | `-dropna` / `-dropna "a, b"` | Bare call drops 100% empty rows (`how='all'`); subset drops `how='any'` |
-| **Smart Handle Missing**| `df.handle_missing(fillna=".")` | `-handle_missing "."` | Fills strings with `.` and numerics with `0` for reports |
+| **Rename Columns** | `df.rename("old:new")` | `-rename "old:new"` | Renames columns via string spec, dict, or kwargs |
+| **SQL Queries** | `df.sql("select ... from data")` | `-sql "select ... from data"` | Full ANSI SQL querying via embedded Polars SQLContext |
 | **Clean Headers** | `df.clean_columns(case="lower")` | `-clean_columns "case=lower"`| Sanitizes column names (strip, squeeze, case, dedupe) |
-| **Replace Values** | `df.replace_values({"M": "Male"})` | `-replace_values "M=Male"` | Exact or substring value replacement across columns |
 | **Clipboard Copy** | `df.to_clip()` | `-o clip` | Copies table to system clipboard (no index) |
 
 ---
 
-## Missing Value Architecture (`fillna`, `fill_null`, `fill_nan`, `dropna`)
+## Missing Value Architecture (`fillna`, `dropna`)
 
-Pytae unifies missing data management across Arrow `null` and IEEE-754 float `NaN`:
+Pytae provides "One and Only One Obvious Way" to handle missing data across Arrow `null` and IEEE-754 float `NaN`:
 
-### 1. Symmetrical `fillna`
-By default, `fillna` operates with `nans=True`, replacing **both** Arrow nulls and floating-point `NaN` in numeric columns:
+### 1. `fillna` — Unified Symmetrical Imputation
+`fillna` replaces **both** Arrow nulls and floating-point `NaN` with clean scalar values or column mappings:
 
 ```python
 import pytae as pt
 
-df = pt.DataFrame({
-    "a": [1.0, float("nan"), None, 4.0],
-    "b": ["x", None, "y", "z"]
-})
+df = pt.DataFrame({"a": [1.0, float("nan"), None, 4.0], "b": ["x", None, "y", "z"]})
 
-# Replaces both NaN and null across entire table
-clean = df.fillna(0)
+# 1. Whole-table scalar fill (targets type-appropriate columns)
+clean_num = df.fillna(0)
+clean_str = df.fillna("missing")
 
-# Target specific columns
+# 2. Column mapping dictionary
+clean_mapped = df.fillna({"a": 0.0, "b": "Unknown"})
+
+# 3. Targeted subset columns
 clean_a = df.fillna(0, "a")
-
-# Target with subset parameter
 clean_sub = df.fillna(0, subset=["a"])
 ```
 ```bash
-# In CLI
+# In CLI: scalar fill, column mapping, or subset
 pytae messy.parquet -fillna 0 -head 5
+pytae messy.parquet -fillna "a:0, b:Unknown" -head 5
+pytae messy.parquet -fillna "0, a" -head 5
 ```
 
-### 2. Format-Explicit Imputation (`fill_null` and `fill_nan`)
-When strict type separation is required:
-- `fill_null(value)`: Only replaces Arrow `null` values; leaves float `NaN` intact.
-- `fill_nan(value)`: Only replaces float `NaN` values; leaves Arrow `null` intact.
-
-```python
-df.fill_null("Unknown")
-df.fill_nan(0.0)
-```
-
-### 3. Non-Destructive `dropna` & Option B Semantics
+### 2. Non-Destructive `dropna` & Option B Semantics
 - **Pandas Trap**: Standard Pandas `df.dropna()` defaults to `how='any'`, silently wiping out rows if even a single optional column is missing.
 - **Pytae Design**:
   - **Bare `dropna()`**: Defaults to `how='all'`. Only rows that are completely blank across all columns are dropped.
@@ -2441,17 +2509,6 @@ pytae dirty.csv -dropna -o clean.parquet
 pytae dirty.csv -dropna "user_id, email" -o clean.parquet
 ```
 
-### 4. `handle_missing()` — Fast Imputation for Categorical Reports
-Prepares raw datasets for grouped aggregation reports by filling string/category missing values with a visible marker (default `.`) and numeric missing values with `0`:
-
-```python
-# Missing sex becomes '.', missing mass becomes 0
-penguins.handle_missing()
-
-# Custom marker
-penguins.handle_missing(fillna="Unknown")
-```
-
 ---
 
 ## Data Inspection Utilities
@@ -2464,8 +2521,7 @@ Prints a compact, transposed view of the DataFrame inspired by R/dplyr's `glimps
 ```python
 # Inserted directly into a method chain
 (
-    penguins
-    .filter("body_mass_g > 4000")
+    penguins.filter("body_mass_g > 4000")
     .glimpse()  # Prints schema and sample values, passes DataFrame through!
     .select("species", "island", "body_mass_g")
     .head(3)
@@ -2514,9 +2570,9 @@ pytae penguins.parquet -hist "body_mass_g:8"
 Returns a Python list of column names, sorted alphabetically or in original order:
 
 ```python
-penguins.cols()                 # Alphabetical ascending
+penguins.cols()  # Alphabetical ascending
 penguins.cols(ascending=False)  # Alphabetical descending
-penguins.cols(ascending=None)   # Original schema order
+penguins.cols(ascending=None)  # Original schema order
 ```
 ```bash
 pytae penguins.parquet -cols
@@ -2531,11 +2587,7 @@ pytae penguins.parquet -cols desc
 Cleans inconsistent column headers in a deterministic order: `strip` -> `strip_special` -> `squeeze` -> `fill` -> `case` -> `dedupe`.
 
 ```python
-messy = pt.DataFrame({
-    "  Species  ": [1],
-    "Island   Name": [2],
-    "Body Mass (g)": [3]
-})
+messy = pt.DataFrame({"  Species  ": [1], "Island   Name": [2], "Body Mass (g)": [3]})
 
 clean = messy.clean_columns(strip=True, squeeze=True, strip_special=True, fill="_", case="lower")
 # Resulting columns: ['species', 'island_name', 'body_mass_g']
@@ -2544,18 +2596,40 @@ clean = messy.clean_columns(strip=True, squeeze=True, strip_special=True, fill="
 pytae messy.csv -clean_columns "case=lower, fill=_" -head 3
 ```
 
-### 2. `replace_values()` — Batch Value Replacement
-Replaces values across the entire DataFrame or scoped to specific columns (`exact=True` for full cell match, `exact=False` for substring match):
+### 2. `rename()` — Dedicated Column Renaming
+Renames one or more columns using string mappings, dictionaries, or keyword arguments:
 
 ```python
-# Exact match
-penguins.replace_values({"Adelie": "Adelie Penguin", "Male": "M"})
+# String spec
+df.rename("bill_length_mm:culmen_length, bill_depth_mm:culmen_depth")
 
-# Substring replacement scoped to column 'notes'
-df.replace_values({"temporary": "temp"}, c="notes", exact=False)
+# Dict mapping
+df.rename({"species": "bird_species"})
+
+# Keyword arguments
+df.rename(species="bird_species")
 ```
 ```bash
-pytae penguins.parquet -replace_values "Male=M, Female=F" -head 5
+# In CLI
+pytae penguins.parquet -rename "species:bird_species" -head 5
+```
+
+> [!NOTE]
+> To replace cell values within columns, use `mutate()` with `map(col, mapping)` (e.g. `df.mutate(sex="map(sex, {'M': 'Male'})")`) or `.str.replace()` (e.g. `df.mutate(name="name.str.replace('old', 'new')")`).
+
+### 3. `sql()` — Direct Analytical SQL Execution
+Executes ANSI SQL queries via Polars' embedded SQL engine directly against in-memory datasets (referenced as table `data`):
+
+```python
+# Python library
+pt.sql(penguins, "SELECT species, AVG(body_mass_g) AS avg_mass FROM data GROUP BY 1")
+
+# On DataFrame / Accessor
+penguins.sql("SELECT * FROM data WHERE body_mass_g > 5000 ORDER BY body_mass_g DESC")
+```
+```bash
+# In CLI
+pytae penguins.parquet -sql "SELECT species, AVG(body_mass_g) FROM data GROUP BY 1"
 ```
 
 ################################################################################
@@ -2646,12 +2720,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 
 # 2D cross-tabulation: Mean body mass by species across islands
-table = penguins.pivot(
-    r="species",
-    c="island",
-    v="body_mass_g",
-    a="mean"
-)
+table = penguins.pivot(r="species", c="island", v="body_mass_g", a="mean")
 ```
 
 **Output:**
@@ -2671,13 +2740,7 @@ table = penguins.pivot(
 Use `fill_value` to replace cells with zero counts or default values:
 
 ```python
-penguins.pivot(
-    r="species",
-    c="island",
-    v="body_mass_g",
-    a="mean",
-    fill_value=0
-)
+penguins.pivot(r="species", c="island", v="body_mass_g", a="mean", fill_value=0)
 ```
 
 ---
@@ -2758,12 +2821,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 
 # Aggregation and plot
-fig = (
-    penguins
-    .by("species")
-    .agg(avg_mass="mean(body_mass_g)")
-    .plot(kind="bar", x="species", y="avg_mass")
-)
+fig = penguins.by("species").agg(avg_mass="mean(body_mass_g)").plot(kind="bar", x="species", y="avg_mass")
 fig.savefig("penguin_mass.png", bbox_inches="tight")
 ```
 
@@ -3493,8 +3551,7 @@ lazy_df = pt.scan_parquet("massive_orders.parquet")
 
 # Build a fluent query pipeline - ZERO rows read yet!
 result = (
-    lazy_df
-    .filter("region == 'EMEA'")
+    lazy_df.filter("region == 'EMEA'")
     .select("order_id", "customer_id", "total_usd")
     .mutate(tax="total_usd * 0.20")
     .arrange("-total_usd")
@@ -3677,18 +3734,9 @@ Both methods share the identical, clean `r=` (row keys), `c=` (columns), and `v=
 import pytae as pt
 import polars as pl
 
-wide_df = pt.DataFrame({
-    "id": [1, 2],
-    "q1": [100, 200],
-    "q2": [150, 250]
-})
+wide_df = pt.DataFrame({"id": [1, 2], "q1": [100, 200], "q2": [150, 250]})
 
-long_df = wide_df.long(
-    id_vars="id",
-    cols=["q1", "q2"],
-    var_name="quarter",
-    value_name="revenue"
-)
+long_df = wide_df.long(id_vars="id", cols=["q1", "q2"], var_name="quarter", value_name="revenue")
 ```
 
 **Output:**
@@ -3708,11 +3756,7 @@ long_df = wide_df.long(
 ### 2. Spreading to Wide Format (`wide`)
 
 ```python
-reconstructed = long_df.wide(
-    r="id",
-    c="quarter",
-    v="revenue"
-)
+reconstructed = long_df.wide(r="id", c="quarter", v="revenue")
 ```
 
 ---
@@ -3776,11 +3820,7 @@ penguins.select("!bill_length_mm", "!bill_depth_mm")
 Rename columns on-the-fly without needing a separate `.rename()` call:
 
 ```python
-penguins.select(
-    species="species",
-    weight_g="body_mass_g",
-    location="island"
-)
+penguins.select(species="species", weight_g="body_mass_g", location="island")
 ```
 
 ### 3. Reordering Columns with `pt.everything`
@@ -3892,7 +3932,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Slicing** | **[Top / Bottom Records (`pick`)](detailed_docs/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
 | **Reshaping** | **[Table Reshaping (`long` & `wide`)](detailed_docs/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins** | **[Relational Joins & Stacking (`join`)](detailed_docs/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon key notation, `validate` |
-| **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `fillna`, `fill_null`, `fill_nan`, `dropna`, `handle_missing`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
+| **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `fillna`, `dropna`, `rename`, `sql`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
 | **Plotting** | **[Visualizations & Charts (`plotting`)](detailed_docs/plotting.md)** | Terminal ASCII charts (`freq`, `hist`) and Matplotlib publication figures (`.plot()`, `-plot`) |
 | **CLI Only** | **[CLI Terminal Features (`cli_only`)](detailed_docs/cli_only.md)** | `-diff`, `-inspect`, `-meta`, `-file` multi-file pipelines, `-sql`, batch globbing, completions |
 | **Library Only**| **[Python Library Architecture (`library_only`)](detailed_docs/library_only.md)** | Constructor `pt()`, `.pt` accessor on Polars & Pandas, lazy evaluation pushdowns, callables |
@@ -3915,8 +3955,7 @@ Pytae adheres strictly to the principle of **Zero Data Loss by Default**:
 4. **Dual Missing Value Cleaning (`drop_nans=True`)**:
    - Cleans both Apache Arrow `null` and IEEE-754 floating-point `NaN` values by default, preventing float NaN arithmetic poisoning.
 5. **Smart Symmetrical Imputation (`fillna`)**:
-   - `df.fillna(value, nans=True)` replaces both Arrow `null` and floating-point `NaN` across columns.
-   - Specific helpers `fill_null()` and `fill_nan()` provide strict format-isolated cleaning.
+   - `df.fillna(value, nans=True)` replaces both Arrow `null` and floating-point `NaN` across columns, supporting scalar values, column mappings (`{"col1": val1}`), and column subsets.
 
 ### Comparison Table: Missing Data Handling
 
@@ -3926,7 +3965,7 @@ Pytae adheres strictly to the principle of **Zero Data Loss by Default**:
 | **Float `NaN` vs Arrow `null`** | Conflates both into `np.nan` / `pd.NA` | Differentiates; `drop_nulls()` **ignores** `NaN`! | Treats `NA` and `NaN` distinctly | **Drops both `null` and `NaN` (`drop_nans=True`)** |
 | **Analytical Verbs (`agg`, `pivot`)** | `dropna=True` (drops missing groups!) | Preserves `null` group keys | `group_by()` preserves `NA` groups | **`dropna=False` by default (Zero Data Loss)** |
 | **Targeted Columns (`df.dropna("a", "b")`)** | `subset=['a', 'b']`, drops if any is NA | `subset=['a', 'b']`, drops if any is null | `tidyr::drop_na(a, b)` | **Drops if any specified column is NA (`how='any'`)** |
-| **CLI & Library Aliasing** | `dropna()` only | `drop_nulls()` only | `drop_na()` | **`dropna`, `drop_nulls`, `drop_na` (100% interchangeable)** |
+| **Unified Syntax** | `dropna()` only | `drop_nulls()` only | `drop_na()` | **Only `dropna` everywhere** |
 
 ---
 
@@ -3940,19 +3979,10 @@ import pytae as pt
 penguins = pt.read_parquet("penguins.parquet")
 
 report = (
-    penguins
-    .filter("body_mass_g > 3500 & sex.is_not_null()")
-    .mutate(
-        body_mass_kg="body_mass_g / 1000",
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        status="'verified'"
-    )
+    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
+    .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm", status="'verified'")
     .by("species", "island")
-    .agg(
-        n="n",
-        avg_mass_kg="mean(body_mass_kg)",
-        max_ratio="max(bill_ratio)"
-    )
+    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
     .arrange("-avg_mass_kg")
 )
 
@@ -4043,13 +4073,20 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Why not `unique`?** In Pandas, `.unique()` is a Series method returning a 1D numpy array of scalar values, not a DataFrame. Using `unique` would conflate scalar distinct values with row deduplication.
 - **CLI Alignment**: The CLI uses `-distinct "species,island"`, with optional `keep=first|last|false` control.
 
-### 3. `by` and `ungroup` for Scoped Grouping
+### 3. `by` for Single-Shot Scoped Grouping (Why `ungroup` is Obsolete)
 - **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and produces multi-level index outputs upon aggregation.
-- In Pytae, `.pt.by(*cols)` sets an active grouping context directly on the DataFrame that flows naturally into downstream operations:
-  - `.pt.mutate()` applies window calculations grouped by those columns.
-  - `.pt.pick()` slices top/bottom rows per group (`order='max'` or `'min'`).
-  - `.pt.agg()` aggregates per group and automatically clears the grouping context upon completion.
-- **Strict `*args` Only**: `df.pt.by("species", "island")` requires `*args`. Nested lists (`df.pt.by(["species"])`) and `df.pt.by(None)` are strictly rejected with helpful errors directing users to `df.pt.ungroup()`.
+- In R's `dplyr`, `group_by()` produces a sticky grouped tibble that persists across operations unless the user manually chains `%>% ungroup()`.
+- **In Pytae, grouping is strictly single-shot and auto-ungrouped**:
+  - `.pt.by(*cols)` sets an active grouping context for the *immediate next verb*.
+  - `.pt.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
+  - `.pt.pick()` slices extreme rows per group and returns an ungrouped `DataFrame`.
+  - `.pt.agg()` collapses per group and returns an ungrouped `DataFrame`.
+  - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
+- **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
+  ```python
+  df.by("region").mutate(reg_avg="mean(sales)").mutate(overall_avg="mean(sales)").by("product").mutate(prod_avg="mean(sales)")
+  ```
+- **Strict `*args` Only**: `df.pt.by("species", "island")` requires `*args`. Nested lists (`df.pt.by(["species"])`) and `df.pt.by(None)` are strictly rejected with clear errors.
 - **Precedence**: If a second `.pt.by()` is called, it cleanly overwrites the previous grouping context.
 
 ### 4. `arrange` instead of `sort` or `sort_by`
@@ -4068,12 +4105,12 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Pytae Design (Option B & Zero Data Loss)**:
   - **Bare `dropna()`**: Defaults to `how='all'`. Only completely blank rows (100% null/NaN across all columns) are dropped.
   - **Targeted `dropna("col1", "col2")`**: Defaults to `how='any'` over the specified subset, guaranteeing that only rows missing *required* keys are dropped.
-  - **Analytical Verbs (`agg`, `mutate`, `pivot`, `freq`)**: Default to **`dropna=False` / `drop_nulls=False`**. Missing values (`NaN`/`null`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns.
+  - **Analytical Verbs (`agg`, `mutate`, `pivot`, `freq`)**: Default to **`dropna=False`**. Missing values (`NaN`/`null`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns.
   - **Dual Missing Value Cleaning**: Drops both Arrow `null` and IEEE-754 float `NaN` by default (`drop_nans=True`), preventing float NaN arithmetic poisoning.
-  - **Full Aliasing**: `dropna`, `drop_nulls`, and `drop_na` are 100% interchangeable aliases across functions, methods, accessors, keyword arguments, and CLI flags (`-dropna`, `-drop_nulls`, `-drop_na`).
+  - **One Obvious Way**: Only `dropna` is used everywhere across library functions, methods, accessors, keyword arguments, and CLI (`-dropna`). Retired aliases (`drop_nulls`, `drop_na`) fail fast with clean redirect guidance.
   - *For deep architectural details and side-by-side examples, see [pytae.md](file:///Users/maddy/Documents/my_repos/pytae/docs/pytae.md).*
 - **dplyr Alignment**: This non-destructive default matches R's `dplyr` (which treats `NA` group levels as valid grouping keys by default rather than discarding them).
-- **CLI Consistency**: Top-level `-dropna [COLS]` / `-drop_nulls [COLS]` performs row-level dropping across the dataset, whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
+- **CLI Consistency**: Top-level `-dropna [COLS]` performs row-level dropping across the dataset, whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
 
 ---
 
@@ -4100,7 +4137,13 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | **Multi-Column + Suffix** | `for c in ['a','b']: df[f'{c}_usd'] = df[c]*1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08, .names="{.col}_usd"))` | `df.pt.mutate("(a, b)_usd = _ * 1.08")` | `-mutate "(a, b)_usd = _ * 1.08"` |
 | **Sequential** | Requires multiple `.assign()` or statements | `mutate(df, a=1, b=a*2)` | `df.pt.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
 | **If-Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `if_else(x > 0, 'pos', 'neg')` | `df.pt.mutate(flag="if_else(x > 0, 'pos', 'neg')")` | `-mutate "flag=if_else(x > 0, 'pos', 'neg')"` |
+| **Value Mapping / Recoding** | `df['x'].replace({'A': 'B'})` / `df['x'].map({'A': 'B'}).fillna(df['x'])` | `case_match(x, 'A' ~ 'B', .default = x)` | `df.pt.mutate(x="map(x, {'A': 'B'})")` | `-mutate "x = map(x, {'A': 'B'})"` |
+| **Missing Imputation** | `df['x'].fillna(0)` | `coalesce(x, 0)` / `replace_na(x, 0)` | `df.pt.mutate(x="fillna(x, 0)")` | `-mutate "x = fillna(x, 0)"` |
+| **Inline Type Casting** | `df['x'].astype(int)` | `as.integer(x)` | `df.pt.mutate(x="int(x)")` | `-mutate "x = int(x)"` |
 | **Grouped Window** | `df.groupby('g')['x'].transform('mean')` | `df %>% group_by(g) %>% mutate(m = mean(x))` | `df.pt.by("g").pt.mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
+| **Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `lag(x)` | `df.pt.by("g").pt.mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
+| **Diff & Returns** | `df.groupby('g')['x'].diff()` | `x - lag(x)` | `df.pt.by("g").pt.mutate(d="x - shift(x, 1)")` | `-by g -mutate "d = x - shift(x, 1)"` |
+| **Group Baseline (`first`/`last`)** | `df.groupby('g')['x'].transform('first')` | `first(x)` | `df.pt.by("g").pt.mutate(base="first(x)")` | `-by g -mutate "base = first(x)"` |
 
 ---
 
@@ -4141,7 +4184,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
 |---|---|---|---|---|
 | **Group Context** | `df.groupby(['g1', 'g2'])` | `group_by(df, g1, g2)` | `df.pt.by("g1", "g2")` | `-by "g1,g2"` |
-| **Clear Grouping**| `df.reset_index()` | `ungroup(df)` | `df.pt.ungroup()` | N/A |
+| **Clear Grouping**| `df.reset_index()` | `ungroup(df)` | Auto-cleared (not needed) | N/A |
 | **Simple Group Agg** | `df.groupby('g')['x'].mean().reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` | `df.pt.by("g").pt.agg(x="mean")` | `-by g -agg x=mean` |
 | **Keep NA Groups (Default)** | `df.groupby('g', dropna=False)['x'].mean().reset_index()` *(Defaults to dropping NAs!)* | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` *(Keeps NAs by default)* | `df.pt.by("g").pt.agg(x="mean")` *(Defaults to `dropna=False`, non-destructive)* | `-by g -agg x=mean` *(Preserves `NaN` group)* |
 | **With Row Count**| `df.groupby('g').agg(mean_x=('x', 'mean'), n=('x', 'size')).reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x), n = n())` | `df.pt.by("g").pt.agg(mean_x="x:mean", n="n")` | `-by g -agg "mean_x=x:mean, n=n"` |
@@ -4566,34 +4609,29 @@ def dropna(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop
     return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
 
-def drop_nulls(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+def fillna(
+    df: Any,
+    value: Any = None,
+    *cols: Any,
+    subset: Any = None,
+    nans: bool = True,
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
 
-def drop_na(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+def rename(df: Any, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+    return DataFrame(df).rename(*args, columns=columns, **kwargs)
 
 
-def fillna(df: Any, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
-    return DataFrame(df).fillna(value, *cols, subset=subset, nans=nans)
-
-
-def fill_null(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-    return DataFrame(df).fill_null(value, *cols, subset=subset)
-
-
-def fill_nan(df: Any, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-    return DataFrame(df).fill_nan(value, *cols, subset=subset)
+def sql(df: Any, query: str) -> DataFrame:
+    return DataFrame(df).sql(query)
 
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
     return DataFrame(df).by(*cols)
 
 
-def ungroup(df: Any) -> DataFrame:
-    if isinstance(df, GroupedDataFrame):
-        return df.ungroup()
-    return DataFrame(df)
 
 
 def agg(df: Any, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
@@ -4641,14 +4679,6 @@ def wide(
 
 def clean_columns(df: Any, **opts: Any) -> DataFrame:
     return DataFrame(df).clean_columns(**opts)
-
-
-def replace_values(df: Any, v: dict[Any, Any], **kwargs: Any) -> DataFrame:
-    return DataFrame(df).replace_values(v, **kwargs)
-
-
-def handle_missing(df: Any, **opts: Any) -> DataFrame:
-    return DataFrame(df).handle_missing(**opts)
 
 
 def cols(df: Any, ascending: bool | None = True) -> list[str]:
@@ -4700,7 +4730,6 @@ def diff(left: Any, right: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
     return DataFrame(left).diff(right, tol=tol, rtol=rtol)
 
 
-
 def concat(
     items: Sequence[Any],
     how: str = "vertical",
@@ -4750,21 +4779,15 @@ class _PytaeModule(ModuleType):
     pick = _VerbDescriptor(pick)
     distinct = _VerbDescriptor(distinct)
     dropna = _VerbDescriptor(dropna)
-    drop_nulls = _VerbDescriptor(drop_nulls)
-    drop_na = _VerbDescriptor(drop_na)
     fillna = _VerbDescriptor(fillna)
-    fill_null = _VerbDescriptor(fill_null)
-    fill_nan = _VerbDescriptor(fill_nan)
+    rename = _VerbDescriptor(rename)
+    sql = _VerbDescriptor(sql)
     by = _VerbDescriptor(by)
-
-    ungroup = _VerbDescriptor(ungroup)
     agg = _VerbDescriptor(agg)
     pivot = _VerbDescriptor(pivot)
     long = _VerbDescriptor(long)
     wide = _VerbDescriptor(wide)
     clean_columns = _VerbDescriptor(clean_columns)
-    replace_values = _VerbDescriptor(replace_values)
-    handle_missing = _VerbDescriptor(handle_missing)
     cols = _VerbDescriptor(cols)
     glimpse = _VerbDescriptor(glimpse)
     freq = _VerbDescriptor(freq)
@@ -4831,17 +4854,14 @@ __all__ = [
     "select",
     "filter",
     "by",
-    "ungroup",
     "mutate",
+    "rename",
+    "sql",
     "arrange",
     "pick",
     "distinct",
     "dropna",
-    "drop_nulls",
-    "drop_na",
     "fillna",
-    "fill_null",
-    "fill_nan",
     "diff",
     "agg",
     "join",
@@ -4849,14 +4869,12 @@ __all__ = [
     "long",
     "wide",
     "pivot",
-    "handle_missing",
     "cols",
     "freq",
     "glimpse",
     "format_glimpse",
     "hist",
     "clean_columns",
-    "replace_values",
     "everything",
     "PolarsPtAccessor",
     "PandasPtAccessor",
@@ -5598,20 +5616,8 @@ class PolarsPtAccessor:
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
@@ -5656,6 +5662,12 @@ class PolarsPtAccessor:
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).mutate(*specs, **kwargs)
 
+    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).rename(*args, columns=columns, **kwargs)
+
+    def sql(self, query: str) -> DataFrame:
+        return DataFrame(self._obj).sql(query)
+
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).agg(*specs, a=a, dropna=dropna, **kwargs)
 
@@ -5692,17 +5704,6 @@ class PolarsPtAccessor:
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
 
-    def replace_values(
-        self,
-        v: dict[Any, Any],
-        c: str | Sequence[str] | None = None,
-        exact: bool = True,
-    ) -> DataFrame:
-        return DataFrame(self._obj).replace_values(v=v, c=c, exact=exact)
-
-    def handle_missing(self, **opts: Any) -> DataFrame:
-        return DataFrame(self._obj).handle_missing(**opts)
-
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 
@@ -5715,7 +5716,7 @@ class PolarsPtAccessor:
     def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
         return DataFrame(self._obj).freq(col=col, dropna=dropna)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> None:
+    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
         return DataFrame(self._obj).hist(col=col, bins=bins)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -5795,20 +5796,8 @@ class PandasPtAccessor:
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans)
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_null(value, *cols, subset=subset)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
@@ -5853,6 +5842,12 @@ class PandasPtAccessor:
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).mutate(*specs, **kwargs)
 
+    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).rename(*args, columns=columns, **kwargs)
+
+    def sql(self, query: str) -> DataFrame:
+        return DataFrame(self._obj).sql(query)
+
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         if "by" in kwargs or "_by" in kwargs:
             raise TypeError(
@@ -5893,17 +5888,6 @@ class PandasPtAccessor:
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
 
-    def replace_values(
-        self,
-        v: dict[Any, Any],
-        c: str | Sequence[str] | None = None,
-        exact: bool = True,
-    ) -> DataFrame:
-        return DataFrame(self._obj).replace_values(v=v, c=c, exact=exact)
-
-    def handle_missing(self, **opts: Any) -> DataFrame:
-        return DataFrame(self._obj).handle_missing(**opts)
-
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 
@@ -5916,7 +5900,7 @@ class PandasPtAccessor:
     def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
         return DataFrame(self._obj).freq(col=col, dropna=dropna)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> None:
+    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
         return DataFrame(self._obj).hist(col=col, bins=bins)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -6003,7 +5987,6 @@ from pytae.cli_parsing import (
     parse_list_order,
     parse_positive_int,
     parse_rename,
-    parse_replace_values_arg,
     parse_select_spec,
 )
 from pytae.cli_pipeline import (
@@ -6080,14 +6063,10 @@ _CLI_FLAGS = {
     "--nulls",
     "-describe",
     "--describe",
-    "-info",
-    "--info",
     "-meta",
     "--meta",
     "-diff",
     "--diff",
-    "-value_counts",
-    "--value_counts",
     "-distinct",
     "--distinct",
     "-sample",
@@ -6110,14 +6089,10 @@ _CLI_FLAGS = {
     "--select",
     "-agg",
     "--agg",
-    "-handle_missing",
-    "--handle_missing",
+    "-fillna",
+    "--fillna",
     "-dropna",
     "--dropna",
-    "-drop_nulls",
-    "--drop_nulls",
-    "-drop_na",
-    "--drop_na",
     "-glimpse",
     "--glimpse",
     "-clean_columns",
@@ -6148,8 +6123,6 @@ _CLI_FLAGS = {
     "--mutate",
     "-sql",
     "--sql",
-    "-replace_values",
-    "--replace_values",
     "-join",
     "--join",
     "-concat",
@@ -6356,13 +6329,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="print pandas describe() summary (count/mean/std/min/quartiles/max)",
     )
     parser.add_argument(
-        "-info",
-        "--info",
-        dest="info",
-        action=_OrderedFlag,
-        help="print pandas info() (columns, non-null counts, dtypes, memory)",
-    )
-    parser.add_argument(
         "-glimpse",
         "--glimpse",
         dest="glimpse",
@@ -6384,13 +6350,6 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         action=_OrderedStore,
         help="compare schema and contents against another dataset file (use -tol or -tolerance to set a numeric threshold)",
-    )
-    parser.add_argument(
-        "-value_counts",
-        "--value_counts",
-        dest="value_counts",
-        action=_OrderedFlag,
-        help="show pandas value_counts across current working columns (use -select to choose columns)",
     )
     parser.add_argument(
         "-freq",
@@ -6516,24 +6475,20 @@ def build_parser() -> argparse.ArgumentParser:
         "(v1 = sum, total = v1:sum, count = n). Defaults to sum.",
     )
     parser.add_argument(
-        "-handle_missing",
-        "--handle_missing",
-        dest="handle_missing",
+        "-fillna",
+        "--fillna",
+        dest="fillna",
         nargs="?",
         const=".",
         default=None,
-        metavar="FILL",
+        metavar="SPEC",
         action=_OrderedValue,
-        help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
-        "columns, 0 for numeric columns",
+        help="fill missing values using pytae fillna(): scalar fill value (e.g. 0 or '.'), "
+        "column mapping (e.g. 'a:0, b:N/A'), or 'val, col1, col2' (e.g. '0, a, b')",
     )
     parser.add_argument(
         "-dropna",
         "--dropna",
-        "-drop_nulls",
-        "--drop_nulls",
-        "-drop_na",
-        "--drop_na",
         dest="dropna",
         nargs="?",
         const="",
@@ -6702,19 +6657,6 @@ def build_parser() -> argparse.ArgumentParser:
         "too once something later in the pipeline has produced a current view",
     )
     parser.add_argument(
-        "-replace_values",
-        "--replace_values",
-        dest="replace_values",
-        action=_OrderedAppend,
-        default=None,
-        metavar="SPEC",
-        help="replace values at this point in the pipeline; key=value tokens: v= (required) "
-        "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
-        "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
-        "default true) — true matches whole cell values, false matches a substring "
-        "anywhere in the cell, e.g. \"v='old:new',exact=false\"",
-    )
-    parser.add_argument(
         "-join",
         "--join",
         dest="join",
@@ -6855,28 +6797,36 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     parser = build_parser()
+
+    retired_redirects = [
+        (("-query", "--query", "-qry", "--qry"), "'-qry' has been removed; use '-filter' instead"),
+        (("-unique", "--unique"), "'-unique' has been removed; use '-distinct' instead"),
+        (("-dedupe", "--dedupe"), "'-dedupe' has been removed; use '-distinct' instead"),
+        (("-sort_by", "--sort_by", "-sort", "--sort"), "'-sort_by' has been deprecated; use '-arrange' instead"),
+        (("-agg_df", "--agg_df"), "'-agg_df' has been removed; use '-agg' instead"),
+        (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
+        (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
+        (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-pick' instead"),
+        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-pick with order=min' instead"),
+        (("-group_by", "--group_by", "-groupby", "--groupby"), "'-group_by' has been removed; use '-by' instead"),
+        (("-handle_missing", "--handle_missing"), "'-handle_missing' has been removed; use '-fillna' instead"),
+        (("-fill_null", "--fill_null"), "'-fill_null' has been removed; use '-fillna' instead"),
+        (("-fill_nan", "--fill_nan"), "'-fill_nan' has been removed; use '-fillna' instead"),
+        (("-drop_nulls", "--drop_nulls"), "'-drop_nulls' has been removed; use '-dropna' instead"),
+        (("-drop_na", "--drop_na"), "'-drop_na' has been removed; use '-dropna' instead"),
+        (("-value_counts", "--value_counts"), "'-value_counts' has been removed; use '-freq' instead"),
+        (("-info", "--info"), "'-info' has been removed; use '-glimpse' instead"),
+        (
+            ("-replace_values", "--replace_values"),
+            "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead",
+        ),
+    ]
+    for aliases, msg in retired_redirects:
+        if any(arg in aliases for arg in raw_argv):
+            parser.error(msg)
+
     args, extras = parser.parse_known_args(argv)
     if extras:
-        if any(e in ("-query", "--query", "-qry", "--qry") for e in extras):
-            parser.error("'-qry' has been removed; use '-filter' instead")
-        if any(e in ("-unique", "--unique") for e in extras):
-            parser.error("'-unique' has been removed; use '-distinct' instead")
-        if any(e in ("-dedupe", "--dedupe") for e in extras):
-            parser.error("'-dedupe' has been removed; use '-distinct' instead")
-        if any(e in ("-sort_by", "--sort_by", "-sort", "--sort") for e in extras):
-            parser.error("'-sort_by' has been deprecated; use '-arrange' instead")
-        if any(e in ("-agg_df", "--agg_df") for e in extras):
-            parser.error("'-agg_df' has been removed; use '-agg' instead")
-        if any(e in ("-to_clip", "--to_clip") for e in extras):
-            parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
-        if any(e in ("-convert", "--convert") for e in extras):
-            parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
-        if any(e in ("-slice_max", "--slice_max") for e in extras):
-            parser.error("'-slice_max' has been removed; use '-pick' instead")
-        if any(e in ("-slice_min", "--slice_min") for e in extras):
-            parser.error("'-slice_min' has been removed; use '-pick with order=min' instead")
-        if any(e in ("-group_by", "--group_by", "-groupby", "--groupby") for e in extras):
-            parser.error("'-group_by' has been removed; use '-by' instead")
         if args.file is None:
             path_extras = [e for e in extras if _is_path_like(e)]
             if path_extras:
@@ -6910,7 +6860,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(
                 f"-{op} does not return a DataFrame/Series, so no flag may follow it "
                 f"(except '-o clip'; matches pandas: you can't chain another call off "
-                f"df.shape/df.columns/df.dtypes/df.info())"
+                f"df.shape/df.columns/df.dtypes/df.glimpse())"
             )
 
     out_target = str(args.output).strip() if args.output is not None else None
@@ -6961,9 +6911,7 @@ def main(argv: list[str] | None = None) -> int:
             args.dtype,
             args.nulls,
             args.describe,
-            args.info,
             args.glimpse,
-            args.value_counts,
             args.distinct is not None,
             args.freq is not None,
             args.hist is not None,
@@ -6973,7 +6921,7 @@ def main(argv: list[str] | None = None) -> int:
             args.arrange is not None,
             args.pick is not None,
             args.agg is not None,
-            args.handle_missing is not None,
+            args.fillna is not None,
             args.dropna is not None,
             args.long is not None,
             args.wide is not None,
@@ -6982,7 +6930,6 @@ def main(argv: list[str] | None = None) -> int:
             args.filter,
             args.mutate,
             args.sql,
-            args.replace_values,
             args.rename,
             args.clean_columns is not None,
             args.join,
@@ -7000,7 +6947,6 @@ def main(argv: list[str] | None = None) -> int:
             args.nulls,
             args.describe,
             show_all,
-            args.value_counts,
             args.distinct is not None,
             args.freq is not None,
             args.hist is not None,
@@ -7010,7 +6956,7 @@ def main(argv: list[str] | None = None) -> int:
             args.arrange is not None,
             args.pick is not None,
             args.agg is not None,
-            args.handle_missing is not None,
+            args.fillna is not None,
             args.dropna is not None,
             args.long is not None,
             args.wide is not None,
@@ -7024,8 +6970,8 @@ def main(argv: list[str] | None = None) -> int:
     if is_clip and args.shape and wants_df:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-            "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
-            "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
+            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-sample/-arrange/"
+            "-pick/-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
             "run -shape separately"
         )
     if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
@@ -7040,7 +6986,6 @@ def main(argv: list[str] | None = None) -> int:
     filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
     mutate_specs = list(args.mutate or [])
     sql_specs = list(args.sql or [])
-    replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
     join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
     concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
 
@@ -7119,7 +7064,6 @@ def main(argv: list[str] | None = None) -> int:
                 filter_specs=filter_specs,
                 mutate_specs=mutate_specs,
                 sql_specs=sql_specs,
-                replace_specs=replace_specs,
                 rename_specs=rename_specs,
                 frames=frames,
                 join_specs=join_specs,
@@ -7142,7 +7086,6 @@ def main(argv: list[str] | None = None) -> int:
                     filter_specs=filter_specs,
                     mutate_specs=mutate_specs,
                     sql_specs=sql_specs,
-                    replace_specs=replace_specs,
                     rename_specs=rename_specs,
                 )
             except UnicodeError as exc:
@@ -7508,23 +7451,23 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-rename", "-select", "-cols"],
     ),
-    "replace_values": KeywordHelp(
-        name="replace_values",
-        flag="-replace_values, --replace_values SPEC",
-        syntax="pytae <path> -replace_values \"v='old:new',c='col1,col2',exact=true\"",
-        summary="Search and replace cell values across the entire DataFrame or specific columns.",
-        description=("Wraps pandas cell replacement with flexible scope and matching modes."),
+    "rename": KeywordHelp(
+        name="rename",
+        flag="-rename, --rename SPEC",
+        syntax='pytae <path> -rename "old1:new1,old2:new2"',
+        summary="Rename one or more columns.",
+        description=(
+            "Renames columns at this point in the pipeline.\n"
+            "Accepts comma-separated 'old:new' pairs. Validates that original columns exist."
+        ),
         options=[
-            "v='old1:new1,old2:new2' : Mapping of replacement pairs (REQUIRED).",
-            "c='col1,col2' : Restrict replacement to specific columns (default: entire DataFrame).",
-            "exact=true|false : True matches exact full cell values; False matches substring (regex).",
+            "'old:new, ...' : One or more old_name:new_name mapping pairs.",
         ],
         examples=[
-            "pytae penguins.parquet -replace_values \"v='Biscoe:Biscoe Island'\"",
-            "pytae file.csv -replace_values \"c=status,v='0:Inactive,1:Active'\"",
-            "pytae file.csv -replace_values \"v='N/A:NaN,null:NaN',exact=true\"",
+            'pytae penguins.parquet -rename "species:bird_species"',
+            'pytae penguins.parquet -rename "bill_length_mm:culmen_length, bill_depth_mm:culmen_depth"',
         ],
-        see_also=["-mutate", "-clean_columns", "-handle_missing"],
+        see_also=["-select", "-clean_columns"],
     ),
     "file": KeywordHelp(
         name="file",
@@ -7617,7 +7560,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -freq species",
             "pytae penguins.parquet -freq island",
         ],
-        see_also=["-hist", "-value_counts", "-describe"],
+        see_also=["-hist", "-describe"],
     ),
     "hist": KeywordHelp(
         name="hist",
@@ -7649,7 +7592,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae sales.parquet -meta",
         ],
-        see_also=["-shape", "-cols", "-dtype", "-info"],
+        see_also=["-shape", "-cols", "-dtype", "-glimpse"],
     ),
     "diff": KeywordHelp(
         name="diff",
@@ -7755,7 +7698,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -dtype",
             "pytae penguins.parquet -dtype asc",
         ],
-        see_also=["-cols", "-info", "-nulls"],
+        see_also=["-cols", "-glimpse", "-nulls"],
     ),
     "nulls": KeywordHelp(
         name="nulls",
@@ -7768,7 +7711,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -nulls",
             "pytae penguins.parquet -nulls desc",
         ],
-        see_also=["-dropna", "-handle_missing"],
+        see_also=["-dropna", "-fillna"],
     ),
     "dropna": KeywordHelp(
         name="dropna",
@@ -7784,18 +7727,29 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -dropna",
             'pytae penguins.parquet -dropna "sex, body_mass_g"',
         ],
-        see_also=["-handle_missing", "-nulls"],
+        see_also=["-fillna", "-nulls"],
     ),
-    "handle_missing": KeywordHelp(
-        name="handle_missing",
-        flag="-handle_missing, --handle_missing [FILL]",
-        syntax="pytae <path> -handle_missing [FILL]",
-        summary="Impute missing values (FILL for strings, 0 for numeric).",
-        description="Fills missing values: string/categorical filled with FILL (default '.'), numeric filled with 0.",
-        options=["FILL : String replacement scalar (default: '.')."],
+    "fillna": KeywordHelp(
+        name="fillna",
+        flag="-fillna, --fillna SPEC",
+        syntax='pytae <path> -fillna "<SPEC>"',
+        summary="Fill missing values with a scalar, column mapping, or column subset.",
+        description=(
+            "Fills null/missing values across the DataFrame or in specific columns.\n"
+            "- A scalar value fills all type-appropriate columns (e.g. 0 for numeric, 'missing' for string).\n"
+            "- A column mapping 'col1:val1, col2:val2' fills specified columns with specific values.\n"
+            "- A value followed by columns 'val, col1, col2' fills specific columns with that scalar."
+        ),
+        options=[
+            "VAL : Scalar value to fill matching columns (e.g. 0, 'missing').",
+            "'col1:val1, col2:val2' : Column-specific fill values.",
+            "'val, col1, col2' : Fill specific columns with the given scalar value.",
+        ],
         examples=[
-            "pytae penguins.parquet -handle_missing",
-            'pytae penguins.parquet -handle_missing "NA"',
+            "pytae penguins.parquet -fillna 0",
+            'pytae penguins.parquet -fillna "missing"',
+            'pytae penguins.parquet -fillna "sex:unknown, body_mass_g:0"',
+            'pytae penguins.parquet -fillna "0, bill_length_mm, body_mass_g"',
         ],
         see_also=["-dropna", "-nulls"],
     ),
@@ -8024,7 +7978,7 @@ def parse_dropna_spec(
     flag_name: str = "-dropna",
     available_cols: Sequence[str] | None = None,
 ) -> tuple[list[str], str | None, bool]:
-    """Parse -dropna / -drop_nulls / -drop_na SPEC into (cols, how, drop_nans).
+    """Parse -dropna SPEC into (cols, how, drop_nans).
 
     Option B Zero Data Loss Philosophy:
       - Bare flag / "": cols=[], how=None (Option B defaults to 'all'), drop_nans=True
@@ -8060,6 +8014,63 @@ def parse_dropna_spec(
             cols.append(_unquote_name(token))
 
     return cols, how, drop_nans
+
+
+def parse_fillna_spec(
+    raw: str | None,
+    flag_name: str = "-fillna",
+    available_cols: Sequence[str] | None = None,
+) -> tuple[Any, list[str] | None, bool]:
+    """Parse -fillna SPEC into (value, cols, nans).
+
+    Syntax examples:
+      - '0': value=0, cols=None, nans=True
+      - '.': value='.', cols=None, nans=True
+      - 'a:0, b:N/A': value={'a': 0, 'b': 'N/A'}, cols=None, nans=True
+      - '0, a, b': value=0, cols=['a', 'b'], nans=True
+      - '0, a, b, nans=false': value=0, cols=['a', 'b'], nans=False
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise SystemExit(f"{flag_name}: expected fill value, column mapping (col:val), or 'val, col1, col2'")
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if t.strip()]
+    nans = True
+    clean_tokens: list[str] = []
+    for t in tokens:
+        if re.match(r"^nans\s*[:=]\s*", t, re.IGNORECASE):
+            val = re.sub(r"^nans\s*[:=]\s*", "", t, flags=re.IGNORECASE).strip().strip("'\"").lower()
+            nans = val not in ("false", "0", "no")
+        else:
+            clean_tokens.append(t)
+
+    if not clean_tokens:
+        raise SystemExit(f"{flag_name}: expected fill value")
+
+    # Check if this is a mapping: "a:0, b:N/A"
+    is_mapping = all(":" in t or "=" in t for t in clean_tokens)
+    if is_mapping:
+        mapping: dict[str, Any] = {}
+        for t in clean_tokens:
+            sep = ":" if ":" in t else "="
+            k, _, v = t.partition(sep)
+            k_clean = _unquote_name(k.strip())
+            v_strip = v.strip()
+            try:
+                v_val = ast.literal_eval(v_strip)
+            except Exception:
+                v_val = _unquote_name(v_strip)
+            mapping[k_clean] = v_val
+        return mapping, None, nans
+
+    first_token = clean_tokens[0]
+    try:
+        val = ast.literal_eval(first_token)
+    except Exception:
+        val = _unquote_name(first_token)
+
+    cols = [_unquote_name(c) for c in clean_tokens[1:]] if len(clean_tokens) > 1 else None
+    return val, cols, nans
 
 
 def parse_sort_by(raw: str) -> tuple[list[str], str]:
@@ -8592,41 +8603,6 @@ def parse_pivot_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_PIVOT_KEYS, flag="-pivot")
 
 
-_REPLACE_KEYS = ("c", "v", "exact")
-
-
-def parse_value_map(raw: str) -> dict[str, str]:
-    """Parse a -replace_values v= mapping like "old_a:new_a,old_b:new_b" into a dict."""
-    mapping: dict[str, str] = {}
-    for pair in raw.split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        if ":" in pair:
-            old, new = pair.split(":", 1)
-        elif "=" in pair:
-            raise SystemExit(
-                f"-replace_values: invalid v= mapping '{pair}'; use ':' (expected old:new). '=' is not supported."
-            )
-        else:
-            raise SystemExit(f"-replace_values: invalid v= mapping '{pair}'; expected old:new")
-        mapping[_unquote_name(old)] = _unquote_name(new)
-    if not mapping:
-        raise SystemExit("-replace_values: v= needs at least one old:new pair")
-    return mapping
-
-
-def parse_replace_values_arg(raw: str) -> tuple[list[str] | None, dict[str, str], bool]:
-    """Parse -replace_values as key=value tokens: c= (optional column scope), v= (required
-    old:new mapping), exact= (optional bool, default true — whole-cell match vs
-    substring match anywhere in the cell). Returns (cols_or_None, mapping, exact)."""
-    kwargs = parse_reshape_kwargs(raw, keys=_REPLACE_KEYS, flag="-replace_values")
-    if "v" not in kwargs:
-        raise SystemExit("-replace_values: expected v='old:new,...'")
-    cols = parse_columns(kwargs["c"]) if "c" in kwargs else None
-    mapping = parse_value_map(kwargs["v"])
-    exact = kwargs.get("exact", True)
-    return cols, mapping, exact
 
 
 def parse_bool_text(raw: str) -> bool:
@@ -9076,7 +9052,15 @@ class _Pipeline:
         """Apply one -filter (or -qry) spec to the current view. Returns an error message or None."""
         available = self._available_columns()
         cond_cols = [c for c, _ in (conditions if isinstance(conditions, list) else conditions.items())]
-        unknown = [c for c in cond_cols if c not in available]
+
+        def _get_base_col(c: str) -> str:
+            if ".dt." in c:
+                return c.split(".dt.")[0].strip()
+            if ".str." in c:
+                return c.split(".str.")[0].strip()
+            return c.strip()
+
+        unknown = [_get_base_col(c) for c in cond_cols if _get_base_col(c) not in available]
         if unknown:
             return unknown_columns_message(flag_name, unknown, available)
 
@@ -9214,22 +9198,25 @@ class _Pipeline:
         except Exception as exc:
             return f"{flag}: {exc}"
 
-    def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
-        """Apply one -replace_values spec to the current view. Returns an error message or None."""
+    def apply_fillna(self, value: Any, cols: list[str] | None = None, nans: bool = True) -> str | None:
+        """Apply one -fillna operation to the current view. Returns an error message or None."""
         available = self._available_columns()
-        if cols is not None:
+        if isinstance(value, dict):
+            unknown = [c for c in value if c not in available]
+            if unknown:
+                return unknown_columns_message("-fillna", unknown, available)
+        elif cols:
             unknown = [c for c in cols if c not in available]
             if unknown:
-                return unknown_columns_message("-replace_values", unknown, available)
+                return unknown_columns_message("-fillna", unknown, available)
         try:
-            from pytae.polars_engine import replace_values_polars
+            from pytae.polars_engine import fillna_polars
 
-            self._pldf = replace_values_polars(self.polars_lazy_frame(), v=mapping, c=cols, exact=exact)
+            self._pldf = fillna_polars(self.polars_lazy_frame(), value, *(cols or ()), nans=nans)
             self._df = None
             return None
         except Exception as exc:
-            return f"-replace_values: {exc}"
-        return None
+            return f"-fillna: {exc}"
 
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered
@@ -9435,7 +9422,6 @@ class _OrderedAppend(argparse.Action):
 from __future__ import annotations
 
 import argparse
-import io
 import subprocess
 import sys
 from pathlib import Path
@@ -9447,6 +9433,7 @@ from pytae.cli_parsing import (
     parse_agg,
     parse_clean_columns_arg,
     parse_columns,
+    parse_fillna_spec,
     parse_kv_spec,
     parse_long_arg,
     parse_pivot_arg,
@@ -9481,12 +9468,6 @@ def _apply_round(df: Any, ndigits: int | None) -> Any:
     except Exception:
         pass
     return df
-
-
-def _dataframe_info(df: pd.DataFrame) -> str:
-    buf = io.StringIO()
-    df.info(buf=buf)
-    return buf.getvalue().rstrip()
 
 
 def _format_table(
@@ -9552,111 +9533,26 @@ def _format_table(
     return str(df)
 
 
-def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> pd.DataFrame:
-    import polars as pl
+def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
+    from pytae.other_utilities import freq
 
-    if isinstance(source_df, pl.DataFrame):
-        cols = list(source_df.columns)
-        if col is None:
-            if len(cols) == 1:
-                col = cols[0]
-            else:
-                raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
-        col = col.strip()
-        if col not in cols:
-            raise SystemExit(unknown_columns_message("-freq", [col], cols))
-
-        counts = source_df.group_by(col).len(name="Count")
-        if dropna:
-            counts = counts.filter(pl.col(col).is_not_null())
-        counts = counts.sort(by=["Count", col], descending=[True, False])
-        bar_max_width = 20
-        cat_vals = counts[col].to_list()
-        cnt_vals = [int(c) for c in counts["Count"].to_list()]
-        total_int = sum(cnt_vals)
-        max_cnt_int = cnt_vals[0] if cnt_vals else 1
-        data = []
-        for category, count in zip(cat_vals, cnt_vals):
-            bar_len = int(round((count / max_cnt_int) * bar_max_width)) if max_cnt_int > 0 else 0
-            bar_str = "█" * bar_len
-            pct_str = f"({(count / total_int * 100):.1f}%)" if total_int > 0 else "(0.0%)"
-            dist_str = f"{bar_str} {pct_str}".strip()
-            data.append({col: str(category), "Count": count, "Distribution": dist_str})
-        return pd.DataFrame(data)
-
-    if col is None:
-        if len(source_df.columns) == 1:
-            col = source_df.columns[0]
-        else:
-            raise SystemExit("-freq: requires a column name (or a single-column DataFrame)")
-    col = col.strip()
-    if col not in source_df.columns:
-        raise SystemExit(unknown_columns_message("-freq", [col], list(source_df.columns)))
-
-    counts = source_df[col].value_counts(dropna=dropna)
-    total = counts.sum()
-    max_cnt = counts.max() if not counts.empty else 1
-    bar_max_width = 20
-    data = []
-    for category, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
-        bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
-        dist_str = f"{bar_str} {pct_str}".strip()
-        data.append({col: str(category), "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data)
+    try:
+        return freq(source_df, col=col, dropna=dropna)
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-freq: {exc}")
 
 
-def _compute_hist(source_df: pd.DataFrame, hist_arg: str | None) -> pd.DataFrame:
-    raw = (hist_arg or "").strip()
-    bins = 10
-    col = None
-    if ":" in raw:
-        col_part, _, b_str = raw.partition(":")
-        col = col_part.strip()
-        try:
-            bins = int(b_str.strip())
-        except ValueError:
-            pass
-    elif "," in raw and "bins=" in raw:
-        col_part, _, b_part = raw.partition(",")
-        col = col_part.strip()
-        b_str = b_part.replace("bins=", "").strip()
-        try:
-            bins = int(b_str)
-        except ValueError:
-            pass
-    elif raw:
-        col = raw
-    else:
-        if len(source_df.columns) == 1:
-            col = source_df.columns[0]
-        else:
-            raise SystemExit("-hist: requires a column name (e.g. -hist mass or -hist mass:10)")
+def _compute_hist(source_df: Any, hist_arg: str | None) -> Any:
+    from pytae.other_utilities import hist
 
-    if col not in source_df.columns:
-        raise SystemExit(unknown_columns_message("-hist", [col], list(source_df.columns)))
-
-    s = pd.to_numeric(source_df[col], errors="coerce").dropna()
-    if s.empty:
-        return pd.DataFrame(columns=["Range", "Count", "Distribution"])
-
-    cut_series = pd.cut(s, bins=bins, include_lowest=True)
-    counts = cut_series.value_counts(sort=False)
-    total = len(s)
-    max_cnt = counts.max() if not counts.empty else 1
-    bar_max_width = 20
-    data = []
-    for interval, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
-        bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
-        dist_str = f"{bar_str} {pct_str}".strip()
-        left_fmt = f"{interval.left:.2f}".rstrip("0").rstrip(".")
-        right_fmt = f"{interval.right:.2f}".rstrip("0").rstrip(".")
-        range_str = f"[{left_fmt}, {right_fmt}]"
-        data.append({"Range": range_str, "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data)
+    try:
+        return hist(source_df, col=hist_arg)
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-hist: {exc}")
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -9895,7 +9791,9 @@ def _compute_diff(
                     lines.append("  Matching: all cell values in common columns match.")
             else:
                 if tol > 0 or rtol > 0:
-                    lines.append(f"  Mismatches found in {mismatches:,} cells exceeding tolerance across common columns:")
+                    lines.append(
+                        f"  Mismatches found in {mismatches:,} cells exceeding tolerance across common columns:"
+                    )
                 else:
                     lines.append(f"  Mismatches found in {mismatches:,} cells across common columns:")
                 for c, (cnt, max_d) in col_mismatches.items():
@@ -9912,7 +9810,7 @@ def _compute_diff(
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
 # chaining, nothing can follow them except -o clip.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "info", "meta", "diff", "glimpse"})
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "meta", "diff", "glimpse"})
 
 
 def _list_order_names(names, order):
@@ -10008,7 +9906,6 @@ def _process_path(
     filter_specs: list[list[tuple[str, Any]]] | None = None,
     mutate_specs: list[str] | None = None,
     sql_specs: list[str] | None = None,
-    replace_specs: list[tuple[list[str] | None, dict[str, str], bool]] | None = None,
     rename_specs: list[dict[str, str]] | None = None,
     frames: dict[str, pd.DataFrame] | None = None,
     join_specs: list[dict] | None = None,
@@ -10107,7 +10004,6 @@ def _process_path(
     filter_iter = iter(filter_specs if filter_specs is not None else (qry_specs or []))
     mutate_iter = iter(mutate_specs or [])
     sql_iter = iter(sql_specs or [])
-    replace_iter = iter(replace_specs or [])
     rename_iter = iter(rename_specs or [])
     join_iter = iter(join_specs or [])
     concat_iter = iter(concat_specs or [])
@@ -10156,12 +10052,6 @@ def _process_path(
             emit_frame(idx)
         elif op == "sql":
             err = pipeline.apply_sql(next(sql_iter))
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "replace_values":
-            cols, mapping, exact = next(replace_iter)
-            err = pipeline.apply_replace_values(cols, mapping, exact)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -10291,12 +10181,6 @@ def _process_path(
                 )
             if is_clip:
                 clip_action = lambda d=described: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
-        elif op == "info":
-            info_str = _dataframe_info(pipeline.dataframe())
-            if should_print(idx):
-                _output_text(info_str, args)
-            if is_clip:
-                clip_action = lambda s=info_str: _copy_to_clipboard(s)
         elif op == "glimpse":
             from pytae.other_utilities import format_glimpse
 
@@ -10328,43 +10212,6 @@ def _process_path(
                 _output_text(diff_str, args)
             if is_clip:
                 clip_action = lambda s=diff_str: _copy_to_clipboard(s)
-        elif op == "value_counts":
-            avail_cols = pipeline.columns()
-            if "count" in avail_cols and "n" in avail_cols:
-                return _fail(
-                    parser,
-                    batch,
-                    "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers",
-                )
-            dropna_val = False if args.dropna is None else args.dropna
-            try:
-                from pytae.polars_engine import value_counts_polars
-
-                pl_res = value_counts_polars(pipeline.polars_frame(), cols=avail_cols, dropna=dropna_val)
-                pipeline._pldf = pl_res
-                pipeline._df = None
-            except ValueError as exc:
-                return _fail(parser, batch, str(exc))
-            except Exception:
-                source_df = pipeline.dataframe()
-                try:
-                    if len(avail_cols) == 1:
-                        col = avail_cols[0]
-                        count_name = "count" if col != "count" else "n"
-                        result = source_df[col].value_counts(dropna=dropna_val).rename(count_name).reset_index()
-                        result.columns = [col, count_name]
-                    else:
-                        count_name = "count" if "count" not in avail_cols else "n"
-                        result = (
-                            source_df.value_counts(subset=avail_cols, dropna=dropna_val)
-                            .rename(count_name)
-                            .reset_index()
-                        )
-                    pipeline._df = result
-                    pipeline._pldf = None
-                except Exception as exc:
-                    return _fail(parser, batch, str(exc))
-            emit_frame(idx)
         elif op == "freq":
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
             source_df = pipeline.current_frame()
@@ -10376,7 +10223,7 @@ def _process_path(
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "hist":
             hist_arg = _next_op_val("hist", getattr(args, "hist", None))
-            source_df = pipeline.dataframe()
+            source_df = pipeline.current_frame()
             result = _compute_hist(source_df, hist_arg)
             pipeline._df = result
             if should_print(idx):
@@ -10457,19 +10304,17 @@ def _process_path(
             except Exception as e:
                 return _fail(parser, batch, str(e))
             emit_frame(idx)
-        elif op == "handle_missing":
-            hm_val = _next_op_val("handle_missing", args.handle_missing)
-            try:
-                from pytae.polars_engine import handle_missing_polars
-
-                pl_res = handle_missing_polars(pipeline.polars_frame(), fillna=hm_val)
-                pipeline._pldf = pl_res
-                pipeline._df = None
-            except Exception as exc:
-                return _fail(parser, batch, str(exc))
+        elif op == "fillna":
+            val_str = _next_op_val("fillna", args.fillna)
+            fill_val, fill_cols, fill_nans = parse_fillna_spec(
+                val_str, flag_name="-fillna", available_cols=pipeline.columns()
+            )
+            err = pipeline.apply_fillna(fill_val, cols=fill_cols, nans=fill_nans)
+            if err:
+                return _fail(parser, batch, err)
             emit_frame(idx)
-        elif op in ("dropna", "drop_nulls", "drop_na"):
-            dropna_val = _next_op_val(op, getattr(args, "dropna", None))
+        elif op == "dropna":
+            dropna_val = _next_op_val("dropna", getattr(args, "dropna", None))
             err = pipeline.apply_dropna(dropna_val)
             if err:
                 return _fail(parser, batch, err)
@@ -10680,17 +10525,15 @@ from pytae.polars_engine import (
     concat_polars,
     distinct_polars,
     dropna_polars,
-    fill_nan_polars,
     fillna_polars,
     filter_polars,
-    handle_missing_polars,
     join_polars,
     long_polars,
     mutate_polars,
     pick_polars,
     pivot_polars,
-    replace_values_polars,
     select_polars,
+    sql_polars,
     wide_polars,
 )
 
@@ -11343,21 +11186,21 @@ class DataFrame:
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+    def fillna(
+        self,
+        value: Any = None,
+        *cols: Any,
+        subset: Any = None,
+        nans: bool = True,
+        **kwargs: Any,
+    ) -> DataFrame:
         """Fill missing values (Arrow null and/or float NaN).
 
         Parameters
         ----------
-        value : scalar or dict
-            Fill value. If a dictionary is provided, maps column names to fill values.
+        value : scalar, dict, or str, optional
+            Fill value, dictionary mapping column names to fill values, or
+            comma-separated ``"col:val"`` string.
         *cols : str
             Column names to fill (if value is a scalar).
         subset : sequence of str, optional
@@ -11365,6 +11208,8 @@ class DataFrame:
         nans : bool, default True
             If True, cleans both float NaN and Arrow null on numeric columns.
             If False, only replaces Arrow null.
+        **kwargs : Any
+            Per-column fill values as keyword arguments (e.g. ``df.fillna(a=0, b="N/A")``).
         """
         if cols or subset is not None:
             target = list(subset) if subset is not None else list(cols)
@@ -11372,21 +11217,7 @@ class DataFrame:
             missing = [str(c) for c in target if str(c) not in avail]
             if missing:
                 raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
-        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
-        return self.fillna(value, *cols, subset=subset, nans=False)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Fill only float NaNs, leaving Arrow nulls unchanged."""
-        if cols or subset is not None:
-            target = list(subset) if subset is not None else list(cols)
-            avail = set(self.columns)
-            missing = [str(c) for c in target if str(c) not in avail]
-            if missing:
-                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
-        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
+        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans, **kwargs))
 
     def diff(
         self,
@@ -11551,14 +11382,46 @@ class DataFrame:
         return res
 
     def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
-        """Rename columns using mapping dictionary or columns keyword argument."""
+        """Rename columns using string mapping ('old:new, old2:new2'), dict, or keyword arguments."""
         mapping: dict[str, str] = {}
-        if args and isinstance(args[0], dict):
-            mapping.update(args[0])
+        for arg in args:
+            if isinstance(arg, dict):
+                for k, v in arg.items():
+                    mapping[str(k)] = str(v)
+            elif isinstance(arg, str):
+                for pair in arg.split(","):
+                    pair = pair.strip()
+                    if not pair:
+                        continue
+                    if ":" in pair:
+                        old_raw, new_raw = pair.split(":", 1)
+                    elif "=" in pair:
+                        raise ValueError(
+                            f"invalid rename mapping '{pair}'; use ':' (e.g. 'old:new') or keyword arguments"
+                        )
+                    else:
+                        raise ValueError(f"invalid rename mapping '{pair}'; expected 'old:new'")
+                    old_clean = _unquote_name(old_raw.strip())
+                    new_clean = _unquote_name(new_raw.strip())
+                    if old_clean in mapping and mapping[old_clean] != new_clean:
+                        raise ValueError(
+                            f"conflicting rename mappings for '{old_clean}': '{mapping[old_clean]}' and '{new_clean}'"
+                        )
+                    mapping[old_clean] = new_clean
+            else:
+                raise TypeError(f"rename() expects string, dict, or keyword arguments, got {type(arg).__name__}")
         if columns:
-            mapping.update(columns)
+            for k, v in columns.items():
+                mapping[str(k)] = str(v)
         if kwargs:
-            mapping.update(kwargs)
+            for k, v in kwargs.items():
+                mapping[str(k)] = str(v)
+        if not mapping:
+            return self
+        avail = set(self._df.collect_schema().names() if self.is_lazy else self._df.columns)
+        missing = [old for old in mapping if old not in avail]
+        if missing:
+            raise KeyError(f"rename: column(s) {missing} not found in DataFrame")
         new_df = self._df.rename(mapping)
         new_col_map = dict(self._orig_col_map)
         for old, new in mapping.items():
@@ -11566,6 +11429,10 @@ class DataFrame:
         res = DataFrame(new_df, orig_col_map=new_col_map)
         res._orig_index = self._orig_index
         return res
+
+    def sql(self, query: str) -> DataFrame:
+        """Execute a SQL query against this DataFrame (registered as 'data' and 'self' in Polars SQLContext)."""
+        return DataFrame(sql_polars(self._df, query))
 
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         """Aggregate numeric columns or compute custom metrics across the whole DataFrame."""
@@ -11637,42 +11504,6 @@ class DataFrame:
             )
         )
 
-    def replace_values(
-        self,
-        v: dict[Any, Any],
-        c: str | Sequence[str] | None = None,
-        exact: bool = True,
-    ) -> DataFrame:
-        """Replace exact values or substrings across columns."""
-        return DataFrame(
-            replace_values_polars(
-                self._df,
-                v=v,
-                c=c,
-                exact=exact,
-            )
-        )
-
-    def handle_missing(
-        self,
-        fillna: str | None = ".",
-        numeric_fill: Any = 0,
-        cols: Sequence[str] | None = None,
-        preserve_categories: bool = True,
-        **kwargs: Any,
-    ) -> DataFrame:
-        """Fill null values with type-appropriate defaults."""
-        return DataFrame(
-            handle_missing_polars(
-                self._df,
-                fillna=fillna,
-                numeric_fill=numeric_fill,
-                cols=cols,
-                preserve_categories=preserve_categories,
-                **kwargs,
-            )
-        )
-
     def cols(self, ascending: bool | None = True) -> list[str]:
         """Return sorted or natural column names."""
         columns = list(self.columns)
@@ -11696,13 +11527,13 @@ class DataFrame:
         """Calculate frequency distribution of unique column values."""
         from pytae.other_utilities import freq as _freq
 
-        return DataFrame(_freq(self.to_pandas(), col=col, dropna=dropna))
+        return DataFrame(_freq(self._df, col=col, dropna=dropna))
 
     def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
         """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column."""
         from pytae.other_utilities import hist as _hist
 
-        return DataFrame(_hist(self.to_pandas(), col=col, bins=bins))
+        return DataFrame(_hist(self._df, col=col, bins=bins))
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Apply a callable function taking DataFrame as its first argument."""
@@ -11802,12 +11633,6 @@ class GroupedDataFrame:
     def by(self, *cols: Any) -> GroupedDataFrame:
         """Overwrite grouping with new keys."""
         return DataFrame(self._df, orig_col_map=self._orig_col_map).by(*cols)
-
-    def ungroup(self) -> DataFrame:
-        """Remove grouping context and return a standard DataFrame."""
-        res = DataFrame(self._df, orig_col_map=self._orig_col_map)
-        res._orig_index = self._orig_index
-        return res
 
     def to_pandas(self) -> Any:
         import pandas as pd
@@ -11917,9 +11742,7 @@ class GroupedDataFrame:
                 full_col = pd.concat(pieces).reindex(pdf.index)
                 new_map = dict(res._orig_col_map)
                 new_map[col_name] = col_name
-                res = DataFrame(
-                    res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=new_map
-                )
+                res = DataFrame(res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=new_map)
                 res._orig_index = self._orig_index
 
         return res
@@ -11932,42 +11755,31 @@ class GroupedDataFrame:
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
 
+    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
+        """Rename columns using string mapping, dict, or keyword arguments."""
+        return DataFrame(self._df, orig_col_map=self._orig_col_map).rename(*args, columns=columns, **kwargs)
+
+    def sql(self, query: str) -> DataFrame:
+        """Execute a SQL query against this DataFrame."""
+        return DataFrame(sql_polars(self._df, query))
+
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN)."""
         resolved = list(subset) if subset is not None else (list(cols) if cols else None)
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
-    def drop_nulls(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def drop_na(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Alias for dropna()."""
-        return self.dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True) -> DataFrame:
+    def fillna(
+        self,
+        value: Any = None,
+        *cols: Any,
+        subset: Any = None,
+        nans: bool = True,
+        **kwargs: Any,
+    ) -> DataFrame:
         """Fill missing values (Arrow null and/or float NaN)."""
-        if cols or subset is not None:
-            target = list(subset) if subset is not None else list(cols)
-            avail = set(self.columns)
-            missing = [str(c) for c in target if str(c) not in avail]
-            if missing:
-                raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
-        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans))
-
-    def fill_null(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Alias for fillna(..., nans=False) targeting Arrow nulls only."""
-        return self.fillna(value, *cols, subset=subset, nans=False)
-
-    def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
-        """Fill only float NaNs, leaving Arrow nulls unchanged."""
-        if cols or subset is not None:
-            target = list(subset) if subset is not None else list(cols)
-            avail = set(self.columns)
-            missing = [str(c) for c in target if str(c) not in avail]
-            if missing:
-                raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
-        return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
+        return DataFrame(self._df, orig_col_map=self._orig_col_map).fillna(
+            value, *cols, subset=subset, nans=nans, **kwargs
+        )
 
     def pick(
         self,
@@ -12129,29 +11941,6 @@ except Exception:
     pass
 
 ################################################################################
-# FILE: src/pytae/mutate.py
-################################################################################
-"""Backward-compatibility re-exports for mutate parsing utilities and literals."""
-
-from __future__ import annotations
-
-from pytae._parsing import (
-    _replace_underscore_placeholder,
-    _resolve_multi_target_cols,
-    _rewrite_fallback_col_refs,
-    _strip_at_refs,
-    parse_mutate_spec,
-)
-
-__all__ = [
-    "_replace_underscore_placeholder",
-    "_resolve_multi_target_cols",
-    "_rewrite_fallback_col_refs",
-    "_strip_at_refs",
-    "parse_mutate_spec",
-]
-
-################################################################################
 # FILE: src/pytae/other_utilities.py
 ################################################################################
 """General tabular utilities: clipboard export, missing-value handling, column sorting, header cleaning, and value replacement."""
@@ -12194,26 +11983,6 @@ def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
             "Rename the column or index before resetting."
         )
     return df.reset_index()
-
-
-def handle_missing(
-    df: Any,
-    fillna: str | None = ".",
-    numeric_fill: Any = 0,
-    cols: Sequence[str] | None = None,
-    preserve_categories: bool = True,
-    **kwargs: Any,
-) -> Any:
-    """Fill missing values across columns with type-appropriate defaults."""
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(df).handle_missing(
-        fillna=fillna,
-        numeric_fill=numeric_fill,
-        cols=cols,
-        preserve_categories=preserve_categories,
-        **kwargs,
-    )
 
 
 def cols(df: Any, ascending: bool | None = True) -> list[str]:
@@ -12305,18 +12074,6 @@ def clean_columns(
         dedupe=dedupe,
     )
     return df
-
-
-def replace_values(
-    df: Any,
-    v: dict[Any, Any],
-    c: str | Sequence[str] | None = None,
-    exact: bool = True,
-) -> Any:
-    """Replace values optionally scoped to specific columns."""
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(df).replace_values(v=v, c=c, exact=exact)
 
 
 def format_glimpse(df: Any, width: int | None = None) -> str:
@@ -12441,17 +12198,17 @@ def distinct(
 
 
 def freq(
-    df: pd.DataFrame,
+    df: Any,
     col: str | None = None,
     *,
     dropna: bool = False,
-) -> pd.DataFrame:
+) -> Any:
     """Compute a frequency table with ASCII distribution bars and percentages for a column.
 
     Parameters:
     -----------
-    df : pd.DataFrame
-        Input DataFrame.
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
     col : str, optional
         Column name to inspect. Required unless `df` has only a single column.
     dropna : bool, default False
@@ -12459,45 +12216,88 @@ def freq(
 
     Returns:
     --------
-    pd.DataFrame
+    DataFrame
         DataFrame with columns `[col, 'Count', 'Distribution']`.
     """
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
     if col is None or (isinstance(col, str) and not col.strip()):
-        if len(df.columns) == 1:
-            target_col = str(df.columns[0])
+        if len(cols) == 1:
+            target_col = str(cols[0])
         else:
             raise ValueError("freq() requires a column name (or a single-column DataFrame)")
     else:
         target_col = _unquote_name(str(col).strip())
 
-    if target_col not in df.columns:
-        raise KeyError(f"freq: column '{target_col}' not found in DataFrame. Available columns: {list(df.columns)}")
+    if target_col not in cols:
+        raise KeyError(f"freq: column '{target_col}' not found in DataFrame. Available columns: {cols}")
 
-    counts = df[target_col].value_counts(dropna=dropna)
-    total = counts.sum()
-    max_cnt = counts.max() if not counts.empty else 1
+    s_df = pldf.select(pl.col(target_col))
+    if dropna:
+        s_df = s_df.filter(pl.col(target_col).is_not_null())
+
+    counted = s_df.group_by(target_col).agg(pl.len().alias("Count")).sort("Count", descending=True)
+
+    total = counted["Count"].sum() if len(counted) > 0 else 0
+    max_cnt = counted["Count"].max() if len(counted) > 0 else 1
     bar_max_width = 20
-    data = []
-    for category, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+
+    cats: list[str] = []
+    counts_list: list[int] = []
+    dists: list[str] = []
+    for row in counted.iter_rows(named=True):
+        val = row[target_col]
+        cat_str = "None" if val is None else str(val)
+        cnt = int(row["Count"])
+        bar_len = int(round((cnt / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
         bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        pct_str = f"({(cnt / total * 100):.1f}%)" if total > 0 else "(0.0%)"
         dist_str = f"{bar_str} {pct_str}".strip()
-        data.append({target_col: str(category), "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data, columns=[target_col, "Count", "Distribution"])
+
+        cats.append(cat_str)
+        counts_list.append(cnt)
+        dists.append(dist_str)
+
+    res_pl = pl.DataFrame(
+        {
+            target_col: cats,
+            "Count": counts_list,
+            "Distribution": dists,
+        }
+    )
+    return DataFrame(res_pl)
 
 
 def hist(
-    df: pd.DataFrame,
+    df: Any,
     col: str | None = None,
     bins: int = 10,
-) -> pd.DataFrame:
+) -> Any:
     """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column.
 
     Parameters:
     -----------
-    df : pd.DataFrame
-        Input DataFrame.
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
     col : str, optional
         Column name or `'col:bins'` specification (e.g. `'body_mass_g'` or `'body_mass_g:10'`).
         Required unless `df` has only a single column.
@@ -12506,21 +12306,42 @@ def hist(
 
     Returns:
     --------
-    pd.DataFrame
+    DataFrame
         DataFrame with columns `['Range', 'Count', 'Distribution']`.
     """
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
     raw = col.strip() if isinstance(col, str) else ""
     target_col: str | None = None
 
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
     if ":" in raw:
         col_part, _, b_str = raw.rpartition(":")
-        if col_part.strip() and b_str.strip() and col_part.strip() not in df.columns:
+        if col_part.strip() and b_str.strip() and col_part.strip() not in cols:
             target_col = _unquote_name(col_part.strip())
             try:
                 bins = int(b_str.strip())
             except ValueError as exc:
                 raise ValueError(f"hist: invalid bins value '{b_str.strip()}'; must be a positive integer") from exc
-        elif col_part.strip() in df.columns and b_str.strip().isdigit():
+        elif col_part.strip() in cols and b_str.strip().isdigit():
             target_col = col_part.strip()
             bins = int(b_str.strip())
         else:
@@ -12538,37 +12359,78 @@ def hist(
     elif col is not None and not isinstance(col, str):
         target_col = str(col)
     else:
-        if len(df.columns) == 1:
-            target_col = str(df.columns[0])
+        if len(cols) == 1:
+            target_col = str(cols[0])
         else:
             raise ValueError("hist() requires a column name (e.g. 'mass' or 'mass:10')")
 
     if not isinstance(bins, int) or isinstance(bins, bool) or bins <= 0:
         raise ValueError(f"hist: bins must be a positive integer, got {bins!r}")
 
-    if target_col not in df.columns:
-        raise KeyError(f"hist: column '{target_col}' not found in DataFrame. Available columns: {list(df.columns)}")
+    if target_col not in cols:
+        raise KeyError(f"hist: column '{target_col}' not found in DataFrame. Available columns: {cols}")
 
-    s = pd.to_numeric(df[target_col], errors="coerce").dropna()
-    if s.empty:
-        return pd.DataFrame(columns=["Range", "Count", "Distribution"])
+    s_col = pldf[target_col]
+    s_clean = s_col.cast(pl.Float64, strict=False).drop_nulls().drop_nans()
+    if len(s_clean) == 0:
+        return DataFrame(pl.DataFrame(schema={"Range": pl.String, "Count": pl.Int64, "Distribution": pl.String}))
 
-    cut_series = pd.cut(s, bins=bins, include_lowest=True)
-    counts = cut_series.value_counts(sort=False)
-    total = len(s)
-    max_cnt = counts.max() if not counts.empty else 1
+    min_val = float(s_clean.min())  # type: ignore[arg-type]
+    max_val = float(s_clean.max())  # type: ignore[arg-type]
+    total = len(s_clean)
+
+    if min_val == max_val:
+        left_fmt = f"{min_val:.2f}".rstrip("0").rstrip(".")
+        range_str = f"[{left_fmt}, {left_fmt}]"
+        bar_str = "█" * 20
+        dist_str = f"{bar_str} (100.0%)"
+        data = [{"Range": range_str, "Count": total, "Distribution": dist_str}]
+        return DataFrame(pl.DataFrame(data))
+
+    step = (max_val - min_val) / bins
+    edges = [min_val + i * step for i in range(bins + 1)]
+    bin_counts = [0] * bins
+    vals = s_clean.to_list()
+    for v in vals:
+        if v == max_val:
+            idx = bins - 1
+        else:
+            idx = int((v - min_val) / step)
+            if idx >= bins:
+                idx = bins - 1
+            elif idx < 0:
+                idx = 0
+        bin_counts[idx] += 1
+
+    max_cnt = max(bin_counts) if bin_counts else 1
     bar_max_width = 20
-    data = []
-    for interval, count in counts.items():
-        bar_len = int(round((count / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
-        bar_str = "█" * bar_len
-        pct_str = f"({(count / total * 100):.1f}%)" if total > 0 else "(0.0%)"
-        dist_str = f"{bar_str} {pct_str}".strip()
-        left_fmt = f"{interval.left:.2f}".rstrip("0").rstrip(".")
-        right_fmt = f"{interval.right:.2f}".rstrip("0").rstrip(".")
+    ranges = []
+    counts = []
+    distributions = []
+
+    for i in range(bins):
+        left = edges[i]
+        right = edges[i + 1]
+        left_fmt = f"{left:.2f}".rstrip("0").rstrip(".")
+        right_fmt = f"{right:.2f}".rstrip("0").rstrip(".")
         range_str = f"[{left_fmt}, {right_fmt}]"
-        data.append({"Range": range_str, "Count": count, "Distribution": dist_str})
-    return pd.DataFrame(data, columns=["Range", "Count", "Distribution"])
+        cnt = bin_counts[i]
+        bar_len = int(round((cnt / max_cnt) * bar_max_width)) if max_cnt > 0 else 0
+        bar_str = "█" * bar_len
+        pct_str = f"({(cnt / total * 100):.1f}%)" if total > 0 else "(0.0%)"
+        dist_str = f"{bar_str} {pct_str}".strip()
+        ranges.append(range_str)
+        counts.append(cnt)
+        distributions.append(dist_str)
+
+    res_df = pl.DataFrame(
+        {
+            "Range": ranges,
+            "Count": counts,
+            "Distribution": distributions,
+        }
+    )
+    return DataFrame(res_df)
 
 ################################################################################
 # FILE: src/pytae/plotting.py
@@ -13895,15 +13757,25 @@ def _df_schema(df: Any) -> pl.Schema:
 
 def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -> pl.Expr:
     """Convert a pytae filter condition tuple/value into a Polars Expression."""
-    col_expr = pl.col(col)
-    is_numeric = schema is not None and col in schema and schema[col].is_numeric()
-    is_string = schema is not None and col in schema and schema[col] in (pl.String, pl.Utf8)
-    is_date = schema is not None and col in schema and schema[col] == pl.Date
-    is_datetime = (
-        schema is not None
-        and col in schema
-        and (schema[col] == pl.Datetime or getattr(schema[col], "base_type", None) == pl.Datetime)
-    )
+    if schema is not None and col not in schema and ("." in col or "(" in col):
+        cur_cols = set(schema.names())
+        safe_expr, col_map = _rewrite_fallback_col_refs(col, cur_cols)
+        parsed = ast.parse(safe_expr, mode="eval")
+        col_expr = _ast_to_polars_expr(parsed, cur_cols, col_map, schema=schema)
+        is_numeric = False
+        is_string = False
+        is_date = False
+        is_datetime = False
+    else:
+        col_expr = pl.col(col)
+        is_numeric = schema is not None and col in schema and schema[col].is_numeric()
+        is_string = schema is not None and col in schema and schema[col] in (pl.String, pl.Utf8)
+        is_date = schema is not None and col in schema and schema[col] == pl.Date
+        is_datetime = (
+            schema is not None
+            and col in schema
+            and (schema[col] == pl.Datetime or getattr(schema[col], "base_type", None) == pl.Datetime)
+        )
 
     def _coerce_val(val: Any) -> Any:
         if is_numeric and isinstance(val, str):
@@ -14108,9 +13980,13 @@ def fillna_polars(
     *cols: Any,
     subset: Any = None,
     nans: bool = True,
+    **kwargs: Any,
 ) -> Any:
     """Fill missing values (Arrow null and/or float NaN) in a Polars DataFrame or LazyFrame."""
     import polars as pl
+
+    if value is None and kwargs:
+        value = dict(kwargs)
 
     if value is None:
         raise TypeError("fillna() missing required argument: 'value'")
@@ -14118,82 +13994,100 @@ def fillna_polars(
     schema = _df_schema(df)
     target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
 
+    def _fill_col_expr(c: str, dt: pl.DataType, fill_val: Any) -> pl.Expr:
+        if dt.is_float() and nans and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
+            return pl.col(c).fill_nan(fill_val).fill_null(fill_val)
+        if dt == pl.Categorical and isinstance(fill_val, str):
+            return pl.col(c).cast(pl.String).fill_null(fill_val).cast(pl.Categorical)
+        if dt == pl.Null:
+            target_dt = (
+                pl.String
+                if isinstance(fill_val, str)
+                else (
+                    pl.Boolean
+                    if isinstance(fill_val, bool)
+                    else (pl.Float64 if isinstance(fill_val, float) else pl.Int64)
+                )
+            )
+            return pl.col(c).cast(target_dt).fill_null(fill_val)
+        return pl.col(c).fill_null(fill_val)
+
+    # If value is a string with col:val or col=val pairs matching schema columns
+    if isinstance(value, str) and not target_cols and (":" in value or "=" in value):
+        from pytae._text import tokenize as _tok
+
+        tokens = [t.strip() for t in _tok(value, ",", keep_quotes=True, track_brackets=True) if t.strip()]
+        parsed_map: dict[str, Any] = {}
+        is_mapping = bool(tokens)
+        for tok in tokens:
+            sep = ":" if ":" in tok else ("=" if "=" in tok else None)
+            if not sep:
+                is_mapping = False
+                break
+            k_raw, v_raw = tok.split(sep, 1)
+            k_clean = _unquote_name(k_raw.strip())
+            if k_clean not in schema:
+                is_mapping = False
+                break
+            v_strip = v_raw.strip()
+            try:
+                v_val = ast.literal_eval(v_strip)
+            except Exception:
+                v_val = _unquote_name(v_strip)
+            parsed_map[k_clean] = v_val
+        if is_mapping:
+            value = parsed_map
+
     # 1. Dictionary fill: {col_name: fill_value}
     if isinstance(value, dict):
-        exprs = []
-        for col_name, fill_val in value.items():
-            c = str(col_name)
-            if c in schema:
-                dt = schema[c]
-                is_float = dt.is_float()
-                if nans and is_float and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
-                    exprs.append(pl.col(c).fill_nan(fill_val).fill_null(fill_val))
-                else:
-                    exprs.append(pl.col(c).fill_null(fill_val))
+        missing = [str(c) for c in value if str(c) not in schema]
+        if missing:
+            raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        exprs = [_fill_col_expr(str(col_name), schema[str(col_name)], fill_val) for col_name, fill_val in value.items()]
         return df.with_columns(exprs) if exprs else df
 
     # 2. Targeted subset/cols with a scalar value
     if target_cols:
-        exprs = []
-        for c in target_cols:
-            col_str = str(c)
-            if col_str in schema:
-                dt = schema[col_str]
-                is_float = dt.is_float()
-                if nans and is_float and isinstance(value, (int, float)) and not isinstance(value, bool):
-                    exprs.append(pl.col(col_str).fill_nan(value).fill_null(value))
-                else:
-                    exprs.append(pl.col(col_str).fill_null(value))
+        missing = [str(c) for c in target_cols if str(c) not in schema]
+        if missing:
+            raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        exprs = [_fill_col_expr(str(c), schema[str(c)], value) for c in target_cols]
         return df.with_columns(exprs) if exprs else df
 
-    # 3. Whole table fill with scalar value
-    if nans and isinstance(value, (int, float)) and not isinstance(value, bool):
-        try:
-            res = df.fill_nan(value)
-        except Exception:
-            res = df
-        return res.fill_null(value)
-    else:
-        return df.fill_null(value)
-
-
-def fill_nan_polars(
-    df: Any,
-    value: Any = None,
-    *cols: Any,
-    subset: Any = None,
-) -> Any:
-    """Fill only float NaNs in a Polars DataFrame or LazyFrame, leaving Arrow nulls unchanged."""
-    import polars as pl
-
-    if value is None:
-        raise TypeError("fill_nan() missing required argument: 'value'")
-
-    schema = _df_schema(df)
-    target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
-
-    if isinstance(value, dict):
-        exprs = []
-        for col_name, fill_val in value.items():
-            c = str(col_name)
-            if c in schema and schema[c].is_float():
-                exprs.append(pl.col(c).fill_nan(fill_val))
+    # 3. Whole-table fill with scalar value (scoped to compatible column types)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        exprs = [_fill_col_expr(c, dt, value) for c, dt in schema.items() if dt.is_numeric()]
         return df.with_columns(exprs) if exprs else df
 
-    if target_cols:
-        exprs = []
-        for c in target_cols:
-            col_str = str(c)
-            if col_str in schema and schema[col_str].is_float():
-                exprs.append(pl.col(col_str).fill_nan(value))
+    if isinstance(value, str):
+        exprs = [
+            _fill_col_expr(c, dt, value)
+            for c, dt in schema.items()
+            if dt in (pl.String, pl.Utf8, pl.Null, pl.Categorical)
+        ]
         return df.with_columns(exprs) if exprs else df
 
-    return df.fill_nan(value)
+    if isinstance(value, bool):
+        exprs = [_fill_col_expr(c, dt, value) for c, dt in schema.items() if dt == pl.Boolean]
+        return df.with_columns(exprs) if exprs else df
+
+    return df.fill_null(value)
 
 
 def rename_polars(df: Any, mapping: dict[str, str]) -> Any:
     """Rename columns in a Polars DataFrame or LazyFrame."""
     return df.rename(mapping)
+
+
+def sql_polars(df: Any, query: str) -> Any:
+    """Execute a SQL query against a Polars DataFrame or LazyFrame (registered as 'data' and 'self')."""
+    from pytae.cli_parsing import normalize_sql
+
+    normalized_query = normalize_sql(query)
+    polars_query = re.sub(r"\bin\s*\[(.*?)\]", r"in (\1)", normalized_query, flags=re.IGNORECASE)
+    ctx = pl.SQLContext(frames={"data": df, "self": df})
+    res_lazy = ctx.execute(polars_query)
+    return res_lazy if isinstance(df, pl.LazyFrame) else res_lazy.collect()
 
 
 def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
@@ -14202,7 +14096,7 @@ def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
         return col.sum()
     elif fn in ("mean", "avg"):
         return col.mean()
-    elif fn == "median":
+    elif fn in ("median",):
         return col.median()
     elif fn == "min":
         return col.min()
@@ -14238,11 +14132,9 @@ def pivot_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Pivot a Polars DataFrame matching pytae's pivot semantics across all 4 geometric configurations."""
-    if "drop_nulls" in kwargs:
-        dropna = kwargs.pop("drop_nulls")
     if kwargs:
         raise TypeError(
-            f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, drop_nulls, f_v are accepted"
+            f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, f_v are accepted"
         )
 
     if isinstance(df, pl.LazyFrame):
@@ -14700,11 +14592,31 @@ def _ast_to_polars_expr(
         body = _ast_to_polars_expr(node.body, col_names, col_map, by, schema, params)
         orelse = _ast_to_polars_expr(node.orelse, col_names, col_map, by, schema, params)
         return pl.when(test).then(body).otherwise(orelse)
+    if isinstance(node, ast.Attribute):
+        if isinstance(node.value, ast.Attribute) and node.value.attr == "dt":
+            obj_expr = _ast_to_polars_expr(node.value.value, col_names, col_map, by, schema, params)
+            dt_prop = node.attr
+            dt_map = {
+                "year": lambda e: e.dt.year(),
+                "quarter": lambda e: e.dt.quarter(),
+                "month": lambda e: e.dt.month(),
+                "day": lambda e: e.dt.day(),
+                "weekday": lambda e: e.dt.weekday(),
+                "ordinal_day": lambda e: e.dt.ordinal_day(),
+                "dayofyear": lambda e: e.dt.ordinal_day(),
+                "hour": lambda e: e.dt.hour(),
+                "minute": lambda e: e.dt.minute(),
+                "second": lambda e: e.dt.second(),
+                "date": lambda e: e.dt.date(),
+            }
+            if dt_prop in dt_map:
+                return dt_map[dt_prop](obj_expr)
+            raise ValueError(f"Unsupported .dt attribute: '{dt_prop}'")
     if isinstance(node, ast.Call):
         if isinstance(node.func, ast.Attribute) and node.func.attr == "map":
             raise ValueError(
                 "In mutate, '.map()' method syntax is not supported. "
-                "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'}, 'OTHER')"
+                "Use functional map(column, mapping, [default]) instead, e.g. map(species, {'Adelie': 'AD'})"
             )
         func_name = ""
         if isinstance(node.func, ast.Name):
@@ -14712,19 +14624,89 @@ def _ast_to_polars_expr(
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
 
-        # 1. Attribute method calls (e.g. name.str.upper(), val.cumsum(), val.fillna(0))
+        # 1. Attribute method calls (e.g. name.str.upper(), order_date.dt.strftime('%Y-%m'), val.cumsum(), val.fillna(0))
         if isinstance(node.func, ast.Attribute):
             attr_name = node.func.attr
-            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "str":
+            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "dt":
+                obj_expr = _ast_to_polars_expr(node.func.value.value, col_names, col_map, by, schema, params)
+                dt_map = {
+                    "year": lambda e: e.dt.year(),
+                    "quarter": lambda e: e.dt.quarter(),
+                    "month": lambda e: e.dt.month(),
+                    "day": lambda e: e.dt.day(),
+                    "weekday": lambda e: e.dt.weekday(),
+                    "ordinal_day": lambda e: e.dt.ordinal_day(),
+                    "dayofyear": lambda e: e.dt.ordinal_day(),
+                    "hour": lambda e: e.dt.hour(),
+                    "minute": lambda e: e.dt.minute(),
+                    "second": lambda e: e.dt.second(),
+                    "date": lambda e: e.dt.date(),
+                }
+                if attr_name in dt_map:
+                    return dt_map[attr_name](obj_expr)
+                if (
+                    attr_name in ("strftime", "to_string")
+                    and len(node.args) >= 1
+                    and isinstance(node.args[0], ast.Constant)
+                ):
+                    return obj_expr.dt.strftime(str(node.args[0].value))
+                if attr_name == "truncate" and len(node.args) >= 1 and isinstance(node.args[0], ast.Constant):
+                    return obj_expr.dt.truncate(str(node.args[0].value))
+                raise ValueError(f"Unsupported .dt method: '{attr_name}'")
+            elif isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "str":
                 obj_expr = _ast_to_polars_expr(node.func.value.value, col_names, col_map, by, schema, params)
                 if attr_name in ("upper", "to_uppercase"):
                     return obj_expr.str.to_uppercase()
                 elif attr_name in ("lower", "to_lowercase"):
                     return obj_expr.str.to_lowercase()
+                elif attr_name in ("title", "to_titlecase"):
+                    return obj_expr.str.to_titlecase()
                 elif attr_name in ("strip", "strip_chars"):
+                    if node.args and isinstance(node.args[0], ast.Constant):
+                        return obj_expr.str.strip_chars(str(node.args[0].value))
                     return obj_expr.str.strip_chars()
                 elif attr_name in ("len", "len_chars"):
                     return obj_expr.str.len_chars()
+                elif attr_name in ("replace", "replace_all") and len(node.args) >= 2:
+                    literal = True
+                    for kw in node.keywords:
+                        if kw.arg == "literal" and isinstance(kw.value, ast.Constant):
+                            literal = bool(kw.value.value)
+                        elif kw.arg == "regex" and isinstance(kw.value, ast.Constant):
+                            literal = not bool(kw.value.value)
+                    pat = (
+                        str(node.args[0].value)
+                        if isinstance(node.args[0], ast.Constant)
+                        else _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
+                    )
+                    repl = (
+                        str(node.args[1].value)
+                        if isinstance(node.args[1], ast.Constant)
+                        else _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
+                    )
+                    return obj_expr.str.replace_all(pat, repl, literal=literal)
+                elif attr_name == "slice" and len(node.args) >= 1:
+                    offset = (
+                        int(node.args[0].value)
+                        if isinstance(node.args[0], ast.Constant)
+                        else _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
+                    )
+                    if len(node.args) >= 2:
+                        length = (
+                            int(node.args[1].value)
+                            if isinstance(node.args[1], ast.Constant)
+                            else _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
+                        )
+                        return obj_expr.str.slice(offset, length)
+                    return obj_expr.str.slice(offset)
+                elif attr_name == "extract" and len(node.args) >= 1:
+                    pat = str(node.args[0].value) if isinstance(node.args[0], ast.Constant) else ""
+                    grp = (
+                        int(node.args[1].value) if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) else 1
+                    )
+                    return obj_expr.str.extract(pat, group_index=grp)
+                elif attr_name == "zfill" and len(node.args) >= 1 and isinstance(node.args[0], ast.Constant):
+                    return obj_expr.str.zfill(int(node.args[0].value))
                 elif attr_name == "contains" and len(node.args) >= 1:
                     literal = False
                     for kw in node.keywords:
@@ -14745,22 +14727,18 @@ def _ast_to_polars_expr(
                         return obj_expr.str.ends_with(str(node.args[0].value))
                     pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
                     return obj_expr.str.ends_with(pat_expr)
-            elif (
-                isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute))
-                and attr_name
-                in (
-                    "is_null",
-                    "is_not_null",
-                    "is_nan",
-                    "is_not_nan",
-                    "cumsum",
-                    "cumprod",
-                    "cummin",
-                    "cummax",
-                    "fillna",
-                    "fill_null",
-                    "fill_nan",
-                )
+            elif isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute)) and attr_name in (
+                "is_null",
+                "is_not_null",
+                "is_nan",
+                "is_not_nan",
+                "cumsum",
+                "cumprod",
+                "cummin",
+                "cummax",
+                "fillna",
+                "first",
+                "last",
             ):
                 obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema, params)
                 if attr_name == "is_null":
@@ -14787,28 +14765,29 @@ def _ast_to_polars_expr(
                 elif attr_name == "cummax":
                     expr = obj_expr.cum_max()
                     return expr.over(by) if by else expr
-                elif attr_name in ("fillna", "fill_null", "fill_nan"):
+                elif attr_name == "first":
+                    expr = obj_expr.first()
+                    return expr.over(by) if by else expr
+                elif attr_name == "last":
+                    expr = obj_expr.last()
+                    return expr.over(by) if by else expr
+                elif attr_name == "fillna":
                     val_expr = (
                         _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
                         if node.args
                         else pl.lit(0)
                     )
-                    if attr_name == "fill_null":
-                        expr = obj_expr.fill_null(val_expr)
-                    elif attr_name == "fill_nan":
-                        expr = obj_expr.fill_nan(val_expr)
+                    nans = True
+                    if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+                        nans = bool(node.args[1].value)
+                    for kw in node.keywords:
+                        if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
+                            nans = bool(kw.value.value)
+                    is_float = _is_float_or_numeric_expr(node.func.value, schema)
+                    if nans and is_float:
+                        expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
                     else:
-                        nans = True
-                        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
-                            nans = bool(node.args[1].value)
-                        for kw in node.keywords:
-                            if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
-                                nans = bool(kw.value.value)
-                        is_float = _is_float_or_numeric_expr(node.func.value, schema)
-                        if nans and is_float:
-                            expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
-                        else:
-                            expr = obj_expr.fill_null(val_expr)
+                        expr = obj_expr.fill_null(val_expr)
                     return expr.over(by) if by else expr
 
         # 2. Functional map(...)
@@ -14836,13 +14815,13 @@ def _ast_to_polars_expr(
 
             if default_node is not None:
                 default_expr = _ast_to_polars_expr(default_node, col_names, col_map, by, schema, params)
+                if hasattr(pl.Expr, "replace_strict"):
+                    expr = col_expr.replace_strict(mapping, default=default_expr)
+                else:
+                    expr = col_expr.replace(mapping, default=default_expr)  # type: ignore[call-arg]
             else:
-                default_expr = pl.lit(None)
-
-            if hasattr(pl.Expr, "replace_strict"):
-                expr = col_expr.replace_strict(mapping, default=default_expr)
-            else:
-                expr = col_expr.replace(mapping, default=default_expr)  # type: ignore[call-arg]
+                # 2-argument map(col, mapping) preserves unmapped values by default
+                expr = col_expr.replace(mapping)
             return expr.over(by) if by else expr
 
         # 3. case_when
@@ -14926,6 +14905,8 @@ def _ast_to_polars_expr(
             "std": lambda e: e.std(),
             "var": lambda e: e.var(),
             "rank": lambda e: e.rank(),
+            "first": lambda e: e.first(),
+            "last": lambda e: e.last(),
         }
         if func_name in agg_map and len(args) == 1:
             expr = agg_map[func_name](args[0])
@@ -14990,18 +14971,36 @@ def _ast_to_polars_expr(
             else:
                 expr = target_expr.fill_null(val_expr)
             return expr.over(by) if by else expr
-        if func_name == "fill_null" and len(node.args) >= 2:
-            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
-            val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
-            expr = target_expr.fill_null(val_expr)
-            return expr.over(by) if by else expr
-        if func_name == "fill_nan" and len(node.args) >= 2:
-            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
-            val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
-            expr = target_expr.fill_nan(val_expr)
-            return expr.over(by) if by else expr
         if func_name == "n" and len(args) == 0:
             expr = pl.len()
+            return expr.over(by) if by else expr
+        if func_name == "date" and len(args) >= 1:
+            arg_type = schema.get(node.args[0].id) if schema and isinstance(node.args[0], ast.Name) else None
+            if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                expr = args[0].str.to_date(str(node.args[1].value))
+            elif arg_type == pl.Date:
+                expr = args[0]
+            elif isinstance(arg_type, pl.Datetime) or arg_type == pl.Datetime:
+                expr = args[0].dt.date()
+            else:
+                expr = pl.coalesce(
+                    args[0].str.to_date(strict=False),
+                    args[0].str.to_datetime(strict=False).dt.date(),
+                )
+            return expr.over(by) if by else expr
+        if func_name in ("datetime", "timestamp") and len(args) >= 1:
+            arg_type = schema.get(node.args[0].id) if schema and isinstance(node.args[0], ast.Name) else None
+            if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                expr = args[0].str.to_datetime(str(node.args[1].value))
+            elif isinstance(arg_type, pl.Datetime) or arg_type == pl.Datetime:
+                expr = args[0]
+            elif arg_type == pl.Date:
+                expr = args[0].cast(pl.Datetime())
+            else:
+                expr = pl.coalesce(
+                    args[0].str.to_datetime(strict=False),
+                    args[0].str.to_date(strict=False).cast(pl.Datetime()),
+                )
             return expr.over(by) if by else expr
         if func_name in _DTYPE_MAP and len(args) == 1:
             expr = args[0].cast(_DTYPE_MAP[func_name])
@@ -15167,28 +15166,6 @@ def pick_polars(
     return sorted_df.head(n)
 
 
-def value_counts_polars(
-    df: Any,
-    cols: list[str] | None = None,
-    dropna: bool = False,
-) -> Any:
-    """Compute value counts across specified or all columns in a Polars DataFrame or LazyFrame."""
-    df_cols = _df_columns(df)
-    target_cols = cols if cols is not None else df_cols
-    if "count" in target_cols and "n" in target_cols:
-        raise ValueError(
-            "-value_counts: columns contain both 'count' and 'n'; rename one to avoid ambiguous count headers"
-        )
-
-    count_name = "count" if "count" not in target_cols else "n"
-
-    work_df = df
-    if dropna:
-        work_df = work_df.drop_nulls(subset=target_cols)
-
-    return work_df.group_by(target_cols).len().rename({"len": count_name}).sort(count_name, descending=True)
-
-
 def long_polars(
     df: pl.DataFrame,
     cols: str | Sequence[str] | None = None,
@@ -15348,93 +15325,6 @@ def wide_polars(
         ) from exc
 
 
-def handle_missing_polars(
-    df: Any,
-    fillna: str | None = ".",
-    numeric_fill: Any = 0,
-    cols: Sequence[str] | None = None,
-    preserve_categories: bool = True,
-    **kwargs: Any,
-) -> Any:
-    """Fill missing values in a Polars DataFrame or LazyFrame with type-appropriate defaults."""
-    df_cols = _df_columns(df)
-    schema = _df_schema(df)
-    target_cols = set(cols) if cols is not None else set(df_cols)
-    exprs: list[pl.Expr] = []
-
-    for c in df_cols:
-        if c not in target_cols:
-            exprs.append(pl.col(c))
-            continue
-
-        dtype = schema[c]
-        if dtype.is_numeric():
-            if numeric_fill == "mean":
-                col_expr = pl.col(c).fill_nan(None) if dtype.is_float() else pl.col(c)
-                exprs.append(col_expr.fill_null(col_expr.mean()))
-            elif numeric_fill == "median":
-                col_expr = pl.col(c).fill_nan(None) if dtype.is_float() else pl.col(c)
-                exprs.append(col_expr.fill_null(col_expr.median()))
-            elif numeric_fill is not None:
-                if dtype.is_float():
-                    exprs.append(pl.col(c).fill_nan(numeric_fill).fill_null(numeric_fill))
-                else:
-                    exprs.append(pl.col(c).fill_null(numeric_fill))
-            else:
-                exprs.append(pl.col(c))
-        elif dtype in (pl.String, pl.Null):
-            fill_str = str(fillna) if fillna is not None else "."
-            exprs.append(pl.col(c).cast(pl.String).fill_null(fill_str).str.strip_chars())
-        elif dtype == pl.Categorical:
-            fill_str = str(fillna) if fillna is not None else "."
-            expr = pl.col(c).cast(pl.String).fill_null(fill_str)
-            if preserve_categories:
-                expr = expr.cast(pl.Categorical)
-            exprs.append(expr)
-        else:
-            exprs.append(pl.col(c))
-
-    return df.with_columns(exprs)
-
-
-def replace_values_polars(
-    df: Any,
-    v: dict[Any, Any],
-    c: str | Sequence[str] | None = None,
-    exact: bool = True,
-) -> Any:
-    """Replace values in a Polars DataFrame or LazyFrame (exact or substring)."""
-    df_cols = _df_columns(df)
-    schema = _df_schema(df)
-    target_cols = ([c] if isinstance(c, str) else list(c)) if c is not None else list(df_cols)
-    if not exact:
-        non_string_cols = [col for col in target_cols if schema[col] not in (pl.String, pl.Utf8)]
-        if non_string_cols:
-            raise ValueError(
-                f"replace_values: exact=False (substring match) only works on string/object "
-                f"columns; non-string column(s): {non_string_cols}"
-            )
-        exprs: list[pl.Expr] = []
-        for col in df_cols:
-            if col in target_cols:
-                col_expr = pl.col(col)
-                for old_val, new_val in v.items():
-                    col_expr = col_expr.str.replace_all(re.escape(str(old_val)), str(new_val))
-                exprs.append(col_expr)
-            else:
-                exprs.append(pl.col(col))
-        return df.with_columns(exprs)
-
-    exprs = []
-    for col in df_cols:
-        if col in target_cols:
-            mapping = {k: v_val for k, v_val in v.items()}
-            exprs.append(pl.col(col).replace(mapping))
-        else:
-            exprs.append(pl.col(col))
-    return df.with_columns(exprs)
-
-
 def clean_columns_polars(df: Any, **opts: Any) -> Any:
     """Clean column header names in a Polars DataFrame or LazyFrame."""
     from pytae.other_utilities import clean_column_names
@@ -15472,8 +15362,6 @@ def agg_polars(
     if a is not None and specs:
         raise TypeError("agg(): multiple values for aggregation spec: both positional args and 'a' were provided")
 
-    if "drop_nulls" in kwargs:
-        dropna = kwargs.pop("drop_nulls")
     by_cols: list[str] = list(by) if by else []
     work_df = df
     if by_cols and dropna:
@@ -15516,10 +15404,6 @@ def agg_polars(
 
     if "__dropna__" in active_kwargs:
         dropna = active_kwargs.pop("__dropna__")
-        if by_cols and dropna:
-            work_df = work_df.drop_nulls(subset=by_cols)
-    if "drop_nulls" in active_kwargs:
-        dropna = active_kwargs.pop("drop_nulls")
         if by_cols and dropna:
             work_df = work_df.drop_nulls(subset=by_cols)
     if "dropna" in active_kwargs:
@@ -17628,11 +17512,17 @@ def test_pt_accessor_dropna_pandas_and_polars():
     assert len(pdf.pt.dropna("a")) == 2
     assert len(pldf.pt.dropna("a")) == 2
 
-    # Aliases drop_nulls and drop_na
-    assert len(pdf.pt.drop_nulls("a")) == 2
-    assert len(pldf.pt.drop_nulls("a")) == 2
-    assert len(pdf.pt.drop_na("a")) == 2
-    assert len(pldf.pt.drop_na("a")) == 2
+    # Renaming via .pt
+    pdf_renamed = pdf.pt.rename("a:alpha, b:beta")
+    assert list(pdf_renamed.columns) == ["alpha", "beta"]
+    pldf_renamed = pldf.pt.rename(a="alpha")
+    assert "alpha" in pldf_renamed.columns
+
+    # SQL via .pt
+    pdf_sql = pdf.pt.sql("SELECT b FROM data WHERE b IS NOT NULL")
+    assert len(pdf_sql) == 3
+    pldf_sql = pldf.pt.sql("SELECT a FROM data WHERE a IS NOT NULL")
+    assert len(pldf_sql) == 2
 
 
 def test_pt_sample_datasets_and_row_sampling():
@@ -17696,6 +17586,32 @@ def test_polars_pt_accessor_first_call_native_verb():
     assert isinstance(out, pt.DataFrame)
     assert list(out.columns) == ["x", "y", "z", "double_z"]
     assert list(out["double_z"]) == [10, 14, 18]
+
+
+def test_pt_accessor_by_auto_ungroups(tmp_path):
+    import pytest
+
+    parquet_path = tmp_path / "data.parquet"
+    df_raw = pd.DataFrame({"species": ["A", "A", "B", "B"], "mass": [10.0, 20.0, 100.0, 200.0]})
+    df_raw.to_parquet(parquet_path)
+
+    # 1. Loading from parquet
+    k = pt.read_parquet(parquet_path)
+    assert isinstance(k, pt.DataFrame)
+
+    # 2. k.by() with no arguments raises ValueError
+    with pytest.raises(ValueError, match=r"df\.pt\.by\(\) takes at least one column name"):
+        k.by()
+
+    # 3. .by() scopes the immediate next mutate, which automatically returns an ungrouped DataFrame
+    k_res = (
+        k.by("species")
+        .mutate(group_mean="mean(mass)")
+        .mutate(overall_mean="mean(mass)")
+    )
+    assert isinstance(k_res, pt.DataFrame)
+    assert k_res["group_mean"].to_list() == [15.0, 15.0, 150.0, 150.0]
+    assert k_res["overall_mean"].to_list() == [82.5, 82.5, 82.5, 82.5]
 
 ################################################################################
 # FILE: tests/test_agg.py
@@ -18479,7 +18395,7 @@ from pytae import cli
 from tests.cli_helpers import _messy_headers_frame, _replace_frame, _write_csv
 
 
-def test_handle_missing_default_fill(tmp_path, capsys):
+def test_handle_missing_redirect_error_and_fillna(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", None],
@@ -18488,82 +18404,37 @@ def test_handle_missing_default_fill(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-handle_missing"])
+    # -handle_missing raises informative redirect error
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-handle_missing"])
+    assert exc_info.value.code == 2
+    assert "'-handle_missing' has been removed; use '-fillna' instead" in capsys.readouterr().err
 
+    # -fillna works
+    exit_code = cli.main([path, "-fillna", "grp:., val:0.0"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    # object/category NA becomes '.', numeric NA becomes 0.
     assert "." in out
     assert "0.0" in out
 
 
-def test_replace_whole_df_exact_match(tmp_path, capsys):
+def test_replace_values_redirect_error_and_mutate_map(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
-    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo'"])
+    # -replace_values raises informative redirect error
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-replace_values", "v='a magician:the magic'"])
+    assert exc_info.value.code == 2
+    assert (
+        "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead"
+        in capsys.readouterr().err
+    )
 
+    # -mutate with map() works for replacing cell values
+    exit_code = cli.main([path, "-mutate", "col a = map([col a], {'a magician': 'the magic'})"])
+    assert exit_code == 0
     out = capsys.readouterr().out
     assert "the magic" in out
-    assert "bravo" in out
-    assert "not a magician exactly" in out  # untouched: not an exact whole-cell match
-    assert "analphabet" in out  # untouched: not an exact whole-cell match
-
-
-def test_replace_scoped_columns_only(tmp_path, capsys):
-    df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
-    path = _write_csv(tmp_path, df)
-
-    cli.main([path, "-replace_values", "c=col a,v=alpha:bravo"])
-
-    out = capsys.readouterr().out.strip().splitlines()
-    assert out[1].split() == ["bravo", "alpha"]
-
-
-def test_replace_exact_false_matches_substring(tmp_path, capsys):
-    path = _write_csv(tmp_path, _replace_frame())
-
-    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo',exact=false"])
-
-    out = capsys.readouterr().out
-    assert "not the magic exactly" in out
-    assert "anbravobet" in out
-
-
-def test_replace_unknown_column_errors(tmp_path, capsys):
-    path = _write_csv(tmp_path, _replace_frame())
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-replace_values", "c=missing,v=alpha:bravo"])
-    assert exc_info.value.code == 2
-    assert "-replace_values" in capsys.readouterr().err
-
-
-def test_replace_requires_v(tmp_path):
-    path = _write_csv(tmp_path, _replace_frame())
-
-    with pytest.raises(SystemExit):
-        cli.main([path, "-replace_values", "c=col a"])
-
-
-def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
-    df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
-
-    path = _write_csv(tmp_path, df)
-    cli.main([path, "-replace_values", "v=alpha:bravo"])
-    unquoted = capsys.readouterr().out.strip()
-
-    path = _write_csv(tmp_path, df)
-    cli.main([path, "-replace_values", "v=alpha:'bravo'"])
-    quoted = capsys.readouterr().out.strip()
-
-    assert unquoted == quoted
-    assert "bravo" in unquoted
-
-
-def test_replace_values_equals_raises_error(tmp_path):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
-    with pytest.raises(SystemExit, match="use ':'"):
-        cli.main([path, "-replace_values", "v=1=2"])
 
 
 def test_rename_quoting_is_optional(tmp_path):
@@ -19169,11 +19040,13 @@ def test_filter_cli_bracket_interval(tmp_path, capsys):
 def test_filter_cli_str_methods_and_null_checks(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
-        pd.DataFrame({
-            "species": ["Adelie", "Gentoo", "Chinstrap"],
-            "island": ["Torgersen", "Biscoe", "Dream"],
-            "sex": ["MALE", None, "FEMALE"],
-        }),
+        pd.DataFrame(
+            {
+                "species": ["Adelie", "Gentoo", "Chinstrap"],
+                "island": ["Torgersen", "Biscoe", "Dream"],
+                "sex": ["MALE", None, "FEMALE"],
+            }
+        ),
     )
 
     # -filter "island.str.contains('org')"
@@ -19287,27 +19160,28 @@ def test_empty_parquet_head_keeps_columns(tmp_path, capsys):
     assert "Empty DataFrame" in captured.out
 
 
-def test_info_prints_pandas_info(tmp_path, capsys):
+def test_info_redirect_error_and_glimpse(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}))
 
-    exit_code = cli.main([path, "-info"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-info"])
+    assert exc.value.code == 2
+    assert "'-info' has been removed; use '-glimpse' instead" in capsys.readouterr().err
 
+    exit_code = cli.main([path, "-glimpse"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "DataFrame" in out
-    assert "a" in out and "b" in out
-    assert "2 entries" in out or "2 rows" in out or "RangeIndex: 2" in out
+    assert "Rows: 2" in out
+    assert "$ a" in out and "$ b" in out
 
 
-def test_head_then_info_prints_only_info(tmp_path, capsys):
+def test_head_then_glimpse_prints_glimpse(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10)}))
 
-    exit_code = cli.main([path, "-head", "3", "-info"])
-
+    exit_code = cli.main([path, "-head", "3", "-glimpse"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "RangeIndex: 3" in out
-    assert "DataFrame" in out
+    assert "Rows: 3" in out
 
 
 def test_describe_prints_pandas_summary(tmp_path, capsys):
@@ -19390,87 +19264,24 @@ def test_dedupe_flag_removed(tmp_path, capsys):
     assert "'-dedupe' has been removed; use '-distinct' instead" in capsys.readouterr().err
 
 
-def test_order_value_counts_then_shape_uses_count_table(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "grp": ["x", "x", "y"],
-            "val": [1, 2, 3],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # value_counts result has two columns: key + count.
-    assert "(2, 2)" in out
-
-
-def test_value_counts_dropna_default_and_flags(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "grp": ["x", None, "x"],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    # Without -dropna: includes NA as its own key, yielding x + NA (2 rows).
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-shape"])
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    assert "(2, 2)" in out
-
-    # Top-level row-filtering -dropna drops rows with NA (1 row in value_counts).
-    exit_code_drop = cli.main([path, "-dropna", "-select", "grp", "-value_counts", "-shape"])
-    out_drop = capsys.readouterr().out
-    assert exit_code_drop == 0
-    assert "(1, 2)" in out_drop
-
-
-def test_value_counts_uses_selected_multiple_columns(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "num_legs": [2, 4, 4, 6],
-            "num_wings": [2, 0, 0, 0],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-select", "num_legs,num_wings", "-value_counts", "-shape"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # Two key columns + count, three unique key combinations.
-    assert "(3, 3)" in out
-
-
-def test_value_counts_without_argument_uses_selected_columns(tmp_path, capsys):
-    df = pd.DataFrame(
-        {
-            "num_legs": [2, 4, 4, 6],
-            "num_wings": [2, 0, 0, 0],
-            "animal": ["falcon", "dog", "cat", "ant"],
-        }
-    )
-    path = _write_csv(tmp_path, df)
-
-    exit_code = cli.main([path, "-select", "num_legs,num_wings", "-value_counts", "-shape"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # -select narrows working columns, so no-arg -value_counts uses those two.
-    assert "(3, 3)" in out
-
-
-def test_value_counts_collision_fails_cleanly(tmp_path, capsys):
-    df = pd.DataFrame({"count": [1, 2], "n": [3, 4]})
+def test_value_counts_redirect_error(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x", "y"]})
     path = _write_csv(tmp_path, df)
     with pytest.raises(SystemExit) as exc:
         cli.main([path, "-value_counts"])
     assert exc.value.code == 2
-    err = capsys.readouterr().err
-    assert "columns contain both 'count' and 'n'" in err
+    assert "'-value_counts' has been removed; use '-freq' instead" in capsys.readouterr().err
+
+
+def test_freq_cli_profiling(tmp_path, capsys):
+    df = pd.DataFrame({"grp": ["x", "x", "y"]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-freq", "grp"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Count" in out and "Distribution" in out
+    assert "x" in out and "y" in out
 
 
 def test_order_arrange_then_shape_uses_sorted_frame(tmp_path, capsys):
@@ -19508,7 +19319,7 @@ def test_arrange_respects_select_and_descending(tmp_path, capsys):
     assert "3" in out
 
 
-def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
+def test_value_counts_in_pipeline_redirect_error(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", "x", "y"],
@@ -19516,12 +19327,10 @@ def test_value_counts_then_arrange_prints_only_final_table(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp", "-value_counts", "-arrange", "count"])
-
-    out = capsys.readouterr().out
-    assert exit_code == 0
-    # Header should appear once: only final sorted value_counts table is printed.
-    assert out.count("grp") == 1
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-select", "grp", "-value_counts", "-arrange", "count"])
+    assert exc.value.code == 2
+    assert "'-value_counts' has been removed; use '-freq' instead" in capsys.readouterr().err
 
 
 def test_cols_default_is_file_order(tmp_path, capsys):
@@ -20846,6 +20655,34 @@ def test_mutate_cli_disallow_dot_map(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "'.map()' method syntax is not supported" in err
 
+
+def test_mutate_cli_first_last_window(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "grp": ["A", "A", "B", "B"],
+            "val": [10.0, 25.0, 100.0, 140.0],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main(
+        [
+            path,
+            "-by",
+            "grp",
+            "-mutate",
+            "base = first(val), dev = val - first(val), ending = last(val)",
+            "-select",
+            "grp,val,base,dev,ending",
+            "-head",
+        ]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "base" in out and "dev" in out and "ending" in out
+    assert "15.0" in out or "15" in out  # 25.0 - 10.0 = 15.0
+    assert "40.0" in out or "40" in out  # 140.0 - 100.0 = 40.0
+
 ################################################################################
 # FILE: tests/test_cli_new_features.py
 ################################################################################
@@ -20888,21 +20725,19 @@ def test_cli_dropna_how_any(capsys):
 
 
 def test_cli_drop_nulls_alias(capsys):
-    # -drop_nulls is an alias for -dropna
-    ret = main([PENGUINS_PATH, "-drop_nulls", "-shape"])
-    assert ret == 0
-    assert "(344, 7)" in capsys.readouterr().out
-
-    ret2 = main([PENGUINS_PATH, "-drop_nulls", "how=any", "-shape"])
-    assert ret2 == 0
-    assert "(333, 7)" in capsys.readouterr().out
+    # -drop_nulls has been removed in favor of -dropna
+    with pytest.raises(SystemExit) as exc:
+        main([PENGUINS_PATH, "-drop_nulls", "-shape"])
+    assert exc.value.code == 2
+    assert "'-drop_nulls' has been removed; use '-dropna' instead" in capsys.readouterr().err
 
 
 def test_cli_drop_na_alias(capsys):
-    # -drop_na is also an alias for -dropna
-    ret = main([PENGUINS_PATH, "-drop_na", "-shape"])
-    assert ret == 0
-    assert "(344, 7)" in capsys.readouterr().out
+    # -drop_na has been removed in favor of -dropna
+    with pytest.raises(SystemExit) as exc:
+        main([PENGUINS_PATH, "-drop_na", "-shape"])
+    assert exc.value.code == 2
+    assert "'-drop_na' has been removed; use '-dropna' instead" in capsys.readouterr().err
 
 
 def test_cli_dropna_specific_columns(capsys):
@@ -21423,11 +21258,11 @@ def test_group_by_agg_sum_matches_known_flights_totals(sample_parquet, capsys):
     assert rows == [["1949", "1520"], ["1950", "1676"], ["1951", "2042"]]
 
 
-def test_handle_missing_fills_real_titanic_nans(sample_parquet, capsys):
+def test_fillna_fills_real_titanic_nans(sample_parquet, capsys):
     # titanic has genuine NaNs in numeric (age) and object (deck) columns.
     path = sample_parquet("titanic")
 
-    exit_code = cli.main([path, "-handle_missing", "-select", "age,deck", "-nulls"])
+    exit_code = cli.main([path, "-fillna", "age:0, deck:.", "-select", "age,deck", "-nulls"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -22029,11 +21864,13 @@ import pytae as pt
 
 def test_df_fillna_scalar_default_nans_true():
     # Both NaN and null are filled by default
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-        "txt": ["a", None, "c"],
-        "num": [10, None, 30],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+            "txt": ["a", None, "c"],
+            "num": [10, None, 30],
+        }
+    )
     res = df.fillna(0.0)
     assert res["flt"].to_list() == [1.0, 0.0, 0.0]
     # String column untouched because 0.0 is float
@@ -22043,10 +21880,12 @@ def test_df_fillna_scalar_default_nans_true():
 
 def test_df_fillna_scalar_nans_false():
     # Only null is filled; NaN remains intact
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-        "txt": ["a", None, "c"],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+            "txt": ["a", None, "c"],
+        }
+    )
     res = df.fillna(0.0, nans=False)
     flt_vals = res["flt"].to_list()
     assert flt_vals[0] == 1.0
@@ -22055,11 +21894,13 @@ def test_df_fillna_scalar_nans_false():
 
 
 def test_df_fillna_dict():
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-        "txt": ["a", None, "c"],
-        "num": [10, None, 30],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+            "txt": ["a", None, "c"],
+            "num": [10, None, 30],
+        }
+    )
     res = df.fillna({"flt": -1.0, "txt": "MISSING", "num": 0})
     assert res["flt"].to_list() == [1.0, -1.0, -1.0]
     assert res["txt"].to_list() == ["a", "MISSING", "c"]
@@ -22067,10 +21908,12 @@ def test_df_fillna_dict():
 
 
 def test_df_fillna_subset_and_cols():
-    df = pt.DataFrame({
-        "flt1": [1.0, float("nan"), None],
-        "flt2": [2.0, float("nan"), None],
-    })
+    df = pt.DataFrame(
+        {
+            "flt1": [1.0, float("nan"), None],
+            "flt2": [2.0, float("nan"), None],
+        }
+    )
     # Target flt1 only via *cols
     r1 = df.fillna(0.0, "flt1")
     assert r1["flt1"].to_list() == [1.0, 0.0, 0.0]
@@ -22096,9 +21939,11 @@ def test_df_fillna_missing_value_raises_type_error():
 
 
 def test_df_fill_null_and_fill_nan():
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+        }
+    )
     # fill_null fills null only (nans=False)
     r_null = df.fill_null(0.0)
     assert math.isnan(r_null["flt"].to_list()[1])
@@ -22130,10 +21975,12 @@ def test_functional_and_accessor_fillna():
 
 
 def test_grouped_dataframe_fillna():
-    df = pt.DataFrame({
-        "grp": ["A", "A", "B", "B"],
-        "val": [1.0, float("nan"), None, 4.0],
-    })
+    df = pt.DataFrame(
+        {
+            "grp": ["A", "A", "B", "B"],
+            "val": [1.0, float("nan"), None, 4.0],
+        }
+    )
     res = df.by("grp").fillna(0.0)
     assert res["val"].to_list() == [1.0, 0.0, 0.0, 4.0]
 
@@ -22565,14 +22412,10 @@ def test_lazy_verbs(sample_parquet: Path):
 
     # dropna (Option B zero data loss: bare defaults to how='all', targeted to how='any')
     assert len(df.dropna().collect()) == 5
-    assert len(df.drop_nulls().collect()) == 5
-    assert len(df.drop_na().collect()) == 5
 
     dn = df.dropna("val1")
     assert dn.is_lazy
     assert len(dn.collect()) == 5
-    assert len(df.drop_nulls("val1").collect()) == 5
-    assert len(df.drop_na("val1").collect()) == 5
     assert len(df.dropna(how="any").collect()) == 5
 
     # pick
@@ -22581,12 +22424,10 @@ def test_lazy_verbs(sample_parquet: Path):
     assert len(p.collect()) == 2
     assert p.collect()["val1"].to_list() == [50, 40]
 
-    # replace_values
-    rv = df.replace_values({"A": "ALPHA"}, c="category")
-    assert rv.is_lazy
-    cats = rv.collect()["category"].to_list()
-    assert "ALPHA" in cats
-    assert "A" not in cats
+    # fillna
+    fn = df.fillna(0)
+    assert fn.is_lazy
+    assert len(fn.collect()) == 5
 
     # clean_columns
     cc = df.clean_columns(case="upper")
@@ -22692,7 +22533,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import pytae as pt
-from pytae.mutate import parse_mutate_spec
+from pytae._parsing import parse_mutate_spec
 
 
 def _df():
@@ -23273,9 +23114,9 @@ def test_mutate_map_column_and_expr_defaults():
     r1 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, species)")
     assert list(r1["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
-    # 2. 2-argument map (unmapped values become null)
+    # 2. 2-argument map (unmapped values are preserved)
     r2 = df.mutate(mapped="map(species, {'Adelie': 'AD'})")
-    assert list(r2["mapped"]) == ["AD", None, None]
+    assert list(r2["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
     # 3. Fallback to another column
     r3 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, alt_name)")
@@ -23286,7 +23127,7 @@ def test_mutate_map_column_and_expr_defaults():
     assert list(r4["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
 
-def test_mutate_smart_fillna_and_fill_null_fill_nan():
+def test_mutate_smart_fillna():
     df = pt.DataFrame(
         {
             "flt": [1.0, float("nan"), None],
@@ -23302,40 +23143,48 @@ def test_mutate_smart_fillna_and_fill_null_fill_nan():
     r2 = df.mutate(clean="fillna(flt, 0.0, nans=False)")
     assert r2["clean"][0] == 1.0 and str(r2["clean"][1]) == "nan" and r2["clean"][2] == 0.0
 
-    # 3. fill_null(col, val) -> strict null filling
-    r3 = df.mutate(clean="fill_null(flt, 0.0)")
-    assert r3["clean"][0] == 1.0 and str(r3["clean"][1]) == "nan" and r3["clean"][2] == 0.0
+    # 3. Method syntax col.fillna(0.0)
+    r3 = df.mutate(clean="flt.fillna(0.0)")
+    assert list(r3["clean"]) == [1.0, 0.0, 0.0]
 
-    # 4. fill_nan(col, val) -> strict NaN filling
-    r4 = df.mutate(clean="fill_nan(flt, 0.0)")
-    assert r4["clean"][0] == 1.0 and r4["clean"][1] == 0.0 and r4["clean"][2] is None
+    # 4. fillna on string column (safely fills null without is_nan error)
+    r4 = df.mutate(clean="fillna(str_col, 'MISSING')")
+    assert list(r4["clean"]) == ["alpha", "MISSING", "gamma"]
 
-    # 5. Method syntax col.fillna(0.0)
-    r5 = df.mutate(clean="flt.fillna(0.0)")
-    assert list(r5["clean"]) == [1.0, 0.0, 0.0]
-
-    # 6. fillna on string column (safely fills null without is_nan error)
-    r6 = df.mutate(clean="fillna(str_col, 'MISSING')")
-    assert list(r6["clean"]) == ["alpha", "MISSING", "gamma"]
-
-    # 7. Method syntax str_col.fill_null('MISSING')
-    r7 = df.mutate(clean="str_col.fill_null('MISSING')")
-    assert list(r7["clean"]) == ["alpha", "MISSING", "gamma"]
+    # 5. Method syntax str_col.fillna('MISSING')
+    r5 = df.mutate(clean="str_col.fillna('MISSING')")
+    assert list(r5["clean"]) == ["alpha", "MISSING", "gamma"]
 
 
-def test_handle_missing_cleans_float_nans():
+def test_fillna_cleans_float_nans():
     df = pt.DataFrame(
         {
             "flt": [10.0, float("nan"), None, 30.0],
         }
     )
-    # numeric_fill=0 fills both NaN and null
-    cleaned = df.handle_missing(numeric_fill=0)
+    # df.fillna(0) fills both NaN and null
+    cleaned = df.fillna(0.0)
     assert list(cleaned["flt"]) == [10.0, 0.0, 0.0, 30.0]
 
-    # numeric_fill="mean" computes mean ignoring NaNs and nulls (mean of 10 and 30 is 20)
-    cleaned_mean = df.handle_missing(numeric_fill="mean")
-    assert list(cleaned_mean["flt"]) == [10.0, 20.0, 20.0, 30.0]
+
+def test_mutate_dt_and_str_methods():
+    df = pt.DataFrame(
+        {
+            "dt_str": ["2026-03-15 14:30:00", "2026-04-20 09:15:00"],
+            "name": ["john doe", "jane smith"],
+        }
+    )
+    res = df.mutate(
+        d="date(dt_str)",
+        yr="date(dt_str).dt.year()",
+        mo="date(dt_str).dt.month()",
+        title_name="name.str.title()",
+        rep="name.str.replace('john', 'jack')",
+    )
+    assert list(res["yr"]) == [2026, 2026]
+    assert list(res["mo"]) == [3, 4]
+    assert list(res["title_name"]) == ["John Doe", "Jane Smith"]
+    assert list(res["rep"]) == ["jack doe", "jane smith"]
 
 
 def test_mutate_interleaved_callable_and_string_expression():
@@ -23390,11 +23239,13 @@ def test_mutate_grouped_consecutive_callables_consuming_each_other():
 
 
 def test_mutate_str_methods_and_null_checks_case_when():
-    df = pt.DataFrame({
-        "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
-        "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
-        "hazmat_class": [None, None, "CLASS-3", None],
-    })
+    df = pt.DataFrame(
+        {
+            "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
+            "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
+            "hazmat_class": [None, None, "CLASS-3", None],
+        }
+    )
     res = df.mutate(
         shipping_mode="""
         case_when(
@@ -23430,13 +23281,15 @@ def test_mutate_custom_function_lambda_vectorized_and_map():
     def calc_metric(x, y):
         return x * 2.5 + np.maximum(y, 0)
 
-    df = pt.DataFrame({
-        "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
-        "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
-        "hazmat_class": [None, None, "CLASS-3", None],
-        "a": [1.0, 2.0, 3.0, 4.0],
-        "b": [10.0, -5.0, 20.0, -1.0],
-    })
+    df = pt.DataFrame(
+        {
+            "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
+            "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
+            "hazmat_class": [None, None, "CLASS-3", None],
+            "a": [1.0, 2.0, 3.0, 4.0],
+            "b": [10.0, -5.0, 20.0, -1.0],
+        }
+    )
 
     # Row-wise map() and vectorized direct call in the same mutate, plus interleaved string formula
     res = df.mutate(
@@ -23463,10 +23316,12 @@ def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
     def group_demeaned(s):
         return s - s.mean()
 
-    df = pt.DataFrame({
-        "grp": ["A", "A", "B", "B"],
-        "x": [2.0, 8.0, 4.0, 10.0],
-    })
+    df = pt.DataFrame(
+        {
+            "grp": ["A", "A", "B", "B"],
+            "x": [2.0, 8.0, 4.0, 10.0],
+        }
+    )
 
     res = df.mutate(
         scaled=lambda d: scale_with_offset(d["x"], 3.0, offset=0.5),
@@ -23487,11 +23342,13 @@ def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
 def test_mutate_inline_cast_python_types():
     import polars as pl
 
-    df = pt.DataFrame({
-        "s_num": ["10", "20", "30"],
-        "f_num": [1.9, 2.1, 3.8],
-        "i_num": [0, 1, 0],
-    })
+    df = pt.DataFrame(
+        {
+            "s_num": ["10", "20", "30"],
+            "f_num": [1.9, 2.1, 3.8],
+            "i_num": [0, 1, 0],
+        }
+    )
 
     # int(x), float(x), str(x), bool(x)
     res = df.mutate(
@@ -23540,6 +23397,36 @@ def test_mutate_multi_column_cast():
     assert res.schema["b"] == pl.Int64
     assert res["a"].to_list() == [1, 2]
     assert res["b"].to_list() == [3, 4]
+
+
+def test_mutate_first_last_window():
+    # 1. Grouped with by()
+    df = pt.DataFrame(
+        {
+            "ticker": ["AAPL", "AAPL", "AAPL", "MSFT", "MSFT"],
+            "price": [150.0, 155.0, 160.0, 300.0, 310.0],
+        }
+    )
+    res = df.by("ticker").mutate(
+        base="first(price)",
+        last_val="last(price)",
+        base_method="price.first()",
+        last_method="price.last()",
+        drift="price - first(price)",
+    )
+    assert res["base"].to_list() == [150.0, 150.0, 150.0, 300.0, 300.0]
+    assert res["last_val"].to_list() == [160.0, 160.0, 160.0, 310.0, 310.0]
+    assert res["base_method"].to_list() == [150.0, 150.0, 150.0, 300.0, 300.0]
+    assert res["last_method"].to_list() == [160.0, 160.0, 160.0, 310.0, 310.0]
+    assert res["drift"].to_list() == [0.0, 5.0, 10.0, 0.0, 10.0]
+
+    # 2. Whole-table (ungrouped)
+    res_all = df.mutate(
+        first_all="first(price)",
+        last_all="last(price)",
+    )
+    assert res_all["first_all"].to_list() == [150.0, 150.0, 150.0, 150.0, 150.0]
+    assert res_all["last_all"].to_list() == [310.0, 310.0, 310.0, 310.0, 310.0]
 
 ################################################################################
 # FILE: tests/test_pivot.py
@@ -24033,14 +23920,19 @@ def test_cli_group_by_rejected(tmp_path, capsys):
     assert "'-group_by' has been removed; use '-by' instead" in capsys.readouterr().err
 
 
-def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):
+def test_cli_value_counts_redirect_error_and_freq(tmp_path, capsys):
     df = pd.DataFrame({"count": ["a", "a", "b"]})
     path = str(tmp_path / "counts.csv")
     df.to_csv(path, index=False)
-    exit_code = cli.main([path, "-value_counts"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-value_counts"])
+    assert exc.value.code == 2
+    assert "'-value_counts' has been removed; use '-freq' instead" in capsys.readouterr().err
+
+    exit_code = cli.main([path, "-freq", "count"])
     assert exit_code == 0
     out = capsys.readouterr().out
-    assert "count" in out
+    assert "Count" in out and "Distribution" in out
 
 
 def test_pivot_multi_key_empty_string_component():
@@ -25188,15 +25080,15 @@ from pytae.polars_engine import (
     clean_columns_polars,
     distinct_polars,
     dropna_polars,
+    fillna_polars,
     filter_polars,
-    handle_missing_polars,
     long_polars,
     mutate_polars,
     pick_polars,
     pivot_polars,
     rename_polars,
     select_polars,
-    value_counts_polars,
+    sql_polars,
     wide_polars,
 )
 
@@ -25455,27 +25347,11 @@ def test_pick_polars():
     assert len(res_prop) == 3
 
 
-def test_value_counts_polars():
-    df = pl.DataFrame(
-        {
-            "item": ["apple", "banana", "apple", "cherry", None, "banana", "apple"],
-            "count": [1, 2, 1, 3, 4, 2, 1],
-        }
-    )
-    # Single column
-    res = value_counts_polars(df.select("item"), dropna=True)
-    assert res.columns == ["item", "count"]
-    assert res["item"].to_list() == ["apple", "banana", "cherry"]
-    assert res["count"].to_list() == [3, 2, 1]
-
-    # With existing 'count' column, count header becomes 'n'
-    res_with_count = value_counts_polars(df, dropna=True)
-    assert "n" in res_with_count.columns
-
-    # Both count and n columns collision
-    df_collision = pl.DataFrame({"count": [1], "n": [2]})
-    with pytest.raises(ValueError, match="columns contain both 'count' and 'n'"):
-        value_counts_polars(df_collision)
+def test_sql_polars():
+    df = pl.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    res = sql_polars(df, "SELECT a * 2 AS doubled, b FROM data WHERE a > 1")
+    assert res["doubled"].to_list() == [4, 6]
+    assert res["b"].to_list() == ["y", "z"]
 
 
 def test_long_and_wide_polars():
@@ -25501,19 +25377,31 @@ def test_long_and_wide_polars():
         wide_polars(long_res, c="variable", v="value", index="id")
 
 
-def test_handle_missing_polars():
+def test_fillna_polars():
     df = pl.DataFrame(
         {
-            "s": [" hello ", None, "world "],
+            "s": ["hello", None, "world"],
             "n": [10.0, None, 30.0],
             "b": [True, None, False],
         }
     )
-    res = handle_missing_polars(df, fillna=".")
-    assert res["s"].to_list() == ["hello", ".", "world"]
-    assert res["n"].to_list() == [10.0, 0.0, 30.0]
-    # Boolean untouched
-    assert res["b"].to_list() == [True, None, False]
+    # Scalar fill on type-appropriate columns
+    res_num = fillna_polars(df, 0)
+    assert res_num["n"].to_list() == [10.0, 0.0, 30.0]
+    assert res_num["s"].to_list() == ["hello", None, "world"]
+
+    res_str = fillna_polars(df, "missing")
+    assert res_str["s"].to_list() == ["hello", "missing", "world"]
+    assert res_str["n"].to_list() == [10.0, None, 30.0]
+
+    # Mapping
+    res_map = fillna_polars(df, {"s": "none", "n": -1.0})
+    assert res_map["s"].to_list() == ["hello", "none", "world"]
+    assert res_map["n"].to_list() == [10.0, -1.0, 30.0]
+
+    # Subset
+    res_sub = fillna_polars(df, -99.0, cols=["n"])
+    assert res_sub["n"].to_list() == [10.0, -99.0, 30.0]
 
 
 def test_clean_columns_polars():
@@ -25790,6 +25678,26 @@ def test_write_dataframe_polars(tmp_path):
     assert json_path.exists()
     read_json = pl.read_ndjson(json_path)
     assert read_json["b"].to_list() == ["x", "y", "z"]
+
+
+def test_filter_polars_dt_and_str_methods():
+    import pytae as pt
+
+    df = pt.DataFrame(
+        {
+            "order_date": ["2026-01-15", "2026-07-20", "2026-12-05"],
+            "sku": ["PROD-A-01", "TEST-B-02", "PROD-C-03"],
+        }
+    )
+    # str.startswith
+    res_str = df.filter("sku.str.startswith('PROD')")
+    assert len(res_str) == 2
+    assert list(res_str["sku"]) == ["PROD-A-01", "PROD-C-03"]
+
+    # dt.month
+    res_dt = df.filter("date(order_date).dt.month() > 6")
+    assert len(res_dt) == 2
+    assert list(res_dt["sku"]) == ["TEST-B-02", "PROD-C-03"]
 
 ################################################################################
 # FILE: tests/test_readers.py
@@ -26689,33 +26597,31 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))
 
 
-def test_handle_missing_fills_object_and_numeric():
+def test_fillna_fills_object_and_numeric():
     df = pd.DataFrame({"grp": pd.Series(["x", None], dtype=object), "val": [1.0, None]})
-    result = pt.handle_missing(df)
+    result = pt.fillna(df, {"grp": ".", "val": 0.0})
     assert result["grp"].tolist() == ["x", "."]
     assert result["val"].tolist() == [1.0, 0.0]
     assert df["grp"].isna().any()
 
 
-def test_handle_missing_preserves_categorical():
+def test_fillna_preserves_categorical():
     s = pd.Series(pd.Categorical(["A", None, "B"]))
     df = pd.DataFrame({"cat": s, "val": [1.0, None, 3.0]})
-    result = pt.handle_missing(df, fillna="Missing")
-    assert isinstance(result.to_pandas()["cat"].dtype, pd.CategoricalDtype)
+    result = pt.fillna(df, "Missing", "cat")
     assert result["cat"].tolist() == ["A", "Missing", "B"]
-    assert "Missing" in result.to_pandas()["cat"].cat.categories
 
 
-def test_handle_missing_custom_numeric_fill_and_cols():
+def test_fillna_custom_numeric_fill_and_cols():
     df = pd.DataFrame({"a": [10.0, None], "b": [100.0, None], "txt": ["hello", None]})
-    # Only fill 'a' with mean, leave 'b' and 'txt' untouched
-    result = pt.handle_missing(df, numeric_fill="mean", cols=["a"])
+    # Only fill 'a', leave 'b' and 'txt' untouched
+    result = pt.fillna(df, 10.0, "a")
     assert result["a"].tolist() == [10.0, 10.0]
     assert pd.isna(result["b"].iloc[1])
     assert pd.isna(result["txt"].iloc[1])
 
-    # numeric_fill=None leaves numerics alone
-    result2 = pt.handle_missing(df, fillna="N/A", numeric_fill=None)
+    # fillna with mapping
+    result2 = pt.fillna(df, {"txt": "N/A"})
     assert pd.isna(result2["a"].iloc[1])
     assert result2["txt"].tolist() == ["hello", "N/A"]
 
@@ -26760,36 +26666,28 @@ def test_clean_columns_strip_special_keeps_fill_character():
     assert list(result.columns) == ["co-ops-data"]
 
 
-def test_replace_values_exact_whole_df():
-    df = pd.DataFrame({"a": ["x", "not x exactly"], "b": ["x", "y"]})
-    result = pt.replace_values(df, {"x": "z"})
-    assert result["a"].tolist() == ["z", "not x exactly"]
-    assert result["b"].tolist() == ["z", "y"]
-    assert df["a"].tolist() == ["x", "not x exactly"]  # original untouched
+def test_rename_string_and_dict_and_kwargs():
+    df = pd.DataFrame({"a": [1], "b": [2]})
+    # String spec
+    r1 = pt.rename(df, "a:alpha, b:beta")
+    assert list(r1.columns) == ["alpha", "beta"]
+
+    # Dict spec
+    r2 = pt.rename(df, {"a": "alpha"})
+    assert list(r2.columns) == ["alpha", "b"]
+
+    # Kwargs spec
+    r3 = pt.rename(df, a="alpha", b="beta")
+    assert list(r3.columns) == ["alpha", "beta"]
+
+    # Missing column raises KeyError
+    with pytest.raises(KeyError, match="nonexistent"):
+        pt.rename(df, "nonexistent:new_name")
 
 
-def test_replace_values_scoped_to_columns():
-    df = pd.DataFrame({"a": ["x"], "b": ["x"]})
-    result = pt.replace_values(df, {"x": "z"}, c="a")
-    assert result["a"].tolist() == ["z"]
-    assert result["b"].tolist() == ["x"]
-
-
-def test_replace_values_substring_match():
-    df = pd.DataFrame({"a": ["not a magician exactly"]})
-    result = pt.replace_values(df, {"a magician": "the magic"}, exact=False)
-    assert result["a"].tolist() == ["not the magic exactly"]
-
-
-def test_replace_values_substring_match_on_numeric_column_raises():
-    df = pd.DataFrame({"a": [1, 2, 3]})
-    with pytest.raises(ValueError, match="only works on string/object columns"):
-        pt.replace_values(df, {1: 9}, exact=False)
-
-
-def test_handle_missing_leaves_bool_column_untouched():
+def test_fillna_leaves_bool_column_untouched():
     df = pd.DataFrame({"b": [True, None]})
-    result = pt.handle_missing(df)
+    result = pt.fillna(df, 0)
     assert result["b"].iloc[0] is True
     assert pd.isna(result["b"].iloc[1])
 
@@ -26806,10 +26704,9 @@ def test_clean_columns_dedupe_avoids_new_collisions():
     assert len(set(result)) == len(result)
 
 
-def test_handle_missing_all_null_object_column():
-    # Lib Issue 15: all-null object column is filled by handle_missing
+def test_fillna_all_null_object_column():
     df = pd.DataFrame({"a": [None, None]}, dtype=object)
-    result = pt.handle_missing(df)
+    result = pt.fillna(df, ".")
     assert list(result["a"]) == [".", "."]
 
 
@@ -27003,7 +26900,7 @@ def test_cli_distinct_keep(tmp_path, capsys):
 
 
 # ==============================================================================
-# 3. Tests for by() and ungroup()
+# 3. Tests for by() and Scoped Grouping
 # ==============================================================================
 
 
@@ -27056,13 +26953,14 @@ def test_by_overwritten_by_second_by():
     assert "_pt_by" not in df.attrs
 
 
-def test_ungroup_clears_by():
+def test_by_auto_clears_after_operation():
     df = _sample_df()
     grouped = df.pt.by("species", "island")
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
-    ungrouped = grouped.pt.ungroup()
-    assert "_pt_by" not in ungrouped.attrs
+    result = grouped.pt.mutate(m="mean(mass)")
+    assert "_pt_by" not in result.attrs
+    assert isinstance(result, pt.DataFrame)
 
 
 def test_by_non_destructive_input_isolation():

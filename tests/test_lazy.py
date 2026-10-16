@@ -118,14 +118,10 @@ def test_lazy_verbs(sample_parquet: Path):
 
     # dropna (Option B zero data loss: bare defaults to how='all', targeted to how='any')
     assert len(df.dropna().collect()) == 5
-    assert len(df.drop_nulls().collect()) == 5
-    assert len(df.drop_na().collect()) == 5
 
     dn = df.dropna("val1")
     assert dn.is_lazy
     assert len(dn.collect()) == 5
-    assert len(df.drop_nulls("val1").collect()) == 5
-    assert len(df.drop_na("val1").collect()) == 5
     assert len(df.dropna(how="any").collect()) == 5
 
     # pick
@@ -134,12 +130,10 @@ def test_lazy_verbs(sample_parquet: Path):
     assert len(p.collect()) == 2
     assert p.collect()["val1"].to_list() == [50, 40]
 
-    # replace_values
-    rv = df.replace_values({"A": "ALPHA"}, c="category")
-    assert rv.is_lazy
-    cats = rv.collect()["category"].to_list()
-    assert "ALPHA" in cats
-    assert "A" not in cats
+    # fillna
+    fn = df.fillna(0)
+    assert fn.is_lazy
+    assert len(fn.collect()) == 5
 
     # clean_columns
     cc = df.clean_columns(case="upper")
@@ -232,4 +226,3 @@ def test_lazy_fillna():
     c2 = d_filled.collect()
     assert c2["x"].to_list() == [1.0, 99.0, 99.0]
     assert c2["y"].to_list() == ["A", "MISSING", "B"]
-

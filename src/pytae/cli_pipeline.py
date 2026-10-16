@@ -149,7 +149,15 @@ class _Pipeline:
         """Apply one -filter (or -qry) spec to the current view. Returns an error message or None."""
         available = self._available_columns()
         cond_cols = [c for c, _ in (conditions if isinstance(conditions, list) else conditions.items())]
-        unknown = [c for c in cond_cols if c not in available]
+
+        def _get_base_col(c: str) -> str:
+            if ".dt." in c:
+                return c.split(".dt.")[0].strip()
+            if ".str." in c:
+                return c.split(".str.")[0].strip()
+            return c.strip()
+
+        unknown = [_get_base_col(c) for c in cond_cols if _get_base_col(c) not in available]
         if unknown:
             return unknown_columns_message(flag_name, unknown, available)
 
@@ -287,22 +295,25 @@ class _Pipeline:
         except Exception as exc:
             return f"{flag}: {exc}"
 
-    def apply_replace_values(self, cols: list[str] | None, mapping: dict[str, str], exact: bool) -> str | None:
-        """Apply one -replace_values spec to the current view. Returns an error message or None."""
+    def apply_fillna(self, value: Any, cols: list[str] | None = None, nans: bool = True) -> str | None:
+        """Apply one -fillna operation to the current view. Returns an error message or None."""
         available = self._available_columns()
-        if cols is not None:
+        if isinstance(value, dict):
+            unknown = [c for c in value if c not in available]
+            if unknown:
+                return unknown_columns_message("-fillna", unknown, available)
+        elif cols:
             unknown = [c for c in cols if c not in available]
             if unknown:
-                return unknown_columns_message("-replace_values", unknown, available)
+                return unknown_columns_message("-fillna", unknown, available)
         try:
-            from pytae.polars_engine import replace_values_polars
+            from pytae.polars_engine import fillna_polars
 
-            self._pldf = replace_values_polars(self.polars_lazy_frame(), v=mapping, c=cols, exact=exact)
+            self._pldf = fillna_polars(self.polars_lazy_frame(), value, *(cols or ()), nans=nans)
             self._df = None
             return None
         except Exception as exc:
-            return f"-replace_values: {exc}"
-        return None
+            return f"-fillna: {exc}"
 
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered

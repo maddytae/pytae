@@ -20,7 +20,6 @@ from pytae.cli_parsing import (
     parse_list_order,
     parse_positive_int,
     parse_rename,
-    parse_replace_values_arg,
     parse_select_spec,
 )
 from pytae.cli_pipeline import (
@@ -97,14 +96,10 @@ _CLI_FLAGS = {
     "--nulls",
     "-describe",
     "--describe",
-    "-info",
-    "--info",
     "-meta",
     "--meta",
     "-diff",
     "--diff",
-    "-value_counts",
-    "--value_counts",
     "-distinct",
     "--distinct",
     "-sample",
@@ -127,14 +122,10 @@ _CLI_FLAGS = {
     "--select",
     "-agg",
     "--agg",
-    "-handle_missing",
-    "--handle_missing",
+    "-fillna",
+    "--fillna",
     "-dropna",
     "--dropna",
-    "-drop_nulls",
-    "--drop_nulls",
-    "-drop_na",
-    "--drop_na",
     "-glimpse",
     "--glimpse",
     "-clean_columns",
@@ -165,8 +156,6 @@ _CLI_FLAGS = {
     "--mutate",
     "-sql",
     "--sql",
-    "-replace_values",
-    "--replace_values",
     "-join",
     "--join",
     "-concat",
@@ -373,13 +362,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="print pandas describe() summary (count/mean/std/min/quartiles/max)",
     )
     parser.add_argument(
-        "-info",
-        "--info",
-        dest="info",
-        action=_OrderedFlag,
-        help="print pandas info() (columns, non-null counts, dtypes, memory)",
-    )
-    parser.add_argument(
         "-glimpse",
         "--glimpse",
         dest="glimpse",
@@ -401,13 +383,6 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         action=_OrderedStore,
         help="compare schema and contents against another dataset file (use -tol or -tolerance to set a numeric threshold)",
-    )
-    parser.add_argument(
-        "-value_counts",
-        "--value_counts",
-        dest="value_counts",
-        action=_OrderedFlag,
-        help="show pandas value_counts across current working columns (use -select to choose columns)",
     )
     parser.add_argument(
         "-freq",
@@ -533,24 +508,20 @@ def build_parser() -> argparse.ArgumentParser:
         "(v1 = sum, total = v1:sum, count = n). Defaults to sum.",
     )
     parser.add_argument(
-        "-handle_missing",
-        "--handle_missing",
-        dest="handle_missing",
+        "-fillna",
+        "--fillna",
+        dest="fillna",
         nargs="?",
         const=".",
         default=None,
-        metavar="FILL",
+        metavar="SPEC",
         action=_OrderedValue,
-        help="fill NaN using pytae handle_missing(): FILL (default '.') for object/category "
-        "columns, 0 for numeric columns",
+        help="fill missing values using pytae fillna(): scalar fill value (e.g. 0 or '.'), "
+        "column mapping (e.g. 'a:0, b:N/A'), or 'val, col1, col2' (e.g. '0, a, b')",
     )
     parser.add_argument(
         "-dropna",
         "--dropna",
-        "-drop_nulls",
-        "--drop_nulls",
-        "-drop_na",
-        "--drop_na",
         dest="dropna",
         nargs="?",
         const="",
@@ -719,19 +690,6 @@ def build_parser() -> argparse.ArgumentParser:
         "too once something later in the pipeline has produced a current view",
     )
     parser.add_argument(
-        "-replace_values",
-        "--replace_values",
-        dest="replace_values",
-        action=_OrderedAppend,
-        default=None,
-        metavar="SPEC",
-        help="replace values at this point in the pipeline; key=value tokens: v= (required) "
-        "an old:new mapping, e.g. \"v='old:new,alpha:bravo'\"; c= (optional) restrict "
-        "to specific columns, e.g. \"c='col a,col b',v='old:new'\"; exact= (optional bool, "
-        "default true) — true matches whole cell values, false matches a substring "
-        "anywhere in the cell, e.g. \"v='old:new',exact=false\"",
-    )
-    parser.add_argument(
         "-join",
         "--join",
         dest="join",
@@ -872,28 +830,36 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     parser = build_parser()
+
+    retired_redirects = [
+        (("-query", "--query", "-qry", "--qry"), "'-qry' has been removed; use '-filter' instead"),
+        (("-unique", "--unique"), "'-unique' has been removed; use '-distinct' instead"),
+        (("-dedupe", "--dedupe"), "'-dedupe' has been removed; use '-distinct' instead"),
+        (("-sort_by", "--sort_by", "-sort", "--sort"), "'-sort_by' has been deprecated; use '-arrange' instead"),
+        (("-agg_df", "--agg_df"), "'-agg_df' has been removed; use '-agg' instead"),
+        (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
+        (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
+        (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-pick' instead"),
+        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-pick with order=min' instead"),
+        (("-group_by", "--group_by", "-groupby", "--groupby"), "'-group_by' has been removed; use '-by' instead"),
+        (("-handle_missing", "--handle_missing"), "'-handle_missing' has been removed; use '-fillna' instead"),
+        (("-fill_null", "--fill_null"), "'-fill_null' has been removed; use '-fillna' instead"),
+        (("-fill_nan", "--fill_nan"), "'-fill_nan' has been removed; use '-fillna' instead"),
+        (("-drop_nulls", "--drop_nulls"), "'-drop_nulls' has been removed; use '-dropna' instead"),
+        (("-drop_na", "--drop_na"), "'-drop_na' has been removed; use '-dropna' instead"),
+        (("-value_counts", "--value_counts"), "'-value_counts' has been removed; use '-freq' instead"),
+        (("-info", "--info"), "'-info' has been removed; use '-glimpse' instead"),
+        (
+            ("-replace_values", "--replace_values"),
+            "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead",
+        ),
+    ]
+    for aliases, msg in retired_redirects:
+        if any(arg in aliases for arg in raw_argv):
+            parser.error(msg)
+
     args, extras = parser.parse_known_args(argv)
     if extras:
-        if any(e in ("-query", "--query", "-qry", "--qry") for e in extras):
-            parser.error("'-qry' has been removed; use '-filter' instead")
-        if any(e in ("-unique", "--unique") for e in extras):
-            parser.error("'-unique' has been removed; use '-distinct' instead")
-        if any(e in ("-dedupe", "--dedupe") for e in extras):
-            parser.error("'-dedupe' has been removed; use '-distinct' instead")
-        if any(e in ("-sort_by", "--sort_by", "-sort", "--sort") for e in extras):
-            parser.error("'-sort_by' has been deprecated; use '-arrange' instead")
-        if any(e in ("-agg_df", "--agg_df") for e in extras):
-            parser.error("'-agg_df' has been removed; use '-agg' instead")
-        if any(e in ("-to_clip", "--to_clip") for e in extras):
-            parser.error("'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead")
-        if any(e in ("-convert", "--convert") for e in extras):
-            parser.error("'-convert' has been removed; use '-o <filename>' or '-o <format>' instead")
-        if any(e in ("-slice_max", "--slice_max") for e in extras):
-            parser.error("'-slice_max' has been removed; use '-pick' instead")
-        if any(e in ("-slice_min", "--slice_min") for e in extras):
-            parser.error("'-slice_min' has been removed; use '-pick with order=min' instead")
-        if any(e in ("-group_by", "--group_by", "-groupby", "--groupby") for e in extras):
-            parser.error("'-group_by' has been removed; use '-by' instead")
         if args.file is None:
             path_extras = [e for e in extras if _is_path_like(e)]
             if path_extras:
@@ -927,7 +893,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(
                 f"-{op} does not return a DataFrame/Series, so no flag may follow it "
                 f"(except '-o clip'; matches pandas: you can't chain another call off "
-                f"df.shape/df.columns/df.dtypes/df.info())"
+                f"df.shape/df.columns/df.dtypes/df.glimpse())"
             )
 
     out_target = str(args.output).strip() if args.output is not None else None
@@ -978,9 +944,7 @@ def main(argv: list[str] | None = None) -> int:
             args.dtype,
             args.nulls,
             args.describe,
-            args.info,
             args.glimpse,
-            args.value_counts,
             args.distinct is not None,
             args.freq is not None,
             args.hist is not None,
@@ -990,7 +954,7 @@ def main(argv: list[str] | None = None) -> int:
             args.arrange is not None,
             args.pick is not None,
             args.agg is not None,
-            args.handle_missing is not None,
+            args.fillna is not None,
             args.dropna is not None,
             args.long is not None,
             args.wide is not None,
@@ -999,7 +963,6 @@ def main(argv: list[str] | None = None) -> int:
             args.filter,
             args.mutate,
             args.sql,
-            args.replace_values,
             args.rename,
             args.clean_columns is not None,
             args.join,
@@ -1017,7 +980,6 @@ def main(argv: list[str] | None = None) -> int:
             args.nulls,
             args.describe,
             show_all,
-            args.value_counts,
             args.distinct is not None,
             args.freq is not None,
             args.hist is not None,
@@ -1027,7 +989,7 @@ def main(argv: list[str] | None = None) -> int:
             args.arrange is not None,
             args.pick is not None,
             args.agg is not None,
-            args.handle_missing is not None,
+            args.fillna is not None,
             args.dropna is not None,
             args.long is not None,
             args.wide is not None,
@@ -1041,8 +1003,8 @@ def main(argv: list[str] | None = None) -> int:
     if is_clip and args.shape and wants_df:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-            "like -head/-tail/-cols/-dtype/-nulls/-describe/-value_counts/-distinct/-sample/-arrange/"
-            "-pick/-agg/-handle_missing/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
+            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-sample/-arrange/"
+            "-pick/-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
             "run -shape separately"
         )
     if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
@@ -1057,7 +1019,6 @@ def main(argv: list[str] | None = None) -> int:
     filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
     mutate_specs = list(args.mutate or [])
     sql_specs = list(args.sql or [])
-    replace_specs = [parse_replace_values_arg(raw) for raw in (args.replace_values or [])]
     join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
     concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
 
@@ -1136,7 +1097,6 @@ def main(argv: list[str] | None = None) -> int:
                 filter_specs=filter_specs,
                 mutate_specs=mutate_specs,
                 sql_specs=sql_specs,
-                replace_specs=replace_specs,
                 rename_specs=rename_specs,
                 frames=frames,
                 join_specs=join_specs,
@@ -1159,7 +1119,6 @@ def main(argv: list[str] | None = None) -> int:
                     filter_specs=filter_specs,
                     mutate_specs=mutate_specs,
                     sql_specs=sql_specs,
-                    replace_specs=replace_specs,
                     rename_specs=rename_specs,
                 )
             except UnicodeError as exc:

@@ -346,4 +346,3 @@ def test_dedicated_readers_and_scanners(tmp_path):
     lazy_ipc = pt.scan_ipc(ipc_path)
     assert lazy_ipc.is_lazy
     assert lazy_ipc.collect()["x"].to_list() == [1, 2, 3]
-

@@ -36,11 +36,7 @@
    - Python callables (functions or lambdas) and string expressions can be freely interleaved in insertion order. Downstream expressions can seamlessly reference columns created by upstream callables:
    ```python
    # 'b' uses callable result 'a', and 'c' uses 'b'
-   df.mutate(
-       a=lambda d: d["x"] * 2,
-       b="a + 10",
-       c=lambda d: d["b"] * 3
-   )
+   df.mutate(a=lambda d: d["x"] * 2, b="a + 10", c=lambda d: d["b"] * 3)
    ```
 3. **Literal Values**:
    - Native Python types (`int`, `float`, `bool`) are converted directly to constant columns: `count=10, flag=True`.
@@ -58,11 +54,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 
 # Using keyword arguments
-df1 = penguins.mutate(
-    body_mass_kg="body_mass_g / 1000",
-    status="'active'",
-    verified=True
-)
+df1 = penguins.mutate(body_mass_kg="body_mass_g / 1000", status="'active'", verified=True)
 
 # Using single formula string
 df2 = penguins.mutate("body_mass_kg = body_mass_g / 1000, status = 'active'")
@@ -84,9 +76,7 @@ penguins.mutate("(bill_length_mm, bill_depth_mm)_cm = _ / 10")
 
 ```python
 # Binary condition
-penguins.mutate(
-    size_category="if_else(body_mass_g > 4000, 'Large', 'Normal')"
-)
+penguins.mutate(size_category="if_else(body_mass_g > 4000, 'Large', 'Normal')")
 
 # Multi-condition with case_when (tuple pairs + default)
 penguins.mutate(
@@ -113,52 +103,152 @@ deals.mutate(
 
 ### 4. Smart Missing Imputation Inside `mutate`
 
-Pytae provides smart missing value helpers inside `mutate`:
-- `fillna(col, value, nans=True)`: Replaces both Arrow `null` and floating-point IEEE-754 `NaN`.
-- `fill_null(col, value)`: Replaces only Arrow `null`.
-- `fill_nan(col, value)`: Replaces only floating-point `NaN`.
+Pytae provides vectorized missing value imputation directly inside `mutate`:
+- `fillna(col, value)` / `col.fillna(value)`: Replaces both Arrow `null` and floating-point IEEE-754 `NaN`.
 
 ```python
 penguins.mutate(
     clean_sex="fillna(sex, 'Unknown')",
-    clean_mass="fillna(body_mass_g, 0, nans=True)"
+    clean_mass="fillna(body_mass_g, 0)",
 )
 ```
 
-### 5. Grouped Window Calculations
+### 5. Vectorized Value Mapping & Recoding (`map`)
+
+Use `map(col, mapping[, fallback])` inside `mutate()` to replace cell values using a dictionary mapping. It executes vectorized in the Polars engine with **Zero Data Loss by default**:
+
+> [!NOTE]
+> **Formula `map()` is strictly for dictionary value recoding, not for executing Python functions.**
+> - Use formula `map(col, {'old': 'new'})` to recode categorical or scalar values via a dictionary lookup.
+> - To execute custom Python/NumPy logic or row-wise transformations, pass a callable `lambda d:` as covered in [Section 9](#9-calling-custom-python-numpy--scipy-functions-lambda-d).
+
+```python
+# 1. Two-argument: recode mapped keys, preserve unmapped values intact
+penguins.mutate(
+    species_code="map(species, {'Adelie': 'AD', 'Gentoo': 'GEN'})",
+)
+
+# 2. Three-argument with literal fallback: replace unmapped rows with a constant
+penguins.mutate(
+    species_code="map(species, {'Adelie': 'AD'}, 'Other')",
+)
+
+# 3. Three-argument with column fallback: pull replacement from another column
+deals.mutate(
+    party_code="map(deal_type, {'Direct': 'DIR'}, broker_code)",
+)
+
+# 4. Explicit null fallback: explicitly set unmapped rows to null
+penguins.mutate(
+    strict_code="map(species, {'Adelie': 'AD'}, None)",
+)
+
+# 5. Multi-column batch mapping with across syntax
+df.mutate("(cat_a, cat_b) = map(_, {'0': 'Inactive', '1': 'Active'})")
+```
+
+```bash
+# In CLI:
+pytae penguins.parquet -mutate "code = map(species, {'Adelie': 'AD'})" -head 5
+pytae penguins.parquet -mutate "code = map(species, {'Adelie': 'AD'}, 'Other')" -head 5
+pytae penguins.parquet -mutate "code = map(species, {'Adelie': 'AD'}, island)" -head 5
+```
+
+### 6. Grouped Window & Time-Series Calculations
 
 When combined with `.by()`, operations compute window statistics partitioned by group without collapsing table rows:
 
+#### A. Initial & Final Group Boundaries (`first`, `last`)
+Compute drifts and baselines from the first or last observation in each group (e.g. initial patient vitals or opening stock prices):
+
 ```python
-(
-    penguins
-    .by("species")
-    .mutate(
-        mean_mass="mean(body_mass_g)",
-        mass_dev="body_mass_g - mean(body_mass_g)",
-        rank="rank(body_mass_g, descending=True)"
-    )
+stocks.by("ticker").mutate(
+    baseline="first(price)",
+    drift_from_start="price - first(price)",
+    final_price="last(price)",
 )
 ```
 
-### 6. Column Type Casting Inside `mutate`
+#### B. Sequential Shifts, Differences & Growth Rates (`shift`, `lag`, `lead`)
+Instead of duplicating verbs, Pytae provides `shift()` (with `lag` and `lead` aliases) for time-series operations:
+- **Difference (`diff`)**: `price - shift(price, 1)`
+- **Percentage Change / Growth (`pct_change`)**: `price / shift(price, 1) - 1`
+- **Future Lookahead (`lead`)**: `lead(price, 1)` or `shift(price, -1)`
+
+```python
+stocks.by("ticker").mutate(
+    prev_price="shift(price, 1)",
+    diff="price - shift(price, 1)",
+    daily_return="price / shift(price, 1) - 1",
+    next_price="lead(price, 1)",
+)
+```
+
+#### C. Cumulative Computations (`cumsum`, `cumprod`, `cummin`, `cummax`)
+Cumulative statistics accumulate along group order:
+
+```python
+sales.by("region").mutate(
+    running_total="amount.cumsum()",
+    running_peak="amount.cummax()",
+)
+```
+
+#### D. Grouped Window Statistics & Deviations
+```python
+penguins.by("species").mutate(
+    mean_mass="mean(body_mass_g)",
+    mass_dev="body_mass_g - mean(body_mass_g)",
+    rank="rank(body_mass_g, descending=True)",
+)
+```
+
+#### E. Moving Averages & Rolling Windows (via `-sql` or Polars)
+To avoid unnecessary function proliferation in `mutate()`, rolling computations (e.g. 7-day moving averages, rolling volatility) are performed via standard ANSI SQL window frames on the CLI or Polars in Python:
+
+```bash
+# In CLI: Full SQL window frame support with -sql
+pytae stocks.parquet -sql "
+  SELECT *, 
+         AVG(price) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ma7
+  FROM data
+"
+```
+
+```python
+# In Python: Transparent Polars expression delegation
+import polars as pl
+
+stocks.with_columns(pl.col("price").rolling_mean(window_size=7).over("ticker"))
+```
+
+#### F. Single-Shot Grouping (Why `ungroup()` is Not Needed)
+In Pytae, `.by()` establishes an **ephemeral, single-shot grouping context** for the immediate next operation. Once `mutate()` (or `agg()` / `pick()`) executes, it automatically consumes the grouping and returns a standard, flat, ungrouped `DataFrame`. 
+
+Because grouping is never "sticky" (unlike R's `dplyr`), you never need to call `ungroup()`. You can freely chain from grouped mutations directly into overall table calculations or new grouping keys:
+
+```python
+result = (
+    sales
+    .by("region").mutate(region_avg="mean(amount)")    # 1. Group-level mean
+    .mutate(overall_avg="mean(amount)")                 # 2. Automatically overall table mean
+    .by("product").mutate(product_avg="mean(amount)")   # 3. Newly grouped by product
+)
+```
+
+### 7. Column Type Casting Inside `mutate`
 
 Pytae makes inline type conversion natural and ergonomic by supporting Python's standard conversion functions (`int`, `float`, `str`, `bool`, `int32`, `float32`, etc.):
 
 ```python
 # Convert types with standard functions
-penguins.mutate(
-    year_int="int(year)",
-    mass_f32="float32(body_mass_g)",
-    code_str="str(id)",
-    is_large="bool(heavy_flag)"
-)
+penguins.mutate(year_int="int(year)", mass_f32="float32(body_mass_g)", code_str="str(id)", is_large="bool(heavy_flag)")
 
 # Multi-column batch casting with across syntax
 penguins.mutate("(col1, col2, col3) = int(_)")
 ```
 
-### 7. String Methods & Null Checks Inside `mutate`
+### 8. String Methods & Null Checks Inside `mutate`
 
 Vectorized string operations and null/NaN predicates work directly inside `mutate` formulas:
 - **String matching**: `.str.contains(pat)`, `.str.startswith(pat)` / `.str.starts_with(pat)`, `.str.endswith(pat)` / `.str.ends_with(pat)`
@@ -167,13 +257,11 @@ Vectorized string operations and null/NaN predicates work directly inside `mutat
 
 ```python
 penguins.mutate(
-    species_upper="species.str.upper()",
-    is_gentoo="species.str.startswith('Gen')",
-    has_sex="sex.is_not_null()"
+    species_upper="species.str.upper()", is_gentoo="species.str.startswith('Gen')", has_sex="sex.is_not_null()"
 )
 ```
 
-### 8. Calling Custom Python, NumPy & SciPy Functions (`lambda d:`)
+### 9. Calling Custom Python, NumPy & SciPy Functions (`lambda d:`)
 
 In Python scripts, pass a callable (`lambda d: ...`) to `mutate()` to apply any custom Python, NumPy, or SciPy function while keeping full IDE autocomplete and linter/Ruff support:
 
@@ -183,6 +271,7 @@ In Python scripts, pass a callable (`lambda d: ...`) to `mutate()` to apply any 
 ```python
 import numpy as np
 
+
 # 1. Row-wise scalar function (uses Python if/else, 'in', 'is not None') -> use map()
 def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
     if origin == dest:
@@ -191,9 +280,11 @@ def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
         return "Special Freight"
     return "Standard Ground"
 
+
 # 2. Vectorized array function (operates on whole columns at once) -> call directly
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
+
 
 df = df.mutate(
     shipping_mode=lambda d: map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"]),
@@ -207,10 +298,17 @@ Custom callables also work with **`.by()` grouped transformations**:
 
 ```python
 # Grouped custom function per sector
-df = df.by("sector").mutate(
-    z_spread=lambda g: (g["spread"] - g["spread"].mean()) / g["spread"].std()
-)
+df = df.by("sector").mutate(z_spread=lambda g: (g["spread"] - g["spread"].mean()) / g["spread"].std())
 ```
+
+> [!IMPORTANT]
+> **Summary: When to use Formula `map()` vs. `lambda d:`**
+>
+> | Goal | Mechanism | Example |
+> |---|---|---|
+> | **Dictionary Value Recoding** | Formula `map(col, dict[, fallback])` | `df.mutate(code="map(species, {'Adelie': 'AD'})")` |
+> | **Vectorized Array / Math Function** | `lambda d: func(d['x'], d['y'])` | `df.mutate(metric=lambda d: np.maximum(d['a'], d['b']))` |
+> | **Scalar Row-Wise Python Function** | `lambda d: map(func, d['x'], d['y'])` | `df.mutate(label=lambda d: map(classify, d['origin'], d['dest']))` |
 
 ---
 
@@ -232,6 +330,18 @@ pytae penguins.parquet -mutate "(bill_length_mm, bill_depth_mm)_cm = _ / 10" -co
 pytae penguins.parquet \
   -by species \
   -mutate "species_avg = mean(body_mass_g), diff = body_mass_g - species_avg" \
+  -head 5
+
+# Time-series differences, lag, and percentage returns per group
+pytae stocks.parquet \
+  -by ticker \
+  -mutate "prev = shift(price, 1), diff = price - shift(price, 1), ret = price / shift(price, 1) - 1" \
+  -head 5
+
+# Baseline drift from first observation
+pytae stocks.parquet \
+  -by ticker \
+  -mutate "baseline = first(price), gain = price - first(price)" \
   -head 5
 
 # Type casting inside mutate

@@ -26,18 +26,9 @@ Both methods share the identical, clean `r=` (row keys), `c=` (columns), and `v=
 import pytae as pt
 import polars as pl
 
-wide_df = pt.DataFrame({
-    "id": [1, 2],
-    "q1": [100, 200],
-    "q2": [150, 250]
-})
+wide_df = pt.DataFrame({"id": [1, 2], "q1": [100, 200], "q2": [150, 250]})
 
-long_df = wide_df.long(
-    id_vars="id",
-    cols=["q1", "q2"],
-    var_name="quarter",
-    value_name="revenue"
-)
+long_df = wide_df.long(id_vars="id", cols=["q1", "q2"], var_name="quarter", value_name="revenue")
 ```
 
 **Output:**
@@ -57,11 +48,7 @@ long_df = wide_df.long(
 ### 2. Spreading to Wide Format (`wide`)
 
 ```python
-reconstructed = long_df.wide(
-    r="id",
-    c="quarter",
-    v="revenue"
-)
+reconstructed = long_df.wide(r="id", c="quarter", v="revenue")
 ```
 
 ---

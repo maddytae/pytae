@@ -222,3 +222,32 @@ def test_mutate_cli_disallow_dot_map(tmp_path, capsys):
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "'.map()' method syntax is not supported" in err
+
+
+def test_mutate_cli_first_last_window(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "grp": ["A", "A", "B", "B"],
+            "val": [10.0, 25.0, 100.0, 140.0],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main(
+        [
+            path,
+            "-by",
+            "grp",
+            "-mutate",
+            "base = first(val), dev = val - first(val), ending = last(val)",
+            "-select",
+            "grp,val,base,dev,ending",
+            "-head",
+        ]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "base" in out and "dev" in out and "ending" in out
+    assert "15.0" in out or "15" in out  # 25.0 - 10.0 = 15.0
+    assert "40.0" in out or "40" in out  # 140.0 - 100.0 = 40.0
+

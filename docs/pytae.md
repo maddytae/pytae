@@ -48,7 +48,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Slicing** | **[Top / Bottom Records (`pick`)](detailed_docs/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
 | **Reshaping** | **[Table Reshaping (`long` & `wide`)](detailed_docs/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins** | **[Relational Joins & Stacking (`join`)](detailed_docs/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon key notation, `validate` |
-| **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `fillna`, `fill_null`, `fill_nan`, `dropna`, `handle_missing`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
+| **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `fillna`, `dropna`, `rename`, `sql`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
 | **Plotting** | **[Visualizations & Charts (`plotting`)](detailed_docs/plotting.md)** | Terminal ASCII charts (`freq`, `hist`) and Matplotlib publication figures (`.plot()`, `-plot`) |
 | **CLI Only** | **[CLI Terminal Features (`cli_only`)](detailed_docs/cli_only.md)** | `-diff`, `-inspect`, `-meta`, `-file` multi-file pipelines, `-sql`, batch globbing, completions |
 | **Library Only**| **[Python Library Architecture (`library_only`)](detailed_docs/library_only.md)** | Constructor `pt()`, `.pt` accessor on Polars & Pandas, lazy evaluation pushdowns, callables |
@@ -71,8 +71,7 @@ Pytae adheres strictly to the principle of **Zero Data Loss by Default**:
 4. **Dual Missing Value Cleaning (`drop_nans=True`)**:
    - Cleans both Apache Arrow `null` and IEEE-754 floating-point `NaN` values by default, preventing float NaN arithmetic poisoning.
 5. **Smart Symmetrical Imputation (`fillna`)**:
-   - `df.fillna(value, nans=True)` replaces both Arrow `null` and floating-point `NaN` across columns.
-   - Specific helpers `fill_null()` and `fill_nan()` provide strict format-isolated cleaning.
+   - `df.fillna(value, nans=True)` replaces both Arrow `null` and floating-point `NaN` across columns, supporting scalar values, column mappings (`{"col1": val1}`), and column subsets.
 
 ### Comparison Table: Missing Data Handling
 
@@ -82,7 +81,7 @@ Pytae adheres strictly to the principle of **Zero Data Loss by Default**:
 | **Float `NaN` vs Arrow `null`** | Conflates both into `np.nan` / `pd.NA` | Differentiates; `drop_nulls()` **ignores** `NaN`! | Treats `NA` and `NaN` distinctly | **Drops both `null` and `NaN` (`drop_nans=True`)** |
 | **Analytical Verbs (`agg`, `pivot`)** | `dropna=True` (drops missing groups!) | Preserves `null` group keys | `group_by()` preserves `NA` groups | **`dropna=False` by default (Zero Data Loss)** |
 | **Targeted Columns (`df.dropna("a", "b")`)** | `subset=['a', 'b']`, drops if any is NA | `subset=['a', 'b']`, drops if any is null | `tidyr::drop_na(a, b)` | **Drops if any specified column is NA (`how='any'`)** |
-| **CLI & Library Aliasing** | `dropna()` only | `drop_nulls()` only | `drop_na()` | **`dropna`, `drop_nulls`, `drop_na` (100% interchangeable)** |
+| **Unified Syntax** | `dropna()` only | `drop_nulls()` only | `drop_na()` | **Only `dropna` everywhere** |
 
 ---
 
@@ -96,19 +95,10 @@ import pytae as pt
 penguins = pt.read_parquet("penguins.parquet")
 
 report = (
-    penguins
-    .filter("body_mass_g > 3500 & sex.is_not_null()")
-    .mutate(
-        body_mass_kg="body_mass_g / 1000",
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        status="'verified'"
-    )
+    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
+    .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm", status="'verified'")
     .by("species", "island")
-    .agg(
-        n="n",
-        avg_mass_kg="mean(body_mass_kg)",
-        max_ratio="max(bill_ratio)"
-    )
+    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
     .arrange("-avg_mass_kg")
 )
 

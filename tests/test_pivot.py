@@ -487,14 +487,19 @@ def test_cli_group_by_rejected(tmp_path, capsys):
     assert "'-group_by' has been removed; use '-by' instead" in capsys.readouterr().err
 
 
-def test_cli_value_counts_with_existing_count_column(tmp_path, capsys):
+def test_cli_value_counts_redirect_error_and_freq(tmp_path, capsys):
     df = pd.DataFrame({"count": ["a", "a", "b"]})
     path = str(tmp_path / "counts.csv")
     df.to_csv(path, index=False)
-    exit_code = cli.main([path, "-value_counts"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-value_counts"])
+    assert exc.value.code == 2
+    assert "'-value_counts' has been removed; use '-freq' instead" in capsys.readouterr().err
+
+    exit_code = cli.main([path, "-freq", "count"])
     assert exit_code == 0
     out = capsys.readouterr().out
-    assert "count" in out
+    assert "Count" in out and "Distribution" in out
 
 
 def test_pivot_multi_key_empty_string_component():

@@ -61,13 +61,20 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Why not `unique`?** In Pandas, `.unique()` is a Series method returning a 1D numpy array of scalar values, not a DataFrame. Using `unique` would conflate scalar distinct values with row deduplication.
 - **CLI Alignment**: The CLI uses `-distinct "species,island"`, with optional `keep=first|last|false` control.
 
-### 3. `by` and `ungroup` for Scoped Grouping
+### 3. `by` for Single-Shot Scoped Grouping (Why `ungroup` is Obsolete)
 - **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and produces multi-level index outputs upon aggregation.
-- In Pytae, `.pt.by(*cols)` sets an active grouping context directly on the DataFrame that flows naturally into downstream operations:
-  - `.pt.mutate()` applies window calculations grouped by those columns.
-  - `.pt.pick()` slices top/bottom rows per group (`order='max'` or `'min'`).
-  - `.pt.agg()` aggregates per group and automatically clears the grouping context upon completion.
-- **Strict `*args` Only**: `df.pt.by("species", "island")` requires `*args`. Nested lists (`df.pt.by(["species"])`) and `df.pt.by(None)` are strictly rejected with helpful errors directing users to `df.pt.ungroup()`.
+- In R's `dplyr`, `group_by()` produces a sticky grouped tibble that persists across operations unless the user manually chains `%>% ungroup()`.
+- **In Pytae, grouping is strictly single-shot and auto-ungrouped**:
+  - `.pt.by(*cols)` sets an active grouping context for the *immediate next verb*.
+  - `.pt.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
+  - `.pt.pick()` slices extreme rows per group and returns an ungrouped `DataFrame`.
+  - `.pt.agg()` collapses per group and returns an ungrouped `DataFrame`.
+  - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
+- **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
+  ```python
+  df.by("region").mutate(reg_avg="mean(sales)").mutate(overall_avg="mean(sales)").by("product").mutate(prod_avg="mean(sales)")
+  ```
+- **Strict `*args` Only**: `df.pt.by("species", "island")` requires `*args`. Nested lists (`df.pt.by(["species"])`) and `df.pt.by(None)` are strictly rejected with clear errors.
 - **Precedence**: If a second `.pt.by()` is called, it cleanly overwrites the previous grouping context.
 
 ### 4. `arrange` instead of `sort` or `sort_by`
@@ -86,12 +93,12 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Pytae Design (Option B & Zero Data Loss)**:
   - **Bare `dropna()`**: Defaults to `how='all'`. Only completely blank rows (100% null/NaN across all columns) are dropped.
   - **Targeted `dropna("col1", "col2")`**: Defaults to `how='any'` over the specified subset, guaranteeing that only rows missing *required* keys are dropped.
-  - **Analytical Verbs (`agg`, `mutate`, `pivot`, `freq`)**: Default to **`dropna=False` / `drop_nulls=False`**. Missing values (`NaN`/`null`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns.
+  - **Analytical Verbs (`agg`, `mutate`, `pivot`, `freq`)**: Default to **`dropna=False`**. Missing values (`NaN`/`null`) in grouping or pivot dimensions are retained as visible, explicit group rows/columns.
   - **Dual Missing Value Cleaning**: Drops both Arrow `null` and IEEE-754 float `NaN` by default (`drop_nans=True`), preventing float NaN arithmetic poisoning.
-  - **Full Aliasing**: `dropna`, `drop_nulls`, and `drop_na` are 100% interchangeable aliases across functions, methods, accessors, keyword arguments, and CLI flags (`-dropna`, `-drop_nulls`, `-drop_na`).
+  - **One Obvious Way**: Only `dropna` is used everywhere across library functions, methods, accessors, keyword arguments, and CLI (`-dropna`). Retired aliases (`drop_nulls`, `drop_na`) fail fast with clean redirect guidance.
   - *For deep architectural details and side-by-side examples, see [pytae.md](file:///Users/maddy/Documents/my_repos/pytae/docs/pytae.md).*
 - **dplyr Alignment**: This non-destructive default matches R's `dplyr` (which treats `NA` group levels as valid grouping keys by default rather than discarding them).
-- **CLI Consistency**: Top-level `-dropna [COLS]` / `-drop_nulls [COLS]` performs row-level dropping across the dataset, whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
+- **CLI Consistency**: Top-level `-dropna [COLS]` performs row-level dropping across the dataset, whereas scoped `dropna=bool` parameters inside `-agg` or `-pivot` specs specifically control grouping and dimension key retention.
 
 ---
 
@@ -118,7 +125,13 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | **Multi-Column + Suffix** | `for c in ['a','b']: df[f'{c}_usd'] = df[c]*1.08` | `mutate(df, across(c(a, b), ~ .x * 1.08, .names="{.col}_usd"))` | `df.pt.mutate("(a, b)_usd = _ * 1.08")` | `-mutate "(a, b)_usd = _ * 1.08"` |
 | **Sequential** | Requires multiple `.assign()` or statements | `mutate(df, a=1, b=a*2)` | `df.pt.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
 | **If-Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `if_else(x > 0, 'pos', 'neg')` | `df.pt.mutate(flag="if_else(x > 0, 'pos', 'neg')")` | `-mutate "flag=if_else(x > 0, 'pos', 'neg')"` |
+| **Value Mapping / Recoding** | `df['x'].replace({'A': 'B'})` / `df['x'].map({'A': 'B'}).fillna(df['x'])` | `case_match(x, 'A' ~ 'B', .default = x)` | `df.pt.mutate(x="map(x, {'A': 'B'})")` | `-mutate "x = map(x, {'A': 'B'})"` |
+| **Missing Imputation** | `df['x'].fillna(0)` | `coalesce(x, 0)` / `replace_na(x, 0)` | `df.pt.mutate(x="fillna(x, 0)")` | `-mutate "x = fillna(x, 0)"` |
+| **Inline Type Casting** | `df['x'].astype(int)` | `as.integer(x)` | `df.pt.mutate(x="int(x)")` | `-mutate "x = int(x)"` |
 | **Grouped Window** | `df.groupby('g')['x'].transform('mean')` | `df %>% group_by(g) %>% mutate(m = mean(x))` | `df.pt.by("g").pt.mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
+| **Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `lag(x)` | `df.pt.by("g").pt.mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
+| **Diff & Returns** | `df.groupby('g')['x'].diff()` | `x - lag(x)` | `df.pt.by("g").pt.mutate(d="x - shift(x, 1)")` | `-by g -mutate "d = x - shift(x, 1)"` |
+| **Group Baseline (`first`/`last`)** | `df.groupby('g')['x'].transform('first')` | `first(x)` | `df.pt.by("g").pt.mutate(base="first(x)")` | `-by g -mutate "base = first(x)"` |
 
 ---
 
@@ -159,7 +172,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | Operation | Pandas | dplyr (R) | Pytae (`df.pt`) | Pytae CLI |
 |---|---|---|---|---|
 | **Group Context** | `df.groupby(['g1', 'g2'])` | `group_by(df, g1, g2)` | `df.pt.by("g1", "g2")` | `-by "g1,g2"` |
-| **Clear Grouping**| `df.reset_index()` | `ungroup(df)` | `df.pt.ungroup()` | N/A |
+| **Clear Grouping**| `df.reset_index()` | `ungroup(df)` | Auto-cleared (not needed) | N/A |
 | **Simple Group Agg** | `df.groupby('g')['x'].mean().reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` | `df.pt.by("g").pt.agg(x="mean")` | `-by g -agg x=mean` |
 | **Keep NA Groups (Default)** | `df.groupby('g', dropna=False)['x'].mean().reset_index()` *(Defaults to dropping NAs!)* | `df %>% group_by(g) %>% summarise(mean_x = mean(x))` *(Keeps NAs by default)* | `df.pt.by("g").pt.agg(x="mean")` *(Defaults to `dropna=False`, non-destructive)* | `-by g -agg x=mean` *(Preserves `NaN` group)* |
 | **With Row Count**| `df.groupby('g').agg(mean_x=('x', 'mean'), n=('x', 'size')).reset_index()` | `df %>% group_by(g) %>% summarise(mean_x = mean(x), n = n())` | `df.pt.by("g").pt.agg(mean_x="x:mean", n="n")` | `-by g -agg "mean_x=x:mean, n=n"` |

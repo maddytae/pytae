@@ -54,12 +54,7 @@ import pytae as pt
 penguins = pt.sample("penguins")
 
 # Aggregation and plot
-fig = (
-    penguins
-    .by("species")
-    .agg(avg_mass="mean(body_mass_g)")
-    .plot(kind="bar", x="species", y="avg_mass")
-)
+fig = penguins.by("species").agg(avg_mass="mean(body_mass_g)").plot(kind="bar", x="species", y="avg_mass")
 fig.savefig("penguin_mass.png", bbox_inches="tight")
 ```
 

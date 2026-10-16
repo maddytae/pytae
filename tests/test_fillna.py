@@ -11,11 +11,13 @@ import pytae as pt
 
 def test_df_fillna_scalar_default_nans_true():
     # Both NaN and null are filled by default
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-        "txt": ["a", None, "c"],
-        "num": [10, None, 30],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+            "txt": ["a", None, "c"],
+            "num": [10, None, 30],
+        }
+    )
     res = df.fillna(0.0)
     assert res["flt"].to_list() == [1.0, 0.0, 0.0]
     # String column untouched because 0.0 is float
@@ -25,10 +27,12 @@ def test_df_fillna_scalar_default_nans_true():
 
 def test_df_fillna_scalar_nans_false():
     # Only null is filled; NaN remains intact
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-        "txt": ["a", None, "c"],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+            "txt": ["a", None, "c"],
+        }
+    )
     res = df.fillna(0.0, nans=False)
     flt_vals = res["flt"].to_list()
     assert flt_vals[0] == 1.0
@@ -37,11 +41,13 @@ def test_df_fillna_scalar_nans_false():
 
 
 def test_df_fillna_dict():
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-        "txt": ["a", None, "c"],
-        "num": [10, None, 30],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+            "txt": ["a", None, "c"],
+            "num": [10, None, 30],
+        }
+    )
     res = df.fillna({"flt": -1.0, "txt": "MISSING", "num": 0})
     assert res["flt"].to_list() == [1.0, -1.0, -1.0]
     assert res["txt"].to_list() == ["a", "MISSING", "c"]
@@ -49,10 +55,12 @@ def test_df_fillna_dict():
 
 
 def test_df_fillna_subset_and_cols():
-    df = pt.DataFrame({
-        "flt1": [1.0, float("nan"), None],
-        "flt2": [2.0, float("nan"), None],
-    })
+    df = pt.DataFrame(
+        {
+            "flt1": [1.0, float("nan"), None],
+            "flt2": [2.0, float("nan"), None],
+        }
+    )
     # Target flt1 only via *cols
     r1 = df.fillna(0.0, "flt1")
     assert r1["flt1"].to_list() == [1.0, 0.0, 0.0]
@@ -78,9 +86,11 @@ def test_df_fillna_missing_value_raises_type_error():
 
 
 def test_df_fill_null_and_fill_nan():
-    df = pt.DataFrame({
-        "flt": [1.0, float("nan"), None],
-    })
+    df = pt.DataFrame(
+        {
+            "flt": [1.0, float("nan"), None],
+        }
+    )
     # fill_null fills null only (nans=False)
     r_null = df.fill_null(0.0)
     assert math.isnan(r_null["flt"].to_list()[1])
@@ -112,9 +122,11 @@ def test_functional_and_accessor_fillna():
 
 
 def test_grouped_dataframe_fillna():
-    df = pt.DataFrame({
-        "grp": ["A", "A", "B", "B"],
-        "val": [1.0, float("nan"), None, 4.0],
-    })
+    df = pt.DataFrame(
+        {
+            "grp": ["A", "A", "B", "B"],
+            "val": [1.0, float("nan"), None, 4.0],
+        }
+    )
     res = df.by("grp").fillna(0.0)
     assert res["val"].to_list() == [1.0, 0.0, 0.0, 4.0]

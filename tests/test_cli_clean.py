@@ -10,7 +10,7 @@ from pytae import cli
 from tests.cli_helpers import _messy_headers_frame, _replace_frame, _write_csv
 
 
-def test_handle_missing_default_fill(tmp_path, capsys):
+def test_handle_missing_redirect_error_and_fillna(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "grp": ["x", None],
@@ -19,82 +19,37 @@ def test_handle_missing_default_fill(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-handle_missing"])
+    # -handle_missing raises informative redirect error
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-handle_missing"])
+    assert exc_info.value.code == 2
+    assert "'-handle_missing' has been removed; use '-fillna' instead" in capsys.readouterr().err
 
+    # -fillna works
+    exit_code = cli.main([path, "-fillna", "grp:., val:0.0"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    # object/category NA becomes '.', numeric NA becomes 0.
     assert "." in out
     assert "0.0" in out
 
 
-def test_replace_whole_df_exact_match(tmp_path, capsys):
+def test_replace_values_redirect_error_and_mutate_map(tmp_path, capsys):
     path = _write_csv(tmp_path, _replace_frame())
 
-    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo'"])
+    # -replace_values raises informative redirect error
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-replace_values", "v='a magician:the magic'"])
+    assert exc_info.value.code == 2
+    assert (
+        "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead"
+        in capsys.readouterr().err
+    )
 
+    # -mutate with map() works for replacing cell values
+    exit_code = cli.main([path, "-mutate", "col a = map([col a], {'a magician': 'the magic'})"])
+    assert exit_code == 0
     out = capsys.readouterr().out
     assert "the magic" in out
-    assert "bravo" in out
-    assert "not a magician exactly" in out  # untouched: not an exact whole-cell match
-    assert "analphabet" in out  # untouched: not an exact whole-cell match
-
-
-def test_replace_scoped_columns_only(tmp_path, capsys):
-    df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
-    path = _write_csv(tmp_path, df)
-
-    cli.main([path, "-replace_values", "c=col a,v=alpha:bravo"])
-
-    out = capsys.readouterr().out.strip().splitlines()
-    assert out[1].split() == ["bravo", "alpha"]
-
-
-def test_replace_exact_false_matches_substring(tmp_path, capsys):
-    path = _write_csv(tmp_path, _replace_frame())
-
-    cli.main([path, "-replace_values", "v='a magician:the magic,alpha:bravo',exact=false"])
-
-    out = capsys.readouterr().out
-    assert "not the magic exactly" in out
-    assert "anbravobet" in out
-
-
-def test_replace_unknown_column_errors(tmp_path, capsys):
-    path = _write_csv(tmp_path, _replace_frame())
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-replace_values", "c=missing,v=alpha:bravo"])
-    assert exc_info.value.code == 2
-    assert "-replace_values" in capsys.readouterr().err
-
-
-def test_replace_requires_v(tmp_path):
-    path = _write_csv(tmp_path, _replace_frame())
-
-    with pytest.raises(SystemExit):
-        cli.main([path, "-replace_values", "c=col a"])
-
-
-def test_replace_values_mapping_quoting_is_optional(tmp_path, capsys):
-    df = pd.DataFrame({"col a": ["alpha"], "colb": ["alpha"]})
-
-    path = _write_csv(tmp_path, df)
-    cli.main([path, "-replace_values", "v=alpha:bravo"])
-    unquoted = capsys.readouterr().out.strip()
-
-    path = _write_csv(tmp_path, df)
-    cli.main([path, "-replace_values", "v=alpha:'bravo'"])
-    quoted = capsys.readouterr().out.strip()
-
-    assert unquoted == quoted
-    assert "bravo" in unquoted
-
-
-def test_replace_values_equals_raises_error(tmp_path):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2]}))
-    with pytest.raises(SystemExit, match="use ':'"):
-        cli.main([path, "-replace_values", "v=1=2"])
 
 
 def test_rename_quoting_is_optional(tmp_path):

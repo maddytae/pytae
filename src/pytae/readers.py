@@ -1137,4 +1137,3 @@ def read(*args: Any, **kwargs: Any) -> None:
 
 def scan(*args: Any, **kwargs: Any) -> None:
     raise AttributeError("pt.scan() has been removed; use pt.scan_parquet(), pt.scan_csv(), etc. instead")
-

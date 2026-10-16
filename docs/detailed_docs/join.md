@@ -103,12 +103,7 @@ lazy_orders = pt.scan_parquet("orders_100M.parquet")
 lazy_custs = pt.scan_csv("customers.csv")
 
 # Filter pushes through the join graph into the raw Parquet read!
-result = (
-    lazy_orders
-    .join(lazy_custs, on="customer_id", how="inner")
-    .filter("region == 'EMEA'")
-    .collect()
-)
+result = lazy_orders.join(lazy_custs, on="customer_id", how="inner").filter("region == 'EMEA'").collect()
 ```
 
 ---

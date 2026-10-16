@@ -7,7 +7,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import pytae as pt
-from pytae.mutate import parse_mutate_spec
+from pytae._parsing import parse_mutate_spec
 
 
 def _df():
@@ -588,9 +588,9 @@ def test_mutate_map_column_and_expr_defaults():
     r1 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, species)")
     assert list(r1["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
-    # 2. 2-argument map (unmapped values become null)
+    # 2. 2-argument map (unmapped values are preserved)
     r2 = df.mutate(mapped="map(species, {'Adelie': 'AD'})")
-    assert list(r2["mapped"]) == ["AD", None, None]
+    assert list(r2["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
     # 3. Fallback to another column
     r3 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, alt_name)")
@@ -601,7 +601,7 @@ def test_mutate_map_column_and_expr_defaults():
     assert list(r4["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
 
-def test_mutate_smart_fillna_and_fill_null_fill_nan():
+def test_mutate_smart_fillna():
     df = pt.DataFrame(
         {
             "flt": [1.0, float("nan"), None],
@@ -617,40 +617,48 @@ def test_mutate_smart_fillna_and_fill_null_fill_nan():
     r2 = df.mutate(clean="fillna(flt, 0.0, nans=False)")
     assert r2["clean"][0] == 1.0 and str(r2["clean"][1]) == "nan" and r2["clean"][2] == 0.0
 
-    # 3. fill_null(col, val) -> strict null filling
-    r3 = df.mutate(clean="fill_null(flt, 0.0)")
-    assert r3["clean"][0] == 1.0 and str(r3["clean"][1]) == "nan" and r3["clean"][2] == 0.0
+    # 3. Method syntax col.fillna(0.0)
+    r3 = df.mutate(clean="flt.fillna(0.0)")
+    assert list(r3["clean"]) == [1.0, 0.0, 0.0]
 
-    # 4. fill_nan(col, val) -> strict NaN filling
-    r4 = df.mutate(clean="fill_nan(flt, 0.0)")
-    assert r4["clean"][0] == 1.0 and r4["clean"][1] == 0.0 and r4["clean"][2] is None
+    # 4. fillna on string column (safely fills null without is_nan error)
+    r4 = df.mutate(clean="fillna(str_col, 'MISSING')")
+    assert list(r4["clean"]) == ["alpha", "MISSING", "gamma"]
 
-    # 5. Method syntax col.fillna(0.0)
-    r5 = df.mutate(clean="flt.fillna(0.0)")
-    assert list(r5["clean"]) == [1.0, 0.0, 0.0]
-
-    # 6. fillna on string column (safely fills null without is_nan error)
-    r6 = df.mutate(clean="fillna(str_col, 'MISSING')")
-    assert list(r6["clean"]) == ["alpha", "MISSING", "gamma"]
-
-    # 7. Method syntax str_col.fill_null('MISSING')
-    r7 = df.mutate(clean="str_col.fill_null('MISSING')")
-    assert list(r7["clean"]) == ["alpha", "MISSING", "gamma"]
+    # 5. Method syntax str_col.fillna('MISSING')
+    r5 = df.mutate(clean="str_col.fillna('MISSING')")
+    assert list(r5["clean"]) == ["alpha", "MISSING", "gamma"]
 
 
-def test_handle_missing_cleans_float_nans():
+def test_fillna_cleans_float_nans():
     df = pt.DataFrame(
         {
             "flt": [10.0, float("nan"), None, 30.0],
         }
     )
-    # numeric_fill=0 fills both NaN and null
-    cleaned = df.handle_missing(numeric_fill=0)
+    # df.fillna(0) fills both NaN and null
+    cleaned = df.fillna(0.0)
     assert list(cleaned["flt"]) == [10.0, 0.0, 0.0, 30.0]
 
-    # numeric_fill="mean" computes mean ignoring NaNs and nulls (mean of 10 and 30 is 20)
-    cleaned_mean = df.handle_missing(numeric_fill="mean")
-    assert list(cleaned_mean["flt"]) == [10.0, 20.0, 20.0, 30.0]
+
+def test_mutate_dt_and_str_methods():
+    df = pt.DataFrame(
+        {
+            "dt_str": ["2026-03-15 14:30:00", "2026-04-20 09:15:00"],
+            "name": ["john doe", "jane smith"],
+        }
+    )
+    res = df.mutate(
+        d="date(dt_str)",
+        yr="date(dt_str).dt.year()",
+        mo="date(dt_str).dt.month()",
+        title_name="name.str.title()",
+        rep="name.str.replace('john', 'jack')",
+    )
+    assert list(res["yr"]) == [2026, 2026]
+    assert list(res["mo"]) == [3, 4]
+    assert list(res["title_name"]) == ["John Doe", "Jane Smith"]
+    assert list(res["rep"]) == ["jack doe", "jane smith"]
 
 
 def test_mutate_interleaved_callable_and_string_expression():
@@ -705,11 +713,13 @@ def test_mutate_grouped_consecutive_callables_consuming_each_other():
 
 
 def test_mutate_str_methods_and_null_checks_case_when():
-    df = pt.DataFrame({
-        "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
-        "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
-        "hazmat_class": [None, None, "CLASS-3", None],
-    })
+    df = pt.DataFrame(
+        {
+            "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
+            "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
+            "hazmat_class": [None, None, "CLASS-3", None],
+        }
+    )
     res = df.mutate(
         shipping_mode="""
         case_when(
@@ -745,13 +755,15 @@ def test_mutate_custom_function_lambda_vectorized_and_map():
     def calc_metric(x, y):
         return x * 2.5 + np.maximum(y, 0)
 
-    df = pt.DataFrame({
-        "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
-        "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
-        "hazmat_class": [None, None, "CLASS-3", None],
-        "a": [1.0, 2.0, 3.0, 4.0],
-        "b": [10.0, -5.0, 20.0, -1.0],
-    })
+    df = pt.DataFrame(
+        {
+            "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
+            "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
+            "hazmat_class": [None, None, "CLASS-3", None],
+            "a": [1.0, 2.0, 3.0, 4.0],
+            "b": [10.0, -5.0, 20.0, -1.0],
+        }
+    )
 
     # Row-wise map() and vectorized direct call in the same mutate, plus interleaved string formula
     res = df.mutate(
@@ -778,10 +790,12 @@ def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
     def group_demeaned(s):
         return s - s.mean()
 
-    df = pt.DataFrame({
-        "grp": ["A", "A", "B", "B"],
-        "x": [2.0, 8.0, 4.0, 10.0],
-    })
+    df = pt.DataFrame(
+        {
+            "grp": ["A", "A", "B", "B"],
+            "x": [2.0, 8.0, 4.0, 10.0],
+        }
+    )
 
     res = df.mutate(
         scaled=lambda d: scale_with_offset(d["x"], 3.0, offset=0.5),
@@ -802,11 +816,13 @@ def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
 def test_mutate_inline_cast_python_types():
     import polars as pl
 
-    df = pt.DataFrame({
-        "s_num": ["10", "20", "30"],
-        "f_num": [1.9, 2.1, 3.8],
-        "i_num": [0, 1, 0],
-    })
+    df = pt.DataFrame(
+        {
+            "s_num": ["10", "20", "30"],
+            "f_num": [1.9, 2.1, 3.8],
+            "i_num": [0, 1, 0],
+        }
+    )
 
     # int(x), float(x), str(x), bool(x)
     res = df.mutate(
@@ -855,4 +871,34 @@ def test_mutate_multi_column_cast():
     assert res.schema["b"] == pl.Int64
     assert res["a"].to_list() == [1, 2]
     assert res["b"].to_list() == [3, 4]
+
+
+def test_mutate_first_last_window():
+    # 1. Grouped with by()
+    df = pt.DataFrame(
+        {
+            "ticker": ["AAPL", "AAPL", "AAPL", "MSFT", "MSFT"],
+            "price": [150.0, 155.0, 160.0, 300.0, 310.0],
+        }
+    )
+    res = df.by("ticker").mutate(
+        base="first(price)",
+        last_val="last(price)",
+        base_method="price.first()",
+        last_method="price.last()",
+        drift="price - first(price)",
+    )
+    assert res["base"].to_list() == [150.0, 150.0, 150.0, 300.0, 300.0]
+    assert res["last_val"].to_list() == [160.0, 160.0, 160.0, 310.0, 310.0]
+    assert res["base_method"].to_list() == [150.0, 150.0, 150.0, 300.0, 300.0]
+    assert res["last_method"].to_list() == [160.0, 160.0, 160.0, 310.0, 310.0]
+    assert res["drift"].to_list() == [0.0, 5.0, 10.0, 0.0, 10.0]
+
+    # 2. Whole-table (ungrouped)
+    res_all = df.mutate(
+        first_all="first(price)",
+        last_all="last(price)",
+    )
+    assert res_all["first_all"].to_list() == [150.0, 150.0, 150.0, 150.0, 150.0]
+    assert res_all["last_all"].to_list() == [310.0, 310.0, 310.0, 310.0, 310.0]
 

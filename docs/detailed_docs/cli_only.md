@@ -197,16 +197,19 @@ pytae -file "orders.parquet=o; users.csv=u" \
 ---
 
 <a id="batch-cleaning"></a>
-## Batch Header Cleaning & Value Replacements
+## Batch Header Cleaning & Renaming
 
-Clean messy headers or standardize categorical values across datasets:
+Clean messy headers, rename columns, or fill missing values across datasets:
 
 ```bash
 # Sanitize header names
 pytae messy.csv -clean_columns "case=lower, fill=_" -o clean.parquet
 
-# Replace values
-pytae penguins.parquet -replace_values "Adelie=Adelie Penguin, Male=M" -head 5
+# Rename columns
+pytae penguins.parquet -rename "species:bird_species" -head 5
+
+# Fill missing values
+pytae messy.parquet -fillna "0, col_a, col_b" -head 5
 ```
 
 ---
