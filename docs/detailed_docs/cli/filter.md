@@ -14,6 +14,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Comparisons (`>`, `<`, `>=`, `<=`, `!=`)](#comparisons)
   - [Intervals & Ranges (`[start, end]`)](#intervals--ranges)
   - [List Membership (`['a', 'b']`)](#list-membership)
+  - [Filtering Non-Missing Values (`notna`) & Columns with Spaces](#filtering-non-missing-values-notna--columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
 - [Selecting Extreme Rows (`-pick`)](#selecting-extreme-rows--pick)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
@@ -97,6 +98,29 @@ pytae penguins.parquet -filter "species = ['Chinstrap', 'Gentoo']" -select "spec
 | Chinstrap | Dream    |
 | Chinstrap | Dream    |
 | Chinstrap | Dream    |
+
+### Filtering Non-Missing Values (`notna`) & Columns with Spaces
+
+To filter for non-missing (`notna` / `is not null`) values on a column whose name contains spaces, enclose the column name in brackets `[col name]`:
+
+```bash
+# 1. Bracket method notation
+pytae penguins.parquet -rename "bill_length_mm:[bill length mm]" -filter "[bill length mm].notna()" -select "species,[bill length mm]" -head 3
+
+# 2. SQL-style syntax
+pytae penguins.parquet -rename "bill_length_mm:[bill length mm]" -filter "[bill length mm] is not null" -select "species,[bill length mm]" -head 3
+
+# 3. Direct inequality check
+pytae penguins.parquet -rename "bill_length_mm:[bill length mm]" -filter "[bill length mm] != None" -select "species,[bill length mm]" -head 3
+```
+
+**Output:**
+
+| species   |   bill length mm |
+|:----------|-----------------:|
+| Adelie    |             39.1 |
+| Adelie    |             39.5 |
+| Adelie    |             40.3 |
 
 ### Combining Multiple Conditions
 

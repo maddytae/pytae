@@ -1891,6 +1891,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Comparisons (`>`, `<`, `>=`, `<=`, `!=`)](#comparisons)
   - [Intervals & Ranges (`[start, end]`)](#intervals--ranges)
   - [List Membership (`['a', 'b']`)](#list-membership)
+  - [Filtering Non-Missing Values (`notna`) & Columns with Spaces](#filtering-non-missing-values-notna--columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
 - [Selecting Extreme Rows (`-pick`)](#selecting-extreme-rows--pick)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
@@ -1974,6 +1975,29 @@ pytae penguins.parquet -filter "species = ['Chinstrap', 'Gentoo']" -select "spec
 | Chinstrap | Dream    |
 | Chinstrap | Dream    |
 | Chinstrap | Dream    |
+
+### Filtering Non-Missing Values (`notna`) & Columns with Spaces
+
+To filter for non-missing (`notna` / `is not null`) values on a column whose name contains spaces, enclose the column name in brackets `[col name]`:
+
+```bash
+# 1. Bracket method notation
+pytae penguins.parquet -rename "bill_length_mm:[bill length mm]" -filter "[bill length mm].notna()" -select "species,[bill length mm]" -head 3
+
+# 2. SQL-style syntax
+pytae penguins.parquet -rename "bill_length_mm:[bill length mm]" -filter "[bill length mm] is not null" -select "species,[bill length mm]" -head 3
+
+# 3. Direct inequality check
+pytae penguins.parquet -rename "bill_length_mm:[bill length mm]" -filter "[bill length mm] != None" -select "species,[bill length mm]" -head 3
+```
+
+**Output:**
+
+| species   |   bill length mm |
+|:----------|-----------------:|
+| Adelie    |             39.1 |
+| Adelie    |             39.5 |
+| Adelie    |             40.3 |
 
 ### Combining Multiple Conditions
 
@@ -5996,7 +6020,7 @@ shape: (5, 2)
 | Closed interval | `body_mass_g='[3500,4000]'` | `3500 <= x <= 4000` |
 | String matching | `species=('startswith', 'Ad')` | `startswith`, `endswith`, `contains`, `regex` |
 | Multiple prefixes/suffixes | `species=('startswith', ['Ad', 'Ge'])` | matches any prefix/suffix in list/tuple |
-| Null check | `sex=('isna',)` / `sex=('notna',)` | missing / non-missing (unary tuple) |
+| Null check | `sex=("notna",)` or `"[bill length mm].notna()"` | non-missing / missing check (supports spaced columns) |
 | Columns with spaces | `"bill length mm > 40"` or `{"bill length mm": "> 40"}` | spaces handled without dict unpacking |
 | Same-column bounds | `"mass > 3000, mass < 5000"` or `"mass > 3000", "mass < 5000"` | multiple conditions on same column |
 
@@ -6037,14 +6061,14 @@ shape: (10, 7)
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
 │ Adelie  ┆ Dream  ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.9          ┆ 190.0             ┆ 3450.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 37.6           ┆ 19.3          ┆ 181.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 38.3           ┆ 19.2          ┆ 189.0             ┆ 3950.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 35.7           ┆ 18.0          ┆ 202.0             ┆ 3550.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 40.6           ┆ 17.2          ┆ 187.0             ┆ 3475.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 37.3           ┆ 16.8          ┆ 192.0             ┆ 3000.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.8           ┆ 18.5          ┆ 193.0             ┆ 3500.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 40.2           ┆ 20.1          ┆ 200.0             ┆ 3975.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6064,15 +6088,15 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Adelie  ┆ Torgersen ┆ 39.2           ┆ 19.6          ┆ 195.0             ┆ 4675.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0             ┆ 4500.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 46.0           ┆ 21.5          ┆ 194.0             ┆ 4200.0      ┆ Male │
 │ Adelie  ┆ Dream     ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male │
 │ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.8          ┆ 190.0             ┆ 4600.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 42.0           ┆ 19.5          ┆ 200.0             ┆ 4050.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 41.1           ┆ 18.2          ┆ 192.0             ┆ 4050.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 42.8           ┆ 18.5          ┆ 195.0             ┆ 4250.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 42.9           ┆ 17.6          ┆ 196.0             ┆ 4700.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 40.1           ┆ 18.9          ┆ 188.0             ┆ 4300.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 41.1           ┆ 19.1          ┆ 188.0             ┆ 4100.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 37.8           ┆ 20.0          ┆ 190.0             ┆ 4250.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0             ┆ 4275.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 45.6           ┆ 20.3          ┆ 191.0             ┆ 4600.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0             ┆ 4075.0      ┆ Male │
 │ Adelie  ┆ Dream     ┆ 39.7           ┆ 17.9          ┆ 193.0             ┆ 4250.0      ┆ Male │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
@@ -6093,16 +6117,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream  ┆ 37.6           ┆ 19.3          ┆ 181.0             ┆ 3300.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 37.0           ┆ 16.9          ┆ 185.0             ┆ 3000.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 38.1           ┆ 17.6          ┆ 187.0             ┆ 3425.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.9          ┆ 190.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 34.0           ┆ 17.1          ┆ 185.0             ┆ 3400.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 40.8           ┆ 18.9          ┆ 208.0             ┆ 4300.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.8           ┆ 18.5          ┆ 193.0             ┆ 3500.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 37.5           ┆ 18.5          ┆ 199.0             ┆ 4475.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 40.7           ┆ 17.0          ┆ 190.0             ┆ 3725.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.8          ┆ 195.0             ┆ 3450.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 41.5           ┆ 18.5          ┆ 201.0             ┆ 4000.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6122,13 +6146,13 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.5          ┆ 209.0             ┆ 4800.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 13.9          ┆ 210.0             ┆ 4200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.7           ┆ 13.9          ┆ 214.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 43.4           ┆ 14.4          ┆ 218.0             ┆ 4600.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 42.8           ┆ 14.2          ┆ 209.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.3           ┆ 13.8          ┆ 208.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 14.5          ┆ 212.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.5           ┆ 15.0          ┆ 219.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.2          ┆ 216.0             ┆ 5000.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 43.5           ┆ 15.2          ┆ 213.0             ┆ 4650.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 13.7          ┆ 214.0             ┆ 4925.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
@@ -6142,22 +6166,22 @@ pt.filter(penguins, species="Gentoo", body_mass_g="> 5000").sample(10)
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
-│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 44.4           ┆ 17.3          ┆ 219.0             ┆ 5250.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 15.7          ┆ 226.0             ┆ 5200.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.2          ┆ 218.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 47.8           ┆ 15.0          ┆ 215.0             ┆ 5650.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 16.8          ┆ 230.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.9          ┆ 224.0             ┆ 5350.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male   │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ## Column names with spaces — bracket notation `[col]`
@@ -6185,51 +6209,44 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Chinstrap ┆ Dream  ┆ 46.0           ┆ 18.9          ┆ 195.0             ┆ 4150.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 52.8           ┆ 20.0          ┆ 205.0             ┆ 4550.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 53.5           ┆ 19.9          ┆ 205.0             ┆ 4500.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 47.6           ┆ 14.5          ┆ 215.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.5          ┆ 209.0             ┆ 4800.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 225.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 50.5           ┆ 15.2          ┆ 216.0             ┆ 5000.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 52.0           ┆ 19.0          ┆ 197.0             ┆ 4150.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 46.4           ┆ 15.6          ┆ 221.0             ┆ 5000.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 48.2           ┆ 15.6          ┆ 221.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 52.2           ┆ 17.1          ┆ 228.0             ┆ 5400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
-# DataFrame with spaces in column names
-penguins_spaces = penguins.rename(
-    columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'}
-)
-
-# String expressions with brackets handle spaced column names cleanly:
+# Filter notna (non-missing) values on a column with spaces:
+# Supports bracket notation "[bill length mm].notna()", SQL-style "[bill length mm] is not null",
+# or dictionary syntax {"bill length mm": "notna"}
 (
     penguins_spaces
-    .filter("[bill length mm] > 45", "[body mass g] > 4000")
-    .sample(10)
+    .filter("[bill length mm].notna()")
+    .select("species", "island", "[bill length mm]", "[body mass g]")
+    .head(5)
 )
 ```
 Output:
 ```text
-shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill length mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Chinstrap ┆ Dream  ┆ 49.2           ┆ 18.2          ┆ 195.0             ┆ 4400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 48.4           ┆ 16.3          ┆ 220.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.6           ┆ 14.2          ┆ 210.0             ┆ 4850.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 47.4           ┆ 14.6          ┆ 212.0             ┆ 4725.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 51.3           ┆ 14.2          ┆ 218.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 52.2           ┆ 17.1          ┆ 228.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 50.8           ┆ 15.7          ┆ 226.0             ┆ 5200.0      ┆ Male   │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+shape: (5, 4)
+┌─────────┬───────────┬────────────────┬─────────────┐
+│ species ┆ island    ┆ bill length mm ┆ body mass g │
+│ ---     ┆ ---       ┆ ---            ┆ ---         │
+│ str     ┆ str       ┆ f64            ┆ f64         │
+╞═════════╪═══════════╪════════════════╪═════════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 3750.0      │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 3800.0      │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 3250.0      │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 3450.0      │
+│ Adelie  ┆ Torgersen ┆ 39.3           ┆ 3650.0      │
+└─────────┴───────────┴────────────────┴─────────────┘
 ```
 
 ## Equality and multi-value filters
@@ -6250,16 +6267,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 40.6           ┆ 17.2          ┆ 187.0             ┆ 3475.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 52.7           ┆ 19.8          ┆ 197.0             ┆ 3725.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 45.9           ┆ 17.1          ┆ 190.0             ┆ 3575.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 46.4           ┆ 18.6          ┆ 190.0             ┆ 3450.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 46.9           ┆ 16.6          ┆ 192.0             ┆ 2700.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 50.1           ┆ 17.9          ┆ 190.0             ┆ 3400.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 51.4           ┆ 19.0          ┆ 201.0             ┆ 3950.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.2           ┆ 18.8          ┆ 202.0             ┆ 3800.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 51.9           ┆ 19.5          ┆ 206.0             ┆ 3950.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 36.5           ┆ 18.0          ┆ 182.0             ┆ 3150.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 50.5           ┆ 19.6          ┆ 201.0             ┆ 4050.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 48.5           ┆ 17.5          ┆ 191.0             ┆ 3400.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 40.9           ┆ 16.6          ┆ 187.0             ┆ 3200.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 45.7           ┆ 17.0          ┆ 195.0             ┆ 3650.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 55.8           ┆ 19.8          ┆ 207.0             ┆ 4000.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6300,23 +6317,22 @@ shape: (4, 4)
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 38.7           ┆ 19.0          ┆ 195.0            ┆ 3450.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 172.0            ┆ 3150.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 36.0           ┆ 17.9          ┆ 190.0            ┆ 3450.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 36.4           ┆ 17.1          ┆ 184.0            ┆ 2850.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 35.0           ┆ 17.9          ┆ 192.0            ┆ 3725.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 39.6           ┆ 20.7          ┆ 191.0            ┆ 3900.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 40.2           ┆ 17.1          ┆ 193.0            ┆ 3400.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.5           ┆ 17.0          ┆ 196.0            ┆ 3500.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.3           ┆ 13.7          ┆ 210.0            ┆ 4300.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.6           ┆ 14.2          ┆ 210.0            ┆ 4850.0      ┆ Female │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 35.9           ┆ 19.2          ┆ 189.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 36.5           ┆ 18.0          ┆ 182.0             ┆ 3150.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 35.9           ┆ 16.6          ┆ 190.0             ┆ 3050.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0             ┆ 3700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 44.0           ┆ 13.6          ┆ 208.0             ┆ 4350.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 45.1           ┆ 14.4          ┆ 210.0             ┆ 4400.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 49.1           ┆ 14.5          ┆ 212.0             ┆ 4625.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 50.5           ┆ 15.2          ┆ 216.0             ┆ 5000.0      ┆ Female │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ## Comparison operators
@@ -6340,16 +6356,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 16.3          ┆ 230.0             ┆ 5700.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.2          ┆ 218.0             ┆ 5700.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 225.0             ┆ 5400.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 52.5           ┆ 15.6          ┆ 221.0             ┆ 5450.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.9          ┆ 224.0             ┆ 5350.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 52.1           ┆ 17.0          ┆ 230.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 54.3           ┆ 15.7          ┆ 231.0             ┆ 5650.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6369,16 +6385,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 59.6           ┆ 17.0          ┆ 230.0             ┆ 6050.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 222.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.2           ┆ 14.3          ┆ 218.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 16.3          ┆ 220.0             ┆ 5400.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 55.9           ┆ 17.0          ┆ 228.0             ┆ 5600.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.7          ┆ 222.0             ┆ 5750.0      ┆ Male │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6400,14 +6416,14 @@ shape: (10, 5)
 │ ---     ┆ ---    ┆ ---    ┆ ---            ┆ ---         │
 │ str     ┆ str    ┆ str    ┆ f64            ┆ f64         │
 ╞═════════╪════════╪════════╪════════════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.1           ┆ 4500.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 5000.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4650.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 49.1           ┆ 5150.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4200.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 46.6           ┆ 4850.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.4           ┆ 4700.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.2           ┆ 4750.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 49.1           ┆ 4625.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 4400.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.7           ┆ 4750.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 47.5           ┆ 4875.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.2           ┆ 4375.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.2           ┆ 4975.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 47.2           ┆ 4925.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 46.8           ┆ 4850.0      │
 └─────────┴────────┴────────┴────────────────┴─────────────┘
@@ -6428,22 +6444,23 @@ String intervals let you filter a range on the same column without chaining two 
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe ┆ 40.6           ┆ 18.8          ┆ 193.0             ┆ 3800.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 41.5           ┆ 18.5          ┆ 201.0             ┆ 4000.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 46.0           ┆ 18.9          ┆ 195.0             ┆ 4150.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 49.2           ┆ 18.2          ┆ 195.0             ┆ 4400.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.6           ┆ 19.4          ┆ 193.0             ┆ 3800.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 47.5           ┆ 16.8          ┆ 199.0             ┆ 3900.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 49.0           ┆ 19.5          ┆ 210.0             ┆ 3950.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.9           ┆ 19.1          ┆ 196.0             ┆ 3550.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 18.5          ┆ 201.0             ┆ 4450.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.1          ┆ 217.0             ┆ 4375.0      ┆ Female │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
+│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
+│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
+│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
+╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0            ┆ 3800.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 42.0           ┆ 19.5          ┆ 200.0            ┆ 4050.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 37.6           ┆ 19.1          ┆ 194.0            ┆ 3750.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0            ┆ 3600.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 35.7           ┆ 18.0          ┆ 202.0            ┆ 3550.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 40.2           ┆ 20.1          ┆ 200.0            ┆ 3975.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 41.5           ┆ 18.5          ┆ 201.0            ┆ 4000.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 50.5           ┆ 19.6          ┆ 201.0            ┆ 4050.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 54.2           ┆ 20.8          ┆ 201.0            ┆ 4300.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 50.8           ┆ 19.0          ┆ 210.0            ┆ 4100.0      ┆ Male   │
+└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6457,23 +6474,22 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
-│ Adelie    ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0            ┆ 4150.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 43.1           ┆ 19.2          ┆ 197.0            ┆ 3500.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 17.8          ┆ 198.0            ┆ 3950.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 46.1           ┆ 18.2          ┆ 178.0            ┆ 3250.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 46.6           ┆ 17.8          ┆ 193.0            ┆ 3800.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.6          ┆ 212.0            ┆ 4300.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 42.5           ┆ 17.3          ┆ 187.0            ┆ 3350.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0            ┆ 4400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.2           ┆ 13.7          ┆ 214.0            ┆ 4925.0      ┆ Female │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Biscoe ┆ 41.3           ┆ 21.1          ┆ 195.0             ┆ 4400.0      ┆ Male   │
+│ Adelie    ┆ Biscoe ┆ 42.2           ┆ 19.5          ┆ 197.0             ┆ 4275.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 49.7           ┆ 18.6          ┆ 195.0             ┆ 3600.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 45.6           ┆ 19.4          ┆ 194.0             ┆ 3525.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 49.2           ┆ 15.2          ┆ 221.0             ┆ 6300.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 47.4           ┆ 14.6          ┆ 212.0             ┆ 4725.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 44.9           ┆ 13.8          ┆ 212.0             ┆ 4750.0      ┆ Female │
+└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6493,16 +6509,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 36.6           ┆ 17.8          ┆ 185.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 38.2           ┆ 18.1          ┆ 185.0            ┆ 3950.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 35.3           ┆ 18.9          ┆ 187.0            ┆ 3800.0      ┆ Female │
 │ Adelie    ┆ Dream     ┆ 38.8           ┆ 20.0          ┆ 190.0            ┆ 3950.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 37.6           ┆ 17.0          ┆ 185.0            ┆ 3600.0      ┆ Female │
-│ Adelie    ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0            ┆ 3900.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 51.3           ┆ 19.2          ┆ 193.0            ┆ 3650.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 52.7           ┆ 19.8          ┆ 197.0            ┆ 3725.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 49.8           ┆ 17.3          ┆ 198.0            ┆ 3675.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 39.7           ┆ 18.4          ┆ 190.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 36.2           ┆ 16.1          ┆ 187.0            ┆ 3550.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 37.7           ┆ 19.8          ┆ 198.0            ┆ 3500.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 41.4           ┆ 18.5          ┆ 202.0            ┆ 3875.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 50.0           ┆ 19.5          ┆ 196.0            ┆ 3900.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 45.4           ┆ 18.7          ┆ 188.0            ┆ 3525.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 51.9           ┆ 19.5          ┆ 206.0            ┆ 3950.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 49.6           ┆ 18.2          ┆ 193.0            ┆ 3775.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 50.2           ┆ 18.7          ┆ 198.0            ┆ 3775.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6523,11 +6539,11 @@ shape: (5, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.9          ┆ 190.0             ┆ 3450.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 43.2           ┆ 16.6          ┆ 187.0             ┆ 2900.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 49.7           ┆ 18.6          ┆ 195.0             ┆ 3600.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 18.5          ┆ 201.0             ┆ 4450.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 35.6           ┆ 17.5          ┆ 191.0             ┆ 3175.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 40.2           ┆ 17.1          ┆ 193.0             ┆ 3400.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 51.0           ┆ 18.8          ┆ 203.0             ┆ 4100.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 52.2           ┆ 18.8          ┆ 197.0             ┆ 3450.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6552,16 +6568,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 37.8           ┆ 17.3          ┆ 180.0             ┆ 3700.0      ┆ null   │
-│ Adelie  ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0             ┆ 3900.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 37.6           ┆ 19.3          ┆ 181.0             ┆ 3300.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 37.0           ┆ 16.9          ┆ 185.0             ┆ 3000.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 41.6           ┆ 18.0          ┆ 192.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 38.1           ┆ 16.5          ┆ 198.0             ┆ 3825.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 41.5           ┆ 18.3          ┆ 195.0             ┆ 4300.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 34.4           ┆ 18.4          ┆ 184.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 38.8           ┆ 17.2          ┆ 180.0             ┆ 3800.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 38.8           ┆ 20.0          ┆ 190.0             ┆ 3950.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
+│ Adelie  ┆ Biscoe    ┆ 36.4           ┆ 17.1          ┆ 184.0             ┆ 2850.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0             ┆ 4450.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 34.6           ┆ 17.2          ┆ 189.0             ┆ 3200.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 193.0             ┆ 2925.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 32.1           ┆ 15.5          ┆ 188.0             ┆ 3050.0      ┆ Female │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6600,46 +6616,43 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 42.0           ┆ 13.5          ┆ 210.0             ┆ 4150.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 44.0           ┆ 13.6          ┆ 208.0             ┆ 4350.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 15.8          ┆ 215.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 16.8          ┆ 230.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 44.5           ┆ 14.3          ┆ 216.0             ┆ 4100.0      ┆ null   │
+│ Gentoo  ┆ Biscoe ┆ 47.3           ┆ 15.3          ┆ 222.0             ┆ 5250.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 54.3           ┆ 15.7          ┆ 231.0             ┆ 5650.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.4           ┆ 15.6          ┆ 221.0             ┆ 5000.0      ┆ Male   │
 │ Gentoo  ┆ Biscoe ┆ 47.5           ┆ 14.2          ┆ 209.0             ┆ 4600.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 43.4           ┆ 14.4          ┆ 218.0             ┆ 4600.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.5           ┆ 15.0          ┆ 219.0             ┆ 4850.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 41.7           ┆ 14.7          ┆ 210.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 44.5           ┆ 15.7          ┆ 217.0             ┆ 4875.0      ┆ null   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
-# isna/notna — rows with a missing 'sex' value (one-element tuple, no value needed)
+# isna/notna — missing and non-missing value checks
+# Standard columns via kwargs, or columns with spaces via bracket notation:
 (
-    penguins
-    .filter(sex=('isna',))
+    penguins_spaces
+    .filter("[bill length mm].notna()", sex=("notna",))
+    .select("species", "island", "[bill length mm]", "sex")
+    .head(5)
 )
 ```
 Output:
 ```text
-shape: (11, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Adelie  ┆ Torgersen ┆ null           ┆ null          ┆ null              ┆ null        ┆ null │
-│ Adelie  ┆ Torgersen ┆ 34.1           ┆ 18.1          ┆ 193.0             ┆ 3475.0      ┆ null │
-│ Adelie  ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0             ┆ 4250.0      ┆ null │
-│ Adelie  ┆ Torgersen ┆ 37.8           ┆ 17.1          ┆ 186.0             ┆ 3300.0      ┆ null │
-│ Adelie  ┆ Torgersen ┆ 37.8           ┆ 17.3          ┆ 180.0             ┆ 3700.0      ┆ null │
-│ …       ┆ …         ┆ …              ┆ …             ┆ …                 ┆ …           ┆ …    │
-│ Gentoo  ┆ Biscoe    ┆ 44.5           ┆ 14.3          ┆ 216.0             ┆ 4100.0      ┆ null │
-│ Gentoo  ┆ Biscoe    ┆ 46.2           ┆ 14.4          ┆ 214.0             ┆ 4650.0      ┆ null │
-│ Gentoo  ┆ Biscoe    ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null │
-│ Gentoo  ┆ Biscoe    ┆ 44.5           ┆ 15.7          ┆ 217.0             ┆ 4875.0      ┆ null │
-│ Gentoo  ┆ Biscoe    ┆ null           ┆ null          ┆ null              ┆ null        ┆ null │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
+shape: (5, 4)
+┌─────────┬───────────┬────────────────┬────────┐
+│ species ┆ island    ┆ bill length mm ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ str    │
+╞═════════╪═══════════╪════════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 39.3           ┆ Male   │
+└─────────┴───────────┴────────────────┴────────┘
 ```
 
 ## Multiple conditions on the same column
@@ -6662,22 +6675,22 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0             ┆ 4450.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 42.8           ┆ 18.5          ┆ 195.0             ┆ 4250.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 46.2           ┆ 14.4          ┆ 214.0             ┆ 4650.0      ┆ null   │
-│ Gentoo  ┆ Biscoe    ┆ 46.4           ┆ 15.6          ┆ 221.0             ┆ 5000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 44.5           ┆ 14.7          ┆ 214.0             ┆ 4850.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 48.5           ┆ 15.0          ┆ 219.0             ┆ 4850.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null   │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Biscoe ┆ 41.1           ┆ 18.2          ┆ 192.0             ┆ 4050.0      ┆ Male   │
+│ Adelie  ┆ Biscoe ┆ 41.6           ┆ 18.0          ┆ 192.0             ┆ 3950.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 44.5           ┆ 15.7          ┆ 217.0             ┆ 4875.0      ┆ null   │
+│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 13.7          ┆ 214.0             ┆ 4925.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 14.3          ┆ 215.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6691,23 +6704,22 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0            ┆ 4450.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 40.3           ┆ 18.5          ┆ 196.0            ┆ 4350.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0            ┆ 4075.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0            ┆ 3450.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 46.5           ┆ 17.9          ┆ 192.0            ┆ 3500.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.3           ┆ 19.9          ┆ 203.0            ┆ 4050.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 49.2           ┆ 15.2          ┆ 221.0            ┆ 6300.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 14.3          ┆ 210.0            ┆ 4600.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 44.9           ┆ 13.8          ┆ 212.0            ┆ 4750.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.2           ┆ 15.5          ┆ 215.0            ┆ 4975.0      ┆ Female │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Biscoe ┆ 40.6           ┆ 18.6          ┆ 183.0             ┆ 3550.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
+│ Adelie  ┆ Biscoe ┆ 42.7           ┆ 18.3          ┆ 196.0             ┆ 4075.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.0           ┆ 16.1          ┆ 216.0             ┆ 5550.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 42.8           ┆ 14.2          ┆ 209.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.4           ┆ 15.0          ┆ 216.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 43.4           ┆ 14.4          ┆ 218.0             ┆ 4600.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6728,16 +6740,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0            ┆ 4150.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 41.4           ┆ 18.5          ┆ 202.0            ┆ 3875.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 48.5           ┆ 17.5          ┆ 191.0            ┆ 3400.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 43.2           ┆ 16.6          ┆ 187.0            ┆ 2900.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.5           ┆ 19.0          ┆ 200.0            ┆ 3800.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 49.8           ┆ 17.3          ┆ 198.0            ┆ 3675.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.0          ┆ 195.0            ┆ 3650.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 49.0           ┆ 16.1          ┆ 216.0            ┆ 5550.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 48.4           ┆ 16.3          ┆ 220.0            ┆ 5400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 43.3           ┆ 14.0          ┆ 208.0            ┆ 4575.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0            ┆ 4500.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.8           ┆ 18.4          ┆ 195.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 42.1           ┆ 19.1          ┆ 195.0            ┆ 4000.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0            ┆ 3900.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 47.5           ┆ 16.8          ┆ 199.0            ┆ 3900.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.3           ┆ 19.9          ┆ 203.0            ┆ 4050.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 46.1           ┆ 13.2          ┆ 211.0            ┆ 4500.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 13.5          ┆ 210.0            ┆ 4550.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.3           ┆ 15.3          ┆ 222.0            ┆ 5250.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 46.4           ┆ 15.0          ┆ 216.0            ┆ 4700.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -7091,16 +7103,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie    ┆ 3250.0      ┆ 40.3           ┆ 2.001121 │
-│ Adelie    ┆ 3800.0      ┆ 35.3           ┆ 3.049539 │
+│ Adelie    ┆ 4150.0      ┆ 39.2           ┆ 2.700698 │
+│ Adelie    ┆ 4700.0      ┆ 42.9           ┆ 2.553779 │
+│ Adelie    ┆ 4300.0      ┆ 40.8           ┆ 2.583141 │
+│ Adelie    ┆ 3050.0      ┆ 32.1           ┆ 2.959987 │
+│ Adelie    ┆ 3725.0      ┆ 40.7           ┆ 2.248731 │
 │ Adelie    ┆ 3450.0      ┆ 36.0           ┆ 2.662037 │
-│ Chinstrap ┆ 4550.0      ┆ 52.8           ┆ 1.632088 │
-│ Chinstrap ┆ 3500.0      ┆ 45.5           ┆ 1.690617 │
-│ Chinstrap ┆ 3775.0      ┆ 50.2           ┆ 1.497992 │
-│ Gentoo    ┆ 5650.0      ┆ 47.8           ┆ 2.472821 │
-│ Gentoo    ┆ 4625.0      ┆ 49.1           ┆ 1.918442 │
-│ Gentoo    ┆ 5650.0      ┆ 49.5           ┆ 2.305887 │
-│ Gentoo    ┆ 4875.0      ┆ 46.9           ┆ 2.216302 │
+│ Chinstrap ┆ 3775.0      ┆ 51.7           ┆ 1.412329 │
+│ Gentoo    ┆ 5100.0      ┆ 46.1           ┆ 2.399763 │
+│ Gentoo    ┆ 4750.0      ┆ 44.9           ┆ 2.356139 │
+│ Gentoo    ┆ 5600.0      ┆ 50.8           ┆ 2.170004 │
 └───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7137,16 +7149,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---     ┆ ---   │
 │ str       ┆ f64         ┆ f64     ┆ bool  │
 ╞═══════════╪═════════════╪═════════╪═══════╡
-│ Adelie    ┆ 4150.0      ┆ 4.15    ┆ true  │
-│ Chinstrap ┆ 3950.0      ┆ 3.95    ┆ false │
-│ Chinstrap ┆ 3450.0      ┆ 3.45    ┆ false │
+│ Adelie    ┆ 3200.0      ┆ 3.2     ┆ false │
+│ Adelie    ┆ 4600.0      ┆ 4.6     ┆ true  │
+│ Adelie    ┆ 3700.0      ┆ 3.7     ┆ false │
+│ Adelie    ┆ 3550.0      ┆ 3.55    ┆ false │
+│ Adelie    ┆ 3150.0      ┆ 3.15    ┆ false │
 │ Chinstrap ┆ 3600.0      ┆ 3.6     ┆ false │
-│ Chinstrap ┆ 3400.0      ┆ 3.4     ┆ false │
-│ Gentoo    ┆ 4100.0      ┆ 4.1     ┆ true  │
-│ Gentoo    ┆ 5050.0      ┆ 5.05    ┆ true  │
+│ Chinstrap ┆ 3850.0      ┆ 3.85    ┆ false │
 │ Gentoo    ┆ 4200.0      ┆ 4.2     ┆ true  │
-│ Gentoo    ┆ 4400.0      ┆ 4.4     ┆ true  │
-│ Gentoo    ┆ 5650.0      ┆ 5.65    ┆ true  │
+│ Gentoo    ┆ 4600.0      ┆ 4.6     ┆ true  │
+│ Gentoo    ┆ 4725.0      ┆ 4.725   ┆ true  │
 └───────────┴─────────────┴─────────┴───────┘
 ```
 
@@ -7167,16 +7179,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---     ┆ ---       │
 │ str       ┆ f64         ┆ f64     ┆ f64       │
 ╞═══════════╪═════════════╪═════════╪═══════════╡
-│ Adelie    ┆ 3900.0      ┆ 3.9     ┆ 8.598018  │
-│ Adelie    ┆ 4600.0      ┆ 4.6     ┆ 10.141252 │
-│ Adelie    ┆ 4700.0      ┆ 4.7     ┆ 10.361714 │
-│ Adelie    ┆ 4075.0      ┆ 4.075   ┆ 8.9838265 │
-│ Adelie    ┆ 3325.0      ┆ 3.325   ┆ 7.330361  │
-│ Adelie    ┆ 3450.0      ┆ 3.45    ┆ 7.605939  │
-│ Chinstrap ┆ 3350.0      ┆ 3.35    ┆ 7.385477  │
-│ Chinstrap ┆ 3950.0      ┆ 3.95    ┆ 8.708249  │
-│ Gentoo    ┆ 4550.0      ┆ 4.55    ┆ 10.031021 │
-│ Gentoo    ┆ 5550.0      ┆ 5.55    ┆ 12.235641 │
+│ Adelie    ┆ 3300.0      ┆ 3.3     ┆ 7.275246  │
+│ Adelie    ┆ 3700.0      ┆ 3.7     ┆ 8.157094  │
+│ Adelie    ┆ 3800.0      ┆ 3.8     ┆ 8.377556  │
+│ Adelie    ┆ 3975.0      ┆ 3.975   ┆ 8.7633645 │
+│ Chinstrap ┆ 3900.0      ┆ 3.9     ┆ 8.598018  │
+│ Chinstrap ┆ 3500.0      ┆ 3.5     ┆ 7.71617   │
+│ Chinstrap ┆ 3525.0      ┆ 3.525   ┆ 7.771285  │
+│ Gentoo    ┆ 5400.0      ┆ 5.4     ┆ 11.904948 │
+│ Gentoo    ┆ 5000.0      ┆ 5.0     ┆ 11.0231   │
+│ Gentoo    ┆ 3950.0      ┆ 3.95    ┆ 8.708249  │
 └───────────┴─────────────┴─────────┴───────────┘
 ```
 
@@ -7205,9 +7217,9 @@ shape: (10, 2)
 │ Adelie    ┆ true      │
 │ Adelie    ┆ true      │
 │ Chinstrap ┆ false     │
-│ Gentoo    ┆ false     │
-│ Gentoo    ┆ false     │
-│ Gentoo    ┆ false     │
+│ Chinstrap ┆ false     │
+│ Chinstrap ┆ false     │
+│ Chinstrap ┆ false     │
 │ Gentoo    ┆ false     │
 │ Gentoo    ┆ false     │
 └───────────┴───────────┘
@@ -7233,16 +7245,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---   │
 │ str       ┆ f64         ┆ bool  │
 ╞═══════════╪═════════════╪═══════╡
-│ Adelie    ┆ 3550.0      ┆ false │
-│ Adelie    ┆ 3800.0      ┆ false │
-│ Adelie    ┆ 3550.0      ┆ false │
-│ Chinstrap ┆ 2900.0      ┆ false │
-│ Chinstrap ┆ 3800.0      ┆ false │
-│ Chinstrap ┆ 4500.0      ┆ true  │
-│ Gentoo    ┆ 5700.0      ┆ true  │
-│ Gentoo    ┆ 5400.0      ┆ true  │
-│ Gentoo    ┆ 5000.0      ┆ true  │
+│ Adelie    ┆ 3200.0      ┆ false │
+│ Adelie    ┆ 3725.0      ┆ false │
+│ Adelie    ┆ 3325.0      ┆ false │
+│ Chinstrap ┆ 3700.0      ┆ false │
+│ Chinstrap ┆ 2700.0      ┆ false │
+│ Chinstrap ┆ 3350.0      ┆ false │
 │ Gentoo    ┆ 4750.0      ┆ true  │
+│ Gentoo    ┆ 4200.0      ┆ true  │
+│ Gentoo    ┆ 5200.0      ┆ true  │
+│ Gentoo    ┆ 5950.0      ┆ true  │
 └───────────┴─────────────┴───────┘
 ```
 
@@ -7265,16 +7277,16 @@ shape: (10, 2)
 │ ---       ┆ ---         │
 │ str       ┆ f64         │
 ╞═══════════╪═════════════╡
-│ Adelie    ┆ 2.85        │
-│ Adelie    ┆ 3.55        │
+│ Adelie    ┆ 3.8         │
+│ Adelie    ┆ 3.2         │
 │ Adelie    ┆ 3.075       │
-│ Chinstrap ┆ 3.725       │
-│ Chinstrap ┆ 3.3         │
+│ Adelie    ┆ 4.075       │
+│ Adelie    ┆ 3.175       │
+│ Chinstrap ┆ 4.15        │
 │ Chinstrap ┆ 3.4         │
-│ Chinstrap ┆ 3.775       │
-│ Gentoo    ┆ 4.65        │
-│ Gentoo    ┆ 5.25        │
-│ Gentoo    ┆ 4.875       │
+│ Chinstrap ┆ 3.325       │
+│ Gentoo    ┆ 4.6         │
+│ Gentoo    ┆ 4.95        │
 └───────────┴─────────────┘
 ```
 
@@ -7321,16 +7333,16 @@ shape: (10, 5)
 │ ---     ┆ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str     ┆ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═════════╪═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie  ┆ Torgersen ┆ 3625.0      ┆ 38.9           ┆ 2.39557  │
-│ Adelie  ┆ Biscoe    ┆ 3800.0      ┆ 35.3           ┆ 3.049539 │
-│ Adelie  ┆ Biscoe    ┆ 4400.0      ┆ 41.3           ┆ 2.579601 │
+│ Adelie  ┆ Torgersen ┆ 3475.0      ┆ 34.1           ┆ 2.98845  │
+│ Adelie  ┆ Dream     ┆ 3900.0      ┆ 40.9           ┆ 2.331406 │
+│ Adelie  ┆ Dream     ┆ 4400.0      ┆ 44.1           ┆ 2.262432 │
+│ Adelie  ┆ Dream     ┆ 3450.0      ┆ 36.0           ┆ 2.662037 │
 │ Adelie  ┆ Torgersen ┆ 3600.0      ┆ 33.5           ┆ 3.207841 │
-│ Adelie  ┆ Biscoe    ┆ 4600.0      ┆ 45.6           ┆ 2.212219 │
+│ Adelie  ┆ Biscoe    ┆ 3750.0      ┆ 38.6           ┆ 2.516846 │
 │ Adelie  ┆ Torgersen ┆ 3450.0      ┆ 40.2           ┆ 2.134848 │
-│ Adelie  ┆ Dream     ┆ 3650.0      ┆ 39.0           ┆ 2.399737 │
-│ Adelie  ┆ Dream     ┆ 4000.0      ┆ 41.5           ┆ 2.322543 │
 │ Gentoo  ┆ Biscoe    ┆ 5250.0      ┆ 44.4           ┆ 2.663136 │
-│ Gentoo  ┆ Biscoe    ┆ 4700.0      ┆ 43.5           ┆ 2.483816 │
+│ Gentoo  ┆ Biscoe    ┆ 5100.0      ┆ 44.9           ┆ 2.529749 │
+│ Gentoo  ┆ Biscoe    ┆ 4975.0      ┆ 47.2           ┆ 2.233105 │
 └─────────┴───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7355,16 +7367,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---          │
 │ str       ┆ f64         ┆ str          │
 ╞═══════════╪═════════════╪══════════════╡
-│ Adelie    ┆ 3700.0      ┆ light        │
-│ Adelie    ┆ 2900.0      ┆ light        │
-│ Adelie    ┆ 3700.0      ┆ light        │
-│ Chinstrap ┆ 4050.0      ┆ heavy        │
+│ Adelie    ┆ 3650.0      ┆ light        │
+│ Adelie    ┆ 4400.0      ┆ heavy        │
+│ Adelie    ┆ 3800.0      ┆ light        │
+│ Adelie    ┆ 3425.0      ┆ light        │
+│ Adelie    ┆ 3050.0      ┆ light        │
+│ Adelie    ┆ 3900.0      ┆ light        │
 │ Chinstrap ┆ 3700.0      ┆ light        │
-│ Chinstrap ┆ 4800.0      ┆ heavy        │
-│ Gentoo    ┆ 5050.0      ┆ heavy        │
-│ Gentoo    ┆ 3950.0      ┆ light        │
-│ Gentoo    ┆ 4725.0      ┆ heavy        │
-│ Gentoo    ┆ 4600.0      ┆ heavy        │
+│ Gentoo    ┆ 4750.0      ┆ heavy        │
+│ Gentoo    ┆ 5300.0      ┆ heavy        │
+│ Gentoo    ┆ 4750.0      ┆ heavy        │
 └───────────┴─────────────┴──────────────┘
 ```
 
@@ -7387,16 +7399,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---        │
 │ str       ┆ f64         ┆ str        │
 ╞═══════════╪═════════════╪════════════╡
-│ Adelie    ┆ 3325.0      ┆ small      │
-│ Adelie    ┆ 3700.0      ┆ medium     │
-│ Adelie    ┆ 3900.0      ┆ medium     │
-│ Adelie    ┆ 4775.0      ┆ large      │
 │ Adelie    ┆ 3450.0      ┆ small      │
+│ Adelie    ┆ 3625.0      ┆ medium     │
+│ Adelie    ┆ 3325.0      ┆ small      │
+│ Adelie    ┆ 3550.0      ┆ medium     │
+│ Adelie    ┆ 3425.0      ┆ small      │
+│ Adelie    ┆ 3900.0      ┆ medium     │
 │ Adelie    ┆ 3175.0      ┆ small      │
-│ Chinstrap ┆ 3300.0      ┆ small      │
+│ Chinstrap ┆ 2900.0      ┆ small      │
 │ Chinstrap ┆ 3250.0      ┆ small      │
-│ Gentoo    ┆ 5550.0      ┆ large      │
-│ Gentoo    ┆ 4850.0      ┆ large      │
+│ Gentoo    ┆ 4875.0      ┆ large      │
 └───────────┴─────────────┴────────────┘
 ```
 
@@ -7420,12 +7432,12 @@ shape: (10, 3)
 │ ---       ┆ ---    ┆ ---         │
 │ str       ┆ str    ┆ str         │
 ╞═══════════╪════════╪═════════════╡
+│ Adelie    ┆ Dream  ┆ OTH         │
+│ Adelie    ┆ Biscoe ┆ BIS         │
 │ Adelie    ┆ Biscoe ┆ BIS         │
 │ Adelie    ┆ Dream  ┆ OTH         │
-│ Adelie    ┆ Dream  ┆ OTH         │
-│ Adelie    ┆ Dream  ┆ OTH         │
 │ Chinstrap ┆ Dream  ┆ OTH         │
-│ Chinstrap ┆ Dream  ┆ OTH         │
+│ Gentoo    ┆ Biscoe ┆ BIS         │
 │ Gentoo    ┆ Biscoe ┆ BIS         │
 │ Gentoo    ┆ Biscoe ┆ BIS         │
 │ Gentoo    ┆ Biscoe ┆ BIS         │
@@ -7578,11 +7590,11 @@ shape: (5, 3)
 │ ---       ┆ ---     ┆ ---       │
 │ str       ┆ f64     ┆ f64       │
 ╞═══════════╪═════════╪═══════════╡
-│ Chinstrap ┆ 3.4     ┆ 7.495708  │
-│ Chinstrap ┆ 3.95    ┆ 8.708249  │
-│ Gentoo    ┆ 6.3     ┆ 13.889106 │
-│ Gentoo    ┆ 5.25    ┆ 11.574255 │
-│ Gentoo    ┆ 4.6     ┆ 10.141252 │
+│ Adelie    ┆ 4.4     ┆ 9.700328  │
+│ Adelie    ┆ 3.8     ┆ 8.377556  │
+│ Chinstrap ┆ 3.5     ┆ 7.71617   │
+│ Gentoo    ┆ 4.15    ┆ 9.149173  │
+│ Gentoo    ┆ 5.6     ┆ 12.345872 │
 └───────────┴─────────┴───────────┘
 ```
 
@@ -9028,7 +9040,7 @@ tips = pt.sample("tips")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x112fb9be0>
+<pytae.plotting.Plotter at 0x10f1c5a90>
 ```
 
 ```python
@@ -9048,7 +9060,7 @@ pt.finalize(p)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11de360d0>
+<pytae.plotting.Plotter at 0x119fa9f90>
 ```
 
 ```python
@@ -9062,7 +9074,7 @@ p = pt.Plotter(tips.by("day").agg(total_bill="mean"), figsize=(8, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11df03890>
+<pytae.plotting.Plotter at 0x11a07b750>
 ```
 
 ## 2. Plot Kinds & Distribution Semantics
@@ -9089,7 +9101,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11de629e0>
+<pytae.plotting.Plotter at 0x119fd69e0>
 ```
 
 ```python
@@ -9111,7 +9123,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11de61cd0>
+<pytae.plotting.Plotter at 0x119fd6520>
 ```
 
 ```python
@@ -9133,7 +9145,7 @@ diamonds = pt.sample("diamonds").sample(1000, random_state=42)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x111e64710>
+<pytae.plotting.Plotter at 0x10e088710>
 ```
 
 ```python
@@ -9151,7 +9163,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11df26250>
+<pytae.plotting.Plotter at 0x11a09e250>
 ```
 
 ```python
@@ -9174,7 +9186,7 @@ titanic = pt.sample("titanic")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x112f5a470>
+<pytae.plotting.Plotter at 0x10f15a470>
 ```
 
 ```python
@@ -9192,7 +9204,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11de83850>
+<pytae.plotting.Plotter at 0x119ffb950>
 ```
 
 ## 3. Subplots & Multi-Panel Dashboards (With & Without Mosaic)
@@ -9217,7 +9229,7 @@ p_sub = pt.Plotter(nrows=1, ncols=2, figsize=(11, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e320d50>
+<pytae.plotting.Plotter at 0x11a460e50>
 ```
 
 ```python
@@ -9234,7 +9246,7 @@ k = pt.Plotter(figsize=(9, 5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e320c50>
+<pytae.plotting.Plotter at 0x11a460050>
 ```
 
 ```python
@@ -9259,7 +9271,7 @@ p = pt.Plotter(mosaic=mosaic, figsize=(14, 9))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e321350>
+<pytae.plotting.Plotter at 0x11a461450>
 ```
 
 ```python
@@ -9286,7 +9298,7 @@ p_multi = pt.Plotter(mosaic=mosaic_multi, figsize=(13, 7))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e323050>
+<pytae.plotting.Plotter at 0x11a463150>
 ```
 
 ## 4. Grid Faceting / Small Multiples (Auto-Faceting with `by` & `ncols`)
@@ -9312,7 +9324,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12be95050>
+<pytae.plotting.Plotter at 0x12803d350>
 ```
 
 ```python
@@ -9334,7 +9346,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12be94d50>
+<pytae.plotting.Plotter at 0x12803cf50>
 ```
 
 ## 5. End-to-End Pipelines: Mixing pandas, pytae, and Multi-Panel Mosaics
@@ -9375,7 +9387,7 @@ wrangle_penguins = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e323150>
+<pytae.plotting.Plotter at 0x119da9450>
 ```
 
 ```python
@@ -9406,7 +9418,7 @@ cleaned_diamonds = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12be94f50>
+<pytae.plotting.Plotter at 0x12803d150>
 ```
 
 ## 6. Advanced Controls & Customization (`_CONTROL_KWARGS`)
@@ -9503,7 +9515,7 @@ pre_aggregated = pt.DataFrame({
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x10c508950>
+<pytae.plotting.Plotter at 0x119ff9d50>
 ```
 
 ```python
@@ -15376,6 +15388,10 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             col = m_cmp.group(1).strip()
             op = m_cmp.group(2).strip()
             val = m_cmp.group(3).strip()
+            if val.lower() in ("none", "null", "nan") and op in ("!=", "=="):
+                op_null = "notna" if op == "!=" else "isna"
+                entries.append((col, (op_null,)))
+                continue
             entries.append((col, f"{op} {val}"))
             continue
         # Direct comparison with in / not in: col in ['a', 'b'], col not in ['a', 'b']
@@ -15385,6 +15401,22 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             op = "not in" if "not" in m_in.group(2).lower() else "in"
             val = m_in.group(3).strip()
             entries.append((col, f"{op} {val}"))
+            continue
+        # SQL-style null checks: col is not null, col is null, col is not na, col is na
+        m_sql_null = re.match(r"^([^()]+?)\s+is\s+(not\s+null|null|not\s+na|na)$", raw_entry, flags=re.IGNORECASE)
+        if m_sql_null:
+            col = m_sql_null.group(1).strip()
+            m_name = m_sql_null.group(2).strip().lower()
+            op = "notna" if "not" in m_name else "isna"
+            entries.append((col, (op,)))
+            continue
+        # Functional null check calls: notna(col), is_not_null(col), isna(col), is_null(col)
+        m_fn_null = re.match(r"^(notna|isna|is_not_null|is_null)\((.+)\)$", raw_entry, flags=re.IGNORECASE)
+        if m_fn_null:
+            op_name = m_fn_null.group(1).strip().lower()
+            col = m_fn_null.group(2).strip()
+            op = "notna" if "not" in op_name else "isna"
+            entries.append((col, (op,)))
             continue
         # String method calls: col.str.contains('val'), col.str.starts_with('val'), col.str.endswith('val')
         m_str = re.match(r"^([^()]+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw_entry)
@@ -20935,8 +20967,12 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 return ~col_expr.is_in(vals)
             cval = _coerce_val(val)
             if op == "==":
+                if cval is None or str(cval).lower() in ("none", "null"):
+                    return col_expr.is_null()
                 return col_expr == cval
             if op == "!=":
+                if cval is None or str(cval).lower() in ("none", "null"):
+                    return col_expr.is_not_null()
                 return col_expr != cval
             if op == ">":
                 return col_expr > cval
@@ -20956,6 +20992,12 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 return col_expr.cast(pl.String).str.contains(str(val))
 
     if isinstance(cond, str):
+        cond_clean = cond.strip().lower()
+        if cond_clean in ("notna", "is_not_null", "not_null", "not null"):
+            return col_expr.is_not_null()
+        if cond_clean in ("isna", "is_null", "null"):
+            return col_expr.is_null()
+
         # interval pattern: [lo, hi], (lo, hi), [lo, hi), (lo, hi]
         m = re.match(r"^([\[(])([^,]+),([^,]+)([\])])$", cond.strip())
         if m:
@@ -26176,6 +26218,38 @@ def test_filter_cli_str_methods_and_null_checks(tmp_path, capsys):
     exit_code = cli.main([path, "-filter", "sex.is_not_null()", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 3)"
+
+
+def test_filter_cli_notna_spaced_column(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "bill length mm": [39.1, None, 40.5, None, 45.2],
+                "body mass g": [3750, 3800, None, 4000, 4200],
+            }
+        ),
+    )
+
+    # 1. Bracket notation [bill length mm].notna()
+    exit_code = cli.main([path, "-filter", "[bill length mm].notna()", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+
+    # 2. SQL style [bill length mm] is not null
+    exit_code = cli.main([path, "-filter", "[bill length mm] is not null", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+
+    # 3. Functional notna([bill length mm])
+    exit_code = cli.main([path, "-filter", "notna([bill length mm])", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+
+    # 4. Inequality [bill length mm] != None
+    exit_code = cli.main([path, "-filter", "[bill length mm] != None", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
 
 ################################################################################
 # FILE: tests/test_cli_inspect.py
@@ -34165,3 +34239,30 @@ def test_pytae_dataframe_direct_operations_no_pt():
     # Chaining from grouped through delegated DataFrame methods
     filtered_summary = grouped.filter("body_mass_g > 4000").agg("mean")
     assert len(filtered_summary) == 3
+
+
+def test_filter_notna_spaced_column():
+    df = pt.DataFrame({
+        "bill length mm": [39.1, None, 40.5, None, 45.2],
+        "body mass g": [3750, 3800, None, 4000, 4200],
+    })
+
+    # 1. Bracket notation
+    assert len(df.filter("[bill length mm].notna()")) == 3
+    assert len(df.filter("[bill length mm].is_not_null()")) == 3
+
+    # 2. SQL style
+    assert len(df.filter("[bill length mm] is not null")) == 3
+    assert len(df.filter("[bill length mm] is not na")) == 3
+
+    # 3. Functional call
+    assert len(df.filter("notna([bill length mm])")) == 3
+    assert len(df.filter("is_not_null([bill length mm])")) == 3
+
+    # 4. Inequality with None/null
+    assert len(df.filter("[bill length mm] != None")) == 3
+    assert len(df.filter("[bill length mm] != null")) == 3
+
+    # 5. Dict syntax
+    assert len(df.filter({"bill length mm": "notna"})) == 3
+    assert len(df.filter({"bill length mm": ("notna",)})) == 3

@@ -175,3 +175,36 @@ def test_filter_cli_str_methods_and_null_checks(tmp_path, capsys):
     exit_code = cli.main([path, "-filter", "sex.is_not_null()", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 3)"
+
+
+def test_filter_cli_notna_spaced_column(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "bill length mm": [39.1, None, 40.5, None, 45.2],
+                "body mass g": [3750, 3800, None, 4000, 4200],
+            }
+        ),
+    )
+
+    # 1. Bracket notation [bill length mm].notna()
+    exit_code = cli.main([path, "-filter", "[bill length mm].notna()", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+
+    # 2. SQL style [bill length mm] is not null
+    exit_code = cli.main([path, "-filter", "[bill length mm] is not null", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+
+    # 3. Functional notna([bill length mm])
+    exit_code = cli.main([path, "-filter", "notna([bill length mm])", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+
+    # 4. Inequality [bill length mm] != None
+    exit_code = cli.main([path, "-filter", "[bill length mm] != None", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(3, 2)"
+

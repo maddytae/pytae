@@ -248,3 +248,31 @@ def test_pytae_dataframe_direct_operations_no_pt():
     # Chaining from grouped through delegated DataFrame methods
     filtered_summary = grouped.filter("body_mass_g > 4000").agg("mean")
     assert len(filtered_summary) == 3
+
+
+def test_filter_notna_spaced_column():
+    df = pt.DataFrame({
+        "bill length mm": [39.1, None, 40.5, None, 45.2],
+        "body mass g": [3750, 3800, None, 4000, 4200],
+    })
+
+    # 1. Bracket notation
+    assert len(df.filter("[bill length mm].notna()")) == 3
+    assert len(df.filter("[bill length mm].is_not_null()")) == 3
+
+    # 2. SQL style
+    assert len(df.filter("[bill length mm] is not null")) == 3
+    assert len(df.filter("[bill length mm] is not na")) == 3
+
+    # 3. Functional call
+    assert len(df.filter("notna([bill length mm])")) == 3
+    assert len(df.filter("is_not_null([bill length mm])")) == 3
+
+    # 4. Inequality with None/null
+    assert len(df.filter("[bill length mm] != None")) == 3
+    assert len(df.filter("[bill length mm] != null")) == 3
+
+    # 5. Dict syntax
+    assert len(df.filter({"bill length mm": "notna"})) == 3
+    assert len(df.filter({"bill length mm": ("notna",)})) == 3
+

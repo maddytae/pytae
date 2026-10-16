@@ -107,8 +107,12 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 return ~col_expr.is_in(vals)
             cval = _coerce_val(val)
             if op == "==":
+                if cval is None or str(cval).lower() in ("none", "null"):
+                    return col_expr.is_null()
                 return col_expr == cval
             if op == "!=":
+                if cval is None or str(cval).lower() in ("none", "null"):
+                    return col_expr.is_not_null()
                 return col_expr != cval
             if op == ">":
                 return col_expr > cval
@@ -128,6 +132,12 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 return col_expr.cast(pl.String).str.contains(str(val))
 
     if isinstance(cond, str):
+        cond_clean = cond.strip().lower()
+        if cond_clean in ("notna", "is_not_null", "not_null", "not null"):
+            return col_expr.is_not_null()
+        if cond_clean in ("isna", "is_null", "null"):
+            return col_expr.is_null()
+
         # interval pattern: [lo, hi], (lo, hi), [lo, hi), (lo, hi]
         m = re.match(r"^([\[(])([^,]+),([^,]+)([\])])$", cond.strip())
         if m:

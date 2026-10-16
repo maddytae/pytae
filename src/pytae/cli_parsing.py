@@ -451,6 +451,10 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             col = m_cmp.group(1).strip()
             op = m_cmp.group(2).strip()
             val = m_cmp.group(3).strip()
+            if val.lower() in ("none", "null", "nan") and op in ("!=", "=="):
+                op_null = "notna" if op == "!=" else "isna"
+                entries.append((col, (op_null,)))
+                continue
             entries.append((col, f"{op} {val}"))
             continue
         # Direct comparison with in / not in: col in ['a', 'b'], col not in ['a', 'b']
@@ -460,6 +464,22 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             op = "not in" if "not" in m_in.group(2).lower() else "in"
             val = m_in.group(3).strip()
             entries.append((col, f"{op} {val}"))
+            continue
+        # SQL-style null checks: col is not null, col is null, col is not na, col is na
+        m_sql_null = re.match(r"^([^()]+?)\s+is\s+(not\s+null|null|not\s+na|na)$", raw_entry, flags=re.IGNORECASE)
+        if m_sql_null:
+            col = m_sql_null.group(1).strip()
+            m_name = m_sql_null.group(2).strip().lower()
+            op = "notna" if "not" in m_name else "isna"
+            entries.append((col, (op,)))
+            continue
+        # Functional null check calls: notna(col), is_not_null(col), isna(col), is_null(col)
+        m_fn_null = re.match(r"^(notna|isna|is_not_null|is_null)\((.+)\)$", raw_entry, flags=re.IGNORECASE)
+        if m_fn_null:
+            op_name = m_fn_null.group(1).strip().lower()
+            col = m_fn_null.group(2).strip()
+            op = "notna" if "not" in op_name else "isna"
+            entries.append((col, (op,)))
             continue
         # String method calls: col.str.contains('val'), col.str.starts_with('val'), col.str.endswith('val')
         m_str = re.match(r"^([^()]+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw_entry)
