@@ -148,6 +148,20 @@ def test_mutate_local_var_reference_in_if_else():
     assert list(result["size"]) == ["light", "heavy"]
 
 
+def test_mutate_local_var_select_columns_in_if_else():
+    df = pt.DataFrame({
+        "cola": [10, 20, 30],
+        "colb": [100, 200, 300],
+    })
+    var = "yes"
+    res1 = df.mutate('colx = if_else(@var == "yes", cola, colb)')
+    assert list(res1["colx"]) == [10, 20, 30]
+
+    var = "no"
+    res2 = df.mutate('colx = if_else(@var == "yes", cola, colb)')
+    assert list(res2["colx"]) == [100, 200, 300]
+
+
 def test_mutate_local_var_reference_in_case_when():
     low, high = 3200.0, 3800.0
     result = pt.mutate(

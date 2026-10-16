@@ -787,7 +787,36 @@ class DataFrame:
         return GroupedDataFrame(self._df, resolved, orig_col_map=self._orig_col_map, orig_index=self._orig_index)
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
-        """Create or transform columns using vectorized expressions, math, if_else, map, shift."""
+        """Create, derive, or transform columns using vectorized expressions, if_else, map, or callables.
+
+        Parameters
+        ----------
+        *specs : str | dict
+            Formula strings (e.g. ``"ratio = x / y, status = 'active'"``) or dictionaries of column assignments.
+        **kwargs : Any
+            Column assignments as keywords. Values can be:
+            - String expressions: ``ratio="x / y"``
+            - Constants: ``flag=True, count=0``
+            - Conditionals: ``status="if_else(x > 0, 'pos', 'neg')"``
+            - Dynamic column selection: ``colx="if_else(@var == 'yes', cola, colb)"``
+            - Dictionary recoding: ``code="map(species, {'Adelie': 'AD'})"``
+            - Python callables: ``metric=lambda d: d["a"] * 2``
+
+        Notes
+        -----
+        - **Referencing External Variables (``@var``)**: Prefix local Python variables with ``@``
+          to disambiguate them from DataFrame columns (e.g. ``"colx = if_else(@var == 'yes', cola, colb)"``).
+        - **Logical Operators**: In string formulas, use natural ``or`` and ``and``. In callables (``lambda d:``),
+          use bitwise ``|`` and ``&`` with parentheses ``(d['a'] > 1) | (d['b'] > 2)``.
+        - **Left-to-Right Evaluation**: Columns created on the left can be used immediately by expressions on the right.
+
+        Examples
+        --------
+        >>> df = pt.DataFrame({"cola": [10, 20], "colb": [100, 200]})
+        >>> var = "yes"
+        >>> df.mutate("colx = if_else(@var == 'yes', cola, colb)")
+        >>> df.mutate(total="cola + colb", tax="total * 0.08")
+        """
         if "by" in kwargs or "_by" in kwargs:
             raise TypeError(
                 "df.pt.mutate() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."

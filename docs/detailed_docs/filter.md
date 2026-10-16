@@ -9,14 +9,14 @@
 | Filter Type | Python Library (`pytae`) | Command Line (`pytae CLI`) |
 |:---|:---|:---|
 | **Simple Comparison** | `df.filter("body_mass_g > 4000")` | `-filter "body_mass_g > 4000"` |
-| **Multiple Conditions (AND)** | `df.filter("body_mass_g > 4000 & species == 'Gentoo'")`<br>or `df.filter(body_mass_g="> 4000", species="Gentoo")` | `-filter "body_mass_g > 4000, species == 'Gentoo'"`<br>or `-filter "body_mass_g > 4000 & species == 'Gentoo'"` |
-| **Logical OR** | `df.filter("species == 'Adelie' \| island == 'Dream'")` | `-filter "species == 'Adelie' \| island == 'Dream'"` |
+| **Multiple Conditions (AND)** | `df.filter("body_mass_g > 4000 and species == 'Gentoo'")`<br>or `df.filter(body_mass_g="> 4000", species="Gentoo")` | `-filter "body_mass_g > 4000 and species == 'Gentoo'"`<br>or `-filter "body_mass_g > 4000, species == 'Gentoo'"` |
+| **Logical OR** | `df.filter("species == 'Adelie' or island == 'Dream'")` | `-filter "species == 'Adelie' or island == 'Dream'"` |
 | **Interval Range** | `df.filter(body_mass_g="[3000, 4500]")` | `-filter "body_mass_g = [3000, 4500]"` |
 | **Set Membership** | `df.filter(species=["Adelie", "Gentoo"])`<br>or `df.filter("species in ['Adelie', 'Gentoo']")` | `-filter "species in ['Adelie', 'Gentoo']"` |
 | **String Matching** | `df.filter("species.str.starts_with('Ade')")` | `-filter "species.str.starts_with('Ade')"` |
 | **Columns with Spaces** | `df.filter("[bill length mm] > 40")` | `-filter "[bill length mm] > 40"` |
 | **Null Checks** | `df.filter("sex.is_not_null()")` | `-filter "sex.is_not_null()"` |
-| **Python Lambda / Callable** | `df.filter(lambda d: d['body_mass_g'] > 4000)` | *(Library only)* |
+| **Python Lambda / Callable** | `df.filter(lambda d: (d['body_mass_g'] > 4000) & (d['sex'] == 'Female'))` | *(Library only)* |
 
 ---
 
@@ -87,6 +87,19 @@ def is_valid_weight(d):
 penguins.filter(is_valid_weight)
 penguins.filter(lambda d: d["flipper_length_mm"] % 2 == 0)
 ```
+
+### 6. Logical Operators: `or` / `and` vs. `|` / `&`
+
+| Context | Recommended Operator | Syntax Example |
+|:---|:---:|:---|
+| **String Formula (`filter`)** | **`or`** / **`and`** | `df.filter("mass > 4000 or species == 'Gentoo'")` |
+| **CLI Filter (`-filter`)** | **`or`** / **`and`** | `pytae data.parquet -filter "mass > 4000 or species == 'Gentoo'"` |
+| **Python Lambda (`lambda d:`)** | **`\|`** / **`&`** | `df.filter(lambda d: (d["mass"] > 4000) \| (d["species"] == "Gentoo"))` |
+
+> [!NOTE]
+> **Why `or` in strings, but `|` in lambdas?**
+> - **In string expressions**: Python's bitwise `|` has higher precedence than comparisons (`>`, `<`), requiring parentheses `(a > 1) | (b > 2)`. Using `or` avoids parentheses bugs completely: `a > 1 or b > 2`.
+> - **In Python lambdas**: Python's language runtime evaluates `or` via `bool(series)`, which raises `ValueError: The truth value of a Series is ambiguous`. Vector Series in Python only support bitwise operators (`|`, `&`) with explicit parentheses.
 
 ---
 

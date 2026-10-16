@@ -75,8 +75,11 @@ penguins.mutate("(bill_length_mm, bill_depth_mm)_cm = _ / 10")
 ### 3. Conditional Expressions (`if_else` / `case_when`)
 
 ```python
-# Binary condition
+# Binary condition returning literals
 penguins.mutate(size_category="if_else(body_mass_g > 4000, 'Large', 'Normal')")
+
+# Dynamic column selection: pick cola if var is 'yes', else colb
+df.mutate("colx = if_else(var == 'yes', cola, colb)")
 
 # Multi-condition with case_when (tuple pairs + default)
 penguins.mutate(
@@ -89,16 +92,64 @@ penguins.mutate(
     """
 )
 
-# Complex domain branching with string matching, bitwise OR (|), and null checks
+# Complex domain branching with string matching, logical 'or', and null checks
 deals.mutate(
     tranche_type="""
     case_when(
         (deal_identifier == tranche_id, 'Main Tranche'),
-        (tranche_id.str.contains('-COL-') | collateral_class.is_not_null(), 'Collateral'),
+        (tranche_id.str.contains('-COL-') or collateral_class.is_not_null(), 'Collateral'),
         'Guarantor'
     )
     """
 )
+```
+
+#### A. Referencing External Python Variables (`@var`)
+
+Use the `@` prefix to reference variables from the surrounding Python scope directly inside formulas, `if_else`, and `case_when`:
+
+```python
+# External threshold variable
+cutoff = 4200
+penguins.mutate("size = if_else(body_mass_g >= @cutoff, 'Large', 'Normal')")
+
+# External string variable selecting between columns
+var = "yes"
+df.mutate("colx = if_else(@var == 'yes', cola, colb)")
+```
+
+> [!NOTE]
+> **Why `@` is required for Python variables:**
+> In Pytae formula strings, bare unquoted identifiers (`cola`, `colb`, `var`) always resolve to **DataFrame column names**.
+> The `@` prefix (e.g. `@var`, `@cutoff`) explicitly signals an external Python variable from your script or notebook.
+> This eliminates ambiguity:
+> - `var` = column in the DataFrame
+> - `@var` = local Python variable
+> It also guards against silent bugs where a misspelled column name might otherwise silently resolve to a variable in scope instead of raising a clear `KeyError`.
+
+#### B. Script-Level Toggles vs. Row-Level `if_else`
+
+If `var` is a fixed script parameter (e.g. `var = 'yes'`), every row will take the same branch. While `if_else(@var == 'yes', cola, colb)` is fully supported, resolving the target column name directly in Python avoids evaluating a vectorized conditional over millions of rows:
+
+```python
+var = "yes"
+
+# Dynamic column aliasing via f-string (zero-cost column pointer)
+target_col = "cola" if var == "yes" else "colb"
+df.mutate(f"colx = {target_col}")
+```
+
+#### C. Logical Operators in Formulas: `or` vs. `|`
+
+Inside Pytae formula strings (`mutate`, `filter`, CLI), you can use natural English `or` and `and`:
+
+```python
+# Clean & readable - no extra parentheses required
+df.mutate("flag = if_else(mass > 4000 or species == 'Gentoo', 'Highlight', 'Normal')")
+
+# If you use '|' or '&', you MUST wrap each comparison in parentheses
+# due to Python's bitwise operator precedence:
+df.mutate("flag = if_else((mass > 4000) | (species == 'Gentoo'), 'Highlight', 'Normal')")
 ```
 
 ### 4. Smart Missing Imputation Inside `mutate`
