@@ -200,17 +200,6 @@ class _Pipeline:
         except Exception as exc:
             return f"-mutate: {exc}"
 
-    def apply_cast(self, spec: str) -> str | None:
-        """Cast column types using Polars native SIMD vectorization. Returns an error message or None."""
-        try:
-            from pytae.polars_engine import cast_polars
-
-            self._pldf = cast_polars(self.polars_lazy_frame(), dtypes=spec)
-            self._df = None
-            return None
-        except Exception as exc:
-            return f"-cast: {exc}"
-
     def apply_dropna(self, spec: str | None) -> str | None:
         """Drop rows containing missing values (null/NaN). Returns an error message or None."""
         from pytae.cli_parsing import parse_dropna_spec, unknown_columns_message

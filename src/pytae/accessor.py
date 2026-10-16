@@ -53,9 +53,6 @@ class PolarsPtAccessor:
     def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
         return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
 
-    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
-
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
 
@@ -252,9 +249,6 @@ class PandasPtAccessor:
 
     def fill_nan(self, value: Any = None, *cols: Any, subset: Any = None) -> DataFrame:
         return DataFrame(self._obj).fill_nan(value, *cols, subset=subset)
-
-    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).cast(dtypes=dtypes, strict=strict, **kwargs)
 
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)

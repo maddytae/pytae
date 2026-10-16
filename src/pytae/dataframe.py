@@ -15,7 +15,6 @@ from pytae._text import unquote_name as _unquote_name
 from pytae.polars_engine import (
     agg_polars,
     arrange_polars,
-    cast_polars,
     clean_columns_polars,
     concat_polars,
     distinct_polars,
@@ -728,21 +727,6 @@ class DataFrame:
                 raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
         return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
 
-    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
-        """Cast column types using Polars native SIMD vectorization.
-
-        Parameters
-        ----------
-        dtypes : Mapping or str, optional
-            Mapping of column names to target types (e.g. {'x': int, 'y': float})
-            or comma-separated string specification (e.g. 'x:int, y:float').
-        strict : bool, default True
-            Whether to raise an error on invalid type conversions or return nulls.
-        **kwargs : Any
-            Additional column-to-type assignments (e.g. x=int, y='float').
-        """
-        return DataFrame(cast_polars(self._df, dtypes=dtypes, strict=strict, **kwargs))
-
     def diff(
         self,
         other: Any,
@@ -1323,10 +1307,6 @@ class GroupedDataFrame:
             if missing:
                 raise KeyError(f"fill_nan: column(s) {missing} not found in DataFrame")
         return DataFrame(fill_nan_polars(self._df, value, *cols, subset=subset))
-
-    def cast(self, dtypes: Any = None, strict: bool = True, **kwargs: Any) -> DataFrame:
-        """Cast column types using Polars native SIMD vectorization."""
-        return DataFrame(cast_polars(self._df, dtypes=dtypes, strict=strict, **kwargs))
 
     def pick(
         self,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 import polars as pl
@@ -745,40 +745,6 @@ _DTYPE_MAP: dict[str, pl.DataType] = {
     "datetime": pl.Datetime(),
     "timestamp": pl.Datetime(),
 }
-
-
-def _parse_dtype_spec(spec: Any) -> pl.DataType:
-    """Parse a type specification (type object, string, or Polars DataType) into a Polars DataType."""
-    if isinstance(spec, pl.DataType):
-        return spec
-    if isinstance(spec, type) and issubclass(spec, pl.DataType):
-        return spec()
-
-    if isinstance(spec, str):
-        s = spec.strip().lower()
-    elif spec in (int,):
-        s = "int"
-    elif spec in (float,):
-        s = "float"
-    elif spec in (str,):
-        s = "str"
-    elif spec in (bool,):
-        s = "bool"
-    else:
-        s = str(spec).strip().lower()
-
-    if s in _DTYPE_MAP:
-        return _DTYPE_MAP[s]
-
-    if isinstance(spec, str) and hasattr(pl, spec):
-        cand = getattr(pl, spec)
-        if isinstance(cand, pl.DataType):
-            return cand
-        if isinstance(cand, type) and issubclass(cand, pl.DataType):
-            return cand()
-    raise ValueError(
-        f"Unsupported dtype '{spec}'. Supported types: int, float, str, bool, int32, float32, date, datetime, etc."
-    )
 
 
 def _ast_to_polars_expr(
@@ -2043,48 +2009,4 @@ def concat_polars(
     except (pl.exceptions.SchemaError, pl.exceptions.ShapeError, Exception):
         return pl.concat(pl_dfs, how="diagonal_relaxed", **kwargs)
 
-
-def cast_polars(
-    df: Any,
-    dtypes: Mapping[str, Any] | str | None = None,
-    strict: bool = True,
-    **kwargs: Any,
-) -> Any:
-    """Cast column data types on a Polars DataFrame or LazyFrame."""
-    target_map: dict[str, pl.DataType] = {}
-    if dtypes is not None:
-        if isinstance(dtypes, str):
-            from pytae._text import tokenize as _tok
-
-            tokens = _tok(dtypes, ",", keep_quotes=True, track_brackets=True)
-            for token in tokens:
-                token = token.strip()
-                if not token:
-                    continue
-                if ":" in token:
-                    c, dt = token.split(":", 1)
-                elif "=" in token:
-                    c, dt = token.split("=", 1)
-                else:
-                    raise ValueError(f"cast(): invalid spec '{token}'. Expected 'col:type' or 'col=type'")
-                target_map[_unquote_name(c.strip())] = _parse_dtype_spec(dt.strip().strip("'\""))
-        elif isinstance(dtypes, Mapping):
-            for c, dt in dtypes.items():
-                target_map[_unquote_name(str(c))] = _parse_dtype_spec(dt)
-        else:
-            raise TypeError(f"cast(): dtypes must be a dict or string specification, got {type(dtypes)}")
-
-    for c, dt in kwargs.items():
-        target_map[_unquote_name(str(c))] = _parse_dtype_spec(dt)
-
-    if not target_map:
-        return df
-
-    pl_df = _to_polars_frame(df)
-    avail_cols = set(_df_columns(pl_df))
-    for c in target_map:
-        if c not in avail_cols:
-            raise KeyError(f"column '{c}' not found in DataFrame for cast")
-
-    return pl_df.cast(target_map, strict=strict)
 

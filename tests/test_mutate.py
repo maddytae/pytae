@@ -797,3 +797,62 @@ def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
     # Unknown function inside string expression raises ValueError
     with pytest.raises(ValueError, match="Unsupported AST node"):
         df.mutate(bad="scale_with_offset(x)")
+
+
+def test_mutate_inline_cast_python_types():
+    import polars as pl
+
+    df = pt.DataFrame({
+        "s_num": ["10", "20", "30"],
+        "f_num": [1.9, 2.1, 3.8],
+        "i_num": [0, 1, 0],
+    })
+
+    # int(x), float(x), str(x), bool(x)
+    res = df.mutate(
+        i_from_s="int(s_num)",
+        i_from_f="int(f_num)",
+        f_from_s="float(s_num)",
+        s_from_f="str(f_num)",
+        b_from_i="bool(i_num)",
+    )
+    assert res.schema["i_from_s"] == pl.Int64
+    assert res.schema["i_from_f"] == pl.Int64
+    assert res.schema["f_from_s"] == pl.Float64
+    assert res.schema["s_from_f"] == pl.String
+    assert res.schema["b_from_i"] == pl.Boolean
+
+    assert res["i_from_s"].to_list() == [10, 20, 30]
+    assert res["i_from_f"].to_list() == [1, 2, 3]
+    assert res["f_from_s"].to_list() == [10.0, 20.0, 30.0]
+    assert res["b_from_i"].to_list() == [False, True, False]
+
+
+def test_mutate_inline_cast_sized_types():
+    import polars as pl
+
+    df = pt.DataFrame({"val": ["100", "200"]})
+    res = df.mutate(
+        i32_cast="int32(val)",
+        f32_cast="float32(val)",
+        i16_cast="int16(val)",
+        u32_cast="uint32(val)",
+    )
+    assert res.schema["i32_cast"] == pl.Int32
+    assert res.schema["f32_cast"] == pl.Float32
+    assert res.schema["i16_cast"] == pl.Int16
+    assert res.schema["u32_cast"] == pl.UInt32
+    assert res["i32_cast"].to_list() == [100, 200]
+    assert res["f32_cast"].to_list() == [100.0, 200.0]
+
+
+def test_mutate_multi_column_cast():
+    import polars as pl
+
+    df = pt.DataFrame({"a": ["1", "2"], "b": ["3", "4"]})
+    res = df.mutate("(a, b) = int(_)")
+    assert res.schema["a"] == pl.Int64
+    assert res.schema["b"] == pl.Int64
+    assert res["a"].to_list() == [1, 2]
+    assert res["b"].to_list() == [3, 4]
+

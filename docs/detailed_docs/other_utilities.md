@@ -19,7 +19,6 @@ Pytae provides a powerful suite of inspection, data cleaning, header sanitizatio
 | **Smart Handle Missing**| `df.handle_missing(fillna=".")` | `-handle_missing "."` | Fills strings with `.` and numerics with `0` for reports |
 | **Clean Headers** | `df.clean_columns(case="lower")` | `-clean_columns "case=lower"`| Sanitizes column names (strip, squeeze, case, dedupe) |
 | **Replace Values** | `df.replace_values({"M": "Male"})` | `-replace_values "M=Male"` | Exact or substring value replacement across columns |
-| **Type Casting** | `df.cast(age=int)` / `df.cast({'age': int})` | `-cast "age:int"` | Casts column datatypes via Polars SIMD engine |
 | **Clipboard Copy** | `df.to_clip()` | `-o clip` | Copies table to system clipboard (no index) |
 
 ---
@@ -198,57 +197,6 @@ df.replace_values({"temporary": "temp"}, c="notes", exact=False)
 ```
 ```bash
 pytae penguins.parquet -replace_values "Male=M, Female=F" -head 5
-```
-
----
-
-## Type Casting (`cast`)
-
-Pytae provides dedicated whole-table type casting with SIMD acceleration powered by Polars. You can specify casts via keyword arguments, dictionary mappings, or string specifications:
-
-### Python Usage
-
-```python
-import pytae as pt
-
-df = pt.DataFrame({
-    "id": [1, 2, 3],
-    "price": ["19.99", "29.50", "4.00"],
-    "in_stock": [1, 0, 1]
-})
-
-# Keyword syntax
-df.cast(id=str, price=float, in_stock=bool)
-
-# Dictionary syntax (supports string aliases like 'int32', 'float32', 'date')
-df.cast({"id": "str", "price": "float32", "in_stock": bool})
-
-# Comma-separated string syntax
-df.cast("id:str, price:float, in_stock:bool")
-
-# Functional or accessor
-pt.cast(df, price=float)
-df.pt.cast(price=float)
-```
-
-### Supported Type Aliases
-- **Integers**: `int`, `int64`, `i64`, `int32`, `i32`, `int16`, `i16`, `int8`, `i8`, `uint64`, `u64`, `uint32`, `u32`, `uint16`, `uint8`
-- **Floats**: `float`, `float64`, `f64`, `double`, `float32`, `f32`
-- **Strings**: `str`, `string`, `varchar`, `text`
-- **Booleans**: `bool`, `boolean`
-- **Dates & Times**: `date`, `datetime`, `timestamp`
-- **Polars Types**: Any `pl.DataType` (e.g., `pl.Int64`, `pl.Date`)
-
-### CLI Usage
-
-In the CLI, `-cast` takes a comma-separated list of `col:type` or `col=type` pairs:
-
-```bash
-# Cast single or multiple columns
-pytae sales.csv -cast "id:str, price:float, in_stock:bool" -head 5
-
-# Chain with inspection
-pytae sales.csv -cast "price:float" -dtype
 ```
 
 

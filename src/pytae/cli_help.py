@@ -573,21 +573,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-cols", "-info", "-nulls"],
     ),
-    "cast": KeywordHelp(
-        name="cast",
-        flag="-cast, --cast SPEC",
-        syntax='pytae <path> -cast "col1:type, col2:type"',
-        summary="Cast column data types using Polars native SIMD engine.",
-        description="Converts column data types using comma-separated 'col:type' or 'col=type' pairs. Supported types include int, int32, float, float32, str, bool, date, datetime, etc.",
-        options=[
-            '"col:type, col2:type" : Comma-separated column-to-type pairs.',
-        ],
-        examples=[
-            'pytae data.csv -cast "age:int, score:float"',
-            'pytae data.csv -cast "id:str"',
-        ],
-        see_also=["-mutate", "-dtype"],
-    ),
     "nulls": KeywordHelp(
         name="nulls",
         flag="-nulls, --nulls [ORDER]",
