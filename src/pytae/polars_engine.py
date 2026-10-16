@@ -707,6 +707,46 @@ def _is_float_or_numeric_expr(node: ast.AST, schema: Any | None) -> bool:
     return True
 
 
+_DTYPE_MAP: dict[str, pl.DataType] = {
+    "int": pl.Int64(),
+    "int64": pl.Int64(),
+    "i64": pl.Int64(),
+    "integer": pl.Int64(),
+    "bigint": pl.Int64(),
+    "int32": pl.Int32(),
+    "i32": pl.Int32(),
+    "int16": pl.Int16(),
+    "i16": pl.Int16(),
+    "smallint": pl.Int16(),
+    "int8": pl.Int8(),
+    "i8": pl.Int8(),
+    "tinyint": pl.Int8(),
+    "uint64": pl.UInt64(),
+    "u64": pl.UInt64(),
+    "uint32": pl.UInt32(),
+    "u32": pl.UInt32(),
+    "uint16": pl.UInt16(),
+    "u16": pl.UInt16(),
+    "uint8": pl.UInt8(),
+    "u8": pl.UInt8(),
+    "float": pl.Float64(),
+    "float64": pl.Float64(),
+    "f64": pl.Float64(),
+    "double": pl.Float64(),
+    "float32": pl.Float32(),
+    "f32": pl.Float32(),
+    "str": pl.String(),
+    "string": pl.String(),
+    "varchar": pl.String(),
+    "text": pl.String(),
+    "bool": pl.Boolean(),
+    "boolean": pl.Boolean(),
+    "date": pl.Date(),
+    "datetime": pl.Datetime(),
+    "timestamp": pl.Datetime(),
+}
+
+
 def _parse_dtype_spec(spec: Any) -> pl.DataType:
     """Parse a type specification (type object, string, or Polars DataType) into a Polars DataType."""
     if isinstance(spec, pl.DataType):
@@ -727,46 +767,8 @@ def _parse_dtype_spec(spec: Any) -> pl.DataType:
     else:
         s = str(spec).strip().lower()
 
-    dtype_map = {
-        "int": pl.Int64,
-        "int64": pl.Int64,
-        "i64": pl.Int64,
-        "integer": pl.Int64,
-        "bigint": pl.Int64,
-        "int32": pl.Int32,
-        "i32": pl.Int32,
-        "int16": pl.Int16,
-        "i16": pl.Int16,
-        "smallint": pl.Int16,
-        "int8": pl.Int8,
-        "i8": pl.Int8,
-        "tinyint": pl.Int8,
-        "uint64": pl.UInt64,
-        "u64": pl.UInt64,
-        "uint32": pl.UInt32,
-        "u32": pl.UInt32,
-        "uint16": pl.UInt16,
-        "u16": pl.UInt16,
-        "uint8": pl.UInt8,
-        "u8": pl.UInt8,
-        "float": pl.Float64,
-        "float64": pl.Float64,
-        "f64": pl.Float64,
-        "double": pl.Float64,
-        "float32": pl.Float32,
-        "f32": pl.Float32,
-        "str": pl.String,
-        "string": pl.String,
-        "varchar": pl.String,
-        "text": pl.String,
-        "bool": pl.Boolean,
-        "boolean": pl.Boolean,
-        "date": pl.Date,
-        "datetime": pl.Datetime,
-        "timestamp": pl.Datetime,
-    }
-    if s in dtype_map:
-        return dtype_map[s]
+    if s in _DTYPE_MAP:
+        return _DTYPE_MAP[s]
 
     if isinstance(spec, str) and hasattr(pl, spec):
         cand = getattr(pl, spec)
@@ -774,17 +776,9 @@ def _parse_dtype_spec(spec: Any) -> pl.DataType:
             return cand
         if isinstance(cand, type) and issubclass(cand, pl.DataType):
             return cand()
-    raise ValueError(f"Unsupported dtype '{spec}'. Supported types: int, float, str, bool, int32, float32, date, datetime, etc.")
-
-
-def _extract_dtype_from_ast(dt_node: ast.AST) -> pl.DataType:
-    if isinstance(dt_node, ast.Constant):
-        return _parse_dtype_spec(dt_node.value)
-    if isinstance(dt_node, ast.Name):
-        return _parse_dtype_spec(dt_node.id)
-    if isinstance(dt_node, ast.Attribute):
-        return _parse_dtype_spec(dt_node.attr)
-    raise ValueError(f"Cannot parse dtype from expression {ast.dump(dt_node)}")
+    raise ValueError(
+        f"Unsupported dtype '{spec}'. Supported types: int, float, str, bool, int32, float32, date, datetime, etc."
+    )
 
 
 def _ast_to_polars_expr(
@@ -944,7 +938,6 @@ def _ast_to_polars_expr(
                     "fillna",
                     "fill_null",
                     "fill_nan",
-                    "cast",
                 )
             ):
                 obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema, params)
@@ -994,10 +987,6 @@ def _ast_to_polars_expr(
                             expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
                         else:
                             expr = obj_expr.fill_null(val_expr)
-                    return expr.over(by) if by else expr
-                elif attr_name == "cast" and len(node.args) >= 1:
-                    target_dt = _extract_dtype_from_ast(node.args[0])
-                    expr = obj_expr.cast(target_dt)
                     return expr.over(by) if by else expr
 
         # 2. Functional map(...)
@@ -1192,40 +1181,8 @@ def _ast_to_polars_expr(
         if func_name == "n" and len(args) == 0:
             expr = pl.len()
             return expr.over(by) if by else expr
-        if func_name in ("int", "int64", "i64") and len(args) == 1:
-            expr = args[0].cast(pl.Int64)
-            return expr.over(by) if by else expr
-        if func_name in ("int32", "i32") and len(args) == 1:
-            expr = args[0].cast(pl.Int32)
-            return expr.over(by) if by else expr
-        if func_name in ("int16", "i16") and len(args) == 1:
-            expr = args[0].cast(pl.Int16)
-            return expr.over(by) if by else expr
-        if func_name in ("int8", "i8") and len(args) == 1:
-            expr = args[0].cast(pl.Int8)
-            return expr.over(by) if by else expr
-        if func_name in ("uint64", "u64") and len(args) == 1:
-            expr = args[0].cast(pl.UInt64)
-            return expr.over(by) if by else expr
-        if func_name in ("uint32", "u32") and len(args) == 1:
-            expr = args[0].cast(pl.UInt32)
-            return expr.over(by) if by else expr
-        if func_name in ("float", "float64", "f64") and len(args) == 1:
-            expr = args[0].cast(pl.Float64)
-            return expr.over(by) if by else expr
-        if func_name in ("float32", "f32") and len(args) == 1:
-            expr = args[0].cast(pl.Float32)
-            return expr.over(by) if by else expr
-        if func_name in ("str", "string") and len(args) == 1:
-            expr = args[0].cast(pl.String)
-            return expr.over(by) if by else expr
-        if func_name in ("bool", "boolean") and len(args) == 1:
-            expr = args[0].cast(pl.Boolean)
-            return expr.over(by) if by else expr
-        if func_name == "cast" and len(node.args) == 2:
-            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
-            target_dt = _extract_dtype_from_ast(node.args[1])
-            expr = target_expr.cast(target_dt)
+        if func_name in _DTYPE_MAP and len(args) == 1:
+            expr = args[0].cast(_DTYPE_MAP[func_name])
             return expr.over(by) if by else expr
         if func_name in ("is_null", "isna") and len(args) == 1:
             expr = args[0].is_null()

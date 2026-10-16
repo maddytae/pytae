@@ -143,7 +143,7 @@ When combined with `.by()`, operations compute window statistics partitioned by 
 
 ### 6. Column Type Casting Inside `mutate`
 
-Pytae makes inline type conversion natural and ergonomic by supporting Python's standard conversion functions and Polars `.cast()`:
+Pytae makes inline type conversion natural and ergonomic by supporting Python's standard conversion functions (`int`, `float`, `str`, `bool`, `int32`, `float32`, etc.):
 
 ```python
 # Convert types with standard functions
@@ -152,12 +152,6 @@ penguins.mutate(
     mass_f32="float32(body_mass_g)",
     code_str="str(id)",
     is_large="bool(heavy_flag)"
-)
-
-# Convert using .cast() method syntax
-penguins.mutate(
-    year_int="year.cast('int')",
-    rate_flt="rate.cast('float32')"
 )
 
 # Multi-column batch casting with across syntax

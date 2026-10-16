@@ -88,20 +88,20 @@ def test_mutate_inline_cast_python_types():
     assert res["b_from_i"].to_list() == [False, True, False]
 
 
-def test_mutate_inline_cast_method_and_function():
+def test_mutate_inline_cast_sized_types():
     df = DataFrame({"val": ["100", "200"]})
     res = df.mutate(
-        m_cast="val.cast('int')",
-        f_cast="cast(val, 'int')",
         i32_cast="int32(val)",
         f32_cast="float32(val)",
+        i16_cast="int16(val)",
+        u32_cast="uint32(val)",
     )
-    assert res.schema["m_cast"] == pl.Int64
-    assert res.schema["f_cast"] == pl.Int64
     assert res.schema["i32_cast"] == pl.Int32
     assert res.schema["f32_cast"] == pl.Float32
-    assert res["m_cast"].to_list() == [100, 200]
-    assert res["f_cast"].to_list() == [100, 200]
+    assert res.schema["i16_cast"] == pl.Int16
+    assert res.schema["u32_cast"] == pl.UInt32
+    assert res["i32_cast"].to_list() == [100, 200]
+    assert res["f32_cast"].to_list() == [100.0, 200.0]
 
 
 def test_mutate_multi_column_cast():
