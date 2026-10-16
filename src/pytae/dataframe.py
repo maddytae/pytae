@@ -892,7 +892,9 @@ class DataFrame:
             elif step_type == "callable":
                 col_name, fn = step_data
                 col_res = fn(res)
-                if hasattr(col_res, "to_numpy"):
+                if isinstance(col_res, (pl.Series, pl.Expr)):
+                    new_series = col_res.alias(col_name)
+                elif hasattr(col_res, "to_numpy"):
                     new_series = pl.Series(col_name, col_res.to_numpy())
                 else:
                     new_series = pl.Series(col_name, list(col_res))

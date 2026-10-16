@@ -179,14 +179,17 @@ penguins.mutate(
 )
 ```
 
-### 8. Calling Custom Python & NumPy Functions (2-Tier Auto Fast Path)
+### 8. Calling Custom Python, NumPy & SciPy Functions (`lambda d:`)
 
-You can call any standalone Python function or imported library function (e.g., `np.maximum`) directly inside a `mutate` string expression:
+In Python scripts, pass a callable (`lambda d: ...`) to `mutate()` to apply any custom Python, NumPy, or SciPy function while keeping full IDE autocomplete and linter/Ruff support:
+
+- **Vectorized / Column Functions (`lambda d: fn(d["a"], d["b"])`)**: Call the function directly on columns (`pl.Series`). Returning a `pl.Series` or `pl.Expr` attaches with **zero copy** (~0.3 ms / 100k rows), and NumPy/SciPy arrays are converted directly.
+- **Row-Wise Scalar Functions (`lambda d: map(fn, d["a"], d["b"])`)**: Wrap scalar row-by-row functions (functions using Python `if/else`, `in`, `is not None`, or regex) in Python's built-in `map()` (~9–11 ms / 100k rows).
 
 ```python
 import numpy as np
 
-# 1. Scalar row-by-row function (uses Python if/else, 'in', 'is not None')
+# 1. Row-wise scalar function (uses Python if/else, 'in', 'is not None') -> use map()
 def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
     if deal_id == tr_id:
         return "Main Tranche"
@@ -194,30 +197,25 @@ def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
         return "Collateral"
     return "Guarantor"
 
-# 2. Vectorized array function (uses arithmetic / NumPy)
+# 2. Vectorized array function (operates on whole columns at once) -> call directly
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
 
 df = df.mutate(
-    tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
-    metric="calc_metric(a, b)",
-    max_ab="np.maximum(a, b)",
+    tranche_type=lambda d: map(classify_deal, d["deal_identifier"], d["tranche_id"], d["collateral_class"]),
+    metric=lambda d: calc_metric(d["a"], d["b"]),
+    max_ab=lambda d: np.maximum(d["a"], d["b"]),
+    adj_metric="metric + max_ab",  # String formulas can immediately reference lambda columns!
 )
 ```
 
-**How the 2-Tier Fast Path Works Under the Hood:**
-1. **Static Bytecode & Type-Hint Pre-Screen**: `pytae` inspects the function's type annotations and Python bytecode opcodes (`POP_JUMP_IF_*`, `CONTAINS_OP`, `IS_OP`, `FOR_ITER`) and caches the result.
-2. **Tier 1 — Vectorized Execution (~0.3 ms / 100k rows)**: Functions without scalar control-flow opcodes receive native `pl.Series` columns directly, executing math and NumPy operations in compiled C/Rust.
-3. **Tier 2 — C-Level `map()` Fallback (~9 ms / 100k rows)**: Scalar row-by-row functions extract columns via `.to_list()` in Rust and iterate via CPython's C `map(fn, *lists)`, running >2x faster than `pl.struct.map_elements`.
-
-Custom functions also work seamlessly with **`across` multi-column syntax**, **`.by()` grouped windows**, **`LazyFrame`s**, and explicit **`.map_elements(fn)` / `.map_batches(fn)`**:
+Custom callables also work with **`.by()` grouped transformations**:
 
 ```python
-# Apply a custom cleaner across multiple columns at once
-df.mutate("(deal_identifier, tranche_id) = clean_code(_)")
-
-# Explicit method syntax on a column
-df.mutate(clean_id="tranche_id.map_elements(clean_code)")
+# Grouped custom function per sector
+df = df.by("sector").mutate(
+    z_spread=lambda g: (g["spread"] - g["spread"].mean()) / g["spread"].std()
+)
 ```
 
 ---

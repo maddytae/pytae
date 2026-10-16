@@ -732,7 +732,7 @@ def test_mutate_str_methods_and_null_checks_case_when():
     assert list(res2["suffix"]) == [False, True, False, False]
 
 
-def test_mutate_custom_function_in_expression_two_tier():
+def test_mutate_custom_function_lambda_vectorized_and_map():
     import numpy as np
 
     def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
@@ -745,9 +745,6 @@ def test_mutate_custom_function_in_expression_two_tier():
     def calc_metric(x, y):
         return x * 2.5 + np.maximum(y, 0)
 
-    def clean_code(s):
-        return s.strip().lower()
-
     df = pt.DataFrame({
         "deal_identifier": ["D1", "D2", "D3", "D4"],
         "tranche_id": ["D1", "T2-COL-9", "T3", "T4"],
@@ -756,27 +753,20 @@ def test_mutate_custom_function_in_expression_two_tier():
         "b": [10.0, -5.0, 20.0, -1.0],
     })
 
-    # Tier 2 scalar multi-column & Tier 1 vectorized multi-column in same mutate
+    # Row-wise map() and vectorized direct call in the same mutate, plus interleaved string formula
     res = df.mutate(
-        tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
-        metric="calc_metric(a, b)",
-        max_ab="np.maximum(a, b)",
+        tranche_type=lambda d: map(classify_deal, d["deal_identifier"], d["tranche_id"], d["collateral_class"]),
+        metric=lambda d: calc_metric(d["a"], d["b"]),
+        max_ab=lambda d: np.maximum(d["a"], d["b"]),
+        combined="metric + max_ab",
     )
     assert list(res["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
     assert list(res["metric"]) == [12.5, 5.0, 27.5, 10.0]
     assert list(res["max_ab"]) == [10.0, 2.0, 20.0, 4.0]
-
-    # Across multi-column syntax with custom function
-    res_across = df.mutate("(deal_identifier, tranche_id) = clean_code(_)")
-    assert list(res_across["deal_identifier"]) == ["d1", "d2", "d3", "d4"]
-    assert list(res_across["tranche_id"]) == ["d1", "t2-col-9", "t3", "t4"]
-
-    # LazyFrame support
-    res_lazy = df.lazy().mutate(tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)").collect()
-    assert list(res_lazy["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+    assert list(res["combined"]) == [22.5, 7.0, 47.5, 14.0]
 
 
-def test_mutate_custom_function_grouped_kwargs_and_map_methods():
+def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
     def scale_with_offset(x, factor=2.0, offset=1.0):
         return x * factor + offset
 
@@ -793,25 +783,17 @@ def test_mutate_custom_function_grouped_kwargs_and_map_methods():
         "x": [2.0, 8.0, 4.0, 10.0],
     })
 
-    # Constant args, keyword args, @fn syntax, inline arithmetic, map_elements & map_batches
     res = df.mutate(
-        scaled="scale_with_offset(x, 3.0, offset=0.5)",
-        inline_add="100.0 + @scale_with_offset(x, 2.0, offset=0.0)",
-        tag="scalar_tag(x, prefix='item')",
-        elem_tag="x.map_elements(scalar_tag)",
-        batch_scale="x.map_batches(scale_with_offset)",
+        scaled=lambda d: scale_with_offset(d["x"], 3.0, offset=0.5),
+        tag=lambda d: map(lambda v: scalar_tag(v, prefix="item"), d["x"]),
     )
     assert list(res["scaled"]) == [6.5, 24.5, 12.5, 30.5]
-    assert list(res["inline_add"]) == [104.0, 116.0, 108.0, 120.0]
     assert list(res["tag"]) == ["item_low", "item_high", "item_low", "item_high"]
-    assert list(res["elem_tag"]) == ["val_low", "val_high", "val_low", "val_high"]
-    assert list(res["batch_scale"]) == [5.0, 17.0, 9.0, 21.0]
 
     # Grouped execution via .by()
-    res_grp = df.by("grp").mutate(demeaned="group_demeaned(x)")
+    res_grp = df.by("grp").mutate(demeaned=lambda g: group_demeaned(g["x"]))
     assert list(res_grp["demeaned"]) == [-3.0, 3.0, -3.0, 3.0]
 
-
-
-
-
+    # Unknown function inside string expression raises ValueError
+    with pytest.raises(ValueError, match="Unsupported AST node"):
+        df.mutate(bad="scale_with_offset(x)")

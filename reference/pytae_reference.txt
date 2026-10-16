@@ -2027,13 +2027,15 @@ def compute_score(d):
 penguins.mutate(custom_score=compute_score)
 ```
 
-### Calling Standalone Python Functions Inside `mutate` Expressions (2-Tier Fast Path)
-You can also call any Python function or module function (e.g., `np.maximum`) directly inside a `mutate` string expression without writing `lambda d:`:
+### Vectorized vs. Row-Wise Custom Functions (`lambda d:`)
+Inside `mutate()`, `lambda d:` supports both whole-column vectorized functions and row-by-row scalar functions:
+- **Vectorized / Whole-Column (`lambda d: fn(d["a"], d["b"])`)**: Pass columns directly when `fn` uses arithmetic, Polars Series methods, or NumPy/SciPy array functions. Returning a `pl.Series` or `pl.Expr` attaches with **zero copy** (~0.3 ms / 100k rows).
+- **Row-Wise Scalar (`lambda d: map(fn, d["a"], d["b"])`)**: Wrap `fn` in Python's built-in `map()` when `fn` inspects one value at a time (e.g., Python `if/else`, `in`, `is not None`, or regex, ~9–11 ms / 100k rows).
 
 ```python
 import numpy as np
 
-# Scalar row-by-row function
+# Scalar row-by-row function -> wrap with map()
 def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
     if deal_id == tr_id:
         return "Main Tranche"
@@ -2041,22 +2043,16 @@ def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
         return "Collateral"
     return "Guarantor"
 
-# Vectorized array function
+# Vectorized array function -> call directly on columns
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
 
 df = df.mutate(
-    tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
-    metric="calc_metric(a, b)",
-    max_ab="np.maximum(a, b)",
+    tranche_type=lambda d: map(classify_deal, d["deal_identifier"], d["tranche_id"], d["collateral_class"]),
+    metric=lambda d: calc_metric(d["a"], d["b"]),
+    max_ab=lambda d: np.maximum(d["a"], d["b"]),
 )
 ```
-
-Under the hood, `pytae` inspects the function's type annotations and bytecode opcodes to automatically execute the fastest path:
-- **Tier 1 — Vectorized Execution (~0.3 ms / 100k rows)**: Functions without scalar control-flow opcodes receive native `pl.Series` columns directly and run in C/Rust.
-- **Tier 2 — C-Level `map()` Fallback (~9 ms / 100k rows)**: Scalar row-by-row functions extract columns via `.to_list()` in Rust and iterate via CPython's C `map(fn, *lists)` (>2x faster than `pl.struct.map_elements`).
-
-This also works with `across` multi-column syntax (`df.mutate("(col1, col2) = clean_fn(_)")`), `.by()` grouped windows, and `LazyFrame` pipelines.
 
 ### Interleaving Callables and String Expressions in `mutate`
 Callables and string expressions execute strictly in insertion order. Downstream string expressions can immediately reference columns created by upstream callables, and downstream callables receive a DataFrame containing columns created by preceding expressions:
@@ -2293,14 +2289,17 @@ penguins.mutate(
 )
 ```
 
-### 8. Calling Custom Python & NumPy Functions (2-Tier Auto Fast Path)
+### 8. Calling Custom Python, NumPy & SciPy Functions (`lambda d:`)
 
-You can call any standalone Python function or imported library function (e.g., `np.maximum`) directly inside a `mutate` string expression:
+In Python scripts, pass a callable (`lambda d: ...`) to `mutate()` to apply any custom Python, NumPy, or SciPy function while keeping full IDE autocomplete and linter/Ruff support:
+
+- **Vectorized / Column Functions (`lambda d: fn(d["a"], d["b"])`)**: Call the function directly on columns (`pl.Series`). Returning a `pl.Series` or `pl.Expr` attaches with **zero copy** (~0.3 ms / 100k rows), and NumPy/SciPy arrays are converted directly.
+- **Row-Wise Scalar Functions (`lambda d: map(fn, d["a"], d["b"])`)**: Wrap scalar row-by-row functions (functions using Python `if/else`, `in`, `is not None`, or regex) in Python's built-in `map()` (~9–11 ms / 100k rows).
 
 ```python
 import numpy as np
 
-# 1. Scalar row-by-row function (uses Python if/else, 'in', 'is not None')
+# 1. Row-wise scalar function (uses Python if/else, 'in', 'is not None') -> use map()
 def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
     if deal_id == tr_id:
         return "Main Tranche"
@@ -2308,30 +2307,25 @@ def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
         return "Collateral"
     return "Guarantor"
 
-# 2. Vectorized array function (uses arithmetic / NumPy)
+# 2. Vectorized array function (operates on whole columns at once) -> call directly
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
 
 df = df.mutate(
-    tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
-    metric="calc_metric(a, b)",
-    max_ab="np.maximum(a, b)",
+    tranche_type=lambda d: map(classify_deal, d["deal_identifier"], d["tranche_id"], d["collateral_class"]),
+    metric=lambda d: calc_metric(d["a"], d["b"]),
+    max_ab=lambda d: np.maximum(d["a"], d["b"]),
+    adj_metric="metric + max_ab",  # String formulas can immediately reference lambda columns!
 )
 ```
 
-**How the 2-Tier Fast Path Works Under the Hood:**
-1. **Static Bytecode & Type-Hint Pre-Screen**: `pytae` inspects the function's type annotations and Python bytecode opcodes (`POP_JUMP_IF_*`, `CONTAINS_OP`, `IS_OP`, `FOR_ITER`) and caches the result.
-2. **Tier 1 — Vectorized Execution (~0.3 ms / 100k rows)**: Functions without scalar control-flow opcodes receive native `pl.Series` columns directly, executing math and NumPy operations in compiled C/Rust.
-3. **Tier 2 — C-Level `map()` Fallback (~9 ms / 100k rows)**: Scalar row-by-row functions extract columns via `.to_list()` in Rust and iterate via CPython's C `map(fn, *lists)`, running >2x faster than `pl.struct.map_elements`.
-
-Custom functions also work seamlessly with **`across` multi-column syntax**, **`.by()` grouped windows**, **`LazyFrame`s**, and explicit **`.map_elements(fn)` / `.map_batches(fn)`**:
+Custom callables also work with **`.by()` grouped transformations**:
 
 ```python
-# Apply a custom cleaner across multiple columns at once
-df.mutate("(deal_identifier, tranche_id) = clean_code(_)")
-
-# Explicit method syntax on a column
-df.mutate(clean_id="tranche_id.map_elements(clean_code)")
+# Grouped custom function per sector
+df = df.by("sector").mutate(
+    z_spread=lambda g: (g["spread"] - g["spread"].mean()) / g["spread"].std()
+)
 ```
 
 ---
@@ -11678,7 +11672,9 @@ class DataFrame:
             elif step_type == "callable":
                 col_name, fn = step_data
                 col_res = fn(res)
-                if hasattr(col_res, "to_numpy"):
+                if isinstance(col_res, (pl.Series, pl.Expr)):
+                    new_series = col_res.alias(col_name)
+                elif hasattr(col_res, "to_numpy"):
                     new_series = pl.Series(col_name, col_res.to_numpy())
                 else:
                     new_series = pl.Series(col_name, list(col_res))
@@ -14786,173 +14782,6 @@ def _extract_dtype_from_ast(dt_node: ast.AST) -> pl.DataType:
     raise ValueError(f"Cannot parse dtype from expression {ast.dump(dt_node)}")
 
 
-_SCALAR_FN_CACHE: dict[Any, bool] = {}
-
-
-def _is_definitely_scalar_fn(fn: Any) -> bool:
-    """Detect if a Python callable is strictly scalar (uses scalar type hints or Python branching/membership)."""
-    try:
-        if fn in _SCALAR_FN_CACHE:
-            return _SCALAR_FN_CACHE[fn]
-    except TypeError:
-        pass
-
-    is_scalar = False
-    try:
-        ann = getattr(fn, "__annotations__", None)
-        if ann:
-            scalar_types = (int, float, str, bool, "int", "float", "str", "bool")
-            for v in ann.values():
-                if v in scalar_types:
-                    is_scalar = True
-                    break
-    except Exception:
-        pass
-
-    if not is_scalar:
-        try:
-            import dis
-
-            for ins in dis.get_instructions(fn):
-                op = ins.opname
-                if "JUMP" in op or op in ("CONTAINS_OP", "FOR_ITER", "IS_OP"):
-                    is_scalar = True
-                    break
-        except Exception:
-            pass
-
-    try:
-        _SCALAR_FN_CACHE[fn] = is_scalar
-    except TypeError:
-        pass
-    return is_scalar
-
-
-def _resolve_callable_from_ast(
-    func_node: ast.AST,
-    params: dict[str, Any] | None,
-    col_names: set[str],
-    col_map: dict[str, str],
-) -> Any | None:
-    """Resolve a callable function or module attribute (e.g. my_fn, np.maximum) from caller scope."""
-    if not params:
-        return None
-    if isinstance(func_node, ast.Name):
-        if func_node.id in col_names or func_node.id in col_map:
-            return None
-        fn = params.get(func_node.id)
-        return fn if callable(fn) else None
-    if isinstance(func_node, ast.Attribute):
-        attrs: list[str] = []
-        cur: ast.AST = func_node
-        while isinstance(cur, ast.Attribute):
-            attrs.append(cur.attr)
-            cur = cur.value
-        if isinstance(cur, ast.Name) and cur.id not in col_names and cur.id not in col_map:
-            obj = params.get(cur.id)
-            if obj is not None:
-                for attr in reversed(attrs):
-                    obj = getattr(obj, attr, None)
-                    if obj is None:
-                        return None
-                return obj if callable(obj) else None
-    return None
-
-
-def _build_user_callable_expr(
-    fn: Any,
-    arg_nodes: Sequence[ast.AST],
-    kw_nodes: Sequence[ast.keyword],
-    col_names: set[str],
-    col_map: dict[str, str],
-    by: list[str] | None,
-    schema: Any | None,
-    params: dict[str, Any] | None,
-    force_mode: str | None = None,
-) -> pl.Expr:
-    """Build a Polars expression that executes a Python callable using the 2-tier fast path."""
-    expr_inputs: list[pl.Expr] = []
-    arg_specs: list[tuple[bool, Any]] = []
-    for a in arg_nodes:
-        if isinstance(a, ast.Constant):
-            arg_specs.append((False, a.value))
-        elif isinstance(a, ast.Name) and a.id not in col_names and a.id not in col_map and params and a.id in params:
-            arg_specs.append((False, params[a.id]))
-        else:
-            idx = len(expr_inputs)
-            expr_inputs.append(_ast_to_polars_expr(a, col_names, col_map, None, schema, params))
-            arg_specs.append((True, idx))
-
-    kw_specs: dict[str, tuple[bool, Any]] = {}
-    for kw in kw_nodes:
-        if kw.arg is None:
-            continue
-        if isinstance(kw.value, ast.Constant):
-            kw_specs[kw.arg] = (False, kw.value.value)
-        elif (
-            isinstance(kw.value, ast.Name)
-            and kw.value.id not in col_names
-            and kw.value.id not in col_map
-            and params
-            and kw.value.id in params
-        ):
-            kw_specs[kw.arg] = (False, params[kw.value.id])
-        else:
-            idx = len(expr_inputs)
-            expr_inputs.append(_ast_to_polars_expr(kw.value, col_names, col_map, None, schema, params))
-            kw_specs[kw.arg] = (True, idx)
-
-    if not expr_inputs:
-        c_args = [val for _, val in arg_specs]
-        c_kwargs = {k: val for k, (_, val) in kw_specs.items()}
-        return pl.lit(fn(*c_args, **c_kwargs))
-
-    pure_positional_series = (
-        not kw_specs and len(arg_specs) == len(expr_inputs) and all(is_s for is_s, _ in arg_specs)
-    )
-    skip_tier1 = force_mode == "elements" or (force_mode != "batches" and _is_definitely_scalar_fn(fn))
-
-    def _runner(series_list: Sequence[pl.Series]) -> pl.Series:
-        n = len(series_list[0]) if series_list else 0
-        if n == 0:
-            return pl.Series([], dtype=pl.Null)
-
-        # Tier 1: Vectorized execution on Polars Series / NumPy arrays
-        if not skip_tier1:
-            try:
-                v_args = [series_list[val] if is_s else val for is_s, val in arg_specs]
-                v_kwargs = {k: (series_list[val] if is_s else val) for k, (is_s, val) in kw_specs.items()}
-                res = fn(*v_args, **v_kwargs)
-                if isinstance(res, pl.Series) and len(res) == n:
-                    return res
-                if hasattr(res, "to_numpy") and len(res) == n:
-                    return pl.Series(res.to_numpy())
-                if type(res).__name__ == "ndarray" and len(res) == n:
-                    return pl.Series(res)
-                if force_mode == "batches" and isinstance(res, (list, tuple)) and len(res) == n:
-                    return pl.Series(list(res))
-            except Exception:
-                if force_mode == "batches":
-                    raise
-
-        # Tier 2: C-level map() over pre-extracted Python lists (.to_list())
-        py_lists = [s.to_list() for s in series_list]
-        if pure_positional_series:
-            return pl.Series(list(map(fn, *py_lists)))
-
-        out = [
-            fn(
-                *(py_lists[val][i] if is_s else val for is_s, val in arg_specs),
-                **{k: (py_lists[val][i] if is_s else val) for k, (is_s, val) in kw_specs.items()},
-            )
-            for i in range(n)
-        ]
-        return pl.Series(out)
-
-    expr = pl.map_batches(expr_inputs, _runner)
-    return expr.over(by) if by else expr
-
-
 def _ast_to_polars_expr(
     node: ast.AST,
     col_names: set[str],
@@ -15111,25 +14940,8 @@ def _ast_to_polars_expr(
                     "fill_null",
                     "fill_nan",
                     "cast",
-                    "map_elements",
-                    "map_batches",
                 )
             ):
-                if attr_name in ("map_elements", "map_batches") and len(node.args) >= 1:
-                    target_fn = _resolve_callable_from_ast(node.args[0], params, col_names, col_map)
-                    if target_fn is not None:
-                        mode = "elements" if attr_name == "map_elements" else "batches"
-                        return _build_user_callable_expr(
-                            target_fn,
-                            [node.func.value],
-                            [],
-                            col_names,
-                            col_map,
-                            by,
-                            schema,
-                            params,
-                            force_mode=mode,
-                        )
                 obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema, params)
                 if attr_name == "is_null":
                     expr = obj_expr.is_null()
@@ -15286,70 +15098,6 @@ def _ast_to_polars_expr(
                 f = f.cast(pl.String) if hasattr(f, "cast") else f
             expr = pl.when(c).then(t).otherwise(f)
             return expr.over(by) if by else expr
-
-        # 6. User-defined Python callable in caller scope (e.g. my_func(col1, col2) or np.maximum(a, b))
-        builtin_funcs = {
-            "sum",
-            "mean",
-            "median",
-            "min",
-            "max",
-            "std",
-            "var",
-            "rank",
-            "len",
-            "count",
-            "shift",
-            "lead",
-            "lag",
-            "round",
-            "abs",
-            "sqrt",
-            "log",
-            "exp",
-            "floor",
-            "ceil",
-            "coalesce",
-            "fillna",
-            "fill_null",
-            "fill_nan",
-            "n",
-            "int",
-            "int64",
-            "i64",
-            "int32",
-            "i32",
-            "int16",
-            "i16",
-            "int8",
-            "i8",
-            "uint64",
-            "u64",
-            "uint32",
-            "u32",
-            "float",
-            "float64",
-            "f64",
-            "float32",
-            "f32",
-            "str",
-            "string",
-            "bool",
-            "boolean",
-            "cast",
-            "is_null",
-            "isna",
-            "is_not_null",
-            "notna",
-            "is_nan",
-            "isnan",
-        }
-        if func_name not in builtin_funcs or isinstance(node.func, ast.Attribute):
-            user_fn = _resolve_callable_from_ast(node.func, params, col_names, col_map)
-            if user_fn is not None:
-                return _build_user_callable_expr(
-                    user_fn, node.args, node.keywords, col_names, col_map, by, schema, params
-                )
 
         args = [_ast_to_polars_expr(a, col_names, col_map, by, schema, params) for a in node.args]
 
@@ -24077,7 +23825,7 @@ def test_mutate_str_methods_and_null_checks_case_when():
     assert list(res2["suffix"]) == [False, True, False, False]
 
 
-def test_mutate_custom_function_in_expression_two_tier():
+def test_mutate_custom_function_lambda_vectorized_and_map():
     import numpy as np
 
     def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
@@ -24090,9 +23838,6 @@ def test_mutate_custom_function_in_expression_two_tier():
     def calc_metric(x, y):
         return x * 2.5 + np.maximum(y, 0)
 
-    def clean_code(s):
-        return s.strip().lower()
-
     df = pt.DataFrame({
         "deal_identifier": ["D1", "D2", "D3", "D4"],
         "tranche_id": ["D1", "T2-COL-9", "T3", "T4"],
@@ -24101,27 +23846,20 @@ def test_mutate_custom_function_in_expression_two_tier():
         "b": [10.0, -5.0, 20.0, -1.0],
     })
 
-    # Tier 2 scalar multi-column & Tier 1 vectorized multi-column in same mutate
+    # Row-wise map() and vectorized direct call in the same mutate, plus interleaved string formula
     res = df.mutate(
-        tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
-        metric="calc_metric(a, b)",
-        max_ab="np.maximum(a, b)",
+        tranche_type=lambda d: map(classify_deal, d["deal_identifier"], d["tranche_id"], d["collateral_class"]),
+        metric=lambda d: calc_metric(d["a"], d["b"]),
+        max_ab=lambda d: np.maximum(d["a"], d["b"]),
+        combined="metric + max_ab",
     )
     assert list(res["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
     assert list(res["metric"]) == [12.5, 5.0, 27.5, 10.0]
     assert list(res["max_ab"]) == [10.0, 2.0, 20.0, 4.0]
-
-    # Across multi-column syntax with custom function
-    res_across = df.mutate("(deal_identifier, tranche_id) = clean_code(_)")
-    assert list(res_across["deal_identifier"]) == ["d1", "d2", "d3", "d4"]
-    assert list(res_across["tranche_id"]) == ["d1", "t2-col-9", "t3", "t4"]
-
-    # LazyFrame support
-    res_lazy = df.lazy().mutate(tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)").collect()
-    assert list(res_lazy["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+    assert list(res["combined"]) == [22.5, 7.0, 47.5, 14.0]
 
 
-def test_mutate_custom_function_grouped_kwargs_and_map_methods():
+def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
     def scale_with_offset(x, factor=2.0, offset=1.0):
         return x * factor + offset
 
@@ -24138,23 +23876,20 @@ def test_mutate_custom_function_grouped_kwargs_and_map_methods():
         "x": [2.0, 8.0, 4.0, 10.0],
     })
 
-    # Constant args, keyword args, @fn syntax, inline arithmetic, map_elements & map_batches
     res = df.mutate(
-        scaled="scale_with_offset(x, 3.0, offset=0.5)",
-        inline_add="100.0 + @scale_with_offset(x, 2.0, offset=0.0)",
-        tag="scalar_tag(x, prefix='item')",
-        elem_tag="x.map_elements(scalar_tag)",
-        batch_scale="x.map_batches(scale_with_offset)",
+        scaled=lambda d: scale_with_offset(d["x"], 3.0, offset=0.5),
+        tag=lambda d: map(lambda v: scalar_tag(v, prefix="item"), d["x"]),
     )
     assert list(res["scaled"]) == [6.5, 24.5, 12.5, 30.5]
-    assert list(res["inline_add"]) == [104.0, 116.0, 108.0, 120.0]
     assert list(res["tag"]) == ["item_low", "item_high", "item_low", "item_high"]
-    assert list(res["elem_tag"]) == ["val_low", "val_high", "val_low", "val_high"]
-    assert list(res["batch_scale"]) == [5.0, 17.0, 9.0, 21.0]
 
     # Grouped execution via .by()
-    res_grp = df.by("grp").mutate(demeaned="group_demeaned(x)")
+    res_grp = df.by("grp").mutate(demeaned=lambda g: group_demeaned(g["x"]))
     assert list(res_grp["demeaned"]) == [-3.0, 3.0, -3.0, 3.0]
+
+    # Unknown function inside string expression raises ValueError
+    with pytest.raises(ValueError, match="Unsupported AST node"):
+        df.mutate(bad="scale_with_offset(x)")
 
 ################################################################################
 # FILE: tests/test_pivot.py
