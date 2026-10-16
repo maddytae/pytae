@@ -13,10 +13,13 @@
 | **Numeric Scalar** | `df.mutate(multiplier=1.5)` | `-mutate "multiplier = 1.5"` |
 | **Sequential Derivations** | `df.mutate(a="1", b="a * 2")` | `-mutate "a = 1, b = a * 2"` |
 | **Conditional (`if_else`)** | `df.mutate(flag="if_else(x > 0, 'pos', 'neg')")` | `-mutate "flag = if_else(x > 0, 'pos', 'neg')"` |
+| **Multi-Branch (`case_when`)**| `df.mutate(t="case_when((x > 10, 'hi'), (x > 0, 'lo'), 'neg')")` | `-mutate "t = case_when((x > 10, 'hi'), (x > 0, 'lo'), 'neg')"` |
+| **String & Null Checks** | `df.mutate(ok="id.str.contains('-A') \| tag.is_not_null()")` | `-mutate "ok = id.str.contains('-A') \| tag.is_not_null()"` |
 | **Multi-Column (`across`)**| `df.mutate("(a, b) = _ * 1.08")` | `-mutate "(a, b) = _ * 1.08"` |
 | **Multi-Column + Suffix** | `df.mutate("(a, b)_usd = _ * 1.08")` | `-mutate "(a, b)_usd = _ * 1.08"` |
 | **Smart `fillna`** | `df.mutate(clean="fillna(x, 0, nans=True)")` | `-mutate "clean = fillna(x, 0, nans=True)"` |
 | **Grouped Window Calculation**| `df.by("species").mutate(m="mean(body_mass_g)")`| `-by species -mutate "m = mean(body_mass_g)"` |
+| **Custom Python Function** | `df.mutate(out="my_func(col1, col2)")` | *(Library only)* |
 
 ---
 
@@ -85,13 +88,24 @@ penguins.mutate(
     size_category="if_else(body_mass_g > 4000, 'Large', 'Normal')"
 )
 
-# Multi-condition with case_when
+# Multi-condition with case_when (tuple pairs + default)
 penguins.mutate(
     tier="""
     case_when(
         (body_mass_g > 5000, 'Heavy'),
         (body_mass_g > 3500, 'Medium'),
         'Light'
+    )
+    """
+)
+
+# Complex domain branching with string matching, bitwise OR (|), and null checks
+deals.mutate(
+    tranche_type="""
+    case_when(
+        (deal_identifier == tranche_id, 'Main Tranche'),
+        (tranche_id.str.contains('-COL-') | collateral_class.is_not_null(), 'Collateral'),
+        'Guarantor'
     )
     """
 )
@@ -148,6 +162,62 @@ penguins.mutate(
 
 # Multi-column batch casting with across syntax
 penguins.mutate("(col1, col2, col3) = int(_)")
+```
+
+### 7. String Methods & Null Checks Inside `mutate`
+
+Vectorized string operations and null/NaN predicates work directly inside `mutate` formulas:
+- **String matching**: `.str.contains(pat)`, `.str.startswith(pat)` / `.str.starts_with(pat)`, `.str.endswith(pat)` / `.str.ends_with(pat)`
+- **String transforms**: `.str.upper()`, `.str.lower()`, `.str.strip()`, `.str.len()`
+- **Null / NaN checks**: `.is_null()` / `is_null(col)`, `.is_not_null()` / `is_not_null(col)`, `.is_nan()` / `is_nan(col)`, `.is_not_nan()`
+
+```python
+penguins.mutate(
+    species_upper="species.str.upper()",
+    is_gentoo="species.str.startswith('Gen')",
+    has_sex="sex.is_not_null()"
+)
+```
+
+### 8. Calling Custom Python & NumPy Functions (2-Tier Auto Fast Path)
+
+You can call any standalone Python function or imported library function (e.g., `np.maximum`) directly inside a `mutate` string expression:
+
+```python
+import numpy as np
+
+# 1. Scalar row-by-row function (uses Python if/else, 'in', 'is not None')
+def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
+    if deal_id == tr_id:
+        return "Main Tranche"
+    if "-COL-" in tr_id or col_class is not None:
+        return "Collateral"
+    return "Guarantor"
+
+# 2. Vectorized array function (uses arithmetic / NumPy)
+def calc_metric(x, y):
+    return x * 2.5 + np.maximum(y, 0)
+
+df = df.mutate(
+    tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
+    metric="calc_metric(a, b)",
+    max_ab="np.maximum(a, b)",
+)
+```
+
+**How the 2-Tier Fast Path Works Under the Hood:**
+1. **Static Bytecode & Type-Hint Pre-Screen**: `pytae` inspects the function's type annotations and Python bytecode opcodes (`POP_JUMP_IF_*`, `CONTAINS_OP`, `IS_OP`, `FOR_ITER`) and caches the result.
+2. **Tier 1 — Vectorized Execution (~0.3 ms / 100k rows)**: Functions without scalar control-flow opcodes receive native `pl.Series` columns directly, executing math and NumPy operations in compiled C/Rust.
+3. **Tier 2 — C-Level `map()` Fallback (~9 ms / 100k rows)**: Scalar row-by-row functions extract columns via `.to_list()` in Rust and iterate via CPython's C `map(fn, *lists)`, running >2x faster than `pl.struct.map_elements`.
+
+Custom functions also work seamlessly with **`across` multi-column syntax**, **`.by()` grouped windows**, **`LazyFrame`s**, and explicit **`.map_elements(fn)` / `.map_batches(fn)`**:
+
+```python
+# Apply a custom cleaner across multiple columns at once
+df.mutate("(deal_identifier, tranche_id) = clean_code(_)")
+
+# Explicit method syntax on a column
+df.mutate(clean_id="tranche_id.map_elements(clean_code)")
 ```
 
 ---

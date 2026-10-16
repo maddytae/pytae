@@ -776,5 +776,42 @@ def test_mutate_custom_function_in_expression_two_tier():
     assert list(res_lazy["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
 
 
+def test_mutate_custom_function_grouped_kwargs_and_map_methods():
+    def scale_with_offset(x, factor=2.0, offset=1.0):
+        return x * factor + offset
+
+    def scalar_tag(x, prefix="val"):
+        if x > 5:
+            return f"{prefix}_high"
+        return f"{prefix}_low"
+
+    def group_demeaned(s):
+        return s - s.mean()
+
+    df = pt.DataFrame({
+        "grp": ["A", "A", "B", "B"],
+        "x": [2.0, 8.0, 4.0, 10.0],
+    })
+
+    # Constant args, keyword args, @fn syntax, inline arithmetic, map_elements & map_batches
+    res = df.mutate(
+        scaled="scale_with_offset(x, 3.0, offset=0.5)",
+        inline_add="100.0 + @scale_with_offset(x, 2.0, offset=0.0)",
+        tag="scalar_tag(x, prefix='item')",
+        elem_tag="x.map_elements(scalar_tag)",
+        batch_scale="x.map_batches(scale_with_offset)",
+    )
+    assert list(res["scaled"]) == [6.5, 24.5, 12.5, 30.5]
+    assert list(res["inline_add"]) == [104.0, 116.0, 108.0, 120.0]
+    assert list(res["tag"]) == ["item_low", "item_high", "item_low", "item_high"]
+    assert list(res["elem_tag"]) == ["val_low", "val_high", "val_low", "val_high"]
+    assert list(res["batch_scale"]) == [5.0, 17.0, 9.0, 21.0]
+
+    # Grouped execution via .by()
+    res_grp = df.by("grp").mutate(demeaned="group_demeaned(x)")
+    assert list(res_grp["demeaned"]) == [-3.0, 3.0, -3.0, 3.0]
+
+
+
 
 

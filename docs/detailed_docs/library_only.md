@@ -149,6 +149,37 @@ def compute_score(d):
 penguins.mutate(custom_score=compute_score)
 ```
 
+### Calling Standalone Python Functions Inside `mutate` Expressions (2-Tier Fast Path)
+You can also call any Python function or module function (e.g., `np.maximum`) directly inside a `mutate` string expression without writing `lambda d:`:
+
+```python
+import numpy as np
+
+# Scalar row-by-row function
+def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
+    if deal_id == tr_id:
+        return "Main Tranche"
+    if "-COL-" in tr_id or col_class is not None:
+        return "Collateral"
+    return "Guarantor"
+
+# Vectorized array function
+def calc_metric(x, y):
+    return x * 2.5 + np.maximum(y, 0)
+
+df = df.mutate(
+    tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
+    metric="calc_metric(a, b)",
+    max_ab="np.maximum(a, b)",
+)
+```
+
+Under the hood, `pytae` inspects the function's type annotations and bytecode opcodes to automatically execute the fastest path:
+- **Tier 1 — Vectorized Execution (~0.3 ms / 100k rows)**: Functions without scalar control-flow opcodes receive native `pl.Series` columns directly and run in C/Rust.
+- **Tier 2 — C-Level `map()` Fallback (~9 ms / 100k rows)**: Scalar row-by-row functions extract columns via `.to_list()` in Rust and iterate via CPython's C `map(fn, *lists)` (>2x faster than `pl.struct.map_elements`).
+
+This also works with `across` multi-column syntax (`df.mutate("(col1, col2) = clean_fn(_)")`), `.by()` grouped windows, and `LazyFrame` pipelines.
+
 ### Interleaving Callables and String Expressions in `mutate`
 Callables and string expressions execute strictly in insertion order. Downstream string expressions can immediately reference columns created by upstream callables, and downstream callables receive a DataFrame containing columns created by preceding expressions:
 
