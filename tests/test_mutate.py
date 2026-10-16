@@ -706,27 +706,27 @@ def test_mutate_grouped_consecutive_callables_consuming_each_other():
 
 def test_mutate_str_methods_and_null_checks_case_when():
     df = pt.DataFrame({
-        "deal_identifier": ["D1", "D2", "D3", "D4"],
-        "tranche_id": ["D1", "T2-COL-9", "T3", "T4"],
-        "collateral_class": [None, None, "AAA", None],
+        "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
+        "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
+        "hazmat_class": [None, None, "CLASS-3", None],
     })
     res = df.mutate(
-        tranche_type="""
+        shipping_mode="""
         case_when(
-            (deal_identifier == tranche_id, 'Main Tranche'),
-            (tranche_id.str.contains('-COL-') | collateral_class.is_not_null(), 'Collateral'),
-            'Guarantor'
+            (origin_hub == dest_code, 'Local Courier'),
+            (dest_code.str.contains('-EXP-') | hazmat_class.is_not_null(), 'Special Freight'),
+            'Standard Ground'
         )
         """
     )
-    assert list(res["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+    assert list(res["shipping_mode"]) == ["Local Courier", "Special Freight", "Special Freight", "Standard Ground"]
 
     # Also test functional is_not_null and starts_with / ends_with
     res2 = df.mutate(
-        is_col=lambda d: d["tranche_id"].str.contains("-COL-"),
-        has_col=df.mutate("has_col = is_not_null(collateral_class)")["has_col"],
-        prefix="tranche_id.str.startswith('T2')",
-        suffix="tranche_id.str.endswith('9')",
+        is_exp=lambda d: d["dest_code"].str.contains("-EXP-"),
+        has_hazmat=df.mutate("has_hazmat = is_not_null(hazmat_class)")["has_hazmat"],
+        prefix="dest_code.str.startswith('MIA')",
+        suffix="dest_code.str.endswith('9')",
     )
     assert list(res2["prefix"]) == [False, True, False, False]
     assert list(res2["suffix"]) == [False, True, False, False]
@@ -735,32 +735,32 @@ def test_mutate_str_methods_and_null_checks_case_when():
 def test_mutate_custom_function_lambda_vectorized_and_map():
     import numpy as np
 
-    def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
-        if deal_id == tr_id:
-            return "Main Tranche"
-        if "-COL-" in tr_id or col_class is not None:
-            return "Collateral"
-        return "Guarantor"
+    def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
+        if origin == dest:
+            return "Local Courier"
+        if "-EXP-" in dest or hazmat_code is not None:
+            return "Special Freight"
+        return "Standard Ground"
 
     def calc_metric(x, y):
         return x * 2.5 + np.maximum(y, 0)
 
     df = pt.DataFrame({
-        "deal_identifier": ["D1", "D2", "D3", "D4"],
-        "tranche_id": ["D1", "T2-COL-9", "T3", "T4"],
-        "collateral_class": [None, None, "AAA", None],
+        "origin_hub": ["NYC", "LAX", "ORD", "SEA"],
+        "dest_code": ["NYC", "MIA-EXP-9", "DAL", "BOS"],
+        "hazmat_class": [None, None, "CLASS-3", None],
         "a": [1.0, 2.0, 3.0, 4.0],
         "b": [10.0, -5.0, 20.0, -1.0],
     })
 
     # Row-wise map() and vectorized direct call in the same mutate, plus interleaved string formula
     res = df.mutate(
-        tranche_type=lambda d: map(classify_deal, d["deal_identifier"], d["tranche_id"], d["collateral_class"]),
+        shipping_mode=lambda d: map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"]),
         metric=lambda d: calc_metric(d["a"], d["b"]),
         max_ab=lambda d: np.maximum(d["a"], d["b"]),
         combined="metric + max_ab",
     )
-    assert list(res["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+    assert list(res["shipping_mode"]) == ["Local Courier", "Special Freight", "Special Freight", "Standard Ground"]
     assert list(res["metric"]) == [12.5, 5.0, 27.5, 10.0]
     assert list(res["max_ab"]) == [10.0, 2.0, 20.0, 4.0]
     assert list(res["combined"]) == [22.5, 7.0, 47.5, 14.0]

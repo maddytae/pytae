@@ -190,19 +190,19 @@ In Python scripts, pass a callable (`lambda d: ...`) to `mutate()` to apply any 
 import numpy as np
 
 # 1. Row-wise scalar function (uses Python if/else, 'in', 'is not None') -> use map()
-def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
-    if deal_id == tr_id:
-        return "Main Tranche"
-    if "-COL-" in tr_id or col_class is not None:
-        return "Collateral"
-    return "Guarantor"
+def route_shipment(origin: str, dest: str, hazmat_code: str | None) -> str:
+    if origin == dest:
+        return "Local Courier"
+    if "-EXP-" in dest or hazmat_code is not None:
+        return "Special Freight"
+    return "Standard Ground"
 
 # 2. Vectorized array function (operates on whole columns at once) -> call directly
 def calc_metric(x, y):
     return x * 2.5 + np.maximum(y, 0)
 
 df = df.mutate(
-    tranche_type=lambda d: map(classify_deal, d["deal_identifier"], d["tranche_id"], d["collateral_class"]),
+    shipping_mode=lambda d: map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"]),
     metric=lambda d: calc_metric(d["a"], d["b"]),
     max_ab=lambda d: np.maximum(d["a"], d["b"]),
     adj_metric="metric + max_ab",  # String formulas can immediately reference lambda columns!
