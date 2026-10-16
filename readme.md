@@ -111,22 +111,25 @@ pytae current.parquet -diff baseline.parquet
 - **Rosetta Stone & Philosophy**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
 
 ### Detailed Topic Guides (`docs/detailed_docs/`)
-Unified documentation covering both the Python library and CLI:
-- [Data Ingestion & Sinks](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/read_write.md) (`pt.read_parquet`, `pt.read_csv`, `pt.scan_*`, `to_parquet`, `-o`, `-od`, `-fmt`, `-progress`)
-- [Feature Engineering](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/mutate.md) (`mutate`, formulas, sequential assignments, quoted strings, `across`)
-- [Row Filtering](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/filter.md) (`filter`, intervals, set membership, callables, pushdown)
-- [Column Selection](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/select.md) (`select`, negative drops `-col`, regex, pattern matches, rename)
-- [Row Sorting](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/arrange.md) (`arrange`, `-col`, `desc`, bracketed spaced columns)
-- [Row Picking](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/pick.md) (`pick`, top/bottom N or proportion per group via `by`)
-- [Distinct Rows](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/distinct.md) (`distinct`, deduplication across column subsets, `keep`)
-- [Table Reshaping](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/reshape.md) (`long`, `wide`, pure 1-to-1 unmelting)
-- [Relational Joins & Stacking](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/join.md) (`df.join()`, `pt.join()`, `pt.concat()`, `-join`, `-concat`, colon keys, `validate`)
-- [2D Pivot Tables](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/pivot.md) (`pivot`, `r, c, v, a` matrices, flat 1D headers)
-- [Aggregations & Grouping](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/agg.md) (`by`, `agg`, `dropna=False` zero data loss retention)
-- [Visualizations & Plotting](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting.md) (`df.plot()`, `-plot`, `-finalize`, interactive walkthrough)
-- [Utilities & Inspection](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/other_utilities.md) (`fillna`, `dropna`, `rename`, `sql`, `cols`, `glimpse`, `freq`, `hist`)
-- [CLI Terminal Superpowers](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli_only.md) (`-diff`, `-inspect`, `-meta`, `-file`, `-join`, `-concat`, `-sql`, batch globs)
-- [Python Library Architecture](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library_only.md) (`pt()`, `.pt` accessor on Polars & Pandas, lazy evaluation pushdowns, callables)
+Comprehensive documentation split into two dedicated folders:
+- **`docs/detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
+- **`docs/detailed_docs/cli/`**: In-depth Command Line Markdown manuals (`.md`)
+
+- **Data Ingestion & Sinks**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/read_write.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/read_write.md) (`pt.read_*`, `pt.scan_*`, `write_*`, `-o`, `-od`, `-fmt`, `-progress`)
+- **Feature Engineering**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/mutate.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/mutate.md) (`mutate`, formulas, sequential assignments, `if_else`, `map`, `shift`, `@var`)
+- **Row Filtering**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/filter.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/filter.md) (`filter`, intervals, set membership, `or`/`and`, callables, pushdown)
+- **Column Selection**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/select.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/select.md) (`select`, negative drops `-col`, regex, pattern matches, rename)
+- **Row Sorting**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/arrange.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/arrange.md) (`arrange`, `-col`, `desc`, bracketed spaced columns)
+- **Row Picking**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/pick.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/pick.md) (`pick`, top/bottom N or proportion per group via `by`)
+- **Distinct Rows**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/distinct.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/distinct.md) (`distinct`, deduplication across column subsets, `keep`)
+- **Table Reshaping**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/reshape.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/reshape.md) (`long`, `wide`, pure 1-to-1 unmelting)
+- **Relational Joins & Stacking**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/join.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/join.md) (`df.join()`, `pt.join()`, `pt.concat()`, `-join`, `-concat`, colon keys, `validate`)
+- **2D Pivot Tables**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/pivot.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/pivot.md) (`pivot`, `r, c, v, a` matrices, flat 1D headers)
+- **Aggregations & Grouping**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/agg.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/agg.md) (`by`, `agg`, `dropna=False` zero data loss retention)
+- **Visualizations & Plotting**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/plotting.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/plotting.md) (`df.plot()`, `-plot`, `-finalize`, interactive walkthrough)
+- **Utilities & Inspection**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/other_utilities.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/inspect.md) (`fillna`, `dropna`, `rename`, `diff`, `glimpse`, `clean`)
+- **In-Pipeline SQL**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/sql.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/sql.md) (`df.sql()`, `pt.sql()`, `-sql` DuckDB/Polars SQL engine)
+- **Multi-File Pipelines**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/join.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/multi_file.md) (`-file`, multi-table pipelines, batch globbing, UNIX pipes)
 
 ---
 

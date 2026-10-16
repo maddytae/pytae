@@ -33,26 +33,29 @@
 
 ## Detailed Documentation Directory
 
-All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented in **`docs/detailed_docs/`**:
+All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented under **`docs/detailed_docs/`** in two dedicated folders:
+- **`detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
+- **`detailed_docs/cli/`**: Comprehensive Command Line Markdown guides (`.md`)
 
-| Category | Guide | Key Capabilities |
-|:---|:---|:---|
-| **Data I/O** | **[Data Ingestion & Sinks](detailed_docs/read_write.md)** | `pt.read_parquet`, `pt.read_csv`, `pt.scan_*`, `to_parquet`, `-o`, `-od`, `-fmt`, `-progress`, STDIN, clipboard |
-| **Derivations** | **[Feature Engineering (`mutate`)](detailed_docs/mutate.md)** | `mutate`, formulas, sequential assignments, quoted strings, `if_else`, `across`, window calculations |
-| **Row Filtering** | **[Predicate Evaluation (`filter`)](detailed_docs/filter.md)** | `filter`, interval ranges `[10, 20]`, set membership `in`, string patterns, lambdas, predicate pushdown |
-| **Columns** | **[Selection & Reordering (`select`)](detailed_docs/select.md)** | `select`, drop with `-` / `!`, regex/patterns, inline rename, `pt.everything`, projection pushdown |
-| **Sorting** | **[Row Sorting (`arrange`)](detailed_docs/arrange.md)** | `arrange`, ascending, descending `-col` / `col desc`, multi-column ordering, null positioning |
-| **Aggregation** | **[Grouping & Summary (`by` & `agg`)](detailed_docs/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `n_distinct`, `dropna=False` Zero Data Loss retention |
-| **Cross-Tab** | **[2D Contingency Tables (`pivot`)](detailed_docs/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, flat 1D columns (no MultiIndex traps), `fill_value=0` |
-| **Deduplication** | **[Distinct Records (`distinct`)](detailed_docs/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
-| **Slicing** | **[Top / Bottom Records (`pick`)](detailed_docs/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
-| **Reshaping** | **[Table Reshaping (`long` & `wide`)](detailed_docs/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
-| **Relational Joins** | **[Relational Joins & Stacking (`join`)](detailed_docs/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon key notation, `validate` |
-| **Inspection** | **[Inspection & Utilities (`other_utilities`)](detailed_docs/other_utilities.md)** | `fillna`, `dropna`, `rename`, `sql`, `cols`, `glimpse`, `freq`, `hist`, `clean_columns` |
-| **Plotting** | **[Visualizations & Charts (`plotting`)](detailed_docs/plotting.md)** | Terminal ASCII charts (`freq`, `hist`) and Matplotlib publication figures (`.plot()`, `-plot`) |
-| **CLI Only** | **[CLI Terminal Features (`cli_only`)](detailed_docs/cli_only.md)** | `-diff`, `-inspect`, `-meta`, `-file` multi-file pipelines, `-sql`, batch globbing, completions |
-| **Library Only**| **[Python Library Architecture (`library_only`)](detailed_docs/library_only.md)** | Constructor `pt()`, `.pt` accessor on Polars & Pandas, lazy evaluation pushdowns, callables |
-| **Philosophy** | **[Rosetta Stone & Comparison](comparison_to_pandas_and_dplyr.md)** | Pytae vs. Pandas vs. dplyr, naming rationale, "one and only one obvious way" |
+| Category | Python Library (Notebook) | CLI Guide (Markdown) | Key Capabilities & Verbs |
+|:---|:---|:---|:---|
+| **Data I/O** | **[read_write.ipynb](detailed_docs/library/read_write.ipynb)** | **[read_write.md](detailed_docs/cli/read_write.md)** | `pt.read_*`, `pt.scan_*`, `write_*`, `-o`, `-od`, `-fmt`, `-progress`, STDIN, clipboard |
+| **Derivations** | **[mutate.ipynb](detailed_docs/library/mutate.ipynb)** | **[mutate.md](detailed_docs/cli/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
+| **Row Filtering** | **[filter.ipynb](detailed_docs/library/filter.ipynb)** | **[filter.md](detailed_docs/cli/filter.md)** | `filter`, intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
+| **Columns** | **[select.ipynb](detailed_docs/library/select.ipynb)** | **[select.md](detailed_docs/cli/select.md)** | `select`, drop with `-` / `!`, regex/patterns, inline rename, `pt.everything` |
+| **Sorting** | **[arrange.ipynb](detailed_docs/library/arrange.ipynb)** | **[arrange.md](detailed_docs/cli/arrange.md)** | `arrange`, ascending, descending `-col` / `col desc`, multi-column ordering, null positioning |
+| **Aggregation** | **[agg.ipynb](detailed_docs/library/agg.ipynb)** | **[agg.md](detailed_docs/cli/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
+| **Cross-Tab** | **[pivot.ipynb](detailed_docs/library/pivot.ipynb)** | **[pivot.md](detailed_docs/cli/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
+| **Deduplication** | **[distinct.ipynb](detailed_docs/library/distinct.ipynb)** | **[distinct.md](detailed_docs/cli/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
+| **Slicing** | **[pick.ipynb](detailed_docs/library/pick.ipynb)** | **[pick.md](detailed_docs/cli/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
+| **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
+| **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
+| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean`, `diff` (with `tol=`), `glimpse`, `cols`, `pt.sample` |
+| **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist` |
+| **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
+| **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` DuckDB/Polars SQL engine on data and files |
+| **Plotting** | **[plotting.ipynb](detailed_docs/library/plotting.ipynb)** | **[plotting.md](detailed_docs/cli/plotting.md)** | `df.plot()`, `-plot`, `-finalize`, bar, line, scatter, hist, box, violin, corr, heat |
+| **Philosophy** | **[Rosetta Stone & Comparison](comparison_to_pandas_and_dplyr.md)** | — | Pytae vs. Pandas vs. dplyr, naming rationale, "one and only one obvious way" |
 
 ---
 

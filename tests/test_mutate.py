@@ -916,3 +916,13 @@ def test_mutate_first_last_window():
     assert res_all["first_all"].to_list() == [150.0, 150.0, 150.0, 150.0, 150.0]
     assert res_all["last_all"].to_list() == [310.0, 310.0, 310.0, 310.0, 310.0]
 
+
+def test_mutate_direct_polars_expr():
+    import polars as pl
+
+    df = pt.DataFrame({"x": [10, 20, 30]})
+    res = df.mutate(
+        tier=pl.when(pl.col("x") > 25).then(pl.lit("High")).otherwise(pl.lit("Low"))
+    )
+    assert res["tier"].to_list() == ["Low", "Low", "High"]
+

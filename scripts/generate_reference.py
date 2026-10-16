@@ -1277,9 +1277,9 @@ def generate_reference() -> None:
     parts.append("8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)")
     parts.append("================================================================================\n")
     detailed_docs = sorted(
-        list((REPO_ROOT / "docs" / "detailed_docs").glob("*.md"))
-        + list((REPO_ROOT / "docs" / "detailed_docs").glob("*.ipynb")),
-        key=lambda p: p.stem,
+        list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.md"))
+        + list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.ipynb")),
+        key=lambda p: str(p.relative_to(REPO_ROOT)),
     )
     for doc_path in detailed_docs:
         rel_path = doc_path.relative_to(REPO_ROOT)

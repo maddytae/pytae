@@ -61,6 +61,7 @@ ignore = [
 "tests/test_mutate.py" = ["E402", "F841"]  # @locals are used via pandas eval
 "src/pytae/plotting.py" = ["E741", "F841"]
 "docs/detailed_docs/*" = ["E402", "F401", "E401", "E701", "I001"]
+"docs/detailed_docs/**" = ["E402", "F401", "E401", "E701", "I001"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -1322,6 +1322,9 @@ def mutate_polars(
             expanded_pairs = [(raw_col, raw_val)]
 
         for col_name, val in expanded_pairs:
+            if isinstance(val, pl.Expr):
+                cur = cur.with_columns(val.alias(col_name))
+                continue
             if not isinstance(val, str):
                 cur = cur.with_columns(pl.lit(val).alias(col_name))
                 continue

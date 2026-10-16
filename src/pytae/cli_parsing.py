@@ -404,8 +404,45 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
     respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
     aren't mistaken for entry or key/value separators. Direct comparisons like
     'col > 5' or assignments like 'col = > 3500' or 'col = 3500' are accepted."""
+    # Normalize top-level ' and ' or ' & ' into ',' outside quotes and brackets
+    buf: list[str] = []
+    quote: str | None = None
+    depth = 0
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if quote:
+            if ch == quote:
+                quote = None
+            buf.append(ch)
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            buf.append(ch)
+            i += 1
+        elif ch in "([{":
+            depth += 1
+            buf.append(ch)
+            i += 1
+        elif ch in ")]}":
+            depth -= 1
+            buf.append(ch)
+            i += 1
+        elif depth == 0 and ch == "&":
+            buf.append(",")
+            i += 1
+        elif depth == 0 and raw[i : i + 5].lower() == " and ":
+            buf.append(", ")
+            i += 5
+        else:
+            buf.append(ch)
+            i += 1
+    norm_raw = "".join(buf)
+
     entries: list[tuple[str, str]] = []
-    for raw_entry in _tokenize(raw, ",", keep_quotes=True, track_brackets=True):
+    for raw_entry in _tokenize(norm_raw, ",", keep_quotes=True, track_brackets=True):
         if not raw_entry:
             continue
         # Direct comparison first: col > 5, col >= 5, col <= 5, etc.
