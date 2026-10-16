@@ -732,4 +732,49 @@ def test_mutate_str_methods_and_null_checks_case_when():
     assert list(res2["suffix"]) == [False, True, False, False]
 
 
+def test_mutate_custom_function_in_expression_two_tier():
+    import numpy as np
+
+    def classify_deal(deal_id: str, tr_id: str, col_class: str | None) -> str:
+        if deal_id == tr_id:
+            return "Main Tranche"
+        if "-COL-" in tr_id or col_class is not None:
+            return "Collateral"
+        return "Guarantor"
+
+    def calc_metric(x, y):
+        return x * 2.5 + np.maximum(y, 0)
+
+    def clean_code(s):
+        return s.strip().lower()
+
+    df = pt.DataFrame({
+        "deal_identifier": ["D1", "D2", "D3", "D4"],
+        "tranche_id": ["D1", "T2-COL-9", "T3", "T4"],
+        "collateral_class": [None, None, "AAA", None],
+        "a": [1.0, 2.0, 3.0, 4.0],
+        "b": [10.0, -5.0, 20.0, -1.0],
+    })
+
+    # Tier 2 scalar multi-column & Tier 1 vectorized multi-column in same mutate
+    res = df.mutate(
+        tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)",
+        metric="calc_metric(a, b)",
+        max_ab="np.maximum(a, b)",
+    )
+    assert list(res["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+    assert list(res["metric"]) == [12.5, 5.0, 27.5, 10.0]
+    assert list(res["max_ab"]) == [10.0, 2.0, 20.0, 4.0]
+
+    # Across multi-column syntax with custom function
+    res_across = df.mutate("(deal_identifier, tranche_id) = clean_code(_)")
+    assert list(res_across["deal_identifier"]) == ["d1", "d2", "d3", "d4"]
+    assert list(res_across["tranche_id"]) == ["d1", "t2-col-9", "t3", "t4"]
+
+    # LazyFrame support
+    res_lazy = df.lazy().mutate(tranche_type="classify_deal(deal_identifier, tranche_id, collateral_class)").collect()
+    assert list(res_lazy["tranche_type"]) == ["Main Tranche", "Collateral", "Collateral", "Guarantor"]
+
+
+
 
