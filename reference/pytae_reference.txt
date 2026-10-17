@@ -13313,7 +13313,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.11.0"
+version = "3.10.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -13426,7 +13426,7 @@ from pytae.readers import (
 )
 from pytae.select import everything
 
-__version__ = "3.11.0"
+__version__ = "3.10.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))

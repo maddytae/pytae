@@ -2,56 +2,52 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.11.0] - 2026-10-17
+## [3.10.0] - 2026-10-17
 
 ### Added
-- **First-Class `count` Verb Across Python Library & CLI**:
-  - Introduced dedicated, first-class `count` verb across `DataFrame.count(*cols, sort=True, name="n")`, `GroupedDataFrame.count(sort=True, name="n")`, `pt.count(df, ...)`, Pandas and Polars `.pt.count(...)` accessors, and CLI flag `-count` / `--count`.
-  - Intuitively defaults to sorting descending by the count column (`sort=True`) with output column `name="n"`.
-  - Supports `sort=False` to preserve original encounter order, and `name="<name>"` to customize the count column name.
-  - Calling `df.count()` without arguments outputs total row count in a single-row DataFrame.
-  - Seamlessly integrates with single-shot grouping: `df.by("species").count()` or `pytae data.parquet -by species -count`.
-  - Detects and cleanly rejects collisions where `name` matches an active grouping key with a friendly, actionable ValueError.
-- **Canonical `count` Normalization in `agg`**:
-  - `count` (and `count()`) is now the canonical operation name for row counting inside `agg()` and CLI `-agg`.
-  - Supports custom destinations without awkward tautologies: `df.by("species").agg(total="count", avg_mass="body_mass_g:mean")` or string expressions `df.by("species").agg("total = count(), avg_mass = mean(body_mass_g)")`.
-  - Preserves backward compatibility for `"n"` as an alias.
-- **Zero-Data-Loss Safety Defaults Terminology**:
-  - Standardized all documentation, docstrings, and error messages to use **"Zero-Data-Loss Safety Defaults"** (retiring internal "Option B" terminology).
-
-## [3.10.0] - 2026-10-16
-
-### Added
-- **Full Polars-Native Library Architecture**:
-  - `pytae` is now natively and completely powered by **Polars** across both Python library and CLI, sharing a unified core execution engine with zero code duplication.
-  - First-class `pt.DataFrame` container backed directly by Polars `pl.DataFrame`, providing blazing-fast SIMD vector execution.
-  - Fluid chaining: calling `.pt` off any Pandas or Polars DataFrame enters `pt.DataFrame` on the first call, allowing subsequent chained verbs (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`) to be called directly without repeatedly invoking `.pt`.
-  - Seamless universal reader `pt.read()` with auto-detection of formats (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.ipc`, `.xlsx`) powered by Polars.
+- **Full Polars-Native Library & CLI Architecture**:
+  - `pytae` is now natively and completely powered by **Polars** across both the Python library and CLI, sharing a unified core execution engine with zero code duplication.
+  - First-class `pt.DataFrame` container backed directly by Polars `pl.DataFrame` (and `pl.LazyFrame`), delivering blazing-fast multithreaded SIMD vector execution.
+  - Fluid chaining: calling `.pt` off any Pandas or Polars DataFrame enters `pt.DataFrame` on the first call, allowing subsequent chained verbs (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.count()`, `.agg()`, `.pivot()`, `.plot()`) to be called directly without repeatedly invoking `.pt`.
+  - Seamless universal reader `pt.read()` / `pt.scan()` with auto-detection of formats (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.ipc`, `.xlsx`) powered by Polars.
   - Native constructors: `pt(pandas_df)` or `pt(polars_df)` automatically detects and wraps tabular data into `pt.DataFrame`.
   - Effortless exports: `.to_pandas()`, `.to_polars()`, and `.to_clip()` (system clipboard export via Polars string serialization).
   - Preserved metadata and Pandas testing interoperability hooks (`pd.testing.assert_frame_equal` and `pd.melt`).
-- **Native Polars Joins & Concatenation (`join`, `concat`)**:
-  - `pt.join()`, `df.pt.join()`, `df.join()`: high-performance Polars join supporting inner, left, right, full, semi, anti, and cross joins, colon shorthand `on="left_key:right_key"`, auto-discovery of common join keys, and validation (`"1:1"`, `"1:m"`, `"m:1"`, `"m:m"`). Preserves `LazyFrame` query plans for predicate pushdown.
-  - `pt.concat()`, `df.pt.concat()`, `df.concat()`: fast vertical and horizontal stacking with automatic schema mismatch handling (relaxed diagonal fallback) and automatic horizontal column deduplication.
   - **Transparent Polars Verb Delegation**: `pt.DataFrame.__getattr__` dynamically forwards any Polars DataFrame/LazyFrame method (e.g. `.with_columns()`, `.slice()`, `.describe()`, `.explode()`) while auto-unwrapping `pt.DataFrame` inputs and auto-rewrapping Polars outputs to preserve fluent chaining.
-- **Unified Missing Data Handling & Non-Destructive Defaults**:
+- **First-Class `count` Verb Across Python Library & CLI**:
+  - Introduced dedicated, first-class `count` verb across `DataFrame.count(*cols, sort=True, name="n")`, `GroupedDataFrame.count(sort=True, name="n")`, `pt.count(df, ...)`, Pandas and Polars `.pt.count(...)` accessors, and CLI flag `-count` / `--count`.
+  - Intuitively defaults to sorting descending by the count column (`sort=True`) with output column `name="n"`, matching exploratory intuition.
+  - Supports `sort=False` to preserve original encounter order, and `name="<name>"` to customize the count column name.
+  - Calling `df.count()` without arguments outputs total row count in a single-row DataFrame.
+  - Seamlessly integrates with single-shot grouping: `df.by("species").count()` or `pytae data.parquet -by species -count`.
+  - Detects and cleanly rejects collisions where `name` matches an active grouping key with a friendly, actionable `ValueError`.
+- **Canonical `count` Normalization in `agg`**:
+  - `count` (and `count()`) is now the canonical operation name for row counting inside `agg()` and CLI `-agg`.
+  - Supports custom destinations without awkward tautologies: `df.by("species").agg(total="count", avg_mass="body_mass_g:mean")` or string expressions `df.by("species").agg("total = count(), avg_mass = mean(body_mass_g)")`.
+  - Preserves backward compatibility for `"n"`, `"n()"`, `"len"`, and `"size"` as aliases.
+- **Zero-Data-Loss Safety Defaults**:
   - `df.dropna()`: bare call defaults to Zero-Data-Loss safety semantics (drops only 100% blank rows); targeted columns `df.dropna("a", "b")` drop rows missing any specified key (`how='any'`).
   - Differentiated float `NaN` and Arrow `null` cleaning via `drop_nans=True` (default), ensuring numeric floating-point `NaN` values are never missed.
   - `df.fillna()`: unified type-aware filling across numeric, string, boolean, and temporal columns.
-- **Recoding & Window Functions in `mutate`**:
-  - Categorical and value mapping via `mutate(status="map(code, {'A': 'Active', 'I': 'Inactive'})")`.
-  - First and last window functions in grouped expressions: `df.by("id").mutate(first_val="first(val)", last_val="last(val)")`.
+  - Grouping and aggregation (`by`, `agg`, `pivot`, `freq`) default to `dropna=False`, ensuring missing, unclassified, or orphan records are never silently dropped.
 - **Group-Aware & Proportion-Aware Row Slicing (`head` & `tail`)**:
   - `df.head()` and `df.tail()` (and standalone `pt.head()`, `pt.tail()`, and CLI `-head`, `-tail`) now provide comprehensive row slicing supporting:
     - Fixed row counts (`n=5`, `-head 5`).
     - Percentages and proportions (`prop=0.1`, `n="10%"`, `-head 10%`, `-head 0.1`).
     - Boundary tie-breaking (`with_ties=True`, `-head "3, ties=true"`).
     - Group awareness: `df.by("species").arrange("mass desc").head(3)` or `pytae penguins.parquet -by species -arrange "mass desc" -head 3`.
+- **Native Polars Joins & Concatenation (`join`, `concat`)**:
+  - `pt.join()`, `df.pt.join()`, `df.join()`: high-performance Polars join supporting inner, left, right, full, semi, anti, and cross joins, colon shorthand `on="left_key:right_key"`, auto-discovery of common join keys, and validation (`"1:1"`, `"1:m"`, `"m:1"`, `"m:m"`). Preserves `LazyFrame` query plans for predicate pushdown.
+  - `pt.concat()`, `df.pt.concat()`, `df.concat()`: fast vertical and horizontal stacking with automatic schema mismatch handling (relaxed diagonal fallback) and automatic horizontal column deduplication.
+- **Recoding & Advanced Window Functions in `mutate`**:
+  - Categorical and value mapping via `mutate(status="map(code, {'A': 'Active', 'I': 'Inactive'})")`.
+  - First and last window functions in grouped expressions: `df.by("id").mutate(first_val="first(val)", last_val="last(val)")`.
+  - Multi-column transformations with `_` placeholder: `(col1, col2) = _ / 10`.
 - **Reproducible Performance Benchmarks & Ecosystem Migration Guides**:
   - Dedicated comprehensive guides for migrating from [Pandas](docs/comparison_to_pandas.md), [dplyr](docs/comparison_to_dplyr.md), and [SAS](docs/comparison_to_sas.md).
   - Self-contained, reproducible 5,000,000-row benchmark suite in [`docs/benchmarks/`](docs/benchmarks/README.md) (`run_benchmarks.py`, `benchmarks.ipynb`, and speedup visualizations).
 
-### Removed & Breaking Changes
+### Removed & Breaking Changes ("One and Only One Obvious Way")
 - **Complete Retirement of `pick` in Favor of Canonical `arrange().head()` / `arrange().tail()`**:
   - In adherence to *"One and Only One Obvious Way"*, the niche verb `pick` and CLI flag `-pick` have been completely removed across the Python library and CLI.
   - Slicing top records is simply `df.arrange("col desc").head(n)`.
@@ -59,12 +55,14 @@ All notable changes to this project are documented in this file.
   - Grouped extreme slicing is `df.by("g").arrange("col desc").head(n)`.
   - Calling `df.pick()`, `pt.pick()`, or CLI `-pick` raises an immediate, helpful redirect error guiding users to compose `arrange` and `head`/`tail`.
 - **Removal of Obsolete `ungroup()`**:
-  - In Polars and Pytae, `.by()` is an ephemeral, single-shot scoping context for the immediate next operation (`mutate()`, `agg()`, `head()`, `tail()`).
+  - In Polars and Pytae, `.by()` is an ephemeral, single-shot scoping context for the immediate next operation (`mutate()`, `agg()`, `count()`, `head()`, `tail()`).
   - Because grouping automatically clears upon operation completion and never persists on the resulting `DataFrame`, `ungroup()` was completely redundant and has been removed from `DataFrame`, accessors, and the public API.
   - Chaining from grouped calculations directly into whole-table calculations or new grouping keys works seamlessly without intermediate cleanup.
-- **Clean Break: Eradication of `merge` in favor of `join`**:
+- **Clean Break: Eradication of `merge` in Favor of `join`**:
   - Renamed CLI flag `-merge` / `--merge` to `-join` / `--join` (`pytae -file "a.csv=a; b.csv=b" -join "left=a,right=b,on=id"`).
   - Eradicated `merge` keyword across Python library and CLI; use native `join` exclusively.
+- **Zero-Data-Loss Safety Defaults Terminology**:
+  - Standardized all documentation, docstrings, and error messages to use **"Zero-Data-Loss Safety Defaults"** (retiring internal "Option B" terminology).
 - **Core Philosophy Standardization**:
   - Standardized core design philosophy across codebase, errors, and documentation on *"One and Only One Obvious Way"*.
 

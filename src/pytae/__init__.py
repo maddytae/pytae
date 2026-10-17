@@ -31,7 +31,7 @@ from pytae.readers import (
 )
 from pytae.select import everything
 
-__version__ = "3.11.0"
+__version__ = "3.10.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
