@@ -18,7 +18,7 @@ All notable changes to this project are documented in this file.
   - `pt.concat()`, `df.pt.concat()`, `df.concat()`: fast vertical and horizontal stacking with automatic schema mismatch handling (relaxed diagonal fallback) and automatic horizontal column deduplication.
   - **Transparent Polars Verb Delegation**: `pt.DataFrame.__getattr__` dynamically forwards any Polars DataFrame/LazyFrame method (e.g. `.with_columns()`, `.slice()`, `.describe()`, `.explode()`) while auto-unwrapping `pt.DataFrame` inputs and auto-rewrapping Polars outputs to preserve fluent chaining.
 - **Unified Missing Data Handling & Non-Destructive Defaults**:
-  - `df.dropna()`: bare call defaults to non-destructive Option B semantics (drops only 100% blank rows); targeted columns `df.dropna("a", "b")` drop rows missing any specified key (`how='any'`).
+  - `df.dropna()`: bare call defaults to Zero-Data-Loss safety semantics (drops only 100% blank rows); targeted columns `df.dropna("a", "b")` drop rows missing any specified key (`how='any'`).
   - Differentiated float `NaN` and Arrow `null` cleaning via `drop_nans=True` (default), ensuring numeric floating-point `NaN` values are never missed.
   - `df.fillna()`: unified type-aware filling across numeric, string, boolean, and temporal columns.
 - **Recoding & Window Functions in `mutate`**:

@@ -251,7 +251,7 @@ def dropna_polars(
 ) -> Any:
     """Drop rows containing missing values (Arrow null and/or float NaN).
 
-    Option B Zero Data Loss Philosophy:
+    Zero-Data-Loss Safety Defaults:
     - If `cols` is None/empty: defaults to how='all' (only drop completely empty rows).
     - If `cols` is specified: defaults to how='any' (drop rows missing any of the specified columns).
     - `how` can be explicitly 'any' or 'all' to override.

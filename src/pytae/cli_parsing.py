@@ -71,9 +71,9 @@ def parse_dropna_spec(
 ) -> tuple[list[str], str | None, bool]:
     """Parse -dropna SPEC into (cols, how, drop_nans).
 
-    Option B Zero Data Loss Philosophy:
-      - Bare flag / "": cols=[], how=None (Option B defaults to 'all'), drop_nans=True
-      - "col1,col2": cols=['col1', 'col2'], how=None (Option B defaults to 'any'), drop_nans=True
+    Zero-Data-Loss Safety Defaults:
+      - Bare flag / "": cols=[], how=None (defaults to 'all' to prevent accidental data loss), drop_nans=True
+      - "col1,col2": cols=['col1', 'col2'], how=None (defaults to 'any' for targeted columns), drop_nans=True
       - "how=any" or "how=all": cols=[], how='any'/'all', drop_nans=True
       - "col1,col2,how=all": cols=['col1', 'col2'], how='all', drop_nans=True
       - "drop_nans=false": drop_nans=False

@@ -11384,8 +11384,8 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 │ 4. PURE FLAT STRUCTURES   │ No indexes, no MultiIndex traps. Every operation returns   │
 │                           │ flat 1D columns with clean RangeIndex(0, 1, 2, ...).       │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 5. ZERO DATA LOSS         │ Non-destructive Option B defaults: bare dropna() drops     │
-│                           │ only 100% blank rows; agg/pivot retain NA groups.          │
+│ 5. ZERO DATA LOSS         │ Non-destructive safe defaults: bare dropna() drops only   │
+│                           │ 100% blank rows; agg/pivot retain NA groups.               │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 6. SINGLE-SHOT GROUPING   │ df.by(*cols) scopes only the immediate next verb and auto- │
 │                           │ ungroups. Sticky groups are eliminated; ungroup is dead.   │
@@ -11808,7 +11808,7 @@ df.dropna()  # Deletes rows missing ANY column
 In Pytae, bare `df.dropna()` defaults to `how='all'`. Only completely blank rows (100% missing across all columns) are dropped. When you want to drop rows missing specific required columns, you pass those columns explicitly:
 
 ```python
-# PYTAE: Non-destructive Option B semantics
+# PYTAE: Zero-Data-Loss safety semantics (bare dropna drops only 100% blank rows)
 df.dropna()                       # Drops only 100% blank rows
 df.dropna("customer_id", "email") # Drops rows missing required keys (how='any')
 ```
@@ -16883,10 +16883,10 @@ from __future__ import annotations
 
 import argparse
 import ast
-from dataclasses import dataclass
 import difflib
 import glob
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -16950,9 +16950,9 @@ def parse_dropna_spec(
 ) -> tuple[list[str], str | None, bool]:
     """Parse -dropna SPEC into (cols, how, drop_nans).
 
-    Option B Zero Data Loss Philosophy:
-      - Bare flag / "": cols=[], how=None (Option B defaults to 'all'), drop_nans=True
-      - "col1,col2": cols=['col1', 'col2'], how=None (Option B defaults to 'any'), drop_nans=True
+    Zero-Data-Loss Safety Defaults:
+      - Bare flag / "": cols=[], how=None (defaults to 'all' to prevent accidental data loss), drop_nans=True
+      - "col1,col2": cols=['col1', 'col2'], how=None (defaults to 'any' for targeted columns), drop_nans=True
       - "how=any" or "how=all": cols=[], how='any'/'all', drop_nans=True
       - "col1,col2,how=all": cols=['col1', 'col2'], how='all', drop_nans=True
       - "drop_nans=false": drop_nans=False
@@ -19595,9 +19595,8 @@ from typing import Any
 
 import polars as pl
 
-from pytae._parsing import _parse_filter_string, _parse_mutate_spec_entries
+from pytae._parsing import _extract_arrange_specs, _parse_filter_string, _parse_mutate_spec_entries
 from pytae._text import unquote_name as _unquote_name
-from pytae._parsing import _extract_arrange_specs
 from pytae.polars_engine import (
     _df_columns,
     agg_polars,
@@ -19611,7 +19610,6 @@ from pytae.polars_engine import (
     join_polars,
     long_polars,
     mutate_polars,
-    pick_polars,
     pivot_polars,
     select_polars,
     slice_head_polars,
@@ -20358,7 +20356,7 @@ class DataFrame:
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
-        Option B Zero Data Loss Philosophy:
+        Zero-Data-Loss Safety Defaults:
         - Without arguments: drops completely empty rows (all columns null/NaN, how='all').
         - With column names: drops rows where any of the specified columns are null/NaN (how='any').
         - Pass how='any' or how='all' to explicitly override.
@@ -23289,7 +23287,7 @@ def dropna_polars(
 ) -> Any:
     """Drop rows containing missing values (Arrow null and/or float NaN).
 
-    Option B Zero Data Loss Philosophy:
+    Zero-Data-Loss Safety Defaults:
     - If `cols` is None/empty: defaults to how='all' (only drop completely empty rows).
     - If `cols` is specified: defaults to how='any' (drop rows missing any of the specified columns).
     - `how` can be explicitly 'any' or 'all' to override.
@@ -26922,7 +26920,7 @@ def test_pt_accessor_dropna_pandas_and_polars():
     pdf = pd.DataFrame({"a": [1.0, None, 3.0], "b": [10.0, 20.0, 30.0]})
     pldf = pl.DataFrame({"a": [1.0, None, 3.0], "b": [10.0, 20.0, 30.0]})
 
-    # Option B: bare dropna on partially null rows keeps all rows
+    # Zero-Data-Loss: bare dropna on partially null rows keeps all rows
     assert len(pdf.pt.dropna()) == 3
     assert len(pldf.pt.dropna()) == 3
 
@@ -30176,7 +30174,7 @@ def test_cli_glimpse(capsys):
 
 
 def test_cli_dropna_bare_default_zero_data_loss(capsys):
-    # Option B: Bare -dropna defaults to how='all' (preserves all rows unless a row is 100% null)
+    # Zero-Data-Loss: Bare -dropna defaults to how='all' (preserves all rows unless a row is 100% null)
     ret = main([PENGUINS_PATH, "-dropna", "-shape"])
     assert ret == 0
     captured = capsys.readouterr()
@@ -31877,7 +31875,7 @@ def test_lazy_verbs(sample_parquet: Path):
     assert d.is_lazy
     assert len(d.collect()) == 3
 
-    # dropna (Option B zero data loss: bare defaults to how='all', targeted to how='any')
+    # dropna (Zero-Data-Loss safety defaults: bare defaults to how='all', targeted to how='any')
     assert len(df.dropna().collect()) == 5
 
     dn = df.dropna("val1")

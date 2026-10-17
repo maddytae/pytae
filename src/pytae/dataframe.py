@@ -771,7 +771,7 @@ class DataFrame:
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
-        Option B Zero Data Loss Philosophy:
+        Zero-Data-Loss Safety Defaults:
         - Without arguments: drops completely empty rows (all columns null/NaN, how='all').
         - With column names: drops rows where any of the specified columns are null/NaN (how='any').
         - Pass how='any' or how='all' to explicitly override.

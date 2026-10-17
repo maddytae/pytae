@@ -21,7 +21,7 @@ def test_cli_glimpse(capsys):
 
 
 def test_cli_dropna_bare_default_zero_data_loss(capsys):
-    # Option B: Bare -dropna defaults to how='all' (preserves all rows unless a row is 100% null)
+    # Zero-Data-Loss: Bare -dropna defaults to how='all' (preserves all rows unless a row is 100% null)
     ret = main([PENGUINS_PATH, "-dropna", "-shape"])
     assert ret == 0
     captured = capsys.readouterr()

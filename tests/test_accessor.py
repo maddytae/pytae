@@ -62,7 +62,7 @@ def test_pt_accessor_dropna_pandas_and_polars():
     pdf = pd.DataFrame({"a": [1.0, None, 3.0], "b": [10.0, 20.0, 30.0]})
     pldf = pl.DataFrame({"a": [1.0, None, 3.0], "b": [10.0, 20.0, 30.0]})
 
-    # Option B: bare dropna on partially null rows keeps all rows
+    # Zero-Data-Loss: bare dropna on partially null rows keeps all rows
     assert len(pdf.pt.dropna()) == 3
     assert len(pldf.pt.dropna()) == 3
 

@@ -96,7 +96,7 @@ df.dropna()  # Deletes rows missing ANY column
 In Pytae, bare `df.dropna()` defaults to `how='all'`. Only completely blank rows (100% missing across all columns) are dropped. When you want to drop rows missing specific required columns, you pass those columns explicitly:
 
 ```python
-# PYTAE: Non-destructive Option B semantics
+# PYTAE: Zero-Data-Loss safety semantics (bare dropna drops only 100% blank rows)
 df.dropna()                       # Drops only 100% blank rows
 df.dropna("customer_id", "email") # Drops rows missing required keys (how='any')
 ```

@@ -48,8 +48,8 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 │ 4. PURE FLAT STRUCTURES   │ No indexes, no MultiIndex traps. Every operation returns   │
 │                           │ flat 1D columns with clean RangeIndex(0, 1, 2, ...).       │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 5. ZERO DATA LOSS         │ Non-destructive Option B defaults: bare dropna() drops     │
-│                           │ only 100% blank rows; agg/pivot retain NA groups.          │
+│ 5. ZERO DATA LOSS         │ Non-destructive safe defaults: bare dropna() drops only   │
+│                           │ 100% blank rows; agg/pivot retain NA groups.               │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 6. SINGLE-SHOT GROUPING   │ df.by(*cols) scopes only the immediate next verb and auto- │
 │                           │ ungroups. Sticky groups are eliminated; ungroup is dead.   │
