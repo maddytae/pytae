@@ -2,7 +2,7 @@
 
 [← Back to Master Reference](../../pytae.md)
 
-Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing rows (`-dropna`), or extract extreme rows (`-pick`).
+Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing rows (`-dropna`), or slice rows (`-head`, `-tail`, `-arrange`).
 
 ---
 
@@ -16,7 +16,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [List Membership (`['a', 'b']`)](#list-membership)
   - [Filtering Non-Missing Values (`notna`) & Columns with Spaces](#filtering-non-missing-values-notna--columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
-- [Selecting Extreme Rows (`-pick`)](#selecting-extreme-rows--pick)
+- [Slicing Extreme Rows (`-arrange` + `-head` / `-tail`)](#slicing-extreme-rows--arrange--head--tail)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
@@ -28,7 +28,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
 |---|---|---|
 | `-filter CONDITIONS` | Row Filter | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, bracketed spaces `[col name]` |
 | `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
-| `-pick SPEC` | Row Slicing | Select top/bottom rows by column (`col,n=N` or `col,order=min`), group-aware with `-by` |
+| `-head [LIMIT]`, `-tail [LIMIT]` | Row Slicing | Extract first/last $N$, percentage (`10%`), or with ties (`ties=true`), group-aware with `-by` |
 
 ---
 
@@ -143,21 +143,14 @@ pytae penguins.parquet \
 
 ---
 
-## Selecting Extreme Rows (`-pick`)
+## Slicing Extreme Rows (`-arrange` + `-head` / `-tail`)
 
-Extract top or bottom rows ordered by a specific column using `-pick`. Fully group-aware when combined with `-by`. For complete details and syntax, see the [Row Picking Guide](pick.md).
-
-Supported specification formats:
-- Top rows: `col,n=N` (e.g. `body_mass_g,n=3`)
-- Bottom rows: `col,n=N,order=min` (e.g. `body_mass_g,n=1,order=min`)
-- Proportion: `col,prop=P` (e.g. `body_mass_g,prop=0.1`)
-- Default `n=1, order=max` if `n` and `prop` are omitted (e.g. `body_mass_g`)
-- Bracketed notation `[col with spaces],n=N` is supported.
+Extract top or bottom rows ordered by a specific column by composing `-arrange` with group-aware `-head` or `-tail`. For complete details and syntax, see the [Row Slicing Guide](head_tail.md).
 
 ### Top N Rows Overall
 
 ```bash
-pytae penguins.parquet -pick "body_mass_g,n=3" -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -170,10 +163,10 @@ pytae penguins.parquet -pick "body_mass_g,n=3" -select "species,island,body_mass
 
 ### Bottom N Rows per Group (`-by`)
 
-When combined with `-by`, `-pick` extracts rows within each unique group:
+When combined with `-by`, `-head` and `-tail` extract rows within each unique group:
 
 ```bash
-pytae penguins.parquet -by species -pick "body_mass_g,n=1,order=min" -select "species,body_mass_g"
+pytae penguins.parquet -by species -arrange body_mass_g -head 1 -select "species,body_mass_g"
 ```
 
 **Output:**
@@ -226,5 +219,5 @@ pytae penguins.parquet -dropna "body_mass_g,sex" -head 3
 In terminal shells (bash, zsh):
 - Enclose the entire spec in outer double quotes: `-filter "..."`.
 - Enclose string literals in inner single quotes: `'Gentoo'`.
-- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-pick "[bill length mm],n=3"`.
+- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm] desc" -head 3`.
 

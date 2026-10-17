@@ -310,7 +310,7 @@ pytae -help pivot
 pytae -help sql
 pytae -help reshape
 pytae -help arrange
-pytae -help pick
+pytae -help head
 pytae -help distinct
 ```
 

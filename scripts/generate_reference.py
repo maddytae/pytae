@@ -22,7 +22,7 @@ TABLE OF CONTENTS
     4.3.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.4.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
-    4.6.  pt.pick() / df.pt.pick() — Extreme Row Slicing (formerly slice_max/min)
+    4.6.  head() / tail() — Group-Aware & Proportion-Aware Row Slicing
     4.7.  pt.distinct() / df.pt.distinct() — Deduplication
     4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
     4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
@@ -53,7 +53,7 @@ TABLE OF CONTENTS
     6.1.  When should I use `-select` before `-agg`?
     6.2.  Why is `by` strictly standalone across all verbs?
     6.3.  Why does every chained method call start on a new line?
-    6.4.  What are the key verb deprecations (filter, pick, distinct)?
+    6.4.  What are the key canonical verbs (filter, head/tail, distinct)?
     6.5.  How do I apply custom functions in `mutate()`? (Vectorized vs Series vs Row)
     6.6.  Can row-level functions access newly created columns in the same `mutate()`?
     6.7.  Why does `df.pt.mutate(col=my_func)` fail when `my_func` expects a row?
@@ -67,7 +67,7 @@ TABLE OF CONTENTS
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
-    Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
+    Recipe 3: Group-Aware Row Slicing (pt.by + arrange + head)
     Recipe 4: Polars SQL Query in CLI Pipeline
     Recipe 5: Multi-File Join, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
@@ -152,7 +152,8 @@ Top-Level Functions exported by `pytae`:
   - pt.by(df, *cols)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
-  - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
+  - pt.head(df, n=None, *, prop=None, with_ties=False) -> DataFrame
+  - pt.tail(df, n=None, *, prop=None, with_ties=False) -> DataFrame
   - pt.distinct(df, *cols, keep="first")
   - pt.dropna(df, *cols, how=None, drop_nans=True)
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
@@ -180,7 +181,8 @@ DataFrame Accessor (`df.pt`):
     df.pt.by(...)
     df.pt.mutate(...)
     df.pt.arrange(...)
-    df.pt.pick(...)
+    df.pt.head(...)
+    df.pt.tail(...)
     df.pt.sample(...)
     df.pt.distinct(...)
     df.pt.dropna(...)
@@ -294,7 +296,7 @@ Error Handling:
 4.2. pt.by() / df.pt.by() — Single-Shot Scoped Grouping
 --------------------------------------------------------------------------------
 Sets active grouping state on a DataFrame. In pytae, grouping is strictly SINGLE-SHOT:
-verbs (`mutate`, `pick`, `agg`) NEVER accept `by=`. They inherit active grouping 
+verbs (`mutate`, `agg`, `head`, `tail`) NEVER accept `by=`. They inherit active grouping 
 strictly from `pt.by()`. If passed `by=`, verbs immediately raise a `TypeError`.
 
 Signature:
@@ -303,7 +305,7 @@ Signature:
 
 Key Rules & Behaviors:
   - Single-Shot Scoped Grouping: Grouping applies strictly to the immediate next operation.
-    Every operation (`mutate()`, `agg()`, `pick()`) automatically ungroups upon completion,
+    Every operation (`mutate()`, `agg()`, `head()`, `tail()`) automatically ungroups upon completion,
     returning a clean, flat, ungrouped DataFrame.
   - No Ungroup Needed: Because grouping never persists, subsequent operations naturally
     evaluate across the whole table without requiring `ungroup()`.
@@ -484,35 +486,43 @@ Calling Styles:
   df.pt.arrange("[bill length mm] desc")
 
 
-4.6. pt.pick() / df.pt.pick() — Extreme Row Slicing
+4.6. head() / tail() — Group-Aware & Proportion-Aware Row Slicing
 --------------------------------------------------------------------------------
-Selects extreme top or bottom N rows (or proportion of rows) ordered by a target column.
-Inherits active grouping strictly from `pt.by()`. Rejects `by=` in kwargs with TypeError.
+Selects the first or last N rows (or proportion of rows via `prop=`), with boundary 
+tie-breaking (`with_ties=True`) and complete group awareness via `df.by()`.
+Extreme row selection (formerly `pick`) is achieved canonically by composing `arrange()` 
+with `head()` or `tail()`:
 
 Signature:
-  pt.pick(
-      df: pd.DataFrame,
-      order_by: str,
-      n: int | None = 1,
-      prop: float | None = None,
-      order: str = "max",
-      with_ties: bool = False,
-      na_last: bool = True,
-  ) -> pd.DataFrame
+  df.head(n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame
+  df.tail(n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame
+  pt.head(df, n=None, *, prop=None, with_ties=False) -> DataFrame
+  pt.tail(df, n=None, *, prop=None, with_ties=False) -> DataFrame
 
 Calling Styles:
-  # Top / bottom rows overall
-  df.pt.pick("body_mass_g", n=3)                 # Top 3 (default order="max")
-  df.pt.pick("body_mass_g", n=1, order="min")    # Lightest penguin
-  df.pt.pick("body_mass_g", prop=0.1)            # Top 10%
+  # Basic slice overall (default n=5)
+  df.head(5)
+  df.tail(5)
 
-  # Group-aware extreme selection:
+  # Proportion slice (10% or float)
+  df.head(prop=0.1)
+  df.head("10%")
+
+  # Extreme top/bottom rows via arrange
+  df.arrange("body_mass_g desc").head(3)     # Heaviest 3 penguins
+  df.arrange("body_mass_g").head(3)          # Lightest 3 penguins (or df.arrange("body_mass_g desc").tail(3))
+
+  # Group-aware row slicing:
   (
       penguins
-      .pt.by("species")
-      .pt.pick("body_mass_g", n=1)
-      .pt.select("species", "island", "body_mass_g")
+      .by("species")
+      .arrange("body_mass_g desc")
+      .head(1)
+      .select("species", "island", "body_mass_g")
   )
+
+  # Boundary ties included:
+  df.arrange("body_mass_g desc").head(3, with_ties=True)
 
 
 4.7. pt.distinct() / df.pt.distinct() — Deduplication
@@ -752,7 +762,8 @@ In-Terminal ASCII Visualizations:
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
-  -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by
+  -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
+  -tail [LIMIT]         Extract last N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
@@ -762,7 +773,7 @@ Column Transformation Flags:
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
-  -by COLS              Grouping columns for -agg, -mutate, -pick (e.g. -by species -agg mean)
+  -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass desc" -head 1)
   -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
@@ -832,7 +843,7 @@ When computing bulk summaries (e.g. `-agg mean`), using `-select` beforehand pru
 6.2. Why is `by` strictly standalone across all verbs?
 ------------------------------------------------------
 To adhere strictly to the "one and only one obvious way" philosophy:
-- `by` is never an argument inside verbs (`mutate`, `pick`, `agg`).
+- `by` is never an argument inside verbs (`mutate`, `agg`, `head`, `tail`).
 - Grouping must always be declared beforehand via `pt.by(df, *cols)` or `.pt.by(*cols)`.
 - Verbs inherit grouping from `df.attrs['_pt_by']` and raise a `TypeError` if passed `by=`.
 
@@ -843,19 +854,20 @@ its own new line:
 ```python
 (
     penguins
-    .pt.by("species")
-    .pt.pick("body_mass_g", n=1)
-    .pt.select("species", "island", "body_mass_g")
+    .by("species")
+    .arrange("body_mass_g desc")
+    .head(1)
+    .select("species", "island", "body_mass_g")
 )
 ```
 This ensures readable git diffs, clean execution tracebacks, and syntactic consistency.
 
-6.4. What are the key canonical verbs (filter, pick, distinct)?
+6.4. What are the key canonical verbs (filter, head/tail, distinct)?
 -----------------------------------------------------------------
 Pytae standardizes on canonical modern naming:
-- `pt.filter()` / `df.pt.filter()` / `-filter`: Replaces `qry`
-- `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min` (the legacy `slice_max`/`slice_min` functions and flags have been completely removed with no backward compatibility).
-- `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
+- `pt.filter()` / `df.filter()` / `-filter`: Replaces `qry`
+- `head()` & `tail()` / `-head` & `-tail`: Group-aware, proportion-aware, tie-aware row slicing replacing legacy `pick`, `slice_max`, and `slice_min` (which have been completely removed with no backward compatibility).
+- `pt.distinct()` / `df.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------
@@ -1009,7 +1021,7 @@ pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
 pytae penguins.parquet -pivot "r=island, c=species, a=n"
 ```
 
-Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
+Recipe 3: Group-Aware Row Slicing (pt.by + arrange + head)
 --------------------------------------------------------------------------------
 ```python
 import pytae as pt
@@ -1019,18 +1031,19 @@ tips = pt.sample("tips")
 # 1. Heaviest tip per day via method chaining
 top_daily = (
     tips
-    .pt.by("day")
-    .pt.pick("tip", n=1)
-    .pt.select("day", "total_bill", "tip")
+    .by("day")
+    .arrange("tip desc")
+    .head(1)
+    .select("day", "total_bill", "tip")
 )
 
-# 2. Standalone functional pick overall
-top_bill = pt.pick(tips, "total_bill", n=1)[["day", "total_bill", "tip"]]
+# 2. Standalone functional slice overall
+top_bill = pt.head(pt.arrange(tips, "total_bill desc"), 1)[["day", "total_bill", "tip"]]
 ```
 
 ```bash
 # Equivalent CLI:
-pytae tips.parquet -by day -pick "tip,n=1" -select "day,total_bill,tip"
+pytae tips.parquet -by day -arrange "tip desc" -head 1 -select "day,total_bill,tip"
 ```
 
 Recipe 4: Polars SQL Query in CLI Pipeline
@@ -1130,7 +1143,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   │   ├── library_only.md
 │   │   ├── mutate.md
 │   │   ├── other_utilities.md
-│   │   ├── pick.md
+│   │   ├── head_tail.md
 │   │   ├── pivot.md
 │   │   ├── plotting.ipynb
 │   │   ├── plotting.md

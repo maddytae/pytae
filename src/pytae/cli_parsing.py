@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from dataclasses import dataclass
 import difflib
 import glob
 import re
@@ -194,68 +195,97 @@ def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
     return cols, asc_list
 
 
-def parse_pick_spec(raw: str, flag_name: str = "-pick") -> tuple[str, int | None, float | None, str]:
-    """Parse -pick SPEC.
-
-    Canonical syntax:
-      - 'col,n=N'             e.g. 'body_mass_g,n=3' (order=max by default)
-      - 'col,n=N,order=min'   e.g. 'body_mass_g,n=3,order=min'
-      - 'col,prop=P'         e.g. 'body_mass_g,prop=0.1'
-      - 'col'                e.g. 'body_mass_g' (defaults to n=1, order=max)
-      - bracketed spaced names: '[bill length mm],n=3'
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
-
-    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
-    if not tokens:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
-
-    col_raw = tokens[0]
-    col = _unquote_name(col_raw)
-    if not col:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
-
+@dataclass
+class SliceSpec:
     n: int | None = None
     prop: float | None = None
-    order: str = "min" if "min" in flag_name.lower() else "max"
+    with_ties: bool = False
 
-    if len(tokens) == 1:
-        return col, 1, None, order
 
-    for param in tokens[1:]:
-        if param.startswith("n="):
-            val_str = param[2:].strip()
-            if not val_str.isdigit() or int(val_str) <= 0:
-                raise SystemExit(f"{flag_name}: invalid n value '{val_str}'; must be a positive integer")
-            if n is not None or prop is not None:
-                raise SystemExit(f"{flag_name}: specify either n= or prop= once")
-            n = int(val_str)
-        elif param.startswith("prop="):
-            val_str = param[5:].strip()
+def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
+    """Parse -head or -tail limit argument supporting:
+    - 5 (row count, default 5)
+    - '10%' (percentage proportion)
+    - 0.1 (float proportion)
+    - '3, ties=true' (row count with boundary ties)
+    - '10%, with_ties=true' (proportion with boundary ties)
+    """
+    if isinstance(raw, SliceSpec):
+        return raw
+    if isinstance(raw, int):
+        if raw <= 0:
+            raise argparse.ArgumentTypeError(f"{flag_name}: row count must be > 0, got {raw}")
+        return SliceSpec(n=raw, prop=None, with_ties=False)
+    if isinstance(raw, float):
+        if not (0 < raw <= 1):
+            raise argparse.ArgumentTypeError(f"{flag_name}: proportion must be between 0 and 1, got {raw}")
+        return SliceSpec(n=None, prop=raw, with_ties=False)
+
+    s = str(raw).strip()
+    if not s:
+        return SliceSpec(n=5, prop=None, with_ties=False)
+
+    tokens = [t.strip() for t in s.split(",") if t.strip()]
+    n: int | None = None
+    prop: float | None = None
+    with_ties: bool = False
+
+    for tok in tokens:
+        lowered = tok.lower()
+        if lowered in ("ties", "with_ties", "ties=true", "with_ties=true", "ties=1", "with_ties=1"):
+            with_ties = True
+        elif lowered in ("ties=false", "with_ties=false", "ties=0", "with_ties=0"):
+            with_ties = False
+        elif tok.startswith("n="):
+            v_str = tok[2:].strip()
             try:
-                p_val = float(val_str)
+                val = int(v_str)
+                if val <= 0:
+                    raise ValueError
+                n = val
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"{flag_name}: invalid n value '{v_str}'; must be a positive integer")
+        elif tok.startswith("prop="):
+            v_str = tok[5:].strip()
+            try:
+                p_val = float(v_str.rstrip("%")) / 100.0 if v_str.endswith("%") else float(v_str)
                 if not (0 < p_val <= 1):
                     raise ValueError
+                prop = p_val
             except ValueError:
-                raise SystemExit(f"{flag_name}: invalid prop value '{val_str}'; must be a number between 0 and 1")
-            if n is not None or prop is not None:
-                raise SystemExit(f"{flag_name}: specify either n= or prop= once")
-            prop = p_val
-        elif param.startswith("order="):
-            ord_val = param[6:].strip().lower()
-            if ord_val not in ("max", "min"):
-                raise SystemExit(f"{flag_name}: invalid order value '{ord_val}'; must be 'max' or 'min'")
-            order = ord_val
+                raise argparse.ArgumentTypeError(f"{flag_name}: invalid prop value '{v_str}'; must be a number between 0 and 1")
+        elif tok.endswith("%"):
+            try:
+                p_val = float(tok[:-1]) / 100.0
+                if not (0 < p_val <= 1):
+                    raise ValueError
+                prop = p_val
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"{flag_name}: invalid percentage '{tok}'; must be between 0% and 100%")
         else:
-            raise SystemExit(
-                f"{flag_name}: unrecognized parameter '{param}'; expected 'n=N', 'prop=P', or 'order=max|min'"
-            )
+            try:
+                if "." in tok:
+                    p_val = float(tok)
+                    if not (0 < p_val <= 1):
+                        raise argparse.ArgumentTypeError(f"{flag_name}: proportion must be between 0 and 1, got {tok}")
+                    prop = p_val
+                else:
+                    val = int(tok)
+                    if val <= 0:
+                        raise argparse.ArgumentTypeError(f"{flag_name}: must be > 0, got {val}")
+                    n = val
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"{flag_name}: unrecognized limit/argument '{tok}'")
 
+    if n is not None and prop is not None:
+        raise argparse.ArgumentTypeError(f"{flag_name}: specify either row count 'n' or proportion 'prop', not both")
     if n is None and prop is None:
-        n = 1
-    return col, n, prop, order
+        n = 5
+    return SliceSpec(n=n, prop=prop, with_ties=with_ties)
+
+
+def parse_pick_spec(*args: Any, **kwargs: Any) -> Any:
+    raise SystemExit("'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead.")
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:

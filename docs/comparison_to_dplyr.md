@@ -69,7 +69,7 @@ df_grouped <- df %>%
 
 ### The Pytae Solution: `ungroup()` is Dead
 In Pytae, grouping is strictly **single-shot, non-destructive, and auto-clearing**:
-- `df.by(*cols)` establishes a grouping context for the *immediate next verb* (`mutate`, `agg`, `pick`).
+- `df.by(*cols)` establishes a grouping context for the *immediate next verb* (`mutate`, `agg`, `head`, `tail`).
 - As soon as that verb completes, the grouping context is automatically consumed and discarded.
 - Downstream verbs immediately evaluate at the whole-table scope without any need for `ungroup()`:
 
@@ -193,13 +193,13 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
 | **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
 
-### 6. Slicing Top / Bottom Records (`pick`)
+### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.pick("sales", n=5)` | `-pick "sales,n=5"` |
-| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.pick("sales", n=5, order="min")` | `-pick "sales,n=5,order=min"` |
-| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.pick("sales", prop=0.1)` | `-pick "sales,prop=0.1"` |
-| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by("g").pick("x", n=3)` | `-by g -pick "x,n=3"` |
+| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.arrange("sales desc").head(5)` | `-arrange "sales desc" -head 5` |
+| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.arrange("sales").head(5)` | `-arrange sales -head 5` |
+| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.arrange("sales desc").head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
+| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by("g").arrange("x desc").head(3)` | `-by g -arrange "x desc" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |

@@ -151,32 +151,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -arrange "species, -body_mass_g"',
             'pytae penguins.parquet -arrange "island, bill_length_mm asc"',
         ],
-        see_also=["-pick", "-head"],
+        see_also=["-head", "-tail", "-by"],
     ),
     "pick": KeywordHelp(
         name="pick",
-        flag="-pick, --pick SPEC",
-        syntax='pytae <path> [-by <cols>] -pick "<col>[,n=N|,prop=P][,order=max|min]"',
-        summary="Pick top or bottom rows ordered by a column, optionally grouped by column(s).",
+        flag="-pick (Removed)",
+        syntax="Use -arrange ... -head N (or -by ... -arrange ... -head N) instead.",
+        summary="Removed: use -arrange ... -head N (or -by ... -arrange ... -head N) instead.",
         description=(
-            "Selects rows with the highest (order=max, default) or lowest (order=min) values of a column.\n"
-            "When paired with -by, extracts extreme rows or proportions per group."
+            "The -pick verb has been removed in favor of composable sort and slice verbs:\n"
+            "  - Whole table top N: -arrange '<col> desc' -head N\n"
+            "  - Grouped top N:     -by <group> -arrange '<col> desc' -head N\n"
+            "  - Percentage/ties:   -head 10% or -head '3, ties=true'"
         ),
-        options=[
-            "col : Column to rank by (defaults to n=1, order=max).",
-            "col,n=N : Extract N rows (e.g. 'body_mass_g,n=3').",
-            "col,prop=P : Extract proportion of rows (e.g. 'body_mass_g,prop=0.1').",
-            "order=max|min : Whether to pick highest ('max', default) or lowest ('min') values.",
-            "-by <cols> : Grouping column(s) to partition by before picking.",
-        ],
+        options=[],
         examples=[
-            "pytae penguins.parquet -pick body_mass_g",
-            'pytae penguins.parquet -pick "body_mass_g,n=5"',
-            'pytae penguins.parquet -pick "body_mass_g,n=3,order=min"',
-            'pytae penguins.parquet -pick "body_mass_g,prop=0.1"',
-            'pytae penguins.parquet -by species -pick "body_mass_g,n=2"',
+            'pytae penguins.parquet -arrange "body_mass_g desc" -head 5',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
         ],
-        see_also=["-arrange", "-head", "-tail"],
+        see_also=["-arrange", "-head", "-tail", "-by"],
     ),
     "agg": KeywordHelp(
         name="agg",
@@ -283,10 +276,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="by",
         flag="-by, --by COLUMNS",
         syntax="pytae <path> -by <COLUMNS> [operation]",
-        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -pick).",
+        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -head, -tail).",
         description=(
             "Partitions the dataset by one or more columns for subsequent operations.\n"
-            "Works with -agg, window -mutate, and -pick."
+            "Works with -agg, window -mutate, and group-aware -head / -tail slicing."
         ),
         options=[
             "col : Single grouping column.",
@@ -296,10 +289,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             'pytae penguins.parquet -by "species,island" -agg "mean,n"',
-            'pytae penguins.parquet -by species -pick "body_mass_g,n=2"',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
             'pytae penguins.parquet -by species -mutate "avg = mean(body_mass_g)"',
         ],
-        see_also=["-agg", "-mutate", "-pick"],
+        see_also=["-agg", "-mutate", "-head", "-tail"],
     ),
     "clean_columns": KeywordHelp(
         name="clean_columns",
@@ -507,29 +500,52 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "head": KeywordHelp(
         name="head",
-        flag="-head, --head [N]",
-        syntax="pytae <path> -head [N]",
-        summary="Print the first N rows (default: 5).",
-        description="Limits the working DataFrame to the first N rows.",
-        options=["N : Number of rows (default: 5)."],
+        flag="-head, --head [LIMIT]",
+        syntax="pytae <path> [-by <cols>] -head [LIMIT]",
+        summary="Print the first N rows or proportion (default: 5), group-aware with -by.",
+        description=(
+            "Limits the working DataFrame to the first N rows or proportion of rows.\n"
+            "When paired with -by, extracts top rows per group. When paired with -arrange, selects top records."
+        ),
+        options=[
+            "N : Number of rows (default: 5, e.g. -head 10).",
+            "P% : Proportion of rows (e.g. -head 10% or -head 0.1).",
+            "'N, ties=true' : Include all boundary ties from preceding -arrange.",
+            "-by <cols> : Extract top rows within each group.",
+        ],
         examples=[
             "pytae penguins.parquet -head",
             "pytae penguins.parquet -head 10",
+            "pytae penguins.parquet -head 10%",
+            'pytae penguins.parquet -arrange "body_mass_g desc" -head 3',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
+            'pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true"',
         ],
-        see_also=["-tail", "-sample", "-nrows"],
+        see_also=["-tail", "-arrange", "-by", "-sample"],
     ),
     "tail": KeywordHelp(
         name="tail",
-        flag="-tail, --tail [N]",
-        syntax="pytae <path> -tail [N]",
-        summary="Print the last N rows (default: 5).",
-        description="Limits the working DataFrame to the last N rows.",
-        options=["N : Number of rows (default: 5)."],
+        flag="-tail, --tail [LIMIT]",
+        syntax="pytae <path> [-by <cols>] -tail [LIMIT]",
+        summary="Print the last N rows or proportion (default: 5), group-aware with -by.",
+        description=(
+            "Limits the working DataFrame to the last N rows or proportion of rows.\n"
+            "When paired with -by, extracts bottom rows per group."
+        ),
+        options=[
+            "N : Number of rows (default: 5, e.g. -tail 10).",
+            "P% : Proportion of rows (e.g. -tail 10% or -tail 0.1).",
+            "'N, ties=true' : Include all boundary ties from preceding -arrange.",
+            "-by <cols> : Extract bottom rows within each group.",
+        ],
         examples=[
             "pytae penguins.parquet -tail",
             "pytae penguins.parquet -tail 10",
+            "pytae penguins.parquet -tail 10%",
+            'pytae penguins.parquet -arrange "body_mass_g desc" -tail 3',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -tail 2',
         ],
-        see_also=["-head", "-sample"],
+        see_also=["-head", "-arrange", "-by", "-sample"],
     ),
     "shape": KeywordHelp(
         name="shape",

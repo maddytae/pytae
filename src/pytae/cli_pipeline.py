@@ -48,6 +48,8 @@ class _Pipeline:
         self._pldf: Any | None = None
         self._pending_exact: list[str] | None = None
         self._frames: dict[str, Any] = frames or {}
+        self._last_sort_cols: list[str] | None = None
+        self._last_sort_desc: list[bool] | None = None
 
     @property
     def _df(self) -> pd.DataFrame | None:
@@ -262,7 +264,13 @@ class _Pipeline:
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""
         try:
+            from pytae._parsing import _extract_arrange_specs
             from pytae.polars_engine import arrange_polars
+
+            cols, asc = _extract_arrange_specs((spec,), available_cols=set(self._available_columns()))
+            descending = [not a for a in asc]
+            self._last_sort_cols = cols
+            self._last_sort_desc = descending
 
             self._pldf = arrange_polars(self.polars_lazy_frame(), spec)
             self._df = None
@@ -270,30 +278,8 @@ class _Pipeline:
         except Exception as exc:
             return f"-arrange: {exc}"
 
-    def apply_pick(self, spec: str, *, by: list[str] | None = None, flag: str = "-pick") -> str | None:
-        """Pick top or bottom rows by a column, optionally grouped by 'by'."""
-        from pytae.cli_parsing import parse_pick_spec, unknown_columns_message
-
-        try:
-            col, n, prop, order = parse_pick_spec(spec, flag)
-        except SystemExit as exc:
-            return str(exc)
-        available = self._available_columns()
-        clean_col = _unquote_name(col.strip())
-        if clean_col not in available:
-            return unknown_columns_message(flag, [clean_col], available)
-        if by:
-            unknown_by = [c for c in by if c not in available]
-            if unknown_by:
-                return unknown_columns_message("-by", unknown_by, available)
-        try:
-            from pytae.polars_engine import pick_polars
-
-            self._pldf = pick_polars(self.polars_lazy_frame(), clean_col, n=n, prop=prop, order=order, by=by)
-            self._df = None
-            return None
-        except Exception as exc:
-            return f"{flag}: {exc}"
+    def apply_pick(self, *args: Any, **kwargs: Any) -> str:
+        return "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
 
     def apply_fillna(self, value: Any, cols: list[str] | None = None, nans: bool = True) -> str | None:
         """Apply one -fillna operation to the current view. Returns an error message or None."""
@@ -407,25 +393,49 @@ class _Pipeline:
             return self._df
         return self.polars_frame()
 
-    def head(self, n: int) -> Any:
-        if self._progress:
-            df = self.dataframe().head(n)
-            self._df = df
-            self._pldf = None
-            return df
+    def head(self, val: Any = 5, *, by: list[str] | None = None) -> Any:
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+        from pytae.polars_engine import slice_head_polars
+
+        spec = parse_head_limit(val, flag_name="-head") if not isinstance(val, SliceSpec) else val
         lf = self.polars_lazy_frame()
-        self._pldf = lf.head(n).collect()
+        res = slice_head_polars(
+            lf,
+            n=spec.n,
+            prop=spec.prop,
+            with_ties=spec.with_ties,
+            by=by,
+            sort_cols=self._last_sort_cols,
+            sort_desc=self._last_sort_desc,
+        )
+        if self._progress:
+            self._df = res.collect().to_pandas() if hasattr(res, "collect") else res.to_pandas()
+            self._pldf = None
+            return self._df
+        self._pldf = res.collect() if hasattr(res, "collect") else res
         self._df = None
         return self._pldf
 
-    def tail(self, n: int) -> Any:
-        if self._progress:
-            df = self.dataframe().tail(n)
-            self._df = df
-            self._pldf = None
-            return df
+    def tail(self, val: Any = 5, *, by: list[str] | None = None) -> Any:
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+        from pytae.polars_engine import slice_tail_polars
+
+        spec = parse_head_limit(val, flag_name="-tail") if not isinstance(val, SliceSpec) else val
         lf = self.polars_lazy_frame()
-        self._pldf = lf.tail(n).collect()
+        res = slice_tail_polars(
+            lf,
+            n=spec.n,
+            prop=spec.prop,
+            with_ties=spec.with_ties,
+            by=by,
+            sort_cols=self._last_sort_cols,
+            sort_desc=self._last_sort_desc,
+        )
+        if self._progress:
+            self._df = res.collect().to_pandas() if hasattr(res, "collect") else res.to_pandas()
+            self._pldf = None
+            return self._df
+        self._pldf = res.collect() if hasattr(res, "collect") else res
         self._df = None
         return self._pldf
 

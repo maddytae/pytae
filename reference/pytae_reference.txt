@@ -13,7 +13,7 @@ TABLE OF CONTENTS
     4.3.  pt.mutate() / df.pt.mutate() — Column Creation & Feature Engineering
     4.4.  pt.select() / df.pt.select() — Column Selection, Slicing & Exclusion
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
-    4.6.  pt.pick() / df.pt.pick() — Extreme Row Slicing (formerly slice_max/min)
+    4.6.  head() / tail() — Group-Aware & Proportion-Aware Row Slicing
     4.7.  pt.distinct() / df.pt.distinct() — Deduplication
     4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
     4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
@@ -44,7 +44,7 @@ TABLE OF CONTENTS
     6.1.  When should I use `-select` before `-agg`?
     6.2.  Why is `by` strictly standalone across all verbs?
     6.3.  Why does every chained method call start on a new line?
-    6.4.  What are the key verb deprecations (filter, pick, distinct)?
+    6.4.  What are the key canonical verbs (filter, head/tail, distinct)?
     6.5.  How do I apply custom functions in `mutate()`? (Vectorized vs Series vs Row)
     6.6.  Can row-level functions access newly created columns in the same `mutate()`?
     6.7.  Why does `df.pt.mutate(col=my_func)` fail when `my_func` expects a row?
@@ -58,7 +58,7 @@ TABLE OF CONTENTS
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
-    Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
+    Recipe 3: Group-Aware Row Slicing (pt.by + arrange + head)
     Recipe 4: Polars SQL Query in CLI Pipeline
     Recipe 5: Multi-File Join, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
@@ -143,7 +143,8 @@ Top-Level Functions exported by `pytae`:
   - pt.by(df, *cols)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
-  - pt.pick(df, order_by, n=1, prop=None, order="max", with_ties=False, na_last=True)
+  - pt.head(df, n=None, *, prop=None, with_ties=False) -> DataFrame
+  - pt.tail(df, n=None, *, prop=None, with_ties=False) -> DataFrame
   - pt.distinct(df, *cols, keep="first")
   - pt.dropna(df, *cols, how=None, drop_nans=True)
   - pt.agg(df, *args, a=None, dropna=False, observed=True, **kwargs)
@@ -171,7 +172,8 @@ DataFrame Accessor (`df.pt`):
     df.pt.by(...)
     df.pt.mutate(...)
     df.pt.arrange(...)
-    df.pt.pick(...)
+    df.pt.head(...)
+    df.pt.tail(...)
     df.pt.sample(...)
     df.pt.distinct(...)
     df.pt.dropna(...)
@@ -285,7 +287,7 @@ Error Handling:
 4.2. pt.by() / df.pt.by() — Single-Shot Scoped Grouping
 --------------------------------------------------------------------------------
 Sets active grouping state on a DataFrame. In pytae, grouping is strictly SINGLE-SHOT:
-verbs (`mutate`, `pick`, `agg`) NEVER accept `by=`. They inherit active grouping 
+verbs (`mutate`, `agg`, `head`, `tail`) NEVER accept `by=`. They inherit active grouping 
 strictly from `pt.by()`. If passed `by=`, verbs immediately raise a `TypeError`.
 
 Signature:
@@ -294,7 +296,7 @@ Signature:
 
 Key Rules & Behaviors:
   - Single-Shot Scoped Grouping: Grouping applies strictly to the immediate next operation.
-    Every operation (`mutate()`, `agg()`, `pick()`) automatically ungroups upon completion,
+    Every operation (`mutate()`, `agg()`, `head()`, `tail()`) automatically ungroups upon completion,
     returning a clean, flat, ungrouped DataFrame.
   - No Ungroup Needed: Because grouping never persists, subsequent operations naturally
     evaluate across the whole table without requiring `ungroup()`.
@@ -475,35 +477,43 @@ Calling Styles:
   df.pt.arrange("[bill length mm] desc")
 
 
-4.6. pt.pick() / df.pt.pick() — Extreme Row Slicing
+4.6. head() / tail() — Group-Aware & Proportion-Aware Row Slicing
 --------------------------------------------------------------------------------
-Selects extreme top or bottom N rows (or proportion of rows) ordered by a target column.
-Inherits active grouping strictly from `pt.by()`. Rejects `by=` in kwargs with TypeError.
+Selects the first or last N rows (or proportion of rows via `prop=`), with boundary 
+tie-breaking (`with_ties=True`) and complete group awareness via `df.by()`.
+Extreme row selection (formerly `pick`) is achieved canonically by composing `arrange()` 
+with `head()` or `tail()`:
 
 Signature:
-  pt.pick(
-      df: pd.DataFrame,
-      order_by: str,
-      n: int | None = 1,
-      prop: float | None = None,
-      order: str = "max",
-      with_ties: bool = False,
-      na_last: bool = True,
-  ) -> pd.DataFrame
+  df.head(n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame
+  df.tail(n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame
+  pt.head(df, n=None, *, prop=None, with_ties=False) -> DataFrame
+  pt.tail(df, n=None, *, prop=None, with_ties=False) -> DataFrame
 
 Calling Styles:
-  # Top / bottom rows overall
-  df.pt.pick("body_mass_g", n=3)                 # Top 3 (default order="max")
-  df.pt.pick("body_mass_g", n=1, order="min")    # Lightest penguin
-  df.pt.pick("body_mass_g", prop=0.1)            # Top 10%
+  # Basic slice overall (default n=5)
+  df.head(5)
+  df.tail(5)
 
-  # Group-aware extreme selection:
+  # Proportion slice (10% or float)
+  df.head(prop=0.1)
+  df.head("10%")
+
+  # Extreme top/bottom rows via arrange
+  df.arrange("body_mass_g desc").head(3)     # Heaviest 3 penguins
+  df.arrange("body_mass_g").head(3)          # Lightest 3 penguins (or df.arrange("body_mass_g desc").tail(3))
+
+  # Group-aware row slicing:
   (
       penguins
-      .pt.by("species")
-      .pt.pick("body_mass_g", n=1)
-      .pt.select("species", "island", "body_mass_g")
+      .by("species")
+      .arrange("body_mass_g desc")
+      .head(1)
+      .select("species", "island", "body_mass_g")
   )
+
+  # Boundary ties included:
+  df.arrange("body_mass_g desc").head(3, with_ties=True)
 
 
 4.7. pt.distinct() / df.pt.distinct() — Deduplication
@@ -743,7 +753,8 @@ In-Terminal ASCII Visualizations:
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
-  -pick SPEC            Extract extreme rows by column (e.g. "body_mass_g,n=3" or "body_mass_g,order=min"), group-aware with -by
+  -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
+  -tail [LIMIT]         Extract last N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
 
 Column Transformation Flags:
   -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
@@ -753,7 +764,7 @@ Column Transformation Flags:
   -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
-  -by COLS              Grouping columns for -agg, -mutate, -pick (e.g. -by species -agg mean)
+  -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass desc" -head 1)
   -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
@@ -821,7 +832,7 @@ When computing bulk summaries (e.g. `-agg mean`), using `-select` beforehand pru
 6.2. Why is `by` strictly standalone across all verbs?
 ------------------------------------------------------
 To adhere strictly to the "one and only one obvious way" philosophy:
-- `by` is never an argument inside verbs (`mutate`, `pick`, `agg`).
+- `by` is never an argument inside verbs (`mutate`, `agg`, `head`, `tail`).
 - Grouping must always be declared beforehand via `pt.by(df, *cols)` or `.pt.by(*cols)`.
 - Verbs inherit grouping from `df.attrs['_pt_by']` and raise a `TypeError` if passed `by=`.
 
@@ -832,19 +843,20 @@ its own new line:
 ```python
 (
     penguins
-    .pt.by("species")
-    .pt.pick("body_mass_g", n=1)
-    .pt.select("species", "island", "body_mass_g")
+    .by("species")
+    .arrange("body_mass_g desc")
+    .head(1)
+    .select("species", "island", "body_mass_g")
 )
 ```
 This ensures readable git diffs, clean execution tracebacks, and syntactic consistency.
 
-6.4. What are the key canonical verbs (filter, pick, distinct)?
+6.4. What are the key canonical verbs (filter, head/tail, distinct)?
 -----------------------------------------------------------------
 Pytae standardizes on canonical modern naming:
-- `pt.filter()` / `df.pt.filter()` / `-filter`: Replaces `qry`
-- `pt.pick()` / `df.pt.pick()` / `-pick`: Replaces `slice_max` and `slice_min` (the legacy `slice_max`/`slice_min` functions and flags have been completely removed with no backward compatibility).
-- `pt.distinct()` / `df.pt.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
+- `pt.filter()` / `df.filter()` / `-filter`: Replaces `qry`
+- `head()` & `tail()` / `-head` & `-tail`: Group-aware, proportion-aware, tie-aware row slicing replacing legacy `pick`, `slice_max`, and `slice_min` (which have been completely removed with no backward compatibility).
+- `pt.distinct()` / `df.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------
@@ -998,7 +1010,7 @@ pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
 pytae penguins.parquet -pivot "r=island, c=species, a=n"
 ```
 
-Recipe 3: Group-Aware Extreme Row Selection (pt.by + pt.pick)
+Recipe 3: Group-Aware Row Slicing (pt.by + arrange + head)
 --------------------------------------------------------------------------------
 ```python
 import pytae as pt
@@ -1008,18 +1020,19 @@ tips = pt.sample("tips")
 # 1. Heaviest tip per day via method chaining
 top_daily = (
     tips
-    .pt.by("day")
-    .pt.pick("tip", n=1)
-    .pt.select("day", "total_bill", "tip")
+    .by("day")
+    .arrange("tip desc")
+    .head(1)
+    .select("day", "total_bill", "tip")
 )
 
-# 2. Standalone functional pick overall
-top_bill = pt.pick(tips, "total_bill", n=1)[["day", "total_bill", "tip"]]
+# 2. Standalone functional slice overall
+top_bill = pt.head(pt.arrange(tips, "total_bill desc"), 1)[["day", "total_bill", "tip"]]
 ```
 
 ```bash
 # Equivalent CLI:
-pytae tips.parquet -by day -pick "tip,n=1" -select "day,total_bill,tip"
+pytae tips.parquet -by day -arrange "tip desc" -head 1 -select "day,total_bill,tip"
 ```
 
 Recipe 4: Polars SQL Query in CLI Pipeline
@@ -1873,7 +1886,7 @@ pytae penguins.parquet \
 
 [← Back to Master Reference](../../pytae.md)
 
-Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing rows (`-dropna`), or extract extreme rows (`-pick`).
+Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing rows (`-dropna`), or slice rows (`-head`, `-tail`, `-arrange`).
 
 ---
 
@@ -1887,7 +1900,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [List Membership (`['a', 'b']`)](#list-membership)
   - [Filtering Non-Missing Values (`notna`) & Columns with Spaces](#filtering-non-missing-values-notna--columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
-- [Selecting Extreme Rows (`-pick`)](#selecting-extreme-rows--pick)
+- [Slicing Extreme Rows (`-arrange` + `-head` / `-tail`)](#slicing-extreme-rows--arrange--head--tail)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
@@ -1899,7 +1912,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
 |---|---|---|
 | `-filter CONDITIONS` | Row Filter | Comma-separated conditions, intervals `col = [min, max]`, list membership `col = ['a', 'b']`, bracketed spaces `[col name]` |
 | `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
-| `-pick SPEC` | Row Slicing | Select top/bottom rows by column (`col,n=N` or `col,order=min`), group-aware with `-by` |
+| `-head [LIMIT]`, `-tail [LIMIT]` | Row Slicing | Extract first/last $N$, percentage (`10%`), or with ties (`ties=true`), group-aware with `-by` |
 
 ---
 
@@ -2014,21 +2027,14 @@ pytae penguins.parquet \
 
 ---
 
-## Selecting Extreme Rows (`-pick`)
+## Slicing Extreme Rows (`-arrange` + `-head` / `-tail`)
 
-Extract top or bottom rows ordered by a specific column using `-pick`. Fully group-aware when combined with `-by`. For complete details and syntax, see the [Row Picking Guide](pick.md).
-
-Supported specification formats:
-- Top rows: `col,n=N` (e.g. `body_mass_g,n=3`)
-- Bottom rows: `col,n=N,order=min` (e.g. `body_mass_g,n=1,order=min`)
-- Proportion: `col,prop=P` (e.g. `body_mass_g,prop=0.1`)
-- Default `n=1, order=max` if `n` and `prop` are omitted (e.g. `body_mass_g`)
-- Bracketed notation `[col with spaces],n=N` is supported.
+Extract top or bottom rows ordered by a specific column by composing `-arrange` with group-aware `-head` or `-tail`. For complete details and syntax, see the [Row Slicing Guide](head_tail.md).
 
 ### Top N Rows Overall
 
 ```bash
-pytae penguins.parquet -pick "body_mass_g,n=3" -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -2041,10 +2047,10 @@ pytae penguins.parquet -pick "body_mass_g,n=3" -select "species,island,body_mass
 
 ### Bottom N Rows per Group (`-by`)
 
-When combined with `-by`, `-pick` extracts rows within each unique group:
+When combined with `-by`, `-head` and `-tail` extract rows within each unique group:
 
 ```bash
-pytae penguins.parquet -by species -pick "body_mass_g,n=1,order=min" -select "species,body_mass_g"
+pytae penguins.parquet -by species -arrange body_mass_g -head 1 -select "species,body_mass_g"
 ```
 
 **Output:**
@@ -2097,7 +2103,186 @@ pytae penguins.parquet -dropna "body_mass_g,sex" -head 3
 In terminal shells (bash, zsh):
 - Enclose the entire spec in outer double quotes: `-filter "..."`.
 - Enclose string literals in inner single quotes: `'Gentoo'`.
-- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-pick "[bill length mm],n=3"`.
+- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm] desc" -head 3`.
+
+################################################################################
+# FILE: docs/detailed_docs/cli/head_tail.md
+################################################################################
+# CLI Feature Guide: Row Slicing (`-head` & `-tail`)
+
+[← Back to Master Reference](../../pytae.md)
+
+Extract first, last, or extreme rows with full group awareness via `-by`, proportion limits (`10%`), and boundary tie handling (`ties=true`).
+
+---
+
+## Contents
+
+- [Overview & Quick Reference](#overview--quick-reference)
+- [Basic Slicing (`-head` & `-tail`)](#basic-slicing--head--tail)
+- [Proportion Slicing (`10%` / `0.1`)](#proportion-slicing-10--01)
+- [Extreme Value Slicing (`-arrange` + `-head` / `-tail`)](#extreme-value-slicing--arrange--head--tail)
+- [Group-Aware Slicing (`-by`)](#group-aware-slicing--by)
+- [Boundary Ties (`ties=true`)](#boundary-ties-tiestrue)
+- [Retirement of Legacy `-pick`](#retirement-of-legacy--pick)
+
+---
+
+## Overview & Quick Reference
+
+| Flag | Description | Examples |
+|---|---|---|
+| `-head [LIMIT]` | Extract first $N$ rows, percentage, or proportion | `-head 5`, `-head 10%`, `-head 0.1`, `-head "3, ties=true"` |
+| `-tail [LIMIT]` | Extract last $N$ rows, percentage, or proportion | `-tail 5`, `-tail 10%`, `-tail 0.1`, `-tail "3, ties=true"` |
+| `-by COLS` | Partition rows into groups before slicing | `-by species -head 2`, `-by species -arrange "mass desc" -head 1` |
+
+When `-head` or `-tail` is passed without an explicit limit, it defaults to 5 rows. Slicing preserves column order, resets the row index, and cleanly ungroups.
+
+---
+
+## Basic Slicing (`-head` & `-tail`)
+
+Extract the first or last $N$ rows of the table:
+
+```bash
+# First 3 rows
+pytae penguins.parquet -head 3 -select "species,island,body_mass_g"
+```
+
+**Output:**
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Adelie    | Torgersen|          3750 |
+| Adelie    | Torgersen|          3800 |
+| Adelie    | Torgersen|          3250 |
+
+```bash
+# Last 3 rows
+pytae penguins.parquet -tail 3 -select "species,island,body_mass_g"
+```
+
+---
+
+## Proportion Slicing (`10%` / `0.1`)
+
+Slice a percentage or fraction of rows by passing `%` or a float:
+
+```bash
+# First 5% of rows
+pytae penguins.parquet -head 5% -shape
+```
+
+**Output:**
+```
+(17, 7)
+```
+
+Both percentages (`-head 10%`) and floating-point fractions (`-head 0.1`) are accepted.
+
+---
+
+## Extreme Value Slicing (`-arrange` + `-head` / `-tail`)
+
+In accordance with Pytae's *"One and Only One Obvious Way"*, extreme row selection (top/bottom $N$ by column) is achieved by composing `-arrange` with `-head` or `-tail`:
+
+### Top N Rows Overall
+
+```bash
+# Top 3 heaviest penguins overall
+pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,island,body_mass_g"
+```
+
+**Output:**
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Gentoo    | Biscoe   |          6300 |
+| Gentoo    | Biscoe   |          6050 |
+| Gentoo    | Biscoe   |          6000 |
+
+### Bottom N Rows Overall
+
+```bash
+# Lightest 3 penguins overall
+pytae penguins.parquet -arrange body_mass_g -head 3 -select "species,island,body_mass_g"
+```
+
+*(Alternatively: `pytae penguins.parquet -arrange "body_mass_g desc" -tail 3`)*
+
+**Output:**
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Chinstrap | Dream    |          2700 |
+| Adelie    | Biscoe   |          2850 |
+| Adelie    | Dream    |          2850 |
+
+---
+
+## Group-Aware Slicing (`-by`)
+
+When combined with `-by`, `-head` and `-tail` extract rows **within each unique group**:
+
+### Heaviest Penguin per Species
+
+```bash
+# Top 1 heaviest penguin for each species
+pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 1 -select "species,island,body_mass_g"
+```
+
+**Output:**
+
+| species   | island   |   body_mass_g |
+|:----------|:---------|--------------:|
+| Adelie    | Biscoe   |          4775 |
+| Chinstrap | Dream    |          4800 |
+| Gentoo    | Biscoe   |          6300 |
+
+### Lightest 2 Penguins per Island
+
+```bash
+pytae penguins.parquet -by island -arrange body_mass_g -head 2 -select "island,species,body_mass_g"
+```
+
+**Output:**
+
+| island    | species   |   body_mass_g |
+|:----------|:----------|--------------:|
+| Biscoe    | Adelie    |          2850 |
+| Biscoe    | Adelie    |          2850 |
+| Dream     | Chinstrap |          2700 |
+| Dream     | Adelie    |          2900 |
+| Torgersen | Adelie    |          2900 |
+| Torgersen | Adelie    |          3050 |
+
+### Top 10% per Group
+
+```bash
+pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 10% -select "species,island,body_mass_g"
+```
+
+---
+
+## Boundary Ties (`ties=true`)
+
+When multiple rows share the exact value at the $N$-th boundary rank, pass `ties=true` to include all tied rows:
+
+```bash
+# Include ties at the rank boundary
+pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true" -select "species,island,body_mass_g"
+```
+
+---
+
+## Retirement of Legacy `-pick`
+
+The niche verb `-pick` has been removed. In Pytae:
+- Selecting top records is simply `-arrange "col desc" -head N`.
+- Selecting bottom records is `-arrange col -head N` (or `-arrange "col desc" -tail N`).
+- Grouped extreme selection is `-by group -arrange "col desc" -head N`.
+
+Calling `-pick` raises an immediate, helpful redirect error guiding users to compose `-arrange` and `-head`/`-tail`.
 
 ################################################################################
 # FILE: docs/detailed_docs/cli/inspect.md
@@ -3719,181 +3904,9 @@ pytae -help pivot
 pytae -help sql
 pytae -help reshape
 pytae -help arrange
-pytae -help pick
+pytae -help head
 pytae -help distinct
 ```
-
-################################################################################
-# FILE: docs/detailed_docs/cli/pick.md
-################################################################################
-# CLI Feature Guide: Row Picking (`-pick`)
-
-[← Back to Master Reference](../../pytae.md)
-
-Extract top or bottom rows by column order, with group awareness via `-by`.
-
----
-
-## Contents
-
-- [Overview & Quick Reference](#overview--quick-reference)
-- [Top N Rows (`-pick`)](#top-n-rows--pick)
-- [Bottom N Rows (`-pick ...,order=min`)](#bottom-n-rows--pick-ordermin)
-- [Proportion Slicing (`prop=`)](#proportion-slicing-prop)
-- [Group-Aware Picking (`-by`)](#group-aware-picking--by)
-- [Specification Formats](#specification-formats)
-- [Handling Ties & Missing Values](#handling-ties--missing-values)
-
----
-
-## Overview & Quick Reference
-
-| Flag | Description | Key Syntax |
-|---|---|---|
-| `-pick SPEC` | Select rows with largest (or smallest) values of a column | `-pick mass`, `-pick "mass,n=3"`, `-pick "mass,n=3,order=min"` |
-| `-by COLS` | Partition rows into groups before picking | `-by species -pick "mass,n=2"` |
-
-The command preserves all columns, resets the index to `0, 1, ...`, and preserves NA grouping categories.
-
----
-
-## Top N Rows (`-pick`)
-
-Extract the rows with the highest values of a target column. If `n` or `prop` is omitted, defaults to `n=1, order=max`:
-
-```bash
-# Top 3 heaviest penguins overall
-pytae penguins.parquet -pick "body_mass_g,n=3" -select "species,island,body_mass_g"
-```
-
-**Output:**
-
-| species   | island   |   body_mass_g |
-|:----------|:---------|--------------:|
-| Gentoo    | Biscoe   |          6300 |
-| Gentoo    | Biscoe   |          6050 |
-| Gentoo    | Biscoe   |          6000 |
-
----
-
-## Bottom N Rows (`-pick ...,order=min`)
-
-Extract the rows with the lowest values of a target column by specifying `order=min`:
-
-```bash
-# Lightest 3 penguins overall
-pytae penguins.parquet -pick "body_mass_g,n=3,order=min" -select "species,island,body_mass_g"
-```
-
-**Output:**
-
-| species   | island   |   body_mass_g |
-|:----------|:---------|--------------:|
-| Chinstrap | Dream    |          2700 |
-| Adelie    | Biscoe   |          2850 |
-| Adelie    | Dream    |          2850 |
-
----
-
-## Proportion Slicing (`prop=`)
-
-Select a fraction of rows (e.g. `prop=0.1` for top 10%):
-
-```bash
-# Top 10% heaviest penguins overall
-pytae penguins.parquet -pick "body_mass_g,prop=0.1" -select "species,island,body_mass_g" -head 5
-```
-
-**Output:**
-
-| species   | island   |   body_mass_g |
-|:----------|:---------|--------------:|
-| Gentoo    | Biscoe   |          6300 |
-| Gentoo    | Biscoe   |          6050 |
-| Gentoo    | Biscoe   |          6000 |
-| Gentoo    | Biscoe   |          6000 |
-| Gentoo    | Biscoe   |          5950 |
-
----
-
-## Group-Aware Picking (`-by`)
-
-When combined with `-by`, `pick` extracts top or bottom rows **within each unique group**:
-
-```bash
-# Heaviest penguin for each species (default n=1, order=max)
-pytae penguins.parquet -by species -pick body_mass_g -select "species,island,body_mass_g"
-```
-
-**Output:**
-
-| species   | island   |   body_mass_g |
-|:----------|:---------|--------------:|
-| Adelie    | Biscoe   |          4775 |
-| Chinstrap | Dream    |          4800 |
-| Gentoo    | Biscoe   |          6300 |
-
-```bash
-# Lightest 2 penguins per island
-pytae penguins.parquet -by island -pick "body_mass_g,n=2,order=min" -select "island,species,body_mass_g"
-```
-
-**Output:**
-
-| island    | species   |   body_mass_g |
-|:----------|:----------|--------------:|
-| Biscoe    | Adelie    |          2850 |
-| Biscoe    | Adelie    |          2850 |
-| Dream     | Chinstrap |          2700 |
-| Dream     | Adelie    |          2900 |
-| Torgersen | Adelie    |          2900 |
-| Torgersen | Adelie    |          3050 |
-
-```bash
-# Top 20% heaviest penguins within each species
-pytae penguins.parquet -by species -pick "body_mass_g,prop=0.2" -select "species,island,body_mass_g" -head 6
-```
-
-**Output:**
-
-| species   | island    |   body_mass_g |
-|:----------|:----------|--------------:|
-| Adelie    | Biscoe    |          4775 |
-| Adelie    | Biscoe    |          4725 |
-| Adelie    | Torgersen |          4700 |
-| Adelie    | Torgersen |          4675 |
-| Adelie    | Dream     |          4650 |
-| Adelie    | Dream     |          4600 |
-
----
-
-## Specification Formats
-
-The canonical, unified syntax:
-- **Exact row count (`n=N`)**: `-pick "body_mass_g,n=3"`
-- **Bottom rows (`order=min`)**: `-pick "body_mass_g,n=3,order=min"`
-- **Proportion of rows (`prop=P`)**: `-pick "body_mass_g,prop=0.1"`
-- **Default `n=1, order=max`**: `-pick body_mass_g`
-- **Columns with spaces**: wrap in brackets, e.g. `-pick "[bill length mm],n=3"`
-
----
-
-## Handling Ties & Missing Values
-
-- By default, picking does not include ties beyond `n` (`with_ties=False`).
-- Missing values (`NaN`) in the ranking column appear at the bottom by default (`na_last=True`).
-- Missing values in grouping columns (`-by`) form their own group without silent row loss. To omit missing groups, chain `-dropna` before picking:
-
-```bash
-pytae penguins.parquet -dropna sex -by sex -pick body_mass_g -select "sex,species,body_mass_g"
-```
-
-**Output:**
-
-| sex    | species   |   body_mass_g |
-|:-------|:----------|--------------:|
-| Female | Gentoo    |          5200 |
-| Male   | Gentoo    |          6300 |
 
 ################################################################################
 # FILE: docs/detailed_docs/cli/pivot.md
@@ -6110,14 +6123,14 @@ shape: (10, 7)
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
 │ Adelie  ┆ Dream  ┆ 39.5           ┆ 16.7          ┆ 178.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 40.8           ┆ 18.4          ┆ 195.0             ┆ 3900.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 36.9           ┆ 18.6          ┆ 189.0             ┆ 3500.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 33.1           ┆ 16.1          ┆ 178.0             ┆ 2900.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 37.0           ┆ 16.5          ┆ 185.0             ┆ 3400.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 39.2           ┆ 18.6          ┆ 190.0             ┆ 4250.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 38.1           ┆ 17.6          ┆ 187.0             ┆ 3425.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 41.5           ┆ 18.5          ┆ 201.0             ┆ 4000.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
@@ -6138,14 +6151,14 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
+│ Adelie  ┆ Torgersen ┆ 34.6           ┆ 21.1          ┆ 198.0             ┆ 4400.0      ┆ Male │
 │ Adelie  ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0             ┆ 4500.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.8          ┆ 190.0             ┆ 4600.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 40.1           ┆ 18.9          ┆ 188.0             ┆ 4300.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 35.1           ┆ 19.4          ┆ 193.0             ┆ 4200.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 42.0           ┆ 19.5          ┆ 200.0             ┆ 4050.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 41.1           ┆ 19.1          ┆ 188.0             ┆ 4100.0      ┆ Male │
 │ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.1          ┆ 186.0             ┆ 4450.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 41.0           ┆ 20.0          ┆ 203.0             ┆ 4725.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 45.6           ┆ 20.3          ┆ 191.0             ┆ 4600.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0             ┆ 4275.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0             ┆ 4075.0      ┆ Male │
 │ Adelie  ┆ Dream     ┆ 37.5           ┆ 18.5          ┆ 199.0             ┆ 4475.0      ┆ Male │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
@@ -6167,16 +6180,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream  ┆ 39.5           ┆ 16.7          ┆ 178.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 38.8           ┆ 20.0          ┆ 190.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 39.8           ┆ 19.1          ┆ 184.0             ┆ 4650.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 18.5          ┆ 186.0             ┆ 3100.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 39.7           ┆ 17.9          ┆ 193.0             ┆ 4250.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 37.3           ┆ 16.8          ┆ 192.0             ┆ 3000.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.8          ┆ 195.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6196,16 +6209,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.5          ┆ 213.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 48.2           ┆ 14.3          ┆ 210.0             ┆ 4600.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 43.3           ┆ 13.4          ┆ 209.0             ┆ 4400.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 40.9           ┆ 13.7          ┆ 214.0             ┆ 4650.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 44.0           ┆ 13.6          ┆ 208.0             ┆ 4350.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.7           ┆ 13.9          ┆ 214.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 41.7           ┆ 14.7          ┆ 210.0             ┆ 4700.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 43.3           ┆ 14.0          ┆ 208.0             ┆ 4575.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 13.7          ┆ 214.0             ┆ 4925.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 14.3          ┆ 215.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.4          ┆ 217.0             ┆ 4900.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 43.2           ┆ 14.5          ┆ 208.0             ┆ 4450.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 44.9           ┆ 13.8          ┆ 212.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 44.5           ┆ 14.7          ┆ 214.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.1          ┆ 217.0             ┆ 4375.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6216,22 +6229,22 @@ pt.filter(penguins, species="Gentoo", body_mass_g="> 5000").sample(10)
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
-│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 44.4           ┆ 17.3          ┆ 219.0             ┆ 5250.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 222.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 17.3          ┆ 228.0             ┆ 5600.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 51.3           ┆ 14.2          ┆ 218.0             ┆ 5300.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 52.1           ┆ 17.0          ┆ 230.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 55.9           ┆ 17.0          ┆ 228.0             ┆ 5600.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 54.3           ┆ 15.7          ┆ 231.0             ┆ 5650.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 17.3          ┆ 228.0             ┆ 5600.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ## Column names with spaces — bracket notation `[col]`
@@ -6254,22 +6267,22 @@ penguins_spaces = penguins.rename(
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island ┆ bill length mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 47.3           ┆ 15.3          ┆ 222.0             ┆ 5250.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.8          ┆ 217.0             ┆ 5200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.7          ┆ 222.0             ┆ 5750.0      ┆ Male   │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species   ┆ island ┆ bill length mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
+│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Chinstrap ┆ Dream  ┆ 52.8           ┆ 20.0          ┆ 205.0             ┆ 4550.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 50.0           ┆ 15.2          ┆ 218.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 46.5           ┆ 14.5          ┆ 213.0             ┆ 4400.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 47.8           ┆ 15.0          ┆ 215.0             ┆ 5650.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 47.5           ┆ 15.0          ┆ 218.0             ┆ 4950.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
+└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6317,16 +6330,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 38.3           ┆ 19.2          ┆ 189.0             ┆ 3950.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male   │
 │ Adelie    ┆ Dream  ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 32.1           ┆ 15.5          ┆ 188.0             ┆ 3050.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 45.4           ┆ 18.7          ┆ 188.0             ┆ 3525.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 46.1           ┆ 18.2          ┆ 178.0             ┆ 3250.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 51.7           ┆ 20.3          ┆ 194.0             ┆ 3775.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 40.9           ┆ 16.6          ┆ 187.0             ┆ 3200.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 46.2           ┆ 17.5          ┆ 187.0             ┆ 3650.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 38.1           ┆ 17.6          ┆ 187.0             ┆ 3425.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 40.6           ┆ 17.2          ┆ 187.0             ┆ 3475.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 51.3           ┆ 18.2          ┆ 197.0             ┆ 3750.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 43.2           ┆ 16.6          ┆ 187.0             ┆ 2900.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 45.2           ┆ 16.6          ┆ 191.0             ┆ 3250.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6373,16 +6386,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 38.7           ┆ 19.0          ┆ 195.0            ┆ 3450.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 35.3           ┆ 18.9          ┆ 187.0            ┆ 3800.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 172.0            ┆ 3150.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 37.6           ┆ 19.3          ┆ 181.0            ┆ 3300.0      ┆ Female │
-│ Adelie    ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Torgersen ┆ 39.0           ┆ 17.1          ┆ 191.0            ┆ 3050.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 17.8          ┆ 198.0            ┆ 3950.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 35.9           ┆ 16.6          ┆ 190.0            ┆ 3050.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 39.6           ┆ 17.2          ┆ 196.0            ┆ 3550.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 35.6           ┆ 17.5          ┆ 191.0            ┆ 3175.0      ┆ Female │
 │ Chinstrap ┆ Dream     ┆ 50.5           ┆ 18.4          ┆ 200.0            ┆ 3400.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.8           ┆ 17.3          ┆ 198.0            ┆ 3675.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.5           ┆ 14.2          ┆ 209.0            ┆ 4600.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 40.9           ┆ 16.6          ┆ 187.0            ┆ 3200.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 46.9           ┆ 16.6          ┆ 192.0            ┆ 2700.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 44.9           ┆ 13.3          ┆ 213.0            ┆ 5100.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 45.2           ┆ 13.8          ┆ 215.0            ┆ 4750.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.4           ┆ 14.6          ┆ 212.0            ┆ 4725.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.2           ┆ 14.1          ┆ 217.0            ┆ 4375.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6402,22 +6415,22 @@ Supported comparison operators: `>`, `>=`, `<`, `<=`, `==`, `!=`.
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 47.8           ┆ 15.0          ┆ 215.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 14.8          ┆ 220.0             ┆ 5150.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 225.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.7          ┆ 222.0             ┆ 5750.0      ┆ Male   │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.2           ┆ 14.3          ┆ 218.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 16.8          ┆ 230.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 52.5           ┆ 15.6          ┆ 221.0             ┆ 5450.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
 ```python
@@ -6436,16 +6449,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 16.8          ┆ 230.0             ┆ 5700.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 51.3           ┆ 14.2          ┆ 218.0             ┆ 5300.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 55.9           ┆ 17.0          ┆ 228.0             ┆ 5600.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 51.5           ┆ 16.3          ┆ 230.0             ┆ 5500.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.9           ┆ 16.1          ┆ 213.0             ┆ 5400.0      ┆ Male │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6467,16 +6480,16 @@ shape: (10, 5)
 │ ---     ┆ ---    ┆ ---    ┆ ---            ┆ ---         │
 │ str     ┆ str    ┆ str    ┆ f64            ┆ f64         │
 ╞═════════╪════════╪════════╪════════════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 4550.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4650.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.8           ┆ 4200.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.6           ┆ 4850.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.1           ┆ 4500.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.4           ┆ 4800.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 4400.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 4400.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 4900.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 5200.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.5           ┆ 4950.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4750.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.7           ┆ 4400.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.5           ┆ 4600.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.9           ┆ 4875.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 48.4           ┆ 4625.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 47.2           ┆ 4975.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.2           ┆ 4375.0      │
 └─────────┴────────┴────────┴────────────────┴─────────────┘
 ```
 
@@ -6495,23 +6508,22 @@ String intervals let you filter a range on the same column without chaining two 
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe    ┆ 38.8           ┆ 17.2          ┆ 180.0            ┆ 3800.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 41.6           ┆ 18.0          ┆ 192.0            ┆ 3950.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 39.7           ┆ 18.4          ┆ 190.0            ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 41.3           ┆ 20.3          ┆ 194.0            ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0            ┆ 4275.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0            ┆ 4075.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 40.7           ┆ 17.0          ┆ 190.0            ┆ 3725.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 39.2           ┆ 18.6          ┆ 190.0            ┆ 4250.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 42.4           ┆ 17.3          ┆ 181.0            ┆ 3600.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.5          ┆ 210.0            ┆ 3950.0      ┆ Male   │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Biscoe ┆ 37.7           ┆ 18.7          ┆ 180.0             ┆ 3600.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 36.3           ┆ 19.5          ┆ 190.0             ┆ 3800.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 38.9           ┆ 18.8          ┆ 190.0             ┆ 3600.0      ┆ Female │
+│ Adelie    ┆ Biscoe ┆ 35.0           ┆ 17.9          ┆ 192.0             ┆ 3725.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 39.2           ┆ 18.6          ┆ 190.0             ┆ 4250.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 51.3           ┆ 19.2          ┆ 193.0             ┆ 3650.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 51.9           ┆ 19.5          ┆ 206.0             ┆ 3950.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 19.0          ┆ 210.0             ┆ 4100.0      ┆ Male   │
+└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6531,16 +6543,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
-│ Adelie    ┆ Biscoe    ┆ 40.1           ┆ 18.9          ┆ 188.0            ┆ 4300.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 40.6           ┆ 19.0          ┆ 199.0            ┆ 4000.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 40.2           ┆ 17.1          ┆ 193.0            ┆ 3400.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.2           ┆ 18.2          ┆ 195.0            ┆ 4400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 42.6           ┆ 13.7          ┆ 213.0            ┆ 4950.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 49.6           ┆ 16.0          ┆ 225.0            ┆ 5700.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 48.5           ┆ 14.1          ┆ 220.0            ┆ 5300.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 45.3           ┆ 13.8          ┆ 208.0            ┆ 4200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.2           ┆ 14.1          ┆ 217.0            ┆ 4375.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 41.3           ┆ 21.1          ┆ 195.0            ┆ 4400.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 41.5           ┆ 18.3          ┆ 195.0            ┆ 4300.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 47.5           ┆ 16.8          ┆ 199.0            ┆ 3900.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 16.6          ┆ 191.0            ┆ 3250.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 13.5          ┆ 210.0            ┆ 4550.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.7           ┆ 15.3          ┆ 219.0            ┆ 5200.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0            ┆ 5100.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 43.4           ┆ 14.4          ┆ 218.0            ┆ 4600.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 44.5           ┆ 15.7          ┆ 217.0            ┆ 4875.0      ┆ null   │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6555,22 +6567,23 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe ┆ 38.2           ┆ 18.1          ┆ 185.0             ┆ 3950.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Biscoe ┆ 39.7           ┆ 18.9          ┆ 184.0             ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Biscoe ┆ 39.6           ┆ 20.7          ┆ 191.0             ┆ 3900.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 40.7           ┆ 17.0          ┆ 190.0             ┆ 3725.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 52.7           ┆ 19.8          ┆ 197.0             ┆ 3725.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 46.4           ┆ 17.8          ┆ 191.0             ┆ 3700.0      ┆ Female │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
+│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
+│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
+│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
+╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Torgersen ┆ 37.8           ┆ 17.3          ┆ 180.0            ┆ 3700.0      ┆ null   │
+│ Adelie    ┆ Torgersen ┆ 37.2           ┆ 19.4          ┆ 184.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0            ┆ 3600.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.2           ┆ 20.1          ┆ 200.0            ┆ 3975.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.7           ┆ 17.0          ┆ 190.0            ┆ 3725.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 58.0           ┆ 17.8          ┆ 181.0            ┆ 3700.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 50.6           ┆ 19.4          ┆ 193.0            ┆ 3800.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 45.5           ┆ 17.0          ┆ 196.0            ┆ 3500.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.0          ┆ 195.0            ┆ 3650.0      ┆ Female │
+└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6590,11 +6603,11 @@ shape: (5, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 40.9           ┆ 18.9          ┆ 184.0             ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 51.7           ┆ 20.3          ┆ 194.0             ┆ 3775.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.0           ┆ 19.5          ┆ 196.0             ┆ 3900.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 49.5           ┆ 19.0          ┆ 200.0             ┆ 3800.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 49.7           ┆ 18.6          ┆ 195.0             ┆ 3600.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 46.2           ┆ 17.5          ┆ 187.0             ┆ 3650.0      ┆ Female │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6619,16 +6632,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.2           ┆ 19.6          ┆ 195.0             ┆ 4675.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 41.1           ┆ 17.6          ┆ 182.0             ┆ 3200.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 34.4           ┆ 18.4          ┆ 184.0             ┆ 3325.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 172.0             ┆ 3150.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 38.5           ┆ 17.9          ┆ 190.0             ┆ 3325.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 39.7           ┆ 17.9          ┆ 193.0             ┆ 4250.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 39.6           ┆ 17.7          ┆ 186.0             ┆ 3500.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0             ┆ 3800.0      ┆ Male   │
+│ Adelie  ┆ Biscoe    ┆ 35.7           ┆ 16.9          ┆ 185.0             ┆ 3150.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 33.1           ┆ 16.1          ┆ 178.0             ┆ 2900.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 37.7           ┆ 16.0          ┆ 183.0             ┆ 3075.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 37.3           ┆ 20.5          ┆ 199.0             ┆ 3775.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 41.1           ┆ 18.6          ┆ 189.0             ┆ 3325.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 37.7           ┆ 19.8          ┆ 198.0             ┆ 3500.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 40.2           ┆ 20.1          ┆ 200.0             ┆ 3975.0      ┆ Male   │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6648,16 +6661,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.3           ┆ 20.6          ┆ 190.0             ┆ 3650.0      ┆ Male   │
-│ Adelie  ┆ Biscoe    ┆ 37.7           ┆ 18.7          ┆ 180.0             ┆ 3600.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 38.2           ┆ 18.1          ┆ 185.0             ┆ 3950.0      ┆ Male   │
+│ Adelie  ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0             ┆ 3800.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.6           ┆ 17.2          ┆ 196.0             ┆ 3550.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 37.3           ┆ 17.8          ┆ 191.0             ┆ 3350.0      ┆ Female │
 │ Adelie  ┆ Biscoe    ┆ 35.0           ┆ 17.9          ┆ 192.0             ┆ 3725.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 42.0           ┆ 13.5          ┆ 210.0             ┆ 4150.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 42.6           ┆ 13.7          ┆ 213.0             ┆ 4950.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 43.8           ┆ 13.9          ┆ 208.0             ┆ 4300.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 46.5           ┆ 14.8          ┆ 217.0             ┆ 5200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 50.8           ┆ 17.3          ┆ 228.0             ┆ 5600.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0             ┆ 5100.0      ┆ Male   │
 │ Gentoo  ┆ Biscoe    ┆ 44.5           ┆ 14.7          ┆ 214.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null   │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6677,16 +6690,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 13.7          ┆ 214.0             ┆ 4650.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 42.6           ┆ 13.7          ┆ 213.0             ┆ 4950.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.3           ┆ 13.7          ┆ 210.0             ┆ 4300.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 15.0          ┆ 220.0             ┆ 5000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.3           ┆ 13.8          ┆ 208.0             ┆ 4200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.4           ┆ 15.8          ┆ 216.0             ┆ 4925.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 49.9           ┆ 16.1          ┆ 213.0             ┆ 5400.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 13.2          ┆ 211.0             ┆ 4500.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 13.5          ┆ 210.0             ┆ 4550.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 225.0             ┆ 5400.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 43.5           ┆ 14.2          ┆ 220.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 14.3          ┆ 215.0             ┆ 4850.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6748,22 +6761,22 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Chinstrap ┆ Dream  ┆ 46.7           ┆ 17.9          ┆ 195.0             ┆ 3300.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 43.5           ┆ 18.1          ┆ 202.0             ┆ 3400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 45.3           ┆ 13.8          ┆ 208.0             ┆ 4200.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.4          ┆ 214.0             ┆ 4650.0      ┆ null   │
-│ Gentoo    ┆ Biscoe ┆ 46.4           ┆ 15.0          ┆ 216.0             ┆ 4700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 47.5           ┆ 14.2          ┆ 209.0             ┆ 4600.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 41.1           ┆ 17.6          ┆ 182.0             ┆ 3200.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 40.5           ┆ 18.9          ┆ 180.0             ┆ 3950.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 42.8           ┆ 18.5          ┆ 195.0             ┆ 4250.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 43.1           ┆ 19.2          ┆ 197.0             ┆ 3500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 49.2           ┆ 15.2          ┆ 221.0             ┆ 6300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 46.2           ┆ 14.4          ┆ 214.0             ┆ 4650.0      ┆ null   │
+│ Gentoo  ┆ Biscoe    ┆ 45.5           ┆ 14.5          ┆ 212.0             ┆ 4750.0      ┆ Female │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6783,16 +6796,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 41.1           ┆ 17.6          ┆ 182.0            ┆ 3200.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0            ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 41.3           ┆ 21.1          ┆ 195.0            ┆ 4400.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0            ┆ 4075.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 46.7           ┆ 17.9          ┆ 195.0            ┆ 3300.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.7           ┆ 18.6          ┆ 195.0            ┆ 3600.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 46.9           ┆ 16.6          ┆ 192.0            ┆ 2700.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 16.6          ┆ 191.0            ┆ 3250.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 15.4          ┆ 215.0            ┆ 5150.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 16.1          ┆ 215.0            ┆ 5500.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
+│ Adelie    ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0            ┆ 3800.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 45.6           ┆ 19.4          ┆ 194.0            ┆ 3525.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 45.4           ┆ 14.6          ┆ 211.0            ┆ 4800.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.4           ┆ 15.6          ┆ 221.0            ┆ 5000.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0            ┆ 5100.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 46.4           ┆ 15.0          ┆ 216.0            ┆ 4700.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 14.5          ┆ 212.0            ┆ 4625.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 15.0          ┆ 228.0            ┆ 5500.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 48.8           ┆ 16.2          ┆ 222.0            ┆ 6000.0      ┆ Male   │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6814,16 +6827,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 46.0           ┆ 21.5          ┆ 194.0            ┆ 4200.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 40.5           ┆ 17.9          ┆ 187.0            ┆ 3200.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0            ┆ 4275.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 40.2           ┆ 17.1          ┆ 193.0            ┆ 3400.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 47.5           ┆ 16.8          ┆ 199.0            ┆ 3900.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.5          ┆ 210.0            ┆ 3950.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 46.2           ┆ 17.5          ┆ 187.0            ┆ 3650.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0            ┆ 4400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.0           ┆ 15.4          ┆ 220.0            ┆ 5050.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 47.7           ┆ 15.0          ┆ 216.0            ┆ 4750.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
+│ Adelie    ┆ Dream     ┆ 44.1           ┆ 19.7          ┆ 196.0            ┆ 4400.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 41.0           ┆ 20.0          ┆ 203.0            ┆ 4725.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0            ┆ 3450.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 46.4           ┆ 18.6          ┆ 190.0            ┆ 3450.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 48.5           ┆ 17.5          ┆ 191.0            ┆ 3400.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 42.5           ┆ 17.3          ┆ 187.0            ┆ 3350.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 42.0           ┆ 13.5          ┆ 210.0            ┆ 4150.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0            ┆ 5100.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 16.1          ┆ 215.0            ┆ 5500.0      ┆ Male   │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6869,6 +6882,232 @@ shape: (2, 4)
 │ No     ┆ 3.225464 ┆ 20.705876  ┆ 97  │
 │ Yes    ┆ 3.087719 ┆ 23.232281  ┆ 57  │
 └────────┴──────────┴────────────┴─────┘
+```
+
+################################################################################
+# NOTEBOOK: docs/detailed_docs/library/head_tail.ipynb
+################################################################################
+# Notebook: head_tail.ipynb
+
+# Group-Aware & Extreme Row Slicing (`head` & `tail`)
+
+[← Back to Master Reference](../../pytae.md)
+
+`head()` and `tail()` select the first or last $N$ rows (or proportion of rows via `prop=`), with boundary tie-breaking (`with_ties=True`) and complete group awareness via `pt.by()`.
+
+In accordance with Pytae's *"One and Only One Obvious Way"*, extreme row selection is achieved by composing `arrange()` with `head()` or `tail()`, eliminating the need for niche specialized verbs like `pick`:
+
+| Method | Key Parameters | Purpose |
+|---|---|---|
+| `df.head(n=5, prop=None, with_ties=False)` | `n`, `prop`, `with_ties` | First $N$ rows (or fraction) |
+| `df.tail(n=5, prop=None, with_ties=False)` | `n`, `prop`, `with_ties` | Last $N$ rows (or fraction) |
+| `df.arrange(...).head(n)` | — | Extreme top rows overall |
+| `df.arrange(...).tail(n)` | — | Extreme bottom rows overall |
+| `df.by(...).arrange(...).head(n)` | `*cols` | Extreme rows partitioned per group |
+
+```python
+import sys, os
+_src = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'src'))
+if not os.path.exists(_src): _src = os.path.abspath(os.path.join(os.getcwd(), '..', 'src'))
+if _src not in sys.path: sys.path.insert(0, _src)
+
+import pytae as pt
+
+penguins = pt.sample_data['penguins']
+tips = pt.sample_data['tips']
+```
+
+## 1. Composing `arrange()` with `head()` — Top N Records
+
+Retrieve rows with the highest values by sorting descending and slicing the head.
+
+```python
+# Top 3 heaviest penguins overall
+(
+    penguins
+    .arrange("body_mass_g desc")
+    .head(3)
+    .select("species", "island", "body_mass_g")
+)
+```
+Output:
+```text
+shape: (3, 3)
+┌─────────┬────────┬─────────────┐
+│ species ┆ island ┆ body_mass_g │
+│ ---     ┆ ---    ┆ ---         │
+│ str     ┆ str    ┆ f64         │
+╞═════════╪════════╪═════════════╡
+│ Gentoo  ┆ Biscoe ┆ 6300.0      │
+│ Gentoo  ┆ Biscoe ┆ 6050.0      │
+│ Gentoo  ┆ Biscoe ┆ 6000.0      │
+└─────────┴────────┴─────────────┘
+```
+
+## 2. Composing `arrange()` with `head()` or `tail()` — Bottom N Records
+
+Retrieve rows with the lowest values by sorting ascending or taking the tail.
+
+```python
+# 3 lightest penguins overall
+(
+    penguins
+    .arrange("body_mass_g")
+    .head(3)
+    .select("species", "island", "body_mass_g")
+)
+```
+Output:
+```text
+shape: (3, 3)
+┌───────────┬────────┬─────────────┐
+│ species   ┆ island ┆ body_mass_g │
+│ ---       ┆ ---    ┆ ---         │
+│ str       ┆ str    ┆ f64         │
+╞═══════════╪════════╪═════════════╡
+│ Chinstrap ┆ Dream  ┆ 2700.0      │
+│ Adelie    ┆ Biscoe ┆ 2850.0      │
+│ Adelie    ┆ Biscoe ┆ 2850.0      │
+└───────────┴────────┴─────────────┘
+```
+
+## 3. Group-Aware Slicing (`df.by()`)
+
+When preceded by `.by(...)`, `head()` and `tail()` extract rows **per group**, returning a clean, ungrouped DataFrame.
+
+```python
+# Heaviest penguin for each species
+(
+    penguins
+    .by("species")
+    .arrange("body_mass_g desc")
+    .head(1)
+    .select("species", "island", "body_mass_g")
+)
+```
+Output:
+```text
+shape: (3, 3)
+┌───────────┬────────┬─────────────┐
+│ species   ┆ island ┆ body_mass_g │
+│ ---       ┆ ---    ┆ ---         │
+│ str       ┆ str    ┆ f64         │
+╞═══════════╪════════╪═════════════╡
+│ Adelie    ┆ Biscoe ┆ 4775.0      │
+│ Chinstrap ┆ Dream  ┆ 4800.0      │
+│ Gentoo    ┆ Biscoe ┆ 6300.0      │
+└───────────┴────────┴─────────────┘
+```
+
+```python
+# Lightest 2 penguins per island
+(
+    penguins
+    .by("island")
+    .arrange("body_mass_g")
+    .head(2)
+    .select("island", "species", "body_mass_g")
+)
+```
+Output:
+```text
+shape: (6, 3)
+┌───────────┬───────────┬─────────────┐
+│ island    ┆ species   ┆ body_mass_g │
+│ ---       ┆ ---       ┆ ---         │
+│ str       ┆ str       ┆ f64         │
+╞═══════════╪═══════════╪═════════════╡
+│ Biscoe    ┆ Adelie    ┆ 2850.0      │
+│ Biscoe    ┆ Adelie    ┆ 2850.0      │
+│ Dream     ┆ Chinstrap ┆ 2700.0      │
+│ Dream     ┆ Adelie    ┆ 2900.0      │
+│ Torgersen ┆ Adelie    ┆ 2900.0      │
+│ Torgersen ┆ Adelie    ┆ 3050.0      │
+└───────────┴───────────┴─────────────┘
+```
+
+## 4. Proportion Slicing with `prop=`
+
+Select a fraction of rows (e.g. `prop=0.1` or `n="10%"`) overall or within each group.
+
+```python
+# Top 10% heaviest penguins per species
+(
+    penguins
+    .by("species")
+    .arrange("body_mass_g desc")
+    .head(prop=0.1)
+    .select("species", "island", "body_mass_g")
+)
+```
+Output:
+```text
+shape: (33, 3)
+┌─────────┬───────────┬─────────────┐
+│ species ┆ island    ┆ body_mass_g │
+│ ---     ┆ ---       ┆ ---         │
+│ str     ┆ str       ┆ f64         │
+╞═════════╪═══════════╪═════════════╡
+│ Adelie  ┆ Biscoe    ┆ 4775.0      │
+│ Adelie  ┆ Biscoe    ┆ 4725.0      │
+│ Adelie  ┆ Torgersen ┆ 4700.0      │
+│ Adelie  ┆ Torgersen ┆ 4675.0      │
+│ Adelie  ┆ Dream     ┆ 4650.0      │
+│ …       ┆ …         ┆ …           │
+│ Gentoo  ┆ Biscoe    ┆ 5850.0      │
+│ Gentoo  ┆ Biscoe    ┆ 5850.0      │
+│ Gentoo  ┆ Biscoe    ┆ 5800.0      │
+│ Gentoo  ┆ Biscoe    ┆ 5800.0      │
+│ Gentoo  ┆ Biscoe    ┆ 5750.0      │
+└─────────┴───────────┴─────────────┘
+```
+
+## 5. Boundary Ties (`with_ties=True`)
+
+When multiple rows share the same value at the rank cutoff, pass `with_ties=True` to include all tied rows.
+
+```python
+# Top 3 with boundary ties included
+(
+    penguins
+    .arrange("body_mass_g desc")
+    .head(3, with_ties=True)
+    .select("species", "island", "body_mass_g")
+)
+```
+Output:
+```text
+shape: (4, 3)
+┌─────────┬────────┬─────────────┐
+│ species ┆ island ┆ body_mass_g │
+│ ---     ┆ ---    ┆ ---         │
+│ str     ┆ str    ┆ f64         │
+╞═════════╪════════╪═════════════╡
+│ Gentoo  ┆ Biscoe ┆ 6300.0      │
+│ Gentoo  ┆ Biscoe ┆ 6050.0      │
+│ Gentoo  ┆ Biscoe ┆ 6000.0      │
+│ Gentoo  ┆ Biscoe ┆ 6000.0      │
+└─────────┴────────┴─────────────┘
+```
+
+## 6. Functional Style (`pt.head` & `pt.tail`)
+
+`pt.head(df, ...)` and `pt.tail(df, ...)` are also available as standalone functional verbs:
+
+```python
+# Functional top bill overall
+pt.head(pt.arrange(tips, "total_bill desc"), 1)[["day", "total_bill", "tip"]]
+```
+Output:
+```text
+shape: (1, 3)
+┌─────┬────────────┬──────┐
+│ day ┆ total_bill ┆ tip  │
+│ --- ┆ ---        ┆ ---  │
+│ cat ┆ f64        ┆ f64  │
+╞═════╪════════════╪══════╡
+│ Sat ┆ 50.81      ┆ 10.0 │
+└─────┴────────────┴──────┘
 ```
 
 ################################################################################
@@ -7177,16 +7416,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie    ┆ 4150.0      ┆ 39.2           ┆ 2.700698 │
-│ Adelie    ┆ 4700.0      ┆ 42.9           ┆ 2.553779 │
-│ Adelie    ┆ 4300.0      ┆ 40.8           ┆ 2.583141 │
-│ Adelie    ┆ 3050.0      ┆ 32.1           ┆ 2.959987 │
-│ Adelie    ┆ 3725.0      ┆ 40.7           ┆ 2.248731 │
-│ Adelie    ┆ 3450.0      ┆ 36.0           ┆ 2.662037 │
-│ Chinstrap ┆ 3775.0      ┆ 51.7           ┆ 1.412329 │
-│ Gentoo    ┆ 5100.0      ┆ 46.1           ┆ 2.399763 │
-│ Gentoo    ┆ 4750.0      ┆ 44.9           ┆ 2.356139 │
-│ Gentoo    ┆ 5600.0      ┆ 50.8           ┆ 2.170004 │
+│ Adelie    ┆ 3100.0      ┆ 36.0           ┆ 2.391975 │
+│ Adelie    ┆ 3350.0      ┆ 35.5           ┆ 2.658203 │
+│ Adelie    ┆ 4000.0      ┆ 42.1           ┆ 2.256814 │
+│ Adelie    ┆ 3400.0      ┆ 37.0           ┆ 2.483565 │
+│ Adelie    ┆ 4250.0      ┆ 39.2           ┆ 2.765775 │
+│ Chinstrap ┆ 4450.0      ┆ 50.8           ┆ 1.724378 │
+│ Chinstrap ┆ 3250.0      ┆ 45.2           ┆ 1.590767 │
+│ Chinstrap ┆ 3775.0      ┆ 49.6           ┆ 1.534453 │
+│ Gentoo    ┆ 5000.0      ┆ 45.5           ┆ 2.415167 │
+│ Gentoo    ┆ 5450.0      ┆ 52.5           ┆ 1.977324 │
 └───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7223,16 +7462,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---     ┆ ---   │
 │ str       ┆ f64         ┆ f64     ┆ bool  │
 ╞═══════════╪═════════════╪═════════╪═══════╡
-│ Adelie    ┆ 3200.0      ┆ 3.2     ┆ false │
-│ Adelie    ┆ 4600.0      ┆ 4.6     ┆ true  │
-│ Adelie    ┆ 3700.0      ┆ 3.7     ┆ false │
-│ Adelie    ┆ 3550.0      ┆ 3.55    ┆ false │
-│ Adelie    ┆ 3150.0      ┆ 3.15    ┆ false │
-│ Chinstrap ┆ 3600.0      ┆ 3.6     ┆ false │
-│ Chinstrap ┆ 3850.0      ┆ 3.85    ┆ false │
-│ Gentoo    ┆ 4200.0      ┆ 4.2     ┆ true  │
-│ Gentoo    ┆ 4600.0      ┆ 4.6     ┆ true  │
-│ Gentoo    ┆ 4725.0      ┆ 4.725   ┆ true  │
+│ Adelie    ┆ 3500.0      ┆ 3.5     ┆ false │
+│ Adelie    ┆ 3950.0      ┆ 3.95    ┆ false │
+│ Chinstrap ┆ 3725.0      ┆ 3.725   ┆ false │
+│ Chinstrap ┆ 3950.0      ┆ 3.95    ┆ false │
+│ Chinstrap ┆ 3675.0      ┆ 3.675   ┆ false │
+│ Chinstrap ┆ 3350.0      ┆ 3.35    ┆ false │
+│ Gentoo    ┆ 5650.0      ┆ 5.65    ┆ true  │
+│ Gentoo    ┆ 5800.0      ┆ 5.8     ┆ true  │
+│ Gentoo    ┆ 5200.0      ┆ 5.2     ┆ true  │
+│ Gentoo    ┆ 6000.0      ┆ 6.0     ┆ true  │
 └───────────┴─────────────┴─────────┴───────┘
 ```
 
@@ -7253,16 +7492,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---     ┆ ---       │
 │ str       ┆ f64         ┆ f64     ┆ f64       │
 ╞═══════════╪═════════════╪═════════╪═══════════╡
-│ Adelie    ┆ 3300.0      ┆ 3.3     ┆ 7.275246  │
-│ Adelie    ┆ 3700.0      ┆ 3.7     ┆ 8.157094  │
-│ Adelie    ┆ 3800.0      ┆ 3.8     ┆ 8.377556  │
-│ Adelie    ┆ 3975.0      ┆ 3.975   ┆ 8.7633645 │
-│ Chinstrap ┆ 3900.0      ┆ 3.9     ┆ 8.598018  │
-│ Chinstrap ┆ 3500.0      ┆ 3.5     ┆ 7.71617   │
-│ Chinstrap ┆ 3525.0      ┆ 3.525   ┆ 7.771285  │
-│ Gentoo    ┆ 5400.0      ┆ 5.4     ┆ 11.904948 │
-│ Gentoo    ┆ 5000.0      ┆ 5.0     ┆ 11.0231   │
-│ Gentoo    ┆ 3950.0      ┆ 3.95    ┆ 8.708249  │
+│ Adelie    ┆ 3500.0      ┆ 3.5     ┆ 7.71617   │
+│ Adelie    ┆ 3350.0      ┆ 3.35    ┆ 7.385477  │
+│ Adelie    ┆ 4000.0      ┆ 4.0     ┆ 8.81848   │
+│ Adelie    ┆ 3000.0      ┆ 3.0     ┆ 6.61386   │
+│ Adelie    ┆ 3650.0      ┆ 3.65    ┆ 8.046863  │
+│ Chinstrap ┆ 3650.0      ┆ 3.65    ┆ 8.046863  │
+│ Chinstrap ┆ 4000.0      ┆ 4.0     ┆ 8.81848   │
+│ Gentoo    ┆ 4875.0      ┆ 4.875   ┆ 10.747522 │
+│ Gentoo    ┆ 5500.0      ┆ 5.5     ┆ 12.12541  │
+│ Gentoo    ┆ 4875.0      ┆ 4.875   ┆ 10.747522 │
 └───────────┴─────────────┴─────────┴───────────┘
 ```
 
@@ -7287,13 +7526,13 @@ shape: (10, 2)
 │ str       ┆ bool      │
 ╞═══════════╪═══════════╡
 │ Adelie    ┆ true      │
-│ Adelie    ┆ true      │
-│ Adelie    ┆ true      │
-│ Adelie    ┆ true      │
 │ Chinstrap ┆ false     │
 │ Chinstrap ┆ false     │
 │ Chinstrap ┆ false     │
-│ Chinstrap ┆ false     │
+│ Gentoo    ┆ false     │
+│ Gentoo    ┆ false     │
+│ Gentoo    ┆ false     │
+│ Gentoo    ┆ false     │
 │ Gentoo    ┆ false     │
 │ Gentoo    ┆ false     │
 └───────────┴───────────┘
@@ -7319,16 +7558,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---   │
 │ str       ┆ f64         ┆ bool  │
 ╞═══════════╪═════════════╪═══════╡
-│ Adelie    ┆ 3200.0      ┆ false │
-│ Adelie    ┆ 3725.0      ┆ false │
+│ Adelie    ┆ 3250.0      ┆ false │
+│ Adelie    ┆ 4150.0      ┆ true  │
 │ Adelie    ┆ 3325.0      ┆ false │
-│ Chinstrap ┆ 3700.0      ┆ false │
-│ Chinstrap ┆ 2700.0      ┆ false │
+│ Adelie    ┆ 3450.0      ┆ false │
+│ Adelie    ┆ 4250.0      ┆ true  │
+│ Chinstrap ┆ 3950.0      ┆ false │
+│ Chinstrap ┆ 3600.0      ┆ false │
 │ Chinstrap ┆ 3350.0      ┆ false │
-│ Gentoo    ┆ 4750.0      ┆ true  │
-│ Gentoo    ┆ 4200.0      ┆ true  │
-│ Gentoo    ┆ 5200.0      ┆ true  │
-│ Gentoo    ┆ 5950.0      ┆ true  │
+│ Chinstrap ┆ 4100.0      ┆ true  │
+│ Gentoo    ┆ 4725.0      ┆ true  │
 └───────────┴─────────────┴───────┘
 ```
 
@@ -7346,22 +7585,22 @@ shape: (10, 3)
 Output:
 ```text
 shape: (10, 2)
-┌───────────┬─────────────┐
-│ species   ┆ body_mass_g │
-│ ---       ┆ ---         │
-│ str       ┆ f64         │
-╞═══════════╪═════════════╡
-│ Adelie    ┆ 3.8         │
-│ Adelie    ┆ 3.2         │
-│ Adelie    ┆ 3.075       │
-│ Adelie    ┆ 4.075       │
-│ Adelie    ┆ 3.175       │
-│ Chinstrap ┆ 4.15        │
-│ Chinstrap ┆ 3.4         │
-│ Chinstrap ┆ 3.325       │
-│ Gentoo    ┆ 4.6         │
-│ Gentoo    ┆ 4.95        │
-└───────────┴─────────────┘
+┌─────────┬─────────────┐
+│ species ┆ body_mass_g │
+│ ---     ┆ ---         │
+│ str     ┆ f64         │
+╞═════════╪═════════════╡
+│ Adelie  ┆ 4.5         │
+│ Adelie  ┆ 4.0         │
+│ Adelie  ┆ 3.8         │
+│ Adelie  ┆ 4.775       │
+│ Adelie  ┆ 3.475       │
+│ Adelie  ┆ 3.75        │
+│ Gentoo  ┆ 4.45        │
+│ Gentoo  ┆ 5.2         │
+│ Gentoo  ┆ 4.4         │
+│ Gentoo  ┆ 4.7         │
+└─────────┴─────────────┘
 ```
 
 ## Column names with spaces — bracket syntax
@@ -7407,16 +7646,16 @@ shape: (10, 5)
 │ ---     ┆ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str     ┆ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═════════╪═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie  ┆ Torgersen ┆ 3475.0      ┆ 34.1           ┆ 2.98845  │
-│ Adelie  ┆ Dream     ┆ 3900.0      ┆ 40.9           ┆ 2.331406 │
-│ Adelie  ┆ Dream     ┆ 4400.0      ┆ 44.1           ┆ 2.262432 │
-│ Adelie  ┆ Dream     ┆ 3450.0      ┆ 36.0           ┆ 2.662037 │
-│ Adelie  ┆ Torgersen ┆ 3600.0      ┆ 33.5           ┆ 3.207841 │
-│ Adelie  ┆ Biscoe    ┆ 3750.0      ┆ 38.6           ┆ 2.516846 │
-│ Adelie  ┆ Torgersen ┆ 3450.0      ┆ 40.2           ┆ 2.134848 │
-│ Gentoo  ┆ Biscoe    ┆ 5250.0      ┆ 44.4           ┆ 2.663136 │
-│ Gentoo  ┆ Biscoe    ┆ 5100.0      ┆ 44.9           ┆ 2.529749 │
-│ Gentoo  ┆ Biscoe    ┆ 4975.0      ┆ 47.2           ┆ 2.233105 │
+│ Adelie  ┆ Dream     ┆ 4150.0      ┆ 42.3           ┆ 2.319356 │
+│ Adelie  ┆ Dream     ┆ 3950.0      ┆ 38.3           ┆ 2.692772 │
+│ Adelie  ┆ Torgersen ┆ 4000.0      ┆ 40.6           ┆ 2.426654 │
+│ Gentoo  ┆ Biscoe    ┆ 5700.0      ┆ 50.0           ┆ 2.28     │
+│ Gentoo  ┆ Biscoe    ┆ 4800.0      ┆ 46.2           ┆ 2.248833 │
+│ Gentoo  ┆ Biscoe    ┆ 5400.0      ┆ 48.4           ┆ 2.30517  │
+│ Gentoo  ┆ Biscoe    ┆ 4350.0      ┆ 44.0           ┆ 2.246901 │
+│ Gentoo  ┆ Biscoe    ┆ 5050.0      ┆ 45.0           ┆ 2.493827 │
+│ Gentoo  ┆ Biscoe    ┆ 4700.0      ┆ 43.5           ┆ 2.483816 │
+│ Gentoo  ┆ Biscoe    ┆ 5350.0      ┆ 50.0           ┆ 2.14     │
 └─────────┴───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7441,16 +7680,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---          │
 │ str       ┆ f64         ┆ str          │
 ╞═══════════╪═════════════╪══════════════╡
-│ Adelie    ┆ 3650.0      ┆ light        │
-│ Adelie    ┆ 4400.0      ┆ heavy        │
-│ Adelie    ┆ 3800.0      ┆ light        │
-│ Adelie    ┆ 3425.0      ┆ light        │
-│ Adelie    ┆ 3050.0      ┆ light        │
 │ Adelie    ┆ 3900.0      ┆ light        │
-│ Chinstrap ┆ 3700.0      ┆ light        │
-│ Gentoo    ┆ 4750.0      ┆ heavy        │
-│ Gentoo    ┆ 5300.0      ┆ heavy        │
-│ Gentoo    ┆ 4750.0      ┆ heavy        │
+│ Adelie    ┆ 4450.0      ┆ heavy        │
+│ Chinstrap ┆ 3950.0      ┆ light        │
+│ Chinstrap ┆ 3400.0      ┆ light        │
+│ Gentoo    ┆ 4350.0      ┆ heavy        │
+│ Gentoo    ┆ 4900.0      ┆ heavy        │
+│ Gentoo    ┆ 4200.0      ┆ heavy        │
+│ Gentoo    ┆ 4700.0      ┆ heavy        │
+│ Gentoo    ┆ 5600.0      ┆ heavy        │
+│ Gentoo    ┆ 4875.0      ┆ heavy        │
 └───────────┴─────────────┴──────────────┘
 ```
 
@@ -7473,16 +7712,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---        │
 │ str       ┆ f64         ┆ str        │
 ╞═══════════╪═════════════╪════════════╡
-│ Adelie    ┆ 3450.0      ┆ small      │
-│ Adelie    ┆ 3625.0      ┆ medium     │
-│ Adelie    ┆ 3325.0      ┆ small      │
+│ Adelie    ┆ 4725.0      ┆ large      │
 │ Adelie    ┆ 3550.0      ┆ medium     │
-│ Adelie    ┆ 3425.0      ┆ small      │
-│ Adelie    ┆ 3900.0      ┆ medium     │
-│ Adelie    ┆ 3175.0      ┆ small      │
-│ Chinstrap ┆ 2900.0      ┆ small      │
-│ Chinstrap ┆ 3250.0      ┆ small      │
-│ Gentoo    ┆ 4875.0      ┆ large      │
+│ Adelie    ┆ 4300.0      ┆ medium     │
+│ Adelie    ┆ 3050.0      ┆ small      │
+│ Chinstrap ┆ 4050.0      ┆ medium     │
+│ Chinstrap ┆ 2700.0      ┆ small      │
+│ Gentoo    ┆ 5100.0      ┆ large      │
+│ Gentoo    ┆ 5550.0      ┆ large      │
+│ Gentoo    ┆ 5800.0      ┆ large      │
+│ Gentoo    ┆ 4625.0      ┆ large      │
 └───────────┴─────────────┴────────────┘
 ```
 
@@ -7501,22 +7740,22 @@ shape: (10, 3)
 Output:
 ```text
 shape: (10, 3)
-┌───────────┬────────┬─────────────┐
-│ species   ┆ island ┆ island_code │
-│ ---       ┆ ---    ┆ ---         │
-│ str       ┆ str    ┆ str         │
-╞═══════════╪════════╪═════════════╡
-│ Adelie    ┆ Dream  ┆ OTH         │
-│ Adelie    ┆ Biscoe ┆ BIS         │
-│ Adelie    ┆ Biscoe ┆ BIS         │
-│ Adelie    ┆ Dream  ┆ OTH         │
-│ Chinstrap ┆ Dream  ┆ OTH         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
-│ Gentoo    ┆ Biscoe ┆ BIS         │
-└───────────┴────────┴─────────────┘
+┌─────────┬───────────┬─────────────┐
+│ species ┆ island    ┆ island_code │
+│ ---     ┆ ---       ┆ ---         │
+│ str     ┆ str       ┆ str         │
+╞═════════╪═══════════╪═════════════╡
+│ Adelie  ┆ Biscoe    ┆ BIS         │
+│ Adelie  ┆ Biscoe    ┆ BIS         │
+│ Adelie  ┆ Torgersen ┆ TOR         │
+│ Adelie  ┆ Dream     ┆ OTH         │
+│ Adelie  ┆ Torgersen ┆ TOR         │
+│ Adelie  ┆ Torgersen ┆ TOR         │
+│ Gentoo  ┆ Biscoe    ┆ BIS         │
+│ Gentoo  ┆ Biscoe    ┆ BIS         │
+│ Gentoo  ┆ Biscoe    ┆ BIS         │
+│ Gentoo  ┆ Biscoe    ┆ BIS         │
+└─────────┴───────────┴─────────────┘
 ```
 
 ## First non-null resolution — `coalesce()`
@@ -7659,17 +7898,17 @@ out
 Output:
 ```text
 shape: (5, 3)
-┌───────────┬─────────┬───────────┐
-│ species   ┆ mass_kg ┆ mass_lb   │
-│ ---       ┆ ---     ┆ ---       │
-│ str       ┆ f64     ┆ f64       │
-╞═══════════╪═════════╪═══════════╡
-│ Adelie    ┆ 4.4     ┆ 9.700328  │
-│ Adelie    ┆ 3.8     ┆ 8.377556  │
-│ Chinstrap ┆ 3.5     ┆ 7.71617   │
-│ Gentoo    ┆ 4.15    ┆ 9.149173  │
-│ Gentoo    ┆ 5.6     ┆ 12.345872 │
-└───────────┴─────────┴───────────┘
+┌───────────┬─────────┬──────────┐
+│ species   ┆ mass_kg ┆ mass_lb  │
+│ ---       ┆ ---     ┆ ---      │
+│ str       ┆ f64     ┆ f64      │
+╞═══════════╪═════════╪══════════╡
+│ Adelie    ┆ 3.4     ┆ 7.495708 │
+│ Adelie    ┆ 3.45    ┆ 7.605939 │
+│ Chinstrap ┆ 3.7     ┆ 8.157094 │
+│ Chinstrap ┆ 3.6     ┆ 7.936632 │
+│ Chinstrap ┆ 3.45    ┆ 7.605939 │
+└───────────┴─────────┴──────────┘
 ```
 
 ## Columns with spaces — SQL-style brackets `[col]`
@@ -8930,193 +9169,6 @@ Summary table copied to clipboard! Paste directly into Excel or Google Sheets.
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/pick.ipynb
-################################################################################
-# Notebook: pick.ipynb
-
-# `pick` — Group-Aware Extreme Row Selection
-
-`pick` selects the top or bottom N rows (or proportion of rows via `prop=`) ordered by a column, with complete group awareness via `pt.by()`.
-
-| Method | Key Params | Purpose |
-|---|---|---|
-| `.by(...).pick(col, n=1, prop=None, order="max")` | `col`, `n`, `prop`, `order`, `by` | Pick top or bottom N rows per group |
-
----
-
-```python
-import sys, os
-_src = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'src'))
-if not os.path.exists(_src): _src = os.path.abspath(os.path.join(os.getcwd(), '..', 'src'))
-if _src not in sys.path: sys.path.insert(0, _src)
-
-import pytae as pt
-
-penguins = pt.sample_data['penguins']
-tips = pt.sample_data['tips']
-```
-
-## 1. `pick()` — Top N Records
-
-Retrieve the rows with the highest values in `col`.
-
-```python
-# Top 3 heaviest penguins overall
-(
-    penguins
-    .pick("body_mass_g", n=3)
-    .select("species", "island", "body_mass_g")
-)
-```
-Output:
-```text
-shape: (3, 3)
-┌─────────┬────────┬─────────────┐
-│ species ┆ island ┆ body_mass_g │
-│ ---     ┆ ---    ┆ ---         │
-│ str     ┆ str    ┆ f64         │
-╞═════════╪════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ 6300.0      │
-│ Gentoo  ┆ Biscoe ┆ 6050.0      │
-│ Gentoo  ┆ Biscoe ┆ 6000.0      │
-└─────────┴────────┴─────────────┘
-```
-
-## 2. `pick()` — Bottom N Records
-
-Retrieve the rows with the lowest values in `col`.
-
-```python
-# 3 lightest penguins overall
-(
-    penguins
-    # .by('island')
-    .pick("body_mass_g", n=3)
-    .select("species", "island", "body_mass_g")
-)
-```
-Output:
-```text
-shape: (3, 3)
-┌─────────┬────────┬─────────────┐
-│ species ┆ island ┆ body_mass_g │
-│ ---     ┆ ---    ┆ ---         │
-│ str     ┆ str    ┆ f64         │
-╞═════════╪════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ 6300.0      │
-│ Gentoo  ┆ Biscoe ┆ 6050.0      │
-│ Gentoo  ┆ Biscoe ┆ 6000.0      │
-└─────────┴────────┴─────────────┘
-```
-
-## 3. Group-Aware Slicing (`pt.by()`)
-
-When preceded by `.by(...)`, `pick` and `pick` extract top or bottom N rows **per group**.
-
-```python
-# Top heaviest penguin for each species
-(
-    penguins
-    .by("species")
-    .pick("body_mass_g", n=1)
-    .select("species", "island", "body_mass_g")
-)
-```
-Output:
-```text
-shape: (3, 3)
-┌───────────┬────────┬─────────────┐
-│ species   ┆ island ┆ body_mass_g │
-│ ---       ┆ ---    ┆ ---         │
-│ str       ┆ str    ┆ f64         │
-╞═══════════╪════════╪═════════════╡
-│ Adelie    ┆ Biscoe ┆ 4775.0      │
-│ Chinstrap ┆ Dream  ┆ 4800.0      │
-│ Gentoo    ┆ Biscoe ┆ 6300.0      │
-└───────────┴────────┴─────────────┘
-```
-
-```python
-# Lightest 2 penguins per island
-(
-    penguins
-    .by("island")
-    .pick("body_mass_g", n=2, order="max")
-    .select("island", "species", "body_mass_g")
-)
-```
-Output:
-```text
-shape: (6, 3)
-┌───────────┬───────────┬─────────────┐
-│ island    ┆ species   ┆ body_mass_g │
-│ ---       ┆ ---       ┆ ---         │
-│ str       ┆ str       ┆ f64         │
-╞═══════════╪═══════════╪═════════════╡
-│ Biscoe    ┆ Gentoo    ┆ 6300.0      │
-│ Biscoe    ┆ Gentoo    ┆ 6050.0      │
-│ Dream     ┆ Chinstrap ┆ 4800.0      │
-│ Dream     ┆ Adelie    ┆ 4650.0      │
-│ Torgersen ┆ Adelie    ┆ 4700.0      │
-│ Torgersen ┆ Adelie    ┆ 4675.0      │
-└───────────┴───────────┴─────────────┘
-```
-
-## 4. Functional Style (`pt.pick`)
-
-`pt.pick(df, ...)` is also available as a standalone functional verb:
-
-```python
-# Functional pick overall
-pt.pick(tips, "tip", n=1)[["day", "total_bill", "tip"]]
-```
-Output:
-```text
-shape: (1, 3)
-┌─────┬────────────┬──────┐
-│ day ┆ total_bill ┆ tip  │
-│ --- ┆ ---        ┆ ---  │
-│ cat ┆ f64        ┆ f64  │
-╞═════╪════════════╪══════╡
-│ Sat ┆ 50.81      ┆ 10.0 │
-└─────┴────────────┴──────┘
-```
-
-## 4. Proportion Slicing with `prop=`
-
-Select a fraction of rows (e.g. `prop=0.1` for top 10%) overall or within each group.
-
-```python
-# Top 10% heaviest penguins per species
-(
-    penguins
-    .by("species")
-    .pick("body_mass_g", prop=0.1)
-)
-```
-Output:
-```text
-shape: (33, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Adelie  ┆ Biscoe    ┆ 43.2           ┆ 19.0          ┆ 197.0             ┆ 4775.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 41.0           ┆ 20.0          ┆ 203.0             ┆ 4725.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 42.9           ┆ 17.6          ┆ 196.0             ┆ 4700.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 39.2           ┆ 19.6          ┆ 195.0             ┆ 4675.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.8           ┆ 19.1          ┆ 184.0             ┆ 4650.0      ┆ Male │
-│ …       ┆ …         ┆ …              ┆ …             ┆ …                 ┆ …           ┆ …    │
-│ Gentoo  ┆ Biscoe    ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe    ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe    ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe    ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe    ┆ 50.4           ┆ 15.7          ┆ 222.0             ┆ 5750.0      ┆ Male │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
-```
-
-################################################################################
 # NOTEBOOK: docs/detailed_docs/library/pivot.ipynb
 ################################################################################
 # Notebook: pivot.ipynb
@@ -9389,7 +9441,7 @@ tips = pt.sample("tips")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x1139c9940>
+<pytae.plotting.Plotter at 0x1137d5940>
 ```
 
 ```python
@@ -9409,7 +9461,7 @@ pt.finalize(p)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e835f90>
+<pytae.plotting.Plotter at 0x11e5d5d10>
 ```
 
 ```python
@@ -9423,7 +9475,7 @@ p = pt.Plotter(tips.by("day").agg(total_bill="mean"), figsize=(8, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e903750>
+<pytae.plotting.Plotter at 0x11e6af4d0>
 ```
 
 ## 2. Plot Kinds & Distribution Semantics
@@ -9450,7 +9502,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e8629e0>
+<pytae.plotting.Plotter at 0x11e6069e0>
 ```
 
 ```python
@@ -9472,7 +9524,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e861cd0>
+<pytae.plotting.Plotter at 0x11e605cd0>
 ```
 
 ```python
@@ -9494,7 +9546,7 @@ diamonds = pt.sample("diamonds").sample(1000, random_state=42)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x1128f0710>
+<pytae.plotting.Plotter at 0x112690710>
 ```
 
 ```python
@@ -9512,7 +9564,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e92a140>
+<pytae.plotting.Plotter at 0x11e682360>
 ```
 
 ```python
@@ -9535,7 +9587,7 @@ titanic = pt.sample("titanic")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11395a360>
+<pytae.plotting.Plotter at 0x113746580>
 ```
 
 ```python
@@ -9553,7 +9605,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e887950>
+<pytae.plotting.Plotter at 0x11e825150>
 ```
 
 ## 3. Subplots & Multi-Panel Dashboards (With & Without Mosaic)
@@ -9578,7 +9630,7 @@ p_sub = pt.Plotter(nrows=1, ncols=2, figsize=(11, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11ecece50>
+<pytae.plotting.Plotter at 0x11e826050>
 ```
 
 ```python
@@ -9595,7 +9647,7 @@ k = pt.Plotter(figsize=(9, 5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11ecec050>
+<pytae.plotting.Plotter at 0x11e824d50>
 ```
 
 ```python
@@ -9620,7 +9672,7 @@ p = pt.Plotter(mosaic=mosaic, figsize=(14, 9))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11eced450>
+<pytae.plotting.Plotter at 0x11e826650>
 ```
 
 ```python
@@ -9647,7 +9699,7 @@ p_multi = pt.Plotter(mosaic=mosaic_multi, figsize=(13, 7))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11ecef150>
+<pytae.plotting.Plotter at 0x11f070450>
 ```
 
 ## 4. Grid Faceting / Small Multiples (Auto-Faceting with `by` & `ncols`)
@@ -9673,7 +9725,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12c941350>
+<pytae.plotting.Plotter at 0x11e825350>
 ```
 
 ```python
@@ -9695,7 +9747,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12c940f50>
+<pytae.plotting.Plotter at 0x11e825e50>
 ```
 
 ## 5. End-to-End Pipelines: Mixing pandas, pytae, and Multi-Panel Mosaics
@@ -9736,7 +9788,7 @@ wrangle_penguins = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11ecef250>
+<pytae.plotting.Plotter at 0x11e39a650>
 ```
 
 ```python
@@ -9767,7 +9819,7 @@ cleaned_diamonds = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12c941150>
+<pytae.plotting.Plotter at 0x11e399750>
 ```
 
 ## 6. Advanced Controls & Customization (`_CONTROL_KWARGS`)
@@ -9864,7 +9916,7 @@ pre_aggregated = pt.DataFrame({
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x10cee4650>
+<pytae.plotting.Plotter at 0x11f070550>
 ```
 
 ```python
@@ -11321,7 +11373,7 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 │                        THE 7 PILLARS OF PYTAE ARCHITECTURE                             │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ 1. ONE CANONICAL VERB     │ Exactly one obvious verb per task: filter, mutate, arrange, │
-│                           │ by, agg, pick, distinct, wide, long, pivot, join.          │
+│                           │ by, agg, distinct, head, tail, wide, long, pivot, join.     │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 2. ZERO SYNTAX AMBIGUITY  │ No competing shortcuts or dual APIs. Explicit 'desc' for   │
 │                           │ sorting; explicit predicate strings for missing checks.    │
@@ -11370,7 +11422,7 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 - **In Pytae, grouping is strictly single-shot and auto-clearing**:
   - `df.by(*cols)` sets an active grouping context for the *immediate next verb*.
   - `.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
-  - `.pick()` slices extreme rows per group and returns an ungrouped `DataFrame`.
+  - `.head()` / `.tail()` slices rows (including extreme values after `.arrange()`) per group and returns an ungrouped `DataFrame`.
   - `.agg()` collapses per group and returns an ungrouped `DataFrame`.
   - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
 - **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
@@ -11494,7 +11546,7 @@ When running on a lazy DataFrame, Pytae defers execution until results are requi
 2. **Projection Pushdown (Column Selection)**:
    - When you write `.select("customer_id", "total_spend")`, Pytae reads **only those two columns** from storage. The remaining 50+ columns in the file are never touched, dramatically reducing disk I/O and memory bandwidth.
 3. **Slice / Limit Pushdown**:
-   - Calling `.head(10)` or `.pick("sales", n=5)` avoids scanning the remainder of the file once the threshold is satisfied.
+   - Calling `.head(10)` or `.arrange("sales desc").head(5)` avoids scanning the remainder of the file once the threshold is satisfied.
 
 #### Inspecting the Execution Plan with `df.explain()`
 You can inspect the exact physical and logical optimizations performed by Pytae using `.explain()`:
@@ -11596,7 +11648,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Aggregation** | **[agg.ipynb](detailed_docs/library/agg.ipynb)** | **[agg.md](detailed_docs/cli/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
 | **Cross-Tab** | **[pivot.ipynb](detailed_docs/library/pivot.ipynb)** | **[pivot.md](detailed_docs/cli/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
 | **Deduplication** | **[distinct.ipynb](detailed_docs/library/distinct.ipynb)** | **[distinct.md](detailed_docs/cli/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
-| **Slicing** | **[pick.ipynb](detailed_docs/library/pick.ipynb)** | **[pick.md](detailed_docs/cli/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
+| **Slicing** | **[head_tail.ipynb](detailed_docs/library/head_tail.ipynb)** | **[head_tail.md](detailed_docs/cli/head_tail.md)** | `arrange` + `head`/`tail`, group-aware with `by`, percentage `prop=`, ties `with_ties=` |
 | **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |
@@ -11770,7 +11822,7 @@ In Pandas, `.groupby()` returns a lazy intermediate `DataFrameGroupBy` object. T
 
 ### The Pytae Solution
 In Pytae, grouping is **single-shot, non-destructive, and auto-clearing**:
-- `df.by(*cols)` sets a transient grouping context for the *immediate next verb* (`mutate`, `agg`, `pick`).
+- `df.by(*cols)` sets a transient grouping context for the *immediate next verb* (`mutate`, `agg`, `head`, `tail`).
 - The operation evaluates within each group and **immediately returns a clean, ungrouped DataFrame**.
 - You can transition seamlessly across different grouping levels in a single method chain without resetting:
 
@@ -11875,13 +11927,13 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` | Default behavior (`dropna=False`) | Default behavior |
 | **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
 
-### 6. Slicing Top / Bottom Records (`pick`)
+### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `df.nlargest(5, 'sales')` | `df.pick("sales", n=5)` | `-pick "sales,n=5"` |
-| **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.pick("sales", n=5, order="min")` | `-pick "sales,n=5,order=min"` |
-| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.pick("sales", prop=0.1)` | `-pick "sales,prop=0.1"` |
-| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by("g").pick("x", n=3)` | `-by g -pick "x,n=3"` |
+| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange("sales desc").head(5)` | `-arrange "sales desc" -head 5` |
+| **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.arrange("sales").head(5)` | `-arrange sales -head 5` |
+| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange("sales desc").head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
+| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by("g").arrange("x desc").head(3)` | `-by g -arrange "x desc" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -12089,7 +12141,7 @@ df_grouped <- df %>%
 
 ### The Pytae Solution: `ungroup()` is Dead
 In Pytae, grouping is strictly **single-shot, non-destructive, and auto-clearing**:
-- `df.by(*cols)` establishes a grouping context for the *immediate next verb* (`mutate`, `agg`, `pick`).
+- `df.by(*cols)` establishes a grouping context for the *immediate next verb* (`mutate`, `agg`, `head`, `tail`).
 - As soon as that verb completes, the grouping context is automatically consumed and discarded.
 - Downstream verbs immediately evaluate at the whole-table scope without any need for `ungroup()`:
 
@@ -12213,13 +12265,13 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
 | **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
 
-### 6. Slicing Top / Bottom Records (`pick`)
+### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.pick("sales", n=5)` | `-pick "sales,n=5"` |
-| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.pick("sales", n=5, order="min")` | `-pick "sales,n=5,order=min"` |
-| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.pick("sales", prop=0.1)` | `-pick "sales,prop=0.1"` |
-| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by("g").pick("x", n=3)` | `-by g -pick "x,n=3"` |
+| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.arrange("sales desc").head(5)` | `-arrange "sales desc" -head 5` |
+| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.arrange("sales").head(5)` | `-arrange sales -head 5` |
+| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.arrange("sales desc").head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
+| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by("g").arrange("x desc").head(3)` | `-by g -arrange "x desc" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -12610,12 +12662,12 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Deduplicate Table** | `PROC SORT NODUPRECS; BY _ALL_; RUN;` | `df.distinct()` | `-distinct` |
 | **Deduplicate by Keys** | `PROC SORT NODUPKEY; BY a b; RUN;` | `df.distinct("a", "b")` | `-distinct "a,b"` |
 
-### 8. Extreme Record Slicing (`pick`)
+### 8. Extreme Record Slicing (`arrange` + `head` / `tail`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.pick("x", n=5)` | `-pick "x,n=5"` |
-| **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.pick("x", n=5, order="min")` | `-pick "x,n=5,order=min"` |
-| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by("g").pick("x", n=1)` | `-by g -pick "x,n=1"` |
+| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange("x desc").head(5)` | `-arrange "x desc" -head 5` |
+| **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange("x").head(5)` | `-arrange x -head 5` |
+| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by("g").arrange("x desc").head(1)` | `-by g -arrange "x desc" -head 1` |
 
 ### 9. Reshaping & Pivoting (`wide`, `long`, `pivot`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -13125,7 +13177,7 @@ if __name__ == "__main__":
 │   │   ├── library_only.md
 │   │   ├── mutate.md
 │   │   ├── other_utilities.md
-│   │   ├── pick.md
+│   │   ├── head_tail.md
 │   │   ├── pivot.md
 │   │   ├── plotting.ipynb
 │   │   ├── plotting.md
@@ -13471,10 +13523,20 @@ def arrange(df: Any, *specs: str, na_last: bool = True) -> DataFrame:
     return DataFrame(df).arrange(*specs, na_last=na_last)
 
 
-def pick(df: Any, spec: str, n: int | None = None, **kwargs: Any) -> DataFrame:
+def head(df: Any, n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame:
     if isinstance(df, GroupedDataFrame):
-        return df.pick(spec, n=n, **kwargs)
-    return DataFrame(df).pick(spec, n=n, **kwargs)
+        return df.head(n=n, prop=prop, with_ties=with_ties)
+    return DataFrame(df).head(n=n, prop=prop, with_ties=with_ties)
+
+
+def tail(df: Any, n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame:
+    if isinstance(df, GroupedDataFrame):
+        return df.tail(n=n, prop=prop, with_ties=with_ties)
+    return DataFrame(df).tail(n=n, prop=prop, with_ties=with_ties)
+
+
+def pick(*args: Any, **kwargs: Any) -> Any:
+    raise AttributeError("pt.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
 
 
 def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
@@ -13734,6 +13796,8 @@ __all__ = [
     "rename",
     "sql",
     "arrange",
+    "head",
+    "tail",
     "pick",
     "distinct",
     "dropna",
@@ -14502,16 +14566,26 @@ class PolarsPtAccessor:
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
 
-    def pick(
+    def head(
         self,
-        spec: str,
-        n: int | None = None,
+        n: int | str | None = None,
+        *,
         prop: float | None = None,
-        order: str = "max",
         with_ties: bool = False,
-        na_last: bool = True,
     ) -> DataFrame:
-        return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
+        return DataFrame(self._obj).head(n=n, prop=prop, with_ties=with_ties)
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
+
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
 
     def sample(
         self,
@@ -14682,16 +14756,26 @@ class PandasPtAccessor:
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
 
-    def pick(
+    def head(
         self,
-        spec: str,
-        n: int | None = None,
+        n: int | str | None = None,
+        *,
         prop: float | None = None,
-        order: str = "max",
         with_ties: bool = False,
-        na_last: bool = True,
     ) -> DataFrame:
-        return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
+        return DataFrame(self._obj).head(n=n, prop=prop, with_ties=with_ties)
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
+
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
 
     def sample(
         self,
@@ -14863,6 +14947,7 @@ from pytae.cli_parsing import (
     parse_file_arg,
     parse_filter,
     parse_fraction,
+    parse_head_limit,
     parse_join_arg,
     parse_list_order,
     parse_positive_int,
@@ -14957,8 +15042,6 @@ _CLI_FLAGS = {
     "--frac",
     "-arrange",
     "--arrange",
-    "-pick",
-    "--pick",
     "-by",
     "--by",
     "-nrows",
@@ -15150,22 +15233,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--head",
         nargs="?",
         const=5,
-        type=parse_positive_int,
+        type=parse_head_limit,
         default=None,
-        metavar="N",
+        metavar="LIMIT",
         action=_OrderedValue,
-        help="print the first N rows (default 5)",
+        help="print the first N rows or proportion, group-aware with -by (default 5)",
     )
     parser.add_argument(
         "-tail",
         "--tail",
         nargs="?",
         const=5,
-        type=parse_positive_int,
+        type=parse_head_limit,
         default=None,
-        metavar="N",
+        metavar="LIMIT",
         action=_OrderedValue,
-        help="print the last N rows (default 5)",
+        help="print the last N rows or proportion, group-aware with -by (default 5)",
     )
     parser.add_argument("-shape", "--shape", action=_OrderedFlag, help="print (rows, cols)")
     parser.add_argument(
@@ -15300,22 +15383,13 @@ def build_parser() -> argparse.ArgumentParser:
         help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc"',
     )
     parser.add_argument(
-        "-pick",
-        "--pick",
-        dest="pick",
-        default=None,
-        metavar="SPEC",
-        action=_OrderedStore,
-        help='pick top/bottom rows by column, e.g. -pick "mass,n=3" or -pick "mass,prop=0.1,order=min"',
-    )
-    parser.add_argument(
         "-by",
         "--by",
         dest="by",
         default=None,
         metavar="COLUMNS",
         help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
-        "Used by -agg, -mutate, -pick.",
+        "Used by -agg, -mutate, -head, -tail.",
     )
     parser.add_argument(
         "-nrows",
@@ -15686,8 +15760,9 @@ def main(argv: list[str] | None = None) -> int:
         (("-agg_df", "--agg_df"), "'-agg_df' has been removed; use '-agg' instead"),
         (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
         (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
-        (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-pick' instead"),
-        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-pick with order=min' instead"),
+        (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
+        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-arrange ... -tail N' (or '-arrange ... desc -head N') instead"),
+        (("-pick", "--pick"), "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead"),
         (("-group_by", "--group_by", "-groupby", "--groupby"), "'-group_by' has been removed; use '-by' instead"),
         (("-handle_missing", "--handle_missing"), "'-handle_missing' has been removed; use '-fillna' instead"),
         (("-fill_null", "--fill_null"), "'-fill_null' has been removed; use '-fillna' instead"),
@@ -15799,7 +15874,6 @@ def main(argv: list[str] | None = None) -> int:
             args.tail is not None,
             args.sample is not None,
             args.arrange is not None,
-            args.pick is not None,
             args.agg is not None,
             args.fillna is not None,
             args.dropna is not None,
@@ -15834,7 +15908,6 @@ def main(argv: list[str] | None = None) -> int:
             args.tail is not None,
             args.sample is not None,
             args.arrange is not None,
-            args.pick is not None,
             args.agg is not None,
             args.fillna is not None,
             args.dropna is not None,
@@ -15851,11 +15924,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
             "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-sample/-arrange/"
-            "-pick/-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
+            "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
             "run -shape separately"
         )
-    if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
-        parser.error("-by requires -agg, -mutate, -pick")
+    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None:
+        parser.error("-by requires -agg, -mutate, -head, or -tail")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
     if args.tol is not None and args.diff is None:
@@ -16158,32 +16231,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -arrange "species, -body_mass_g"',
             'pytae penguins.parquet -arrange "island, bill_length_mm asc"',
         ],
-        see_also=["-pick", "-head"],
+        see_also=["-head", "-tail", "-by"],
     ),
     "pick": KeywordHelp(
         name="pick",
-        flag="-pick, --pick SPEC",
-        syntax='pytae <path> [-by <cols>] -pick "<col>[,n=N|,prop=P][,order=max|min]"',
-        summary="Pick top or bottom rows ordered by a column, optionally grouped by column(s).",
+        flag="-pick (Removed)",
+        syntax="Use -arrange ... -head N (or -by ... -arrange ... -head N) instead.",
+        summary="Removed: use -arrange ... -head N (or -by ... -arrange ... -head N) instead.",
         description=(
-            "Selects rows with the highest (order=max, default) or lowest (order=min) values of a column.\n"
-            "When paired with -by, extracts extreme rows or proportions per group."
+            "The -pick verb has been removed in favor of composable sort and slice verbs:\n"
+            "  - Whole table top N: -arrange '<col> desc' -head N\n"
+            "  - Grouped top N:     -by <group> -arrange '<col> desc' -head N\n"
+            "  - Percentage/ties:   -head 10% or -head '3, ties=true'"
         ),
-        options=[
-            "col : Column to rank by (defaults to n=1, order=max).",
-            "col,n=N : Extract N rows (e.g. 'body_mass_g,n=3').",
-            "col,prop=P : Extract proportion of rows (e.g. 'body_mass_g,prop=0.1').",
-            "order=max|min : Whether to pick highest ('max', default) or lowest ('min') values.",
-            "-by <cols> : Grouping column(s) to partition by before picking.",
-        ],
+        options=[],
         examples=[
-            "pytae penguins.parquet -pick body_mass_g",
-            'pytae penguins.parquet -pick "body_mass_g,n=5"',
-            'pytae penguins.parquet -pick "body_mass_g,n=3,order=min"',
-            'pytae penguins.parquet -pick "body_mass_g,prop=0.1"',
-            'pytae penguins.parquet -by species -pick "body_mass_g,n=2"',
+            'pytae penguins.parquet -arrange "body_mass_g desc" -head 5',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
         ],
-        see_also=["-arrange", "-head", "-tail"],
+        see_also=["-arrange", "-head", "-tail", "-by"],
     ),
     "agg": KeywordHelp(
         name="agg",
@@ -16290,10 +16356,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="by",
         flag="-by, --by COLUMNS",
         syntax="pytae <path> -by <COLUMNS> [operation]",
-        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -pick).",
+        summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -head, -tail).",
         description=(
             "Partitions the dataset by one or more columns for subsequent operations.\n"
-            "Works with -agg, window -mutate, and -pick."
+            "Works with -agg, window -mutate, and group-aware -head / -tail slicing."
         ),
         options=[
             "col : Single grouping column.",
@@ -16303,10 +16369,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             'pytae penguins.parquet -by "species,island" -agg "mean,n"',
-            'pytae penguins.parquet -by species -pick "body_mass_g,n=2"',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
             'pytae penguins.parquet -by species -mutate "avg = mean(body_mass_g)"',
         ],
-        see_also=["-agg", "-mutate", "-pick"],
+        see_also=["-agg", "-mutate", "-head", "-tail"],
     ),
     "clean_columns": KeywordHelp(
         name="clean_columns",
@@ -16514,29 +16580,52 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "head": KeywordHelp(
         name="head",
-        flag="-head, --head [N]",
-        syntax="pytae <path> -head [N]",
-        summary="Print the first N rows (default: 5).",
-        description="Limits the working DataFrame to the first N rows.",
-        options=["N : Number of rows (default: 5)."],
+        flag="-head, --head [LIMIT]",
+        syntax="pytae <path> [-by <cols>] -head [LIMIT]",
+        summary="Print the first N rows or proportion (default: 5), group-aware with -by.",
+        description=(
+            "Limits the working DataFrame to the first N rows or proportion of rows.\n"
+            "When paired with -by, extracts top rows per group. When paired with -arrange, selects top records."
+        ),
+        options=[
+            "N : Number of rows (default: 5, e.g. -head 10).",
+            "P% : Proportion of rows (e.g. -head 10% or -head 0.1).",
+            "'N, ties=true' : Include all boundary ties from preceding -arrange.",
+            "-by <cols> : Extract top rows within each group.",
+        ],
         examples=[
             "pytae penguins.parquet -head",
             "pytae penguins.parquet -head 10",
+            "pytae penguins.parquet -head 10%",
+            'pytae penguins.parquet -arrange "body_mass_g desc" -head 3',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
+            'pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true"',
         ],
-        see_also=["-tail", "-sample", "-nrows"],
+        see_also=["-tail", "-arrange", "-by", "-sample"],
     ),
     "tail": KeywordHelp(
         name="tail",
-        flag="-tail, --tail [N]",
-        syntax="pytae <path> -tail [N]",
-        summary="Print the last N rows (default: 5).",
-        description="Limits the working DataFrame to the last N rows.",
-        options=["N : Number of rows (default: 5)."],
+        flag="-tail, --tail [LIMIT]",
+        syntax="pytae <path> [-by <cols>] -tail [LIMIT]",
+        summary="Print the last N rows or proportion (default: 5), group-aware with -by.",
+        description=(
+            "Limits the working DataFrame to the last N rows or proportion of rows.\n"
+            "When paired with -by, extracts bottom rows per group."
+        ),
+        options=[
+            "N : Number of rows (default: 5, e.g. -tail 10).",
+            "P% : Proportion of rows (e.g. -tail 10% or -tail 0.1).",
+            "'N, ties=true' : Include all boundary ties from preceding -arrange.",
+            "-by <cols> : Extract bottom rows within each group.",
+        ],
         examples=[
             "pytae penguins.parquet -tail",
             "pytae penguins.parquet -tail 10",
+            "pytae penguins.parquet -tail 10%",
+            'pytae penguins.parquet -arrange "body_mass_g desc" -tail 3',
+            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -tail 2',
         ],
-        see_also=["-head", "-sample"],
+        see_also=["-head", "-arrange", "-by", "-sample"],
     ),
     "shape": KeywordHelp(
         name="shape",
@@ -16794,6 +16883,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from dataclasses import dataclass
 import difflib
 import glob
 import re
@@ -16984,68 +17074,97 @@ def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
     return cols, asc_list
 
 
-def parse_pick_spec(raw: str, flag_name: str = "-pick") -> tuple[str, int | None, float | None, str]:
-    """Parse -pick SPEC.
-
-    Canonical syntax:
-      - 'col,n=N'             e.g. 'body_mass_g,n=3' (order=max by default)
-      - 'col,n=N,order=min'   e.g. 'body_mass_g,n=3,order=min'
-      - 'col,prop=P'         e.g. 'body_mass_g,prop=0.1'
-      - 'col'                e.g. 'body_mass_g' (defaults to n=1, order=max)
-      - bracketed spaced names: '[bill length mm],n=3'
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
-
-    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
-    if not tokens:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
-
-    col_raw = tokens[0]
-    col = _unquote_name(col_raw)
-    if not col:
-        raise SystemExit(f"{flag_name}: expected a column name, e.g. 'col' or 'col,n=N'")
-
+@dataclass
+class SliceSpec:
     n: int | None = None
     prop: float | None = None
-    order: str = "min" if "min" in flag_name.lower() else "max"
+    with_ties: bool = False
 
-    if len(tokens) == 1:
-        return col, 1, None, order
 
-    for param in tokens[1:]:
-        if param.startswith("n="):
-            val_str = param[2:].strip()
-            if not val_str.isdigit() or int(val_str) <= 0:
-                raise SystemExit(f"{flag_name}: invalid n value '{val_str}'; must be a positive integer")
-            if n is not None or prop is not None:
-                raise SystemExit(f"{flag_name}: specify either n= or prop= once")
-            n = int(val_str)
-        elif param.startswith("prop="):
-            val_str = param[5:].strip()
+def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
+    """Parse -head or -tail limit argument supporting:
+    - 5 (row count, default 5)
+    - '10%' (percentage proportion)
+    - 0.1 (float proportion)
+    - '3, ties=true' (row count with boundary ties)
+    - '10%, with_ties=true' (proportion with boundary ties)
+    """
+    if isinstance(raw, SliceSpec):
+        return raw
+    if isinstance(raw, int):
+        if raw <= 0:
+            raise argparse.ArgumentTypeError(f"{flag_name}: row count must be > 0, got {raw}")
+        return SliceSpec(n=raw, prop=None, with_ties=False)
+    if isinstance(raw, float):
+        if not (0 < raw <= 1):
+            raise argparse.ArgumentTypeError(f"{flag_name}: proportion must be between 0 and 1, got {raw}")
+        return SliceSpec(n=None, prop=raw, with_ties=False)
+
+    s = str(raw).strip()
+    if not s:
+        return SliceSpec(n=5, prop=None, with_ties=False)
+
+    tokens = [t.strip() for t in s.split(",") if t.strip()]
+    n: int | None = None
+    prop: float | None = None
+    with_ties: bool = False
+
+    for tok in tokens:
+        lowered = tok.lower()
+        if lowered in ("ties", "with_ties", "ties=true", "with_ties=true", "ties=1", "with_ties=1"):
+            with_ties = True
+        elif lowered in ("ties=false", "with_ties=false", "ties=0", "with_ties=0"):
+            with_ties = False
+        elif tok.startswith("n="):
+            v_str = tok[2:].strip()
             try:
-                p_val = float(val_str)
+                val = int(v_str)
+                if val <= 0:
+                    raise ValueError
+                n = val
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"{flag_name}: invalid n value '{v_str}'; must be a positive integer")
+        elif tok.startswith("prop="):
+            v_str = tok[5:].strip()
+            try:
+                p_val = float(v_str.rstrip("%")) / 100.0 if v_str.endswith("%") else float(v_str)
                 if not (0 < p_val <= 1):
                     raise ValueError
+                prop = p_val
             except ValueError:
-                raise SystemExit(f"{flag_name}: invalid prop value '{val_str}'; must be a number between 0 and 1")
-            if n is not None or prop is not None:
-                raise SystemExit(f"{flag_name}: specify either n= or prop= once")
-            prop = p_val
-        elif param.startswith("order="):
-            ord_val = param[6:].strip().lower()
-            if ord_val not in ("max", "min"):
-                raise SystemExit(f"{flag_name}: invalid order value '{ord_val}'; must be 'max' or 'min'")
-            order = ord_val
+                raise argparse.ArgumentTypeError(f"{flag_name}: invalid prop value '{v_str}'; must be a number between 0 and 1")
+        elif tok.endswith("%"):
+            try:
+                p_val = float(tok[:-1]) / 100.0
+                if not (0 < p_val <= 1):
+                    raise ValueError
+                prop = p_val
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"{flag_name}: invalid percentage '{tok}'; must be between 0% and 100%")
         else:
-            raise SystemExit(
-                f"{flag_name}: unrecognized parameter '{param}'; expected 'n=N', 'prop=P', or 'order=max|min'"
-            )
+            try:
+                if "." in tok:
+                    p_val = float(tok)
+                    if not (0 < p_val <= 1):
+                        raise argparse.ArgumentTypeError(f"{flag_name}: proportion must be between 0 and 1, got {tok}")
+                    prop = p_val
+                else:
+                    val = int(tok)
+                    if val <= 0:
+                        raise argparse.ArgumentTypeError(f"{flag_name}: must be > 0, got {val}")
+                    n = val
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"{flag_name}: unrecognized limit/argument '{tok}'")
 
+    if n is not None and prop is not None:
+        raise argparse.ArgumentTypeError(f"{flag_name}: specify either row count 'n' or proportion 'prop', not both")
     if n is None and prop is None:
-        n = 1
-    return col, n, prop, order
+        n = 5
+    return SliceSpec(n=n, prop=prop, with_ties=with_ties)
+
+
+def parse_pick_spec(*args: Any, **kwargs: Any) -> Any:
+    raise SystemExit("'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead.")
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -17888,6 +18007,8 @@ class _Pipeline:
         self._pldf: Any | None = None
         self._pending_exact: list[str] | None = None
         self._frames: dict[str, Any] = frames or {}
+        self._last_sort_cols: list[str] | None = None
+        self._last_sort_desc: list[bool] | None = None
 
     @property
     def _df(self) -> pd.DataFrame | None:
@@ -18102,7 +18223,13 @@ class _Pipeline:
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""
         try:
+            from pytae._parsing import _extract_arrange_specs
             from pytae.polars_engine import arrange_polars
+
+            cols, asc = _extract_arrange_specs((spec,), available_cols=set(self._available_columns()))
+            descending = [not a for a in asc]
+            self._last_sort_cols = cols
+            self._last_sort_desc = descending
 
             self._pldf = arrange_polars(self.polars_lazy_frame(), spec)
             self._df = None
@@ -18110,30 +18237,8 @@ class _Pipeline:
         except Exception as exc:
             return f"-arrange: {exc}"
 
-    def apply_pick(self, spec: str, *, by: list[str] | None = None, flag: str = "-pick") -> str | None:
-        """Pick top or bottom rows by a column, optionally grouped by 'by'."""
-        from pytae.cli_parsing import parse_pick_spec, unknown_columns_message
-
-        try:
-            col, n, prop, order = parse_pick_spec(spec, flag)
-        except SystemExit as exc:
-            return str(exc)
-        available = self._available_columns()
-        clean_col = _unquote_name(col.strip())
-        if clean_col not in available:
-            return unknown_columns_message(flag, [clean_col], available)
-        if by:
-            unknown_by = [c for c in by if c not in available]
-            if unknown_by:
-                return unknown_columns_message("-by", unknown_by, available)
-        try:
-            from pytae.polars_engine import pick_polars
-
-            self._pldf = pick_polars(self.polars_lazy_frame(), clean_col, n=n, prop=prop, order=order, by=by)
-            self._df = None
-            return None
-        except Exception as exc:
-            return f"{flag}: {exc}"
+    def apply_pick(self, *args: Any, **kwargs: Any) -> str:
+        return "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
 
     def apply_fillna(self, value: Any, cols: list[str] | None = None, nans: bool = True) -> str | None:
         """Apply one -fillna operation to the current view. Returns an error message or None."""
@@ -18247,25 +18352,49 @@ class _Pipeline:
             return self._df
         return self.polars_frame()
 
-    def head(self, n: int) -> Any:
-        if self._progress:
-            df = self.dataframe().head(n)
-            self._df = df
-            self._pldf = None
-            return df
+    def head(self, val: Any = 5, *, by: list[str] | None = None) -> Any:
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+        from pytae.polars_engine import slice_head_polars
+
+        spec = parse_head_limit(val, flag_name="-head") if not isinstance(val, SliceSpec) else val
         lf = self.polars_lazy_frame()
-        self._pldf = lf.head(n).collect()
+        res = slice_head_polars(
+            lf,
+            n=spec.n,
+            prop=spec.prop,
+            with_ties=spec.with_ties,
+            by=by,
+            sort_cols=self._last_sort_cols,
+            sort_desc=self._last_sort_desc,
+        )
+        if self._progress:
+            self._df = res.collect().to_pandas() if hasattr(res, "collect") else res.to_pandas()
+            self._pldf = None
+            return self._df
+        self._pldf = res.collect() if hasattr(res, "collect") else res
         self._df = None
         return self._pldf
 
-    def tail(self, n: int) -> Any:
-        if self._progress:
-            df = self.dataframe().tail(n)
-            self._df = df
-            self._pldf = None
-            return df
+    def tail(self, val: Any = 5, *, by: list[str] | None = None) -> Any:
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+        from pytae.polars_engine import slice_tail_polars
+
+        spec = parse_head_limit(val, flag_name="-tail") if not isinstance(val, SliceSpec) else val
         lf = self.polars_lazy_frame()
-        self._pldf = lf.tail(n).collect()
+        res = slice_tail_polars(
+            lf,
+            n=spec.n,
+            prop=spec.prop,
+            with_ties=spec.with_ties,
+            by=by,
+            sort_cols=self._last_sort_cols,
+            sort_desc=self._last_sort_desc,
+        )
+        if self._progress:
+            self._df = res.collect().to_pandas() if hasattr(res, "collect") else res.to_pandas()
+            self._pldf = None
+            return self._df
+        self._pldf = res.collect() if hasattr(res, "collect") else res
         self._df = None
         return self._pldf
 
@@ -19174,8 +19303,20 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "head":
+            by_cols = (
+                parse_columns(args.by)
+                if (args.by and args.agg is None and not args.mutate)
+                else None
+            )
+            if by_cols:
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             head_val = _next_op_val("head", args.head)
-            frame = pipeline.head(head_val)
+            try:
+                frame = pipeline.head(head_val, by=by_cols)
+            except Exception as exc:
+                return _fail(parser, batch, f"-head: {exc}")
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -19185,8 +19326,20 @@ def _process_path(
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
+            by_cols = (
+                parse_columns(args.by)
+                if (args.by and args.agg is None and not args.mutate)
+                else None
+            )
+            if by_cols:
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             tail_val = _next_op_val("tail", args.tail)
-            frame = pipeline.tail(tail_val)
+            try:
+                frame = pipeline.tail(tail_val, by=by_cols)
+            except Exception as exc:
+                return _fail(parser, batch, f"-tail: {exc}")
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -19210,17 +19363,6 @@ def _process_path(
         elif op == "arrange":
             arrange_val = _next_op_val("arrange", getattr(args, "arrange", None))
             err = pipeline.apply_arrange(arrange_val)
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "pick":
-            by_cols = parse_columns(args.by) if args.by else None
-            if by_cols:
-                avail_cols = pipeline.columns()
-                if any(c not in avail_cols for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
-            pick_val = _next_op_val("pick", getattr(args, "pick", None))
-            err = pipeline.apply_pick(pick_val, by=by_cols, flag="-pick")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -19455,7 +19597,9 @@ import polars as pl
 
 from pytae._parsing import _parse_filter_string, _parse_mutate_spec_entries
 from pytae._text import unquote_name as _unquote_name
+from pytae._parsing import _extract_arrange_specs
 from pytae.polars_engine import (
+    _df_columns,
     agg_polars,
     arrange_polars,
     clean_columns_polars,
@@ -19470,6 +19614,8 @@ from pytae.polars_engine import (
     pick_polars,
     pivot_polars,
     select_polars,
+    slice_head_polars,
+    slice_tail_polars,
     sql_polars,
     wide_polars,
 )
@@ -19597,10 +19743,18 @@ pl.DataType.__eq__ = _compat_datatype_eq
 class DataFrame:
     """High-performance tabular data frame powered by Polars, exposing Pytae's fluent grammar."""
 
-    def __init__(self, data: Any = None, orig_col_map: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: Any = None,
+        orig_col_map: dict[str, Any] | None = None,
+        _last_sort_cols: list[str] | None = None,
+        _last_sort_desc: list[bool] | None = None,
+    ) -> None:
         self._orig_col_map: dict[str, Any] = dict(orig_col_map) if orig_col_map else {}
         self._col_collisions: set[str] = set()
         self._orig_index: list[Any] | None = list(data.index) if hasattr(data, "index") else None
+        self._last_sort_cols: list[str] | None = _last_sort_cols
+        self._last_sort_desc: list[bool] | None = _last_sort_desc
 
         def _detect_collisions(pdf: Any) -> set[str]:
             collisions = set()
@@ -19622,9 +19776,15 @@ class DataFrame:
                 self._orig_col_map = dict(data._orig_col_map)
             self._col_collisions = set(data._col_collisions)
             self._orig_index = data._orig_index
+            if self._last_sort_cols is None:
+                self._last_sort_cols = data._last_sort_cols
+                self._last_sort_desc = data._last_sort_desc
         elif isinstance(data, GroupedDataFrame):
             self._df = data._df
             self._orig_index = data._orig_index
+            if self._last_sort_cols is None:
+                self._last_sort_cols = data._last_sort_cols
+                self._last_sort_desc = data._last_sort_desc
         elif hasattr(data, "to_pandas") and not isinstance(data, (str, Path)):
             try:
                 import pandas as pd
@@ -19868,11 +20028,89 @@ class DataFrame:
             return f"<pre>{self.explain()}</pre>"
         return self._df._repr_html_()
 
-    def head(self, n: int = 5) -> DataFrame:
-        return DataFrame(self._df.head(n))
+    def head(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        """Return the first n rows, proportion of rows, or top boundary ties."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
 
-    def tail(self, n: int = 5) -> DataFrame:
-        return DataFrame(self._df.tail(n))
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="head")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
+        return DataFrame(
+            slice_head_polars(
+                self._df,
+                n=n,
+                prop=prop,
+                with_ties=with_ties,
+                by=None,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        """Return the last n rows, proportion of rows, or bottom boundary ties."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="tail")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
+        return DataFrame(
+            slice_tail_polars(
+                self._df,
+                n=n,
+                prop=prop,
+                with_ties=with_ties,
+                by=None,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
 
     def sample(
         self,
@@ -20094,7 +20332,13 @@ class DataFrame:
     def arrange(self, *specs: str, na_last: bool = True) -> DataFrame:
         """Sort rows by one or more column expressions (e.g. 'col1, -col2 desc')."""
         spec_str = ",".join(specs)
-        return DataFrame(arrange_polars(self._df, spec_str, na_last=na_last))
+        cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
+        descending = [not a for a in asc]
+        sorted_df = arrange_polars(self._df, spec_str, na_last=na_last)
+        res = DataFrame(sorted_df, orig_col_map=self._orig_col_map)
+        res._last_sort_cols = cols
+        res._last_sort_desc = descending
+        return res
 
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         """Deduplicate rows across all or specific columns with keep='first'|'last'|'none'."""
@@ -20183,31 +20427,12 @@ class DataFrame:
         left_df = self.to_pandas()
         return _compute_diff(left_df, other, "<left>", tol=tol, rtol=rtol)
 
-    def pick(
-        self,
-        spec: str,
-        n: int | None = None,
-        prop: float | None = None,
-        order: str = "max",
-        with_ties: bool = False,
-        na_last: bool = True,
-    ) -> DataFrame:
-        """Select top/bottom rows by column expression (replaces slice_max/slice_min)."""
-        return DataFrame(
-            pick_polars(
-                self._df,
-                spec,
-                by=None,
-                n=n,
-                prop=prop,
-                order=order,
-                with_ties=with_ties,
-                na_last=na_last,
-            )
-        )
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        """Deprecated: pick() has been removed in favor of arrange().head(n) / arrange().tail(n)."""
+        raise AttributeError("df.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
 
     def by(self, *cols: Any) -> GroupedDataFrame:
-        """Establish a grouping context for subsequent .mutate(), .agg(), or .pick() operations."""
+        """Establish a grouping context for subsequent .mutate(), .agg(), or .head()/.tail() operations."""
         if not cols:
             raise ValueError("df.pt.by() takes at least one column name")
         for c in cols:
@@ -20227,7 +20452,14 @@ class DataFrame:
                     resolved.append(_unquote_name(c.strip()))
             else:
                 resolved.append(str(c))
-        return GroupedDataFrame(self._df, resolved, orig_col_map=self._orig_col_map, orig_index=self._orig_index)
+        return GroupedDataFrame(
+            self._df,
+            resolved,
+            orig_col_map=self._orig_col_map,
+            orig_index=self._orig_index,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Create, derive, or transform columns using vectorized expressions, if_else, map, or callables.
@@ -20581,11 +20813,15 @@ class GroupedDataFrame:
         by_cols: list[str],
         orig_col_map: dict[str, Any] | None = None,
         orig_index: Any = None,
+        _last_sort_cols: list[str] | None = None,
+        _last_sort_desc: list[bool] | None = None,
     ) -> None:
         self._df = df
         self._by = by_cols
         self._orig_col_map = orig_col_map or {}
         self._orig_index = orig_index
+        self._last_sort_cols = _last_sort_cols
+        self._last_sort_desc = _last_sort_desc
 
     @property
     def pt(self) -> GroupedDataFrame:
@@ -20598,7 +20834,12 @@ class GroupedDataFrame:
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         """Overwrite grouping with new keys."""
-        return DataFrame(self._df, orig_col_map=self._orig_col_map).by(*cols)
+        return DataFrame(
+            self._df,
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        ).by(*cols)
 
     def to_pandas(self) -> Any:
         import pandas as pd
@@ -20620,7 +20861,12 @@ class GroupedDataFrame:
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
-        df = DataFrame(self._df, orig_col_map=self._orig_col_map)
+        df = DataFrame(
+            self._df,
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
         df._orig_index = self._orig_index
         attr = getattr(df, name)
         if callable(attr):
@@ -20632,10 +20878,29 @@ class GroupedDataFrame:
                         by_cols=self._by,
                         orig_col_map=res._orig_col_map,
                         orig_index=res._orig_index,
+                        _last_sort_cols=res._last_sort_cols,
+                        _last_sort_desc=res._last_sort_desc,
                     )
                 return res
             return wrapper
         return attr
+
+    def arrange(self, *specs: str, na_last: bool = True) -> GroupedDataFrame:
+        """Sort rows within groups or across groups while preserving grouping context."""
+        spec_str = ",".join(specs)
+        cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
+        descending = [not a for a in asc]
+        all_cols = self._by + [c for c in cols if c not in self._by]
+        all_desc = [False] * len(self._by) + [descending[cols.index(c)] for c in all_cols[len(self._by):]]
+        sorted_df = self._df.sort(all_cols, descending=all_desc, nulls_last=na_last)
+        return GroupedDataFrame(
+            sorted_df,
+            by_cols=self._by,
+            orig_col_map=self._orig_col_map,
+            orig_index=self._orig_index,
+            _last_sort_cols=cols,
+            _last_sort_desc=descending,
+        )
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Calculate windowed mutations across the established groups."""
@@ -20776,28 +21041,88 @@ class GroupedDataFrame:
             value, *cols, subset=subset, nans=nans, **kwargs
         )
 
-    def pick(
+    def head(
         self,
-        spec: str,
-        n: int | None = None,
+        n: int | str | None = None,
+        *,
         prop: float | None = None,
-        order: str = "max",
         with_ties: bool = False,
-        na_last: bool = True,
     ) -> DataFrame:
-        """Select top/bottom rows per group."""
+        """Select top n rows or proportion per group, returning an ungrouped DataFrame."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="head")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
         return DataFrame(
-            pick_polars(
+            slice_head_polars(
                 self._df,
-                spec,
-                by=self._by,
                 n=n,
                 prop=prop,
-                order=order,
                 with_ties=with_ties,
-                na_last=na_last,
-            )
+                by=self._by,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
         )
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        """Select bottom n rows or proportion per group, returning an ungrouped DataFrame."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="tail")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
+        return DataFrame(
+            slice_tail_polars(
+                self._df,
+                n=n,
+                prop=prop,
+                with_ties=with_ties,
+                by=self._by,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
+        )
+
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        raise AttributeError("GroupedDataFrame.pick() has been removed; use df.by(...).arrange(...).head(n) instead.")
 
     def sample(
         self,
@@ -24120,78 +24445,143 @@ def mutate_polars(
     return cur
 
 
-def pick_polars(
-    df: pl.DataFrame,
-    col: str,
+def slice_head_polars(
+    df: Any,
     n: int | None = None,
     prop: float | None = None,
-    order: str = "max",
     with_ties: bool = False,
-    na_last: bool = True,
     by: list[str] | None = None,
+    sort_cols: list[str] | None = None,
+    sort_desc: list[bool] | None = None,
 ) -> Any:
-    """Select the rows with the largest (or smallest) values of a column, optionally grouped by 'by'."""
-    clean_col = _unquote_name(col.strip())
-    df_cols = _df_columns(df)
-    if clean_col not in df_cols:
-        raise KeyError(f"pick: column '{clean_col}' not found in DataFrame. Available columns: {df_cols}")
+    """Slice the first n rows or proportion of rows, optionally per group and with boundary ties."""
+    return _slice_bound_polars(
+        df,
+        n=n,
+        prop=prop,
+        with_ties=with_ties,
+        by=by,
+        sort_cols=sort_cols,
+        sort_desc=sort_desc,
+        is_head=True,
+    )
 
+
+def slice_tail_polars(
+    df: Any,
+    n: int | None = None,
+    prop: float | None = None,
+    with_ties: bool = False,
+    by: list[str] | None = None,
+    sort_cols: list[str] | None = None,
+    sort_desc: list[bool] | None = None,
+) -> Any:
+    """Slice the last n rows or proportion of rows, optionally per group and with boundary ties."""
+    return _slice_bound_polars(
+        df,
+        n=n,
+        prop=prop,
+        with_ties=with_ties,
+        by=by,
+        sort_cols=sort_cols,
+        sort_desc=sort_desc,
+        is_head=False,
+    )
+
+
+def _slice_bound_polars(
+    df: Any,
+    n: int | None = None,
+    prop: float | None = None,
+    with_ties: bool = False,
+    by: list[str] | None = None,
+    sort_cols: list[str] | None = None,
+    sort_desc: list[bool] | None = None,
+    is_head: bool = True,
+) -> Any:
+    op_name = "head" if is_head else "tail"
     if n is not None and prop is not None:
-        raise ValueError("pick: specify either 'n' or 'prop', not both")
+        raise ValueError(f"{op_name}: specify either 'n' or 'prop', not both")
 
     if n is None and prop is None:
-        n = 1
-
-    clean_order = order.strip().lower() if isinstance(order, str) else "max"
-    if clean_order not in ("max", "min"):
-        raise ValueError(f"pick: order must be 'max' or 'min', got {order!r}")
-    is_desc = clean_order == "max"
+        n = 5
 
     if prop is not None:
         if not (0 < prop <= 1):
-            raise ValueError(f"pick: 'prop' must be between 0 and 1, got {prop}")
+            raise ValueError(f"{op_name}: 'prop' must be between 0 and 1, got {prop}")
 
+    if n is not None:
+        if n < 0:
+            raise ValueError(f"{op_name}: 'n' cannot be negative, got {n}")
+        if n == 0:
+            return df.head(0)
+
+    if with_ties and not sort_cols:
+        raise ValueError("with_ties=True requires calling df.arrange() beforehand to determine tie-breaking order.")
+
+    df_cols = _df_columns(df)
     if by:
         unknown_by = [c for c in by if c not in df_cols]
         if unknown_by:
-            raise KeyError(f"pick: grouping column(s) {unknown_by} not found in DataFrame")
+            raise KeyError(f"{op_name}: grouping column(s) {unknown_by} not found in DataFrame")
 
-        sort_cols = by + [clean_col]
-        sort_desc = [False] * len(by) + [is_desc]
-        sorted_df = df.sort(sort_cols, descending=sort_desc, nulls_last=na_last)
+    if with_ties:
+        assert sort_cols is not None
+        assert sort_desc is not None
+        if len(sort_cols) == 1:
+            target = pl.col(sort_cols[0])
+            desc = sort_desc[0] if is_head else not sort_desc[0]
+        else:
+            target = pl.struct(sort_cols)
+            desc = sort_desc[0] if is_head else not sort_desc[0]
+
+        rank_expr = target.rank(method="min", descending=desc)
+        if by:
+            rank_expr = rank_expr.over(by)
 
         if prop is not None:
-            valid_cnt = pl.col(clean_col).drop_nulls().len().over(by)
-            cutoff = (valid_cnt * prop).floor().cast(pl.Int64).clip(lower_bound=1)
-            if with_ties:
-                rank_expr = pl.col(clean_col).rank(method="min", descending=is_desc).over(by)
-                return sorted_df.filter(rank_expr <= cutoff)
+            len_expr = pl.len().over(by) if by else pl.len()
+            cutoff = (len_expr * prop).floor().cast(pl.Int64).clip(lower_bound=1)
+            return df.filter(rank_expr <= cutoff)
+        else:
+            assert n is not None
+            return df.filter(rank_expr <= n)
+
+    if by:
+        if prop is not None:
+            grp_len = pl.len().over(by)
+            cutoff = (grp_len * prop).floor().cast(pl.Int64).clip(lower_bound=1)
             row_nr = pl.int_range(1, pl.len() + 1).over(by)
-            return sorted_df.filter(row_nr <= cutoff)
+            if is_head:
+                return df.filter(row_nr <= cutoff)
+            else:
+                return df.filter(row_nr > (grp_len - cutoff))
+        else:
+            assert n is not None
+            if is_head:
+                return df.group_by(by, maintain_order=True).head(n)
+            else:
+                return df.group_by(by, maintain_order=True).tail(n)
 
-        assert n is not None
-        if n <= 0:
-            return df.head(0)
-        if with_ties:
-            rank_expr = pl.col(clean_col).rank(method="min", descending=is_desc).over(by)
-            return sorted_df.filter(rank_expr <= n)
-        return sorted_df.group_by(by, maintain_order=True).head(n)
-
-    sorted_df = df.sort(clean_col, descending=is_desc, nulls_last=na_last)
+    # Ungrouped
     if prop is not None:
-        cnt_expr = sorted_df.select(pl.col(clean_col).drop_nulls().len())
-        valid_cnt = cnt_expr.collect().item() if isinstance(cnt_expr, pl.LazyFrame) else cnt_expr.item()
-        k = max(1, int(valid_cnt * prop))
-        if with_ties:
-            return sorted_df.filter(pl.col(clean_col).rank(method="min", descending=is_desc) <= k)
-        return sorted_df.head(k)
+        total_len = pl.len()
+        cutoff = (total_len * prop).floor().cast(pl.Int64).clip(lower_bound=1)
+        row_nr = pl.int_range(1, pl.len() + 1)
+        if is_head:
+            return df.filter(row_nr <= cutoff)
+        else:
+            return df.filter(row_nr > (total_len - cutoff))
+    else:
+        assert n is not None
+        if is_head:
+            return df.head(n)
+        else:
+            return df.tail(n)
 
-    assert n is not None
-    if n <= 0:
-        return df.head(0)
-    if with_ties:
-        return sorted_df.filter(pl.col(clean_col).rank(method="min", descending=is_desc) <= n)
-    return sorted_df.head(n)
+
+def pick_polars(*args: Any, **kwargs: Any) -> Any:
+    raise AttributeError("pick() has been removed; use arrange().head(n) instead (or by().arrange().head(n) for grouped slicing).")
 
 
 def long_polars(
@@ -26934,6 +27324,7 @@ import os
 import sys
 
 import pandas as pd
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -26962,7 +27353,6 @@ def test_library_arrange_basic_and_directions():
     assert list(res2["val"]) == [40, 20, 30, 10]
 
     # Leading '-' is rejected in line with 'one and only one obvious way'
-    import pytest
     with pytest.raises(ValueError, match=r"leading '-' is not supported"):
         df.pt.arrange("-grp", "val")
 
@@ -26988,7 +27378,7 @@ def test_library_arrange_bracket_spaced_columns():
     assert list(res2["first name"]) == ["Charlie", "Bob", "Alice"]
 
 
-def test_library_pick_canonical():
+def test_library_arrange_and_head_canonical():
     df = pd.DataFrame(
         {
             "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
@@ -26996,45 +27386,51 @@ def test_library_pick_canonical():
         }
     )
 
-    # Global pick (order=max)
-    top1 = df.pt.pick("body_mass_g", n=1)
+    # Global top 1
+    top1 = df.pt.arrange("body_mass_g desc").head(1)
     assert len(top1) == 1
     assert top1["body_mass_g"].iloc[0] == 5500
 
-    # Grouped pick (order=max)
-    top_per_grp = df.pt.by("species").pt.pick("body_mass_g", n=1)
+    # Grouped top 1 per group
+    top_per_grp = df.pt.by("species").arrange("body_mass_g desc").head(1)
     assert len(top_per_grp) == 2
     assert set(top_per_grp["body_mass_g"]) == {4000, 5500}
 
-    # Grouped pick (order=min)
-    bot_per_grp = df.pt.by("species").pt.pick("body_mass_g", n=1, order="min")
+    # Grouped bottom 1 per group via arrange asc
+    bot_per_grp = df.pt.by("species").arrange("body_mass_g").head(1)
     assert len(bot_per_grp) == 2
     assert set(bot_per_grp["body_mass_g"]) == {3000, 5000}
 
-    # Standalone function pt.pick
-    assert pt.pick(df, "body_mass_g", n=2).iloc[0]["body_mass_g"] == 5500
-    assert pt.pick(df, "body_mass_g", n=2, order="min").iloc[0]["body_mass_g"] == 3000
+    # Grouped bottom 1 per group via tail
+    bot_per_grp_tail = df.pt.by("species").arrange("body_mass_g desc").tail(1)
+    assert len(bot_per_grp_tail) == 2
+    assert set(bot_per_grp_tail["body_mass_g"]) == {3000, 5000}
+
+    # Standalone function pt.head
+    sorted_df = pt.arrange(df, "body_mass_g desc")
+    assert pt.head(sorted_df, 2).iloc[0]["body_mass_g"] == 5500
+    assert pt.tail(sorted_df, 2).iloc[-1]["body_mass_g"] == 3000
 
 
-def test_library_slice_max_and_min_removed():
-    import pytest
-
+def test_library_pick_and_slice_max_min_removed():
     df = pd.DataFrame({"x": [1, 2, 3]})
-    with pytest.raises(AttributeError, match=r"df\.pt\.slice_max\(\) has been removed; use df\.pt\.pick\(\) instead"):
+    with pytest.raises(AttributeError, match=r"pick\(\) has been removed"):
+        df.pt.pick("x")
+    with pytest.raises(AttributeError, match=r"pick\(\) has been removed"):
+        pt.pick(df, "x")
+    with pytest.raises(AttributeError, match=r"GroupedDataFrame\.pick\(\) has been removed"):
+        df.pt.by("x").pick("x")
+    with pytest.raises(AttributeError, match=r"slice_max\(\) has been removed"):
         df.pt.slice_max("x")
-    with pytest.raises(
-        AttributeError, match=r"df\.pt\.slice_min\(\) has been removed; use df\.pt\.pick\(..., order='min'\) instead"
-    ):
+    with pytest.raises(AttributeError, match=r"slice_min\(\) has been removed"):
         df.pt.slice_min("x")
-    with pytest.raises(AttributeError, match=r"pt\.slice_max\(\) has been removed; use pt\.pick\(\) instead"):
+    with pytest.raises(AttributeError, match=r"slice_max\(\) has been removed"):
         pt.slice_max(df, "x")
-    with pytest.raises(
-        AttributeError, match=r"pt\.slice_min\(\) has been removed; use pt\.pick\(..., order='min'\) instead"
-    ):
+    with pytest.raises(AttributeError, match=r"slice_min\(\) has been removed"):
         pt.slice_min(df, "x")
 
 
-def test_cli_arrange_and_pick(tmp_path, capsys):
+def test_cli_arrange_and_head(tmp_path, capsys):
     df = pd.DataFrame(
         {
             "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
@@ -27043,40 +27439,43 @@ def test_cli_arrange_and_pick(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    # -arrange with direction
+    # -arrange with direction and -head
     exit_code = cli.main([path, "-arrange", "body_mass_g desc", "-head", "1"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "5500" in out
 
-    # -pick with -by
-    exit_code = cli.main([path, "-by", "species", "-pick", "body_mass_g,n=1", "-shape"])
+    # -by with -arrange and -head
+    exit_code = cli.main([path, "-by", "species", "-arrange", "body_mass_g desc", "-head", "1", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(2, 2)" in out
 
-    # -pick with order=min and -by
-    exit_code = cli.main([path, "-by", "species", "-pick", "body_mass_g,n=1,order=min", "-shape"])
+    # -by with -arrange and -tail
+    exit_code = cli.main([path, "-by", "species", "-arrange", "body_mass_g desc", "-tail", "1", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(2, 2)" in out
 
 
-def test_cli_slice_max_min_fatal_error(tmp_path, capsys):
-    import pytest
-
+def test_cli_pick_and_slice_fatal_error(tmp_path, capsys):
     df = pd.DataFrame({"x": [1, 2, 3]})
     path = _write_csv(tmp_path, df)
 
     with pytest.raises(SystemExit):
+        cli.main([path, "-pick", "x"])
+    err = capsys.readouterr().err
+    assert "'-pick' has been removed; use '-arrange ... -head N'" in err
+
+    with pytest.raises(SystemExit):
         cli.main([path, "-slice_max", "x"])
     err = capsys.readouterr().err
-    assert "'-slice_max' has been removed; use '-pick' instead" in err
+    assert "'-slice_max' has been removed; use '-arrange ... -head N' instead" in err
 
     with pytest.raises(SystemExit):
         cli.main([path, "-slice_min", "x"])
     err = capsys.readouterr().err
-    assert "'-slice_min' has been removed; use '-pick with order=min' instead" in err
+    assert "'-slice_min' has been removed" in err
 
 
 def test_cli_distinct_and_dropna(tmp_path, capsys):
@@ -27101,54 +27500,58 @@ def test_cli_distinct_and_dropna(tmp_path, capsys):
     assert "(3, 2)" in out
 
 
-def test_pick_with_nan_by_keys():
-    """Verify that rows with NaN in grouping keys are not dropped by pick."""
+def test_head_with_nan_by_keys():
+    """Verify that rows with NaN in grouping keys are not dropped by head/tail."""
     df = pd.DataFrame(
         {
             "group": ["A", "A", None, None],
             "val": [10, 20, 100, 200],
         }
     )
-    # pick (order=max) with ties=False
-    res_max = pt.pick(pt.by(df, "group"), "val", n=1)
+    # top 1 per group
+    res_max = df.pt.by("group").arrange("val desc").head(1)
     assert len(res_max) == 2
     assert set(res_max["val"]) == {20, 200}
     assert res_max["group"].isna().sum() == 1
 
-    # pick (order=min) with ties=False
-    res_min = pt.pick(pt.by(df, "group"), "val", n=1, order="min")
+    # bottom 1 per group
+    res_min = df.pt.by("group").arrange("val").head(1)
     assert len(res_min) == 2
     assert set(res_min["val"]) == {10, 100}
     assert res_min["group"].isna().sum() == 1
 
-    # pick with ties=True
+    # with ties
     df_ties = pd.DataFrame(
         {
             "group": ["A", "A", None, None],
             "val": [20, 20, 200, 200],
         }
     )
-    res_max_ties = pt.pick(pt.by(df_ties, "group"), "val", n=1, with_ties=True)
+    res_max_ties = df_ties.pt.by("group").arrange("val desc").head(1, with_ties=True)
     assert len(res_max_ties) == 4
 
 
-def test_pick_edge_cases():
+def test_head_edge_cases():
     df = pd.DataFrame(
         {
             "val": [10, 20, None],
         }
     )
     # n <= 0 returns empty DataFrame
-    res = pt.pick(df, "val", n=0)
+    res = df.pt.head(0)
     assert len(res) == 0
     assert list(res.columns) == ["val"]
 
-    # na_last=False puts NaN at top for pick
-    res_na_first = pt.pick(df, "val", n=1, na_last=False)
+    # na_last=False puts NaN at top
+    res_na_first = df.pt.arrange("val desc", na_last=False).head(1)
     assert pd.isna(res_na_first["val"].iloc[0])
 
+    # with_ties requires arrange
+    with pytest.raises(ValueError, match="with_ties=True requires calling df.arrange"):
+        df.pt.head(1, with_ties=True)
 
-def test_pick_prop():
+
+def test_head_tail_prop():
     df = pd.DataFrame(
         {
             "group": ["A"] * 10 + ["B"] * 20,
@@ -27156,46 +27559,50 @@ def test_pick_prop():
         }
     )
     # Overall 10% of 30 is 3
-    res_top = pt.pick(df, "val", prop=0.1)
+    res_top = df.pt.arrange("val desc").head(prop=0.1)
     assert len(res_top) == 3
     assert list(res_top["val"]) == [19, 18, 17]
 
     # Grouped 10%: A gets 1 row (10 * 0.1), B gets 2 rows (20 * 0.1)
-    res_grp = pt.pick(pt.by(df, "group"), "val", prop=0.1)
+    res_grp = df.pt.by("group").arrange("val desc").head(prop=0.1)
     assert len(res_grp) == 3
     assert list(res_grp[res_grp["group"] == "A"]["val"]) == [9]
     assert list(res_grp[res_grp["group"] == "B"]["val"]) == [19, 18]
 
-    # pick with prop and order=min
-    res_min_grp = pt.pick(pt.by(df, "group"), "val", prop=0.1, order="min")
+    # bottom 10% per group
+    res_min_grp = df.pt.by("group").arrange("val").head(prop=0.1)
     assert list(res_min_grp[res_min_grp["group"] == "A"]["val"]) == [0]
     assert list(res_min_grp[res_min_grp["group"] == "B"]["val"]) == [0, 1]
 
     # Error if both n and prop given
-    import pytest
-
     with pytest.raises(ValueError, match="specify either 'n' or 'prop'"):
-        pt.pick(df, "val", n=2, prop=0.1)
+        df.pt.head(n=2, prop=0.1)
 
 
-def test_cli_pick_syntax_and_prop(tmp_path, capsys):
-    from pytae import cli
-
+def test_cli_head_syntax_and_prop(tmp_path, capsys):
     df = pd.DataFrame({"x": list(range(100)), "grp": ["g1"] * 50 + ["g2"] * 50})
     path = str(tmp_path / "data.parquet")
     df.to_parquet(path)
 
-    # col,n=N
-    assert cli.main([path, "-pick", "x,n=5", "-shape"]) == 0
+    # -head N
+    assert cli.main([path, "-head", "5", "-shape"]) == 0
     assert "(5, 2)" in capsys.readouterr().out
 
-    # col,prop=P
-    assert cli.main([path, "-pick", "x,prop=0.1", "-shape"]) == 0
+    # -head P%
+    assert cli.main([path, "-head", "10%", "-shape"]) == 0
     assert "(10, 2)" in capsys.readouterr().out
 
-    # bare col defaults to n=1
-    assert cli.main([path, "-pick", "x", "-shape"]) == 0
-    assert "(1, 2)" in capsys.readouterr().out
+    # -head float
+    assert cli.main([path, "-head", "0.1", "-shape"]) == 0
+    assert "(10, 2)" in capsys.readouterr().out
+
+    # -head default 5
+    assert cli.main([path, "-head", "-shape"]) == 0
+    assert "(5, 2)" in capsys.readouterr().out
+
+    # -by with -arrange and -head
+    assert cli.main([path, "-by", "grp", "-arrange", "x desc", "-head", "2", "-shape"]) == 0
+    assert "(4, 2)" in capsys.readouterr().out
 
 ################################################################################
 # FILE: tests/test_cli_agg.py
@@ -27344,7 +27751,7 @@ def test_by_requires_agg_or_mutate(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
-    assert "requires -agg, -mutate, -pick" in capsys.readouterr().err
+    assert "requires -agg, -mutate, -head, or -tail" in capsys.readouterr().err
 
 
 def test_agg_then_arrange_prints_only_final_table(tmp_path, capsys):
@@ -31478,8 +31885,8 @@ def test_lazy_verbs(sample_parquet: Path):
     assert len(dn.collect()) == 5
     assert len(df.dropna(how="any").collect()) == 5
 
-    # pick
-    p = df.pick("val1", n=2, order="max")
+    # arrange + head
+    p = df.arrange("val1 desc").head(2)
     assert p.is_lazy
     assert len(p.collect()) == 2
     assert p.collect()["val1"].to_list() == [50, 40]
@@ -34168,10 +34575,11 @@ from pytae.polars_engine import (
     filter_polars,
     long_polars,
     mutate_polars,
-    pick_polars,
     pivot_polars,
     rename_polars,
     select_polars,
+    slice_head_polars,
+    slice_tail_polars,
     sql_polars,
     wide_polars,
 )
@@ -34419,28 +34827,30 @@ def test_cli_end_to_end_polars_pipeline(tmp_path, capsys):
     assert "West" in out
 
 
-def test_pick_polars():
+def test_slice_polars():
     df = pl.DataFrame(
         {
             "grp": ["A", "A", "A", "B", "B", "B"],
             "val": [10, 30, 20, 5, 40, 15],
         }
     )
-    # Ungrouped max
-    res_max = pick_polars(df, "val", n=2, order="max")
+    # Ungrouped head (after sorting desc)
+    sorted_desc = df.sort("val", descending=True)
+    res_max = slice_head_polars(sorted_desc, n=2)
     assert res_max["val"].to_list() == [40, 30]
 
-    # Ungrouped min
-    res_min = pick_polars(df, "val", n=2, order="min")
-    assert res_min["val"].to_list() == [5, 10]
+    # Ungrouped tail (from desc)
+    res_min = slice_tail_polars(sorted_desc, n=2)
+    assert res_min["val"].to_list() == [10, 5]
 
-    # Grouped max
-    res_grp_max = pick_polars(df, "val", n=1, order="max", by=["grp"])
+    # Grouped head
+    sorted_grp = df.sort(["grp", "val"], descending=[False, True])
+    res_grp_max = slice_head_polars(sorted_grp, n=1, by=["grp"])
     assert res_grp_max["grp"].to_list() == ["A", "B"]
     assert res_grp_max["val"].to_list() == [30, 40]
 
     # Prop
-    res_prop = pick_polars(df, "val", prop=0.5, order="max")
+    res_prop = slice_head_polars(sorted_desc, prop=0.5)
     assert len(res_prop) == 3
 
 
@@ -36073,16 +36483,16 @@ def test_by_non_destructive_input_isolation():
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
 
-    # pick does not touch input attrs, clears on output
-    res_pick = pt.pick(grouped, "mass", n=1)
-    assert "_pt_by" not in res_pick.attrs
+    # arrange + head does not touch input attrs, clears on output
+    res_head = pt.head(pt.arrange(grouped, "mass desc"), n=1)
+    assert "_pt_by" not in res_head.attrs
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
 
 
-def test_by_chains_into_pick():
+def test_by_chains_into_arrange_head():
     df = _sample_df()
-    res = df.pt.by("species").pt.pick("mass", n=1)
+    res = df.pt.by("species").arrange("mass desc").head(1)
     assert len(res) == 3
     # Check max per species
     assert set(res["mass"]) == {4200, 5200, 3900}
@@ -36118,8 +36528,8 @@ def test_pytae_dataframe_direct_operations_no_pt():
     summary = grouped.agg("mean")
     assert len(summary) == 3
 
-    # Direct grouped pick
-    top = grouped.pick("body_mass_g", 1)
+    # Direct grouped arrange + head
+    top = grouped.arrange("body_mass_g desc").head(1)
     assert len(top) == 3
 
     # Chaining from grouped through delegated DataFrame methods

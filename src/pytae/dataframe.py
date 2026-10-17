@@ -12,7 +12,9 @@ import polars as pl
 
 from pytae._parsing import _parse_filter_string, _parse_mutate_spec_entries
 from pytae._text import unquote_name as _unquote_name
+from pytae._parsing import _extract_arrange_specs
 from pytae.polars_engine import (
+    _df_columns,
     agg_polars,
     arrange_polars,
     clean_columns_polars,
@@ -27,6 +29,8 @@ from pytae.polars_engine import (
     pick_polars,
     pivot_polars,
     select_polars,
+    slice_head_polars,
+    slice_tail_polars,
     sql_polars,
     wide_polars,
 )
@@ -154,10 +158,18 @@ pl.DataType.__eq__ = _compat_datatype_eq
 class DataFrame:
     """High-performance tabular data frame powered by Polars, exposing Pytae's fluent grammar."""
 
-    def __init__(self, data: Any = None, orig_col_map: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: Any = None,
+        orig_col_map: dict[str, Any] | None = None,
+        _last_sort_cols: list[str] | None = None,
+        _last_sort_desc: list[bool] | None = None,
+    ) -> None:
         self._orig_col_map: dict[str, Any] = dict(orig_col_map) if orig_col_map else {}
         self._col_collisions: set[str] = set()
         self._orig_index: list[Any] | None = list(data.index) if hasattr(data, "index") else None
+        self._last_sort_cols: list[str] | None = _last_sort_cols
+        self._last_sort_desc: list[bool] | None = _last_sort_desc
 
         def _detect_collisions(pdf: Any) -> set[str]:
             collisions = set()
@@ -179,9 +191,15 @@ class DataFrame:
                 self._orig_col_map = dict(data._orig_col_map)
             self._col_collisions = set(data._col_collisions)
             self._orig_index = data._orig_index
+            if self._last_sort_cols is None:
+                self._last_sort_cols = data._last_sort_cols
+                self._last_sort_desc = data._last_sort_desc
         elif isinstance(data, GroupedDataFrame):
             self._df = data._df
             self._orig_index = data._orig_index
+            if self._last_sort_cols is None:
+                self._last_sort_cols = data._last_sort_cols
+                self._last_sort_desc = data._last_sort_desc
         elif hasattr(data, "to_pandas") and not isinstance(data, (str, Path)):
             try:
                 import pandas as pd
@@ -425,11 +443,89 @@ class DataFrame:
             return f"<pre>{self.explain()}</pre>"
         return self._df._repr_html_()
 
-    def head(self, n: int = 5) -> DataFrame:
-        return DataFrame(self._df.head(n))
+    def head(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        """Return the first n rows, proportion of rows, or top boundary ties."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
 
-    def tail(self, n: int = 5) -> DataFrame:
-        return DataFrame(self._df.tail(n))
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="head")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
+        return DataFrame(
+            slice_head_polars(
+                self._df,
+                n=n,
+                prop=prop,
+                with_ties=with_ties,
+                by=None,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        """Return the last n rows, proportion of rows, or bottom boundary ties."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="tail")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
+        return DataFrame(
+            slice_tail_polars(
+                self._df,
+                n=n,
+                prop=prop,
+                with_ties=with_ties,
+                by=None,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
 
     def sample(
         self,
@@ -651,7 +747,13 @@ class DataFrame:
     def arrange(self, *specs: str, na_last: bool = True) -> DataFrame:
         """Sort rows by one or more column expressions (e.g. 'col1, -col2 desc')."""
         spec_str = ",".join(specs)
-        return DataFrame(arrange_polars(self._df, spec_str, na_last=na_last))
+        cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
+        descending = [not a for a in asc]
+        sorted_df = arrange_polars(self._df, spec_str, na_last=na_last)
+        res = DataFrame(sorted_df, orig_col_map=self._orig_col_map)
+        res._last_sort_cols = cols
+        res._last_sort_desc = descending
+        return res
 
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         """Deduplicate rows across all or specific columns with keep='first'|'last'|'none'."""
@@ -740,31 +842,12 @@ class DataFrame:
         left_df = self.to_pandas()
         return _compute_diff(left_df, other, "<left>", tol=tol, rtol=rtol)
 
-    def pick(
-        self,
-        spec: str,
-        n: int | None = None,
-        prop: float | None = None,
-        order: str = "max",
-        with_ties: bool = False,
-        na_last: bool = True,
-    ) -> DataFrame:
-        """Select top/bottom rows by column expression (replaces slice_max/slice_min)."""
-        return DataFrame(
-            pick_polars(
-                self._df,
-                spec,
-                by=None,
-                n=n,
-                prop=prop,
-                order=order,
-                with_ties=with_ties,
-                na_last=na_last,
-            )
-        )
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        """Deprecated: pick() has been removed in favor of arrange().head(n) / arrange().tail(n)."""
+        raise AttributeError("df.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
 
     def by(self, *cols: Any) -> GroupedDataFrame:
-        """Establish a grouping context for subsequent .mutate(), .agg(), or .pick() operations."""
+        """Establish a grouping context for subsequent .mutate(), .agg(), or .head()/.tail() operations."""
         if not cols:
             raise ValueError("df.pt.by() takes at least one column name")
         for c in cols:
@@ -784,7 +867,14 @@ class DataFrame:
                     resolved.append(_unquote_name(c.strip()))
             else:
                 resolved.append(str(c))
-        return GroupedDataFrame(self._df, resolved, orig_col_map=self._orig_col_map, orig_index=self._orig_index)
+        return GroupedDataFrame(
+            self._df,
+            resolved,
+            orig_col_map=self._orig_col_map,
+            orig_index=self._orig_index,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Create, derive, or transform columns using vectorized expressions, if_else, map, or callables.
@@ -1138,11 +1228,15 @@ class GroupedDataFrame:
         by_cols: list[str],
         orig_col_map: dict[str, Any] | None = None,
         orig_index: Any = None,
+        _last_sort_cols: list[str] | None = None,
+        _last_sort_desc: list[bool] | None = None,
     ) -> None:
         self._df = df
         self._by = by_cols
         self._orig_col_map = orig_col_map or {}
         self._orig_index = orig_index
+        self._last_sort_cols = _last_sort_cols
+        self._last_sort_desc = _last_sort_desc
 
     @property
     def pt(self) -> GroupedDataFrame:
@@ -1155,7 +1249,12 @@ class GroupedDataFrame:
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         """Overwrite grouping with new keys."""
-        return DataFrame(self._df, orig_col_map=self._orig_col_map).by(*cols)
+        return DataFrame(
+            self._df,
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        ).by(*cols)
 
     def to_pandas(self) -> Any:
         import pandas as pd
@@ -1177,7 +1276,12 @@ class GroupedDataFrame:
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
-        df = DataFrame(self._df, orig_col_map=self._orig_col_map)
+        df = DataFrame(
+            self._df,
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
         df._orig_index = self._orig_index
         attr = getattr(df, name)
         if callable(attr):
@@ -1189,10 +1293,29 @@ class GroupedDataFrame:
                         by_cols=self._by,
                         orig_col_map=res._orig_col_map,
                         orig_index=res._orig_index,
+                        _last_sort_cols=res._last_sort_cols,
+                        _last_sort_desc=res._last_sort_desc,
                     )
                 return res
             return wrapper
         return attr
+
+    def arrange(self, *specs: str, na_last: bool = True) -> GroupedDataFrame:
+        """Sort rows within groups or across groups while preserving grouping context."""
+        spec_str = ",".join(specs)
+        cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
+        descending = [not a for a in asc]
+        all_cols = self._by + [c for c in cols if c not in self._by]
+        all_desc = [False] * len(self._by) + [descending[cols.index(c)] for c in all_cols[len(self._by):]]
+        sorted_df = self._df.sort(all_cols, descending=all_desc, nulls_last=na_last)
+        return GroupedDataFrame(
+            sorted_df,
+            by_cols=self._by,
+            orig_col_map=self._orig_col_map,
+            orig_index=self._orig_index,
+            _last_sort_cols=cols,
+            _last_sort_desc=descending,
+        )
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Calculate windowed mutations across the established groups."""
@@ -1333,28 +1456,88 @@ class GroupedDataFrame:
             value, *cols, subset=subset, nans=nans, **kwargs
         )
 
-    def pick(
+    def head(
         self,
-        spec: str,
-        n: int | None = None,
+        n: int | str | None = None,
+        *,
         prop: float | None = None,
-        order: str = "max",
         with_ties: bool = False,
-        na_last: bool = True,
     ) -> DataFrame:
-        """Select top/bottom rows per group."""
+        """Select top n rows or proportion per group, returning an ungrouped DataFrame."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="head")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
         return DataFrame(
-            pick_polars(
+            slice_head_polars(
                 self._df,
-                spec,
-                by=self._by,
                 n=n,
                 prop=prop,
-                order=order,
                 with_ties=with_ties,
-                na_last=na_last,
-            )
+                by=self._by,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
         )
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        """Select bottom n rows or proportion per group, returning an ungrouped DataFrame."""
+        from pytae.cli_parsing import SliceSpec, parse_head_limit
+
+        if isinstance(n, str):
+            spec = parse_head_limit(n, flag_name="tail")
+            n = spec.n
+            if prop is None:
+                prop = spec.prop
+            if not with_ties:
+                with_ties = spec.with_ties
+        elif isinstance(n, float):
+            if prop is None and 0 < n <= 1:
+                prop = n
+                n = None
+        elif isinstance(n, SliceSpec):
+            prop = n.prop
+            with_ties = n.with_ties
+            n = n.n
+        elif n is None and prop is None:
+            n = 5
+        return DataFrame(
+            slice_tail_polars(
+                self._df,
+                n=n,
+                prop=prop,
+                with_ties=with_ties,
+                by=self._by,
+                sort_cols=self._last_sort_cols,
+                sort_desc=self._last_sort_desc,
+            ),
+            orig_col_map=self._orig_col_map,
+        )
+
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        raise AttributeError("GroupedDataFrame.pick() has been removed; use df.by(...).arrange(...).head(n) instead.")
 
     def sample(
         self,

@@ -1407,78 +1407,143 @@ def mutate_polars(
     return cur
 
 
-def pick_polars(
-    df: pl.DataFrame,
-    col: str,
+def slice_head_polars(
+    df: Any,
     n: int | None = None,
     prop: float | None = None,
-    order: str = "max",
     with_ties: bool = False,
-    na_last: bool = True,
     by: list[str] | None = None,
+    sort_cols: list[str] | None = None,
+    sort_desc: list[bool] | None = None,
 ) -> Any:
-    """Select the rows with the largest (or smallest) values of a column, optionally grouped by 'by'."""
-    clean_col = _unquote_name(col.strip())
-    df_cols = _df_columns(df)
-    if clean_col not in df_cols:
-        raise KeyError(f"pick: column '{clean_col}' not found in DataFrame. Available columns: {df_cols}")
+    """Slice the first n rows or proportion of rows, optionally per group and with boundary ties."""
+    return _slice_bound_polars(
+        df,
+        n=n,
+        prop=prop,
+        with_ties=with_ties,
+        by=by,
+        sort_cols=sort_cols,
+        sort_desc=sort_desc,
+        is_head=True,
+    )
 
+
+def slice_tail_polars(
+    df: Any,
+    n: int | None = None,
+    prop: float | None = None,
+    with_ties: bool = False,
+    by: list[str] | None = None,
+    sort_cols: list[str] | None = None,
+    sort_desc: list[bool] | None = None,
+) -> Any:
+    """Slice the last n rows or proportion of rows, optionally per group and with boundary ties."""
+    return _slice_bound_polars(
+        df,
+        n=n,
+        prop=prop,
+        with_ties=with_ties,
+        by=by,
+        sort_cols=sort_cols,
+        sort_desc=sort_desc,
+        is_head=False,
+    )
+
+
+def _slice_bound_polars(
+    df: Any,
+    n: int | None = None,
+    prop: float | None = None,
+    with_ties: bool = False,
+    by: list[str] | None = None,
+    sort_cols: list[str] | None = None,
+    sort_desc: list[bool] | None = None,
+    is_head: bool = True,
+) -> Any:
+    op_name = "head" if is_head else "tail"
     if n is not None and prop is not None:
-        raise ValueError("pick: specify either 'n' or 'prop', not both")
+        raise ValueError(f"{op_name}: specify either 'n' or 'prop', not both")
 
     if n is None and prop is None:
-        n = 1
-
-    clean_order = order.strip().lower() if isinstance(order, str) else "max"
-    if clean_order not in ("max", "min"):
-        raise ValueError(f"pick: order must be 'max' or 'min', got {order!r}")
-    is_desc = clean_order == "max"
+        n = 5
 
     if prop is not None:
         if not (0 < prop <= 1):
-            raise ValueError(f"pick: 'prop' must be between 0 and 1, got {prop}")
+            raise ValueError(f"{op_name}: 'prop' must be between 0 and 1, got {prop}")
 
+    if n is not None:
+        if n < 0:
+            raise ValueError(f"{op_name}: 'n' cannot be negative, got {n}")
+        if n == 0:
+            return df.head(0)
+
+    if with_ties and not sort_cols:
+        raise ValueError("with_ties=True requires calling df.arrange() beforehand to determine tie-breaking order.")
+
+    df_cols = _df_columns(df)
     if by:
         unknown_by = [c for c in by if c not in df_cols]
         if unknown_by:
-            raise KeyError(f"pick: grouping column(s) {unknown_by} not found in DataFrame")
+            raise KeyError(f"{op_name}: grouping column(s) {unknown_by} not found in DataFrame")
 
-        sort_cols = by + [clean_col]
-        sort_desc = [False] * len(by) + [is_desc]
-        sorted_df = df.sort(sort_cols, descending=sort_desc, nulls_last=na_last)
+    if with_ties:
+        assert sort_cols is not None
+        assert sort_desc is not None
+        if len(sort_cols) == 1:
+            target = pl.col(sort_cols[0])
+            desc = sort_desc[0] if is_head else not sort_desc[0]
+        else:
+            target = pl.struct(sort_cols)
+            desc = sort_desc[0] if is_head else not sort_desc[0]
+
+        rank_expr = target.rank(method="min", descending=desc)
+        if by:
+            rank_expr = rank_expr.over(by)
 
         if prop is not None:
-            valid_cnt = pl.col(clean_col).drop_nulls().len().over(by)
-            cutoff = (valid_cnt * prop).floor().cast(pl.Int64).clip(lower_bound=1)
-            if with_ties:
-                rank_expr = pl.col(clean_col).rank(method="min", descending=is_desc).over(by)
-                return sorted_df.filter(rank_expr <= cutoff)
+            len_expr = pl.len().over(by) if by else pl.len()
+            cutoff = (len_expr * prop).floor().cast(pl.Int64).clip(lower_bound=1)
+            return df.filter(rank_expr <= cutoff)
+        else:
+            assert n is not None
+            return df.filter(rank_expr <= n)
+
+    if by:
+        if prop is not None:
+            grp_len = pl.len().over(by)
+            cutoff = (grp_len * prop).floor().cast(pl.Int64).clip(lower_bound=1)
             row_nr = pl.int_range(1, pl.len() + 1).over(by)
-            return sorted_df.filter(row_nr <= cutoff)
+            if is_head:
+                return df.filter(row_nr <= cutoff)
+            else:
+                return df.filter(row_nr > (grp_len - cutoff))
+        else:
+            assert n is not None
+            if is_head:
+                return df.group_by(by, maintain_order=True).head(n)
+            else:
+                return df.group_by(by, maintain_order=True).tail(n)
 
-        assert n is not None
-        if n <= 0:
-            return df.head(0)
-        if with_ties:
-            rank_expr = pl.col(clean_col).rank(method="min", descending=is_desc).over(by)
-            return sorted_df.filter(rank_expr <= n)
-        return sorted_df.group_by(by, maintain_order=True).head(n)
-
-    sorted_df = df.sort(clean_col, descending=is_desc, nulls_last=na_last)
+    # Ungrouped
     if prop is not None:
-        cnt_expr = sorted_df.select(pl.col(clean_col).drop_nulls().len())
-        valid_cnt = cnt_expr.collect().item() if isinstance(cnt_expr, pl.LazyFrame) else cnt_expr.item()
-        k = max(1, int(valid_cnt * prop))
-        if with_ties:
-            return sorted_df.filter(pl.col(clean_col).rank(method="min", descending=is_desc) <= k)
-        return sorted_df.head(k)
+        total_len = pl.len()
+        cutoff = (total_len * prop).floor().cast(pl.Int64).clip(lower_bound=1)
+        row_nr = pl.int_range(1, pl.len() + 1)
+        if is_head:
+            return df.filter(row_nr <= cutoff)
+        else:
+            return df.filter(row_nr > (total_len - cutoff))
+    else:
+        assert n is not None
+        if is_head:
+            return df.head(n)
+        else:
+            return df.tail(n)
 
-    assert n is not None
-    if n <= 0:
-        return df.head(0)
-    if with_ties:
-        return sorted_df.filter(pl.col(clean_col).rank(method="min", descending=is_desc) <= n)
-    return sorted_df.head(n)
+
+def pick_polars(*args: Any, **kwargs: Any) -> Any:
+    raise AttributeError("pick() has been removed; use arrange().head(n) instead (or by().arrange().head(n) for grouped slicing).")
 
 
 def long_polars(

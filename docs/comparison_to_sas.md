@@ -274,12 +274,12 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Deduplicate Table** | `PROC SORT NODUPRECS; BY _ALL_; RUN;` | `df.distinct()` | `-distinct` |
 | **Deduplicate by Keys** | `PROC SORT NODUPKEY; BY a b; RUN;` | `df.distinct("a", "b")` | `-distinct "a,b"` |
 
-### 8. Extreme Record Slicing (`pick`)
+### 8. Extreme Record Slicing (`arrange` + `head` / `tail`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.pick("x", n=5)` | `-pick "x,n=5"` |
-| **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.pick("x", n=5, order="min")` | `-pick "x,n=5,order=min"` |
-| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by("g").pick("x", n=1)` | `-by g -pick "x,n=1"` |
+| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange("x desc").head(5)` | `-arrange "x desc" -head 5` |
+| **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange("x").head(5)` | `-arrange x -head 5` |
+| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by("g").arrange("x desc").head(1)` | `-by g -arrange "x desc" -head 1` |
 
 ### 9. Reshaping & Pivoting (`wide`, `long`, `pivot`)
 | Task | SAS | Pytae (Python) | Pytae CLI |

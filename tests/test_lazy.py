@@ -124,8 +124,8 @@ def test_lazy_verbs(sample_parquet: Path):
     assert len(dn.collect()) == 5
     assert len(df.dropna(how="any").collect()) == 5
 
-    # pick
-    p = df.pick("val1", n=2, order="max")
+    # arrange + head
+    p = df.arrange("val1 desc").head(2)
     assert p.is_lazy
     assert len(p.collect()) == 2
     assert p.collect()["val1"].to_list() == [50, 40]

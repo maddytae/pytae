@@ -12,10 +12,11 @@ from pytae.polars_engine import (
     filter_polars,
     long_polars,
     mutate_polars,
-    pick_polars,
     pivot_polars,
     rename_polars,
     select_polars,
+    slice_head_polars,
+    slice_tail_polars,
     sql_polars,
     wide_polars,
 )
@@ -263,28 +264,30 @@ def test_cli_end_to_end_polars_pipeline(tmp_path, capsys):
     assert "West" in out
 
 
-def test_pick_polars():
+def test_slice_polars():
     df = pl.DataFrame(
         {
             "grp": ["A", "A", "A", "B", "B", "B"],
             "val": [10, 30, 20, 5, 40, 15],
         }
     )
-    # Ungrouped max
-    res_max = pick_polars(df, "val", n=2, order="max")
+    # Ungrouped head (after sorting desc)
+    sorted_desc = df.sort("val", descending=True)
+    res_max = slice_head_polars(sorted_desc, n=2)
     assert res_max["val"].to_list() == [40, 30]
 
-    # Ungrouped min
-    res_min = pick_polars(df, "val", n=2, order="min")
-    assert res_min["val"].to_list() == [5, 10]
+    # Ungrouped tail (from desc)
+    res_min = slice_tail_polars(sorted_desc, n=2)
+    assert res_min["val"].to_list() == [10, 5]
 
-    # Grouped max
-    res_grp_max = pick_polars(df, "val", n=1, order="max", by=["grp"])
+    # Grouped head
+    sorted_grp = df.sort(["grp", "val"], descending=[False, True])
+    res_grp_max = slice_head_polars(sorted_grp, n=1, by=["grp"])
     assert res_grp_max["grp"].to_list() == ["A", "B"]
     assert res_grp_max["val"].to_list() == [30, 40]
 
     # Prop
-    res_prop = pick_polars(df, "val", prop=0.5, order="max")
+    res_prop = slice_head_polars(sorted_desc, prop=0.5)
     assert len(res_prop) == 3
 
 

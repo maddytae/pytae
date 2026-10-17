@@ -196,16 +196,16 @@ def test_by_non_destructive_input_isolation():
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
 
-    # pick does not touch input attrs, clears on output
-    res_pick = pt.pick(grouped, "mass", n=1)
-    assert "_pt_by" not in res_pick.attrs
+    # arrange + head does not touch input attrs, clears on output
+    res_head = pt.head(pt.arrange(grouped, "mass desc"), n=1)
+    assert "_pt_by" not in res_head.attrs
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
 
 
-def test_by_chains_into_pick():
+def test_by_chains_into_arrange_head():
     df = _sample_df()
-    res = df.pt.by("species").pt.pick("mass", n=1)
+    res = df.pt.by("species").arrange("mass desc").head(1)
     assert len(res) == 3
     # Check max per species
     assert set(res["mass"]) == {4200, 5200, 3900}
@@ -241,8 +241,8 @@ def test_pytae_dataframe_direct_operations_no_pt():
     summary = grouped.agg("mean")
     assert len(summary) == 3
 
-    # Direct grouped pick
-    top = grouped.pick("body_mass_g", 1)
+    # Direct grouped arrange + head
+    top = grouped.arrange("body_mass_g desc").head(1)
     assert len(top) == 3
 
     # Chaining from grouped through delegated DataFrame methods

@@ -161,10 +161,20 @@ def arrange(df: Any, *specs: str, na_last: bool = True) -> DataFrame:
     return DataFrame(df).arrange(*specs, na_last=na_last)
 
 
-def pick(df: Any, spec: str, n: int | None = None, **kwargs: Any) -> DataFrame:
+def head(df: Any, n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame:
     if isinstance(df, GroupedDataFrame):
-        return df.pick(spec, n=n, **kwargs)
-    return DataFrame(df).pick(spec, n=n, **kwargs)
+        return df.head(n=n, prop=prop, with_ties=with_ties)
+    return DataFrame(df).head(n=n, prop=prop, with_ties=with_ties)
+
+
+def tail(df: Any, n: int | str | None = None, *, prop: float | None = None, with_ties: bool = False) -> DataFrame:
+    if isinstance(df, GroupedDataFrame):
+        return df.tail(n=n, prop=prop, with_ties=with_ties)
+    return DataFrame(df).tail(n=n, prop=prop, with_ties=with_ties)
+
+
+def pick(*args: Any, **kwargs: Any) -> Any:
+    raise AttributeError("pt.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
 
 
 def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
@@ -424,6 +434,8 @@ __all__ = [
     "rename",
     "sql",
     "arrange",
+    "head",
+    "tail",
     "pick",
     "distinct",
     "dropna",

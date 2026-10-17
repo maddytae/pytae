@@ -110,7 +110,7 @@ In Pandas, `.groupby()` returns a lazy intermediate `DataFrameGroupBy` object. T
 
 ### The Pytae Solution
 In Pytae, grouping is **single-shot, non-destructive, and auto-clearing**:
-- `df.by(*cols)` sets a transient grouping context for the *immediate next verb* (`mutate`, `agg`, `pick`).
+- `df.by(*cols)` sets a transient grouping context for the *immediate next verb* (`mutate`, `agg`, `head`, `tail`).
 - The operation evaluates within each group and **immediately returns a clean, ungrouped DataFrame**.
 - You can transition seamlessly across different grouping levels in a single method chain without resetting:
 
@@ -215,13 +215,13 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` | Default behavior (`dropna=False`) | Default behavior |
 | **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
 
-### 6. Slicing Top / Bottom Records (`pick`)
+### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `df.nlargest(5, 'sales')` | `df.pick("sales", n=5)` | `-pick "sales,n=5"` |
-| **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.pick("sales", n=5, order="min")` | `-pick "sales,n=5,order=min"` |
-| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.pick("sales", prop=0.1)` | `-pick "sales,prop=0.1"` |
-| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by("g").pick("x", n=3)` | `-by g -pick "x,n=3"` |
+| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange("sales desc").head(5)` | `-arrange "sales desc" -head 5` |
+| **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.arrange("sales").head(5)` | `-arrange sales -head 5` |
+| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange("sales desc").head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
+| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by("g").arrange("x desc").head(3)` | `-by g -arrange "x desc" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |

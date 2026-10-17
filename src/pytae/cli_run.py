@@ -818,8 +818,20 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "head":
+            by_cols = (
+                parse_columns(args.by)
+                if (args.by and args.agg is None and not args.mutate)
+                else None
+            )
+            if by_cols:
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             head_val = _next_op_val("head", args.head)
-            frame = pipeline.head(head_val)
+            try:
+                frame = pipeline.head(head_val, by=by_cols)
+            except Exception as exc:
+                return _fail(parser, batch, f"-head: {exc}")
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -829,8 +841,20 @@ def _process_path(
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
+            by_cols = (
+                parse_columns(args.by)
+                if (args.by and args.agg is None and not args.mutate)
+                else None
+            )
+            if by_cols:
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             tail_val = _next_op_val("tail", args.tail)
-            frame = pipeline.tail(tail_val)
+            try:
+                frame = pipeline.tail(tail_val, by=by_cols)
+            except Exception as exc:
+                return _fail(parser, batch, f"-tail: {exc}")
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -854,17 +878,6 @@ def _process_path(
         elif op == "arrange":
             arrange_val = _next_op_val("arrange", getattr(args, "arrange", None))
             err = pipeline.apply_arrange(arrange_val)
-            if err:
-                return _fail(parser, batch, err)
-            emit_frame(idx)
-        elif op == "pick":
-            by_cols = parse_columns(args.by) if args.by else None
-            if by_cols:
-                avail_cols = pipeline.columns()
-                if any(c not in avail_cols for c in by_cols):
-                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
-            pick_val = _next_op_val("pick", getattr(args, "pick", None))
-            err = pipeline.apply_pick(pick_val, by=by_cols, flag="-pick")
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

@@ -16,6 +16,7 @@ from pytae.cli_parsing import (
     parse_file_arg,
     parse_filter,
     parse_fraction,
+    parse_head_limit,
     parse_join_arg,
     parse_list_order,
     parse_positive_int,
@@ -110,8 +111,6 @@ _CLI_FLAGS = {
     "--frac",
     "-arrange",
     "--arrange",
-    "-pick",
-    "--pick",
     "-by",
     "--by",
     "-nrows",
@@ -303,22 +302,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--head",
         nargs="?",
         const=5,
-        type=parse_positive_int,
+        type=parse_head_limit,
         default=None,
-        metavar="N",
+        metavar="LIMIT",
         action=_OrderedValue,
-        help="print the first N rows (default 5)",
+        help="print the first N rows or proportion, group-aware with -by (default 5)",
     )
     parser.add_argument(
         "-tail",
         "--tail",
         nargs="?",
         const=5,
-        type=parse_positive_int,
+        type=parse_head_limit,
         default=None,
-        metavar="N",
+        metavar="LIMIT",
         action=_OrderedValue,
-        help="print the last N rows (default 5)",
+        help="print the last N rows or proportion, group-aware with -by (default 5)",
     )
     parser.add_argument("-shape", "--shape", action=_OrderedFlag, help="print (rows, cols)")
     parser.add_argument(
@@ -453,22 +452,13 @@ def build_parser() -> argparse.ArgumentParser:
         help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc"',
     )
     parser.add_argument(
-        "-pick",
-        "--pick",
-        dest="pick",
-        default=None,
-        metavar="SPEC",
-        action=_OrderedStore,
-        help='pick top/bottom rows by column, e.g. -pick "mass,n=3" or -pick "mass,prop=0.1,order=min"',
-    )
-    parser.add_argument(
         "-by",
         "--by",
         dest="by",
         default=None,
         metavar="COLUMNS",
         help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "
-        "Used by -agg, -mutate, -pick.",
+        "Used by -agg, -mutate, -head, -tail.",
     )
     parser.add_argument(
         "-nrows",
@@ -839,8 +829,9 @@ def main(argv: list[str] | None = None) -> int:
         (("-agg_df", "--agg_df"), "'-agg_df' has been removed; use '-agg' instead"),
         (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
         (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
-        (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-pick' instead"),
-        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-pick with order=min' instead"),
+        (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
+        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-arrange ... -tail N' (or '-arrange ... desc -head N') instead"),
+        (("-pick", "--pick"), "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead"),
         (("-group_by", "--group_by", "-groupby", "--groupby"), "'-group_by' has been removed; use '-by' instead"),
         (("-handle_missing", "--handle_missing"), "'-handle_missing' has been removed; use '-fillna' instead"),
         (("-fill_null", "--fill_null"), "'-fill_null' has been removed; use '-fillna' instead"),
@@ -952,7 +943,6 @@ def main(argv: list[str] | None = None) -> int:
             args.tail is not None,
             args.sample is not None,
             args.arrange is not None,
-            args.pick is not None,
             args.agg is not None,
             args.fillna is not None,
             args.dropna is not None,
@@ -987,7 +977,6 @@ def main(argv: list[str] | None = None) -> int:
             args.tail is not None,
             args.sample is not None,
             args.arrange is not None,
-            args.pick is not None,
             args.agg is not None,
             args.fillna is not None,
             args.dropna is not None,
@@ -1004,11 +993,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
             "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-sample/-arrange/"
-            "-pick/-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
+            "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
             "run -shape separately"
         )
-    if args.by is not None and args.agg is None and not args.mutate and args.pick is None:
-        parser.error("-by requires -agg, -mutate, -pick")
+    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None:
+        parser.error("-by requires -agg, -mutate, -head, or -tail")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
     if args.tol is not None and args.diff is None:

@@ -37,7 +37,7 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 │                        THE 7 PILLARS OF PYTAE ARCHITECTURE                             │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ 1. ONE CANONICAL VERB     │ Exactly one obvious verb per task: filter, mutate, arrange, │
-│                           │ by, agg, pick, distinct, wide, long, pivot, join.          │
+│                           │ by, agg, distinct, head, tail, wide, long, pivot, join.     │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 2. ZERO SYNTAX AMBIGUITY  │ No competing shortcuts or dual APIs. Explicit 'desc' for   │
 │                           │ sorting; explicit predicate strings for missing checks.    │
@@ -86,7 +86,7 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 - **In Pytae, grouping is strictly single-shot and auto-clearing**:
   - `df.by(*cols)` sets an active grouping context for the *immediate next verb*.
   - `.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
-  - `.pick()` slices extreme rows per group and returns an ungrouped `DataFrame`.
+  - `.head()` / `.tail()` slices rows (including extreme values after `.arrange()`) per group and returns an ungrouped `DataFrame`.
   - `.agg()` collapses per group and returns an ungrouped `DataFrame`.
   - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
 - **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
@@ -210,7 +210,7 @@ When running on a lazy DataFrame, Pytae defers execution until results are requi
 2. **Projection Pushdown (Column Selection)**:
    - When you write `.select("customer_id", "total_spend")`, Pytae reads **only those two columns** from storage. The remaining 50+ columns in the file are never touched, dramatically reducing disk I/O and memory bandwidth.
 3. **Slice / Limit Pushdown**:
-   - Calling `.head(10)` or `.pick("sales", n=5)` avoids scanning the remainder of the file once the threshold is satisfied.
+   - Calling `.head(10)` or `.arrange("sales desc").head(5)` avoids scanning the remainder of the file once the threshold is satisfied.
 
 #### Inspecting the Execution Plan with `df.explain()`
 You can inspect the exact physical and logical optimizations performed by Pytae using `.explain()`:
@@ -312,7 +312,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Aggregation** | **[agg.ipynb](detailed_docs/library/agg.ipynb)** | **[agg.md](detailed_docs/cli/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
 | **Cross-Tab** | **[pivot.ipynb](detailed_docs/library/pivot.ipynb)** | **[pivot.md](detailed_docs/cli/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
 | **Deduplication** | **[distinct.ipynb](detailed_docs/library/distinct.ipynb)** | **[distinct.md](detailed_docs/cli/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
-| **Slicing** | **[pick.ipynb](detailed_docs/library/pick.ipynb)** | **[pick.md](detailed_docs/cli/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
+| **Slicing** | **[head_tail.ipynb](detailed_docs/library/head_tail.ipynb)** | **[head_tail.md](detailed_docs/cli/head_tail.md)** | `arrange` + `head`/`tail`, group-aware with `by`, percentage `prop=`, ties `with_ties=` |
 | **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |

@@ -24,13 +24,25 @@ All notable changes to this project are documented in this file.
 - **Recoding & Window Functions in `mutate`**:
   - Categorical and value mapping via `mutate(status="map(code, {'A': 'Active', 'I': 'Inactive'})")`.
   - First and last window functions in grouped expressions: `df.by("id").mutate(first_val="first(val)", last_val="last(val)")`.
+- **Group-Aware & Proportion-Aware Row Slicing (`head` & `tail`)**:
+  - `df.head()` and `df.tail()` (and standalone `pt.head()`, `pt.tail()`, and CLI `-head`, `-tail`) now provide comprehensive row slicing supporting:
+    - Fixed row counts (`n=5`, `-head 5`).
+    - Percentages and proportions (`prop=0.1`, `n="10%"`, `-head 10%`, `-head 0.1`).
+    - Boundary tie-breaking (`with_ties=True`, `-head "3, ties=true"`).
+    - Group awareness: `df.by("species").arrange("mass desc").head(3)` or `pytae penguins.parquet -by species -arrange "mass desc" -head 3`.
 - **Reproducible Performance Benchmarks & Ecosystem Migration Guides**:
   - Dedicated comprehensive guides for migrating from [Pandas](docs/comparison_to_pandas.md), [dplyr](docs/comparison_to_dplyr.md), and [SAS](docs/comparison_to_sas.md).
   - Self-contained, reproducible 5,000,000-row benchmark suite in [`docs/benchmarks/`](docs/benchmarks/README.md) (`run_benchmarks.py`, `benchmarks.ipynb`, and speedup visualizations).
 
 ### Removed & Breaking Changes
+- **Complete Retirement of `pick` in Favor of Canonical `arrange().head()` / `arrange().tail()`**:
+  - In adherence to *"One and Only One Obvious Way"*, the niche verb `pick` and CLI flag `-pick` have been completely removed across the Python library and CLI.
+  - Slicing top records is simply `df.arrange("col desc").head(n)`.
+  - Slicing bottom records is `df.arrange("col").head(n)` (or `df.arrange("col desc").tail(n)`).
+  - Grouped extreme slicing is `df.by("g").arrange("col desc").head(n)`.
+  - Calling `df.pick()`, `pt.pick()`, or CLI `-pick` raises an immediate, helpful redirect error guiding users to compose `arrange` and `head`/`tail`.
 - **Removal of Obsolete `ungroup()`**:
-  - In Polars and Pytae, `.by()` is an ephemeral, single-shot scoping context for the immediate next operation (`mutate()`, `agg()`, `pick()`).
+  - In Polars and Pytae, `.by()` is an ephemeral, single-shot scoping context for the immediate next operation (`mutate()`, `agg()`, `head()`, `tail()`).
   - Because grouping automatically clears upon operation completion and never persists on the resulting `DataFrame`, `ungroup()` was completely redundant and has been removed from `DataFrame`, accessors, and the public API.
   - Chaining from grouped calculations directly into whole-table calculations or new grouping keys works seamlessly without intermediate cleanup.
 - **Clean Break: Eradication of `merge` in favor of `join`**:

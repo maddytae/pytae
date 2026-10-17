@@ -44,16 +44,26 @@ class PolarsPtAccessor:
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
 
-    def pick(
+    def head(
         self,
-        spec: str,
-        n: int | None = None,
+        n: int | str | None = None,
+        *,
         prop: float | None = None,
-        order: str = "max",
         with_ties: bool = False,
-        na_last: bool = True,
     ) -> DataFrame:
-        return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
+        return DataFrame(self._obj).head(n=n, prop=prop, with_ties=with_ties)
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
+
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
 
     def sample(
         self,
@@ -224,16 +234,26 @@ class PandasPtAccessor:
     def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
         return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
 
-    def pick(
+    def head(
         self,
-        spec: str,
-        n: int | None = None,
+        n: int | str | None = None,
+        *,
         prop: float | None = None,
-        order: str = "max",
         with_ties: bool = False,
-        na_last: bool = True,
     ) -> DataFrame:
-        return DataFrame(self._obj).pick(spec, n=n, prop=prop, order=order, with_ties=with_ties, na_last=na_last)
+        return DataFrame(self._obj).head(n=n, prop=prop, with_ties=with_ties)
+
+    def tail(
+        self,
+        n: int | str | None = None,
+        *,
+        prop: float | None = None,
+        with_ties: bool = False,
+    ) -> DataFrame:
+        return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
+
+    def pick(self, *args: Any, **kwargs: Any) -> Any:
+        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
 
     def sample(
         self,
