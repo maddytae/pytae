@@ -1119,7 +1119,6 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ├── docs
 │   ├── comparison_to_dplyr.md
 │   ├── comparison_to_pandas.md
-│   ├── comparison_to_pandas_and_dplyr.md
 │   ├── comparison_to_sas.md
 │   ├── detailed_docs
 │   │   ├── agg.md
@@ -1311,7 +1310,7 @@ def generate_reference() -> None:
     parts.append("================================================================================")
     parts.append("10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)")
     parts.append("================================================================================\n")
-    for comp_name in ["comparison_to_pandas.md", "comparison_to_dplyr.md", "comparison_to_sas.md", "comparison_to_pandas_and_dplyr.md"]:
+    for comp_name in ["comparison_to_pandas.md", "comparison_to_dplyr.md", "comparison_to_sas.md"]:
         comp_md = REPO_ROOT / "docs" / comp_name
         if comp_md.exists():
             parts.append("################################################################################")

@@ -112,7 +112,6 @@ pytae current.parquet -diff baseline.parquet
   - [Pytae vs. Pandas Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md)
   - [Pytae vs. dplyr Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md)
   - [Pytae vs. SAS Migration Guide](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
-  - [Rosetta Stone & Rationale](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
 
 ### Detailed Topic Guides (`docs/detailed_docs/`)
 Comprehensive documentation split into two dedicated folders:

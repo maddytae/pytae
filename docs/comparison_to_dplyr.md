@@ -259,3 +259,4 @@ pytae penguins.parquet \
 ```
 
 Pytae provides everything Tidyverse users love about `dplyr`—fluent method chaining, declarative verbs, and clean data thinking—while granting massive SIMD vector performance and Unix command-line superpowers.
+

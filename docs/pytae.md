@@ -61,6 +61,63 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 
 ---
 
+## Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`, `agg`, `long`/`wide`?
+
+Pytae carefully chooses concise, intention-revealing names that eliminate ambiguity, prevent keyword collisions, and adhere strictly to *"One and Only One Obvious Way"*:
+
+### 1. `filter` instead of `query` or `qry`
+- **Why `filter`?** `filter` is the canonical, intuitive verb across modern data science (R `dplyr`, SQL `FILTER`, Polars, Apache Spark). Calling it `filter` provides immediate familiarity and zero surprise.
+- **Why not `df.query()`?** Pandas' native `df.query()` is string-only and passes expressions to `numexpr`, which chokes on Python functions and spaced columns. In contrast, `df.filter()` supports:
+  - **Bare Callables & Lambdas**: `df.filter(lambda d: d['mass'] > 4000)` with full Python expressions and functions.
+  - **Mathematical Intervals**: `df.filter(mass="[3000, 4500]")` or `df.filter(pct="(0, 100)")`.
+  - **Set Membership & Operators**: lists `cat=['A', 'B']`, tuples `species=('startswith', ['Ad', 'Ge'])`.
+  - **Bracketed Spaced Columns**: `df.filter("[bill length mm] > 40")` without ugly backtick escaping.
+  - **Keyword & Dictionary Syntax**: `df.filter(status="active")` or `{"col": "> 5"}`.
+- **CLI Alignment**: The CLI uses `-filter "expr"`. The legacy `-qry` has been deprecated in favor of canonical `-filter`.
+
+### 2. `distinct` instead of `dedupe`, `unique`, or `drop_duplicates`
+- **Why `distinct`?** `distinct` is the universally recognized keyword in SQL (`SELECT DISTINCT`) and dplyr (`distinct()`). It clearly describes returning unique, deduplicated rows.
+- **Why not `unique`?** In Pandas, `.unique()` is a Series method returning a 1D NumPy array of scalar values, not a DataFrame. Using `unique` would conflate scalar distinct values with full-table row deduplication.
+- **CLI Alignment**: The CLI uses `-distinct "species,island"`, with optional `keep=first|last|none` control.
+
+### 3. `by` for Single-Shot Scoped Grouping (Why `ungroup` is Obsolete)
+- **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and forces multi-level index outputs upon aggregation.
+- In R's `dplyr`, `group_by()` produces a sticky grouped data frame that persists across operations unless the user manually chains `%>% ungroup()`.
+- **In Pytae, grouping is strictly single-shot and auto-clearing**:
+  - `df.by(*cols)` sets an active grouping context for the *immediate next verb*.
+  - `.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
+  - `.pick()` slices extreme rows per group and returns an ungrouped `DataFrame`.
+  - `.agg()` collapses per group and returns an ungrouped `DataFrame`.
+  - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
+- **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
+  ```python
+  (
+      df
+      .by("region").mutate(reg_avg="mean(sales)")
+      .mutate(overall_avg="mean(sales)")
+      .by("product").mutate(prod_avg="mean(sales)")
+  )
+  ```
+- **Strict `*args` Only**: `df.by("species", "island")` requires clean positional `*args`. Nested lists (`df.by(["species"])`) and `df.by(None)` are strictly rejected with clear error guidance.
+- **Precedence**: If a second `.by()` is called before being consumed, it cleanly overwrites the previous grouping context.
+
+### 4. `arrange` instead of `sort` or `sort_by`
+- **Why not `sort`?** Python's built-in list has `.sort()`, and Pandas previously had `.sort()` (deprecated in favor of `.sort_values()`). In CLI flags, `-sort` is ambiguous (does it sort rows, columns, or files?).
+- **Why not `sort_by`?** `arrange` is the canonical Tidyverse verb for row ordering. It cleanly conveys ordering rows without implying whether an index or values are being sorted. It supports explicit ascending/descending declarations (`col desc`), multi-column ordering, and bracketed column names `[col name] desc`. Prefixing columns with `-` is intentionally rejected to prevent ambiguity with hyphenated column names or negative numbers.
+
+### 5. `agg` instead of `summarise` or `summarize`
+- **Why not `summarise`?** In Python, `summarise` vs `summarize` introduces spelling ambiguity (British vs American English). Having both violates *"One and Only One Obvious Way"*.
+- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), Pytae eliminates spelling confusion while providing declarative named aggregations (`avg_mass="body_mass_g:mean"`, `n="n"`).
+
+### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
+- Pytae uses strictly complementary, intuitive English opposites:
+  - **`long()`**: Turns wide tables into tall records (`id_vars=`, `cols=`).
+  - **`wide()`**: Pure 1-to-1 structural unmelting without aggregation (`r=`, `c=`, `v=`).
+  - **`pivot()`**: 2D cross-tabulation aggregation matrices (`r=`, `c=`, `v=`, `a=`).
+- Both `wide` and `pivot` produce pure, flat 1D column headers with zero MultiIndex traps.
+
+---
+
 ## The Pytae Architecture: "One Grammar, Two Modalities"
 
 Whether you are writing a production Python service, conducting exploratory analysis in a Jupyter notebook, or processing massive data streams in a Unix terminal, Pytae uses identical concepts, expression syntax, and naming:

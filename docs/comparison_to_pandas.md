@@ -306,3 +306,4 @@ pytae penguins.parquet \
 ```
 
 Notice the stark contrast: Pytae eliminates intermediate variables, eliminates `.copy()`, eliminates `.reset_index()`, eliminates `index=False`, and translates 1:1 into a single high-performance terminal command.
+
