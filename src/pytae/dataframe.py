@@ -10,9 +10,8 @@ from typing import Any
 
 import polars as pl
 
-from pytae._parsing import _parse_filter_string, _parse_mutate_spec_entries
+from pytae._parsing import _extract_arrange_specs, _parse_filter_string, _parse_mutate_spec_entries
 from pytae._text import unquote_name as _unquote_name
-from pytae._parsing import _extract_arrange_specs
 from pytae.polars_engine import (
     _df_columns,
     agg_polars,
@@ -26,7 +25,6 @@ from pytae.polars_engine import (
     join_polars,
     long_polars,
     mutate_polars,
-    pick_polars,
     pivot_polars,
     select_polars,
     slice_head_polars,
