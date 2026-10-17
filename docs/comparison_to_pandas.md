@@ -155,6 +155,9 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 2. **Predicate & Projection Pushdown**: In `pt.scan_parquet()`, Pytae reads only the requested columns and filters rows directly inside the Parquet storage reader before materializing buffers into memory.
 3. **Zero Intermediate Memory Duplication**: Pandas frequently requires `.copy()` to avoid `SettingWithCopyWarning`, multiplying memory footprint. Pytae utilizes copy-on-write and Arrow buffer slicing.
 
+> [!TIP]
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+
 ---
 
 ## 5. Feature-by-Feature Rosetta Stone: Pytae vs. Pandas

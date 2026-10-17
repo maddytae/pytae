@@ -205,6 +205,9 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 - **Zero Disk Thrashing**: SAS pipelines create dozens of intermediate datasets in `WORK` (`work.temp1`, `work.temp2`), generating heavy disk I/O. Pytae operations stream purely in high-speed RAM and Arrow buffers.
 - **Hardware Saturated Concurrency**: While a SAS `DATA` step utilizes only 1 CPU core at 100%, Pytae saturates all 8, 16, or 64 cores simultaneously.
 
+> [!TIP]
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+
 ---
 
 ## 7. Feature-by-Feature Rosetta Stone: Pytae vs. SAS

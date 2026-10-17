@@ -136,6 +136,9 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 2. **Lazy Execution Pipeline**: R's pipe `%>%` evaluates eagerly at every step. Pytae's `pt.scan_parquet()` builds a unified query plan that executes optimizations (predicate pushdown, branch pruning) in a single multithreaded pass.
 3. **No Non-Standard Evaluation (NSE) Overhead**: Eliminates `rlang` expression parsing and NSE unquoting cycles, providing direct execution on Apache Arrow buffers.
 
+> [!TIP]
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+
 ---
 
 ## 6. Feature-by-Feature Rosetta Stone: Pytae vs. dplyr

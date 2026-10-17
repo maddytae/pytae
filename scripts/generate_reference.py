@@ -1318,6 +1318,21 @@ def generate_reference() -> None:
             parts.append("################################################################################")
             parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n\n")
 
+    benchmarks_dir = REPO_ROOT / "docs" / "benchmarks"
+    if benchmarks_dir.exists():
+        bench_readme = benchmarks_dir / "README.md"
+        if bench_readme.exists():
+            parts.append("################################################################################")
+            parts.append(f"# FILE: {bench_readme.relative_to(REPO_ROOT)}")
+            parts.append("################################################################################")
+            parts.append(bench_readme.read_text(encoding="utf-8").rstrip() + "\n\n")
+        bench_py = benchmarks_dir / "run_benchmarks.py"
+        if bench_py.exists():
+            parts.append("################################################################################")
+            parts.append(f"# FILE: {bench_py.relative_to(REPO_ROOT)}")
+            parts.append("################################################################################")
+            parts.append(bench_py.read_text(encoding="utf-8").rstrip() + "\n\n")
+
     # Section 11: Repository Directory Tree (from manual_tree)
     if manual_tree:
         parts.append("================================================================================")
