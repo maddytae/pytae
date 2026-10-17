@@ -5,7 +5,7 @@
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
-Fast, ergonomic tabular data manipulation, feature engineering, and visualization powered natively and completely by **Polars** across both Python library and CLI.
+Fast, ergonomic tabular data manipulation, feature engineering, and visualization powered natively by **Polars** for multithreaded computation and backed by **Pandas & Matplotlib** for plotting across both Python library and CLI.
 
 `pytae` offers **one and only one obvious way** to perform tabular operations with zero code duplication:
 1. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read_parquet("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame. Once entered, chain verbs naturally without repeatedly calling `.pt` (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
@@ -81,6 +81,53 @@ pytae current.parquet -diff baseline.parquet
 
 ---
 
+## Visualizations & Dashboards (Powered by Pandas & Matplotlib)
+
+Pytae follows a clean, pragmatic architecture: **Compute in Polars, Visualize in Pandas**.
+
+While **Polars** provides multithreaded SIMD speed for filtering, feature engineering, and aggregation, **Pandas** and **Matplotlib** remain the undisputed industry standard for Python data visualization. Calling `.plot()` automatically converts the prepared data into a Pandas DataFrame and delegates directly to `pandas.DataFrame.plot()`—giving you 100% compatibility with all standard plot kinds, styling, and mosaic dashboarding without any manual conversion boilerplate:
+
+```python
+import pytae as pt
+
+penguins = pt.sample("penguins")
+
+# 1. Method chaining: compute in Polars, visualize in Pandas
+(
+    penguins
+    .filter("body_mass_g.notna()")
+    .by("species")
+    .agg(avg_mass="body_mass_g:mean")
+    .plot(kind="bar", x="species", y="avg_mass", title="Average Penguin Mass (g)")
+    .finalize(save="mass_by_species.png")
+)
+
+# 2. Multi-panel dashboard layouts (pt.Plotter with ASCII mosaics)
+plotter = pt.Plotter("""
+    AAAB
+    AAAC
+""", figsize=(12, 6))
+
+plotter.add("A", penguins, kind="scatter", x="bill_length_mm", y="bill_depth_mm", color="species")
+plotter.add("B", penguins.by("species").count(), kind="bar", x="species", y="n")
+plotter.add("C", penguins, kind="box", y="body_mass_g", by="species")
+plotter.finalize(title="Penguin Morphology Dashboard", save="dashboard.png")
+```
+
+On the command line, generate distribution charts directly in your terminal or save figures headlessly:
+```bash
+# In-terminal distribution histogram
+pytae penguins.parquet -hist body_mass_g
+
+# Headless plot generation
+pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean" \
+  -plot "kind=bar, x=species, y=avg_mass" -finalize "save=mass.png"
+```
+
+👉 **Read the comprehensive visualization guide**: [docs/detailed_docs/plotting.md](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting.md)
+
+---
+
 ## Documentation Directory
 
 ### Guides & Specifications
@@ -106,7 +153,7 @@ Comprehensive documentation split into two dedicated folders:
 - **Relational Joins & Stacking**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/join.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/join.md) (`df.join()`, `pt.join()`, `pt.concat()`, `-join`, `-concat`, colon keys, `validate`)
 - **2D Pivot Tables**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/pivot.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/pivot.md) (`pivot`, `r, c, v, a` matrices, flat 1D headers)
 - **Aggregations & Grouping**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/agg.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/agg.md) (`by`, `agg`, `dropna=False` zero data loss retention)
-- **Visualizations & Plotting**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/plotting.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/plotting.md) (`df.plot()`, `-plot`, `-finalize`, interactive walkthrough)
+- **Visualizations & Plotting**: [Comprehensive Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting.md) | [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/plotting.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/plotting.md) (`df.plot()`, `-plot`, `-finalize`, mosaic dashboards)
 - **Utilities & Inspection**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/other_utilities.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/inspect.md) (`fillna`, `dropna`, `rename`, `diff`, `glimpse`, `clean`)
 - **In-Pipeline SQL**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/sql.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/sql.md) (`df.sql()`, `pt.sql()`, `-sql` DuckDB/Polars SQL engine)
 - **Multi-File Pipelines**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/join.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/multi_file.md) (`-file`, multi-table pipelines, batch globbing, UNIX pipes)

@@ -122,6 +122,12 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 - **Intuitive Defaults**: `count()` automatically sorts descending by count (`sort=True`) with output column `name="n"`. Pass `sort=False` to preserve original encounter order, or `name="total"` to rename the tally.
 - **Natural Grammar in `agg()`**: Inside `agg()`, `count` (or `count()`) is the canonical counting function (`total_penguins="count"`, `avg_mass="body_mass_g:mean"`). In `avg_mass="body_mass_g:mean"`, `mean` is the function; therefore, `total_penguins="count"` makes `count` the consistent, intention-revealing function name, eliminating the awkward `n="n"` parameter tautology while preserving `"n"` as an alias for backward compatibility.
 
+### 8. Visualization: "Compute in Polars, Visualize in Pandas"
+- **Why Pandas for plotting?** Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. However, the Pandas and Matplotlib ecosystem remains the most mature, flexible, and feature-rich visualization standard in Python.
+- **Zero-Friction Bridge**: Calling `.plot()` automatically converts the prepared dataset to Pandas (`.to_pandas()`) and delegates directly to `pandas.DataFrame.plot`. Users get 100% compatibility with all standard plot kinds (`bar`, `barh`, `line`, `area`, `scatter`, `hexbin`, `heatmap`, `hist`, `box`, `kde`, `density`, `pie`), Matplotlib colormaps, secondary axes (`^`), and subplot mosaics without writing conversion boilerplate.
+- **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Pandas (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
+- 👉 **Read the dedicated guide**: [docs/detailed_docs/plotting.md](detailed_docs/plotting.md)
+
 ---
 
 ## The Pytae Architecture: "One Grammar, Two Modalities"
@@ -325,7 +331,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist` |
 | **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
-| **Plotting** | **[plotting.ipynb](detailed_docs/library/plotting.ipynb)** | **[plotting.md](detailed_docs/cli/plotting.md)** | `df.plot()`, `-plot`, `-finalize`, bar, line, scatter, hist, box, violin, corr, heat |
+| **Plotting** | **[plotting.md](detailed_docs/plotting.md)**<br>**[plotting.ipynb](detailed_docs/library/plotting.ipynb)** | **[plotting.md](detailed_docs/cli/plotting.md)** | `df.plot()`, `-plot`, `-finalize`, bar, line, scatter, hist, box, violin, corr, heat |
 | **Comparisons** | **[vs. Pandas](comparison_to_pandas.md)**<br>**[vs. dplyr](comparison_to_dplyr.md)**<br>**[vs. SAS](comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
 | **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 
