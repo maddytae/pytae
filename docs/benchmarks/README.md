@@ -63,3 +63,4 @@ jupyter notebook docs/benchmarks/benchmarks.ipynb
 2. **Predicate & Projection Pushdown**: In `pt.scan_parquet()`, Pytae reads only the requested columns and pushes row filters directly down into the Parquet file reader before materializing columnar buffers in RAM.
 3. **Contiguous Arrow Columnar Buffers**: Data resides in Apache Arrow format with hardware-accelerated SIMD instructions (AVX2, AVX-512, ARM NEON).
 4. **Zero Intermediate Memory Duplication**: Avoids Pandas defensive `.copy()` overhead and `SettingWithCopyWarning`.
+

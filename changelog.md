@@ -2,15 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.10.1] - 2026-10-16
-
-### Removed & Simplified
-- **Removal of Obsolete `ungroup()`**:
-  - In Polars and Pytae, `.by()` is an ephemeral, single-shot scoping context for the immediate next operation (`mutate()`, `agg()`, `pick()`).
-  - Because grouping automatically clears upon operation completion and never persists on the resulting `DataFrame`, `ungroup()` was completely redundant and has been removed from `DataFrame`, accessors, and the public API.
-  - Chaining from grouped calculations directly into whole-table calculations or new grouping keys works seamlessly without intermediate cleanup.
-
-## [3.10.0] - 2026-10-15
+## [3.10.0] - 2026-10-16
 
 ### Added
 - **Full Polars-Native Library Architecture**:
@@ -25,11 +17,27 @@ All notable changes to this project are documented in this file.
   - `pt.join()`, `df.pt.join()`, `df.join()`: high-performance Polars join supporting inner, left, right, full, semi, anti, and cross joins, colon shorthand `on="left_key:right_key"`, auto-discovery of common join keys, and validation (`"1:1"`, `"1:m"`, `"m:1"`, `"m:m"`). Preserves `LazyFrame` query plans for predicate pushdown.
   - `pt.concat()`, `df.pt.concat()`, `df.concat()`: fast vertical and horizontal stacking with automatic schema mismatch handling (relaxed diagonal fallback) and automatic horizontal column deduplication.
   - **Transparent Polars Verb Delegation**: `pt.DataFrame.__getattr__` dynamically forwards any Polars DataFrame/LazyFrame method (e.g. `.with_columns()`, `.slice()`, `.describe()`, `.explode()`) while auto-unwrapping `pt.DataFrame` inputs and auto-rewrapping Polars outputs to preserve fluent chaining.
+- **Unified Missing Data Handling & Non-Destructive Defaults**:
+  - `df.dropna()`: bare call defaults to non-destructive Option B semantics (drops only 100% blank rows); targeted columns `df.dropna("a", "b")` drop rows missing any specified key (`how='any'`).
+  - Differentiated float `NaN` and Arrow `null` cleaning via `drop_nans=True` (default), ensuring numeric floating-point `NaN` values are never missed.
+  - `df.fillna()`: unified type-aware filling across numeric, string, boolean, and temporal columns.
+- **Recoding & Window Functions in `mutate`**:
+  - Categorical and value mapping via `mutate(status="map(code, {'A': 'Active', 'I': 'Inactive'})")`.
+  - First and last window functions in grouped expressions: `df.by("id").mutate(first_val="first(val)", last_val="last(val)")`.
+- **Reproducible Performance Benchmarks & Ecosystem Migration Guides**:
+  - Dedicated comprehensive guides for migrating from [Pandas](docs/comparison_to_pandas.md), [dplyr](docs/comparison_to_dplyr.md), and [SAS](docs/comparison_to_sas.md).
+  - Self-contained, reproducible 5,000,000-row benchmark suite in [`docs/benchmarks/`](docs/benchmarks/README.md) (`run_benchmarks.py`, `benchmarks.ipynb`, and speedup visualizations).
 
 ### Removed & Breaking Changes
+- **Removal of Obsolete `ungroup()`**:
+  - In Polars and Pytae, `.by()` is an ephemeral, single-shot scoping context for the immediate next operation (`mutate()`, `agg()`, `pick()`).
+  - Because grouping automatically clears upon operation completion and never persists on the resulting `DataFrame`, `ungroup()` was completely redundant and has been removed from `DataFrame`, accessors, and the public API.
+  - Chaining from grouped calculations directly into whole-table calculations or new grouping keys works seamlessly without intermediate cleanup.
 - **Clean Break: Eradication of `merge` in favor of `join`**:
   - Renamed CLI flag `-merge` / `--merge` to `-join` / `--join` (`pytae -file "a.csv=a; b.csv=b" -join "left=a,right=b,on=id"`).
   - Eradicated `merge` keyword across Python library and CLI; use native `join` exclusively.
+- **Core Philosophy Standardization**:
+  - Standardized core design philosophy across codebase, errors, and documentation on *"One and Only One Obvious Way"*.
 
 ## [3.9.0] - 2026-10-14
 
