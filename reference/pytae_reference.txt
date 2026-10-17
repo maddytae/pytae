@@ -11403,6 +11403,109 @@ Whether you are writing a production Python service, conducting exploratory anal
 
 ---
 
+## Lazy Evaluation & Background Execution: The High-Performance Engine
+
+One of Pytae's most powerful capabilities is its native, transparent support for **Lazy Evaluation** backed by Polars' query optimizer and streaming execution engine.
+
+In traditional tools like Pandas, operations are strictly eager: reading a 50 GB CSV or Parquet file attempts to allocate 150+ GB of memory upfront, frequently resulting in fatal out-of-memory (`OOM`) crashes. In Pytae, switching from eager exploration to out-of-core, high-throughput production data pipelines requires changing a single function call: `pt.read_*` $\rightarrow$ `pt.scan_*`.
+
+```
+               EAGER EXECUTION (pt.read_*)                 LAZY EXECUTION (pt.scan_*)
+             ┌─────────────────────────────┐             ┌─────────────────────────────┐
+             │   pt.read_parquet("file")   │             │   pt.scan_parquet("file")   │
+             └──────────────┬──────────────┘             └──────────────┬──────────────┘
+                            │ Reads entire file                         │ Builds unexecuted
+                            ▼ into memory                               ▼ logical plan
+             ┌─────────────────────────────┐             ┌─────────────────────────────┐
+             │      pytae.DataFrame        │             │      pytae.DataFrame        │
+             │   (in-memory pl.DataFrame)  │             │    (lazy pl.LazyFrame)      │
+             └──────────────┬──────────────┘             └──────────────┬──────────────┘
+                            │ Immediate execution                       │ Chained verbs build
+                            ▼ per verb                                  ▼ query graph
+             ┌─────────────────────────────┐             ┌─────────────────────────────┐
+             │ .filter().mutate().agg()    │             │ .filter().mutate().agg()    │
+             └──────────────┬──────────────┘             └──────────────┬──────────────┘
+                            │                                           │
+                            ▼                                           ▼ Rust Query Optimizer:
+                     Eager In-Memory                             • Predicate Pushdown (filter)
+                         Result                                  • Projection Pushdown (select)
+                                                                 • Parallel Multithreaded SIMD
+                                                                        │
+                                                                        ▼
+                                                         Automatic Background .collect()
+                                                         or Explicit df.collect()
+```
+
+### 1. Eager vs. Lazy: Two Modes, One Identical Grammar
+
+Every single verb in Pytae operates identically whether the underlying data is an eager `pl.DataFrame` or a lazy `pl.LazyFrame`:
+
+```python
+import pytae as pt
+
+# 1. Eager: Immediately loads file into RAM
+eager_df = pt.read_parquet("transactions.parquet")
+print(eager_df.is_lazy)  # False
+
+# 2. Lazy: Scans metadata only; zero rows loaded into RAM
+lazy_df = pt.scan_parquet("transactions.parquet")
+print(lazy_df.is_lazy)   # True
+
+# Converting between modes
+lazy_from_eager = eager_df.lazy()     # Convert eager -> lazy
+eager_from_lazy = lazy_df.collect()   # Explicitly materialize lazy -> eager
+```
+
+### 2. The Optimizer: Predicate & Projection Pushdown
+
+When running on a lazy DataFrame, Pytae defers execution until results are required. Polars' underlying Rust optimizer analyzes the entire computational graph and applies physical query optimizations:
+
+1. **Predicate Pushdown (Filter Pushdown)**:
+   - When you write `.filter("status == 'completed' & amount > 100")`, Pytae does not read all rows and filter in Python.
+   - It pushes the filter criteria directly down into the file reader. For Parquet files, entire row groups are skipped at the disk level using Parquet block metadata and statistics, reading only matching rows into memory.
+2. **Projection Pushdown (Column Selection)**:
+   - When you write `.select("customer_id", "total_spend")`, Pytae reads **only those two columns** from storage. The remaining 50+ columns in the file are never touched, dramatically reducing disk I/O and memory bandwidth.
+3. **Slice / Limit Pushdown**:
+   - Calling `.head(10)` or `.pick("sales", n=5)` avoids scanning the remainder of the file once the threshold is satisfied.
+
+#### Inspecting the Execution Plan with `df.explain()`
+You can inspect the exact physical and logical optimizations performed by Pytae using `.explain()`:
+
+```python
+plan = (
+    pt.scan_parquet("sales.parquet")
+    .filter("region == 'East' & sales > 500")
+    .mutate(tax="sales * 0.08")
+    .select("order_id", "sales", "tax")
+    .explain()
+)
+print(plan)
+```
+```text
+FAST_PROJECT: [order_id, sales, tax]
+  SELECT [col("order_id"), col("sales"), col("sales") * 0.08 AS "tax"]
+    FILTER: [(col("region") == "East") & (col("sales") > 500)]
+      PARQUET SCAN sales.parquet
+        PROJECT 2/18 COLUMNS: [order_id, sales, region]
+        PREDICATE: [(col("region") == "East") & (col("sales") > 500)]
+```
+
+### 3. Automatic Background `collect()`: Zero-Friction Materialization
+
+In many data frameworks (like Spark or pure Polars), forgetting to call `.collect()` leads to type mismatches, missing methods, or runtime crashes. **Pytae eliminates this friction with intelligent background collection**:
+
+- **Direct-to-Disk Streaming Sinks**:
+  - Calling `df.to_parquet("output.parquet")` or `df.to_csv("output.csv")` on a lazy DataFrame does not require an explicit `.collect()` call. Pytae triggers streaming execution directly into the output file, keeping memory usage constant even for terabyte-scale datasets.
+- **Smart Shape & Count Queries**:
+  - In Pandas, checking `len(df)` loads the entire table into memory.
+  - In Pytae, calling `len(lazy_df)` or `lazy_df.shape` executes a lightweight `select(pl.len()).collect().item()` query in the background, returning row and column counts in milliseconds without loading data records into RAM.
+- **Non-Destructive Inspection (`glimpse`, `freq`, `hist`)**:
+  - Calling `lazy_df.glimpse()` automatically pushes a `.limit(25)` scan in the background, allowing you to preview schemas and sample rows of multi-gigabyte datasets without materializing them into memory.
+- **CLI Streaming & Auto-TTY Collection**:
+  - The `pytae` command-line tool automatically builds a lazy query plan across input flags (`-filter`, `-mutate`, `-by`, `-agg`, `-arrange`) and executes it in background Rust code right at the terminal output boundary.
+
+---
+
 ## Deep Architectural Comparison: Pytae vs. Pandas vs. dplyr vs. SAS
 
 The following sections provide an extensive, feature-by-feature comparison across all key tabular operations.
