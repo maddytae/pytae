@@ -35,11 +35,15 @@ def _parse_col_order(
 
     asc = default_asc
     if token.startswith("-") and len(token) > 1:
-        asc = False
-        token = token[1:].strip()
+        col = token[1:].strip()
+        raise ValueError(
+            f"arrange(): leading '-' is not supported. In line with 'one and only one right way', use '{col} desc' instead (e.g. arrange('{col} desc'))."
+        )
     elif token.startswith("+") and len(token) > 1:
-        asc = True
-        token = token[1:].strip()
+        col = token[1:].strip()
+        raise ValueError(
+            f"arrange(): leading '+' is not supported. Columns sort ascending by default (e.g. arrange('{col}'))."
+        )
     else:
         lower = token.lower()
         for suffix, direction in [

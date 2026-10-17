@@ -22,7 +22,7 @@
        .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
        .by("region")                                 -by region
        .agg(total_rev="sum(sales)")                  -agg "total_rev = sum(sales)"
-       .arrange("-total_rev")                        -arrange "-total_rev"
+       .arrange("total_rev desc")                    -arrange "total_rev desc"
                      │                                       │
                      ▼                                       ▼
              In-Memory Result                          Stdout / Export
@@ -102,7 +102,7 @@ report = (
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm", status="'verified'")
     .by("species", "island")
     .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
-    .arrange("-avg_mass_kg")
+    .arrange("avg_mass_kg desc")
 )
 
 # Export results
@@ -118,6 +118,6 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
   -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
-  -arrange "-avg_mass_kg" \
+  -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```

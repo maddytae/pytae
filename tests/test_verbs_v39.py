@@ -221,7 +221,7 @@ def test_pytae_dataframe_direct_operations_no_pt():
         .filter("body_mass_g > 3000")
         .mutate(mass_kg="body_mass_g / 1000")
         .select("species", "island", "mass_kg")
-        .arrange("-mass_kg")
+        .arrange("mass_kg desc")
         .distinct("species", "island")
     )
     assert len(res) > 0

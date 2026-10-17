@@ -39,7 +39,7 @@ summary = (
     df.filter("amount > 0")
     .by("region")
     .mutate(pct_total="amount / sum(amount)", prev_sale="shift(amount, 1)")
-    .arrange("-amount")
+    .arrange("amount desc")
     .to_pandas()  # or .to_polars(), .to_clip()
 )
 ```

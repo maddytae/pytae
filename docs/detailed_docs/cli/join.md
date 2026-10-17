@@ -162,7 +162,7 @@ pytae -file "orders.parquet=o; customers.csv=c" \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
   -agg "spent = total:sum, orders = n" \
-  -arrange "-spent" \
+  -arrange "spent desc" \
   -head 10 \
   -o top_west_customers.parquet
 ```

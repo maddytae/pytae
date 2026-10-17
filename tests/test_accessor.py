@@ -125,7 +125,7 @@ def test_polars_lazyframe_pt_accessor():
 
     ldf = pl.LazyFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
     # Test entering Pytae from native pl.LazyFrame via .pt
-    plan = ldf.pt.mutate(c="a + b").with_columns(d=pl.col("c") * 2).filter("d > 30").arrange("-d").select("a", "d")
+    plan = ldf.pt.mutate(c="a + b").with_columns(d=pl.col("c") * 2).filter("d > 30").arrange("d desc").select("a", "d")
     assert plan.is_lazy
     collected = plan.collect()
     assert isinstance(collected, pt.DataFrame)

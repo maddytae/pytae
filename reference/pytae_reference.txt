@@ -734,7 +734,7 @@ Inspection & Summary Flags:
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
   -nrows, -limit N      Limit reading to first N rows of file
-  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc", -arrange "col1 desc", or -arrange "-col1"
+  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc" or -arrange "col1 desc"
 
 In-Terminal ASCII Visualizations:
   -freq COL             Render horizontal frequency distribution bars with counts & percentages
@@ -1349,7 +1349,7 @@ pytae penguins.parquet -dropna sex -by sex -agg mean -round 1
 
 [← Back to CLI Reference Hub](../cli.md)
 
-Order DataFrame rows by one or more columns with full support for descending orders (`desc`, `-col`) and bracket notation for columns with spaces.
+Order DataFrame rows by one or more columns with full support for descending orders (`desc`) and bracket notation for columns with spaces.
 
 ---
 
@@ -1357,7 +1357,7 @@ Order DataFrame rows by one or more columns with full support for descending ord
 
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Ascending Sort (Default)](#ascending-sort-default)
-- [Descending Sort (`desc`, `-col`)](#descending-sort-desc--col)
+- [Descending Sort (`desc`)](#descending-sort-desc)
 - [Multi-Column Sorting](#multi-column-sorting)
 - [Columns With Spaces (`[col name]`)](#columns-with-spaces-col-name)
 
@@ -1368,7 +1368,7 @@ Order DataFrame rows by one or more columns with full support for descending ord
 | Flag | Syntax / Format | Description |
 |---|---|---|
 | `-arrange SPEC` | `col` | Sort ascending (default) |
-| `-arrange SPEC` | `col desc` or `-col` | Sort descending |
+| `-arrange SPEC` | `col desc` | Sort descending |
 | `-arrange SPEC` | `col1, col2 desc` | Multi-column hierarchical sort |
 | `-arrange SPEC` | `"[col name] desc"` | Sort columns containing spaces |
 
@@ -1395,16 +1395,13 @@ pytae penguins.parquet -arrange body_mass_g -select "species,island,body_mass_g"
 
 ---
 
-## Descending Sort (`desc`, `-col`)
+## Descending Sort (`desc`)
 
-Specify descending order using trailing `desc` / `descending`, or leading `-`:
+In line with *"one and only one right way"*, specify descending order explicitly by appending `desc` or `descending` to the column name:
 
 ```bash
 # Explicit 'desc'
 pytae penguins.parquet -arrange "body_mass_g desc" -select "species,island,body_mass_g" -head 5
-
-# Leading minus shorthand
-pytae penguins.parquet -arrange "-body_mass_g" -select "species,island,body_mass_g" -head 5
 ```
 
 **Output:**
@@ -1426,9 +1423,6 @@ Pass multiple columns separated by commas:
 ```bash
 # Species ascending, body mass descending
 pytae penguins.parquet -arrange "species, body_mass_g desc" -select "species,island,body_mass_g" -head 6
-
-# Shorthand notation
-pytae penguins.parquet -arrange "species, -body_mass_g" -select "species,island,body_mass_g" -head 6
 ```
 
 **Output:**
@@ -2730,7 +2724,7 @@ pytae -file "orders.parquet=o; customers.csv=c" \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
   -agg "spent = total:sum, orders = n" \
-  -arrange "-spent" \
+  -arrange "spent desc" \
   -head 10 \
   -o top_west_customers.parquet
 ```
@@ -5539,7 +5533,7 @@ Because `pytae` operations return native `DataFrame` objects, you can chain verb
         avg_mass='body_mass_g:mean',
         max_mass='body_mass_g:max',
     )
-    .arrange('-avg_mass')
+    .arrange('avg_mass desc')
 )
 ```
 Output:
@@ -5664,7 +5658,9 @@ shape: (2, 4)
 
 # `arrange` — Row Sorting & Ordering
 
-`arrange` orders DataFrame rows by one or more columns with full support for descending orders (`desc`, `-col`), global `ascending=` overrides, and bracket notation for columns with spaces (`[col name]`).
+`arrange` orders DataFrame rows by one or more columns with full support for descending orders (`desc`), global `ascending=` overrides, and bracket notation for columns with spaces (`[col name]`).
+
+In line with *"there should be one-- and preferably only one --obvious way to do it"*, descending sort is explicitly declared using `desc` (e.g. `"col desc"`).
 
 | Method | Key Params | Purpose |
 |---|---|---|
@@ -5713,40 +5709,15 @@ shape: (5, 3)
 └───────────┴────────┴─────────────┘
 ```
 
-## 2. Descending Order: `desc` keyword and `-` shorthand
+## 2. Descending Order: `desc`
 
-Specify descending order either by appending `desc` or prefixing the column name with `-`.
+In line with *"one and only one right way"*, specify descending order explicitly by appending `desc` (or `descending`) to the column name.
 
 ```python
 # Using explicit 'desc'
 (
     penguins
     .arrange("body_mass_g desc")
-    .select("species", "island", "body_mass_g")
-    .head(5)
-)
-```
-Output:
-```text
-shape: (5, 3)
-┌─────────┬────────┬─────────────┐
-│ species ┆ island ┆ body_mass_g │
-│ ---     ┆ ---    ┆ ---         │
-│ str     ┆ str    ┆ f64         │
-╞═════════╪════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ 6300.0      │
-│ Gentoo  ┆ Biscoe ┆ 6050.0      │
-│ Gentoo  ┆ Biscoe ┆ 6000.0      │
-│ Gentoo  ┆ Biscoe ┆ 6000.0      │
-│ Gentoo  ┆ Biscoe ┆ 5950.0      │
-└─────────┴────────┴─────────────┘
-```
-
-```python
-# Using leading minus '-' shorthand
-(
-    penguins
-    .arrange("-body_mass_g")
     .select("species", "island", "body_mass_g")
     .head(5)
 )
@@ -5798,10 +5769,10 @@ shape: (6, 3)
 ```
 
 ```python
-# Comma-separated string with shorthand minus
+# Comma-separated string
 (
     penguins
-    .arrange("species, -body_mass_g")
+    .arrange("species, body_mass_g desc")
     .select("species", "island", "body_mass_g")
     .head(6)
 )
@@ -5861,7 +5832,7 @@ Available as standalone functional verb `pt.arrange(df, ...)`:
 
 ```python
 # Functional arrange
-top_tips = pt.arrange(tips, "-tip")
+top_tips = pt.arrange(tips, "tip desc")
 top_tips[["total_bill", "tip", "day"]].head(4)
 ```
 Output:
@@ -5877,6 +5848,22 @@ shape: (4, 3)
 │ 39.42      ┆ 7.58 ┆ Sat │
 │ 48.27      ┆ 6.73 ┆ Sat │
 └────────────┴──────┴─────┘
+```
+
+## 6. Design Principle: Rejecting `-` Shorthand
+
+Prefixing columns with `-` (e.g. `arrange("-col")`) is intentionally not supported because it violates *"one and only one right way"* and creates ambiguity with hyphenated column names or negation expressions. Pytae strictly enforces explicit `desc`:
+
+```python
+# Leading '-' raises a clear ValueError pointing to 'col desc'
+try:
+    penguins.arrange("-body_mass_g")
+except ValueError as err:
+    print(f"Error caught as expected: {err}")
+```
+Output:
+```text
+Error caught as expected: arrange(): leading '-' is not supported. In line with 'one and only one right way', use 'body_mass_g desc' instead (e.g. arrange('body_mass_g desc')).
 ```
 
 ################################################################################
@@ -10992,7 +10979,7 @@ DuckDB supports full ANSI SQL features including window functions, common table 
        .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
        .by("region")                                 -by region
        .agg(total_rev="sum(sales)")                  -agg "total_rev = sum(sales)"
-       .arrange("-total_rev")                        -arrange "-total_rev"
+       .arrange("total_rev desc")                    -arrange "total_rev desc"
                      │                                       │
                      ▼                                       ▼
              In-Memory Result                          Stdout / Export
@@ -11072,7 +11059,7 @@ report = (
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm", status="'verified'")
     .by("species", "island")
     .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
-    .arrange("-avg_mass_kg")
+    .arrange("avg_mass_kg desc")
 )
 
 # Export results
@@ -11088,7 +11075,7 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
   -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
-  -arrange "-avg_mass_kg" \
+  -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```
 
@@ -11252,8 +11239,8 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
 | **Ascending** | `df.sort_values('x')` | `arrange(df, x)` | `df.arrange("x")` | `-arrange x` |
-| **Descending** | `df.sort_values('x', ascending=False)` | `arrange(df, desc(x))` | `df.arrange("x desc")` or `df.arrange("-x")` | `-arrange "x desc"` or `-arrange "-x"` |
-| **Multi-Column** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `arrange(df, a, desc(b))` | `df.arrange("a", "-b")` | `-arrange "a, -b"` |
+| **Descending** | `df.sort_values('x', ascending=False)` | `arrange(df, desc(x))` | `df.arrange("x desc")` | `-arrange "x desc"` |
+| **Multi-Column** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `arrange(df, a, desc(b))` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 
 ---
 
@@ -12024,11 +12011,15 @@ def _parse_col_order(
 
     asc = default_asc
     if token.startswith("-") and len(token) > 1:
-        asc = False
-        token = token[1:].strip()
+        col = token[1:].strip()
+        raise ValueError(
+            f"arrange(): leading '-' is not supported. In line with 'one and only one right way', use '{col} desc' instead (e.g. arrange('{col} desc'))."
+        )
     elif token.startswith("+") and len(token) > 1:
-        asc = True
-        token = token[1:].strip()
+        col = token[1:].strip()
+        raise ValueError(
+            f"arrange(): leading '+' is not supported. Columns sort ascending by default (e.g. arrange('{col}'))."
+        )
     else:
         lower = token.lower()
         for suffix, direction in [
@@ -12669,7 +12660,7 @@ def unquote_name(raw: str) -> str:
 """DataFrame accessor `df.pt` registered on both Polars and Pandas DataFrames.
 
 Allows entering Pytae's fluent grammar directly:
-    df.pt.filter("amount > 0").by("region").mutate(prev="shift(amount, 1)").arrange("-amount")
+    df.pt.filter("amount > 0").by("region").mutate(prev="shift(amount, 1)").arrange("amount desc")
 """
 
 from __future__ import annotations
@@ -13507,7 +13498,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SPEC",
         action=_OrderedStore,
-        help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc" or -arrange "-mass"',
+        help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc"',
     )
     parser.add_argument(
         "-pick",
@@ -24785,7 +24776,7 @@ def test_polars_lazyframe_pt_accessor():
 
     ldf = pl.LazyFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
     # Test entering Pytae from native pl.LazyFrame via .pt
-    plan = ldf.pt.mutate(c="a + b").with_columns(d=pl.col("c") * 2).filter("d > 30").arrange("-d").select("a", "d")
+    plan = ldf.pt.mutate(c="a + b").with_columns(d=pl.col("c") * 2).filter("d > 30").arrange("d desc").select("a", "d")
     assert plan.is_lazy
     collected = plan.collect()
     assert isinstance(collected, pt.DataFrame)
@@ -25151,10 +25142,10 @@ def test_library_arrange_basic_and_directions():
     assert list(res2["grp"]) == ["a", "a", "b", "b"]
     assert list(res2["val"]) == [40, 20, 30, 10]
 
-    # Leading '-'
-    res3 = df.pt.arrange("-grp", "val")
-    assert list(res3["grp"]) == ["b", "b", "a", "a"]
-    assert list(res3["val"]) == [10, 30, 20, 40]
+    # Leading '-' is rejected in line with 'one and only one right way'
+    import pytest
+    with pytest.raises(ValueError, match=r"leading '-' is not supported"):
+        df.pt.arrange("-grp", "val")
 
     # pt.arrange standalone function
     res4 = pt.arrange(df, "val desc")
@@ -29371,7 +29362,7 @@ def test_df_join_inner_and_chaining():
     df2 = pt.DataFrame({"id": [2, 3, 4], "dept": ["Eng", "HR", "Sales"]})
 
     # Join and continue chaining Pytae fluent verbs
-    res = df1.join(df2, on="id", how="inner").filter("score >= 80").mutate(score_bonus="score + 10").arrange("-score")
+    res = df1.join(df2, on="id", how="inner").filter("score >= 80").mutate(score_bonus="score + 10").arrange("score desc")
     assert isinstance(res, pt.DataFrame)
     assert list(res.columns) == ["id", "name", "score", "dept", "score_bonus"]
     assert len(res) == 1
@@ -29518,7 +29509,7 @@ def test_dynamic_polars_forwarding_in_chain():
     # with_columns is a native Polars method!
     # Because of transparent forwarding, it executes and wraps result back into pytae.DataFrame:
     res = (
-        df.with_columns(tax=pl.col("amt") * 0.1).filter("tax > 2").by("cat").mutate(total="sum(amt)").arrange("-total")
+        df.with_columns(tax=pl.col("amt") * 0.1).filter("tax > 2").by("cat").mutate(total="sum(amt)").arrange("total desc")
     )
     assert isinstance(res, pt.DataFrame)
     assert "tax" in res.columns
@@ -29598,7 +29589,7 @@ def test_scan_csv(sample_csv: Path):
     mutated = filtered.mutate(doubled="score * 2")
     assert mutated.is_lazy
 
-    arranged = mutated.arrange("-doubled")
+    arranged = mutated.arrange("doubled desc")
     assert arranged.is_lazy
 
     selected = arranged.select("id", "group", "doubled")
@@ -34275,7 +34266,7 @@ def test_pytae_dataframe_direct_operations_no_pt():
         .filter("body_mass_g > 3000")
         .mutate(mass_kg="body_mass_g / 1000")
         .select("species", "island", "mass_kg")
-        .arrange("-mass_kg")
+        .arrange("mass_kg desc")
         .distinct("species", "island")
     )
     assert len(res) > 0

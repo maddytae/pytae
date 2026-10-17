@@ -54,7 +54,7 @@ def test_scan_csv(sample_csv: Path):
     mutated = filtered.mutate(doubled="score * 2")
     assert mutated.is_lazy
 
-    arranged = mutated.arrange("-doubled")
+    arranged = mutated.arrange("doubled desc")
     assert arranged.is_lazy
 
     selected = arranged.select("id", "group", "doubled")

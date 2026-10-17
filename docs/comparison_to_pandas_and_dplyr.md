@@ -151,8 +151,8 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 | Operation | Pandas | dplyr (R) | Pytae (DataFrame) | Pytae CLI |
 |---|---|---|---|---|
 | **Ascending** | `df.sort_values('x')` | `arrange(df, x)` | `df.arrange("x")` | `-arrange x` |
-| **Descending** | `df.sort_values('x', ascending=False)` | `arrange(df, desc(x))` | `df.arrange("x desc")` or `df.arrange("-x")` | `-arrange "x desc"` or `-arrange "-x"` |
-| **Multi-Column** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `arrange(df, a, desc(b))` | `df.arrange("a", "-b")` | `-arrange "a, -b"` |
+| **Descending** | `df.sort_values('x', ascending=False)` | `arrange(df, desc(x))` | `df.arrange("x desc")` | `-arrange "x desc"` |
+| **Multi-Column** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `arrange(df, a, desc(b))` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 
 ---
 

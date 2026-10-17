@@ -1,7 +1,7 @@
 """DataFrame accessor `df.pt` registered on both Polars and Pandas DataFrames.
 
 Allows entering Pytae's fluent grammar directly:
-    df.pt.filter("amount > 0").by("region").mutate(prev="shift(amount, 1)").arrange("-amount")
+    df.pt.filter("amount > 0").by("region").mutate(prev="shift(amount, 1)").arrange("amount desc")
 """
 
 from __future__ import annotations

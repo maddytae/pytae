@@ -450,7 +450,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SPEC",
         action=_OrderedStore,
-        help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc" or -arrange "-mass"',
+        help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc"',
     )
     parser.add_argument(
         "-pick",

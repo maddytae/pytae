@@ -16,7 +16,7 @@ def test_df_join_inner_and_chaining():
     df2 = pt.DataFrame({"id": [2, 3, 4], "dept": ["Eng", "HR", "Sales"]})
 
     # Join and continue chaining Pytae fluent verbs
-    res = df1.join(df2, on="id", how="inner").filter("score >= 80").mutate(score_bonus="score + 10").arrange("-score")
+    res = df1.join(df2, on="id", how="inner").filter("score >= 80").mutate(score_bonus="score + 10").arrange("score desc")
     assert isinstance(res, pt.DataFrame)
     assert list(res.columns) == ["id", "name", "score", "dept", "score_bonus"]
     assert len(res) == 1
@@ -163,7 +163,7 @@ def test_dynamic_polars_forwarding_in_chain():
     # with_columns is a native Polars method!
     # Because of transparent forwarding, it executes and wraps result back into pytae.DataFrame:
     res = (
-        df.with_columns(tax=pl.col("amt") * 0.1).filter("tax > 2").by("cat").mutate(total="sum(amt)").arrange("-total")
+        df.with_columns(tax=pl.col("amt") * 0.1).filter("tax > 2").by("cat").mutate(total="sum(amt)").arrange("total desc")
     )
     assert isinstance(res, pt.DataFrame)
     assert "tax" in res.columns

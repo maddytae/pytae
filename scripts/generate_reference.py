@@ -743,7 +743,7 @@ Inspection & Summary Flags:
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
   -nrows, -limit N      Limit reading to first N rows of file
-  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc", -arrange "col1 desc", or -arrange "-col1"
+  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc" or -arrange "col1 desc"
 
 In-Terminal ASCII Visualizations:
   -freq COL             Render horizontal frequency distribution bars with counts & percentages
