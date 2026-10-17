@@ -94,7 +94,7 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
         if len(cond) == 1:
             raise ValueError(
                 f"filter(): 1-tuple pattern {cond!r} on column {col!r} is not supported. "
-                f"In line with 'one and only one right way', use predicate expressions instead, "
+                f"In line with 'one and only one obvious way', use predicate expressions instead, "
                 f"e.g. filter('{col}.notna()') or filter('{col}.isna()')."
             )
         elif len(cond) == 2:

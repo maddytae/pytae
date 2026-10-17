@@ -103,7 +103,7 @@ Key principles:
    when ambiguous"): Flexible inputs are accepted where unambiguous, but collisions, 
    conflicts, and invalid arguments raise clear exceptions rather than silently 
    inventing artificial column suffixes or guessing.
-8. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
+8. One and Only One Obvious Way: Distinct responsibilities per verb—pure 1:1 unmelting 
    is `wide()`, 2D aggregation is `pivot()`, column selection is `select()`, 
    grouping is strictly standalone `pt.by()`.
 9. Plotting Without Implicit Aggregation (Path A): Plotters focus purely on 
@@ -1397,7 +1397,7 @@ pytae penguins.parquet -arrange body_mass_g -select "species,island,body_mass_g"
 
 ## Descending Sort (`desc`)
 
-In line with *"one and only one right way"*, specify descending order explicitly by appending `desc` or `descending` to the column name:
+In line with *"one and only one obvious way"*, specify descending order explicitly by appending `desc` or `descending` to the column name:
 
 ```bash
 # Explicit 'desc'
@@ -5711,7 +5711,7 @@ shape: (5, 3)
 
 ## 2. Descending Order: `desc`
 
-In line with *"one and only one right way"*, specify descending order explicitly by appending `desc` (or `descending`) to the column name.
+In line with *"one and only one obvious way"*, specify descending order explicitly by appending `desc` (or `descending`) to the column name.
 
 ```python
 # Using explicit 'desc'
@@ -5852,7 +5852,7 @@ shape: (4, 3)
 
 ## 6. Design Principle: Rejecting `-` Shorthand
 
-Prefixing columns with `-` (e.g. `arrange("-col")`) is intentionally not supported because it violates *"one and only one right way"* and creates ambiguity with hyphenated column names or negation expressions. Pytae strictly enforces explicit `desc`:
+Prefixing columns with `-` (e.g. `arrange("-col")`) is intentionally not supported because it violates *"one and only one obvious way"* and creates ambiguity with hyphenated column names or negation expressions. Pytae strictly enforces explicit `desc`:
 
 ```python
 # Leading '-' raises a clear ValueError pointing to 'col desc'
@@ -5863,7 +5863,7 @@ except ValueError as err:
 ```
 Output:
 ```text
-Error caught as expected: arrange(): leading '-' is not supported. In line with 'one and only one right way', use 'body_mass_g desc' instead (e.g. arrange('body_mass_g desc')).
+Error caught as expected: arrange(): leading '-' is not supported. In line with 'one and only one obvious way', use 'body_mass_g desc' instead (e.g. arrange('body_mass_g desc')).
 ```
 
 ################################################################################
@@ -6109,16 +6109,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream  ┆ 40.9           ┆ 18.9          ┆ 184.0             ┆ 3900.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 38.3           ┆ 19.2          ┆ 189.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 18.1          ┆ 205.0             ┆ 4300.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 39.5           ┆ 16.7          ┆ 178.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 40.8           ┆ 18.4          ┆ 195.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.9           ┆ 18.6          ┆ 189.0             ┆ 3500.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 40.7           ┆ 17.0          ┆ 190.0             ┆ 3725.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.8          ┆ 195.0             ┆ 3450.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 37.8           ┆ 18.1          ┆ 193.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 33.1           ┆ 16.1          ┆ 178.0             ┆ 2900.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 37.0           ┆ 16.5          ┆ 185.0             ┆ 3400.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.2           ┆ 18.6          ┆ 190.0             ┆ 4250.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 41.5           ┆ 18.5          ┆ 201.0             ┆ 4000.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6139,15 +6139,15 @@ shape: (10, 7)
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
 │ Adelie  ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0             ┆ 4500.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 46.0           ┆ 21.5          ┆ 194.0             ┆ 4200.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 41.3           ┆ 21.1          ┆ 195.0             ┆ 4400.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 42.8           ┆ 18.5          ┆ 195.0             ┆ 4250.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 40.8           ┆ 18.9          ┆ 208.0             ┆ 4300.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.8          ┆ 190.0             ┆ 4600.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 40.1           ┆ 18.9          ┆ 188.0             ┆ 4300.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 35.1           ┆ 19.4          ┆ 193.0             ┆ 4200.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.1          ┆ 186.0             ┆ 4450.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 41.0           ┆ 20.0          ┆ 203.0             ┆ 4725.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 43.2           ┆ 19.0          ┆ 197.0             ┆ 4775.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0             ┆ 4275.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 39.7           ┆ 17.9          ┆ 193.0             ┆ 4250.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 45.6           ┆ 20.3          ┆ 191.0             ┆ 4600.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0             ┆ 4075.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 37.5           ┆ 18.5          ┆ 199.0             ┆ 4475.0      ┆ Male │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6167,15 +6167,15 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream  ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.5           ┆ 16.7          ┆ 178.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 38.8           ┆ 20.0          ┆ 190.0             ┆ 3950.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 39.8           ┆ 19.1          ┆ 184.0             ┆ 4650.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 39.6           ┆ 18.8          ┆ 190.0             ┆ 4600.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.3           ┆ 19.5          ┆ 190.0             ┆ 3800.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 18.1          ┆ 205.0             ┆ 4300.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 34.0           ┆ 17.1          ┆ 185.0             ┆ 3400.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 33.1           ┆ 16.1          ┆ 178.0             ┆ 2900.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 18.5          ┆ 186.0             ┆ 3100.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 39.7           ┆ 17.9          ┆ 193.0             ┆ 4250.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 32.1           ┆ 15.5          ┆ 188.0             ┆ 3050.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.8          ┆ 195.0             ┆ 3450.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
@@ -6196,15 +6196,15 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 43.3           ┆ 13.4          ┆ 209.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.5          ┆ 209.0             ┆ 4800.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 42.9           ┆ 13.1          ┆ 215.0             ┆ 5000.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.5          ┆ 213.0             ┆ 4400.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.2           ┆ 14.3          ┆ 210.0             ┆ 4600.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 44.0           ┆ 13.6          ┆ 208.0             ┆ 4350.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 43.2           ┆ 14.5          ┆ 208.0             ┆ 4450.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 43.4           ┆ 14.4          ┆ 218.0             ┆ 4600.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.1          ┆ 217.0             ┆ 4375.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.7           ┆ 13.9          ┆ 214.0             ┆ 4400.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 41.7           ┆ 14.7          ┆ 210.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 43.3           ┆ 14.0          ┆ 208.0             ┆ 4575.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 13.7          ┆ 214.0             ┆ 4925.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 14.3          ┆ 215.0             ┆ 4850.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
@@ -6216,22 +6216,22 @@ pt.filter(penguins, species="Gentoo", body_mass_g="> 5000").sample(10)
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 14.8          ┆ 220.0             ┆ 5150.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 48.5           ┆ 14.1          ┆ 220.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.3          ┆ 224.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 55.9           ┆ 17.0          ┆ 228.0             ┆ 5600.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male   │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 44.4           ┆ 17.3          ┆ 219.0             ┆ 5250.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 222.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 17.3          ┆ 228.0             ┆ 5600.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 51.3           ┆ 14.2          ┆ 218.0             ┆ 5300.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 52.1           ┆ 17.0          ┆ 230.0             ┆ 5550.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 55.9           ┆ 17.0          ┆ 228.0             ┆ 5600.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
 ## Column names with spaces — bracket notation `[col]`
@@ -6254,22 +6254,22 @@ penguins_spaces = penguins.rename(
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill length mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 19.0          ┆ 210.0             ┆ 4100.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 49.2           ┆ 15.2          ┆ 221.0             ┆ 6300.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 215.0             ┆ 5000.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 49.1           ┆ 14.5          ┆ 212.0             ┆ 4625.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 50.5           ┆ 15.2          ┆ 216.0             ┆ 5000.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.8           ┆ 14.3          ┆ 215.0             ┆ 4850.0      ┆ Female │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill length mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 47.3           ┆ 15.3          ┆ 222.0             ┆ 5250.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.8          ┆ 217.0             ┆ 5200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.7          ┆ 222.0             ┆ 5750.0      ┆ Male   │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6317,16 +6317,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 37.0           ┆ 16.9          ┆ 185.0             ┆ 3000.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 39.6           ┆ 18.8          ┆ 190.0             ┆ 4600.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 37.3           ┆ 17.8          ┆ 191.0             ┆ 3350.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 38.3           ┆ 19.2          ┆ 189.0             ┆ 3950.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
 │ Adelie    ┆ Dream  ┆ 32.1           ┆ 15.5          ┆ 188.0             ┆ 3050.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 51.3           ┆ 19.2          ┆ 193.0             ┆ 3650.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.5           ┆ 19.6          ┆ 201.0             ┆ 4050.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 52.8           ┆ 20.0          ┆ 205.0             ┆ 4550.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 47.6           ┆ 18.3          ┆ 195.0             ┆ 3850.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 48.1           ┆ 16.4          ┆ 199.0             ┆ 3325.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 45.4           ┆ 18.7          ┆ 188.0             ┆ 3525.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 46.1           ┆ 18.2          ┆ 178.0             ┆ 3250.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 51.7           ┆ 20.3          ┆ 194.0             ┆ 3775.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 40.9           ┆ 16.6          ┆ 187.0             ┆ 3200.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 46.2           ┆ 17.5          ┆ 187.0             ┆ 3650.0      ┆ Female │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6373,16 +6373,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 39.6           ┆ 17.2          ┆ 196.0            ┆ 3550.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 37.3           ┆ 17.8          ┆ 191.0            ┆ 3350.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0            ┆ 3600.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 38.1           ┆ 18.6          ┆ 190.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 193.0            ┆ 2925.0      ┆ Female │
-│ Adelie    ┆ Torgersen ┆ 38.8           ┆ 17.6          ┆ 191.0            ┆ 3275.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 36.0           ┆ 17.8          ┆ 195.0            ┆ 3450.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 58.0           ┆ 17.8          ┆ 181.0            ┆ 3700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.5           ┆ 13.7          ┆ 214.0            ┆ 4650.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 14.3          ┆ 210.0            ┆ 4600.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 38.7           ┆ 19.0          ┆ 195.0            ┆ 3450.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 35.3           ┆ 18.9          ┆ 187.0            ┆ 3800.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 172.0            ┆ 3150.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 37.6           ┆ 19.3          ┆ 181.0            ┆ 3300.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0            ┆ 3700.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 39.0           ┆ 17.1          ┆ 191.0            ┆ 3050.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 17.8          ┆ 198.0            ┆ 3950.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 50.5           ┆ 18.4          ┆ 200.0            ┆ 3400.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.8           ┆ 17.3          ┆ 198.0            ┆ 3675.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.5           ┆ 14.2          ┆ 209.0            ┆ 4600.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6407,16 +6407,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 47.8           ┆ 15.0          ┆ 215.0             ┆ 5650.0      ┆ Male   │
 │ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 59.6           ┆ 17.0          ┆ 230.0             ┆ 6050.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 14.8          ┆ 220.0             ┆ 5150.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 225.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.7           ┆ 15.0          ┆ 223.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.7          ┆ 222.0             ┆ 5750.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6436,16 +6436,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 44.4           ┆ 17.3          ┆ 219.0             ┆ 5250.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.3          ┆ 224.0             ┆ 5550.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 52.5           ┆ 15.6          ┆ 221.0             ┆ 5450.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 52.2           ┆ 17.1          ┆ 228.0             ┆ 5400.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male │
 │ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male │
+│ Gentoo  ┆ Biscoe ┆ 48.8           ┆ 16.2          ┆ 222.0             ┆ 6000.0      ┆ Male │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6467,16 +6467,16 @@ shape: (10, 5)
 │ ---     ┆ ---    ┆ ---    ┆ ---            ┆ ---         │
 │ str     ┆ str    ┆ str    ┆ f64            ┆ f64         │
 ╞═════════╪════════╪════════╪════════════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.1           ┆ 4500.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 4550.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4650.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.2           ┆ 4800.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 5000.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 49.1           ┆ 5150.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4200.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.4           ┆ 4725.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.8           ┆ 4200.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.6           ┆ 4850.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 4400.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 4900.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 5200.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 47.5           ┆ 4950.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.9           ┆ 4875.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.8           ┆ 4850.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.5           ┆ 4750.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.2           ┆ 4975.0      │
 └─────────┴────────┴────────┴────────────────┴─────────────┘
 ```
 
@@ -6501,16 +6501,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 37.8           ┆ 17.3          ┆ 180.0            ┆ 3700.0      ┆ null   │
-│ Adelie    ┆ Torgersen ┆ 36.6           ┆ 17.8          ┆ 185.0            ┆ 3700.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 36.3           ┆ 19.5          ┆ 190.0            ┆ 3800.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0            ┆ 3600.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 37.8           ┆ 18.1          ┆ 193.0            ┆ 3750.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 46.6           ┆ 17.8          ┆ 193.0            ┆ 3800.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.5           ┆ 19.0          ┆ 200.0            ┆ 3800.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 48.7           ┆ 14.1          ┆ 210.0            ┆ 4450.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 43.3           ┆ 13.4          ┆ 209.0            ┆ 4400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0            ┆ 4400.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 38.8           ┆ 17.2          ┆ 180.0            ┆ 3800.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 41.6           ┆ 18.0          ┆ 192.0            ┆ 3950.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 39.7           ┆ 18.4          ┆ 190.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 41.3           ┆ 20.3          ┆ 194.0            ┆ 3550.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0            ┆ 4275.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0            ┆ 4075.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.7           ┆ 17.0          ┆ 190.0            ┆ 3725.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 39.2           ┆ 18.6          ┆ 190.0            ┆ 4250.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 42.4           ┆ 17.3          ┆ 181.0            ┆ 3600.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.5          ┆ 210.0            ┆ 3950.0      ┆ Male   │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6531,16 +6531,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe    ┆ 40.6           ┆ 18.6          ┆ 183.0            ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 41.1           ┆ 18.1          ┆ 205.0            ┆ 4300.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 40.8           ┆ 18.9          ┆ 208.0            ┆ 4300.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0            ┆ 3450.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
+│ Adelie    ┆ Biscoe    ┆ 40.1           ┆ 18.9          ┆ 188.0            ┆ 4300.0      ┆ Male   │
 │ Adelie    ┆ Torgersen ┆ 40.6           ┆ 19.0          ┆ 199.0            ┆ 4000.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 46.4           ┆ 18.6          ┆ 190.0            ┆ 3450.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 40.2           ┆ 17.1          ┆ 193.0            ┆ 3400.0      ┆ Female │
 │ Chinstrap ┆ Dream     ┆ 49.2           ┆ 18.2          ┆ 195.0            ┆ 4400.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 46.2           ┆ 14.5          ┆ 209.0            ┆ 4800.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 49.8           ┆ 16.8          ┆ 230.0            ┆ 5700.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 47.7           ┆ 15.0          ┆ 216.0            ┆ 4750.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 42.6           ┆ 13.7          ┆ 213.0            ┆ 4950.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 49.6           ┆ 16.0          ┆ 225.0            ┆ 5700.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 48.5           ┆ 14.1          ┆ 220.0            ┆ 5300.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 45.3           ┆ 13.8          ┆ 208.0            ┆ 4200.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.2           ┆ 14.1          ┆ 217.0            ┆ 4375.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6555,23 +6555,22 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe    ┆ 37.7           ┆ 18.7          ┆ 180.0            ┆ 3600.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 38.8           ┆ 17.2          ┆ 180.0            ┆ 3800.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 40.5           ┆ 18.9          ┆ 180.0            ┆ 3950.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 41.6           ┆ 18.0          ┆ 192.0            ┆ 3950.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 33.5           ┆ 19.0          ┆ 190.0            ┆ 3600.0      ┆ Female │
-│ Adelie    ┆ Torgersen ┆ 36.2           ┆ 16.1          ┆ 187.0            ┆ 3550.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 40.7           ┆ 17.0          ┆ 190.0            ┆ 3725.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 50.0           ┆ 19.5          ┆ 196.0            ┆ 3900.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.5          ┆ 210.0            ┆ 3950.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 42.7           ┆ 13.7          ┆ 208.0            ┆ 3950.0      ┆ Female │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Biscoe ┆ 38.2           ┆ 18.1          ┆ 185.0             ┆ 3950.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
+│ Adelie    ┆ Biscoe ┆ 39.7           ┆ 18.9          ┆ 184.0             ┆ 3550.0      ┆ Male   │
+│ Adelie    ┆ Biscoe ┆ 39.6           ┆ 20.7          ┆ 191.0             ┆ 3900.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 40.7           ┆ 17.0          ┆ 190.0             ┆ 3725.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 52.7           ┆ 19.8          ┆ 197.0             ┆ 3725.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 46.4           ┆ 17.8          ┆ 191.0             ┆ 3700.0      ┆ Female │
+└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6591,18 +6590,18 @@ shape: (5, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 36.0           ┆ 18.5          ┆ 186.0             ┆ 3100.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 40.9           ┆ 18.9          ┆ 184.0             ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
 │ Adelie    ┆ Dream  ┆ 41.3           ┆ 20.3          ┆ 194.0             ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 39.6           ┆ 18.1          ┆ 186.0             ┆ 4450.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 46.1           ┆ 18.2          ┆ 178.0             ┆ 3250.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 45.9           ┆ 17.1          ┆ 190.0             ┆ 3575.0      ┆ Female │
+│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 51.7           ┆ 20.3          ┆ 194.0             ┆ 3775.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ## String matching and null checks
 `startswith`/`endswith`/`contains`/`regex` use pandas' `.str` accessor (missing values never match, `na=False`). `contains`/`regex` both search anywhere in the string (like `re.search`) — `regex` is just `contains` with `regex=True`.
 
-`startswith` and `endswith` also accept a list or tuple of multiple prefixes/suffixes. For null checks (`isna`/`notna`), use clean predicate expressions like `"sex.notna()"` or `"[bill length mm].notna()"`. 1-element tuples like `("notna",)` are intentionally rejected to maintain *"one and only one right way"*.
+`startswith` and `endswith` also accept a list or tuple of multiple prefixes/suffixes. For null checks (`isna`/`notna`), use clean predicate expressions like `"sex.notna()"` or `"[bill length mm].notna()"`. 1-element tuples like `("notna",)` are intentionally rejected to maintain *"one and only one obvious way"*.
 
 ```python
 # species starting with 'Ad' — same idea for endswith/contains
@@ -6620,16 +6619,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 37.8           ┆ 17.3          ┆ 180.0             ┆ 3700.0      ┆ null   │
-│ Adelie  ┆ Dream     ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
-│ Adelie  ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0             ┆ 3800.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0             ┆ 4450.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0             ┆ 3600.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 193.0             ┆ 2925.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 38.2           ┆ 20.0          ┆ 190.0             ┆ 3900.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0             ┆ 3450.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 40.6           ┆ 17.2          ┆ 187.0             ┆ 3475.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 40.7           ┆ 17.0          ┆ 190.0             ┆ 3725.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.2           ┆ 19.6          ┆ 195.0             ┆ 4675.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 41.1           ┆ 17.6          ┆ 182.0             ┆ 3200.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 34.4           ┆ 18.4          ┆ 184.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 37.9           ┆ 18.6          ┆ 172.0             ┆ 3150.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 38.5           ┆ 17.9          ┆ 190.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 39.7           ┆ 17.9          ┆ 193.0             ┆ 4250.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6649,16 +6648,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream     ┆ 36.3           ┆ 19.5          ┆ 190.0             ┆ 3800.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 38.3           ┆ 19.2          ┆ 189.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Biscoe    ┆ 38.1           ┆ 16.5          ┆ 198.0             ┆ 3825.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 37.3           ┆ 20.5          ┆ 199.0             ┆ 3775.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 38.8           ┆ 17.6          ┆ 191.0             ┆ 3275.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 50.2           ┆ 14.3          ┆ 218.0             ┆ 5700.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 49.6           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 45.7           ┆ 13.9          ┆ 214.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 54.3           ┆ 15.7          ┆ 231.0             ┆ 5650.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.3           ┆ 20.6          ┆ 190.0             ┆ 3650.0      ┆ Male   │
+│ Adelie  ┆ Biscoe    ┆ 37.7           ┆ 18.7          ┆ 180.0             ┆ 3600.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 35.0           ┆ 17.9          ┆ 192.0             ┆ 3725.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 42.0           ┆ 13.5          ┆ 210.0             ┆ 4150.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 42.6           ┆ 13.7          ┆ 213.0             ┆ 4950.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 43.8           ┆ 13.9          ┆ 208.0             ┆ 4300.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 46.5           ┆ 14.8          ┆ 217.0             ┆ 5200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe    ┆ 50.8           ┆ 17.3          ┆ 228.0             ┆ 5600.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe    ┆ 44.5           ┆ 14.7          ┆ 214.0             ┆ 4850.0      ┆ Female │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6678,16 +6677,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 48.4           ┆ 14.6          ┆ 213.0             ┆ 5850.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 44.4           ┆ 17.3          ┆ 219.0             ┆ 5250.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 42.7           ┆ 13.7          ┆ 208.0             ┆ 3950.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 222.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 45.7           ┆ 13.9          ┆ 214.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 44.5           ┆ 15.7          ┆ 217.0             ┆ 4875.0      ┆ null   │
-│ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 13.7          ┆ 214.0             ┆ 4925.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 13.7          ┆ 214.0             ┆ 4650.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 42.6           ┆ 13.7          ┆ 213.0             ┆ 4950.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.3           ┆ 13.7          ┆ 210.0             ┆ 4300.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 15.0          ┆ 220.0             ┆ 5000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.3           ┆ 13.8          ┆ 208.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.4           ┆ 15.8          ┆ 216.0             ┆ 4925.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 49.9           ┆ 16.1          ┆ 213.0             ┆ 5400.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6726,7 +6725,7 @@ except ValueError as err:
 ```
 Output:
 ```text
-Error caught as expected: filter(): 1-tuple pattern ('notna',) on column 'sex' is not supported. In line with 'one and only one right way', use predicate expressions instead, e.g. filter('sex.notna()') or filter('sex.isna()').
+Error caught as expected: filter(): 1-tuple pattern ('notna',) on column 'sex' is not supported. In line with 'one and only one obvious way', use predicate expressions instead, e.g. filter('sex.notna()') or filter('sex.isna()').
 ```
 
 ## Multiple conditions on the same column
@@ -6749,23 +6748,22 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
-│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
-│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
-│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
-╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe    ┆ 40.6           ┆ 18.6          ┆ 183.0            ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 41.3           ┆ 20.3          ┆ 194.0            ┆ 3550.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 43.2           ┆ 18.5          ┆ 192.0            ┆ 4100.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 41.1           ┆ 18.6          ┆ 189.0            ┆ 3325.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 47.5           ┆ 16.8          ┆ 199.0            ┆ 3900.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.3          ┆ 193.0            ┆ 3600.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 49.6           ┆ 18.2          ┆ 193.0            ┆ 3775.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 45.3           ┆ 13.7          ┆ 210.0            ┆ 4300.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0            ┆ 5100.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 15.0          ┆ 228.0            ┆ 5500.0      ┆ Male   │
-└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
+┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Chinstrap ┆ Dream  ┆ 46.7           ┆ 17.9          ┆ 195.0             ┆ 3300.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 43.5           ┆ 18.1          ┆ 202.0             ┆ 3400.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 45.3           ┆ 13.8          ┆ 208.0             ┆ 4200.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.4          ┆ 214.0             ┆ 4650.0      ┆ null   │
+│ Gentoo    ┆ Biscoe ┆ 46.4           ┆ 15.0          ┆ 216.0             ┆ 4700.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe ┆ 47.5           ┆ 14.2          ┆ 209.0             ┆ 4600.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 46.9           ┆ 14.6          ┆ 222.0             ┆ 4875.0      ┆ Female │
+└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6779,22 +6777,23 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe ┆ 41.4           ┆ 18.6          ┆ 191.0             ┆ 3700.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 40.2           ┆ 17.1          ┆ 193.0             ┆ 3400.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 46.6           ┆ 17.8          ┆ 193.0             ┆ 3800.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 46.4           ┆ 17.8          ┆ 191.0             ┆ 3700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 45.4           ┆ 14.6          ┆ 211.0             ┆ 4800.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 43.6           ┆ 13.9          ┆ 217.0             ┆ 4900.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 41.7           ┆ 14.7          ┆ 210.0             ┆ 4700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 43.5           ┆ 15.2          ┆ 213.0             ┆ 4650.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
+│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
+│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
+│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
+╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Torgersen ┆ 41.1           ┆ 17.6          ┆ 182.0            ┆ 3200.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 41.3           ┆ 21.1          ┆ 195.0            ┆ 4400.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0            ┆ 4075.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 46.7           ┆ 17.9          ┆ 195.0            ┆ 3300.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.7           ┆ 18.6          ┆ 195.0            ┆ 3600.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 46.9           ┆ 16.6          ┆ 192.0            ┆ 2700.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 16.6          ┆ 191.0            ┆ 3250.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 15.4          ┆ 215.0            ┆ 5150.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 16.1          ┆ 215.0            ┆ 5500.0      ┆ Male   │
+└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6809,22 +6808,23 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 40.8           ┆ 18.4          ┆ 195.0             ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Biscoe ┆ 41.4           ┆ 18.6          ┆ 191.0             ┆ 3700.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 45.2           ┆ 17.8          ┆ 198.0             ┆ 3950.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 46.9           ┆ 16.6          ┆ 192.0             ┆ 2700.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.5           ┆ 13.5          ┆ 210.0             ┆ 4550.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 46.5           ┆ 14.4          ┆ 217.0             ┆ 4900.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 43.8           ┆ 13.9          ┆ 208.0             ┆ 4300.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 48.5           ┆ 15.0          ┆ 219.0             ┆ 4850.0      ┆ Female │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
+│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
+│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
+│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
+╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Torgersen ┆ 46.0           ┆ 21.5          ┆ 194.0            ┆ 4200.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 40.5           ┆ 17.9          ┆ 187.0            ┆ 3200.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0            ┆ 4275.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.2           ┆ 17.1          ┆ 193.0            ┆ 3400.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 47.5           ┆ 16.8          ┆ 199.0            ┆ 3900.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.0           ┆ 19.5          ┆ 210.0            ┆ 3950.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 46.2           ┆ 17.5          ┆ 187.0            ┆ 3650.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 14.5          ┆ 213.0            ┆ 4400.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 45.0           ┆ 15.4          ┆ 220.0            ┆ 5050.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 47.7           ┆ 15.0          ┆ 216.0            ┆ 4750.0      ┆ Female │
+└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
 ## Helpful typo suggestions
@@ -9389,7 +9389,7 @@ tips = pt.sample("tips")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x10f1c5a90>
+<pytae.plotting.Plotter at 0x1139c9940>
 ```
 
 ```python
@@ -9409,7 +9409,7 @@ pt.finalize(p)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x119fa9f90>
+<pytae.plotting.Plotter at 0x11e835f90>
 ```
 
 ```python
@@ -9423,7 +9423,7 @@ p = pt.Plotter(tips.by("day").agg(total_bill="mean"), figsize=(8, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11a07b750>
+<pytae.plotting.Plotter at 0x11e903750>
 ```
 
 ## 2. Plot Kinds & Distribution Semantics
@@ -9450,7 +9450,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x119fd69e0>
+<pytae.plotting.Plotter at 0x11e8629e0>
 ```
 
 ```python
@@ -9472,7 +9472,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x119fd6520>
+<pytae.plotting.Plotter at 0x11e861cd0>
 ```
 
 ```python
@@ -9494,7 +9494,7 @@ diamonds = pt.sample("diamonds").sample(1000, random_state=42)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x10e088710>
+<pytae.plotting.Plotter at 0x1128f0710>
 ```
 
 ```python
@@ -9512,7 +9512,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11a09e250>
+<pytae.plotting.Plotter at 0x11e92a140>
 ```
 
 ```python
@@ -9535,7 +9535,7 @@ titanic = pt.sample("titanic")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x10f15a470>
+<pytae.plotting.Plotter at 0x11395a360>
 ```
 
 ```python
@@ -9553,7 +9553,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x119ffb950>
+<pytae.plotting.Plotter at 0x11e887950>
 ```
 
 ## 3. Subplots & Multi-Panel Dashboards (With & Without Mosaic)
@@ -9578,7 +9578,7 @@ p_sub = pt.Plotter(nrows=1, ncols=2, figsize=(11, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11a460e50>
+<pytae.plotting.Plotter at 0x11ecece50>
 ```
 
 ```python
@@ -9595,7 +9595,7 @@ k = pt.Plotter(figsize=(9, 5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11a460050>
+<pytae.plotting.Plotter at 0x11ecec050>
 ```
 
 ```python
@@ -9620,7 +9620,7 @@ p = pt.Plotter(mosaic=mosaic, figsize=(14, 9))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11a461450>
+<pytae.plotting.Plotter at 0x11eced450>
 ```
 
 ```python
@@ -9647,7 +9647,7 @@ p_multi = pt.Plotter(mosaic=mosaic_multi, figsize=(13, 7))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11a463150>
+<pytae.plotting.Plotter at 0x11ecef150>
 ```
 
 ## 4. Grid Faceting / Small Multiples (Auto-Faceting with `by` & `ncols`)
@@ -9673,7 +9673,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12803d350>
+<pytae.plotting.Plotter at 0x12c941350>
 ```
 
 ```python
@@ -9695,7 +9695,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12803cf50>
+<pytae.plotting.Plotter at 0x12c940f50>
 ```
 
 ## 5. End-to-End Pipelines: Mixing pandas, pytae, and Multi-Panel Mosaics
@@ -9736,7 +9736,7 @@ wrangle_penguins = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x119da9450>
+<pytae.plotting.Plotter at 0x11ecef250>
 ```
 
 ```python
@@ -9767,7 +9767,7 @@ cleaned_diamonds = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x12803d150>
+<pytae.plotting.Plotter at 0x12c941150>
 ```
 
 ## 6. Advanced Controls & Customization (`_CONTROL_KWARGS`)
@@ -9786,7 +9786,7 @@ Output:
 | `annot` | `bool` | Annotates heatmap cells with numeric values (see 2.6) |
 | `fmt` | `str` (e.g. `".2f"`, `".1f"`) | Format string specifier for heatmap annotations (see 2.6) |
 
-> **Design Principle:** In line with *"One and only one right way"*, `Plotter` does not perform implicit aggregation. Aggregate or summarize first using `df.agg(...)` or `df.pivot(...)` before plotting.
+> **Design Principle:** In line with *"One and only one obvious way"*, `Plotter` does not perform implicit aggregation. Aggregate or summarize first using `df.agg(...)` or `df.pivot(...)` before plotting.
 
 ```python
 # 6.1 Control Kwargs: print_data, clip_data, xlabel, and ylabel
@@ -9864,7 +9864,7 @@ pre_aggregated = pt.DataFrame({
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x119ff9d50>
+<pytae.plotting.Plotter at 0x10cee4650>
 ```
 
 ```python
@@ -11256,34 +11256,467 @@ DuckDB supports full ANSI SQL features including window functions, common table 
 ################################################################################
 # Pytae — Master Reference & Architecture Guide
 
-`pytae` is a modern, high-performance tabular data manipulation framework that provides a single, unified grammar across both **Python code** (`df.pt.<verb>()`, `pt.<verb>(df)`) and the **Command Line** (`pytae <file> -<verb>`). Backed by a 100% native multithreaded SIMD Polars core, Pytae eliminates boilerplate, index headaches, and performance bottlenecks.
+`pytae` is a modern, high-performance tabular data manipulation framework that provides a single, unified grammar across both **Python code** (`df.<verb>()`, `pt.<verb>(df)`) and the **Command Line** (`pytae <file> -<verb>`). Backed by a 100% native multithreaded SIMD Polars core, Pytae eliminates boilerplate, index headaches, and performance bottlenecks.
+
+---
+
+## The Core Philosophy: "One and Only One Obvious Way"
+
+In Python, the Zen of Python famously asserts:
+> *"There should be one-- and preferably only one --obvious way to do it."*
+
+Yet for over a decade, tabular data engineering and data science have drifted far from this ideal:
+
+- **Pandas** offers four to six competing ways to accomplish nearly every basic operation:
+  - Row filtering can be done via boolean masks `df[df['a'] > 1]`, `.loc[...]`, `.iloc[...]`, `.query(...)`, or `.filter()`.
+  - Column derivations require choosing between bracket assignment `df['c'] = ...`, `.assign()`, `.apply()`, or `transform()`.
+  - Index management demands constant, defensive ceremony: `.reset_index()`, `.set_index()`, `.rename_axis(None)`, and unpacking nested `MultiIndex` tuples after every aggregation.
+  - Silent data loss traps abound: `df.groupby(..., dropna=True)` silently discards rows with missing group keys, while `df.dropna()` defaults to `how='any'`, wiping out valuable records missing even a single optional column.
+- **dplyr (R / Tidyverse)** introduced an elegant functional pipeline, but porting its concepts to Python introduces severe friction:
+  - Non-Standard Evaluation (NSE) creates quoting ambiguity and makes programmatic column passing cumbersome (requiring `{{ col }}`, `across()`, or `.data[[col]]`).
+  - Grouping is stateful and "sticky": `group_by()` produces a persistent grouped data frame that silently alters downstream verbs until the user remembers to chain an explicit `ungroup()`.
+  - Spelling ambiguity (British `summarise` vs. American `summarize`) introduces unnecessary cognitive overhead.
+  - There is zero native parity with the Unix shell or command-line pipelines.
+- **SAS (Statistical Analysis System)** has long served as the enterprise standard in clinical trials, banking, and government, but remains locked in disjoint legacy paradigms:
+  - Analytics are fragmented across two distinct execution engines: the procedural row-by-row `DATA` step and `PROC SQL`, alongside dozens of specialized procedures (`PROC SORT`, `PROC MEANS`, `PROC FREQ`, `PROC TRANSPOSE`, `PROC COMPARE`).
+  - Window calculations and lag/lead operations require manual sort steps followed by stateful row loops with `RETAIN`, `FIRST.`, and `LAST.` flags.
+  - Merging datasets (`MERGE ... BY ...`) strictly requires all input datasets to be pre-sorted on disk by the merge keys, with failure to do so resulting in fatal runtime aborts.
+  - Missing numeric values (`.`) are sorted internally as smaller than negative infinity ($-\infty$), creating a notorious bug where `IF score < 50` evaluates to true for missing records!
+  - Execution relies on heavy batch runs (`.sas` scripts producing voluminous `.log` and `.lst` spool files) with no interactive shell composability.
+
+### The 7 Pillars of Pytae's Philosophy
+
+`pytae` resolves these pain points by establishing **"One and Only One Obvious Way"** as an absolute, non-negotiable architectural doctrine:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        THE 7 PILLARS OF PYTAE ARCHITECTURE                             │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. ONE CANONICAL VERB     │ Exactly one obvious verb per task: filter, mutate, arrange, │
+│                           │ by, agg, pick, distinct, wide, long, pivot, join.          │
+├───────────────────────────┼────────────────────────────────────────────────────────────┤
+│ 2. ZERO SYNTAX AMBIGUITY  │ No competing shortcuts or dual APIs. Explicit 'desc' for   │
+│                           │ sorting; explicit predicate strings for missing checks.    │
+├───────────────────────────┼────────────────────────────────────────────────────────────┤
+│ 3. DUAL-MODALITY PARITY   │ 100% grammar symmetry between Python library & terminal    │
+│                           │ CLI: df.filter(...) in code == -filter "..." in shell.     │
+├───────────────────────────┼────────────────────────────────────────────────────────────┤
+│ 4. PURE FLAT STRUCTURES   │ No indexes, no MultiIndex traps. Every operation returns   │
+│                           │ flat 1D columns with clean RangeIndex(0, 1, 2, ...).       │
+├───────────────────────────┼────────────────────────────────────────────────────────────┤
+│ 5. ZERO DATA LOSS         │ Non-destructive Option B defaults: bare dropna() drops     │
+│                           │ only 100% blank rows; agg/pivot retain NA groups.          │
+├───────────────────────────┼────────────────────────────────────────────────────────────┤
+│ 6. SINGLE-SHOT GROUPING   │ df.by(*cols) scopes only the immediate next verb and auto- │
+│                           │ ungroups. Sticky groups are eliminated; ungroup is dead.   │
+├───────────────────────────┼────────────────────────────────────────────────────────────┤
+│ 7. 100% POLARS SIMD CORE  │ Multithreaded Rust SIMD vector execution under the hood,   │
+│                           │ bypassing Python GIL bottlenecks with zero overhead.      │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## The Pytae Architecture: "One Grammar, Two Modalities"
 
+Whether you are writing a production Python service, conducting exploratory analysis in a Jupyter notebook, or processing massive data streams in a Unix terminal, Pytae uses identical concepts, expression syntax, and naming:
+
 ```
-                              ┌────────────────────────┐
-                              │      Source File       │
-                              │ (.parquet, .csv, etc.) │
-                              └───────────┬────────────┘
-                                          │
-                     ┌────────────────────┴────────────────────┐
-                     ▼                                         ▼
-           Python Library API                         Command Line (CLI)
-         import pytae as pt                         $ pytae file.parquet
-    df = pt.read_parquet("file.parquet")                     │
-                     │                                       │
-     df.filter("sales > 100")                        -filter "sales > 100"
-       .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
-       .by("region")                                 -by region
-       .agg(total_rev="sum(sales)")                  -agg "total_rev = sum(sales)"
-       .arrange("total_rev desc")                    -arrange "total_rev desc"
-                     │                                       │
-                     ▼                                       ▼
-             In-Memory Result                          Stdout / Export
-          Clean, flat DataFrame                      Table view, -o lake/
+                               ┌────────────────────────┐
+                               │      Source File       │
+                               │ (.parquet, .csv, etc.) │
+                               └───────────┬────────────┘
+                                           │
+                      ┌────────────────────┴────────────────────┐
+                      ▼                                         ▼
+            Python Library API                         Command Line (CLI)
+          import pytae as pt                         $ pytae file.parquet
+     df = pt.read_parquet("file.parquet")                     │
+                      │                                       │
+      df.filter("sales > 100")                        -filter "sales > 100"
+        .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
+        .by("region")                                 -by region
+        .agg(total_rev="sum(sales)", n="n")           -agg "total_rev = sum(sales), n = n"
+        .arrange("total_rev desc")                    -arrange "total_rev desc"
+                      │                                       │
+                      ▼                                       ▼
+              In-Memory Result                          Stdout / Export
+           Clean, flat DataFrame                      Table view, -o lake/
 ```
+
+---
+
+## Deep Architectural Comparison: Pytae vs. Pandas vs. dplyr vs. SAS
+
+The following sections provide an extensive, feature-by-feature comparison across all key tabular operations.
+
+### 1. Row Filtering & Conditional Slicing
+
+#### Architectural Paradigm
+- **Pandas**: Employs multiple overlapping mechanisms. Boolean masks (`df[df['a'] > 1]`) force verbose repetition of the DataFrame variable name. `.query()` uses `numexpr` with a restricted syntax that chokes on Python functions and spaced columns.
+- **dplyr**: Elegant `filter()` with tidy evaluation, but requires complex unquoting (`!!`, `{{ }}`) when expressions or column names are passed dynamically.
+- **SAS**: Offers two mechanisms: `WHERE` (evaluated during dataset input before observation processing) and `IF` (evaluated during row processing in the DATA step). Confusingly, calculated variables cannot be used in `WHERE` clauses.
+- **Pytae ("One Obvious Way")**: Standardizes on `filter()`. Supports clean string predicates, bracketed spaced columns (`"[bill length mm] > 40"`), mathematical intervals (`"[3000, 4500]"`), list membership (`cat=['A', 'B']`), string operations (`species=('startswith', ['Ad', 'Ge'])`), and arbitrary Python callables/lambdas.
+
+#### Rosetta Stone: Row Filtering
+| Feature | Pandas | dplyr (R) | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|:---|:---|
+| **Simple Filter** | `df[df['sales'] > 100]` | `filter(df, sales > 100)` | `WHERE sales > 100;` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
+| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `filter(df, a > 1, b == "E")` | `WHERE a > 1 AND b = 'E';` | `df.filter("a > 1 & b == 'E'")` | `-filter "a > 1, b == 'E'"` |
+| **Mathematical Interval**| `df[df['x'].between(10, 20)]` | `filter(df, between(x, 10, 20))` | `WHERE 10 <= x <= 20;` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
+| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `filter(df, cat %in% c("A", "B"))`| `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Spaced Columns** | `df[df['gross sales'] > 50]` | `filter(df, \`gross sales\` > 50)` | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")`| `-filter "[gross sales] > 50"` |
+| **String Prefix Match**| `df[df['name'].str.startswith('A')]`| `filter(df, str_starts(name, "A"))`| `WHERE name LIKE 'A%';` | `df.filter(name=('startswith', 'A'))`| `-filter "name.startswith('A')"` |
+| **Null Row Check** | `df[df['col'].notna()]` | `filter(df, !is.na(col))` | `WHERE col IS NOT MISSING;` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+
+#### Code Comparison: Filtering
+```python
+# --- PYTAE (Python) ---
+df.filter("body_mass_g > 3500 & sex.notna()")
+
+# --- PYTAE (CLI) ---
+# pytae penguins.parquet -filter "body_mass_g > 3500, sex.notna()"
+```
+```python
+# --- PANDAS ---
+df[(df['body_mass_g'] > 3500) & (df['sex'].notna())]
+```
+```r
+# --- DPLYR (R) ---
+penguins %>% filter(body_mass_g > 3500, !is.na(sex))
+```
+```sas
+/* --- SAS --- */
+DATA filtered;
+  SET penguins;
+  WHERE body_mass_g > 3500 AND NOT MISSING(sex);
+RUN;
+```
+
+---
+
+### 2. Feature Engineering & Column Derivations (`mutate`)
+
+#### Architectural Paradigm
+- **Pandas**: Direct assignment `df['y'] = df['a'] / df['b']` mutates in place, breaking method chains. `.assign()` returns copies but cannot reference newly created variables sequentially within the same call without awkward nested lambdas (`df.assign(a=1).assign(b=lambda d: d['a']*2)`).
+- **dplyr**: `mutate()` allows sequential dependencies and `across()` transformations, but `across()` syntax is notoriously verbose and changes frequently across tidyverse releases.
+- **SAS**: The `DATA` step is fundamentally a row-by-row procedural loop. Sequential assignment is natural, but requires boilerplate `DATA ...; SET ...; RUN;` blocks and manual memory management (`LENGTH`, `FORMAT`).
+- **Pytae ("One Obvious Way")**: `mutate()` handles mathematical formulas, sequential dependencies in a single step, multi-column `across` with suffix generation (`"(a, b)_usd = _ * 1.08"`), `if_else`, `case_when`, dictionary value mapping (`map`), and lag/lead (`shift`).
+
+#### Rosetta Stone: Column Derivations
+| Feature | Pandas | dplyr (R) | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|:---|:---|
+| **Simple Formula** | `df.assign(y=df['a'] / df['b'])` | `mutate(df, y = a / b)` | `y = a / b;` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
+| **Sequential Derivation**| Multiple chained `.assign()` calls | `mutate(df, a=1, b=a*2)` | `a = 1; b = a * 2;` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
+| **Conditional (If/Else)**| `np.where(df['x'] > 0, 'pos', 'neg')`| `if_else(x > 0, "pos", "neg")`| `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
+| **Multi-Branch (Case)** | `np.select([c1, c2], [v1, v2], default=v3)` | `case_when(c1 ~ v1, c2 ~ v2, TRUE ~ v3)` | `SELECT; WHEN(c1) f=v1; OTHERWISE f=v3; END;` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
+| **Value Mapping** | `df['x'].map({'A': 1, 'B': 2})` | `recode(x, 'A'=1, 'B'=2)` | `PROC FORMAT; ... PUT(x, fmt.);` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
+| **Multi-Column Transform**| Loop over columns or complex `apply` | `mutate(df, across(c(a,b), ~ .x * 10))` | `ARRAY cols(*) a b; DO i=1 TO 2; ...` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
+| **Multi-Column + Suffix**| Loop + dictionary comprehension | `mutate(df, across(c(a,b), ~ .x*10, .names="{.col}_cm"))` | Complex SAS macro loop | `df.mutate("(a, b)_cm = _ * 10")`| `-mutate "(a, b)_cm = _ * 10"` |
+
+#### Code Comparison: Feature Engineering
+```python
+# --- PYTAE (Python) ---
+df.mutate(
+    mass_kg="body_mass_g / 1000",
+    ratio="bill_length_mm / bill_depth_mm",
+    category="if_else(mass_kg > 4.5, 'Heavy', 'Normal')"
+)
+
+# --- PYTAE (CLI) ---
+# pytae penguins.parquet -mutate "mass_kg = body_mass_g / 1000, ratio = bill_length_mm / bill_depth_mm, category = if_else(mass_kg > 4.5, 'Heavy', 'Normal')"
+```
+```python
+# --- PANDAS ---
+df.assign(
+    mass_kg=df['body_mass_g'] / 1000,
+    ratio=df['bill_length_mm'] / df['bill_depth_mm'],
+    category=np.where(df['body_mass_g'] / 1000 > 4.5, 'Heavy', 'Normal')
+)
+```
+```r
+# --- DPLYR (R) ---
+penguins %>% mutate(
+  mass_kg = body_mass_g / 1000,
+  ratio = bill_length_mm / bill_depth_mm,
+  category = if_else(mass_kg > 4.5, "Heavy", "Normal")
+)
+```
+```sas
+/* --- SAS --- */
+DATA engineered;
+  SET penguins;
+  mass_kg = body_mass_g / 1000;
+  ratio = bill_length_mm / bill_depth_mm;
+  IF mass_kg > 4.5 THEN category = 'Heavy';
+  ELSE category = 'Normal';
+RUN;
+```
+
+---
+
+### 3. Column Selection, Renaming & Exclusion (`select`, `rename`)
+
+#### Architectural Paradigm
+- **Pandas**: Selection uses `df[['a', 'b']]`. Dropping requires `df.drop(columns=['c'])`. Pattern matching requires `df.filter(like='score')`. Renaming requires `df.rename(columns={'old': 'new'})`. These disparate methods use different keywords and return types.
+- **dplyr**: Provides expressive `select()` with negative indexing (`-c`) and selection helpers (`contains()`, `starts_with()`).
+- **SAS**: Uses `KEEP` and `DROP` statements or dataset options `(KEEP=...)`, `(DROP=...)`, and `(RENAME=(old=new))`.
+- **Pytae ("One Obvious Way")**: Unifies column management into `select()` and `rename()`. Supports inclusion, drop prefixes (`"-col"` / `"!col"`), pattern matching (`contains="score"`, `starts_with="bill_"`), inline renaming (`"old:new"`), and reordering helpers (`pt.everything`).
+
+#### Rosetta Stone: Selection & Renaming
+| Feature | Pandas | dplyr (R) | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|:---|:---|
+| **Select Columns** | `df[['species', 'island']]` | `select(df, species, island)` | `KEEP species island;` | `df.select("species", "island")` | `-select "species,island"` |
+| **Drop Columns** | `df.drop(columns=['sex'])` | `select(df, -sex)` | `DROP sex;` | `df.select("-sex")` | `-select "-sex"` |
+| **Pattern Match** | `df.filter(like='bill')` | `select(df, contains("bill"))`| SAS Macro regex array | `df.select(contains="bill")` | `-select "contains=bill"` |
+| **Inline Rename** | `df[['a']].rename(columns={'a': 'b'})`| `select(df, b = a)` | `KEEP a; RENAME a=b;` | `df.select("a:b")` | `-select "a:b"` |
+| **Dedicated Rename**| `df.rename(columns={'a': 'b'})` | `rename(df, b = a)` | `RENAME a=b;` | `df.rename("a:b")` | `-rename "a:b"` |
+| **Reorder with Rest**| `df[['lead'] + [c for c in df if c != 'lead']]` | `select(df, lead, everything())` | Complex `RETAIN` order | `df.select("lead", pt.everything)`| N/A |
+
+---
+
+### 4. Row Sorting & Ordering (`arrange`)
+
+#### Architectural Paradigm
+- **Pandas**: `sort_values()` requires cumbersome arguments: `df.sort_values(by=['sales', 'region'], ascending=[False, True])`.
+- **dplyr**: `arrange()` uses `desc()` wrapper functions: `arrange(df, desc(sales), region)`.
+- **SAS**: Row sorting is not a method—it requires an external procedure: `PROC SORT DATA=in OUT=out; BY DESCENDING sales region; RUN;`.
+- **Pytae ("One Obvious Way")**: Standardizes on `arrange("sales desc", "region")`. In strict adherence to "One and Only One Obvious Way", leading minus shorthand (e.g., `-sales`) is rejected to prevent ambiguity with hyphenated column names or mathematical negation. Descending order is always explicitly declared with `desc` (or `descending`).
+
+#### Rosetta Stone: Row Sorting
+| Feature | Pandas | dplyr (R) | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|:---|:---|
+| **Ascending Sort** | `df.sort_values('mass')` | `arrange(df, mass)` | `PROC SORT; BY mass; RUN;` | `df.arrange("mass")` | `-arrange mass` |
+| **Descending Sort** | `df.sort_values('mass', ascending=False)` | `arrange(df, desc(mass))` | `PROC SORT; BY DESCENDING mass; RUN;` | `df.arrange("mass desc")` | `-arrange "mass desc"` |
+| **Multi-Column Sort**| `df.sort_values(['a', 'b'], ascending=[True, False])` | `arrange(df, a, desc(b))` | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
+| **Spaced Columns** | `df.sort_values('body mass')` | `arrange(df, \`body mass\`)`| `PROC SORT; BY 'body mass'n; RUN;` | `df.arrange("[body mass] desc")` | `-arrange "[body mass] desc"` |
+
+---
+
+### 5. Grouped Aggregations & Grouping Context (`by` + `agg`)
+
+#### Architectural Paradigm
+- **Pandas**:
+  - `df.groupby()` creates a lazy `DataFrameGroupBy` object.
+  - Aggregation produces a hierarchical `MultiIndex` across columns and index rows, forcing every user to call `.reset_index()` defensively.
+  - **Silent Data Loss**: `df.groupby()` defaults to `dropna=True`, silently dropping rows where the grouping key contains `NaN` or `None`!
+- **dplyr**:
+  - `group_by()` produces a "sticky" grouped data frame. Downstream operations remain grouped until `ungroup()` is manually invoked, leading to subtle grouping pollution bugs.
+  - Spelling ambiguity: `summarise()` vs. `summarize()`.
+- **SAS**:
+  - Requires `PROC MEANS` or `PROC SUMMARY` with extensive boilerplate: `CLASS`, `VAR`, `OUTPUT OUT=... (DROP=_TYPE_ _FREQ_)`.
+  - Alternatively requires `PROC SQL; SELECT species, mean(mass) FROM penguins GROUP BY species; QUIT;`.
+- **Pytae ("One Obvious Way")**:
+  - **Single-Shot Scope**: `df.by(*cols)` sets a grouping context for the *immediate next verb* and automatically ungroups upon completion. No `ungroup()` is ever required.
+  - **Flat 1D Output**: Never produces a `MultiIndex`. Output is always a clean, flat DataFrame.
+  - **Zero Data Loss**: Defaults to `dropna=False`, preserving `null`/`NaN` grouping categories explicitly.
+  - **Named Aggregations**: Intuitive syntax: `df.by("species").agg(n="n", avg_mass="body_mass_g:mean")`.
+
+#### Rosetta Stone: Grouped Aggregations
+| Feature | Pandas | dplyr (R) | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|:---|:---|
+| **Group Context** | `df.groupby(['species', 'island'])` | `group_by(df, species, island)` | `CLASS species island;` | `df.by("species", "island")` | `-by species,island` |
+| **Clear Grouping** | `df.reset_index()` | `ungroup(df)` *(Mandatory)* | N/A (Procedural end) | Auto-cleared *(ungroup obsolete)* | Auto-cleared |
+| **Group Summary** | `df.groupby('g')['x'].mean().reset_index()` | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `PROC MEANS NWAY; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
+| **Row Count** | `df.groupby('g').size().reset_index(name='n')` | `summarise(df, n = n())` | `OUTPUT OUT=out N=n;` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` *(Defaults to dropping!)* | Preserves NA groups by default | `PROC MEANS MISSING;` *(Defaults to dropping!)* | `dropna=False` by default *(Zero Data Loss)* | `-by g -agg ...` *(Preserves NAs)* |
+| **Whole-Table Agg**| `df.agg({'x': 'mean'}).to_frame().T` | `summarise(df, m = mean(x))` | `PROC MEANS; VAR x; RUN;` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean, n=n"` |
+
+#### Code Comparison: Grouped Aggregation
+```python
+# --- PYTAE (Python) ---
+(
+    penguins
+    .by("species", "island")
+    .agg(
+        n="n",
+        avg_mass="body_mass_g:mean",
+        max_flipper="flipper_length_mm:max"
+    )
+    .arrange("avg_mass desc")
+)
+
+# --- PYTAE (CLI) ---
+# pytae penguins.parquet -by species,island -agg "n = n, avg_mass = mean(body_mass_g), max_flipper = max(flipper_length_mm)" -arrange "avg_mass desc"
+```
+```python
+# --- PANDAS ---
+(
+    penguins
+    .groupby(["species", "island"], dropna=False)
+    .agg(
+        n=("body_mass_g", "size"),
+        avg_mass=("body_mass_g", "mean"),
+        max_flipper=("flipper_length_mm", "max")
+    )
+    .reset_index()
+    .sort_values("avg_mass", ascending=False)
+)
+```
+```r
+# --- DPLYR (R) ---
+penguins %>%
+  group_by(species, island) %>%
+  summarise(
+    n = n(),
+    avg_mass = mean(body_mass_g, na.rm = TRUE),
+    max_flipper = max(flipper_length_mm, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(avg_mass))
+```
+```sas
+/* --- SAS --- */
+PROC MEANS DATA=penguins NWAY NOPRINT MISSING;
+  CLASS species island;
+  VAR body_mass_g flipper_length_mm;
+  OUTPUT OUT=summary (DROP=_TYPE_ _FREQ_)
+    N(body_mass_g)=n
+    MEAN(body_mass_g)=avg_mass
+    MAX(flipper_length_mm)=max_flipper;
+RUN;
+
+PROC SORT DATA=summary;
+  BY DESCENDING avg_mass;
+RUN;
+```
+
+---
+
+### 6. Grouped Window Calculations & Lag/Lead
+
+#### Architectural Paradigm
+- **Pandas**: Window operations require calling `.transform()` on grouped objects or aligning series manually, which frequently leads to index alignment bugs.
+- **dplyr**: Supports window operations inside `group_by() %>% mutate()`, but requires defensive `ungroup()` afterwards.
+- **SAS**: Demands a prior `PROC SORT`, followed by a `DATA` step using `BY` variables, `RETAIN` statements, and manual tracking of `FIRST.` and `LAST.` boolean flags.
+- **Pytae ("One Obvious Way")**: Combine `df.by()` with `mutate()`. The grouping is applied to the window calculation and immediately discarded:
+  ```python
+  df.by("species").mutate(
+      pct_of_group="body_mass_g / sum(body_mass_g)",
+      mass_rank="rank(body_mass_g)",
+      prev_mass="shift(body_mass_g, 1)"
+  )
+  ```
+
+---
+
+### 7. Extreme Record Slicing (`pick`)
+
+#### Architectural Paradigm
+- **Pandas**: Uses `df.nlargest()` and `df.nsmallest()`. For grouped operations, requires `.groupby().apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)`.
+- **dplyr**: Uses `slice_max()` and `slice_min()`.
+- **SAS**: Requires sorting the dataset descending, then using `DATA out; SET in; BY group; IF FIRST.group; RUN;` (or tracking an observation counter `obs + 1`).
+- **Pytae ("One Obvious Way")**: Standardizes on `pick()`. Supports top $N$ (`df.pick("sales", n=5)`), bottom $N$ (`df.pick("sales", n=5, order="min")`), top percentage (`df.pick("sales", prop=0.1)`), and group-aware picking (`df.by("region").pick("sales", n=3)`).
+
+---
+
+### 8. Deduplication & Distinct Records (`distinct`)
+
+#### Architectural Paradigm
+- **Pandas**: `df.drop_duplicates(subset=['a', 'b']).reset_index(drop=True)`.
+- **dplyr**: `distinct(df, a, b, .keep_all = TRUE)`.
+- **SAS**: `PROC SORT DATA=in OUT=out NODUPKEY; BY a b; RUN;` (or `NODUPRECS` for whole-record deduplication).
+- **Pytae ("One Obvious Way")**: `distinct()` handles whole-table deduplication (`df.distinct()`), subset deduplication (`df.distinct("a", "b")`), and retention policies (`keep="first"`, `keep="last"`, `keep="none"`).
+
+---
+
+### 9. Reshaping & Pivoting (`wide`, `long`, `pivot`)
+
+#### Architectural Paradigm
+- **Pandas**:
+  - Melting: `pd.melt(df, id_vars=..., value_vars=...)`.
+  - Unmelting: `df.pivot(index=..., columns=..., values=...)` produces an index with a lingering name (`columns.name`).
+  - Aggregation matrix: `pd.pivot_table(...)` leaves behind multi-level index columns.
+- **dplyr / tidyr**: `pivot_longer()` and `pivot_wider()`.
+- **SAS**: `PROC TRANSPOSE DATA=in OUT=out; BY id; ID metric; VAR val; RUN;`. Generates esoteric automatic columns (`_NAME_`, `COL1`) requiring renaming cleanup.
+- **Pytae ("One Obvious Way")**:
+  - `df.long()`: Converts wide tables into tall records.
+  - `df.wide()`: Strictly for pure 1-to-1 structural unmelting without aggregation.
+  - `df.pivot()`: Generates 2D cross-tabulation aggregation matrices (`r=`, `c=`, `v=`, `a=`).
+  - Output is **always 100% flat 1D columns** with clean headers and no MultiIndex traps.
+
+---
+
+### 10. Relational Joins & Set Operations (`join`, `concat`)
+
+#### Architectural Paradigm
+- **Pandas**: `pd.merge(left, right, left_on='id', right_on='customer_id', how='left')`.
+- **dplyr**: `left_join(x, y, by = c("id" = "customer_id"))`.
+- **SAS**: The `MERGE` statement in a `DATA` step requires both datasets to be pre-sorted on disk by the merge keys:
+  ```sas
+  PROC SORT DATA=a; BY id; RUN;
+  PROC SORT DATA=b; BY id; RUN;
+  DATA merged;
+    MERGE a (IN=in_a) b (IN=in_b);
+    BY id;
+    IF in_a; /* Left join */
+  RUN;
+  ```
+  Failure to pre-sort causes immediate runtime failure. Alternatively, users must write `PROC SQL; SELECT * FROM a LEFT JOIN b ON a.id = b.id; QUIT;`.
+- **Pytae ("One Obvious Way")**:
+  - `df.join(other, on="id", how="left")`.
+  - Colon cross-name matching: `on="id:customer_id"`.
+  - Integrity validation: `validate="1:m"`, `validate="m:1"`, `validate="1:1"`.
+  - Multi-table concatenation: `pt.concat([df1, df2], how="vertical")`.
+
+---
+
+### 11. Missing Data Architecture: "Zero Data Loss by Default"
+
+#### The Silent Corruption Problem
+In standard data science workflows, accidental data loss is one of the most common causes of skewed metrics and corrupted reporting. A single missing optional field—such as a customer's secondary phone number—should **never** silently obliterate an entire transaction from a dataset.
+
+#### Comparative Breakdown of Missing Data Semantics
+| Behavior | Pandas | Polars | R / dplyr | SAS | Pytae (Option B) |
+|:---|:---|:---|:---|:---|:---|
+| **Bare Call (`df.dropna()`)** | Drops row if *any* column is NA (`how='any'`) | Drops row if *any* column is `null` | Requires explicit `tidyr::drop_na()` | Must write custom `IF` filter | **Drops only 100% blank rows (`how='all'`)** |
+| **Float `NaN` vs Arrow `null`** | Conflates both into `np.nan` / `pd.NA` | Differentiates; `drop_nulls()` **ignores** `NaN`! | Differentiates `NA` and `NaN` | Treats missing as `.` (number) or `' '` (char) | **Cleans both `null` and `NaN` (`drop_nans=True`)** |
+| **Analytical Verbs (`agg`, `pivot`)** | `dropna=True` *(Drops missing groups!)* | Preserves `null` group keys | `group_by()` preserves `NA` groups | Drops missing groups unless `MISSING` option passed | **`dropna=False` by default (Zero Data Loss)** |
+| **Targeted Columns (`df.dropna("a", "b")`)** | `subset=['a', 'b']`, drops if any is NA | `subset=['a', 'b']`, drops if any is null | `tidyr::drop_na(a, b)` | `WHERE a IS NOT MISSING AND b IS NOT MISSING;` | **Drops if any specified column is NA (`how='any'`)** |
+| **Numeric Sorting Trap** | NAs sorted at end (or start) via `na_position` | Nulls sorted at end (or start) | NAs sorted at end | **Missing `.` sorted as $< -\infty$!** *(Massive trap)* | **Safe Polars sorting with explicit `nulls_last`** |
+| **Column Name Cleaning** | Third-party (`skimpy`, `janitor`) | Custom regex | Custom macro loops | No built-in tool | **Deterministic 6-stage `clean_columns()`** |
+
+---
+
+### 12. In-Flight Profiling & Inspection (`glimpse`, `freq`, `hist`, `diff`)
+
+#### Architectural Paradigm
+- **Pandas**: `df.info()`, `df.describe()`, `df['c'].value_counts()`. `df.compare()` is fragile and fails completely if index labels or columns do not align exactly.
+- **dplyr / R**: `glimpse(df)`, `count(df, c)`.
+- **SAS**: `PROC CONTENTS DATA=in; RUN;`, `PROC FREQ DATA=in; TABLES col; RUN;`, and `PROC COMPARE BASE=a COMPARE=b CRITERION=0.01; RUN;`.
+- **Pytae ("One Obvious Way")**:
+  - `df.glimpse()`: Non-destructive R `tibble::glimpse` overview showing row count, column count, dtypes, and inline data previews without breaking method chains.
+  - `df.freq("species")`: Categorical frequency distribution with ASCII proportional bars.
+  - `df.hist("body_mass_g", bins=6)`: Numeric distribution histogram with rendered ASCII bars and percentage breakdowns.
+  - `df.diff(df2, tol=0.01)`: Structural schema drift detection, shape comparison, and cell-level mismatch reporting with floating-point tolerance.
+
+---
+
+### 13. Embedded SQL Engine (`sql`)
+
+#### Architectural Paradigm
+- **Pandas**: Requires installing external third-party libraries like `duckdb` or `pandasql` / `sqldf`.
+- **dplyr**: Requires `dbplyr` or `tidyquery` connected to external database backends.
+- **SAS**: `PROC SQL` is a core pillar of SAS, often used as an escape hatch when DATA step syntax becomes too verbose.
+- **Pytae ("One Obvious Way")**: Native zero-setup ANSI SQL query execution directly on frames or disk files via `df.sql(...)`, `pt.sql(...)`, and CLI `-sql`.
+
+---
+
+### 14. Command-Line Interface (CLI) as a First-Class Citizen
+
+#### Architectural Paradigm
+- **Pandas**: No CLI. Requires writing a boilerplate Python script or launching a heavy Jupyter kernel.
+- **dplyr**: No native CLI. Requires invoking `Rscript -e 'library(dplyr); ...'`.
+- **SAS**: Batch execution via `sas -sysin job.sas` which produces heavy `.log` and `.lst` spool files on disk.
+- **Pytae ("One Obvious Way")**: Complete 100% grammar equivalence in the terminal:
+  ```bash
+  pytae penguins.parquet \
+    -filter "body_mass_g > 3500, sex.notna()" \
+    -by species,island \
+    -agg "n = n, avg_mass = mean(body_mass_g)" \
+    -arrange "avg_mass desc" \
+    -o summary.parquet
+  ```
 
 ---
 
@@ -11299,48 +11732,19 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Derivations** | **[mutate.ipynb](detailed_docs/library/mutate.ipynb)** | **[mutate.md](detailed_docs/cli/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
 | **Row Filtering** | **[filter.ipynb](detailed_docs/library/filter.ipynb)** | **[filter.md](detailed_docs/cli/filter.md)** | `filter`, intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
 | **Columns** | **[select.ipynb](detailed_docs/library/select.ipynb)** | **[select.md](detailed_docs/cli/select.md)** | `select`, drop with `-` / `!`, regex/patterns, inline rename, `pt.everything` |
-| **Sorting** | **[arrange.ipynb](detailed_docs/library/arrange.ipynb)** | **[arrange.md](detailed_docs/cli/arrange.md)** | `arrange`, ascending, descending `-col` / `col desc`, multi-column ordering, null positioning |
+| **Sorting** | **[arrange.ipynb](detailed_docs/library/arrange.ipynb)** | **[arrange.md](detailed_docs/cli/arrange.md)** | `arrange`, ascending, descending `col desc`, multi-column ordering, null positioning |
 | **Aggregation** | **[agg.ipynb](detailed_docs/library/agg.ipynb)** | **[agg.md](detailed_docs/cli/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
 | **Cross-Tab** | **[pivot.ipynb](detailed_docs/library/pivot.ipynb)** | **[pivot.md](detailed_docs/cli/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
 | **Deduplication** | **[distinct.ipynb](detailed_docs/library/distinct.ipynb)** | **[distinct.md](detailed_docs/cli/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
 | **Slicing** | **[pick.ipynb](detailed_docs/library/pick.ipynb)** | **[pick.md](detailed_docs/cli/pick.md)** | `pick`, top/bottom $N$ records, top percentage `prop=`, grouped top-$N$ per category |
 | **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
-| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean`, `diff` (with `tol=`), `glimpse`, `cols`, `pt.sample` |
+| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |
 | **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist` |
 | **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` DuckDB/Polars SQL engine on data and files |
 | **Plotting** | **[plotting.ipynb](detailed_docs/library/plotting.ipynb)** | **[plotting.md](detailed_docs/cli/plotting.md)** | `df.plot()`, `-plot`, `-finalize`, bar, line, scatter, hist, box, violin, corr, heat |
-| **Philosophy** | **[Rosetta Stone & Comparison](comparison_to_pandas_and_dplyr.md)** | — | Pytae vs. Pandas vs. dplyr, naming rationale, "one and only one obvious way" |
-
----
-
-## Missing Data Architecture: "Zero Data Loss by Default"
-
-In standard data science workflows, accidental data loss is one of the most common causes of skewed metrics and corrupted reporting. A single missing optional field—such as a customer's secondary phone number—should **never** silently obliterate an entire transaction from a dataset.
-
-Pytae adheres strictly to the principle of **Zero Data Loss by Default**:
-
-1. **Conservative Row Elimination (`how="all"`)**:
-   - Calling `df.dropna()` without arguments defaults to `how="all"`. Only rows that are completely blank (100% null/NaN across every column) are dropped.
-2. **Intentional Filtering on Subsets (`how="any"`)**:
-   - Calling `df.dropna("user_id", "email")` defaults to `how="any"` over the specified subset, guaranteeing that only rows missing required keys are dropped.
-3. **Preservation of NA Groups in Aggregations (`dropna=False`)**:
-   - Analytical operations (`agg`, `pivot`, `freq`, `mutate`) default to `dropna=False`. Missing grouping keys (like `sex=NaN`) remain visible as explicit rows/columns in reports.
-4. **Dual Missing Value Cleaning (`drop_nans=True`)**:
-   - Cleans both Apache Arrow `null` and IEEE-754 floating-point `NaN` values by default, preventing float NaN arithmetic poisoning.
-5. **Smart Symmetrical Imputation (`fillna`)**:
-   - `df.fillna(value, nans=True)` replaces both Arrow `null` and floating-point `NaN` across columns, supporting scalar values, column mappings (`{"col1": val1}`), and column subsets.
-
-### Comparison Table: Missing Data Handling
-
-| Behavior | Pandas | Polars | R / dplyr | Pytae (Option B) |
-|:---|:---|:---|:---|:---|
-| **Bare Call (`df.dropna()`)** | Drops row if *any* column is NA (`how='any'`) | Drops row if *any* column is `null` | Requires explicit `tidyr::drop_na()` | **Drops only 100% blank rows (`how='all'`)** |
-| **Float `NaN` vs Arrow `null`** | Conflates both into `np.nan` / `pd.NA` | Differentiates; `drop_nulls()` **ignores** `NaN`! | Treats `NA` and `NaN` distinctly | **Drops both `null` and `NaN` (`drop_nans=True`)** |
-| **Analytical Verbs (`agg`, `pivot`)** | `dropna=True` (drops missing groups!) | Preserves `null` group keys | `group_by()` preserves `NA` groups | **`dropna=False` by default (Zero Data Loss)** |
-| **Targeted Columns (`df.dropna("a", "b")`)** | `subset=['a', 'b']`, drops if any is NA | `subset=['a', 'b']`, drops if any is null | `tidyr::drop_na(a, b)` | **Drops if any specified column is NA (`how='any'`)** |
-| **Unified Syntax** | `dropna()` only | `drop_nulls()` only | `drop_na()` | **Only `dropna` everywhere** |
+| **Philosophy** | **[Rosetta Stone & Comparison](comparison_to_pandas_and_dplyr.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
 
 ---
 
@@ -11354,10 +11758,18 @@ import pytae as pt
 penguins = pt.read_parquet("penguins.parquet")
 
 report = (
-    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
-    .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm", status="'verified'")
+    penguins.filter("body_mass_g > 3500 & sex.notna()")
+    .mutate(
+        body_mass_kg="body_mass_g / 1000",
+        bill_ratio="bill_length_mm / bill_depth_mm",
+        status="'verified'"
+    )
     .by("species", "island")
-    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
+    .agg(
+        n="n",
+        avg_mass_kg="mean(body_mass_kg)",
+        max_ratio="max(bill_ratio)"
+    )
     .arrange("avg_mass_kg desc")
 )
 
@@ -11370,7 +11782,7 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.is_not_null()" \
+  -filter "body_mass_g > 3500, sex.notna()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
   -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
@@ -11395,7 +11807,7 @@ A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including
 
 ## Contents
 
-- [The Core Philosophy: "One and Only One Right Way"](#the-core-philosophy-one-and-only-one-right-way)
+- [The Core Philosophy: "One and Only One Obvious Way"](#the-core-philosophy-one-and-only-one-obvious-way)
 - [Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`?](#naming-rationale-why-filter-distinct-by-arrange)
 - [Feature-by-Feature Rosetta Stone](#feature-by-feature-rosetta-stone)
   - [1. Row Filtering](#1-row-filtering)
@@ -11411,7 +11823,7 @@ A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including
 
 ---
 
-## The Core Philosophy: "One and Only One Right Way"
+## The Core Philosophy: "One and Only One Obvious Way"
 
 In Python, the Zen of Python states: *"There should be one-- and preferably only one --obvious way to do it."*
 
@@ -12312,7 +12724,7 @@ def _parse_col_order(
     if token.startswith("-") and len(token) > 1:
         col = token[1:].strip()
         raise ValueError(
-            f"arrange(): leading '-' is not supported. In line with 'one and only one right way', use '{col} desc' instead (e.g. arrange('{col} desc'))."
+            f"arrange(): leading '-' is not supported. In line with 'one and only one obvious way', use '{col} desc' instead (e.g. arrange('{col} desc'))."
         )
     elif token.startswith("+") and len(token) > 1:
         col = token[1:].strip()
@@ -21307,7 +21719,7 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
         if len(cond) == 1:
             raise ValueError(
                 f"filter(): 1-tuple pattern {cond!r} on column {col!r} is not supported. "
-                f"In line with 'one and only one right way', use predicate expressions instead, "
+                f"In line with 'one and only one obvious way', use predicate expressions instead, "
                 f"e.g. filter('{col}.notna()') or filter('{col}.isna()')."
             )
         elif len(cond) == 2:
@@ -25461,7 +25873,7 @@ def test_library_arrange_basic_and_directions():
     assert list(res2["grp"]) == ["a", "a", "b", "b"]
     assert list(res2["val"]) == [40, 20, 30, 10]
 
-    # Leading '-' is rejected in line with 'one and only one right way'
+    # Leading '-' is rejected in line with 'one and only one obvious way'
     import pytest
     with pytest.raises(ValueError, match=r"leading '-' is not supported"):
         df.pt.arrange("-grp", "val")

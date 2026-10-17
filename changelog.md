@@ -64,7 +64,7 @@ All notable changes to this project are documented in this file.
 - **Fixed `-pick` Interaction with `show_all`**:
   - Ensured standalone `-pick` correctly suppresses full-dataset display without requiring an explicit `-head`.
 
-### Removed & Breaking Changes ("One and Only One Right Way")
+### Removed & Breaking Changes ("One and Only One Obvious Way")
 - **Eradicated `-slice_max` and `-slice_min` CLI flags**:
   - Eradicated completely in CLI; use `-pick "col desc"` or `-pick "col asc"` exclusively.
 - **Removed `-group_by` in multi-file CLI**:
@@ -96,7 +96,7 @@ All notable changes to this project are documented in this file.
   - Automatic conversion of tabular DataFrame outputs into native GitHub-Flavored Markdown (GFM) scrollable tables (`| col1 | col2 | ... |`).
   - Full output parity across all 31 Markdown documentation files in `docs/` and `docs/cli/`.
 
-### Removed & Breaking Changes ("One and Only One Right Way")
+### Removed & Breaking Changes ("One and Only One Obvious Way")
 - **Removed `qry` from Library and CLI**:
   - `pt.qry()`, `df.pt.qry()`, and module `pytae.qry` have been completely removed.
   - The CLI `-qry` / `--qry` flag has been removed. Passing `-qry` now produces an immediate clear error directing users to `-filter`.
@@ -109,7 +109,7 @@ All notable changes to this project are documented in this file.
   - `-distinct` now supports `keep=` spec tokens: `keep=first` (default), `keep=last`, and `keep=false` (or `keep=none`).
   - Examples: `pytae penguins.parquet -distinct "species,island,keep=last"` or `pytae events.parquet -distinct "keep=last"`.
 
-### Removed & Breaking Changes ("One and Only One Right Way")
+### Removed & Breaking Changes ("One and Only One Obvious Way")
 - **Removed `dedupe` Backward Compatibility**:
   - The legacy `dedupe` function (`pt.dedupe`), DataFrame accessor method (`df.pt.dedupe`), and CLI flag (`-dedupe`) have been completely removed without backward compatibility.
   - Passing `-dedupe` on the CLI produces an immediate clear error directing users to `-distinct`.
@@ -128,7 +128,7 @@ All notable changes to this project are documented in this file.
 - **Parquet & I/O Grouping Isolation**:
   - Automatic stripping of `_pt_by` metadata on write and read boundaries to prevent accidental grouping persistence across file serialization.
 
-### Changed & Deprecated ("One and Only One Right Way")
+### Changed & Deprecated ("One and Only One Obvious Way")
 - **Disallowed `by=` in Verbs**:
   - Verbs (`mutate`, `pick`, `agg`, `slice_max`, `slice_min`) strictly reject `by=` arguments with an explicit `TypeError` instructing users to use `pt.by(...)` or `.pt.by(...)`.
   - Terminal/collapsing verbs (`agg`) and slicing verbs (`pick`) automatically clear active grouping on output.
@@ -151,7 +151,7 @@ All notable changes to this project are documented in this file.
 - **Deduplication Flag (`-dedupe`)**:
   - Added CLI flag `-dedupe [COLS]` to drop duplicate rows across the intermediate DataFrame (or a specific column subset).
 
-### Deprecated & Removed ("One and Only One Right Way")
+### Deprecated & Removed ("One and Only One Obvious Way")
 - **`agg_df` $\rightarrow$ `agg`**:
   - Removed `df.pt.agg_df()` in favor of `df.pt.agg()` and `pt.agg()`. `df.pt.agg_df()` raises an explicit, helpful `AttributeError`.
   - Removed CLI `-agg_df` in favor of canonical `-agg`. Passing `-agg_df` yields a fatal CLI error pointing to `-agg`.
@@ -177,7 +177,7 @@ All notable changes to this project are documented in this file.
 - **Clipboard Ingestion (`pytae clip`)**:
   - Added `clip` as the canonical input target (`pytae clip [flags...]`).
   - Reads tabular data directly from the system clipboard into the pipeline via `pd.read_clipboard()`, with optional delimiter override via `-dlim`.
-  - Strictly adheres to the "one and only one right way" philosophy: backward compatibility aliases `from_clip` and `clipboard` are removed.
+  - Strictly adheres to the "one and only one obvious way" philosophy: backward compatibility aliases `from_clip` and `clipboard` are removed.
 - **Dedicated Row-Dropping Flag (`-drop_na`)**:
   - Added `-drop_na [COLS]` to the CLI pipeline.
   - Bare `-drop_na` drops rows containing `NaN` across any column; `-drop_na col1,col2` drops rows where specified columns are `NaN`.

@@ -37,7 +37,7 @@ def _parse_col_order(
     if token.startswith("-") and len(token) > 1:
         col = token[1:].strip()
         raise ValueError(
-            f"arrange(): leading '-' is not supported. In line with 'one and only one right way', use '{col} desc' instead (e.g. arrange('{col} desc'))."
+            f"arrange(): leading '-' is not supported. In line with 'one and only one obvious way', use '{col} desc' instead (e.g. arrange('{col} desc'))."
         )
     elif token.startswith("+") and len(token) > 1:
         col = token[1:].strip()

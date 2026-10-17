@@ -8,7 +8,7 @@ A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including
 
 ## Contents
 
-- [The Core Philosophy: "One and Only One Right Way"](#the-core-philosophy-one-and-only-one-right-way)
+- [The Core Philosophy: "One and Only One Obvious Way"](#the-core-philosophy-one-and-only-one-obvious-way)
 - [Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`?](#naming-rationale-why-filter-distinct-by-arrange)
 - [Feature-by-Feature Rosetta Stone](#feature-by-feature-rosetta-stone)
   - [1. Row Filtering](#1-row-filtering)
@@ -24,7 +24,7 @@ A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including
 
 ---
 
-## The Core Philosophy: "One and Only One Right Way"
+## The Core Philosophy: "One and Only One Obvious Way"
 
 In Python, the Zen of Python states: *"There should be one-- and preferably only one --obvious way to do it."*
 

@@ -15,7 +15,7 @@ When contributing code, designing new features, or refactoring existing modules 
   - **No silent fallback guessing**: If an explicit stylesheet, palette, or column reference cannot be resolved or is invalid, raise a `ValueError` or `KeyError` rather than guessing or silently ignoring the instruction.
   - **Guide the user**: Error messages should clearly explain the conflict and tell the user how to fix it (e.g., *"For row counts (a='n'), omit 'v' or specify a non-grouping column"* or did-you-mean suggestions).
 
-### 2. One and only one right way
+### 2. One and only one obvious way
 - *“There should be one—and preferably only one—obvious way to do it.”* (The Zen of Python).
 - Keep the public API clean, intentional, and cohesive. Avoid introducing redundant, competing verbs or duplicate flags that do the same thing under different names.
 - Every verb has a single, crisp responsibility:

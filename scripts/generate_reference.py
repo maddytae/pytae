@@ -112,7 +112,7 @@ Key principles:
    when ambiguous"): Flexible inputs are accepted where unambiguous, but collisions, 
    conflicts, and invalid arguments raise clear exceptions rather than silently 
    inventing artificial column suffixes or guessing.
-8. One and Only One Right Way: Distinct responsibilities per verb—pure 1:1 unmelting 
+8. One and Only One Obvious Way: Distinct responsibilities per verb—pure 1:1 unmelting 
    is `wide()`, 2D aggregation is `pivot()`, column selection is `select()`, 
    grouping is strictly standalone `pt.by()`.
 9. Plotting Without Implicit Aggregation (Path A): Plotters focus purely on 

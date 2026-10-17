@@ -50,7 +50,7 @@ pytae penguins.parquet -arrange body_mass_g -select "species,island,body_mass_g"
 
 ## Descending Sort (`desc`)
 
-In line with *"one and only one right way"*, specify descending order explicitly by appending `desc` or `descending` to the column name:
+In line with *"one and only one obvious way"*, specify descending order explicitly by appending `desc` or `descending` to the column name:
 
 ```bash
 # Explicit 'desc'

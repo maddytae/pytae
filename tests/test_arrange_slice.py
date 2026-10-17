@@ -29,7 +29,7 @@ def test_library_arrange_basic_and_directions():
     assert list(res2["grp"]) == ["a", "a", "b", "b"]
     assert list(res2["val"]) == [40, 20, 30, 10]
 
-    # Leading '-' is rejected in line with 'one and only one right way'
+    # Leading '-' is rejected in line with 'one and only one obvious way'
     import pytest
     with pytest.raises(ValueError, match=r"leading '-' is not supported"):
         df.pt.arrange("-grp", "val")
