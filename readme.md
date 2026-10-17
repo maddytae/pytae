@@ -11,7 +11,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 1. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read_parquet("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame. Once entered, chain verbs naturally without repeatedly calling `.pt` (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
 2. **Unix Pipeline CLI (`pytae`)**: Blazing-fast multithreaded SIMD vector engine sharing the exact same Polars core. Ingests tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filters, transforms, aggregates, reshapes, and executes analytical ANSI SQL queries (`-sql`) with zero boilerplate.
 
-👉 **New to Pytae?** Check out **[Pytae vs. Pandas vs. dplyr (Rosetta Stone & Naming Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)**.
+👉 **New to Pytae?** Check out the dedicated comparisons: **[vs. Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md)** | **[vs. dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md)** | **[vs. SAS](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)**.
 
 ---
 
@@ -108,7 +108,11 @@ pytae current.parquet -diff baseline.parquet
 
 ### Guides & Specifications
 - **Master Reference & Architecture Hub**: [docs/pytae.md](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)
-- **Rosetta Stone & Philosophy**: [Pytae vs. Pandas vs. dplyr (Rationale)](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
+- **Ecosystem Comparisons & Migration Guides**:
+  - [Pytae vs. Pandas Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md)
+  - [Pytae vs. dplyr Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md)
+  - [Pytae vs. SAS Migration Guide](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
+  - [Rosetta Stone & Rationale](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas_and_dplyr.md)
 
 ### Detailed Topic Guides (`docs/detailed_docs/`)
 Comprehensive documentation split into two dedicated folders:

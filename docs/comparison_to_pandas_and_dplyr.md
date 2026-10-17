@@ -1,8 +1,8 @@
 # Pytae Comparison & Philosophy: Pytae vs. Pandas vs. dplyr
 
-[← Back to Documentation](../readme.md)
+[← Back to Documentation](../readme.md) | **Dedicated Deep Dives:** [Pytae vs. Pandas](comparison_to_pandas.md) | [Pytae vs. dplyr](comparison_to_dplyr.md) | [Pytae vs. SAS](comparison_to_sas.md)
 
-A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including the architectural philosophy and naming rationale behind Pytae's concise vocabulary.
+A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including the architectural philosophy and naming rationale behind Pytae's concise vocabulary. For comprehensive deep dives tailored to specific ecosystems, see the dedicated guides linked above.
 
 ---
 

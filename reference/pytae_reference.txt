@@ -65,7 +65,7 @@ TABLE OF CONTENTS
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
-10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
+10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -11350,6 +11350,12 @@ Whether you are writing a production Python service, conducting exploratory anal
 
 The following sections provide an extensive, feature-by-feature comparison across all key tabular operations.
 
+> [!TIP]
+> **Looking for ecosystem-specific deep dives and migration guides?**
+> - **[Pytae vs. Pandas Deep Dive](comparison_to_pandas.md)**: Comprehensive guide on index elimination, Zero Data Loss semantics, and Polars SIMD multithreading.
+> - **[Pytae vs. dplyr Deep Dive](comparison_to_dplyr.md)**: Deep dive into Tidyverse syntax mapping, eliminating Non-Standard Evaluation (NSE), and single-shot grouping.
+> - **[Pytae vs. SAS Migration Guide](comparison_to_sas.md)**: Comprehensive guide for clinical, biostatistical, and enterprise SAS programmers covering `.sas7bdat` ingestion, missing value semantics, and `PROC` translations.
+
 ### 1. Row Filtering & Conditional Slicing
 
 #### Architectural Paradigm
@@ -11744,7 +11750,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` DuckDB/Polars SQL engine on data and files |
 | **Plotting** | **[plotting.ipynb](detailed_docs/library/plotting.ipynb)** | **[plotting.md](detailed_docs/cli/plotting.md)** | `df.plot()`, `-plot`, `-finalize`, bar, line, scatter, hist, box, violin, corr, heat |
-| **Philosophy** | **[Rosetta Stone & Comparison](comparison_to_pandas_and_dplyr.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
+| **Comparisons** | **[vs. Pandas](comparison_to_pandas.md)**<br>**[vs. dplyr](comparison_to_dplyr.md)**<br>**[vs. SAS](comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
 
 ---
 
@@ -11791,17 +11797,961 @@ pytae penguins.parquet \
 ```
 
 ================================================================================
-10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
+10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 ================================================================================
+
+################################################################################
+# FILE: docs/comparison_to_pandas.md
+################################################################################
+# Pytae vs. Pandas — Deep Dive & Rosetta Stone
+
+[← Back to Master Reference](pytae.md) | [Comparison with dplyr](comparison_to_dplyr.md) | [Comparison with SAS](comparison_to_sas.md)
+
+Pandas has been the cornerstone of data analysis in Python for over fifteen years. However, its expansive, organically grown API has accumulated significant friction: competing ways to perform identical operations, complex index hierarchies, silent data loss traps, and single-threaded performance bottlenecks.
+
+`pytae` is built from the ground up on native **Polars** vector execution to provide a clean, modern alternative centered on **"One and Only One Obvious Way"**.
+
+---
+
+## Key Architectural Differences: Pytae vs. Pandas
+
+```
+┌───────────────────────────────┬──────────────────────────────────┬──────────────────────────────────┐
+│ Architectural Dimension       │ Pandas                           │ Pytae                            │
+├───────────────────────────────┼──────────────────────────────────┼──────────────────────────────────┤
+│ Core Philosophy               │ Multiple competing APIs per task │ One and Only One Obvious Way     │
+│ Underlying Execution Engine   │ Single-threaded Python & NumPy   │ Multithreaded Rust SIMD (Polars) │
+│ Index Hierarchy               │ Index, MultiIndex, Series index  │ None (Pure flat RangeIndex)      │
+│ Output Columns                │ Hierarchical MultiIndex tuples   │ Always flat 1D string headers    │
+│ Grouping Scope                │ Stateful DataFrameGroupBy object │ Single-shot context (auto-clears)│
+│ Aggregation Missing Keys      │ dropna=True (Drops missing keys!)│ dropna=False (Zero Data Loss)    │
+│ Default Row-Dropping          │ dropna() drops if ANY column NA  │ dropna() drops only 100% blanks  │
+│ Float NaN vs Arrow Null       │ Conflated into np.nan / pd.NA    │ Differentiated; dual-cleaned     │
+│ Command-Line Equivalence      │ None (requires Python script)    │ 100% grammar parity via CLI      │
+└───────────────────────────────┴──────────────────────────────────┴──────────────────────────────────┘
+```
+
+---
+
+## 1. Index Hell: The MultiIndex Nightmare vs. Flat 1D DataFrames
+
+### The Pandas Trap
+In Pandas, nearly every structural operation creates or manipulates an `Index`:
+1. Grouped aggregations move group columns into the row index:
+   ```python
+   # Pandas produces a DataFrame where ('species', 'island') is an index, not columns!
+   agg_df = df.groupby(['species', 'island']).mean()
+   # Forgetting this line breaks subsequent joins, filtering, and exports:
+   agg_df = agg_df.reset_index()
+   ```
+2. Multi-metric aggregations generate nested `MultiIndex` column tuples:
+   ```python
+   agg_df = df.groupby('species').agg({'mass': ['mean', 'max']})
+   # Columns are now: [('mass', 'mean'), ('mass', 'max')]
+   # Flattening requires manual list comprehensions:
+   agg_df.columns = ['_'.join(c).strip() for c in agg_df.columns.values]
+   ```
+3. Pivoting leaves lingering dimension names (`columns.name = 'variable'`) that contaminate CSV and Parquet schemas.
+
+### The Pytae Solution
+In Pytae, **data structures are always pure, flat 2D tables**:
+- There is no custom index to manage. All DataFrames use standard `RangeIndex(0, 1, 2, ...)`.
+- Aggregations always return normal columns without needing `.reset_index()`.
+- Reshaping verbs (`wide()`, `long()`, `pivot()`) produce flat, clean 1D column headers.
+
+```python
+# Pytae: Always flat, always predictable, immediately chainable
+(
+    penguins
+    .by("species", "island")
+    .agg(avg_mass="body_mass_g:mean", max_mass="body_mass_g:max")
+    .filter("avg_mass > 4000")
+)
+```
+
+---
+
+## 2. Silent Data Loss Traps: Pandas Defaults vs. Pytae "Zero Data Loss"
+
+### Trap A: Silent Group Elimination (`dropna=True`)
+In Pandas, `df.groupby()` defaults to `dropna=True`. If any row contains a missing value (`NaN` or `None`) in a grouping key, **Pandas silently discards the entire row from the aggregated result**:
+
+```python
+# PANDAS: Any penguin with sex=NaN is completely omitted from the summary!
+penguins.groupby('sex').size()
+# Output: Female: 165, Male: 168 (Total = 333 rows; 11 rows vanished silently!)
+```
+
+In Pytae, analytical verbs (`by`, `agg`, `pivot`, `freq`) default to **`dropna=False` (Zero Data Loss by Default)**. Unclassified, missing, or orphan records remain visible:
+
+```python
+# PYTAE: Missing groups are preserved explicitly
+penguins.by("sex").agg(n="n")
+# Output: Female: 165, Male: 168, null: 11 (Total = 344 rows; 100% accounted for)
+```
+
+### Trap B: Aggressive Row Deletion (`dropna()`)
+In Pandas, calling `df.dropna()` without arguments defaults to `how='any'`. If a dataset has 100 columns and a single optional column (e.g., `apartment_suite_number`) is missing, **the entire customer record is deleted**:
+
+```python
+# PANDAS: Accidental data catastrophe
+df.dropna()  # Deletes rows missing ANY column
+```
+
+In Pytae, bare `df.dropna()` defaults to `how='all'`. Only completely blank rows (100% missing across all columns) are dropped. When you want to drop rows missing specific required columns, you pass those columns explicitly:
+
+```python
+# PYTAE: Non-destructive Option B semantics
+df.dropna()                       # Drops only 100% blank rows
+df.dropna("customer_id", "email") # Drops rows missing required keys (how='any')
+```
+
+---
+
+## 3. Grouping Semantics: Lazy `DataFrameGroupBy` vs. Single-Shot `by()`
+
+### The Pandas Trap
+In Pandas, `.groupby()` returns a lazy intermediate `DataFrameGroupBy` object. This object splits the API: some methods work on it, others do not. You cannot chain regular DataFrame methods without aggregating first or invoking complex `.apply()` functions that cause severe performance degradation.
+
+### The Pytae Solution
+In Pytae, grouping is **single-shot, non-destructive, and auto-clearing**:
+- `df.by(*cols)` sets a transient grouping context for the *immediate next verb* (`mutate`, `agg`, `pick`).
+- The operation evaluates within each group and **immediately returns a clean, ungrouped DataFrame**.
+- You can transition seamlessly across different grouping levels in a single method chain without resetting:
+
+```python
+# Calculate group mean, then overall mean, then subgroup mean in ONE chain:
+(
+    df
+    .by("region").mutate(reg_avg="mean(sales)")
+    .mutate(global_avg="mean(sales)")
+    .by("region", "department").mutate(dept_avg="mean(sales)")
+)
+```
+
+---
+
+## 4. Performance: Single-Threaded GIL vs. Native Polars SIMD
+
+| Metric | Pandas | Pytae |
+|:---|:---|:---|
+| **Architecture** | Python interpreter + C/NumPy arrays | 100% Native Rust + Apache Arrow |
+| **Multithreading** | Single-threaded; blocked by Python GIL | Automatically parallelized across all CPU cores |
+| **Vectorization** | Limited NumPy SIMD | Full AVX-512 / AVX2 / NEON vector pipelines |
+| **Memory Usage** | High (object pointers, duplicate copies) | Minimal (Arrow chunked memory, string cache) |
+| **Lazy Execution** | No native lazy engine | `pt.scan_parquet()` query planning |
+
+---
+
+## 5. Feature-by-Feature Rosetta Stone: Pytae vs. Pandas
+
+### 1. Row Filtering
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Boolean Mask** | `df[df['sales'] > 100]` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
+| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter("a > 1 & b == 'E'")` | `-filter "a > 1, b == 'E'"` |
+| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
+| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
+| **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
+| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Callable / Lambda** | `df[lambda d: d['x'] > 5]` | `df.filter(lambda d: d['x'] > 5)` | N/A |
+
+### 2. Feature Engineering & Column Derivations (`mutate`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Basic Formula** | `df.assign(y=df['a'] / df['b'])` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
+| **Sequential Calculations**| Chained `.assign(a=...).assign(b=lambda ...)` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
+| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
+| **Multi-Branch (Case)** | `np.select([c1, c2], [v1, v2], default=v3)` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
+| **Value Mapping** | `df['x'].map({'A': 1, 'B': 2})` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
+| **Multi-Column Transform**| Loop over columns or complex `apply` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
+| **Multi-Column + Suffix**| Loop + dictionary comprehension | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
+| **Grouped Window Calculation**| `df.groupby('g')['x'].transform('mean')` | `df.by("g").mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
+| **Lag / Shift** | `df.groupby('g')['x'].shift(1)` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev=shift(x,1)"` |
+
+### 3. Column Selection, Renaming & Exclusion (`select`, `rename`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Select Columns** | `df[['a', 'b']]` | `df.select("a", "b")` | `-select "a,b"` |
+| **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select("-c", "-d")` | `-select "-c,-d"` |
+| **Pattern Match** | `df.filter(like='bill')` | `df.select(contains="bill")` | `-select "contains=bill"` |
+| **Prefix Match** | `df[[c for c in df if c.startswith('b')]]`| `df.select(starts_with="b")` | `-select "starts_with=b"` |
+| **Inline Rename** | `df[['a']].rename(columns={'a': 'b'})` | `df.select("a:b")` | `-select "a:b"` |
+| **Dedicated Rename** | `df.rename(columns={'a': 'b'})` | `df.rename("a:b")` | `-rename "a:b"` |
+| **Reorder with Rest** | `df[['lead'] + [c for c in df if c != 'lead']]` | `df.select("lead", pt.everything)` | N/A |
+
+### 4. Row Sorting (`arrange`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Ascending** | `df.sort_values('sales')` | `df.arrange("sales")` | `-arrange sales` |
+| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
+| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
+| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
+
+### 5. Grouped Aggregation (`by` + `agg`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Group & Summarize** | `df.groupby('g')['x'].mean().reset_index()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
+| **Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Multiple Metrics** | `df.groupby('g').agg(m=('x','mean'), s=('x','sum')).reset_index()` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
+| **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` | Default behavior (`dropna=False`) | Default behavior |
+| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
+
+### 6. Slicing Top / Bottom Records (`pick`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Top N Records** | `df.nlargest(5, 'sales')` | `df.pick("sales", n=5)` | `-pick "sales,n=5"` |
+| **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.pick("sales", n=5, order="min")` | `-pick "sales,n=5,order=min"` |
+| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.pick("sales", prop=0.1)` | `-pick "sales,prop=0.1"` |
+| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by("g").pick("x", n=3)` | `-by g -pick "x,n=3"` |
+
+### 7. Deduplication (`distinct`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Deduplicate Table** | `df.drop_duplicates().reset_index(drop=True)` | `df.distinct()` | `-distinct` |
+| **Subset Deduplication**| `df.drop_duplicates(subset=['a', 'b']).reset_index(drop=True)` | `df.distinct("a", "b")` | `-distinct "a,b"` |
+| **Keep Last Occurrence**| `df.drop_duplicates(subset=['a'], keep='last').reset_index(drop=True)` | `df.distinct("a", keep="last")` | `-distinct "a,keep=last"` |
+
+### 8. Reshaping & Pivoting (`wide`, `long`, `pivot`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Wide to Long (Melt)** | `pd.melt(df, id_vars=['id'], value_vars=['x', 'y'])` | `df.long(id_vars="id", cols=["x", "y"])` | `-long "id_vars=id, cols='x,y'"` |
+| **Long to Wide (Spread)**| `df.pivot(index='id', columns='var', values='val').reset_index()` | `df.wide(r="id", c="var", v="val")` | `-wide "r=id, c=var, v=val"` |
+| **2D Pivot Matrix** | `pd.pivot_table(df, index='r', columns='c', values='v', aggfunc='mean').reset_index()` | `df.pivot(r="r", c="c", v="v", a="mean")` | `-pivot "r=r, c=c, v=v, a=mean"` |
+
+### 9. Relational Joins (`join`, `concat`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Inner Join** | `pd.merge(df1, df2, on='id', how='inner')` | `df1.join(df2, on="id", how="inner")` | `-join "file2.parquet,on=id"` |
+| **Left Join** | `pd.merge(df1, df2, on='id', how='left')` | `df1.join(df2, on="id", how="left")` | `-join "file2.parquet,on=id,how=left"` |
+| **Different Key Names** | `pd.merge(df1, df2, left_on='a', right_on='b')` | `df1.join(df2, on="a:b")` | `-join "file2.parquet,on=a:b"` |
+| **Cardinality Check** | `pd.merge(df1, df2, on='id', validate='1:m')` | `df1.join(df2, on="id", validate="1:m")` | `-join "f2.parquet,on=id,validate=1:m"` |
+| **Vertical Stack** | `pd.concat([df1, df2], ignore_index=True)` | `pt.concat([df1, df2], how="vertical")` | N/A |
+
+### 10. In-Flight Inspection & Profiling
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Schema & Glimpse** | `df.info()` | `df.glimpse()` *(Non-destructive)* | `-glimpse` |
+| **Categorical Frequency**| `df['col'].value_counts(dropna=False)` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
+| **Histogram Bins** | `pd.cut(df['x'], 10).value_counts()` | `df.hist("x", bins=10)` *(With ASCII bars)*| `-hist x:10` |
+| **Dataset Comparison** | `df1.compare(df2)` *(Fails on misaligned index)*| `df1.diff(df2, tol=0.01)` | `pytae f1.parquet -diff f2.parquet,tol=0.01` |
+| **Clipboard Export** | `df.to_clipboard(index=False)` | `df.to_clip()` | `-o clip` |
+
+---
+
+## 6. End-to-End Pipeline Comparison
+
+### The Task:
+From a raw dataset of penguin observations:
+1. Filter for penguins heavier than 3.5 kg with non-null sex.
+2. Calculate mass in kg and the ratio of bill length to depth.
+3. Group by species and island.
+4. Calculate count, average mass, and maximum bill ratio.
+5. Sort by average mass descending.
+6. Export to Parquet.
+
+### In Pandas:
+```python
+import pandas as pd
+import numpy as np
+
+df = pd.read_parquet("penguins.parquet")
+
+# 1. Filtering
+filtered = df[(df["body_mass_g"] > 3500) & (df["sex"].notna())].copy()
+
+# 2. Feature Engineering
+filtered["body_mass_kg"] = filtered["body_mass_g"] / 1000
+filtered["bill_ratio"] = filtered["bill_length_mm"] / filtered["bill_depth_mm"]
+
+# 3 & 4. Grouping & Aggregation (defensive dropna=False and reset_index)
+summary = (
+    filtered
+    .groupby(["species", "island"], dropna=False)
+    .agg(
+        n=("body_mass_g", "size"),
+        avg_mass_kg=("body_mass_kg", "mean"),
+        max_ratio=("bill_ratio", "max")
+    )
+    .reset_index()
+)
+
+# 5. Sorting
+sorted_summary = summary.sort_values("avg_mass_kg", ascending=False)
+
+# 6. Export
+sorted_summary.to_parquet("summary.parquet", index=False)
+```
+
+### In Pytae (Python Library):
+```python
+import pytae as pt
+
+(
+    pt.read_parquet("penguins.parquet")
+    .filter("body_mass_g > 3500 & sex.notna()")
+    .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
+    .by("species", "island")
+    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
+    .arrange("avg_mass_kg desc")
+    .to_parquet("summary.parquet")
+)
+```
+
+### In Pytae (Unix CLI Pipeline):
+```bash
+pytae penguins.parquet \
+  -filter "body_mass_g > 3500, sex.notna()" \
+  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
+  -by species,island \
+  -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
+  -arrange "avg_mass_kg desc" \
+  -o summary.parquet
+```
+
+Notice the stark contrast: Pytae eliminates intermediate variables, eliminates `.copy()`, eliminates `.reset_index()`, eliminates `index=False`, and translates 1:1 into a single high-performance terminal command.
+
+
+################################################################################
+# FILE: docs/comparison_to_dplyr.md
+################################################################################
+# Pytae vs. dplyr (R / Tidyverse) — Deep Dive & Rosetta Stone
+
+[← Back to Master Reference](pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with SAS](comparison_to_sas.md)
+
+R's **`dplyr`** and the broader **Tidyverse** revolutionized data analysis by introducing a consistent, readable, and pipe-friendly grammar of data manipulation (`filter`, `mutate`, `select`, `arrange`, `summarise`).
+
+However, for developers and data scientists working in Python, migrating from R has historically been frustrating. Direct ports of dplyr to Python often run into Python's lexical scoping rules, quotation requirements, slow execution, and awkward metaprogramming.
+
+`pytae` brings the elegance and fluency of the Tidyverse to Python—backed by the raw multithreaded SIMD vector speed of **Polars**—while eliminating R's quoting friction and sticky grouping bugs.
+
+---
+
+## Key Architectural Differences: Pytae vs. dplyr
+
+```
+┌───────────────────────────────┬──────────────────────────────────┬──────────────────────────────────┐
+│ Architectural Dimension       │ dplyr (R / Tidyverse)            │ Pytae (Python & CLI)             │
+├───────────────────────────────┼──────────────────────────────────┼──────────────────────────────────┤
+│ Core Grammar                  │ Functional pipes (%>%, |>)       │ Method chaining (df.verb())      │
+│ Underlying Execution Engine   │ C++ (cpp11) / R interpreter      │ Multithreaded Rust SIMD (Polars) │
+│ Evaluation Model              │ Non-Standard Evaluation (NSE)    │ Clean string expressions & lambdas│
+│ Grouping State                │ "Sticky" (persists until ungroup)│ Single-shot (auto-clearing)      │
+│ Summarization Name            │ Dual spelling (summarise/ize)    │ One Obvious Way (agg)            │
+│ Multi-Column Transformations  │ across(c(a, b), ~ .x * 10)       │ (a, b) = _ * 10                  │
+│ Reshaping Grammar             │ Separate package (tidyr)         │ Unified verbs (long, wide, pivot)│
+│ Command-Line Equivalence      │ None (requires Rscript)          │ 100% grammar parity via CLI      │
+└───────────────────────────────┴──────────────────────────────────┴──────────────────────────────────┘
+```
+
+---
+
+## 1. Non-Standard Evaluation (NSE) vs. Ergonomic String Expressions
+
+### The dplyr Metaprogramming Challenge
+In R, `dplyr` relies heavily on Non-Standard Evaluation (NSE). While `filter(df, mass > 100)` looks clean when typed interactively, it creates major friction in functions, automation, and packages:
+- Developers must learn `rlang` unquoting, quasiquotation (`!!`), and injection (`{{ col }}`).
+- Passing column names dynamically requires switching between `all_of()`, `any_of()`, and `.data[[col]]`.
+
+### The Pytae Solution
+In Pytae, column expressions are cleanly expressed as readable strings or Python callables:
+- Interactive code is concise: `df.filter("mass > 100")`
+- Dynamic variables integrate cleanly using standard Python f-strings: `df.filter(f"{col} > {threshold}")`
+- In-memory variables are referenced directly via `@var`: `df.filter("mass > @min_mass")`
+- Complex business logic can always drop back to native Python callables: `df.filter(lambda d: custom_func(d['mass']))`
+
+---
+
+## 2. Grouping Semantics: "Sticky" Groups vs. Single-Shot Auto-Clearing
+
+### The dplyr "Sticky Grouping" Bug
+In `dplyr`, `group_by()` alters the state of the data frame, producing a `grouped_df`. This grouping **persists silently across downstream operations**:
+
+```r
+# DPLYR TRAP: Sticky groups contaminate subsequent calculations!
+df_grouped <- df %>%
+  group_by(region) %>%
+  mutate(regional_mean = mean(sales))
+
+# The next operation is STILL grouped by region, even if the user wanted overall stats!
+df_summary <- df_grouped %>%
+  mutate(global_mean = mean(sales)) # BUG: Calculates regional mean again, NOT global!
+
+# To fix this, users must remember to defensively pipe ungroup():
+df_grouped <- df %>%
+  group_by(region) %>%
+  mutate(regional_mean = mean(sales)) %>%
+  ungroup() # Mandatory defensive ceremony
+```
+
+### The Pytae Solution: `ungroup()` is Dead
+In Pytae, grouping is strictly **single-shot, non-destructive, and auto-clearing**:
+- `df.by(*cols)` establishes a grouping context for the *immediate next verb* (`mutate`, `agg`, `pick`).
+- As soon as that verb completes, the grouping context is automatically consumed and discarded.
+- Downstream verbs immediately evaluate at the whole-table scope without any need for `ungroup()`:
+
+```python
+# PYTAE: Single-shot grouping with zero pollution
+(
+    df
+    .by("region").mutate(regional_mean="mean(sales)") # Scoped to region
+    .mutate(global_mean="mean(sales)")                # Evaluated across whole table!
+    .by("department").mutate(dept_mean="mean(sales)") # Scoped to department
+)
+```
+
+---
+
+## 3. Multi-Column Operations: `across()` vs. Pytae Multi-Target Syntax
+
+### The dplyr Syntax:
+In `dplyr`, applying a function across multiple columns requires the `across()` helper:
+```r
+penguins %>%
+  mutate(across(c(bill_length_mm, bill_depth_mm), ~ .x / 10, .names = "{.col}_cm"))
+```
+
+### The Pytae Syntax:
+Pytae provides an intuitive mathematical syntax where target columns and suffix formulas are declared directly:
+```python
+# In-place multi-column transformation:
+penguins.mutate("(bill_length_mm, bill_depth_mm) = _ / 10")
+
+# Multi-column transformation with suffix:
+penguins.mutate("(bill_length_mm, bill_depth_mm)_cm = _ / 10")
+```
+
+The underscore `_` cleanly denotes the current column, eliminating formula boilerplate.
+
+---
+
+## 4. Spelling Ambiguity: `summarise` vs. `summarize`
+
+In R's `dplyr`, both `summarise()` and `summarize()` are supported to accommodate British and American English. While courteous, this introduces spelling inconsistency across codebases and team repositories, violating the Zen of Python's principle: *"There should be one-- and preferably only one --obvious way to do it."*
+
+Pytae eliminates this ambiguity entirely by standardizing on the canonical, concise verb **`agg()`** across both Python (`df.agg()`, `df.by().agg()`) and the command line (`-agg`).
+
+---
+
+## 5. Feature-by-Feature Rosetta Stone: Pytae vs. dplyr
+
+### 1. Row Filtering
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Simple Filter** | `filter(df, sales > 100)` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
+| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter("a > 1 & b == 'E'")` | `-filter "a > 1, b == 'E'"` |
+| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
+| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
+| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('startswith', 'A'))`| `-filter "name.startswith('A')"` |
+| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+
+### 2. Feature Engineering & Column Derivations (`mutate`)
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
+| **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
+| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
+| **Multi-Branch (Case)** | `mutate(df, f = case_when(c1 ~ v1, c2 ~ v2, TRUE ~ v3))` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
+| **Value Recoding** | `mutate(df, x = recode(x, "A" = 1, "B" = 2))` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
+| **Multi-Column Transform** | `mutate(df, across(c(a, b), ~ .x * 10))` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
+| **Multi-Column + Suffix** | `mutate(df, across(c(a, b), ~ .x * 10, .names = "{.col}_cm"))` | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
+| **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev="shift(x, 1)")` | `-mutate "prev = shift(x, 1)"` |
+
+### 3. Column Selection & Exclusion (`select`, `rename`)
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Select Columns** | `select(df, a, b)` | `df.select("a", "b")` | `-select "a,b"` |
+| **Drop Columns** | `select(df, -c, -d)` | `df.select("-c", "-d")` | `-select "-c,-d"` |
+| **Pattern Match** | `select(df, contains("bill"))` | `df.select(contains="bill")` | `-select "contains=bill"` |
+| **Prefix Match** | `select(df, starts_with("b"))` | `df.select(starts_with="b")` | `-select "starts_with=b"` |
+| **Inline Rename** | `select(df, new_b = a)` | `df.select("a:new_b")` | `-select "a:new_b"` |
+| **Dedicated Rename** | `rename(df, new_b = a)` | `df.rename("a:new_b")` | `-rename "a:new_b"` |
+| **Reorder with Rest** | `select(df, lead, everything())` | `df.select("lead", pt.everything)` | N/A |
+
+### 4. Row Sorting (`arrange`)
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Ascending** | `arrange(df, sales)` | `df.arrange("sales")` | `-arrange sales` |
+| **Descending** | `arrange(df, desc(sales))` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
+| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
+| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
+
+### 5. Grouped Summaries (`by` + `agg`)
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Group Summary** | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
+| **Row Count** | `summarise(df, n = n())` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
+| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
+
+### 6. Slicing Top / Bottom Records (`pick`)
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.pick("sales", n=5)` | `-pick "sales,n=5"` |
+| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.pick("sales", n=5, order="min")` | `-pick "sales,n=5,order=min"` |
+| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.pick("sales", prop=0.1)` | `-pick "sales,prop=0.1"` |
+| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by("g").pick("x", n=3)` | `-by g -pick "x,n=3"` |
+
+### 7. Deduplication (`distinct`)
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Deduplicate Table** | `distinct(df)` | `df.distinct()` | `-distinct` |
+| **Subset Deduplication**| `distinct(df, a, b, .keep_all = TRUE)` | `df.distinct("a", "b")` | `-distinct "a,b"` |
+
+### 8. Reshaping & Pivoting (`wide`, `long`, `pivot`)
+| Task | tidyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Wide to Long** | `pivot_longer(df, cols = c(x, y), names_to = "var", values_to = "val")` | `df.long(id_vars="id", cols=["x", "y"])` | `-long "id_vars=id, cols='x,y'"` |
+| **Long to Wide (1:1)** | `pivot_wider(df, names_from = var, values_from = val)` | `df.wide(r="id", c="var", v="val")` | `-wide "r=id, c=var, v=val"` |
+| **2D Pivot Matrix** | `group_by(r, c) %>% summarise(v = mean(v)) %>% pivot_wider(...)` | `df.pivot(r="r", c="c", v="v", a="mean")` | `-pivot "r=r, c=c, v=v, a=mean"` |
+
+### 9. Relational Joins (`join`, `concat`)
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Inner Join** | `inner_join(df1, df2, by = "id")` | `df1.join(df2, on="id", how="inner")` | `-join "f2.parquet,on=id"` |
+| **Left Join** | `left_join(df1, df2, by = "id")` | `df1.join(df2, on="id", how="left")` | `-join "f2.parquet,on=id,how=left"` |
+| **Different Key Names**| `left_join(df1, df2, by = c("a" = "b"))` | `df1.join(df2, on="a:b")` | `-join "f2.parquet,on=a:b"` |
+| **Anti Join** | `anti_join(df1, df2, by = "id")` | `df1.join(df2, on="id", how="anti")` | `-join "f2.parquet,on=id,how=anti"` |
+| **Row Bind (Stack)** | `bind_rows(df1, df2)` | `pt.concat([df1, df2], how="vertical")` | N/A |
+
+### 10. Inspection & Profiling
+| Task | dplyr / tibble (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Transposed Overview**| `glimpse(df)` | `df.glimpse()` *(Non-destructive)* | `-glimpse` |
+| **Frequency Counts** | `count(df, col, sort = TRUE)` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
+| **Clipboard Export** | `clipr::write_clip(df)` | `df.to_clip()` | `-o clip` |
+
+---
+
+## 6. End-to-End Pipeline Comparison
+
+### In R (dplyr / Tidyverse):
+```r
+library(dplyr)
+library(arrow)
+
+summary_report <- read_parquet("penguins.parquet") %>%
+  filter(body_mass_g > 3500, !is.na(sex)) %>%
+  mutate(
+    body_mass_kg = body_mass_g / 1000,
+    bill_ratio = bill_length_mm / bill_depth_mm
+  ) %>%
+  group_by(species, island) %>%
+  summarise(
+    n = n(),
+    avg_mass_kg = mean(body_mass_kg, na.rm = TRUE),
+    max_ratio = max(bill_ratio, na.rm = TRUE),
+    .groups = "drop" # Required to prevent sticky grouping!
+  ) %>%
+  arrange(desc(avg_mass_kg))
+
+write_parquet(summary_report, "summary.parquet")
+```
+
+### In Pytae (Python Library):
+```python
+import pytae as pt
+
+(
+    pt.read_parquet("penguins.parquet")
+    .filter("body_mass_g > 3500 & sex.notna()")
+    .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
+    .by("species", "island")
+    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
+    .arrange("avg_mass_kg desc")
+    .to_parquet("summary.parquet")
+)
+```
+
+### In Pytae (Unix CLI Pipeline):
+```bash
+pytae penguins.parquet \
+  -filter "body_mass_g > 3500, sex.notna()" \
+  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
+  -by species,island \
+  -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
+  -arrange "avg_mass_kg desc" \
+  -o summary.parquet
+```
+
+Pytae provides everything Tidyverse users love about `dplyr`—fluent method chaining, declarative verbs, and clean data thinking—while granting massive SIMD vector performance and Unix command-line superpowers.
+
+
+################################################################################
+# FILE: docs/comparison_to_sas.md
+################################################################################
+# Pytae vs. SAS — Deep Dive & Migration Guide
+
+[← Back to Master Reference](pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with dplyr](comparison_to_dplyr.md)
+
+For over four decades, **SAS (Statistical Analysis System)** has been the foundational analytical engine in regulated enterprise environments: clinical trials, biostatistics, pharmaceutical submissions (CDISC SDTM / ADaM), banking risk models (Basel / CECL / CCAR), insurance actuarial analysis, and government statistics.
+
+As organizations modernize their tech stacks and migrate toward Python and cloud-native architectures, SAS developers, biostatisticians, and risk analysts often encounter steep friction with standard Python tools like Pandas. Pandas introduces foreign index abstractions, fragile chaining, and multi-syntax confusion.
+
+`pytae` provides a natural, high-performance bridge for SAS professionals:
+1. **Familiar Tabular Intuition**: Pure, flat 2D data tables without index complexity.
+2. **"One and Only One Obvious Way"**: Eliminates syntax fragmentation by providing exactly one clear verb per task.
+3. **Massive Multithreaded Vector Speed**: Replaces slow, iterative row-by-row `DATA` step processing with 100% native Rust/Polars SIMD vectorization.
+4. **Native `.sas7bdat` Ingestion**: Read legacy SAS datasets directly without needing SAS installed.
+
+---
+
+## Key Architectural Differences: Pytae vs. SAS
+
+```
+┌───────────────────────────────┬──────────────────────────────────┬──────────────────────────────────┐
+│ Architectural Dimension       │ SAS (Base SAS, STAT, ETS)        │ Pytae (Python Library & CLI)     │
+├───────────────────────────────┼──────────────────────────────────┼──────────────────────────────────┤
+│ Core Execution Paradigm       │ Row-by-row Program Data Vector   │ Multithreaded SIMD Vector Core   │
+│ Syntax Architecture           │ Split: DATA step vs PROC SQL/PROCs│ Single, unified grammar          │
+│ In-Memory Data Structure      │ SAS Dataset (.sas7bdat) on disk  │ Apache Arrow / Polars DataFrame  │
+│ Missing Value Internal Rep    │ Numeric '.' is smaller than -Inf │ Strict null / IEEE-754 NaN       │
+│ Relational Merge Prerequisite │ All inputs MUST be sorted on disk│ In-memory hash join (no sort)    │
+│ State Tracking (Lags/Sums)    │ Manual RETAIN, FIRST., LAST.     │ Declarative window expressions   │
+│ Grouping Mechanism            │ BY statement (requires sort)     │ Single-shot by() (auto-clearing) │
+│ Reshaping                     │ PROC TRANSPOSE (_NAME_, COL1)    │ Unified wide(), long(), pivot()  │
+│ Interactive Execution         │ Batch (.sas -> .log / .lst)      │ Interactive Python REPL & CLI    │
+└───────────────────────────────┴──────────────────────────────────┴──────────────────────────────────┘
+```
+
+---
+
+## 1. The Core Paradigm Shift: SAS Program Data Vector vs. Pytae Vector SIMD
+
+### The SAS Execution Model
+In SAS, the `DATA` step is an explicit, procedural row-by-row loop:
+1. SAS initializes the **Program Data Vector (PDV)** in memory.
+2. It reads one observation from disk into the PDV.
+3. It executes the statements in the `DATA` step sequentially.
+4. At the `RUN;` statement, it outputs the PDV to disk and loops back to step 2 until the end of the file (`EOF`).
+
+While intuitive for sequential accounting logic, the PDV model creates significant overhead:
+- It relies heavily on temporary disk scratch space (`WORK` library).
+- Window calculations require manual state maintenance using `RETAIN` statements and automatic variables (`_N_`, `_ERROR_`).
+- Operations cannot parallelize across CPU cores because rows are processed sequentially.
+
+### The Pytae Vector Execution Model
+Pytae executes operations on **entire column vectors simultaneously**:
+- Processing is powered by native Rust/Polars multithreaded SIMD kernels.
+- Operations automatically saturate all available CPU cores.
+- Data resides in contiguous Apache Arrow memory buffers with zero Python GIL lockup.
+
+---
+
+## 2. The Dangerous SAS Missing Value Trap vs. Pytae Safe Nulls
+
+### The SAS Negative Infinity Trap
+In SAS, numeric missing values (`.`, `.A` through `.Z`) are stored internally as special double-precision values that are **smaller than negative infinity** ($-\infty$):
+
+$$\text{Missing } (.) < -999{,}999{,}999 < 0 < \text{Positive Numbers}$$
+
+This architectural choice causes catastrophic logic errors when filtering or deriving variables:
+
+```sas
+/* DANGEROUS SAS LOGIC BUG */
+DATA pediatric_check;
+  SET clinical_patients;
+  IF age < 18 THEN pediatric = 1; /* BUG! */
+  ELSE pediatric = 0;
+RUN;
+```
+
+> [!CAUTION]
+> If a patient's `age` is missing (`.`), SAS evaluates `age < 18` as **TRUE** because `.` is smaller than 18! Consequently, patients with unrecorded ages are misclassified as pediatric patients.
+>
+> SAS programmers are forced to write defensive, verbose conditions everywhere:
+> `IF NOT MISSING(age) AND age < 18 THEN pediatric = 1;`
+
+### The Pytae Safe Null Model
+In Pytae, missing values adhere to strict three-valued logic and IEEE-754 semantics:
+- A comparison with missing (`null` or `NaN`) always evaluates to missing / false.
+- Filtering `df.filter("age < 18")` **never** includes null or NaN records.
+- Null checks are explicit and readable: `df.filter("age.notna()")` or `df.filter("age.isna()")`.
+
+---
+
+## 3. Merge Requirements: SAS Pre-Sorting vs. Pytae Instant Hash Joins
+
+### The SAS Sort Requirement
+In SAS, merging two datasets using the `MERGE` statement in a `DATA` step strictly requires that **both datasets be physically sorted on disk by the merge keys**:
+
+```sas
+/* MANDATORY SAS PRE-SORTING */
+PROC SORT DATA=work.demographics;
+  BY patient_id;
+RUN;
+
+PROC SORT DATA=work.vitals;
+  BY patient_id;
+RUN;
+
+DATA work.merged;
+  MERGE work.demographics (IN=in_demo) work.vitals (IN=in_vit);
+  BY patient_id;
+  IF in_demo; /* Left join */
+RUN;
+```
+
+If either dataset is not sorted, SAS halts execution with a fatal runtime error:
+`ERROR: BY variables are not properly sorted on data set WORK.DEMOGRAPHICS.`
+
+### The Pytae Instant Hash Join
+Pytae uses in-memory hash joins:
+- Datasets **never** need to be pre-sorted.
+- Keys with different column names are linked with a simple colon (`on="patient_id:subjid"`).
+- Join cardinality is validated automatically if desired:
+
+```python
+# PYTAE: Zero pre-sorting required
+demographics.join(vitals, on="patient_id", how="left", validate="1:m")
+```
+
+---
+
+## 4. Group Statefulness: SAS `RETAIN` and `FIRST.`/`LAST.` vs. Pytae Declarative Windows
+
+### The SAS Multi-Step Ceremony
+In SAS, computing running totals, cumulative maximums, or group percentages requires:
+1. Running `PROC SORT` by the grouping variable.
+2. Creating a `DATA` step with a `BY` statement.
+3. Explicitly declaring `RETAIN` variables.
+4. Writing conditional logic checking `IF FIRST.group THEN ...`:
+
+```sas
+/* SAS: Cumulative sales by region */
+PROC SORT DATA=sales;
+  BY region;
+RUN;
+
+DATA sales_running;
+  SET sales;
+  BY region;
+  RETAIN cum_sales;
+  IF FIRST.region THEN cum_sales = 0;
+  cum_sales = cum_sales + amount;
+RUN;
+```
+
+### The Pytae Single-Line Declarative Vector
+In Pytae, grouped calculations are written as clear, declarative expressions without state management:
+
+```python
+# PYTAE: One obvious declarative line
+sales.by("region").mutate(cum_sales="cum_sum(amount)")
+```
+
+---
+
+## 5. Reshaping: `PROC TRANSPOSE` vs. `wide`, `long`, `pivot`
+
+### The SAS `PROC TRANSPOSE` Complexity
+In SAS, transposing long data into wide data (or vice versa) is notoriously cryptic:
+```sas
+PROC TRANSPOSE DATA=vitals OUT=vitals_wide (DROP=_NAME_);
+  BY patient_id visit;
+  ID test_code;
+  VAR test_result;
+RUN;
+```
+`PROC TRANSPOSE` produces arbitrary automatic column names (`_NAME_`, `COL1`, `COL2`) that require post-processing `RENAME=` clauses and macro workarounds.
+
+### The Pytae Reshaping Suite
+Pytae provides three intuitive, dedicated verbs with zero column name artifacts:
+1. **`df.long(id_vars=..., cols=...)`**: Melts wide columns into tall records.
+2. **`df.wide(r=..., c=..., v=...)`**: Pure 1-to-1 structural unmelting without aggregation.
+3. **`df.pivot(r=..., c=..., v=..., a=...)`**: Generates 2D cross-tabulation aggregation matrices.
+
+---
+
+## 6. Feature-by-Feature Rosetta Stone: Pytae vs. SAS
+
+### 1. Data Ingestion & I/O
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Read SAS Dataset** | `SET libref.dataset;` | `pt.read_sas("dataset.sas7bdat")` | `pytae dataset.sas7bdat` |
+| **Read CSV** | `PROC IMPORT DATAFILE='...' DBMS=CSV;` | `pt.read_csv("file.csv")` | `pytae file.csv` |
+| **Read Parquet** | SAS Viya CAS Parquet engine | `pt.read_parquet("file.parquet")` | `pytae file.parquet` |
+| **Write Parquet** | Viya CAS Save | `df.to_parquet("file.parquet")` | `-o file.parquet` |
+| **Write CSV** | `PROC EXPORT DATAFILE='...' DBMS=CSV;` | `df.to_csv("file.csv")` | `-o file.csv` |
+| **Clipboard Export** | Custom DDE / ODS script | `df.to_clip()` | `-o clip` |
+
+### 2. Row Filtering
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter("sales > 100")` | `-filter "sales > 100"` |
+| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter("a > 1 & b == 'East'")` | `-filter "a > 1, b == 'East'"` |
+| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
+| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
+| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
+| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+
+### 3. Column Derivations & Feature Engineering (`mutate`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Simple Math** | `y = a / b;` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
+| **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
+| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
+| **Multi-Branch (Case)** | `SELECT; WHEN(c1) f=v1; OTHERWISE f=v3; END;` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
+| **Format / Value Recoding**| `PROC FORMAT; ... PUT(x, fmt.);` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
+| **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev="shift(x, 1)")` | `-mutate "prev = shift(x, 1)"` |
+| **Multi-Column Transform**| `ARRAY cols(*) a b; DO i=1 TO 2; ...` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
+| **Multi-Column + Suffix** | Macro loop generating variable assignments | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
+
+### 4. Column Selection & Renaming (`select`, `rename`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select("a", "b")` | `-select "a,b"` |
+| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select("-c", "-d")` | `-select "-c,-d"` |
+| **Rename Variables** | `RENAME old=new;` | `df.rename("old:new")` | `-rename "old:new"` |
+| **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select("a:b")` | `-select "a:b"` |
+
+### 5. Row Sorting (`arrange`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange("sales")` | `-arrange sales` |
+| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
+| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
+
+### 6. Grouped Summaries (`by` + `agg`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Group Mean** | `PROC MEANS NWAY NOPRINT; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
+| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Multiple Metrics** | `OUTPUT OUT=out MEAN=m SUM=s MIN=mn MAX=mx;` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
+| **Preserve Missing Groups**| `PROC MEANS MISSING;` *(Defaults to dropping!)*| Default behavior (`dropna=False`) | Default behavior |
+
+### 7. Deduplication (`distinct`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Deduplicate Table** | `PROC SORT NODUPRECS; BY _ALL_; RUN;` | `df.distinct()` | `-distinct` |
+| **Deduplicate by Keys** | `PROC SORT NODUPKEY; BY a b; RUN;` | `df.distinct("a", "b")` | `-distinct "a,b"` |
+
+### 8. Inspection, Profiling & Validation
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Dataset Metadata** | `PROC CONTENTS DATA=in; RUN;` | `df.glimpse()` | `-glimpse` |
+| **Frequency Table** | `PROC FREQ; TABLES col; RUN;` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
+| **Dataset Comparison** | `PROC COMPARE BASE=a COMPARE=b CRITERION=0.01; RUN;` | `df.diff(df2, tol=0.01)` | `pytae a.parquet -diff b.parquet,tol=0.01` |
+| **ANSI SQL Engine** | `PROC SQL; SELECT ... FROM in; QUIT;` | `df.sql("SELECT ... FROM self")` | `-sql "SELECT ... FROM file.parquet"` |
+
+---
+
+## 7. End-to-End Migration Example: Clinical Vital Signs Summary
+
+### The Clinical Analysis Task:
+In a clinical trial analysis:
+1. Ingest clinical vital signs data.
+2. Filter for baseline records (`VISIT = 'Baseline'`) with valid pulse measurements.
+3. Compute pulse pressure ($Systolic - Diastolic$).
+4. Categorize subjects into hypertensive tiers.
+5. Group by treatment arm (`TRTP`) and sex.
+6. Summarize subject count, mean systolic, and mean pulse pressure.
+7. Sort by mean systolic pressure descending.
+
+### In SAS:
+```sas
+/* 1. Sort vitals by keys for merging */
+PROC SORT DATA=sdtm.vsl;
+  BY USUBJID;
+RUN;
+
+PROC SORT DATA=sdtm.dm;
+  BY USUBJID;
+RUN;
+
+/* 2. Merge demographics and filter baseline records */
+DATA work.baseline_vitals;
+  MERGE sdtm.vsl (IN=in_v) sdtm.dm (IN=in_d);
+  BY USUBJID;
+  WHERE in_v AND in_d AND VISIT = 'Baseline' AND NOT MISSING(SYSBP) AND NOT MISSING(DIABP);
+
+  /* 3. Derive Pulse Pressure */
+  pulse_pressure = SYSBP - DIABP;
+
+  /* 4. Categorize Hypertensive Tier */
+  IF SYSBP >= 140 OR DIABP >= 90 THEN htn_tier = 'Stage 2';
+  ELSE IF SYSBP >= 130 OR DIABP >= 80 THEN htn_tier = 'Stage 1';
+  ELSE htn_tier = 'Normal';
+RUN;
+
+/* 5 & 6. Grouped Summary Statistics */
+PROC MEANS DATA=work.baseline_vitals NWAY NOPRINT MISSING;
+  CLASS TRTP SEX;
+  VAR SYSBP pulse_pressure;
+  OUTPUT OUT=work.summary (DROP=_TYPE_ _FREQ_)
+    N(SYSBP)=n_subjects
+    MEAN(SYSBP)=mean_sysbp
+    MEAN(pulse_pressure)=mean_pp;
+RUN;
+
+/* 7. Sort final summary */
+PROC SORT DATA=work.summary;
+  BY DESCENDING mean_sysbp;
+RUN;
+```
+
+### In Pytae (Python Library):
+```python
+import pytae as pt
+
+# Ingest directly from SAS datasets or Parquet
+vsl = pt.read_sas("vsl.sas7bdat")
+dm = pt.read_sas("dm.sas7bdat")
+
+summary = (
+    vsl.filter("VISIT == 'Baseline' & SYSBP.notna() & DIABP.notna()")
+    .join(dm, on="USUBJID", how="inner")
+    .mutate(
+        pulse_pressure="SYSBP - DIABP",
+        htn_tier="case_when("
+            "SYSBP >= 140 | DIABP >= 90, 'Stage 2', "
+            "SYSBP >= 130 | DIABP >= 80, 'Stage 1', "
+            "'Normal'"
+        ")"
+    )
+    .by("TRTP", "SEX")
+    .agg(
+        n_subjects="n",
+        mean_sysbp="SYSBP:mean",
+        mean_pp="pulse_pressure:mean"
+    )
+    .arrange("mean_sysbp desc")
+)
+
+# Export clean result to Parquet or CSV
+summary.to_parquet("summary.parquet")
+```
+
+### In Pytae (Unix CLI Pipeline):
+```bash
+pytae vsl.sas7bdat \
+  -filter "VISIT == 'Baseline', SYSBP.notna(), DIABP.notna()" \
+  -join "dm.sas7bdat,on=USUBJID,how=inner" \
+  -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
+  -by TRTP,SEX \
+  -agg "n_subjects = n, mean_sysbp = mean(SYSBP), mean_pp = mean(pulse_pressure)" \
+  -arrange "mean_sysbp desc" \
+  -o summary.parquet
+```
+
+### Why SAS Teams Migrate to Pytae
+- **No Disk Sorting Overhead**: Pytae's in-memory hash joins replace multi-step `PROC SORT` runs.
+- **Zero Syntax Splitting**: No cognitive switching between `DATA` steps and `PROC SQL`.
+- **Elimination of Missing Value Logic Bugs**: Pytae's safe null handling prevents accidental inclusion of missing values in comparisons.
+- **Modern Cloud Execution**: Runs natively in Linux containers, cloud Lambdas, Airflow DAGs, and interactive Jupyter environments.
+
 
 ################################################################################
 # FILE: docs/comparison_to_pandas_and_dplyr.md
 ################################################################################
 # Pytae Comparison & Philosophy: Pytae vs. Pandas vs. dplyr
 
-[← Back to Documentation](../readme.md)
+[← Back to Documentation](../readme.md) | **Dedicated Deep Dives:** [Pytae vs. Pandas](comparison_to_pandas.md) | [Pytae vs. dplyr](comparison_to_dplyr.md) | [Pytae vs. SAS](comparison_to_sas.md)
 
-A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including the architectural philosophy and naming rationale behind Pytae's concise vocabulary.
+A detailed comparison of **`pytae`**, **Pandas**, and R's **`dplyr`**, including the architectural philosophy and naming rationale behind Pytae's concise vocabulary. For comprehensive deep dives tailored to specific ecosystems, see the dedicated guides linked above.
 
 ---
 
@@ -12017,6 +12967,7 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 - **Fluent & Composable**: Every operation returns a clean, standard Pandas DataFrame that seamlessly integrates with existing Python code.
 - **Identical Terminal Experience**: Any workflow developed in Python notebooks translates verbatim into shell pipelines with `pytae`.
 
+
 ================================================================================
 11. REPOSITORY DIRECTORY TREE
 ================================================================================
@@ -12026,7 +12977,10 @@ Pytae carefully chooses concise, intention-revealing names that prevent keyword 
 ├── changelog.md
 ├── contributing.md
 ├── docs
+│   ├── comparison_to_dplyr.md
+│   ├── comparison_to_pandas.md
 │   ├── comparison_to_pandas_and_dplyr.md
+│   ├── comparison_to_sas.md
 │   ├── detailed_docs
 │   │   ├── agg.md
 │   │   ├── arrange.md

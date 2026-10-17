@@ -74,7 +74,7 @@ TABLE OF CONTENTS
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
 8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
-10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)
+10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
@@ -1117,7 +1117,10 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ├── changelog.md
 ├── contributing.md
 ├── docs
+│   ├── comparison_to_dplyr.md
+│   ├── comparison_to_pandas.md
 │   ├── comparison_to_pandas_and_dplyr.md
+│   ├── comparison_to_sas.md
 │   ├── detailed_docs
 │   │   ├── agg.md
 │   │   ├── arrange.md
@@ -1304,15 +1307,17 @@ def generate_reference() -> None:
         parts.append("################################################################################")
         parts.append(pytae_md.read_text(encoding="utf-8").rstrip() + "\n")
 
-    # Section 10: Philosophy & Comparison Rosetta Stone (docs/comparison_to_pandas_and_dplyr.md)
+    # Section 10: Ecosystem Comparisons & Migration Guides (Pandas, dplyr, SAS)
     parts.append("================================================================================")
-    parts.append("10. PHILOSOPHY & COMPARISON ROSETTA STONE (docs/comparison_to_pandas_and_dplyr.md)")
+    parts.append("10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)")
     parts.append("================================================================================\n")
-    comp_md = REPO_ROOT / "docs" / "comparison_to_pandas_and_dplyr.md"
-    parts.append("################################################################################")
-    parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
-    parts.append("################################################################################")
-    parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n")
+    for comp_name in ["comparison_to_pandas.md", "comparison_to_dplyr.md", "comparison_to_sas.md", "comparison_to_pandas_and_dplyr.md"]:
+        comp_md = REPO_ROOT / "docs" / comp_name
+        if comp_md.exists():
+            parts.append("################################################################################")
+            parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
+            parts.append("################################################################################")
+            parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n\n")
 
     # Section 11: Repository Directory Tree (from manual_tree)
     if manual_tree:
