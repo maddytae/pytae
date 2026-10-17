@@ -1,6 +1,6 @@
 # CLI Feature Guide: SQL Engine
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Execute full analytical SQL queries directly against tabular files and in-memory pipeline views via Polars SQLContext using `-sql`.
 

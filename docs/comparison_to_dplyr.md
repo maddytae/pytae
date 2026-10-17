@@ -203,7 +203,32 @@ Pytae eliminates this ambiguity entirely by standardizing on the canonical, conc
 |:---|:---|:---|:---|
 | **Transposed Overview**| `glimpse(df)` | `df.glimpse()` *(Non-destructive)* | `-glimpse` |
 | **Frequency Counts** | `count(df, col, sort = TRUE)` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
+| **Dataset Comparison** | `waldo::compare(df1, df2)` | `df1.diff(df2, tol=0.01)` | `pytae f1.parquet -diff f2.parquet,tol=0.01` |
 | **Clipboard Export** | `clipr::write_clip(df)` | `df.to_clip()` | `-o clip` |
+
+### 11. Missing Data Architecture & Cleaning (`dropna`, `fillna`, `clean_columns`)
+| Task | dplyr / tidyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Safe Blank Row Dropping** | `filter(df, if_any(everything(), ~ !is.na(.)))` | `df.dropna()` *(Defaults to safe `how='all'`)* | `-dropna` |
+| **Targeted Key Dropping** | `drop_na(df, id, email)` | `df.dropna("id", "email")` | `-dropna id,email` |
+| **Missing Imputation** | `replace_na(df, list(score = 0))` | `df.fillna({"score": 0})` | `-fillna "score=0"` |
+| **Column Name Cleaning** | `janitor::clean_names(df)` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Preserve NA Groups in Agg** | Default behavior (keeps `NA` levels) | Default behavior (`dropna=False`) | Default behavior |
+
+### 12. Embedded ANSI SQL Engine (`sql`)
+| Task | dplyr / R | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **SQL Query on DataFrame** | Requires `dbplyr` / `tidyquery` / `sqldf` | `df.sql("SELECT species, avg(body_mass_g) FROM self GROUP BY species")` | N/A |
+| **SQL Query on Disk File** | Requires database connection or DuckDB R | `pt.sql("SELECT * FROM 'data.parquet' WHERE sales > 100")` | `-sql "SELECT * FROM file.parquet WHERE sales > 100"` |
+
+### 13. Grouped Window Calculations & Lag/Lead
+| Task | dplyr (R) | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Group Mean Window** | `df %>% group_by(g) %>% mutate(m = mean(x)) %>% ungroup()` | `df.by("g").mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
+| **Within-Group Percentage** | `df %>% group_by(g) %>% mutate(pct = x / sum(x)) %>% ungroup()` | `df.by("g").mutate(pct="x / sum(x)")` | `-by g -mutate "pct = x / sum(x)"` |
+| **Within-Group Rank** | `df %>% group_by(g) %>% mutate(r = min_rank(x)) %>% ungroup()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
+| **Grouped Shift / Lag** | `df %>% group_by(g) %>% mutate(prev = lag(x)) %>% ungroup()` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
+| **Grouped Cumulative Sum** | `df %>% group_by(g) %>% mutate(cum = cumsum(x)) %>% ungroup()` | `df.by("g").mutate(cum="cum_sum(x)")` | `-by g -mutate "cum = cum_sum(x)"` |
 
 ---
 

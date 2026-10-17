@@ -233,6 +233,31 @@ In Pytae, grouping is **single-shot, non-destructive, and auto-clearing**:
 | **Dataset Comparison** | `df1.compare(df2)` *(Fails on misaligned index)*| `df1.diff(df2, tol=0.01)` | `pytae f1.parquet -diff f2.parquet,tol=0.01` |
 | **Clipboard Export** | `df.to_clipboard(index=False)` | `df.to_clip()` | `-o clip` |
 
+### 11. Missing Data Architecture & Cleaning (`dropna`, `fillna`, `clean_columns`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Safe Blank Row Dropping** | `df.dropna(how='all')` *(Defaults to dangerous `how='any'`)* | `df.dropna()` *(Defaults to safe `how='all'`)* | `-dropna` |
+| **Targeted Key Dropping** | `df.dropna(subset=['id', 'email'])` | `df.dropna("id", "email")` | `-dropna id,email` |
+| **Dual Null & NaN Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0, nans=True)` | `-fillna 0` |
+| **Column-Specific Imputation**| `df.fillna({'a': 0, 'b': 'N/A'})` | `df.fillna({'a': 0, 'b': 'N/A'})` | `-fillna "a=0,b='N/A'"` |
+| **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Preserve NA Groups in Agg** | `df.groupby('g', dropna=False).agg(...)` | Default behavior (`dropna=False`) | Default behavior |
+
+### 12. Embedded ANSI SQL Engine (`sql`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **SQL Query on DataFrame** | Requires external `duckdb` or `sqldf` | `df.sql("SELECT species, avg(body_mass_g) FROM self GROUP BY species")` | N/A |
+| **SQL Query on Disk File** | Requires importing `duckdb` in script | `pt.sql("SELECT * FROM 'data.parquet' WHERE sales > 100")` | `-sql "SELECT * FROM file.parquet WHERE sales > 100"` |
+
+### 13. Grouped Window Calculations & Lag/Lead
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Group Mean Window** | `df['m'] = df.groupby('g')['x'].transform('mean')` | `df.by("g").mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
+| **Within-Group Percentage** | `df['pct'] = df['x'] / df.groupby('g')['x'].transform('sum')` | `df.by("g").mutate(pct="x / sum(x)")` | `-by g -mutate "pct = x / sum(x)"` |
+| **Within-Group Rank** | `df.groupby('g')['x'].rank()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
+| **Grouped Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
+| **Grouped Cumulative Sum** | `df.groupby('g')['x'].cumsum()` | `df.by("g").mutate(cum="cum_sum(x)")` | `-by g -mutate "cum = cum_sum(x)"` |
+
 ---
 
 ## 6. End-to-End Pipeline Comparison

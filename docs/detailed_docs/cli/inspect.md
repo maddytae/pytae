@@ -1,6 +1,6 @@
 # CLI Feature Guide: Inspection & Metadata
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Inspect file dimensions, structure, sample rows, statistical distributions, and low-level storage metadata without writing boilerplate Python code.
 

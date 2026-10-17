@@ -1,6 +1,6 @@
 # CLI Feature Guide: Row Picking (`-pick`)
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Extract top or bottom rows by column order, with group awareness via `-by`.
 

@@ -1,6 +1,6 @@
 # CLI Feature Guide: Reshaping (Pure 1-to-1: `-long` & `-wide`)
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Pure structural 1-to-1 reshaping between long and wide formats without aggregation.
 

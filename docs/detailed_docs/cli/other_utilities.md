@@ -1,6 +1,6 @@
 # CLI Feature Guide: Other Utilities & Miscellaneous Commands
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, multi-file workflows, I/O modifiers, and formatting options that complement core analytical verbs.
 

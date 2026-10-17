@@ -1,6 +1,6 @@
 # CLI Feature Guide: Multi-File Pipelines
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Load, join, stack, and query multiple disparate datasets in a unified pipeline using `-file`, `-join`, `-concat`, and cross-file `-sql`.
 

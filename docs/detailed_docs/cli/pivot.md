@@ -1,6 +1,6 @@
 # CLI Feature Guide: 2D Pivot Tables (`-pivot`)
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 `-pivot` provides an Excel-style 2D pivot table engine with universal `r, c, v, a` vocabulary:
 - **Rows (`r=`)**: Row dimension(s) (*optional*).

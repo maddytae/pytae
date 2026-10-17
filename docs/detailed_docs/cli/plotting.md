@@ -1,6 +1,6 @@
 # CLI Feature Guide: Visualizations & In-Line Charts
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 `pytae` includes first-class visualization capabilities directly from the command line:
 - **Terminal In-Line Visualizations**: Instant ASCII frequency bars (`-freq`) and numeric distribution histograms (`-hist`) rendered directly in console scrollback.

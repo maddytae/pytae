@@ -1,6 +1,6 @@
 # CLI Feature Guide: Row Sorting (`-arrange`)
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Order DataFrame rows by one or more columns with full support for descending orders (`desc`) and bracket notation for columns with spaces.
 

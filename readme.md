@@ -77,30 +77,7 @@ pytae sales.parquet -sql "select region, sum(revenue) from data group by 1"
 pytae current.parquet -diff baseline.parquet
 ```
 
-👉 **Full CLI Reference Hub**: [docs/cli.md](https://github.com/maddytae/pytae/blob/master/docs/cli.md)
-
----
-
-## Key Syntax & Conventions
-
-| Operation | Python (`df.pt`) | CLI Flag | Example |
-| :--- | :--- | :--- | :--- |
-| **Filter Rows** | `.pt.filter(...)` | `-filter "..."` | `df.pt.filter(lambda d: d['mass'] > 4000)` |
-| **Group Context** | `.pt.by(*cols)` | `-by ...` | `df.pt.by("species", "island")` |
-| **Drop Null Rows** | `df.dropna(...)` | `-dropna [COLS]` | `pytae data.parquet -dropna "age,income"` |
-| **Sort Rows** | `.pt.arrange(...)` | `-arrange "..."` | `df.pt.arrange("species, -mass_kg")` |
-| **Pick Rows** | `.pt.pick(...)` | `-pick "..."` | `df.pt.pick("mass", n=3, order="max")` |
-| **Select Columns** | `.pt.select(...)` | `-select "..."` | `df.pt.select("species", contains="bill", "-temp")`|
-| **Mutate Columns** | `.pt.mutate(...)` | `-mutate "..."` | `df.pt.mutate(ratio="[bill length] / [bill depth]")` |
-| **Multi-Col Mutate** | `.pt.mutate("(...) = ...")` | `-mutate "(...) = ..."` | `df.pt.mutate("(rev, cost)_usd = _ * 1.08")` |
-| **Grouped Summary**| `.pt.agg(...)` | `-by ... -agg "..."` | `df.pt.by("species").pt.agg(avg_mass="mass:mean", n="n")` |
-| **2D Pivot Table** | `.pt.pivot(...)` | `-pivot "..."` | `df.pt.pivot(r="island", c="species", v="mass", a="mean")` |
-| **Pure Reshape** | `.pt.long()`, `.pt.wide()`| `-long`, `-wide` | `df.pt.wide(c="metric", v="val", index="id")` |
-| **Distinct Rows** | `.pt.distinct(*cols)`| `-distinct [COLS]` | `df.pt.distinct("species", "island")` |
-| **SQL Queries** | `.pt.sql("...")` | `-sql "..."` | `df.pt.sql("select species, count(*) from data group by 1")` |
-| **Glimpse Table** | `.pt.glimpse()` | `-glimpse` | `df.pt.glimpse()` |
-| **ASCII Freq & Hist**| `.pt.freq()`, `.pt.hist()` | `-freq`, `-hist` | `df.pt.freq("species")`, `df.pt.hist("mass:10")` |
-| **Copy to Clipboard**| `df.to_clip()` | `-o clip` | `df.head().to_clip()` |
+👉 **Full CLI & Library Guides**: [docs/pytae.md#detailed-documentation-directory](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#detailed-documentation-directory)
 
 ---
 

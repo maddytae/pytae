@@ -1,6 +1,6 @@
 # CLI Feature Guide: Dataset & Schema Diffing
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Compare schemas, dimensions, added/removed columns, data type drift, null count variations, and cell values against another tabular dataset using `-diff`.
 

@@ -1,6 +1,6 @@
 # CLI Feature Guide: Distinct Rows (`-distinct`)
 
-[← Back to CLI Reference Hub](../cli.md)
+[← Back to Master Reference](../../pytae.md)
 
 Drop duplicate rows across the intermediate DataFrame with full control over column subsets.
 

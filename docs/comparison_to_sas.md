@@ -245,7 +245,29 @@ Pytae provides three intuitive, dedicated verbs with zero column name artifacts:
 | **Deduplicate Table** | `PROC SORT NODUPRECS; BY _ALL_; RUN;` | `df.distinct()` | `-distinct` |
 | **Deduplicate by Keys** | `PROC SORT NODUPKEY; BY a b; RUN;` | `df.distinct("a", "b")` | `-distinct "a,b"` |
 
-### 8. Inspection, Profiling & Validation
+### 8. Extreme Record Slicing (`pick`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.pick("x", n=5)` | `-pick "x,n=5"` |
+| **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.pick("x", n=5, order="min")` | `-pick "x,n=5,order=min"` |
+| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by("g").pick("x", n=1)` | `-by g -pick "x,n=1"` |
+
+### 9. Reshaping & Pivoting (`wide`, `long`, `pivot`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Wide to Long (Unpivot)**| `PROC TRANSPOSE DATA=in OUT=out; BY id; VAR x y; RUN;` | `df.long(id_vars="id", cols=["x", "y"])` | `-long "id_vars=id, cols='x,y'"` |
+| **Long to Wide (Spread)** | `PROC TRANSPOSE DATA=in OUT=out; BY id; ID metric; VAR val; RUN;` | `df.wide(r="id", c="metric", v="val")` | `-wide "r=id, c=metric, v=val"` |
+| **2D Pivot Matrix** | `PROC TABULATE` or `PROC TRANSPOSE` after `PROC MEANS` | `df.pivot(r="r", c="c", v="v", a="mean")` | `-pivot "r=r, c=c, v=v, a=mean"` |
+
+### 10. Relational Joins (`join`, `concat`)
+| Task | SAS | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Inner Join** | `MERGE a (IN=in_a) b (IN=in_b); BY id; IF in_a AND in_b;` *(Requires prior sort!)* | `df1.join(df2, on="id", how="inner")` | `-join "f2.parquet,on=id"` |
+| **Left Join** | `MERGE a (IN=in_a) b (IN=in_b); BY id; IF in_a;` *(Requires prior sort!)* | `df1.join(df2, on="id", how="left")` | `-join "f2.parquet,on=id,how=left"` |
+| **Different Key Names** | `RENAME=(cust_id=id)` inside `MERGE` statement | `df1.join(df2, on="id:cust_id")` | `-join "f2.parquet,on=id:cust_id"` |
+| **Vertical Stack (Concat)**| `DATA out; SET a b; RUN;` | `pt.concat([df1, df2], how="vertical")` | N/A |
+
+### 11. Inspection, Profiling & Validation
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Dataset Metadata** | `PROC CONTENTS DATA=in; RUN;` | `df.glimpse()` | `-glimpse` |
