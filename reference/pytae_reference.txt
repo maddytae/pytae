@@ -8296,6 +8296,26 @@ shape: (6, 5)
 ################################################################################
 # Notebook: other_utilities.ipynb
 
+# `other_utilities` — Data Cleaning, Profiling & Helper Reference
+
+Pytae provides a cohesive suite of data cleaning, profiling, inspection, and export utilities designed to complement core analytical verbs:
+
+| Utility | Key Parameters | Primary Purpose |
+|---|---|---|
+| `.dropna()` | `*cols`, `subset=`, `how='all'|'any'`, `drop_nans=True` | Drops missing values with **Zero Data Loss by default** |
+| `.fillna()` | `value`, `*cols`, `subset=`, `nans=True` | Imputes missing values (scalars, dicts, column-specific) |
+| `.fill_null()` / `.fill_nan()` | `value` | Granular Arrow null vs float NaN imputation |
+| `.clean_columns()` | `strip=`, `strip_special=`, `squeeze=`, `fill=`, `case=`, `dedupe=` | Normalizes messy spreadsheet column headers |
+| `.rename()` | `*args`, `columns=`, `**kwargs` | Renames columns via string specs (`old:new`), dicts, or kwargs |
+| `.cols()` | `ascending=True|False|None` | Returns sorted or original file order column names |
+| `.glimpse()` | `width=None` | Non-destructive transposed column overview |
+| `.freq()` | `col`, `dropna=False` | In-terminal / notebook ASCII categorical frequency bars |
+| `.hist()` | `col`, `bins=10` | In-terminal / notebook ASCII numeric distribution histogram |
+| `.diff()` | `other`, `tol=0.0`, `rtol=0.0` | Detailed schema, shape, drift, and cell comparison report |
+| `.to_clip()` | *(none)* | Copies clean TSV table directly to the system clipboard |
+
+---
+
 ```python
 import sys, os
 _src = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'src'))
@@ -8305,47 +8325,415 @@ if _src not in sys.path: sys.path.insert(0, _src)
 import pytae as pt
 
 penguins = pt.sample_data['penguins']
+tips = pt.sample_data['tips']
 titanic = pt.sample_data['titanic']
 ```
 
-## `cols()` — list column names
+## 1. `dropna()` — Zero Data Loss by Default
+
+In standard pandas, calling `.dropna()` without arguments defaults to `how='any'`, silently dropping every row that is missing even a single optional column.
+
+**Pytae's Zero Data Loss Philosophy:**
+- **Bare `.dropna()`**: Drops **only completely empty rows** (rows where all columns are null, `how='all'`).
+- **Targeted columns**: Pass specific column names to drop rows where any of *those* columns are missing.
+- **`drop_nans=True` (default)**: Drops both Arrow `null` and IEEE 754 float `NaN` (`float("nan")`). Pass `drop_nans=False` to drop only Arrow nulls.
 
 ```python
-# Alphabetical column list — useful for quick discovery
-penguins.cols()
+# Construct a dataset with partial nulls and a completely empty row
+sample_df = pt.DataFrame({
+    "species": ["Adelie", "Gentoo", None, None],
+    "island": ["Dream", "Biscoe", "Torgersen", None],
+    "body_mass_g": [3700.0, None, 4200.0, None],
+})
+
+# Bare dropna() drops ONLY the completely blank row (row 3); partial nulls are preserved!
+sample_df.dropna()
 ```
 Output:
 ```text
-['bill_depth_mm',
- 'bill_length_mm',
- 'body_mass_g',
- 'flipper_length_mm',
- 'island',
- 'sex',
- 'species']
+shape: (3, 3)
+┌─────────┬───────────┬─────────────┐
+│ species ┆ island    ┆ body_mass_g │
+│ ---     ┆ ---       ┆ ---         │
+│ str     ┆ str       ┆ f64         │
+╞═════════╪═══════════╪═════════════╡
+│ Adelie  ┆ Dream     ┆ 3700.0      │
+│ Gentoo  ┆ Biscoe    ┆ null        │
+│ null    ┆ Torgersen ┆ 4200.0      │
+└─────────┴───────────┴─────────────┘
 ```
 
 ```python
-# Descending alphabetical sort — useful when column names form a natural reverse order
-penguins.cols(ascending=False)
+# Drop rows where specific columns are missing (e.g. body_mass_g or sex)
+penguins.dropna("body_mass_g", "sex").head(5)
 ```
 Output:
 ```text
-['species',
- 'sex',
- 'island',
- 'flipper_length_mm',
- 'body_mass_g',
- 'bill_length_mm',
- 'bill_depth_mm']
+shape: (5, 7)
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 39.3           ┆ 20.6          ┆ 190.0             ┆ 3650.0      ┆ Male   │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
-## `glimpse()` — transposed column overview
+```python
+# Works with subset= or bracket notation for columns with spaces
+penguins_spaced = penguins.rename(columns={"body_mass_g": "body mass g"})
+penguins_spaced.dropna("[body mass g]", subset=["sex"]).head(5)
+```
+Output:
+```text
+shape: (5, 7)
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 39.3           ┆ 20.6          ┆ 190.0             ┆ 3650.0      ┆ Male   │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+```
 
-`.glimpse()` prints a compact, transposed overview of the DataFrame inspired by R/dplyr's `glimpse()`:
+```python
+# how='all' with columns: drops only when BOTH specified columns are missing
+print("Original rows:", len(sample_df))
+print("Drop when ANY of (species, body_mass_g) is null:", len(sample_df.dropna("species", "body_mass_g", how="any")))
+print("Drop when BOTH of (species, body_mass_g) are null:", len(sample_df.dropna("species", "body_mass_g", how="all")))
+```
+Output:
+```text
+Original rows: 4
+Drop when ANY of (species, body_mass_g) is null: 1
+Drop when BOTH of (species, body_mass_g) are null: 3
+```
+
+```python
+# dropna() chains seamlessly with other verbs and grouped operations
+(
+    penguins
+    .by("species")
+    .dropna("sex")
+    .select("species", "island", "body_mass_g", "sex")
+    .head(5)
+)
+```
+Output:
+```text
+shape: (5, 4)
+┌─────────┬───────────┬─────────────┬────────┐
+│ species ┆ island    ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64         ┆ str    │
+╞═════════╪═══════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 3650.0      ┆ Male   │
+└─────────┴───────────┴─────────────┴────────┘
+```
+
+## 2. `fillna()`, `fill_null()` & `fill_nan()` — Missing Value Imputation
+
+`.fillna()` provides flexible missing value imputation:
+- **Default `nans=True`**: Imputes both Arrow `null` and floating-point `NaN` values.
+- **Type-safe scalar fill**: Automatically casts to compatible column dtypes (e.g. numeric 0 fills numeric columns without corrupting string columns).
+- **Per-column dictionaries**: Target specific columns with tailored replacement values.
+- **Column-specific scoping**: Fill specific columns via positional arguments or `subset=`.
+
+```python
+# Fill numeric columns with 0.0 (non-numeric columns remain untouched)
+penguins.fillna(0.0).head(5)
+```
+Output:
+```text
+shape: (5, 7)
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 0.0            ┆ 0.0           ┆ 0.0               ┆ 0.0         ┆ null   │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+```
+
+```python
+# Target specific columns with tailored replacement values
+(
+    penguins
+    .fillna({
+        "bill_length_mm": 0.0,
+        "sex": "Unknown",
+        "body_mass_g": 3000.0,
+    })
+    .head(5)
+)
+```
+Output:
+```text
+shape: (5, 7)
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬─────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex     │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---     │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str     │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪═════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male    │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female  │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female  │
+│ Adelie  ┆ Torgersen ┆ 0.0            ┆ null          ┆ null              ┆ 3000.0      ┆ Unknown │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female  │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴─────────┘
+```
+
+```python
+# Target only specific columns using positional arguments or subset=
+# Here, bill_length_mm is filled, while other null columns remain intact
+penguins.fillna(0.0, "bill_length_mm").head(5)
+```
+Output:
+```text
+shape: (5, 7)
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 0.0            ┆ null          ┆ null              ┆ null        ┆ null   │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+```
+
+```python
+# Demonstrate granular null vs NaN imputation
+nan_df = pt.DataFrame({
+    "val": [1.0, float("nan"), None, 4.0],
+})
+
+print("Original:\n", nan_df)
+print("fill_null(0.0) -> fills null only, leaves NaN intact:\n", nan_df.fill_null(0.0))
+print("fill_nan(0.0)  -> fills NaN only, leaves null intact:\n", nan_df.fill_nan(0.0))
+print("fillna(0.0)    -> fills both null and NaN by default:\n", nan_df.fillna(0.0))
+```
+Output:
+```text
+Original:
+ shape: (4, 1)
+┌──────┐
+│ val  │
+│ ---  │
+│ f64  │
+╞══════╡
+│ 1.0  │
+│ NaN  │
+│ null │
+│ 4.0  │
+└──────┘
+fill_null(0.0) -> fills null only, leaves NaN intact:
+ shape: (4, 1)
+┌─────┐
+│ val │
+│ --- │
+│ f64 │
+╞═════╡
+│ 1.0 │
+│ NaN │
+│ 0.0 │
+│ 4.0 │
+└─────┘
+fill_nan(0.0)  -> fills NaN only, leaves null intact:
+ shape: (4, 1)
+┌──────┐
+│ val  │
+│ ---  │
+│ f64  │
+╞══════╡
+│ 1.0  │
+│ 0.0  │
+│ null │
+│ 4.0  │
+└──────┘
+fillna(0.0)    -> fills both null and NaN by default:
+ shape: (4, 1)
+┌─────┐
+│ val │
+│ --- │
+│ f64 │
+╞═════╡
+│ 1.0 │
+│ 0.0 │
+│ 0.0 │
+│ 4.0 │
+└─────┘
+```
+
+## 3. `clean_columns()` — Header Normalization
+
+Spreadsheets and external data sources frequently contain inconsistent header names: leading/trailing spaces, repeated spaces, mixed casing, and special characters (`#`, `$`, `%`, parentheses).
+
+`clean_columns()` cleans header names in a deterministic order:
+1. `strip`: Trims leading and trailing whitespace.
+2. `strip_special`: Strips non-alphanumeric symbols (e.g. `(g)`, `$`, `%`, `#`, `!`) while preserving the fill separator.
+3. `squeeze`: Collapses runs of internal whitespace into a single space.
+4. `fill`: Replaces whitespace characters with a delimiter (e.g. `'_'`).
+5. `case`: Normalizes casing (`'lower'`, `'upper'`, or `'proper'`).
+6. `dedupe`: Disambiguates duplicate column names resulting from cleaning (e.g. `revenue`, `revenue_1`).
+
+```python
+# Create a realistic messy headers DataFrame
+messy = pt.DataFrame({
+    "  Species  ": ["Adelie"],
+    "Island   Name": ["Torgersen"],
+    "Body Mass (g)": [3750],
+    "Bill Length [mm]": [39.1],
+    "Bill Length [cm]": [3.91],
+})
+
+print("Before cleaning:", list(messy.columns))
+
+# Clean headers into standard snake_case with deduplication
+cleaned = messy.clean_columns(
+    strip=True,
+    strip_special=True,
+    squeeze=True,
+    fill="_",
+    case="lower",
+    dedupe=True,
+)
+
+print("After cleaning: ", list(cleaned.columns))
+cleaned
+```
+Output:
+```text
+Before cleaning: ['  Species  ', 'Island   Name', 'Body Mass (g)', 'Bill Length [mm]', 'Bill Length [cm]']
+After cleaning:  ['species', 'island_name', 'body_mass_g', 'bill_length_mm', 'bill_length_cm']
+```
+Output:
+```text
+shape: (1, 5)
+┌─────────┬─────────────┬─────────────┬────────────────┬────────────────┐
+│ species ┆ island_name ┆ body_mass_g ┆ bill_length_mm ┆ bill_length_cm │
+│ ---     ┆ ---         ┆ ---         ┆ ---            ┆ ---            │
+│ str     ┆ str         ┆ i64         ┆ f64            ┆ f64            │
+╞═════════╪═════════════╪═════════════╪════════════════╪════════════════╡
+│ Adelie  ┆ Torgersen   ┆ 3750        ┆ 39.1           ┆ 3.91           │
+└─────────┴─────────────┴─────────────┴────────────────┴────────────────┘
+```
+
+```python
+# Case options: 'lower', 'upper', or 'proper' (Title Case)
+print("Lower: ", penguins.clean_columns(case="lower").cols(ascending=None)[:4])
+print("Upper: ", penguins.clean_columns(case="upper").cols(ascending=None)[:4])
+print("Proper:", penguins.clean_columns(case="proper").cols(ascending=None)[:4])
+
+# Collision handling with dedupe=True:
+colliding_df = pt.DataFrame({"Sales (Q1)": [10], "Sales (Q2)": [20]})
+# Without dedupe=True, stripping special chars would cause collision ('sales' vs 'sales')
+print("Deduped:", colliding_df.clean_columns(strip_special=True, case="lower", dedupe=True).columns)
+```
+Output:
+```text
+Lower:  ['species', 'island', 'bill_length_mm', 'bill_depth_mm']
+Upper:  ['SPECIES', 'ISLAND', 'BILL_LENGTH_MM', 'BILL_DEPTH_MM']
+Proper: ['Species', 'Island', 'Bill_Length_Mm', 'Bill_Depth_Mm']
+Deduped: ['sales q1', 'sales q2']
+```
+
+## 4. `rename()` — Explicit Column Renaming
+
+`rename()` provides multiple ergonomic calling styles:
+- **String syntax**: Matches the CLI `-rename "old:new"` syntax.
+- **Bracket notation**: Renames columns with spaces cleanly.
+- **Keyword arguments**: `df.rename(old=new)`.
+- **Dictionary mapping**: `df.rename({"old": "new"})` or `df.rename(columns={"old": "new"})`.
+
+```python
+# String specification (matches CLI -rename)
+penguins.rename("species:penguin_species, island:habitat").head(3)
+```
+Output:
+```text
+shape: (3, 7)
+┌───────────────┬───────────┬───────────────┬───────────────┬───────────────┬─────────────┬────────┐
+│ penguin_speci ┆ habitat   ┆ bill_length_m ┆ bill_depth_mm ┆ flipper_lengt ┆ body_mass_g ┆ sex    │
+│ es            ┆ ---       ┆ m             ┆ ---           ┆ h_mm          ┆ ---         ┆ ---    │
+│ ---           ┆ str       ┆ ---           ┆ f64           ┆ ---           ┆ f64         ┆ str    │
+│ str           ┆           ┆ f64           ┆               ┆ f64           ┆             ┆        │
+╞═══════════════╪═══════════╪═══════════════╪═══════════════╪═══════════════╪═════════════╪════════╡
+│ Adelie        ┆ Torgersen ┆ 39.1          ┆ 18.7          ┆ 181.0         ┆ 3750.0      ┆ Male   │
+│ Adelie        ┆ Torgersen ┆ 39.5          ┆ 17.4          ┆ 186.0         ┆ 3800.0      ┆ Female │
+│ Adelie        ┆ Torgersen ┆ 40.3          ┆ 18.0          ┆ 195.0         ┆ 3250.0      ┆ Female │
+└───────────────┴───────────┴───────────────┴───────────────┴───────────────┴─────────────┴────────┘
+```
+
+```python
+# Bracket notation for spaced columns
+spaced_df = penguins.rename(columns={"bill_length_mm": "bill length mm", "body_mass_g": "body mass g"})
+
+# Rename spaced columns to clean snake_case
+spaced_df.rename("[bill length mm]:bill_len, [body mass g]:mass_g").head(3)
+```
+Output:
+```text
+shape: (3, 7)
+┌─────────┬───────────┬──────────┬───────────────┬───────────────────┬────────┬────────┐
+│ species ┆ island    ┆ bill_len ┆ bill_depth_mm ┆ flipper_length_mm ┆ mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---      ┆ ---           ┆ ---               ┆ ---    ┆ ---    │
+│ str     ┆ str       ┆ f64      ┆ f64           ┆ f64               ┆ f64    ┆ str    │
+╞═════════╪═══════════╪══════════╪═══════════════╪═══════════════════╪════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1     ┆ 18.7          ┆ 181.0             ┆ 3750.0 ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5     ┆ 17.4          ┆ 186.0             ┆ 3800.0 ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3     ┆ 18.0          ┆ 195.0             ┆ 3250.0 ┆ Female │
+└─────────┴───────────┴──────────┴───────────────┴───────────────────┴────────┴────────┘
+```
+
+## 5. `cols()` — Column Discovery & Introspection
+
+`cols()` returns a list of column names:
+- **`ascending=True` (default)**: Alphabetical ascending order (convenient for wide datasets).
+- **`ascending=False`**: Alphabetical descending order.
+- **`ascending=None`**: Preserves original DataFrame / file order.
+
+```python
+print("Alphabetical ascending (default):\n", penguins.cols())
+print("\nAlphabetical descending:\n", penguins.cols(ascending=False))
+print("\nOriginal file / DataFrame order:\n", penguins.cols(ascending=None))
+```
+Output:
+```text
+Alphabetical ascending (default):
+ ['bill_depth_mm', 'bill_length_mm', 'body_mass_g', 'flipper_length_mm', 'island', 'sex', 'species']
+
+Alphabetical descending:
+ ['species', 'sex', 'island', 'flipper_length_mm', 'body_mass_g', 'bill_length_mm', 'bill_depth_mm']
+
+Original file / DataFrame order:
+ ['species', 'island', 'bill_length_mm', 'bill_depth_mm', 'flipper_length_mm', 'body_mass_g', 'sex']
+```
+
+## 6. `glimpse()` — Transposed Column Overview
+
+Inspired by R/dplyr and Polars, `.glimpse()` prints a compact, transposed view:
 - Summarizes row count, column count, and in-memory footprint.
 - Lists every column name alongside its dtype and inline sample values.
-- Non-destructive: prints to stdout and returns `self` (the unchanged DataFrame) so it can be inserted anywhere inside a method chain for debugging.
+- Non-destructive: returns `self` for easy mid-pipeline inspection.
 
 ```python
 # Direct glimpse overview
@@ -8386,7 +8774,7 @@ shape: (344, 7)
 ```
 
 ```python
-# Non-destructive: returns self, allowing inspection mid-pipeline
+# Non-destructive: glimpse mid-pipeline then continue chaining
 (
     penguins
     .filter("body_mass_g > 4000")
@@ -8421,237 +8809,124 @@ shape: (3, 3)
 └─────────┴───────────┴─────────────┘
 ```
 
-## `fillna()` — clean before aggregating
-Fills string/category NaN with a visible marker (default `.`) and numeric NaN with `0`. Also strips leading/trailing whitespace from string columns.
+## 7. Visual Profiling in Notebooks: `freq()` & `hist()`
+
+Pytae provides in-terminal and notebook ASCII distribution profiling:
+- **`freq(col)`**: Computes frequency counts and rendered percentage bars for categorical columns.
+- **`hist(col, bins=10)`**: Computes binned numeric distribution intervals with ASCII histogram bars.
 
 ```python
-penguins.fillna(0).head(5)
+# Categorical frequency distribution with ASCII proportional bars
+penguins.freq("species")
 ```
 Output:
 ```text
-shape: (5, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 0.0            ┆ 0.0           ┆ 0.0               ┆ 0.0         ┆ null   │
-│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+shape: (3, 3)
+┌───────────┬───────┬──────────────────────────────┐
+│ species   ┆ Count ┆ Distribution                 │
+│ ---       ┆ ---   ┆ ---                          │
+│ str       ┆ i64   ┆ str                          │
+╞═══════════╪═══════╪══════════════════════════════╡
+│ Adelie    ┆ 152   ┆ ████████████████████ (44.2%) │
+│ Gentoo    ┆ 124   ┆ ████████████████ (36.0%)     │
+│ Chinstrap ┆ 68    ┆ █████████ (19.8%)            │
+└───────────┴───────┴──────────────────────────────┘
 ```
 
 ```python
-penguins.fillna('Unknown').head(5)
+# Numeric distribution histogram with ASCII bars and percentages
+penguins.hist("body_mass_g", bins=6)
 ```
 Output:
 ```text
-shape: (5, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬─────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex     │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---     │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str     │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪═════════╡
-│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male    │
-│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female  │
-│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female  │
-│ Adelie  ┆ Torgersen ┆ null           ┆ null          ┆ null              ┆ null        ┆ Unknown │
-│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female  │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴─────────┘
+shape: (6, 3)
+┌──────────────┬───────┬──────────────────────────────┐
+│ Range        ┆ Count ┆ Distribution                 │
+│ ---          ┆ ---   ┆ ---                          │
+│ str          ┆ i64   ┆ str                          │
+╞══════════════╪═══════╪══════════════════════════════╡
+│ [2700, 3300] ┆ 34    ┆ ██████ (9.9%)                │
+│ [3300, 3900] ┆ 110   ┆ ████████████████████ (32.2%) │
+│ [3900, 4500] ┆ 80    ┆ ███████████████ (23.4%)      │
+│ [4500, 5100] ┆ 60    ┆ ███████████ (17.5%)          │
+│ [5100, 5700] ┆ 41    ┆ ███████ (12.0%)              │
+│ [5700, 6300] ┆ 17    ┆ ███ (5.0%)                   │
+└──────────────┴───────┴──────────────────────────────┘
 ```
 
+## 8. `diff()` — Dataset & Schema Comparison
+
+Compare two DataFrames or dataset files to detect schema drift, shape discrepancies, and cell value mismatches with optional floating-point tolerance (`tol=`, `rtol=`):
+
 ```python
-penguins.fillna('$').head(5)
+df1 = penguins.head(5)
+df2 = penguins.head(5).mutate("body_mass_g = body_mass_g + 0.005")
+
+# Exact diff detects cell mismatches
+print(df1.diff(df2))
+
+# Comparison with floating-point tolerance tol=0.01 ignores sub-threshold drift
+print(df1.diff(df2, tol=0.01))
 ```
 Output:
 ```text
-shape: (5, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ null           ┆ null          ┆ null              ┆ null        ┆ $      │
-│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+Comparing:
+  Left (source):  <left> (5 rows, 7 cols)
+  Right (target): <right> (5 rows, 7 cols)
+
+Shape:
+  Rows: 5 vs 5 (+0)
+  Cols: 7 vs 7 (+0)
+
+Columns:
+  Common (7):        species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex
+
+Schema Drift:
+  None (all common columns have matching dtypes)
+
+Values:
+  Mismatches found in 4 cells across common columns:
+    * body_mass_g: 4 cell(s) differ (max diff: 0.005)
+Comparing:
+  Left (source):  <left> (5 rows, 7 cols)
+  Right (target): <right> (5 rows, 7 cols)
+
+Shape:
+  Rows: 5 vs 5 (+0)
+  Cols: 7 vs 7 (+0)
+
+Columns:
+  Common (7):        species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex
+
+Schema Drift:
+  None (all common columns have matching dtypes)
+
+Values:
+  Tolerance: threshold/atol=0.01 (for numeric columns)
+  Identical: all cell values match within tolerance.
 ```
 
-## `df.to_clip()` — copy to clipboard
-`df.to_clip()` copies the DataFrame to the system clipboard as tab-separated text (no index). Paste directly into Excel, Google Sheets, or any text editor. Invisible in notebook output — run it and then paste.
+## 9. `to_clip()` — Zero-Friction Clipboard Export
+
+`df.to_clip()` copies the DataFrame to the system clipboard as tab-separated values (TSV) without index. You can immediately paste it (`Cmd+V` / `Ctrl+V`) into Excel, Google Sheets, or any spreadsheet editor.
 
 ```python
-# df.to_clip() copies the current DataFrame to clipboard — paste into Excel/Sheets
-# Run this cell then Cmd+V in any spreadsheet application
-(penguins
- .select('species', 'island', 'bill_length_mm', 'body_mass_g')
- .by('species', 'island')
- .agg(a=['mean', 'n'])
-).to_clip()
-```
-
-## `clean_columns()` — clean messy header names
-Cleans column header names in a fixed order: `strip` -> `strip_special` -> `squeeze` -> `fill` -> `case` -> `dedupe`. Handy after loading a spreadsheet export with inconsistent spacing/casing.
-
-```python
-# messy headers: leading/trailing spaces, repeated internal spaces, mixed case
-messy = penguins.rename(columns={
-    'species': '  Species  ',
-    'island': 'Island   Name',
-    'body_mass_g': 'Body Mass (g)',
-})
-
-(messy
- .clean_columns(strip=True, squeeze=True, strip_special=True, fill='_', case='lower')
- .cols(ascending=None)
-)
-```
-Output:
-```text
-['species',
- 'island_name',
- 'bill_length_mm',
- 'bill_depth_mm',
- 'flipper_length_mm',
- 'body_mass_g',
- 'sex']
-```
-
-```python
-# Method chain: clean names, then display them in original column order
+# Copy aggregated summary table to clipboard
 (
     penguins
-    .clean_columns(case='proper')
-    .cols(ascending=None)
-)
+    .by("species")
+    .agg(
+        cnt="n",
+        avg_mass="body_mass_g:mean",
+        max_mass="body_mass_g:max",
+    )
+).to_clip()
+
+print("Summary table copied to clipboard! Paste directly into Excel or Google Sheets.")
 ```
 Output:
 ```text
-['Species',
- 'Island',
- 'Bill_Length_Mm',
- 'Bill_Depth_Mm',
- 'Flipper_Length_Mm',
- 'Body_Mass_G',
- 'Sex']
-```
-
-## `dropna()` — Zero Data Loss by Default
-
-- Bare `.dropna()` drops only completely empty rows (rows where every column is null).
-- `.dropna("col1", "col2")` drops rows missing any of the specified columns.
-
-```python
-# Drop rows missing body_mass_g or sex
-penguins.dropna("body_mass_g", "sex").head(5)
-```
-Output:
-```text
-shape: (5, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 39.3           ┆ 20.6          ┆ 190.0             ┆ 3650.0      ┆ Male   │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
-```
-
-## `diff()` — Schema, Shape, & Cell Comparison
-
-Compare two DataFrames with optional floating-point tolerance (`tol=`):
-
-```python
-df1 = penguins.head(5)
-df2 = penguins.head(5).mutate("body_mass_g = body_mass_g + 0.005")
-# Compare with tolerance
-diff_report = df1.diff(df2, tol=0.01)
-print(diff_report)
-```
-Output:
-```text
-Comparing:
-  Left (source):  <left> (5 rows, 7 cols)
-  Right (target): <right> (5 rows, 7 cols)
-
-Shape:
-  Rows: 5 vs 5 (+0)
-  Cols: 7 vs 7 (+0)
-
-Columns:
-  Common (7):        species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex
-
-Schema Drift:
-  None (all common columns have matching dtypes)
-
-Values:
-  Tolerance: threshold/atol=0.01 (for numeric columns)
-  Identical: all cell values match within tolerance.
-```
-
-## `dropna()` — Zero Data Loss by Default
-
-- Bare `.dropna()` drops only completely empty rows (rows where every column is null).
-- `.dropna("col1", "col2")` drops rows missing any of the specified columns.
-
-```python
-# Drop rows missing body_mass_g or sex
-penguins.dropna("body_mass_g", "sex").head(5)
-```
-Output:
-```text
-shape: (5, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 39.3           ┆ 20.6          ┆ 190.0             ┆ 3650.0      ┆ Male   │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
-```
-
-## `diff()` — Schema, Shape, & Cell Comparison
-
-Compare two DataFrames with optional floating-point tolerance (`tol=`):
-
-```python
-df1 = penguins.head(5)
-df2 = penguins.head(5).mutate("body_mass_g = body_mass_g + 0.005")
-# Compare with tolerance
-diff_report = df1.diff(df2, tol=0.01)
-print(diff_report)
-```
-Output:
-```text
-Comparing:
-  Left (source):  <left> (5 rows, 7 cols)
-  Right (target): <right> (5 rows, 7 cols)
-
-Shape:
-  Rows: 5 vs 5 (+0)
-  Cols: 7 vs 7 (+0)
-
-Columns:
-  Common (7):        species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex
-
-Schema Drift:
-  None (all common columns have matching dtypes)
-
-Values:
-  Tolerance: threshold/atol=0.01 (for numeric columns)
-  Identical: all cell values match within tolerance.
+Summary table copied to clipboard! Paste directly into Excel or Google Sheets.
 ```
 
 ################################################################################
