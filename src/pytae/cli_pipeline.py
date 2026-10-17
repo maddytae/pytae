@@ -261,6 +261,30 @@ class _Pipeline:
         except Exception as exc:
             return f"-distinct: {exc}"
 
+    def apply_count(self, spec: str | None, by_cols: list[str] | None = None) -> str | None:
+        """Count occurrences of combinations of columns or within groups. Returns an error message or None."""
+        from pytae.cli_parsing import parse_count_spec, unknown_columns_message
+
+        try:
+            cols, sort, name = parse_count_spec(spec)
+        except SystemExit as exc:
+            return str(exc)
+        if by_cols and not cols:
+            cols = list(by_cols)
+        available = self._available_columns()
+        if cols:
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-count", unknown, available)
+        try:
+            from pytae.polars_engine import count_polars
+
+            self._pldf = count_polars(self.polars_lazy_frame(), cols=cols, sort=sort, name=name)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-count: {exc}"
+
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""
         try:

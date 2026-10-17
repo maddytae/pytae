@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.11.0] - 2026-10-17
+
+### Added
+- **First-Class `count` Verb Across Python Library & CLI**:
+  - Introduced dedicated, first-class `count` verb across `DataFrame.count(*cols, sort=True, name="n")`, `GroupedDataFrame.count(sort=True, name="n")`, `pt.count(df, ...)`, Pandas and Polars `.pt.count(...)` accessors, and CLI flag `-count` / `--count`.
+  - Intuitively defaults to sorting descending by the count column (`sort=True`) with output column `name="n"`.
+  - Supports `sort=False` to preserve original encounter order, and `name="<name>"` to customize the count column name.
+  - Calling `df.count()` without arguments outputs total row count in a single-row DataFrame.
+  - Seamlessly integrates with single-shot grouping: `df.by("species").count()` or `pytae data.parquet -by species -count`.
+  - Detects and cleanly rejects collisions where `name` matches an active grouping key with a friendly, actionable ValueError.
+- **Canonical `count` Normalization in `agg`**:
+  - `count` (and `count()`) is now the canonical operation name for row counting inside `agg()` and CLI `-agg`.
+  - Supports custom destinations without awkward tautologies: `df.by("species").agg(total="count", avg_mass="body_mass_g:mean")` or string expressions `df.by("species").agg("total = count(), avg_mass = mean(body_mass_g)")`.
+  - Preserves backward compatibility for `"n"` as an alias.
+- **Zero-Data-Loss Safety Defaults Terminology**:
+  - Standardized all documentation, docstrings, and error messages to use **"Zero-Data-Loss Safety Defaults"** (retiring internal "Option B" terminology).
+
 ## [3.10.0] - 2026-10-16
 
 ### Added

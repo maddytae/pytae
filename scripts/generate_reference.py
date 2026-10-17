@@ -24,10 +24,11 @@ TABLE OF CONTENTS
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
     4.6.  head() / tail() — Group-Aware & Proportion-Aware Row Slicing
     4.7.  pt.distinct() / df.pt.distinct() — Deduplication
-    4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
-    4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
-    4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
-    4.11. Other Utilities:
+    4.8.  pt.count() / df.pt.count() — Frequency & Group Counting
+    4.9.  pt.agg() / df.pt.agg() — Grouped Aggregation
+    4.10. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+    4.11. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+    4.12. Other Utilities:
           - pt.dropna() / df.pt.dropna()
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
@@ -40,7 +41,7 @@ TABLE OF CONTENTS
           - pt.clean_columns() / df.pt.clean_columns()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
-    4.12. Plotter — Visualization & Dashboarding (Plotting API)
+    4.13. Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -541,7 +542,26 @@ Calling Styles:
   df.pt.distinct("species", keep=False)   # Drop all duplicate occurrences
 
 
-4.8. pt.agg() / df.pt.agg() — Grouped Aggregation
+4.8. pt.count() / df.pt.count() — Frequency & Group Counting
+--------------------------------------------------------------------------------
+Counts occurrences of unique combinations of columns (or total rows).
+Defaults to sorting descending by the count column (`sort=True`, `name="n"`).
+
+Signature:
+  pt.count(df: DataFrame, *cols: str, sort: bool = True, name: str = "n") -> DataFrame
+  df.count(*cols: str, sort: bool = True, name: str = "n") -> DataFrame
+  df.by(*cols).count(sort: bool = True, name: str = "n") -> DataFrame
+
+Calling Styles:
+  df.count("species")                     # Count by column, sorted descending by n
+  df.count("species", "island")           # Count combinations of columns
+  df.count("species", sort=False)         # Count preserving original encounter order
+  df.count("species", name="total")       # Custom count column name
+  df.by("species").count()                # Count within established grouping keys
+  df.count()                              # Whole-table row count (1 row, column n)
+
+
+4.9. pt.agg() / df.pt.agg() — Grouped Aggregation
 --------------------------------------------------------------------------------
 Aggregates numeric columns grouped by active grouping set beforehand via `pt.by()`.
 If no grouping is set, computes a whole-table summary (1 row). Rejects `by=` in kwargs.
@@ -561,13 +581,13 @@ Calling Styles:
      (
          penguins
          .pt.by("species")
-         .pt.agg(avg_mass="body_mass_g:mean", count="n")
+         .pt.agg(avg_mass="body_mass_g:mean", total="count")
      )
   2. String Mapping Specification (Zero Dict Unpacking!):
      (
          tips
          .pt.by("smoker")
-         .pt.agg("tip = mean, [total bill] = mean, n = n")
+         .pt.agg("tip = mean, [total bill] = mean, total = count")
      )
   3. Whole-Frame Aggregations:
      (
@@ -592,7 +612,7 @@ Key Rules & Behaviors:
     `dropna=False` by default preserves missing category groups across aggregations.
 
 
-4.9. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+4.10. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
 --------------------------------------------------------------------------------
 Pure structural reshaping between long and wide formats without aggregation.
 
@@ -617,7 +637,7 @@ pt.wide(df, r=None, c="variable", v="value"):
       guiding the user to use pt.pivot() instead.
 
 
-4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+4.11. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
 --------------------------------------------------------------------------------
 Full multi-dimensional 2D pivot table and frequency cross-tabulation engine.
 Automatically flattens multi-level column hierarchies to clean 1D string names 
@@ -647,7 +667,7 @@ Examples:
   df.pt.pivot(r="island", c="species", a="n")
 
 
-4.11. Other Utilities
+4.12. Other Utilities
 --------------------------------------------------------------------------------
 - pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...) / pt.drop_nulls(...) / pt.drop_na(...):
   Drops rows with missing values (Arrow null and float NaN). Defaults to how='all' (Zero Data Loss) when cols is empty,
@@ -679,7 +699,7 @@ Examples:
   Copies DataFrame or Series to clipboard as TSV without index.
 
 
-4.12. Plotter — Visualization & Dashboarding (Plotting API)
+4.13. Plotter — Visualization & Dashboarding (Plotting API)
 --------------------------------------------------------------------------------
 Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
@@ -749,6 +769,7 @@ Inspection & Summary Flags:
   -diff PATH            Compare schema, shape, null counts against another file
   -value_counts         Value counts for categorical/string columns
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
+  -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
   -sample [N]           Random sample of N rows (default 5)
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
@@ -862,12 +883,13 @@ its own new line:
 ```
 This ensures readable git diffs, clean execution tracebacks, and syntactic consistency.
 
-6.4. What are the key canonical verbs (filter, head/tail, distinct)?
+6.4. What are the key canonical verbs (filter, head/tail, distinct, count)?
 -----------------------------------------------------------------
 Pytae standardizes on canonical modern naming:
 - `pt.filter()` / `df.filter()` / `-filter`: Replaces `qry`
 - `head()` & `tail()` / `-head` & `-tail`: Group-aware, proportion-aware, tie-aware row slicing replacing legacy `pick`, `slice_max`, and `slice_min` (which have been completely removed with no backward compatibility).
 - `pt.distinct()` / `df.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
+- `pt.count()` / `df.count()` / `-count`: Dedicated tallying and frequency counting verb; `count` is also the canonical counting operation in `agg()` (e.g. `total="count"`).
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------

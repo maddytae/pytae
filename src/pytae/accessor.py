@@ -35,6 +35,9 @@ class PolarsPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
+    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+        return DataFrame(self._obj).count(*cols, sort=sort, name=name)
+
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
@@ -224,6 +227,9 @@ class PandasPtAccessor:
 
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
+
+    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+        return DataFrame(self._obj).count(*cols, sort=sort, name=name)
 
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)

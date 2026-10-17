@@ -817,6 +817,17 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "count":
+            by_cols = (
+                parse_columns(args.by)
+                if (args.by and args.agg is None and not args.mutate)
+                else None
+            )
+            count_val = _next_op_val("count", getattr(args, "count", None))
+            err = pipeline.apply_count(count_val, by_cols=by_cols)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "head":
             by_cols = (
                 parse_columns(args.by)

@@ -18,6 +18,7 @@ from pytae.polars_engine import (
     arrange_polars,
     clean_columns_polars,
     concat_polars,
+    count_polars,
     distinct_polars,
     dropna_polars,
     fillna_polars,
@@ -768,6 +769,35 @@ class DataFrame:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
 
+    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+        """Count occurrences of unique combinations of columns (or total rows).
+
+        Parameters
+        ----------
+        *cols : str
+            Columns to count distinct combinations of. If omitted, counts total rows.
+        sort : bool, default True
+            Whether to sort results descending by the count column.
+        name : str, default "n"
+            The name of the count column in the output.
+        """
+        for c in cols:
+            if isinstance(c, (list, tuple, set)):
+                raise TypeError(
+                    f"count() takes column names as positional arguments, e.g. count('a', 'b'). "
+                    f"Lists are not accepted, got {type(c).__name__}."
+                )
+        resolved: list[str] = []
+        for c in cols:
+            if isinstance(c, str):
+                if "," in c:
+                    resolved.extend([_unquote_name(part.strip()) for part in c.split(",") if part.strip()])
+                else:
+                    resolved.append(_unquote_name(c.strip()))
+            else:
+                resolved.append(str(c))
+        return DataFrame(count_polars(self._df, cols=resolved, sort=sort, name=name))
+
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
@@ -1427,6 +1457,10 @@ class GroupedDataFrame:
                 "df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
+
+    def count(self, sort: bool = True, name: str = "n") -> DataFrame:
+        """Count occurrences per group for the established grouping keys."""
+        return DataFrame(count_polars(self._df, cols=self._by, sort=sort, name=name))
 
     def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
         """Rename columns using string mapping, dict, or keyword arguments."""

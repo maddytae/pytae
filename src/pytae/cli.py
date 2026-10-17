@@ -103,6 +103,8 @@ _CLI_FLAGS = {
     "--diff",
     "-distinct",
     "--distinct",
+    "-count",
+    "--count",
     "-sample",
     "--sample",
     "-seed",
@@ -411,6 +413,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SPEC",
         action=_OrderedValue,
         help='drop duplicate rows, optionally restricted to specific columns and keep mode, e.g. -distinct, -distinct "col1,col2", or -distinct "keep=last"',
+    )
+    parser.add_argument(
+        "-count",
+        "--count",
+        dest="count",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="count occurrences of unique combinations of columns (or rows per group if after -by), "
+        'e.g. -count species, -count "species,island", or -count "species,sort=false,name=total"',
     )
     parser.add_argument(
         "-sample",
@@ -937,6 +951,7 @@ def main(argv: list[str] | None = None) -> int:
             args.describe,
             args.glimpse,
             args.distinct is not None,
+            args.count is not None,
             args.freq is not None,
             args.hist is not None,
             args.head is not None,
@@ -971,6 +986,7 @@ def main(argv: list[str] | None = None) -> int:
             args.describe,
             show_all,
             args.distinct is not None,
+            args.count is not None,
             args.freq is not None,
             args.hist is not None,
             args.head is not None,
@@ -992,12 +1008,12 @@ def main(argv: list[str] | None = None) -> int:
     if is_clip and args.shape and wants_df:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-sample/-arrange/"
+            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-count/-sample/-arrange/"
             "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
             "run -shape separately"
         )
-    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None:
-        parser.error("-by requires -agg, -mutate, -head, or -tail")
+    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None and args.count is None:
+        parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
     if args.tol is not None and args.diff is None:

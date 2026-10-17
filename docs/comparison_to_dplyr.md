@@ -185,13 +185,15 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 | **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
 
-### 5. Grouped Summaries (`by` + `agg`)
+### 5. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
+| **Count Frequencies** | `count(df, g, sort = TRUE)` | `df.count("g")` | `-count g` |
+| **Group Row Count** | `df %>% group_by(g) %>% count()` | `df.by("g").count()` | `-by g -count` |
 | **Group Summary** | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Row Count** | `summarise(df, n = n())` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Summary with Count** | `summarise(df, total = n(), m = mean(x))` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
 | **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
-| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
+| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
 
 ### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |

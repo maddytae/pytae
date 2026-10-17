@@ -15,10 +15,11 @@ TABLE OF CONTENTS
     4.5.  pt.arrange() / df.pt.arrange() — Row Sorting
     4.6.  head() / tail() — Group-Aware & Proportion-Aware Row Slicing
     4.7.  pt.distinct() / df.pt.distinct() — Deduplication
-    4.8.  pt.agg() / df.pt.agg() — Grouped Aggregation
-    4.9.  pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
-    4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
-    4.11. Other Utilities:
+    4.8.  pt.count() / df.pt.count() — Frequency & Group Counting
+    4.9.  pt.agg() / df.pt.agg() — Grouped Aggregation
+    4.10. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+    4.11. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+    4.12. Other Utilities:
           - pt.dropna() / df.pt.dropna()
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
@@ -31,7 +32,7 @@ TABLE OF CONTENTS
           - pt.clean_columns() / df.pt.clean_columns()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
-    4.12. Plotter — Visualization & Dashboarding (Plotting API)
+    4.13. Plotter — Visualization & Dashboarding (Plotting API)
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -532,7 +533,26 @@ Calling Styles:
   df.pt.distinct("species", keep=False)   # Drop all duplicate occurrences
 
 
-4.8. pt.agg() / df.pt.agg() — Grouped Aggregation
+4.8. pt.count() / df.pt.count() — Frequency & Group Counting
+--------------------------------------------------------------------------------
+Counts occurrences of unique combinations of columns (or total rows).
+Defaults to sorting descending by the count column (`sort=True`, `name="n"`).
+
+Signature:
+  pt.count(df: DataFrame, *cols: str, sort: bool = True, name: str = "n") -> DataFrame
+  df.count(*cols: str, sort: bool = True, name: str = "n") -> DataFrame
+  df.by(*cols).count(sort: bool = True, name: str = "n") -> DataFrame
+
+Calling Styles:
+  df.count("species")                     # Count by column, sorted descending by n
+  df.count("species", "island")           # Count combinations of columns
+  df.count("species", sort=False)         # Count preserving original encounter order
+  df.count("species", name="total")       # Custom count column name
+  df.by("species").count()                # Count within established grouping keys
+  df.count()                              # Whole-table row count (1 row, column n)
+
+
+4.9. pt.agg() / df.pt.agg() — Grouped Aggregation
 --------------------------------------------------------------------------------
 Aggregates numeric columns grouped by active grouping set beforehand via `pt.by()`.
 If no grouping is set, computes a whole-table summary (1 row). Rejects `by=` in kwargs.
@@ -552,13 +572,13 @@ Calling Styles:
      (
          penguins
          .pt.by("species")
-         .pt.agg(avg_mass="body_mass_g:mean", count="n")
+         .pt.agg(avg_mass="body_mass_g:mean", total="count")
      )
   2. String Mapping Specification (Zero Dict Unpacking!):
      (
          tips
          .pt.by("smoker")
-         .pt.agg("tip = mean, [total bill] = mean, n = n")
+         .pt.agg("tip = mean, [total bill] = mean, total = count")
      )
   3. Whole-Frame Aggregations:
      (
@@ -583,7 +603,7 @@ Key Rules & Behaviors:
     `dropna=False` by default preserves missing category groups across aggregations.
 
 
-4.9. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
+4.10. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
 --------------------------------------------------------------------------------
 Pure structural reshaping between long and wide formats without aggregation.
 
@@ -608,7 +628,7 @@ pt.wide(df, r=None, c="variable", v="value"):
       guiding the user to use pt.pivot() instead.
 
 
-4.10. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
+4.11. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
 --------------------------------------------------------------------------------
 Full multi-dimensional 2D pivot table and frequency cross-tabulation engine.
 Automatically flattens multi-level column hierarchies to clean 1D string names 
@@ -638,7 +658,7 @@ Examples:
   df.pt.pivot(r="island", c="species", a="n")
 
 
-4.11. Other Utilities
+4.12. Other Utilities
 --------------------------------------------------------------------------------
 - pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...) / pt.drop_nulls(...) / pt.drop_na(...):
   Drops rows with missing values (Arrow null and float NaN). Defaults to how='all' (Zero Data Loss) when cols is empty,
@@ -670,7 +690,7 @@ Examples:
   Copies DataFrame or Series to clipboard as TSV without index.
 
 
-4.12. Plotter — Visualization & Dashboarding (Plotting API)
+4.13. Plotter — Visualization & Dashboarding (Plotting API)
 --------------------------------------------------------------------------------
 Method-chainable plotting system wrapping `pandas.plot` and `matplotlib`.
 Requires: pip install 'pytae[plot]'
@@ -740,6 +760,7 @@ Inspection & Summary Flags:
   -diff PATH            Compare schema, shape, null counts against another file
   -value_counts         Value counts for categorical/string columns
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
+  -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
   -sample [N]           Random sample of N rows (default 5)
   -seed N               Random seed for sampling
   -frac P               Sample fraction P (0.0 < P <= 1.0)
@@ -851,12 +872,13 @@ its own new line:
 ```
 This ensures readable git diffs, clean execution tracebacks, and syntactic consistency.
 
-6.4. What are the key canonical verbs (filter, head/tail, distinct)?
+6.4. What are the key canonical verbs (filter, head/tail, distinct, count)?
 -----------------------------------------------------------------
 Pytae standardizes on canonical modern naming:
 - `pt.filter()` / `df.filter()` / `-filter`: Replaces `qry`
 - `head()` & `tail()` / `-head` & `-tail`: Group-aware, proportion-aware, tie-aware row slicing replacing legacy `pick`, `slice_max`, and `slice_min` (which have been completely removed with no backward compatibility).
 - `pt.distinct()` / `df.distinct()` / `-distinct`: Standard deduplication verb (the legacy `dedupe` function and flag have been completely removed with no backward compatibility).
+- `pt.count()` / `df.count()` / `-count`: Dedicated tallying and frequency counting verb; `count` is also the canonical counting operation in `agg()` (e.g. `total="count"`).
 
 6.5. How do I apply custom functions in `mutate()`?
 ---------------------------------------------------
@@ -11452,6 +11474,12 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
   - **`pivot()`**: 2D cross-tabulation aggregation matrices (`r=`, `c=`, `v=`, `a=`).
 - Both `wide` and `pivot` produce pure, flat 1D column headers with zero MultiIndex traps.
 
+### 7. `count` for Fast Tallying & Intention-Revealing Aggregations
+- **Why `count`?** Counting occurrences of categories or combinations of factors is the single most common exploratory data analysis operation. In Pandas, users are forced to choose between `.value_counts()` (which returns a 1D Series with index labels, breaking fluent chaining) or `.groupby('col').size().reset_index(name='n')`.
+- **First-Class Verb**: Pytae introduces a dedicated `count()` verb across both Python (`df.count("species")`, `df.by("species").count()`) and the CLI (`-count species`, `-by species -count`).
+- **Intuitive Defaults**: `count()` automatically sorts descending by count (`sort=True`) with output column `name="n"`. Pass `sort=False` to preserve original encounter order, or `name="total"` to rename the tally.
+- **Natural Grammar in `agg()`**: Inside `agg()`, `count` (or `count()`) is the canonical counting function (`total_penguins="count"`, `avg_mass="body_mass_g:mean"`). In `avg_mass="body_mass_g:mean"`, `mean` is the function; therefore, `total_penguins="count"` makes `count` the consistent, intention-revealing function name, eliminating the awkward `n="n"` parameter tautology while preserving `"n"` as an alias for backward compatibility.
+
 ---
 
 ## The Pytae Architecture: "One Grammar, Two Modalities"
@@ -11918,14 +11946,16 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 | **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
 
-### 5. Grouped Aggregation (`by` + `agg`)
+### 5. Grouped Aggregation & Counting (`count`, `by` + `agg`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
+| **Count Frequencies** | `df['g'].value_counts().reset_index()` | `df.count("g")` | `-count g` |
+| **Group Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by("g").count()` | `-by g -count` |
 | **Group & Summarize** | `df.groupby('g')['x'].mean().reset_index()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Summary with Count** | `df.groupby('g').agg(n=('x','size'), m=('x','mean')).reset_index()` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
 | **Multiple Metrics** | `df.groupby('g').agg(m=('x','mean'), s=('x','sum')).reset_index()` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
 | **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` | Default behavior (`dropna=False`) | Default behavior |
-| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
+| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
 
 ### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -12257,13 +12287,15 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 | **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
 
-### 5. Grouped Summaries (`by` + `agg`)
+### 5. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
+| **Count Frequencies** | `count(df, g, sort = TRUE)` | `df.count("g")` | `-count g` |
+| **Group Row Count** | `df %>% group_by(g) %>% count()` | `df.by("g").count()` | `-by g -count` |
 | **Group Summary** | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Row Count** | `summarise(df, n = n())` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Summary with Count** | `summarise(df, total = n(), m = mean(x))` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
 | **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
-| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
+| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
 
 ### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -12648,11 +12680,12 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
 | **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 
-### 6. Grouped Summaries (`by` + `agg`)
+### 6. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
+| **Frequency Count** | `PROC FREQ; TABLES g; RUN;` | `df.count("g")` | `-count g` |
 | **Group Mean** | `PROC MEANS NWAY NOPRINT; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(total="count")` | `-by g -agg total=count` |
 | **Multiple Metrics** | `OUTPUT OUT=out MEAN=m SUM=s MIN=mn MAX=mx;` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
 | **Preserve Missing Groups**| `PROC MEANS MISSING;` *(Defaults to dropping!)*| Default behavior (`dropna=False`) | Default behavior |
 
@@ -13280,7 +13313,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.10.0"
+version = "3.11.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -13393,7 +13426,7 @@ from pytae.readers import (
 )
 from pytae.select import everything
 
-__version__ = "3.10.0"
+__version__ = "3.11.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -13541,6 +13574,14 @@ def pick(*args: Any, **kwargs: Any) -> Any:
 
 def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
+
+
+def count(df: Any, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+    if isinstance(df, GroupedDataFrame):
+        if cols:
+            return df.by(*cols).count(sort=sort, name=name)
+        return df.count(sort=sort, name=name)
+    return DataFrame(df).count(*cols, sort=sort, name=name)
 
 
 def dropna(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
@@ -13716,6 +13757,7 @@ class _PytaeModule(ModuleType):
     arrange = _VerbDescriptor(arrange)
     pick = _VerbDescriptor(pick)
     distinct = _VerbDescriptor(distinct)
+    count = _VerbDescriptor(count)
     dropna = _VerbDescriptor(dropna)
     fillna = _VerbDescriptor(fillna)
     rename = _VerbDescriptor(rename)
@@ -13800,6 +13842,7 @@ __all__ = [
     "tail",
     "pick",
     "distinct",
+    "count",
     "dropna",
     "fillna",
     "diff",
@@ -14557,6 +14600,9 @@ class PolarsPtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
+    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+        return DataFrame(self._obj).count(*cols, sort=sort, name=name)
+
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
 
@@ -14746,6 +14792,9 @@ class PandasPtAccessor:
 
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
+
+    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+        return DataFrame(self._obj).count(*cols, sort=sort, name=name)
 
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
@@ -15034,6 +15083,8 @@ _CLI_FLAGS = {
     "--diff",
     "-distinct",
     "--distinct",
+    "-count",
+    "--count",
     "-sample",
     "--sample",
     "-seed",
@@ -15342,6 +15393,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SPEC",
         action=_OrderedValue,
         help='drop duplicate rows, optionally restricted to specific columns and keep mode, e.g. -distinct, -distinct "col1,col2", or -distinct "keep=last"',
+    )
+    parser.add_argument(
+        "-count",
+        "--count",
+        dest="count",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="count occurrences of unique combinations of columns (or rows per group if after -by), "
+        'e.g. -count species, -count "species,island", or -count "species,sort=false,name=total"',
     )
     parser.add_argument(
         "-sample",
@@ -15868,6 +15931,7 @@ def main(argv: list[str] | None = None) -> int:
             args.describe,
             args.glimpse,
             args.distinct is not None,
+            args.count is not None,
             args.freq is not None,
             args.hist is not None,
             args.head is not None,
@@ -15902,6 +15966,7 @@ def main(argv: list[str] | None = None) -> int:
             args.describe,
             show_all,
             args.distinct is not None,
+            args.count is not None,
             args.freq is not None,
             args.hist is not None,
             args.head is not None,
@@ -15923,12 +15988,12 @@ def main(argv: list[str] | None = None) -> int:
     if is_clip and args.shape and wants_df:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-sample/-arrange/"
+            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-count/-sample/-arrange/"
             "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
             "run -shape separately"
         )
-    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None:
-        parser.error("-by requires -agg, -mutate, -head, or -tail")
+    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None and args.count is None:
+        parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
     if args.tol is not None and args.diff is None:
@@ -16743,6 +16808,34 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-dropna", "-filter"],
     ),
+    "count": KeywordHelp(
+        name="count",
+        flag="-count, --count [SPEC]",
+        syntax='pytae <path> -count ["col1,col2[,sort=true|false][,name=n]"]',
+        summary="Count occurrences of unique combinations of columns (or total rows).",
+        description=(
+            "Counts occurrences of unique combinations of columns, sorted descending by count by default.\n"
+            "- Bare flag: counts total rows (or counts by -by columns if placed after -by).\n"
+            "- Specified columns: counts occurrences of unique combinations of those columns.\n"
+            "- sort=false: preserves original encounter order.\n"
+            "- name=<name>: customizes the output count column name (default 'n')."
+        ),
+        options=[
+            "Bare flag : Count total rows (or groups if preceded by -by).",
+            '"col1,col2" : Count occurrences of unique combinations of specified columns.',
+            "sort=false : Preserve encounter order instead of sorting descending by count.",
+            "name=<name> : Custom column name for the count tally (default 'n').",
+        ],
+        examples=[
+            "pytae penguins.parquet -count species",
+            'pytae penguins.parquet -count "species,island"',
+            'pytae penguins.parquet -count "species,sort=false"',
+            'pytae penguins.parquet -count "species,name=total"',
+            "pytae penguins.parquet -by species -count",
+            "pytae penguins.parquet -count",
+        ],
+        see_also=["-agg", "-distinct", "-by", "-freq"],
+    ),
     "pretty": KeywordHelp(
         name="pretty",
         flag="-pretty, --pretty",
@@ -16941,6 +17034,41 @@ def parse_distinct_spec(raw: str | None) -> tuple[list[str], str | bool]:
             cols.append(_unquote_name(token))
 
     return cols, keep
+
+
+def parse_count_spec(raw: str | None) -> tuple[list[str], bool, str]:
+    """Parse -count SPEC into (cols, sort, name).
+
+    Canonical syntax:
+      - Bare flag / "": all columns (or grouped keys if after -by), sort=True, name='n'
+      - "col1,col2": subset of columns, sort=True, name='n'
+      - "col1,sort=false": subset of columns, sort=False, name='n'
+      - "col1,name=total": subset of columns, sort=True, name='total'
+      - "sort=false,name=count": all columns, sort=False, name='count'
+    """
+    if not raw or not raw.strip():
+        return [], True, "n"
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
+    cols: list[str] = []
+    sort: bool = True
+    name: str = "n"
+
+    for token in tokens:
+        if token.startswith("sort="):
+            val = token[len("sort=") :].strip().strip("'\"").lower()
+            if val in ("true", "1", "yes"):
+                sort = True
+            elif val in ("false", "0", "no"):
+                sort = False
+            else:
+                raise SystemExit(f"-count: invalid sort value '{val}'. Expected 'true' or 'false'")
+        elif token.startswith("name="):
+            name = _unquote_name(token[len("name=") :].strip())
+        else:
+            cols.append(_unquote_name(token))
+
+    return cols, sort, name
 
 
 def parse_dropna_spec(
@@ -18220,6 +18348,30 @@ class _Pipeline:
         except Exception as exc:
             return f"-distinct: {exc}"
 
+    def apply_count(self, spec: str | None, by_cols: list[str] | None = None) -> str | None:
+        """Count occurrences of combinations of columns or within groups. Returns an error message or None."""
+        from pytae.cli_parsing import parse_count_spec, unknown_columns_message
+
+        try:
+            cols, sort, name = parse_count_spec(spec)
+        except SystemExit as exc:
+            return str(exc)
+        if by_cols and not cols:
+            cols = list(by_cols)
+        available = self._available_columns()
+        if cols:
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-count", unknown, available)
+        try:
+            from pytae.polars_engine import count_polars
+
+            self._pldf = count_polars(self.polars_lazy_frame(), cols=cols, sort=sort, name=name)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-count: {exc}"
+
     def apply_arrange(self, spec: str) -> str | None:
         """Sort rows by one or more columns with directions. Returns an error message or None."""
         try:
@@ -19302,6 +19454,17 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "count":
+            by_cols = (
+                parse_columns(args.by)
+                if (args.by and args.agg is None and not args.mutate)
+                else None
+            )
+            count_val = _next_op_val("count", getattr(args, "count", None))
+            err = pipeline.apply_count(count_val, by_cols=by_cols)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "head":
             by_cols = (
                 parse_columns(args.by)
@@ -19603,6 +19766,7 @@ from pytae.polars_engine import (
     arrange_polars,
     clean_columns_polars,
     concat_polars,
+    count_polars,
     distinct_polars,
     dropna_polars,
     fillna_polars,
@@ -20353,6 +20517,35 @@ class DataFrame:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
 
+    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+        """Count occurrences of unique combinations of columns (or total rows).
+
+        Parameters
+        ----------
+        *cols : str
+            Columns to count distinct combinations of. If omitted, counts total rows.
+        sort : bool, default True
+            Whether to sort results descending by the count column.
+        name : str, default "n"
+            The name of the count column in the output.
+        """
+        for c in cols:
+            if isinstance(c, (list, tuple, set)):
+                raise TypeError(
+                    f"count() takes column names as positional arguments, e.g. count('a', 'b'). "
+                    f"Lists are not accepted, got {type(c).__name__}."
+                )
+        resolved: list[str] = []
+        for c in cols:
+            if isinstance(c, str):
+                if "," in c:
+                    resolved.extend([_unquote_name(part.strip()) for part in c.split(",") if part.strip()])
+                else:
+                    resolved.append(_unquote_name(c.strip()))
+            else:
+                resolved.append(str(c))
+        return DataFrame(count_polars(self._df, cols=resolved, sort=sort, name=name))
+
     def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
@@ -21012,6 +21205,10 @@ class GroupedDataFrame:
                 "df.pt.agg() does not accept 'by'. Set grouping beforehand using pt.by(df, 'col') or df.pt.by('col')."
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
+
+    def count(self, sort: bool = True, name: str = "n") -> DataFrame:
+        """Count occurrences per group for the established grouping keys."""
+        return DataFrame(count_polars(self._df, cols=self._by, sort=sort, name=name))
 
     def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
         """Rename columns using string mapping, dict, or keyword arguments."""
@@ -23278,6 +23475,38 @@ def distinct_polars(df: Any, cols: list[str] | None = None, keep: str | bool = "
     return df.unique(subset=cols if cols else None, keep=pl_keep, maintain_order=True)
 
 
+def count_polars(
+    df: Any,
+    cols: Sequence[str] | None = None,
+    sort: bool = True,
+    name: str = "n",
+) -> Any:
+    """Count occurrences of unique combinations of columns (or total rows)."""
+    import polars as pl
+
+    col_list = list(cols) if cols else []
+    if col_list:
+        if name in col_list:
+            raise ValueError(
+                f"count(): count column '{name}' collides with group column '{name}'. "
+                f"Use name='...' to specify a distinct output column name."
+            )
+        schema = _df_schema(df)
+        for c in col_list:
+            if c not in schema:
+                raise KeyError(f"count(): unknown column '{c}'")
+        counted = df.group_by(col_list, maintain_order=True).agg(
+            pl.len().cast(pl.Int64).alias(name)
+        )
+        if sort:
+            counted = counted.sort(name, descending=True)
+        return counted
+    else:
+        if isinstance(df, pl.LazyFrame):
+            return df.select(pl.len().cast(pl.Int64).alias(name))
+        return pl.DataFrame({name: pl.Series(name, [len(df)], dtype=pl.Int64)})
+
+
 def dropna_polars(
     df: Any,
     cols: list[str] | Sequence[str] | None = None,
@@ -24833,7 +25062,10 @@ def agg_polars(
     if active_kwargs:
         for out_name, val in active_kwargs.items():
             clean_out = _unquote_name(out_name)
-            if val in ("n", "count", "size") or val == ["n"] or val == ("n",):
+            val_str = val.strip() if isinstance(val, str) else ""
+            val_norm = re.sub(r"\(\s*\)$", "", val_str).lower() if val_str else ""
+
+            if val_norm in ("n", "count", "size", "len") or val in (["n"], ["count"], ("n",), ("count",)):
                 if "n" in by_cols and clean_out == "n":
                     raise ValueError("agg(): count 'n' collides with group column 'n'")
                 _add_expr(pl.len().cast(pl.Int64), clean_out)
@@ -24847,12 +25079,18 @@ def agg_polars(
                 else:
                     _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
             elif isinstance(val, str):
-                fn_list = [f.strip() for f in val.split(",") if f.strip()]
-                if len(fn_list) > 1:
-                    for f in fn_list:
-                        _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
+                fn_call_m = re.match(r"^(\w+)\(([^)]+)\)$", val.strip())
+                if fn_call_m:
+                    fn_name = fn_call_m.group(1).strip()
+                    src = _unquote_name(fn_call_m.group(2).strip())
+                    _add_expr(_polars_agg_expr(pl.col(src), fn_name), clean_out)
                 else:
-                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                    fn_list = [f.strip() for f in val.split(",") if f.strip()]
+                    if len(fn_list) > 1:
+                        for f in fn_list:
+                            _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
+                    else:
+                        _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             elif isinstance(val, (list, tuple)):
                 fn_list = list(val)
                 if len(fn_list) > 1:
@@ -24868,15 +25106,18 @@ def agg_polars(
         for item in items_to_process:
             if isinstance(item, (list, tuple)):
                 for sub in item:
-                    if isinstance(sub, str) and "," in sub:
-                        flat_fns.extend([p.strip() for p in sub.split(",") if p.strip()])
+                    sub_str = str(sub).strip()
+                    sub_norm = re.sub(r"\(\s*\)$", "", sub_str).strip()
+                    if "," in sub_norm:
+                        flat_fns.extend([p.strip() for p in sub_norm.split(",") if p.strip()])
                     else:
-                        flat_fns.append(str(sub).strip())
+                        flat_fns.append(sub_norm)
             elif isinstance(item, str):
-                if "," in item:
-                    flat_fns.extend([p.strip() for p in item.split(",") if p.strip()])
+                item_norm = re.sub(r"\(\s*\)$", "", item).strip()
+                if "," in item_norm:
+                    flat_fns.extend([p.strip() for p in item_norm.split(",") if p.strip()])
                 else:
-                    flat_fns.append(item.strip())
+                    flat_fns.append(item_norm)
             else:
                 flat_fns.append(str(item).strip())
 
@@ -27749,7 +27990,7 @@ def test_by_requires_agg_or_mutate(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-by", "grp"])
     assert exc_info.value.code == 2
-    assert "requires -agg, -mutate, -head, or -tail" in capsys.readouterr().err
+    assert "requires -agg, -mutate, -head, -tail, or -count" in capsys.readouterr().err
 
 
 def test_agg_then_arrange_prints_only_final_table(tmp_path, capsys):
@@ -31312,6 +31553,215 @@ def test_cli_sql_works_without_duckdb(tmp_path, capsys, monkeypatch):
     exit_code = cli.main([str(path), "-sql", "select y from data where x >= 20", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
+
+################################################################################
+# FILE: tests/test_count.py
+################################################################################
+"""Tests for the count verb and counting enhancements across library and CLI."""
+
+from __future__ import annotations
+
+import pandas as pd
+import polars as pl
+import pytest
+
+import pytae as pt
+from pytae import cli
+
+
+@pytest.fixture
+def df():
+    return pt.DataFrame({
+        "species": ["Adelie", "Adelie", "Chinstrap", "Adelie", "Gentoo", "Gentoo"],
+        "island": ["Torgersen", "Biscoe", "Dream", "Torgersen", "Biscoe", "Biscoe"],
+        "mass": [3750.0, 3800.0, 3250.0, 3450.0, 4850.0, 5000.0],
+    })
+
+
+def test_count_single_column(df):
+    res = df.count("species")
+    assert list(res.columns) == ["species", "n"]
+    assert res["species"].to_list() == ["Adelie", "Gentoo", "Chinstrap"]
+    assert res["n"].to_list() == [3, 2, 1]
+
+
+def test_count_multiple_columns(df):
+    res = df.count("species", "island")
+    assert list(res.columns) == ["species", "island", "n"]
+    assert len(res) == 4
+    # Top count is Adelie-Torgersen with 2 and Gentoo-Biscoe with 2
+    assert res["n"].to_list()[:2] == [2, 2]
+
+
+def test_count_comma_separated_string(df):
+    res = df.count("species, island")
+    assert list(res.columns) == ["species", "island", "n"]
+    assert len(res) == 4
+
+
+def test_count_sort_false(df):
+    res = df.count("species", sort=False)
+    assert res["species"].to_list() == ["Adelie", "Chinstrap", "Gentoo"]
+    assert res["n"].to_list() == [3, 1, 2]
+
+
+def test_count_custom_name(df):
+    res = df.count("species", name="total")
+    assert list(res.columns) == ["species", "total"]
+    assert res["total"].to_list() == [3, 2, 1]
+
+
+def test_count_whole_table(df):
+    res = df.count()
+    assert list(res.columns) == ["n"]
+    assert res["n"].to_list() == [6]
+
+
+def test_count_grouped_dataframe(df):
+    res = df.by("species").count()
+    assert list(res.columns) == ["species", "n"]
+    assert res["species"].to_list() == ["Adelie", "Gentoo", "Chinstrap"]
+    assert res["n"].to_list() == [3, 2, 1]
+
+
+def test_count_grouped_dataframe_custom_name_sort_false(df):
+    res = df.by("species").count(sort=False, name="total")
+    assert list(res.columns) == ["species", "total"]
+    assert res["species"].to_list() == ["Adelie", "Chinstrap", "Gentoo"]
+    assert res["total"].to_list() == [3, 1, 2]
+
+
+def test_count_functional_api(df):
+    res = pt.count(df, "species")
+    assert res["n"].to_list() == [3, 2, 1]
+
+    # Passing pandas DataFrame to pt.count
+    pdf = pd.DataFrame({"cat": ["x", "x", "y"]})
+    res_pdf = pt.count(pdf, "cat")
+    assert res_pdf["cat"].to_list() == ["x", "y"]
+    assert res_pdf["n"].to_list() == [2, 1]
+
+    # Passing polars DataFrame to pt.count
+    pldf = pl.DataFrame({"cat": ["x", "x", "y"]})
+    res_pldf = pt.count(pldf, "cat")
+    assert res_pldf["n"].to_list() == [2, 1]
+
+
+def test_count_accessors(df):
+    pdf = pd.DataFrame({"species": ["A", "A", "B"]})
+    res = pdf.pt.count("species")
+    assert res["species"].to_list() == ["A", "B"]
+    assert res["n"].to_list() == [2, 1]
+
+    pldf = pl.DataFrame({"species": ["A", "A", "B"]})
+    res_pl = pldf.pt.count("species")
+    assert res_pl["species"].to_list() == ["A", "B"]
+    assert res_pl["n"].to_list() == [2, 1]
+
+
+def test_count_collision_error():
+    collision_df = pt.DataFrame({"n": [1, 1, 2]})
+    with pytest.raises(ValueError, match="collides with group column 'n'"):
+        collision_df.count("n")
+
+    with pytest.raises(ValueError, match="collides with group column 'n'"):
+        collision_df.by("n").count()
+
+
+def test_count_unknown_column(df):
+    with pytest.raises(KeyError, match="unknown column 'unknown'"):
+        df.count("unknown")
+
+
+def test_count_list_arg_error(df):
+    with pytest.raises(TypeError, match="count\\(\\) takes column names as positional arguments"):
+        df.count(["species", "island"])
+
+
+def test_lazy_count():
+    lazy = pt.scan_parquet("src/pytae/datasets/penguins.parquet")
+    res = lazy.count("species").collect()
+    assert list(res.columns) == ["species", "n"]
+    assert len(res) == 3
+
+
+def test_agg_count_canonical(df):
+    # agg(total="count")
+    res1 = df.by("species").agg(total="count", avg_mass="mass:mean")
+    assert list(res1.columns) == ["species", "total", "avg_mass"]
+    assert res1["total"].to_list() == [3, 1, 2]
+
+    # agg(n="count()")
+    res2 = df.by("species").agg(n="count()")
+    assert list(res2.columns) == ["species", "n"]
+    assert res2["n"].to_list() == [3, 1, 2]
+
+    # agg string expression with func(col) syntax
+    res3 = df.by("species").agg("total = count(), avg_mass = mean(mass)")
+    assert list(res3.columns) == ["species", "total", "avg_mass"]
+    assert res3["total"].to_list() == [3, 1, 2]
+
+    # unground whole-table agg
+    res4 = df.agg("count")
+    assert list(res4.columns) == ["n"]
+    assert res4["n"].to_list() == [6]
+
+    res5 = df.agg("count()")
+    assert list(res5.columns) == ["n"]
+    assert res5["n"].to_list() == [6]
+
+
+def test_cli_count(capsys):
+    ret = cli.main(["src/pytae/datasets/penguins.parquet", "-count", "species"])
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "Adelie" in out
+    assert "152" in out
+
+
+def test_cli_count_multiple(capsys):
+    ret = cli.main(["src/pytae/datasets/penguins.parquet", "-count", "species,island"])
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "Biscoe" in out
+    assert "124" in out
+
+
+def test_cli_count_sort_false(capsys):
+    ret = cli.main(["src/pytae/datasets/penguins.parquet", "-count", "species,sort=false"])
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "Adelie" in out
+
+
+def test_cli_count_name_total(capsys):
+    ret = cli.main(["src/pytae/datasets/penguins.parquet", "-count", "species,name=total"])
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "total" in out
+
+
+def test_cli_by_count(capsys):
+    ret = cli.main(["src/pytae/datasets/penguins.parquet", "-by", "species", "-count"])
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "Adelie" in out
+    assert "152" in out
+
+
+def test_cli_count_whole_table(capsys):
+    ret = cli.main(["src/pytae/datasets/penguins.parquet", "-count"])
+    assert ret == 0
+    out = capsys.readouterr().out
+    assert "344" in out
+
+
+def test_cli_count_unknown_column(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["src/pytae/datasets/penguins.parquet", "-count", "unknown_col"])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "unknown column" in err or "unknown" in err
 
 ################################################################################
 # FILE: tests/test_fillna.py

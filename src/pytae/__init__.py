@@ -31,7 +31,7 @@ from pytae.readers import (
 )
 from pytae.select import everything
 
-__version__ = "3.10.0"
+__version__ = "3.11.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -179,6 +179,14 @@ def pick(*args: Any, **kwargs: Any) -> Any:
 
 def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
+
+
+def count(df: Any, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+    if isinstance(df, GroupedDataFrame):
+        if cols:
+            return df.by(*cols).count(sort=sort, name=name)
+        return df.count(sort=sort, name=name)
+    return DataFrame(df).count(*cols, sort=sort, name=name)
 
 
 def dropna(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
@@ -354,6 +362,7 @@ class _PytaeModule(ModuleType):
     arrange = _VerbDescriptor(arrange)
     pick = _VerbDescriptor(pick)
     distinct = _VerbDescriptor(distinct)
+    count = _VerbDescriptor(count)
     dropna = _VerbDescriptor(dropna)
     fillna = _VerbDescriptor(fillna)
     rename = _VerbDescriptor(rename)
@@ -438,6 +447,7 @@ __all__ = [
     "tail",
     "pick",
     "distinct",
+    "count",
     "dropna",
     "fillna",
     "diff",

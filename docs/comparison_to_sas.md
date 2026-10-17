@@ -260,11 +260,12 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
 | **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 
-### 6. Grouped Summaries (`by` + `agg`)
+### 6. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
+| **Frequency Count** | `PROC FREQ; TABLES g; RUN;` | `df.count("g")` | `-count g` |
 | **Group Mean** | `PROC MEANS NWAY NOPRINT; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(total="count")` | `-by g -agg total=count` |
 | **Multiple Metrics** | `OUTPUT OUT=out MEAN=m SUM=s MIN=mn MAX=mx;` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
 | **Preserve Missing Groups**| `PROC MEANS MISSING;` *(Defaults to dropping!)*| Default behavior (`dropna=False`) | Default behavior |
 

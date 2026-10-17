@@ -242,6 +242,38 @@ def distinct_polars(df: Any, cols: list[str] | None = None, keep: str | bool = "
     return df.unique(subset=cols if cols else None, keep=pl_keep, maintain_order=True)
 
 
+def count_polars(
+    df: Any,
+    cols: Sequence[str] | None = None,
+    sort: bool = True,
+    name: str = "n",
+) -> Any:
+    """Count occurrences of unique combinations of columns (or total rows)."""
+    import polars as pl
+
+    col_list = list(cols) if cols else []
+    if col_list:
+        if name in col_list:
+            raise ValueError(
+                f"count(): count column '{name}' collides with group column '{name}'. "
+                f"Use name='...' to specify a distinct output column name."
+            )
+        schema = _df_schema(df)
+        for c in col_list:
+            if c not in schema:
+                raise KeyError(f"count(): unknown column '{c}'")
+        counted = df.group_by(col_list, maintain_order=True).agg(
+            pl.len().cast(pl.Int64).alias(name)
+        )
+        if sort:
+            counted = counted.sort(name, descending=True)
+        return counted
+    else:
+        if isinstance(df, pl.LazyFrame):
+            return df.select(pl.len().cast(pl.Int64).alias(name))
+        return pl.DataFrame({name: pl.Series(name, [len(df)], dtype=pl.Int64)})
+
+
 def dropna_polars(
     df: Any,
     cols: list[str] | Sequence[str] | None = None,
@@ -1797,7 +1829,10 @@ def agg_polars(
     if active_kwargs:
         for out_name, val in active_kwargs.items():
             clean_out = _unquote_name(out_name)
-            if val in ("n", "count", "size") or val == ["n"] or val == ("n",):
+            val_str = val.strip() if isinstance(val, str) else ""
+            val_norm = re.sub(r"\(\s*\)$", "", val_str).lower() if val_str else ""
+
+            if val_norm in ("n", "count", "size", "len") or val in (["n"], ["count"], ("n",), ("count",)):
                 if "n" in by_cols and clean_out == "n":
                     raise ValueError("agg(): count 'n' collides with group column 'n'")
                 _add_expr(pl.len().cast(pl.Int64), clean_out)
@@ -1811,12 +1846,18 @@ def agg_polars(
                 else:
                     _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
             elif isinstance(val, str):
-                fn_list = [f.strip() for f in val.split(",") if f.strip()]
-                if len(fn_list) > 1:
-                    for f in fn_list:
-                        _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
+                fn_call_m = re.match(r"^(\w+)\(([^)]+)\)$", val.strip())
+                if fn_call_m:
+                    fn_name = fn_call_m.group(1).strip()
+                    src = _unquote_name(fn_call_m.group(2).strip())
+                    _add_expr(_polars_agg_expr(pl.col(src), fn_name), clean_out)
                 else:
-                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                    fn_list = [f.strip() for f in val.split(",") if f.strip()]
+                    if len(fn_list) > 1:
+                        for f in fn_list:
+                            _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
+                    else:
+                        _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             elif isinstance(val, (list, tuple)):
                 fn_list = list(val)
                 if len(fn_list) > 1:
@@ -1832,15 +1873,18 @@ def agg_polars(
         for item in items_to_process:
             if isinstance(item, (list, tuple)):
                 for sub in item:
-                    if isinstance(sub, str) and "," in sub:
-                        flat_fns.extend([p.strip() for p in sub.split(",") if p.strip()])
+                    sub_str = str(sub).strip()
+                    sub_norm = re.sub(r"\(\s*\)$", "", sub_str).strip()
+                    if "," in sub_norm:
+                        flat_fns.extend([p.strip() for p in sub_norm.split(",") if p.strip()])
                     else:
-                        flat_fns.append(str(sub).strip())
+                        flat_fns.append(sub_norm)
             elif isinstance(item, str):
-                if "," in item:
-                    flat_fns.extend([p.strip() for p in item.split(",") if p.strip()])
+                item_norm = re.sub(r"\(\s*\)$", "", item).strip()
+                if "," in item_norm:
+                    flat_fns.extend([p.strip() for p in item_norm.split(",") if p.strip()])
                 else:
-                    flat_fns.append(item.strip())
+                    flat_fns.append(item_norm)
             else:
                 flat_fns.append(str(item).strip())
 

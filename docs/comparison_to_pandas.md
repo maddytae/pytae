@@ -206,14 +206,16 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
 | **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
 
-### 5. Grouped Aggregation (`by` + `agg`)
+### 5. Grouped Aggregation & Counting (`count`, `by` + `agg`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
+| **Count Frequencies** | `df['g'].value_counts().reset_index()` | `df.count("g")` | `-count g` |
+| **Group Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by("g").count()` | `-by g -count` |
 | **Group & Summarize** | `df.groupby('g')['x'].mean().reset_index()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by("g").agg(n="n")` | `-by g -agg n=n` |
+| **Summary with Count** | `df.groupby('g').agg(n=('x','size'), m=('x','mean')).reset_index()` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
 | **Multiple Metrics** | `df.groupby('g').agg(m=('x','mean'), s=('x','sum')).reset_index()` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
 | **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` | Default behavior (`dropna=False`) | Default behavior |
-| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="n")` | `-agg "m=x:mean,n=n"` |
+| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
 
 ### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |

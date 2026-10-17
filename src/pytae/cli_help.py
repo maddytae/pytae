@@ -663,6 +663,34 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-dropna", "-filter"],
     ),
+    "count": KeywordHelp(
+        name="count",
+        flag="-count, --count [SPEC]",
+        syntax='pytae <path> -count ["col1,col2[,sort=true|false][,name=n]"]',
+        summary="Count occurrences of unique combinations of columns (or total rows).",
+        description=(
+            "Counts occurrences of unique combinations of columns, sorted descending by count by default.\n"
+            "- Bare flag: counts total rows (or counts by -by columns if placed after -by).\n"
+            "- Specified columns: counts occurrences of unique combinations of those columns.\n"
+            "- sort=false: preserves original encounter order.\n"
+            "- name=<name>: customizes the output count column name (default 'n')."
+        ),
+        options=[
+            "Bare flag : Count total rows (or groups if preceded by -by).",
+            '"col1,col2" : Count occurrences of unique combinations of specified columns.',
+            "sort=false : Preserve encounter order instead of sorting descending by count.",
+            "name=<name> : Custom column name for the count tally (default 'n').",
+        ],
+        examples=[
+            "pytae penguins.parquet -count species",
+            'pytae penguins.parquet -count "species,island"',
+            'pytae penguins.parquet -count "species,sort=false"',
+            'pytae penguins.parquet -count "species,name=total"',
+            "pytae penguins.parquet -by species -count",
+            "pytae penguins.parquet -count",
+        ],
+        see_also=["-agg", "-distinct", "-by", "-freq"],
+    ),
     "pretty": KeywordHelp(
         name="pretty",
         flag="-pretty, --pretty",

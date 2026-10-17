@@ -64,6 +64,41 @@ def parse_distinct_spec(raw: str | None) -> tuple[list[str], str | bool]:
     return cols, keep
 
 
+def parse_count_spec(raw: str | None) -> tuple[list[str], bool, str]:
+    """Parse -count SPEC into (cols, sort, name).
+
+    Canonical syntax:
+      - Bare flag / "": all columns (or grouped keys if after -by), sort=True, name='n'
+      - "col1,col2": subset of columns, sort=True, name='n'
+      - "col1,sort=false": subset of columns, sort=False, name='n'
+      - "col1,name=total": subset of columns, sort=True, name='total'
+      - "sort=false,name=count": all columns, sort=False, name='count'
+    """
+    if not raw or not raw.strip():
+        return [], True, "n"
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
+    cols: list[str] = []
+    sort: bool = True
+    name: str = "n"
+
+    for token in tokens:
+        if token.startswith("sort="):
+            val = token[len("sort=") :].strip().strip("'\"").lower()
+            if val in ("true", "1", "yes"):
+                sort = True
+            elif val in ("false", "0", "no"):
+                sort = False
+            else:
+                raise SystemExit(f"-count: invalid sort value '{val}'. Expected 'true' or 'false'")
+        elif token.startswith("name="):
+            name = _unquote_name(token[len("name=") :].strip())
+        else:
+            cols.append(_unquote_name(token))
+
+    return cols, sort, name
+
+
 def parse_dropna_spec(
     raw: str | None,
     flag_name: str = "-dropna",
