@@ -126,10 +126,10 @@ pytae tips.parquet \
 
 **Output:**
 
-| smoker   |     tip |   total |   bill |   n |
-|:---------|--------:|--------:|-------:|----:|
-| Yes      | 3.08772 | 23.2323 |     57 | nan |
-| No       | 3.22546 | 20.7059 |     97 | nan |
+| smoker   |     tip |   total bill |   n |
+|:---------|--------:|-------------:|----:|
+| No       | 3.22546 |      20.7059 |  97 |
+| Yes      | 3.08772 |      23.2323 |  57 |
 
 Multiple grouping columns can be passed comma-separated: `-by "species,island"` or `-by "[group a],[group b]"`.
 

@@ -1229,10 +1229,10 @@ pytae tips.parquet \
 
 **Output:**
 
-| smoker   |     tip |   total |   bill |   n |
-|:---------|--------:|--------:|-------:|----:|
-| Yes      | 3.08772 | 23.2323 |     57 | nan |
-| No       | 3.22546 | 20.7059 |     97 | nan |
+| smoker   |     tip |   total bill |   n |
+|:---------|--------:|-------------:|----:|
+| No       | 3.22546 |      20.7059 |  97 |
+| Yes      | 3.08772 |      23.2323 |  57 |
 
 Multiple grouping columns can be passed comma-separated: `-by "species,island"` or `-by "[group a],[group b]"`.
 
@@ -5187,12 +5187,57 @@ pytae -file "customers.csv=c; orders.parquet=o" \
 
 `agg` aggregates numeric columns with grouping inherited from standalone `pt.by()` (or computes a whole-table summary when no grouping is set).
 
-### Calling Styles
+### Primary Calling Paradigms
 
-1. **Grouped aggregation**: `df.by("species").agg("mean")` or `df.by("species").agg(["sum", "mean", "n"])
-2. **Keyword column mappings**: `df.by("species").agg(count="n", bill_length_mm="mean", body_mass_g=["sum", "mean"])
-3. **Named output columns**: `df.by("species").agg(total="body_mass_g:sum")
-4. **Whole-table summary**: `df.agg("mean")` (computes grand totals across the entire table)
+1. **Explicit Aliasing (`alias = "col:operation"`) — Recommended**:
+   Every output column is explicitly declared as a keyword argument. No columns are created on the fly with unexpected suffixes.
+   ```python
+   df.by("species").agg(
+       n="n",
+       avg_bill="bill_length_mm:mean",
+       total_mass="body_mass_g:sum",
+       max_mass="body_mass_g:max",
+   )
+   ```
+
+2. **1-to-1 Column Preservation (`col = "operation"`)**:
+   Keep the original column name unchanged when performing a single aggregation on that column:
+   ```python
+   df.by("species").agg(
+       n="n",
+       bill_length_mm="mean",
+       body_mass_g="sum",
+   )
+   ```
+
+3. **Mixing Both Paradigms**:
+   Combine preserved column names and explicit aliases seamlessly in a single `.agg()` call:
+   ```python
+   tips.by("smoker", "time").agg(
+       cnt="n",
+       total_bill="mean",       # preserved 1-to-1 column name
+       avg_tip="tip:mean",      # explicit alias
+       max_tip="tip:max",       # explicit alias
+   )
+   ```
+
+4. **Columns with Spaces (String Specifications)**:
+   Bracket spaced columns matching the CLI `-agg` flag:
+   ```python
+   df.by("species").agg("[avg bill] = [total bill]:mean, cnt = n")
+   ```
+
+5. **Table-Wide Uniform Aggregations**:
+   Aggregate all numeric columns uniformly across groups:
+   ```python
+   df.by("species").agg(a=["mean", "n"])
+   ```
+
+6. **Whole-Table Summary**:
+   Omit `.by(...)` to compute grand totals across the entire table:
+   ```python
+   df.agg(n="n", avg_bill="bill_length_mm:mean")
+   ```
 
 ---
 
@@ -5209,101 +5254,62 @@ tips = pt.sample_data['tips']
 titanic = pt.sample_data['titanic']
 ```
 
-## List `a` — `n` always goes first
+## Explicit Aliasing (`alias = "col:operation"`) — Recommended
+
+Every output column name is explicitly declared on the left side of `=`. No columns are created on the fly, eliminating any guessing or magical suffixes.
 
 ```python
-# mean + n: regardless of list order, n always comes first before aggregated columns
-(penguins
- .select('species', 'island', 'bill_length_mm', 'body_mass_g')
- .by('species', 'island')
- .agg(a=['mean', 'n'])  # notice n comes first
-)
-```
-Output:
-```text
-shape: (5, 5)
-┌───────────┬───────────┬─────┬────────────────┬─────────────┐
-│ species   ┆ island    ┆ n   ┆ bill_length_mm ┆ body_mass_g │
-│ ---       ┆ ---       ┆ --- ┆ ---            ┆ ---         │
-│ str       ┆ str       ┆ i64 ┆ f64            ┆ f64         │
-╞═══════════╪═══════════╪═════╪════════════════╪═════════════╡
-│ Adelie    ┆ Biscoe    ┆ 44  ┆ 38.975         ┆ 3709.659091 │
-│ Adelie    ┆ Dream     ┆ 56  ┆ 38.501786      ┆ 3688.392857 │
-│ Adelie    ┆ Torgersen ┆ 52  ┆ 38.95098       ┆ 3706.372549 │
-│ Chinstrap ┆ Dream     ┆ 68  ┆ 48.833824      ┆ 3733.088235 │
-│ Gentoo    ┆ Biscoe    ┆ 124 ┆ 47.504878      ┆ 5076.01626  │
-└───────────┴───────────┴─────┴────────────────┴─────────────┘
-```
-
-```python
-# Multiple numeric aggregations — column names get suffix: col_sum, col_mean, col_max
-# also works with a single string if you only need one aggfunc
-(penguins
- .select('species', 'bill_length_mm', 'body_mass_g')
- .by('species')
- .agg(a=['sum', 'mean', 'max', 'n'])
-)
-```
-Output:
-```text
-shape: (3, 8)
-┌───────────┬─────┬─────────────┬─────────────┬─────────────┬────────────┬────────────┬────────────┐
-│ species   ┆ n   ┆ bill_length ┆ bill_length ┆ bill_length ┆ body_mass_ ┆ body_mass_ ┆ body_mass_ │
-│ ---       ┆ --- ┆ _mm_sum     ┆ _mm_mean    ┆ _mm_max     ┆ g_sum      ┆ g_mean     ┆ g_max      │
-│ str       ┆ i64 ┆ ---         ┆ ---         ┆ ---         ┆ ---        ┆ ---        ┆ ---        │
-│           ┆     ┆ f64         ┆ f64         ┆ f64         ┆ f64        ┆ f64        ┆ f64        │
-╞═══════════╪═════╪═════════════╪═════════════╪═════════════╪════════════╪════════════╪════════════╡
-│ Adelie    ┆ 152 ┆ 5857.5      ┆ 38.791391   ┆ 46.0        ┆ 558800.0   ┆ 3700.66225 ┆ 4775.0     │
-│           ┆     ┆             ┆             ┆             ┆            ┆ 2          ┆            │
-│ Chinstrap ┆ 68  ┆ 3320.7      ┆ 48.833824   ┆ 58.0        ┆ 253850.0   ┆ 3733.08823 ┆ 4800.0     │
-│           ┆     ┆             ┆             ┆             ┆            ┆ 5          ┆            │
-│ Gentoo    ┆ 124 ┆ 5843.1      ┆ 47.504878   ┆ 59.6        ┆ 624350.0   ┆ 5076.01626 ┆ 6300.0     │
-└───────────┴─────┴─────────────┴─────────────┴─────────────┴────────────┴────────────┴────────────┘
-```
-
-## Keyword arguments — per-column control, output order follows parameter order
-
-```python
-# Keyword arguments — mean for bill_length, sum+mean for body_mass, count named 'n'
+# Explicit aliases: every output column is named directly (no on-the-fly column creation)
 (penguins
  .by('species')
  .agg(
-     bill_length_mm='mean',
-     body_mass_g=['sum', 'mean'],
      n='n',
+     bill_length_mm='mean',
+     mass_sum='body_mass_g:sum',
+     mass_mean='body_mass_g:mean',
  )
 )
 ```
 Output:
 ```text
 shape: (3, 5)
-┌───────────┬────────────────┬─────────────────┬──────────────────┬─────┐
-│ species   ┆ bill_length_mm ┆ body_mass_g_sum ┆ body_mass_g_mean ┆ n   │
-│ ---       ┆ ---            ┆ ---             ┆ ---              ┆ --- │
-│ str       ┆ f64            ┆ f64             ┆ f64              ┆ i64 │
-╞═══════════╪════════════════╪═════════════════╪══════════════════╪═════╡
-│ Adelie    ┆ 38.791391      ┆ 558800.0        ┆ 3700.662252      ┆ 152 │
-│ Chinstrap ┆ 48.833824      ┆ 253850.0        ┆ 3733.088235      ┆ 68  │
-│ Gentoo    ┆ 47.504878      ┆ 624350.0        ┆ 5076.01626       ┆ 124 │
-└───────────┴────────────────┴─────────────────┴──────────────────┴─────┘
+┌───────────┬─────┬────────────────┬──────────┬─────────────┐
+│ species   ┆ n   ┆ bill_length_mm ┆ mass_sum ┆ mass_mean   │
+│ ---       ┆ --- ┆ ---            ┆ ---      ┆ ---         │
+│ str       ┆ i64 ┆ f64            ┆ f64      ┆ f64         │
+╞═══════════╪═════╪════════════════╪══════════╪═════════════╡
+│ Adelie    ┆ 152 ┆ 38.791391      ┆ 558800.0 ┆ 3700.662252 │
+│ Chinstrap ┆ 68  ┆ 48.833824      ┆ 253850.0 ┆ 3733.088235 │
+│ Gentoo    ┆ 124 ┆ 47.504878      ┆ 624350.0 ┆ 5076.01626  │
+└───────────┴─────┴────────────────┴──────────┴─────────────┘
 ```
 
+## Mixing Preserved Column Names & Explicit Aliases
+
+You can cleanly combine 1-to-1 preserved column names (`col='operation'`) and explicit aliases (`alias='col:operation'`) in the same `.agg()` call. Output column order strictly follows parameter order.
+
 ```python
-# Place count first (n at front), then aggregations
-# Output order follows parameter order
-# Note: the count keyword can be named anything — 'cnt', 'count', even 'maddy'
+# Place count first (n at front), then preserved columns and explicit aliases:
+# - cnt='n': row count
+# - total_bill='mean': 1-to-1 preserved column name (mean of total_bill kept as total_bill)
+# - avg_tip='tip:mean', max_tip='tip:max': explicit aliases (no columns created on the fly)
 (
     tips
     .select('smoker', 'time', 'total_bill', 'tip')
     .by('smoker', 'time')
-    .agg(cnt='n', total_bill='mean', tip=['mean', 'max'])
+    .agg(
+        cnt='n',
+        total_bill='mean',
+        avg_tip='tip:mean',
+        max_tip='tip:max',
+    )
 )
 ```
 Output:
 ```text
 shape: (4, 6)
 ┌────────┬────────┬─────┬────────────┬──────────┬─────────┐
-│ smoker ┆ time   ┆ cnt ┆ total_bill ┆ tip_mean ┆ tip_max │
+│ smoker ┆ time   ┆ cnt ┆ total_bill ┆ avg_tip  ┆ max_tip │
 │ ---    ┆ ---    ┆ --- ┆ ---        ┆ ---      ┆ ---     │
 │ cat    ┆ cat    ┆ i64 ┆ f64        ┆ f64      ┆ f64     │
 ╞════════╪════════╪═════╪════════════╪══════════╪═════════╡
@@ -5361,8 +5367,61 @@ shape: (3, 4)
 └───────────┴───────┴─────────┴─────────────┘
 ```
 
+## Table-Wide Uniform Aggregations (`a=...`)
+
+When you want to apply the same aggregation function(s) across **all** numeric columns uniformly without declaring each column individually, pass `a` or a list. Regardless of list order, `n` is always placed first.
+
 ```python
-# median is a standard aggfunc — works in list form or as keyword argument
+# mean + n: regardless of list order, n always comes first before aggregated columns
+(penguins
+ .select('species', 'island', 'bill_length_mm', 'body_mass_g')
+ .by('species', 'island')
+ .agg(a=['mean', 'n'])  # notice n comes first
+)
+```
+Output:
+```text
+shape: (5, 5)
+┌───────────┬───────────┬─────┬────────────────┬─────────────┐
+│ species   ┆ island    ┆ n   ┆ bill_length_mm ┆ body_mass_g │
+│ ---       ┆ ---       ┆ --- ┆ ---            ┆ ---         │
+│ str       ┆ str       ┆ i64 ┆ f64            ┆ f64         │
+╞═══════════╪═══════════╪═════╪════════════════╪═════════════╡
+│ Adelie    ┆ Biscoe    ┆ 44  ┆ 38.975         ┆ 3709.659091 │
+│ Adelie    ┆ Dream     ┆ 56  ┆ 38.501786      ┆ 3688.392857 │
+│ Adelie    ┆ Torgersen ┆ 52  ┆ 38.95098       ┆ 3706.372549 │
+│ Chinstrap ┆ Dream     ┆ 68  ┆ 48.833824      ┆ 3733.088235 │
+│ Gentoo    ┆ Biscoe    ┆ 124 ┆ 47.504878      ┆ 5076.01626  │
+└───────────┴───────────┴─────┴────────────────┴─────────────┘
+```
+
+```python
+# Multiple numeric aggregations across all numeric columns
+(penguins
+ .select('species', 'bill_length_mm', 'body_mass_g')
+ .by('species')
+ .agg(a=['sum', 'mean', 'max', 'n'])
+)
+```
+Output:
+```text
+shape: (3, 8)
+┌───────────┬─────┬─────────────┬─────────────┬─────────────┬────────────┬────────────┬────────────┐
+│ species   ┆ n   ┆ bill_length ┆ bill_length ┆ bill_length ┆ body_mass_ ┆ body_mass_ ┆ body_mass_ │
+│ ---       ┆ --- ┆ _mm_sum     ┆ _mm_mean    ┆ _mm_max     ┆ g_sum      ┆ g_mean     ┆ g_max      │
+│ str       ┆ i64 ┆ ---         ┆ ---         ┆ ---         ┆ ---        ┆ ---        ┆ ---        │
+│           ┆     ┆ f64         ┆ f64         ┆ f64         ┆ f64        ┆ f64        ┆ f64        │
+╞═══════════╪═════╪═════════════╪═════════════╪═════════════╪════════════╪════════════╪════════════╡
+│ Adelie    ┆ 152 ┆ 5857.5      ┆ 38.791391   ┆ 46.0        ┆ 558800.0   ┆ 3700.66225 ┆ 4775.0     │
+│           ┆     ┆             ┆             ┆             ┆            ┆ 2          ┆            │
+│ Chinstrap ┆ 68  ┆ 3320.7      ┆ 48.833824   ┆ 58.0        ┆ 253850.0   ┆ 3733.08823 ┆ 4800.0     │
+│           ┆     ┆             ┆             ┆             ┆            ┆ 5          ┆            │
+│ Gentoo    ┆ 124 ┆ 5843.1      ┆ 47.504878   ┆ 59.6        ┆ 624350.0   ┆ 5076.01626 ┆ 6300.0     │
+└───────────┴─────┴─────────────┴─────────────┴─────────────┴────────────┴────────────┴────────────┘
+```
+
+```python
+# median is a standard aggfunc — works across all numeric columns or as a keyword argument
 (
     penguins
     .select('species', 'island', 'bill_length_mm', 'body_mass_g')
@@ -5439,7 +5498,7 @@ shape: (6, 5)
 └───────────┴────────┴─────┴────────────────┴─────────────┘
 ```
 
-## `n`-only aggregation — count with no numeric columns needed
+## `n`-only Aggregation — Count With No Numeric Columns Needed
 
 ```python
 # Count only — useful for frequency tables on categorical columns
@@ -5465,9 +5524,9 @@ shape: (5, 3)
 └───────────┴───────────┴─────┘
 ```
 
-## Pipeline Chaining: Filter -> Select -> Aggregation -> Sort
+## Pipeline Chaining: Filter -> Select -> Aggregation -> Arrange
 
-Because  operations return DataFrames, you can chain them seamlessly with standard Pandas operations:
+Because `pytae` operations return native `DataFrame` objects, you can chain verbs seamlessly end-to-end:
 
 ```python
 (
@@ -5475,27 +5534,31 @@ Because  operations return DataFrames, you can chain them seamlessly with standa
     .filter('body_mass_g > 3000')
     .select('species', 'sex', 'body_mass_g')
     .by('species', 'sex')
-    .agg(a=['mean', 'max', 'n'])
-    .sort_values('body_mass_g_mean', ascending=False)
+    .agg(
+        cnt='n',
+        avg_mass='body_mass_g:mean',
+        max_mass='body_mass_g:max',
+    )
+    .arrange('-avg_mass')
 )
 ```
 Output:
 ```text
 shape: (8, 5)
-┌───────────┬────────┬─────┬──────────────────┬─────────────────┐
-│ species   ┆ sex    ┆ n   ┆ body_mass_g_mean ┆ body_mass_g_max │
-│ ---       ┆ ---    ┆ --- ┆ ---              ┆ ---             │
-│ str       ┆ str    ┆ i64 ┆ f64              ┆ f64             │
-╞═══════════╪════════╪═════╪══════════════════╪═════════════════╡
-│ Gentoo    ┆ Male   ┆ 61  ┆ 5484.836066      ┆ 6300.0          │
-│ Gentoo    ┆ Female ┆ 58  ┆ 4679.741379      ┆ 5200.0          │
-│ Gentoo    ┆ null   ┆ 4   ┆ 4587.5           ┆ 4875.0          │
-│ Adelie    ┆ Male   ┆ 73  ┆ 4043.493151      ┆ 4775.0          │
-│ Chinstrap ┆ Male   ┆ 34  ┆ 3938.970588      ┆ 4800.0          │
-│ Adelie    ┆ null   ┆ 4   ┆ 3681.25          ┆ 4250.0          │
-│ Chinstrap ┆ Female ┆ 32  ┆ 3572.65625       ┆ 4150.0          │
-│ Adelie    ┆ Female ┆ 65  ┆ 3424.615385      ┆ 3900.0          │
-└───────────┴────────┴─────┴──────────────────┴─────────────────┘
+┌───────────┬────────┬─────┬─────────────┬──────────┐
+│ species   ┆ sex    ┆ cnt ┆ avg_mass    ┆ max_mass │
+│ ---       ┆ ---    ┆ --- ┆ ---         ┆ ---      │
+│ str       ┆ str    ┆ i64 ┆ f64         ┆ f64      │
+╞═══════════╪════════╪═════╪═════════════╪══════════╡
+│ Gentoo    ┆ Male   ┆ 61  ┆ 5484.836066 ┆ 6300.0   │
+│ Gentoo    ┆ Female ┆ 58  ┆ 4679.741379 ┆ 5200.0   │
+│ Gentoo    ┆ null   ┆ 4   ┆ 4587.5      ┆ 4875.0   │
+│ Adelie    ┆ Male   ┆ 73  ┆ 4043.493151 ┆ 4775.0   │
+│ Chinstrap ┆ Male   ┆ 34  ┆ 3938.970588 ┆ 4800.0   │
+│ Adelie    ┆ null   ┆ 4   ┆ 3681.25     ┆ 4250.0   │
+│ Chinstrap ┆ Female ┆ 32  ┆ 3572.65625  ┆ 4150.0   │
+│ Adelie    ┆ Female ┆ 65  ┆ 3424.615385 ┆ 3900.0   │
+└───────────┴────────┴─────┴─────────────┴──────────┘
 ```
 
 ## Columns with Spaces & String Specifications
