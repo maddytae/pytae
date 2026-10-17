@@ -55,6 +55,13 @@ def test_filter_polars_operators():
     res_cont = filter_polars(df, [("b", ("contains", "an"))])
     assert res_cont["b"].to_list() == ["banana"]
 
+    # Multiple prefixes / suffixes (list and tuple)
+    res_multi_sw = filter_polars(df, [("b", ("startswith", ["ba", "ch"]))])
+    assert res_multi_sw["b"].to_list() == ["banana", "cherry"]
+
+    res_multi_ew = filter_polars(df, [("b", ("endswith", ("na", "te")))])
+    assert res_multi_ew["b"].to_list() == ["banana", "date"]
+
     # Null checks: 1-tuples raise ValueError, string predicates succeed
     import pytest
     with pytest.raises(ValueError, match=r"1-tuple pattern"):

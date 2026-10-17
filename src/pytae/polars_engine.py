@@ -127,12 +127,28 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             if op == "<=":
                 return col_expr <= cval
             if op == "startswith":
+                if isinstance(val, (list, tuple)):
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.starts_with(str(v)) for v in val])
                 return col_expr.cast(pl.String).str.starts_with(str(val))
             if op == "endswith":
+                if isinstance(val, (list, tuple)):
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.ends_with(str(v)) for v in val])
                 return col_expr.cast(pl.String).str.ends_with(str(val))
             if op == "contains":
+                if isinstance(val, (list, tuple)):
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v), literal=True) for v in val])
                 return col_expr.cast(pl.String).str.contains(str(val), literal=True)
             if op == "regex":
+                if isinstance(val, (list, tuple)):
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v)) for v in val])
                 return col_expr.cast(pl.String).str.contains(str(val))
 
     if isinstance(cond, str):
