@@ -453,7 +453,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             val = m_cmp.group(3).strip()
             if val.lower() in ("none", "null", "nan") and op in ("!=", "=="):
                 op_null = "notna" if op == "!=" else "isna"
-                entries.append((col, (op_null,)))
+                entries.append((col, (op_null, None)))
                 continue
             entries.append((col, f"{op} {val}"))
             continue
@@ -471,7 +471,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             col = m_sql_null.group(1).strip()
             m_name = m_sql_null.group(2).strip().lower()
             op = "notna" if "not" in m_name else "isna"
-            entries.append((col, (op,)))
+            entries.append((col, (op, None)))
             continue
         # Functional null check calls: notna(col), is_not_null(col), isna(col), is_null(col)
         m_fn_null = re.match(r"^(notna|isna|is_not_null|is_null)\((.+)\)$", raw_entry, flags=re.IGNORECASE)
@@ -479,7 +479,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             op_name = m_fn_null.group(1).strip().lower()
             col = m_fn_null.group(2).strip()
             op = "notna" if "not" in op_name else "isna"
-            entries.append((col, (op,)))
+            entries.append((col, (op, None)))
             continue
         # String method calls: col.str.contains('val'), col.str.starts_with('val'), col.str.endswith('val')
         m_str = re.match(r"^([^()]+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw_entry)
@@ -498,7 +498,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             col = m_null.group(1).strip()
             m_name = m_null.group(2).strip()
             op = "notna" if "not" in m_name else "isna"
-            entries.append((col, (op,)))
+            entries.append((col, (op, None)))
             continue
         # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
         m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)

@@ -55,11 +55,17 @@ def test_filter_polars_operators():
     res_cont = filter_polars(df, [("b", ("contains", "an"))])
     assert res_cont["b"].to_list() == ["banana"]
 
-    # Nulls
-    res_null = filter_polars(df, [("c", ("isna",))])
+    # Null checks: 1-tuples raise ValueError, string predicates succeed
+    import pytest
+    with pytest.raises(ValueError, match=r"1-tuple pattern"):
+        filter_polars(df, [("c", ("isna",))])
+    with pytest.raises(ValueError, match=r"1-tuple pattern"):
+        filter_polars(df, [("c", ("notna",))])
+
+    res_null = filter_polars(df, [("c", ("isna", None))])
     assert len(res_null) == 2
 
-    res_notnull = filter_polars(df, [("c", ("notna",))])
+    res_notnull = filter_polars(df, [("c", ("notna", None))])
     assert len(res_notnull) == 3
 
     # Intervals

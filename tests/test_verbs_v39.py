@@ -274,5 +274,6 @@ def test_filter_notna_spaced_column():
 
     # 5. Dict syntax
     assert len(df.filter({"bill length mm": "notna"})) == 3
-    assert len(df.filter({"bill length mm": ("notna",)})) == 3
+    with pytest.raises(ValueError, match=r"1-tuple pattern"):
+        df.filter({"bill length mm": ("notna",)})
 

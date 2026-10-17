@@ -92,13 +92,17 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
 
     if isinstance(cond, tuple):
         if len(cond) == 1:
-            op = cond[0]
+            raise ValueError(
+                f"filter(): 1-tuple pattern {cond!r} on column {col!r} is not supported. "
+                f"In line with 'one and only one right way', use predicate expressions instead, "
+                f"e.g. filter('{col}.notna()') or filter('{col}.isna()')."
+            )
+        elif len(cond) == 2:
+            op, val = cond
             if op == "isna":
                 return col_expr.is_null()
             if op == "notna":
                 return col_expr.is_not_null()
-        elif len(cond) == 2:
-            op, val = cond
             if op == "in":
                 vals = [_coerce_val(v) for v in val] if isinstance(val, (list, tuple)) else val
                 return col_expr.is_in(vals)

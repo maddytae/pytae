@@ -275,9 +275,9 @@ Supported Condition Types & Operators:
     Suffix match:        code=("endswith", "3")
     Substring match:     species=("contains", "in")    # regex=False, search-anywhere
     Regex match:         species=("regex", r"^[AB]")   # regex=True, search-anywhere
-  - Null Checks (unary 1-element tuples):
-    Missing values:      sex=("isna",)
-    Non-missing values:  sex=("notna",)
+  - Null Checks (predicate expressions):
+    Missing values:      "sex.isna()" or "sex is null"
+    Non-missing values:  "sex.notna()" or "sex is not null"
 
 Multiple Conditions on the Same Column:
   Python kwargs cannot repeat parameter names. Solve this using:
