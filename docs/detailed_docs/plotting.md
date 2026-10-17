@@ -411,3 +411,4 @@ pip install "pytae[plot]"
 ```
 
 This installs `matplotlib`, unlocking all plotting capabilities across both the Python library and CLI.
+
