@@ -44,6 +44,10 @@ String values inside `-filter` must be enclosed in single quotes `'value'`:
 pytae penguins.parquet -filter "species = 'Gentoo'" -head 3
 ```
 
+> [!IMPORTANT]
+> **Strict String Quoting Requirement**:
+> String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `species = Gentoo` or `id = 9` where `id` is a string column), `pytae` raises an explicit error guiding you to quote the string. This prevents silent type coercion and avoids unexpected lexicographical comparison anomalies (such as string `'10'` evaluating as less than string `'9'`).
+
 **Output:**
 
 | species   | island   |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
@@ -218,6 +222,7 @@ pytae penguins.parquet -dropna "body_mass_g,sex" -head 3
 
 In terminal shells (bash, zsh):
 - Enclose the entire spec in outer double quotes: `-filter "..."`.
-- Enclose string literals in inner single quotes: `'Gentoo'`.
+- Enclose string literals in inner single quotes: `'Gentoo'`, `'9'`. Unquoted strings or numbers against string columns will raise an explicit `TypeError`.
+- Numeric literals should remain unquoted: `body_mass_g > 3500`.
 - Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm] desc" -head 3`.
 

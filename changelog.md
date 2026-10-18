@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.10.1] - 2026-10-18
+
+### Added
+- **Interactive In-Terminal Visualizers (`-bar`, `-scatter`, `-corr`)**:
+  - Horizontal bar charts via `-bar [COL] [VAL_COL]` (and Python `pt.bar()`, `df.bar()`) supporting:
+    - Automatic categorical frequency distributions when a single column is specified (`pytae penguins.parquet -bar species`).
+    - Numeric aggregation when two columns are provided (`pytae penguins.parquet -bar species body_mass_g`).
+    - Multi-column comparison when multiple value columns are specified (`pytae penguins.parquet -bar species "bill_length_mm,bill_depth_mm"`).
+  - Braille scatter plots via `-scatter X Y [OPTS]` (and Python `pt.scatter()`, `df.scatter()`) supporting:
+    - High-resolution braille 2×4 dot sub-character grid rendering (`braille=True`).
+    - Standard ASCII character fallback (`braille=False`).
+    - Linear regression trendline fit with Pearson correlation coefficient display (`trend=True`).
+    - Key bivariate summary statistics ($N$, $R$, $R^2$, slope, intercept, min/max).
+  - Pearson correlation matrix heatmap via `-corr [COLS] [OPTS]` (and Python `pt.corr()`, `df.corr()`) supporting:
+    - Automatic selection of all numeric columns when omitted.
+    - Shaded terminal blocks (`█`, `▓`, `▒`, `░`) representing correlation strength and direction.
+    - Pairwise ranked correlation table mode (`pairwise=True`).
+  - Unified `width` parameter and summary statistics across all terminal visualizers (`-freq`, `-hist`, `-bar`, `-scatter`, `-corr`).
+  - Dedicated CLI help topics: `pytae --help-topic bar`, `pytae --help-topic scatter`, and `pytae --help-topic corr`.
+
+### Fixed
+- **Strict String Quoting in `-filter` & `df.filter()`**:
+  - Enforced strict string quoting for string columns in `polars_engine.py` and `cli_parsing.py`.
+  - Non-string values (e.g. unquoted numbers `id = 9` or unquoted literals) passed to string columns now raise an explicit, actionable `TypeError` guiding the user to wrap strings in single quotes (e.g. `id = '9'`).
+  - Eliminates silent, confusing lexicographical comparison bugs where numbers were auto-coerced to strings (such as `'10' < '9'`).
+- **Terminal Table Output Truncation & DataFrame Formatting**:
+  - Unwrapped `pytae.dataframe.DataFrame` to underlying Polars DataFrame in `_format_table` and `_apply_round` in `cli_run.py`.
+  - Increased the default terminal table display threshold from 100 to 250 rows before truncating (`tbl_rows = max(n_rows, 10) if n_rows <= 250 else 10`), ensuring queries returning up to 250 rows (such as `-by x -agg y=col:sum -bar`) show all rows in full.
+  - Stored raw Polars DataFrames in `pipeline._pldf` across `-freq`, `-hist`, `-bar`, and `-corr` for seamless downstream terminal rendering.
+
+### Documentation
+- **CLI & Library Plotting Documentation Separation**:
+  - Renamed `docs/detailed_docs/cli/plotting.md` to `docs/detailed_docs/cli/cli_plots.md`.
+  - Clarified documentation boundaries so `cli_plots.md` focuses purely on CLI terminal and headless plotting, while `plotting.ipynb` focuses entirely on the Python plotting library.
+  - Updated `docs/detailed_docs/cli/filter.md` with explicit guidelines and alerts regarding strict string quoting requirements.
+
 ## [3.10.0] - 2026-10-17
 
 ### Added

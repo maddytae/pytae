@@ -34,6 +34,9 @@ TABLE OF CONTENTS
           - pt.glimpse() / df.pt.glimpse()
           - pt.freq() / df.pt.freq()
           - pt.hist() / df.pt.hist()
+          - pt.bar() / df.pt.bar()
+          - pt.scatter() / df.pt.scatter()
+          - pt.corr() / df.pt.corr()
           - pt.join() / df.pt.join() / df.join() (Polars Join Engine)
           - pt.concat() / df.pt.concat() / df.concat() (Stacking Engine)
           - Transparent Polars Verb Delegation (__getattr__)
@@ -46,7 +49,7 @@ TABLE OF CONTENTS
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
     5.3.  All CLI Flags & Syntax Rules
-    5.4.  In-Terminal Visualizations (-freq, -hist)
+    5.4.  In-Terminal Visualizations (-freq, -hist, -bar, -scatter, -corr)
     5.5.  Quoting & Delimiter Standards (: vs =)
     5.6.  Multi-File Operations (-file, -join, -concat, -sql)
     5.7.  Batch Processing, Conversions & Clipboard (-o)
@@ -166,6 +169,9 @@ Top-Level Functions exported by `pytae`:
   - pt.glimpse(df, width=None)
   - pt.freq(df, col=None, *, dropna=False)
   - pt.hist(df, col=None, bins=10)
+  - pt.bar(df, col=None, val_col=None, *, width=None, dropna=False)
+  - pt.scatter(df, x, y, *, width=None, height=None, braille=True, trend=False, stats=True)
+  - pt.corr(df, *cols, method="pearson", pairwise=False, width=None)
   - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False)
   - pt.safe_reset_index(df)
   - pt.sample(data_or_name="penguins", n=None, frac=None, seed=None)
@@ -196,6 +202,9 @@ DataFrame Accessor (`df.pt`):
     df.pt.glimpse(...)
     df.pt.freq(...)
     df.pt.hist(...)
+    df.pt.bar(...)
+    df.pt.scatter(...)
+    df.pt.corr(...)
     df.pt.clean_columns(...)
     df.pt.safe_reset_index(...)
     df.pt.to_clip(...)
@@ -255,7 +264,7 @@ Calling Styles:
 Supported Condition Types & Operators:
   - Equality:
     species="Adelie"
-    "species = Adelie" or "species = 'Adelie'" or "species == 'Adelie'"
+    "species = 'Adelie'" or "species == 'Adelie'"  (Note: String values strictly require quotes; unquoted strings/numbers raise TypeError)
     {"species": "Adelie"}
   - Membership (in list):
     species=["Adelie", "Gentoo"]
@@ -680,6 +689,12 @@ Examples:
   Computes frequency distribution DataFrame with counts, percentages, and ASCII bars.
 - pt.hist(df, col=None, bins=10) / df.pt.hist(col=None, bins=10):
   Computes numeric histogram DataFrame with bin intervals, counts, and ASCII bars; accepts "col:bins" shorthand.
+- pt.bar(df, col=None, val_col=None, *, width=None, dropna=False) / df.pt.bar(...):
+  Computes categorical horizontal bar chart DataFrame with auto-frequency, numeric aggregation, or multi-column comparison.
+- pt.scatter(df, x, y, *, width=None, height=None, braille=True, trend=False, stats=True) / df.pt.scatter(...):
+  Renders terminal scatter plot with high-resolution braille 2x4 dot sub-character grid, regression trendline, and summary stats.
+- pt.corr(df, *cols, method="pearson", pairwise=False, width=None) / df.pt.corr(...):
+  Computes Pearson correlation matrix heatmap with terminal shading blocks or pairwise ranked correlation table.
 - pt.join(df, right, on=None, how="inner", suffix="_right", suffixes=None, validate=None, coalesce=None) / df.pt.join(...) / df.join(...):
   Joins two DataFrames on keys using high-performance Polars engine. Supports how="inner"|"left"|"right"|"full"|"semi"|"anti"|"cross",
   colon notation on="id:uid", validation ("1:1", "1:m", "m:1", "m:m"), auto-discovery of common keys, and preserves LazyFrame query plans.
@@ -776,9 +791,12 @@ Inspection & Summary Flags:
   -nrows, -limit N      Limit reading to first N rows of file
   -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc" or -arrange "col1 desc"
 
-In-Terminal ASCII Visualizations:
+In-Terminal Visualizations:
   -freq COL             Render horizontal frequency distribution bars with counts & percentages
   -hist COL[:BINS]      Render in-terminal distribution histogram for a numeric column (default: 10 bins)
+  -bar COL [VAL]        Render categorical horizontal bar chart (auto-frequency or numeric aggregation)
+  -scatter X Y [OPTS]   Render in-terminal scatter plot with braille dots and optional trendline
+  -corr [COLS] [OPTS]   Render in-terminal Pearson correlation matrix heatmap
 
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
@@ -815,13 +833,27 @@ Output & Formatting Flags:
   -round N              Round numeric output columns to N decimal places
 
 
-5.4. In-Terminal Visualizations (-freq, -hist)
+5.4. In-Terminal Visualizations (-freq, -hist, -bar, -scatter, -corr)
 --------------------------------------------------------------------------------
 1. Horizontal Frequency Bars (-freq):
    pytae penguins.parquet -freq species
 
 2. In-Terminal Distribution Histogram (-hist):
    pytae penguins.parquet -hist body_mass_g:8
+
+3. In-Terminal Categorical Bar Charts (-bar):
+   pytae penguins.parquet -bar species
+   pytae penguins.parquet -bar species body_mass_g
+   pytae penguins.parquet -bar species "bill_length_mm,bill_depth_mm"
+
+4. In-Terminal Scatter Plot (-scatter):
+   pytae penguins.parquet -scatter bill_length_mm bill_depth_mm
+   pytae penguins.parquet -scatter bill_length_mm body_mass_g trend=true
+
+5. In-Terminal Pearson Correlation Heatmap (-corr):
+   pytae penguins.parquet -corr
+   pytae penguins.parquet -corr "bill_length_mm,bill_depth_mm,body_mass_g"
+   pytae penguins.parquet -corr pairwise=true
 
 
 5.5. Quoting & Delimiter Standards (: vs =)
