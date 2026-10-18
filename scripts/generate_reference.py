@@ -1156,22 +1156,41 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   ├── comparison_to_pandas.md
 │   ├── comparison_to_sas.md
 │   ├── detailed_docs
-│   │   ├── agg.md
-│   │   ├── arrange.md
-│   │   ├── cli_only.md
-│   │   ├── distinct.md
-│   │   ├── filter.md
-│   │   ├── join.md
-│   │   ├── library_only.md
-│   │   ├── mutate.md
-│   │   ├── other_utilities.md
-│   │   ├── head_tail.md
-│   │   ├── pivot.md
-│   │   ├── plotting.ipynb
-│   │   ├── plotting.md
-│   │   ├── read_write.md
-│   │   ├── reshape.md
-│   │   └── select.md
+│   │   ├── cli
+│   │   │   ├── agg.md
+│   │   │   ├── arrange.md
+│   │   │   ├── clean_replace.md
+│   │   │   ├── cli_plots.md
+│   │   │   ├── diff.md
+│   │   │   ├── distinct.md
+│   │   │   ├── filter.md
+│   │   │   ├── head_tail.md
+│   │   │   ├── inspect.md
+│   │   │   ├── join.md
+│   │   │   ├── multi_file.md
+│   │   │   ├── mutate.md
+│   │   │   ├── other_utilities.md
+│   │   │   ├── pivot.md
+│   │   │   ├── read_write.md
+│   │   │   ├── reshape.md
+│   │   │   ├── select.md
+│   │   │   └── sql.md
+│   │   ├── library
+│   │   │   ├── agg.ipynb
+│   │   │   ├── arrange.ipynb
+│   │   │   ├── distinct.ipynb
+│   │   │   ├── filter.ipynb
+│   │   │   ├── head_tail.ipynb
+│   │   │   ├── join.ipynb
+│   │   │   ├── mutate.ipynb
+│   │   │   ├── other_utilities.ipynb
+│   │   │   ├── pivot.ipynb
+│   │   │   ├── read_write.ipynb
+│   │   │   ├── reshape.ipynb
+│   │   │   ├── select.ipynb
+│   │   │   └── sql.ipynb
+│   │   └── plotting
+│   │       └── plotting.ipynb
 │   └── pytae.md
 ├── pyproject.toml
 ├── readme.md

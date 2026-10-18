@@ -1,10 +1,10 @@
-# CLI Feature Guide: Visualizations & In-Line Charts
+# CLI Feature Guide: CLI Plotting & Visualizations (`cli_plots`)
 
 [← Back to Master Reference](../../pytae.md)
 
-`pytae` includes first-class visualization capabilities directly from the command line:
-- **Terminal In-Line Visualizations**: Instant ASCII frequency bars (`-freq`) and numeric distribution histograms (`-hist`) rendered directly in console scrollback.
-- **Headless Figure Plotting**: Full Matplotlib publication-grade plotting via `-plot` and `-finalize`, with automatic figure export (`-o plot.png`).
+`pytae` includes first-class visualization and plotting capabilities directly from the command line:
+- **Terminal In-Line Visualizations**: Instant ASCII and Braille charts rendered directly in console scrollback (`-freq`, `-hist`, `-bar`, `-scatter`, `-corr`).
+- **Command-Line Figure Plotting**: Full Matplotlib publication-grade plotting directly from CLI pipelines via `-plot` and `-finalize`, with automatic figure export (`-o plot.png`).
 
 ---
 
@@ -214,7 +214,7 @@ pytae penguins.parquet -corr "target=body_mass_g"
 
 ## Headless Figure Plotting (`-plot` & `-finalize`)
 
-`-plot` connects `pytae`'s visualization engine (`Plotter`) directly to the command line. Any pipeline can end with a plot and route directly to disk or interactive screen.
+`-plot` renders publication-grade charts directly from the command-line pipeline. Any pipeline can end with a plot and route directly to disk or interactive screen.
 
 ### 1. Single Plots with Explicit Pipeline Aggregation
 
