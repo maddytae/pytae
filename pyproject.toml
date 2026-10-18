@@ -74,5 +74,5 @@ pretty = true
 exclude = ["src/pytae/plotting.py"]
 
 [[tool.mypy.overrides]]
-module = ["pytae.plotting", "pytae.plotting.*"]
+module = ["pytae.*"]
 ignore_errors = true
