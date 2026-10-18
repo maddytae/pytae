@@ -100,7 +100,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
                 .filter("body_mass > 4000 & bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")
-                .agg(n="n", avg_mass="body_mass:mean", max_mass="body_mass:max")
+                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
                 .arrange("avg_mass desc")
             )
             times_pt.append(time.perf_counter() - t_start)
@@ -115,7 +115,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
                 .filter("body_mass > 4000 & bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")
-                .agg(n="n", avg_mass="body_mass:mean", max_mass="body_mass:max")
+                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
                 .arrange("avg_mass desc")
                 .collect()
             )
@@ -178,7 +178,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
         for _ in range(runs):
             t_start = time.perf_counter()
             _ = pt_df.by("species", "island").agg(
-                n="n",
+                n="count",
                 avg_mass="body_mass:mean",
                 max_mass="body_mass:max",
             )

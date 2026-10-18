@@ -65,7 +65,7 @@ pytae penguins.parquet \
   -o heavy_adelie.csv
 
 # 3. Grouped aggregation & reshaping
-pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean, count=n"
+pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean, total=count"
 
 # 4. Deduplicate rows across key columns
 pytae penguins.parquet -distinct "species,island"

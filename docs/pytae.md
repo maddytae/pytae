@@ -107,7 +107,7 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 
 ### 5. `agg` instead of `summarise` or `summarize`
 - **Why not `summarise`?** In Python, `summarise` vs `summarize` introduces spelling ambiguity (British vs American English). Having both violates *"One and Only One Obvious Way"*.
-- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), Pytae eliminates spelling confusion while providing declarative named aggregations (`avg_mass="body_mass_g:mean"`, `n="n"`).
+- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), Pytae eliminates spelling confusion while providing declarative named aggregations (`avg_mass="body_mass_g:mean"`, `total="count"`).
 
 ### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
 - Pytae uses strictly complementary, intuitive English opposites:
@@ -149,7 +149,7 @@ Whether you are writing a production Python service, conducting exploratory anal
       df.filter("sales > 100")                        -filter "sales > 100"
         .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
         .by("region")                                 -by region
-        .agg(total_rev="sum(sales)", n="n")           -agg "total_rev = sum(sales), n = n"
+        .agg(total_rev="sum(sales)", n="count")       -agg "total_rev = sum(sales), n = count"
         .arrange("total_rev desc")                    -arrange "total_rev desc"
                       │                                       │
                       ▼                                       ▼
@@ -355,7 +355,7 @@ report = (
     )
     .by("species", "island")
     .agg(
-        n="n",
+        n="count",
         avg_mass_kg="mean(body_mass_kg)",
         max_ratio="max(bill_ratio)"
     )
@@ -374,7 +374,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500, sex.notna()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
-  -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
+  -agg "n = count, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```

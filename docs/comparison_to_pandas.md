@@ -81,7 +81,8 @@ In Pytae, analytical verbs (`by`, `agg`, `pivot`, `freq`) default to **`dropna=F
 
 ```python
 # PYTAE: Missing groups are preserved explicitly
-penguins.by("sex").agg(n="n")
+penguins.by("sex").count()
+# or: penguins.by("sex").agg(total="count")
 # Output: Female: 165, Male: 168, null: 11 (Total = 344 rows; 100% accounted for)
 ```
 
@@ -337,7 +338,7 @@ import pytae as pt
     .filter("body_mass_g > 3500 & sex.notna()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
-    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
+    .agg(n="count", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
     .arrange("avg_mass_kg desc")
     .to_parquet("summary.parquet")
 )

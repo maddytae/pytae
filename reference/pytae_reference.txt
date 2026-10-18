@@ -97,7 +97,7 @@ Key principles:
 5. Expressive & Human-Friendly: Minimizes boilerplate. Filtering supports 
    intervals `[3000, 4000]`, string operations, and keyword arguments. Grouped 
    aggregations express grouping via standalone `pt.by()` and concise aggregations 
-   (e.g. `body_mass_g=mean`, `n=n`) without tedious `.groupby().agg()` boilerplate.
+   (e.g. `body_mass_g=mean`, `total=count`) without tedious `.groupby().agg()` boilerplate.
 6. Non-Destructive: All library verbs return copies of DataFrames and never 
    mutate inputs in place. Original indices are preserved during filtering.
 7. Honest Error Handling ("Be generous in what you accept, but strictly honest 
@@ -588,14 +588,14 @@ Calling Styles:
      )
   4. Whole-Table Grand Total (Ungrouped summary, 1 row):
      penguins.pt.agg("mean, n")
-     penguins.pt.agg(avg_mass="body_mass_g:mean", n="n")
+     penguins.pt.agg(avg_mass="body_mass_g:mean", total="count")
 
 Key Rules & Behaviors:
   - NO REDUNDANT SELECT:
     You NEVER need a `pt.select(...)` or `-select` before `agg()`. Target columns and aggregation
     functions are declared directly inside `agg`.
-  - Row Count ('n'):
-    Assigning a key with value 'n' produces the group row count: `count="n"`.
+  - Row Count ('count' / 'n'):
+    Assigning a key with value 'count' (or legacy alias 'n') produces the row count: `total="count"` or `n="count"`.
   - Column Names:
     If a single aggregation is applied, the original name is preserved: `body_mass_g='mean'`.
     If multiple aggregations are applied, names become `{col}_{agg}`: `body_mass_g=['mean', 'max']`.
@@ -786,11 +786,11 @@ Column Transformation Flags:
 
 Aggregation & Reshaping Flags:
   -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass desc" -head 1)
-  -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
+  -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, total=count" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
-  -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=n")
+  -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=count")
 
 SQL & Multi-File Flags:
   -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
@@ -824,7 +824,7 @@ Output & Formatting Flags:
    - `-filter`: "species = 'Adelie', body_mass_g > 3500"
    - `-clean_columns`: "strip=True, fill='_', case='lower'"
    - `-join`: "left=df1, right=df2, on=id, how=left"
-   - `-agg`: "tip=mean, total_bill=mean, n=n"
+   - `-agg`: "tip=mean, total_bill=mean, total=count"
 
 
 5.6. Multi-File Operations (-file, -join, -concat, -sql)
@@ -1027,9 +1027,9 @@ counts = penguins.pt.pivot(r="island", c="species", a="n")
 
 ```bash
 # Equivalent CLI One-Liners:
-pytae penguins.parquet -by "species,island" -agg "mass_mean=body_mass_g:mean, count=n"
+pytae penguins.parquet -by "species,island" -agg "mass_mean=body_mass_g:mean, total=count"
 pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
-pytae penguins.parquet -pivot "r=island, c=species, a=n"
+pytae penguins.parquet -pivot "r=island, c=species, a=count"
 ```
 
 Recipe 3: Group-Aware Row Slicing (pt.by + arrange + head)
@@ -1177,7 +1177,7 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `n` (row
 
 > [!TIP]
 > **Column Scoping in Aggregations**:
-> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g=mean, n=n"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
+> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g=mean, n=count"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
 > - **Bulk aggregations & column pruning**: When using bulk functions (e.g. `-agg mean` across all numeric columns) or working with wide files where you want to load only relevant columns into RAM, using `-select` beforehand (e.g. `-select "species,contains=mass" -by species -agg mean`) is completely valid and recommended for performance.
 
 ### Single Function across Numeric Columns
@@ -1196,12 +1196,12 @@ pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
 | Chinstrap |        3733.1 |
 | Gentoo    |        5076   |
 
-### Multiple Functions (`"mean,n"`)
+### Multiple Functions (`"mean,count"`)
 
 Compute mean and sample size simultaneously:
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g=mean, n=n" -round 1
+pytae penguins.parquet -by species -agg "body_mass_g=mean, n=count" -round 1
 ```
 
 **Output:**
@@ -4388,11 +4388,11 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 ```bash
 # Direct pipe (no dash needed!)
 cat penguins.csv | pytae -head 5
-curl -s https://example.com/events.csv | pytae -by event_type -agg "count=n"
+curl -s https://example.com/events.csv | pytae -by event_type -count
 
 # Explicit dash also fully supported
 cat penguins.csv | pytae - -head 5
-curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -agg "count=n"
+curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -count
 ```
 
 When reading from STDIN, `pytae` automatically inspects the first chunk to sniff the format (`csv` vs `jsonl`). You can explicitly specify or force the input format using `-fmt`:
@@ -11465,7 +11465,7 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 
 ### 5. `agg` instead of `summarise` or `summarize`
 - **Why not `summarise`?** In Python, `summarise` vs `summarize` introduces spelling ambiguity (British vs American English). Having both violates *"One and Only One Obvious Way"*.
-- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), Pytae eliminates spelling confusion while providing declarative named aggregations (`avg_mass="body_mass_g:mean"`, `n="n"`).
+- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), Pytae eliminates spelling confusion while providing declarative named aggregations (`avg_mass="body_mass_g:mean"`, `total="count"`).
 
 ### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
 - Pytae uses strictly complementary, intuitive English opposites:
@@ -11507,7 +11507,7 @@ Whether you are writing a production Python service, conducting exploratory anal
       df.filter("sales > 100")                        -filter "sales > 100"
         .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
         .by("region")                                 -by region
-        .agg(total_rev="sum(sales)", n="n")           -agg "total_rev = sum(sales), n = n"
+        .agg(total_rev="sum(sales)", n="count")       -agg "total_rev = sum(sales), n = count"
         .arrange("total_rev desc")                    -arrange "total_rev desc"
                       │                                       │
                       ▼                                       ▼
@@ -11713,7 +11713,7 @@ report = (
     )
     .by("species", "island")
     .agg(
-        n="n",
+        n="count",
         avg_mass_kg="mean(body_mass_kg)",
         max_ratio="max(bill_ratio)"
     )
@@ -11732,7 +11732,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500, sex.notna()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
-  -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
+  -agg "n = count, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```
@@ -11827,7 +11827,8 @@ In Pytae, analytical verbs (`by`, `agg`, `pivot`, `freq`) default to **`dropna=F
 
 ```python
 # PYTAE: Missing groups are preserved explicitly
-penguins.by("sex").agg(n="n")
+penguins.by("sex").count()
+# or: penguins.by("sex").agg(total="count")
 # Output: Female: 165, Male: 168, null: 11 (Total = 344 rows; 100% accounted for)
 ```
 
@@ -12083,7 +12084,7 @@ import pytae as pt
     .filter("body_mass_g > 3500 & sex.notna()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
-    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
+    .agg(n="count", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
     .arrange("avg_mass_kg desc")
     .to_parquet("summary.parquet")
 )
@@ -12401,7 +12402,7 @@ import pytae as pt
     .filter("body_mass_g > 3500 & sex.notna()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
-    .agg(n="n", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
+    .agg(n="count", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
     .arrange("avg_mass_kg desc")
     .to_parquet("summary.parquet")
 )
@@ -12413,7 +12414,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500, sex.notna()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
-  -agg "n = n, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
+  -agg "n = count, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```
@@ -13013,7 +13014,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
                 .filter("body_mass > 4000 & bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")
-                .agg(n="n", avg_mass="body_mass:mean", max_mass="body_mass:max")
+                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
                 .arrange("avg_mass desc")
             )
             times_pt.append(time.perf_counter() - t_start)
@@ -13028,7 +13029,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
                 .filter("body_mass > 4000 & bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")
-                .agg(n="n", avg_mass="body_mass:mean", max_mass="body_mass:max")
+                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
                 .arrange("avg_mass desc")
                 .collect()
             )
@@ -13091,7 +13092,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
         for _ in range(runs):
             t_start = time.perf_counter()
             _ = pt_df.by("species", "island").agg(
-                n="n",
+                n="count",
                 avg_mass="body_mass:mean",
                 max_mass="body_mass:max",
             )

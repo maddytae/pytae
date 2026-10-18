@@ -39,7 +39,7 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `n` (row
 
 > [!TIP]
 > **Column Scoping in Aggregations**:
-> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g=mean, n=n"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
+> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g=mean, n=count"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
 > - **Bulk aggregations & column pruning**: When using bulk functions (e.g. `-agg mean` across all numeric columns) or working with wide files where you want to load only relevant columns into RAM, using `-select` beforehand (e.g. `-select "species,contains=mass" -by species -agg mean`) is completely valid and recommended for performance.
 
 ### Single Function across Numeric Columns
@@ -58,12 +58,12 @@ pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
 | Chinstrap |        3733.1 |
 | Gentoo    |        5076   |
 
-### Multiple Functions (`"mean,n"`)
+### Multiple Functions (`"mean,count"`)
 
 Compute mean and sample size simultaneously:
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g=mean, n=n" -round 1
+pytae penguins.parquet -by species -agg "body_mass_g=mean, n=count" -round 1
 ```
 
 **Output:**

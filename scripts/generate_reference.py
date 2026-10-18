@@ -106,7 +106,7 @@ Key principles:
 5. Expressive & Human-Friendly: Minimizes boilerplate. Filtering supports 
    intervals `[3000, 4000]`, string operations, and keyword arguments. Grouped 
    aggregations express grouping via standalone `pt.by()` and concise aggregations 
-   (e.g. `body_mass_g=mean`, `n=n`) without tedious `.groupby().agg()` boilerplate.
+   (e.g. `body_mass_g=mean`, `total=count`) without tedious `.groupby().agg()` boilerplate.
 6. Non-Destructive: All library verbs return copies of DataFrames and never 
    mutate inputs in place. Original indices are preserved during filtering.
 7. Honest Error Handling ("Be generous in what you accept, but strictly honest 
@@ -597,14 +597,14 @@ Calling Styles:
      )
   4. Whole-Table Grand Total (Ungrouped summary, 1 row):
      penguins.pt.agg("mean, n")
-     penguins.pt.agg(avg_mass="body_mass_g:mean", n="n")
+     penguins.pt.agg(avg_mass="body_mass_g:mean", total="count")
 
 Key Rules & Behaviors:
   - NO REDUNDANT SELECT:
     You NEVER need a `pt.select(...)` or `-select` before `agg()`. Target columns and aggregation
     functions are declared directly inside `agg`.
-  - Row Count ('n'):
-    Assigning a key with value 'n' produces the group row count: `count="n"`.
+  - Row Count ('count' / 'n'):
+    Assigning a key with value 'count' (or legacy alias 'n') produces the row count: `total="count"` or `n="count"`.
   - Column Names:
     If a single aggregation is applied, the original name is preserved: `body_mass_g='mean'`.
     If multiple aggregations are applied, names become `{col}_{agg}`: `body_mass_g=['mean', 'max']`.
@@ -795,11 +795,11 @@ Column Transformation Flags:
 
 Aggregation & Reshaping Flags:
   -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass desc" -head 1)
-  -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, count=n" or -agg mean).
+  -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, total=count" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
-  -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=n")
+  -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=count")
 
 SQL & Multi-File Flags:
   -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
@@ -833,7 +833,7 @@ Output & Formatting Flags:
    - `-filter`: "species = 'Adelie', body_mass_g > 3500"
    - `-clean_columns`: "strip=True, fill='_', case='lower'"
    - `-join`: "left=df1, right=df2, on=id, how=left"
-   - `-agg`: "tip=mean, total_bill=mean, n=n"
+   - `-agg`: "tip=mean, total_bill=mean, total=count"
 
 
 5.6. Multi-File Operations (-file, -join, -concat, -sql)
@@ -1038,9 +1038,9 @@ counts = penguins.pt.pivot(r="island", c="species", a="n")
 
 ```bash
 # Equivalent CLI One-Liners:
-pytae penguins.parquet -by "species,island" -agg "mass_mean=body_mass_g:mean, count=n"
+pytae penguins.parquet -by "species,island" -agg "mass_mean=body_mass_g:mean, total=count"
 pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
-pytae penguins.parquet -pivot "r=island, c=species, a=n"
+pytae penguins.parquet -pivot "r=island, c=species, a=count"
 ```
 
 Recipe 3: Group-Aware Row Slicing (pt.by + arrange + head)

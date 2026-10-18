@@ -60,11 +60,11 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 ```bash
 # Direct pipe (no dash needed!)
 cat penguins.csv | pytae -head 5
-curl -s https://example.com/events.csv | pytae -by event_type -agg "count=n"
+curl -s https://example.com/events.csv | pytae -by event_type -count
 
 # Explicit dash also fully supported
 cat penguins.csv | pytae - -head 5
-curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -agg "count=n"
+curl -s https://example.com/events.jsonl | pytae - -fmt jsonl -by event_type -count
 ```
 
 When reading from STDIN, `pytae` automatically inspects the first chunk to sniff the format (`csv` vs `jsonl`). You can explicitly specify or force the input format using `-fmt`:
