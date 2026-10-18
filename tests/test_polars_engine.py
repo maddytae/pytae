@@ -642,3 +642,38 @@ def test_filter_polars_dt_and_str_methods():
     res_dt = df.filter("date(order_date).dt.month() > 6")
     assert len(res_dt) == 2
     assert list(res_dt["sku"]) == ["TEST-B-02", "PROD-C-03"]
+
+
+def test_filter_string_column_type_enforcement():
+    import pytae as pt
+
+    df = pt.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]})
+
+    # Kwarg with unquoted int raises TypeError
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter(id=9)
+
+    # String expression with unquoted int raises TypeError
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter("id = 9")
+
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter("id == 9")
+
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter("id > 9")
+
+    # List of unquoted ints raises TypeError
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int"):
+        df.filter(id=[1, 9])
+
+    # Quoted string values succeed
+    res_kw = df.filter(id="9")
+    assert res_kw["id"].to_list() == ["9"]
+
+    res_eq = df.filter("id == '9'")
+    assert res_eq["id"].to_list() == ["9"]
+
+    res_list = df.filter(id=["1", "9"])
+    assert res_list["id"].to_list() == ["1", "9"]
+

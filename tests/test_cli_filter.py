@@ -208,3 +208,48 @@ def test_filter_cli_notna_spaced_column(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 2)"
 
+
+def test_filter_string_column_unquoted_number_fails(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]}),
+    )
+
+    # Bare equality with unquoted int
+    with pytest.raises(SystemExit):
+        cli.main([path, "-filter", "id = 9"])
+    assert "column 'id' has String type" in capsys.readouterr().err
+
+    # Double equality with unquoted int
+    with pytest.raises(SystemExit):
+        cli.main([path, "-filter", "id == 9"])
+    assert "column 'id' has String type" in capsys.readouterr().err
+
+    # Inequality with unquoted int (prevents lexicographical bugs)
+    with pytest.raises(SystemExit):
+        cli.main([path, "-filter", "id > 9"])
+    assert "column 'id' has String type" in capsys.readouterr().err
+
+
+def test_filter_string_column_quoted_number_succeeds(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]}),
+    )
+
+    exit_code = cli.main([path, "-filter", "id = '9'", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+    exit_code = cli.main([path, "-filter", "id == '9'", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+
+def test_filter_unquoted_comparison_word_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"species": ["Adelie", "Gentoo"]}))
+
+    with pytest.raises(SystemExit, match="must be quoted"):
+        cli.main([path, "-filter", "species == Adelie", "-shape"])
+
+

@@ -591,8 +591,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
 def parse_filter(raw: str) -> list[tuple[str, Any]]:
     """Parse -filter conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
-    "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") and bare string
-    values (e.g. "species = Adelie") are also accepted."""
+    "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") are also accepted."""
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
@@ -635,8 +634,11 @@ def parse_filter(raw: str) -> list[tuple[str, Any]]:
             sub_raw = op_match.group(2).strip()
             try:
                 sub_val = ast.literal_eval(sub_raw)
-            except (ValueError, SyntaxError):
-                sub_val = _unquote_name(sub_raw)
+            except (ValueError, SyntaxError) as exc:
+                raise SystemExit(
+                    f"invalid --filter conditions: value for '{key}' ('{sub_raw}') must be quoted "
+                    "(e.g. 'Male') or a valid literal (number/tuple/list)"
+                ) from exc
             conditions.append((key, (op, sub_val)))
             continue
 

@@ -68,8 +68,12 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                     return float(val)
                 except ValueError:
                     pass
-        elif is_string and not isinstance(val, str):
-            return str(val)
+        elif is_string and not isinstance(val, (str, bytes)):
+            if val is not None:
+                raise TypeError(
+                    f"filter(): column '{col}' has String type, but received {type(val).__name__} {val!r}. "
+                    f"String values must be enclosed in quotes (e.g. {col} = '{val}')."
+                )
         elif is_date and isinstance(val, str):
             from datetime import datetime
 
@@ -109,6 +113,43 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             if op == "not in":
                 vals = [_coerce_val(v) for v in val] if isinstance(val, (list, tuple)) else val
                 return ~col_expr.is_in(vals)
+            if op == "startswith":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.starts_with(str(v)) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.starts_with(str(val))
+            if op == "endswith":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.ends_with(str(v)) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.ends_with(str(val))
+            if op == "contains":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v), literal=True) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.contains(str(val), literal=True)
+            if op == "regex":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v)) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.contains(str(val))
+
             cval = _coerce_val(val)
             if op == "==":
                 if cval is None or str(cval).lower() in ("none", "null"):
@@ -126,30 +167,6 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 return col_expr < cval
             if op == "<=":
                 return col_expr <= cval
-            if op == "startswith":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.starts_with(str(v)) for v in val])
-                return col_expr.cast(pl.String).str.starts_with(str(val))
-            if op == "endswith":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.ends_with(str(v)) for v in val])
-                return col_expr.cast(pl.String).str.ends_with(str(val))
-            if op == "contains":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v), literal=True) for v in val])
-                return col_expr.cast(pl.String).str.contains(str(val), literal=True)
-            if op == "regex":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v)) for v in val])
-                return col_expr.cast(pl.String).str.contains(str(val))
 
     if isinstance(cond, str):
         cond_clean = cond.strip().lower()

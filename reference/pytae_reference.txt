@@ -17956,8 +17956,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
 def parse_filter(raw: str) -> list[tuple[str, Any]]:
     """Parse -filter conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
     quotes around column names are both optional (matching -select), e.g.
-    "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") and bare string
-    values (e.g. "species = Adelie") are also accepted."""
+    "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") are also accepted."""
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
@@ -18000,8 +17999,11 @@ def parse_filter(raw: str) -> list[tuple[str, Any]]:
             sub_raw = op_match.group(2).strip()
             try:
                 sub_val = ast.literal_eval(sub_raw)
-            except (ValueError, SyntaxError):
-                sub_val = _unquote_name(sub_raw)
+            except (ValueError, SyntaxError) as exc:
+                raise SystemExit(
+                    f"invalid --filter conditions: value for '{key}' ('{sub_raw}') must be quoted "
+                    "(e.g. 'Male') or a valid literal (number/tuple/list)"
+                ) from exc
             conditions.append((key, (op, sub_val)))
             continue
 
@@ -24573,8 +24575,12 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                     return float(val)
                 except ValueError:
                     pass
-        elif is_string and not isinstance(val, str):
-            return str(val)
+        elif is_string and not isinstance(val, (str, bytes)):
+            if val is not None:
+                raise TypeError(
+                    f"filter(): column '{col}' has String type, but received {type(val).__name__} {val!r}. "
+                    f"String values must be enclosed in quotes (e.g. {col} = '{val}')."
+                )
         elif is_date and isinstance(val, str):
             from datetime import datetime
 
@@ -24614,6 +24620,43 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             if op == "not in":
                 vals = [_coerce_val(v) for v in val] if isinstance(val, (list, tuple)) else val
                 return ~col_expr.is_in(vals)
+            if op == "startswith":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.starts_with(str(v)) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.starts_with(str(val))
+            if op == "endswith":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.ends_with(str(v)) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.ends_with(str(val))
+            if op == "contains":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v), literal=True) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.contains(str(val), literal=True)
+            if op == "regex":
+                if isinstance(val, (list, tuple)):
+                    for v in val:
+                        _coerce_val(v)
+                    if not val:
+                        return pl.lit(False)
+                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v)) for v in val])
+                _coerce_val(val)
+                return col_expr.cast(pl.String).str.contains(str(val))
+
             cval = _coerce_val(val)
             if op == "==":
                 if cval is None or str(cval).lower() in ("none", "null"):
@@ -24631,30 +24674,6 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 return col_expr < cval
             if op == "<=":
                 return col_expr <= cval
-            if op == "startswith":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.starts_with(str(v)) for v in val])
-                return col_expr.cast(pl.String).str.starts_with(str(val))
-            if op == "endswith":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.ends_with(str(v)) for v in val])
-                return col_expr.cast(pl.String).str.ends_with(str(val))
-            if op == "contains":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v), literal=True) for v in val])
-                return col_expr.cast(pl.String).str.contains(str(val), literal=True)
-            if op == "regex":
-                if isinstance(val, (list, tuple)):
-                    if not val:
-                        return pl.lit(False)
-                    return pl.any_horizontal([col_expr.cast(pl.String).str.contains(str(v)) for v in val])
-                return col_expr.cast(pl.String).str.contains(str(val))
 
     if isinstance(cond, str):
         cond_clean = cond.strip().lower()
@@ -30041,6 +30060,50 @@ def test_filter_cli_notna_spaced_column(tmp_path, capsys):
     exit_code = cli.main([path, "-filter", "[bill length mm] != None", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 2)"
+
+
+def test_filter_string_column_unquoted_number_fails(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]}),
+    )
+
+    # Bare equality with unquoted int
+    with pytest.raises(SystemExit):
+        cli.main([path, "-filter", "id = 9"])
+    assert "column 'id' has String type" in capsys.readouterr().err
+
+    # Double equality with unquoted int
+    with pytest.raises(SystemExit):
+        cli.main([path, "-filter", "id == 9"])
+    assert "column 'id' has String type" in capsys.readouterr().err
+
+    # Inequality with unquoted int (prevents lexicographical bugs)
+    with pytest.raises(SystemExit):
+        cli.main([path, "-filter", "id > 9"])
+    assert "column 'id' has String type" in capsys.readouterr().err
+
+
+def test_filter_string_column_quoted_number_succeeds(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]}),
+    )
+
+    exit_code = cli.main([path, "-filter", "id = '9'", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+    exit_code = cli.main([path, "-filter", "id == '9'", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+
+def test_filter_unquoted_comparison_word_errors(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"species": ["Adelie", "Gentoo"]}))
+
+    with pytest.raises(SystemExit, match="must be quoted"):
+        cli.main([path, "-filter", "species == Adelie", "-shape"])
 
 ################################################################################
 # FILE: tests/test_cli_inspect.py
@@ -37103,6 +37166,40 @@ def test_filter_polars_dt_and_str_methods():
     res_dt = df.filter("date(order_date).dt.month() > 6")
     assert len(res_dt) == 2
     assert list(res_dt["sku"]) == ["TEST-B-02", "PROD-C-03"]
+
+
+def test_filter_string_column_type_enforcement():
+    import pytae as pt
+
+    df = pt.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]})
+
+    # Kwarg with unquoted int raises TypeError
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter(id=9)
+
+    # String expression with unquoted int raises TypeError
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter("id = 9")
+
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter("id == 9")
+
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter("id > 9")
+
+    # List of unquoted ints raises TypeError
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int"):
+        df.filter(id=[1, 9])
+
+    # Quoted string values succeed
+    res_kw = df.filter(id="9")
+    assert res_kw["id"].to_list() == ["9"]
+
+    res_eq = df.filter("id == '9'")
+    assert res_eq["id"].to_list() == ["9"]
+
+    res_list = df.filter(id=["1", "9"])
+    assert res_list["id"].to_list() == ["1", "9"]
 
 ################################################################################
 # FILE: tests/test_readers.py
