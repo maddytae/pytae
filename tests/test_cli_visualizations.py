@@ -172,3 +172,21 @@ def test_cli_bar_and_scatter_and_corr(sample_file, capsys):
     out = capsys.readouterr().out
     assert "Feature" in out
     assert "Bar" in out
+
+
+def test_cli_bar_display_full_rows_up_to_250(tmp_path, capsys):
+    import polars as pl
+
+    file_path = tmp_path / "test_25.parquet"
+    df = pl.DataFrame({"category": [f"item_{i:02d}" for i in range(25)], "metric": list(range(25))})
+    df.write_parquet(file_path)
+
+    code = main([str(file_path), "-bar"])
+    assert code == 0
+    out = capsys.readouterr().out
+    # Check that ellipsis truncation is NOT present and first/middle/last items are all rendered
+    assert "item_00" in out
+    assert "item_12" in out
+    assert "item_24" in out
+    assert "…" not in out
+

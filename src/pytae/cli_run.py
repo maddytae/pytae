@@ -35,6 +35,10 @@ def _apply_round(df: Any, ndigits: int | None) -> Any:
     """Round numeric columns to ndigits; non-numeric columns pass through unchanged."""
     import polars as pl
 
+    from pytae.dataframe import DataFrame as PytaeDataFrame
+
+    if isinstance(df, PytaeDataFrame):
+        df = df._df
     if isinstance(df, pl.LazyFrame):
         df = df.collect()
     if ndigits is None:
@@ -69,6 +73,11 @@ def _format_table(
 
     import polars as pl
 
+    from pytae.dataframe import DataFrame as PytaeDataFrame
+
+    if isinstance(df, PytaeDataFrame):
+        df = df._df
+
     if isinstance(df, pl.LazyFrame):
         df = df.collect()
 
@@ -86,7 +95,7 @@ def _format_table(
             return str(df)
 
         n_rows = len(pldf)
-        tbl_rows = max(n_rows, 10) if n_rows <= 100 else 10
+        tbl_rows = max(n_rows, 10) if n_rows <= 250 else 10
         with pl.Config(tbl_rows=tbl_rows):
             return str(pldf)
 
@@ -874,7 +883,8 @@ def _process_path(
             freq_col = _next_op_val("freq", getattr(args, "freq", None))
             source_df = pipeline.current_frame()
             result = _compute_freq(source_df, freq_col, False if args.dropna is None else args.dropna)
-            pipeline._df = result
+            pipeline._pldf = result._df if hasattr(result, "_df") else result
+            pipeline._df = None
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
@@ -883,7 +893,8 @@ def _process_path(
             hist_arg = _next_op_val("hist", getattr(args, "hist", None))
             source_df = pipeline.current_frame()
             result = _compute_hist(source_df, hist_arg)
-            pipeline._df = result
+            pipeline._pldf = result._df if hasattr(result, "_df") else result
+            pipeline._df = None
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
@@ -892,7 +903,8 @@ def _process_path(
             bar_arg = _next_op_val("bar", getattr(args, "bar", None))
             source_df = pipeline.current_frame()
             result = _compute_bar(source_df, bar_arg)
-            pipeline._df = result
+            pipeline._pldf = result._df if hasattr(result, "_df") else result
+            pipeline._df = None
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
@@ -909,7 +921,8 @@ def _process_path(
             corr_arg = _next_op_val("corr", getattr(args, "corr", None))
             source_df = pipeline.current_frame()
             result = _compute_corr(source_df, corr_arg)
-            pipeline._df = result
+            pipeline._pldf = result._df if hasattr(result, "_df") else result
+            pipeline._df = None
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
