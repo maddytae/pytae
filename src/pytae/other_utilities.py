@@ -257,6 +257,7 @@ def freq(
     col: str | None = None,
     *,
     dropna: bool = False,
+    width: int = 20,
 ) -> Any:
     """Compute a frequency table with ASCII distribution bars and percentages for a column.
 
@@ -268,6 +269,8 @@ def freq(
         Column name to inspect. Required unless `df` has only a single column.
     dropna : bool, default False
         Whether to exclude NA/null values from the frequency counts.
+    width : int, default 20
+        Maximum character width of the bars.
 
     Returns:
     --------
@@ -314,7 +317,7 @@ def freq(
 
     total = counted["Count"].sum() if len(counted) > 0 else 0
     max_cnt = counted["Count"].max() if len(counted) > 0 else 1
-    bar_max_width = 20
+    bar_max_width = width
 
     cats: list[str] = []
     counts_list: list[int] = []
@@ -346,6 +349,8 @@ def hist(
     df: Any,
     col: str | None = None,
     bins: int = 10,
+    *,
+    width: int = 20,
 ) -> Any:
     """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column.
 
@@ -358,6 +363,8 @@ def hist(
         Required unless `df` has only a single column.
     bins : int, default 10
         Number of equal-width bins (overridden if `:bins` or `,bins=` is specified in `col`).
+    width : int, default 20
+        Maximum character width of the bars.
 
     Returns:
     --------
@@ -458,7 +465,7 @@ def hist(
         bin_counts[idx] += 1
 
     max_cnt = max(bin_counts) if bin_counts else 1
-    bar_max_width = 20
+    bar_max_width = width
     ranges = []
     counts = []
     distributions = []
@@ -486,3 +493,568 @@ def hist(
         }
     )
     return DataFrame(res_df)
+
+
+def bar(
+    df: Any,
+    cat: str | None = None,
+    val: str | None = None,
+    *,
+    limit: tuple[float, float] | list[float] | None = None,
+    pct: bool = False,
+    width: int = 20,
+) -> Any:
+    """Compute an in-terminal bar representation for a numeric column across categories.
+
+    Parameters:
+    -----------
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
+    cat : str, optional
+        Category column name, or `'cat:val'` / `'val'` specification.
+    val : str, optional
+        Numeric value column to visualize with bars.
+    limit : tuple of (float, float), optional
+        Custom (min, max) limits for scaling bar lengths.
+    pct : bool, default False
+        Whether to append the percentage of total to each bar.
+    width : int, default 20
+        Maximum character width of the bars.
+
+    Returns:
+    --------
+    DataFrame
+        DataFrame with an added 'Bar' column.
+    """
+    import math
+
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
+    if not cols:
+        return DataFrame(pldf)
+
+    cat_col: str | None = None
+    val_col: str | None = None
+    explicit_pair = False
+
+    if cat is not None and not isinstance(cat, str):
+        cat = str(cat)
+    if val is not None and not isinstance(val, str):
+        val = str(val)
+
+    if cat and ":" in cat and val is None:
+        c_part, _, v_part = cat.partition(":")
+        cat_col = _unquote_name(c_part.strip())
+        val_col = _unquote_name(v_part.strip())
+        explicit_pair = True
+    elif cat and val:
+        cat_col = _unquote_name(cat.strip())
+        val_col = _unquote_name(val.strip())
+        explicit_pair = True
+    elif cat and val is None:
+        cand = _unquote_name(cat.strip())
+        if cand in cols and pldf[cand].dtype.is_numeric():
+            val_col = cand
+            cat_col = None
+        elif cand in cols:
+            cat_col = cand
+            val_col = None
+        else:
+            val_col = cand
+    elif val and cat is None:
+        val_col = _unquote_name(val.strip())
+        cat_col = None
+    else:
+        # Bare -bar: auto-detect
+        if len(cols) == 2:
+            num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+            non_num_cols = [c for c in cols if not pldf[c].dtype.is_numeric()]
+            if len(num_cols) == 1 and len(non_num_cols) == 1:
+                val_col = num_cols[0]
+                cat_col = non_num_cols[0]
+                explicit_pair = True
+            else:
+                cat_col = cols[0]
+                val_col = cols[1]
+                explicit_pair = True
+        elif len(cols) == 1:
+            val_col = cols[0]
+            cat_col = None
+        else:
+            num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+            if len(num_cols) == 1:
+                val_col = num_cols[0]
+                cat_col = None
+            else:
+                raise ValueError(
+                    "bar() requires a column specification (e.g. bar('mass') or bar('species:mass')) when DataFrame has multiple numeric columns"
+                )
+
+    if val_col is None:
+        num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+        if len(num_cols) == 1:
+            val_col = num_cols[0]
+        else:
+            raise ValueError("bar() requires a numeric value column to plot")
+
+    if val_col not in cols:
+        raise KeyError(f"bar: column '{val_col}' not found in DataFrame. Available columns: {cols}")
+
+    if cat_col is not None and cat_col not in cols:
+        raise KeyError(f"bar: category column '{cat_col}' not found in DataFrame. Available columns: {cols}")
+
+    s_val = pldf[val_col].cast(pl.Float64, strict=False)
+    vals = s_val.drop_nulls().drop_nans().to_list()
+
+    if not vals:
+        min_limit, max_limit = 0.0, 1.0
+    elif limit is not None:
+        min_limit, max_limit = float(limit[0]), float(limit[1])
+    else:
+        min_data = min(vals)
+        max_data = max(vals)
+        if min_data >= 0:
+            min_limit = 0.0
+            max_limit = max_data if max_data > 0 else 1.0
+        else:
+            min_limit = min_data
+            max_limit = max_data if max_data > min_data else min_data + 1.0
+
+    denom = max_limit - min_limit if max_limit != min_limit else 1.0
+    total_pos = sum(v for v in vals if v > 0)
+    bars_list: list[str] = []
+
+    for v in s_val.to_list():
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            bars_list.append("")
+            continue
+        clamped_v = max(min_limit, min(max_limit, v))
+        fraction = (clamped_v - min_limit) / denom
+        fraction = max(0.0, min(1.0, fraction))
+        bar_len = int(round(fraction * width))
+        bar_str = "█" * bar_len
+        if pct:
+            pct_val = (v / total_pos * 100) if total_pos > 0 else 0.0
+            pct_str = f"({pct_val:.1f}%)"
+            bars_list.append(f"{bar_str} {pct_str}".strip() if bar_str else pct_str)
+        else:
+            bars_list.append(bar_str)
+
+    if explicit_pair and cat_col is not None:
+        out_pl = pldf.select([cat_col, val_col]).with_columns(pl.Series("Bar", bars_list))
+    else:
+        out_pl = pldf.with_columns(pl.Series("Bar", bars_list))
+
+    return DataFrame(out_pl)
+
+
+def scatter(
+    df: Any,
+    x: str | None = None,
+    y: str | None = None,
+    *,
+    width: int = 50,
+    height: int = 15,
+    limit_x: tuple[float, float] | list[float] | None = None,
+    limit_y: tuple[float, float] | list[float] | None = None,
+) -> str:
+    """Render an in-terminal 2D Unicode Braille scatter plot for two numeric columns.
+
+    Parameters:
+    -----------
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
+    x : str, optional
+        X-axis column name, or `'x:y'` specification.
+    y : str, optional
+        Y-axis column name.
+    width : int, default 50
+        Width of the plot canvas in terminal characters (each char has 2 subpixels).
+    height : int, default 15
+        Height of the plot canvas in terminal lines (each line has 4 subpixels).
+    limit_x : tuple of (float, float), optional
+        Custom (min, max) limits for X-axis.
+    limit_y : tuple of (float, float), optional
+        Custom (min, max) limits for Y-axis.
+
+    Returns:
+    --------
+    str
+        Formatted 2D Braille scatter plot string with axes and footer stats.
+    """
+    import math
+
+    import polars as pl
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
+    x_col: str | None = None
+    y_col: str | None = None
+
+    if x is not None and ":" in str(x) and y is None:
+        xp, _, yp = str(x).partition(":")
+        x_col = _unquote_name(xp.strip())
+        y_col = _unquote_name(yp.strip())
+    elif x is not None and y is not None:
+        x_col = _unquote_name(str(x).strip())
+        y_col = _unquote_name(str(y).strip())
+    elif x is not None and y is None:
+        x_col = _unquote_name(str(x).strip())
+        other_nums = [c for c in cols if c != x_col and pldf[c].dtype.is_numeric()]
+        if len(other_nums) == 1:
+            y_col = other_nums[0]
+        else:
+            raise ValueError(f"scatter() requires two numeric columns; specify 'x:y' (e.g. scatter('{x_col}:col2'))")
+    else:
+        num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+        if len(num_cols) == 2:
+            x_col = num_cols[0]
+            y_col = num_cols[1]
+        else:
+            raise ValueError(
+                f"scatter() requires column specification (e.g. scatter('x:y')) when DataFrame has {len(num_cols)} numeric columns"
+            )
+
+    if x_col not in cols:
+        raise KeyError(f"scatter: column '{x_col}' not found in DataFrame. Available columns: {cols}")
+    if y_col not in cols:
+        raise KeyError(f"scatter: column '{y_col}' not found in DataFrame. Available columns: {cols}")
+
+    total_rows = pldf.height
+    clean = pldf.select(
+        [
+            pl.col(x_col).cast(pl.Float64, strict=False).alias("x"),
+            pl.col(y_col).cast(pl.Float64, strict=False).alias("y"),
+        ]
+    ).filter(
+        pl.col("x").is_not_null() & pl.col("y").is_not_null() & pl.col("x").is_not_nan() & pl.col("y").is_not_nan()
+    )
+    valid_points = clean.height
+    null_points = total_rows - valid_points
+
+    if valid_points == 0:
+        return f"Empty scatter plot: no valid numeric pairs in '{x_col}' and '{y_col}'"
+
+    corr_str = "N/A"
+    if valid_points >= 2:
+        try:
+            r = clean.select(pl.corr("x", "y")).item()
+            corr_str = f"{r:+.3f}" if r is not None and not math.isnan(r) else "N/A"
+        except Exception:
+            corr_str = "N/A"
+
+    xs = clean["x"].to_list()
+    ys = clean["y"].to_list()
+
+    min_x = float(limit_x[0]) if limit_x is not None else min(xs)
+    max_x = float(limit_x[1]) if limit_x is not None else max(xs)
+    min_y = float(limit_y[0]) if limit_y is not None else min(ys)
+    max_y = float(limit_y[1]) if limit_y is not None else max(ys)
+
+    pw = max(width * 2, 2)
+    ph = max(height * 4, 4)
+    canvas = [[0] * width for _ in range(height)]
+    dot_map = {
+        (0, 0): 0x01,
+        (0, 1): 0x02,
+        (0, 2): 0x04,
+        (0, 3): 0x40,
+        (1, 0): 0x08,
+        (1, 1): 0x10,
+        (1, 2): 0x20,
+        (1, 3): 0x80,
+    }
+
+    denom_x = max_x - min_x if max_x != min_x else 1.0
+    denom_y = max_y - min_y if max_y != min_y else 1.0
+
+    for x_val, y_val in zip(xs, ys):
+        if not (min_x <= x_val <= max_x and min_y <= y_val <= max_y):
+            continue
+        nx = int((x_val - min_x) / denom_x * (pw - 1))
+        ny = int((max_y - y_val) / denom_y * (ph - 1))
+        nx = max(0, min(pw - 1, nx))
+        ny = max(0, min(ph - 1, ny))
+        c_col, s_x = divmod(nx, 2)
+        c_row, s_y = divmod(ny, 4)
+        canvas[c_row][c_col] |= dot_map[(s_x, s_y)]
+
+    lines: list[str] = []
+    lines.append(f" {y_col}")
+
+    mid_y = (min_y + max_y) / 2.0
+    mid_x = (min_x + max_x) / 2.0
+
+    for r in range(height):
+        if r == 0:
+            prefix = f"{max_y:>8.1f} ┤ "
+        elif r == height // 2:
+            prefix = f"{mid_y:>8.1f} ┤ "
+        elif r == height - 1:
+            prefix = f"{min_y:>8.1f} ┤ "
+        else:
+            prefix = "         │ "
+        row_chars = "".join(chr(0x2800 + cell) if cell else " " for cell in canvas[r])
+        lines.append(prefix + row_chars)
+
+    lines.append("         ┼" + "─" * width)
+
+    tick_spacing = max(width - 24, 4)
+    half_space = tick_spacing // 2
+    x_ticks_line = f"          {min_x:<8.1f}{' ' * half_space}{mid_x:^8.1f}{' ' * (tick_spacing - half_space)}{max_x:>8.1f}  {x_col}"
+    lines.append(x_ticks_line)
+    lines.append("")
+    null_suffix = f" ({null_points} nulls excluded)" if null_points > 0 else ""
+    lines.append(f"  Points: {valid_points}{null_suffix} | Corr (r): {corr_str}")
+
+    return "\n".join(lines)
+
+
+def corr(
+    df: Any,
+    target: str | None = None,
+    *,
+    cols: list[str] | None = None,
+    pairs: bool = False,
+    method: str = "pearson",
+) -> Any:
+    """Compute pairwise correlation matrix or ranked pairs for numeric columns.
+
+    Parameters:
+    -----------
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
+    target : str, optional
+        Screen correlations of all other numeric columns against this target column.
+    cols : list of str, optional
+        Subset of numeric columns to evaluate.
+    pairs : bool, default False
+        If True, return a ranked pairwise list sorted descending by absolute correlation.
+    method : str, default 'pearson'
+        Correlation method: 'pearson' or 'spearman'.
+
+    Returns:
+    --------
+    DataFrame
+        Correlation matrix or ranked pairs DataFrame.
+    """
+    import math
+
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    all_num_cols = [c for c in pldf.columns if pldf[c].dtype.is_numeric()]
+    if cols is not None:
+        num_cols = [c for c in cols if c in all_num_cols]
+    else:
+        num_cols = all_num_cols
+
+    if len(num_cols) < 2 and target is None:
+        raise ValueError("corr() requires at least two numeric columns")
+
+    method_clean = method.lower().strip()
+    if method_clean not in ("pearson", "spearman"):
+        raise ValueError(f"corr: invalid method '{method}'; must be 'pearson' or 'spearman'")
+
+    if target is not None:
+        target_col = _unquote_name(str(target).strip())
+        if target_col not in all_num_cols:
+            raise KeyError(
+                f"corr: target column '{target_col}' not found or is not numeric. Numeric columns: {all_num_cols}"
+            )
+        features = [c for c in num_cols if c != target_col]
+        if not features:
+            features = [c for c in all_num_cols if c != target_col]
+        if not features:
+            raise ValueError(f"corr: no other numeric columns to correlate with target '{target_col}'")
+
+        feature_names: list[str] = []
+        corr_vals: list[float] = []
+        bars: list[str] = []
+        abs_vals: list[float] = []
+
+        for feat in features:
+            clean = pldf.select(
+                [
+                    pl.col(target_col).cast(pl.Float64, strict=False).alias("y"),
+                    pl.col(feat).cast(pl.Float64, strict=False).alias("x"),
+                ]
+            ).filter(
+                pl.col("y").is_not_null()
+                & pl.col("x").is_not_null()
+                & pl.col("y").is_not_nan()
+                & pl.col("x").is_not_nan()
+            )
+            if clean.height < 2:
+                r_val = 0.0
+            else:
+                try:
+                    r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+                    r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
+                except Exception:
+                    r_val = 0.0
+
+            abs_r = abs(r_val)
+            bar_len = int(round(abs_r * 15))
+            bar_char = "█" if r_val >= 0 else "▒"
+            feature_names.append(feat)
+            corr_vals.append(round(r_val, 2))
+            bars.append(bar_char * bar_len)
+            abs_vals.append(abs_r)
+
+        paired = sorted(zip(feature_names, corr_vals, bars, abs_vals), key=lambda t: t[3], reverse=True)
+        out_pl = pl.DataFrame(
+            {
+                "Feature": [p[0] for p in paired],
+                "Corr": [p[1] for p in paired],
+                "Bar": [p[2] for p in paired],
+            }
+        )
+        return DataFrame(out_pl)
+
+    if pairs:
+        col_a_list: list[str] = []
+        col_b_list: list[str] = []
+        corr_vals = []
+        strengths: list[str] = []
+        abs_vals = []
+
+        for i in range(len(num_cols)):
+            for j in range(i + 1, len(num_cols)):
+                c1, c2 = num_cols[i], num_cols[j]
+                clean = pldf.select(
+                    [
+                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
+                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
+                    ]
+                ).filter(
+                    pl.col("x").is_not_null()
+                    & pl.col("y").is_not_null()
+                    & pl.col("x").is_not_nan()
+                    & pl.col("y").is_not_nan()
+                )
+                if clean.height < 2:
+                    r_val = 0.0
+                else:
+                    try:
+                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
+                    except Exception:
+                        r_val = 0.0
+
+                abs_r = abs(r_val)
+                if abs_r >= 0.8:
+                    label = "Very Strong"
+                elif abs_r >= 0.6:
+                    label = "Strong"
+                elif abs_r >= 0.4:
+                    label = "Moderate"
+                elif abs_r >= 0.2:
+                    label = "Weak"
+                else:
+                    label = "Very Weak"
+
+                bar_char = "█" if r_val >= 0 else "▒"
+                suffix = "" if r_val >= 0 else " (-)"
+                bar_len = int(round(abs_r * 10))
+                strength_bar = f"{bar_char * bar_len} {label}{suffix}".strip()
+
+                col_a_list.append(c1)
+                col_b_list.append(c2)
+                corr_vals.append(round(r_val, 2))
+                strengths.append(strength_bar)
+                abs_vals.append(abs_r)
+
+        paired = sorted(zip(col_a_list, col_b_list, corr_vals, strengths, abs_vals), key=lambda t: t[4], reverse=True)
+        out_pl = pl.DataFrame(
+            {
+                "Column A": [p[0] for p in paired],
+                "Column B": [p[1] for p in paired],
+                "Corr": [p[2] for p in paired],
+                "Strength": [p[3] for p in paired],
+            }
+        )
+        return DataFrame(out_pl)
+
+    # Matrix view (default)
+    matrix_data: dict[str, list[Any]] = {"column": num_cols}
+    for c2 in num_cols:
+        col_vals = []
+        for c1 in num_cols:
+            if c1 == c2:
+                col_vals.append(1.0)
+            else:
+                clean = pldf.select(
+                    [
+                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
+                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
+                    ]
+                ).filter(
+                    pl.col("x").is_not_null()
+                    & pl.col("y").is_not_null()
+                    & pl.col("x").is_not_nan()
+                    & pl.col("y").is_not_nan()
+                )
+                if clean.height < 2:
+                    r_val = 0.0
+                else:
+                    try:
+                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
+                    except Exception:
+                        r_val = 0.0
+                col_vals.append(round(r_val, 2))
+        matrix_data[c2] = col_vals
+
+    return DataFrame(pl.DataFrame(matrix_data))

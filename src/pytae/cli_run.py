@@ -117,8 +117,17 @@ def _format_table(
 def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
     from pytae.other_utilities import freq
 
+    width = 20
+    target_col = col
+    if col and ",width=" in col:
+        c_part, _, w_part = col.partition(",width=")
+        target_col = c_part.strip()
+        try:
+            width = int(w_part.strip())
+        except ValueError:
+            raise SystemExit(f"-freq: invalid width='{w_part.strip()}'; expected positive integer")
     try:
-        return freq(source_df, col=col, dropna=dropna)
+        return freq(source_df, col=target_col, dropna=dropna, width=width)
     except KeyError as exc:
         raise SystemExit(str(exc))
     except ValueError as exc:
@@ -128,12 +137,80 @@ def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
 def _compute_hist(source_df: Any, hist_arg: str | None) -> Any:
     from pytae.other_utilities import hist
 
+    width = 20
+    target_arg = hist_arg
+    if hist_arg and ",width=" in hist_arg:
+        h_part, _, w_part = hist_arg.partition(",width=")
+        target_arg = h_part.strip()
+        try:
+            width = int(w_part.strip())
+        except ValueError:
+            raise SystemExit(f"-hist: invalid width='{w_part.strip()}'; expected positive integer")
     try:
-        return hist(source_df, col=hist_arg)
+        return hist(source_df, col=target_arg, width=width)
     except KeyError as exc:
         raise SystemExit(str(exc))
     except ValueError as exc:
         raise SystemExit(f"-hist: {exc}")
+
+
+def _compute_bar(source_df: Any, bar_arg: str | None) -> Any:
+    from pytae.cli_parsing import parse_bar_spec
+    from pytae.other_utilities import bar
+
+    spec = parse_bar_spec(bar_arg)
+    try:
+        return bar(
+            source_df,
+            cat=spec["cat"],
+            val=spec["val"],
+            limit=spec["limit"],
+            pct=spec["pct"],
+            width=spec["width"],
+        )
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-bar: {exc}")
+
+
+def _compute_scatter(source_df: Any, scatter_arg: str | None) -> str:
+    from pytae.cli_parsing import parse_scatter_spec
+    from pytae.other_utilities import scatter
+
+    spec = parse_scatter_spec(scatter_arg)
+    try:
+        return scatter(
+            source_df,
+            x=spec["x"],
+            y=spec["y"],
+            width=spec["width"],
+            height=spec["height"],
+            limit_x=spec["limit_x"],
+            limit_y=spec["limit_y"],
+        )
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-scatter: {exc}")
+
+
+def _compute_corr(source_df: Any, corr_arg: str | None) -> Any:
+    from pytae.cli_parsing import parse_corr_spec
+    from pytae.other_utilities import corr
+
+    spec = parse_corr_spec(corr_arg)
+    try:
+        return corr(
+            source_df,
+            target=spec["target"],
+            pairs=spec["pairs"],
+            method=spec["method"],
+        )
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-corr: {exc}")
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -391,7 +468,7 @@ def _compute_diff(
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
 # chaining, nothing can follow them except -o clip.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "meta", "diff", "glimpse"})
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "meta", "diff", "glimpse", "scatter"})
 
 
 def _list_order_names(names, order):
@@ -811,6 +888,32 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "bar":
+            bar_arg = _next_op_val("bar", getattr(args, "bar", None))
+            source_df = pipeline.current_frame()
+            result = _compute_bar(source_df, bar_arg)
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "scatter":
+            scatter_arg = _next_op_val("scatter", getattr(args, "scatter", None))
+            source_df = pipeline.current_frame()
+            scatter_str = _compute_scatter(source_df, scatter_arg)
+            if should_print(idx):
+                _output_text(scatter_str, args)
+            if is_clip:
+                clip_action = lambda s=scatter_str: _copy_to_clipboard(s)
+        elif op == "corr":
+            corr_arg = _next_op_val("corr", getattr(args, "corr", None))
+            source_df = pipeline.current_frame()
+            result = _compute_corr(source_df, corr_arg)
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "distinct":
             distinct_val = _next_op_val("distinct", getattr(args, "distinct", None))
             err = pipeline.apply_distinct(distinct_val)
@@ -818,22 +921,14 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "count":
-            by_cols = (
-                parse_columns(args.by)
-                if (args.by and args.agg is None and not args.mutate)
-                else None
-            )
+            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
             count_val = _next_op_val("count", getattr(args, "count", None))
             err = pipeline.apply_count(count_val, by_cols=by_cols)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "head":
-            by_cols = (
-                parse_columns(args.by)
-                if (args.by and args.agg is None and not args.mutate)
-                else None
-            )
+            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
             if by_cols:
                 avail_cols = pipeline.columns()
                 if any(c not in avail_cols for c in by_cols):
@@ -852,11 +947,7 @@ def _process_path(
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
-            by_cols = (
-                parse_columns(args.by)
-                if (args.by and args.agg is None and not args.mutate)
-                else None
-            )
+            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
             if by_cols:
                 avail_cols = pipeline.columns()
                 if any(c not in avail_cols for c in by_cols):

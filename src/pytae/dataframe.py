@@ -872,7 +872,9 @@ class DataFrame:
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
         """Deprecated: pick() has been removed in favor of arrange().head(n) / arrange().tail(n)."""
-        raise AttributeError("df.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
+        raise AttributeError(
+            "df.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         """Establish a grouping context for subsequent .mutate(), .agg(), or .head()/.tail() operations."""
@@ -1164,17 +1166,59 @@ class DataFrame:
         print(format_glimpse(self, width=width))
         return self
 
-    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
+    def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
         """Calculate frequency distribution of unique column values."""
         from pytae.other_utilities import freq as _freq
 
-        return DataFrame(_freq(self._df, col=col, dropna=dropna))
+        return DataFrame(_freq(self._df, col=col, dropna=dropna, width=width))
 
-    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
+    def hist(self, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
         """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column."""
         from pytae.other_utilities import hist as _hist
 
-        return DataFrame(_hist(self._df, col=col, bins=bins))
+        return DataFrame(_hist(self._df, col=col, bins=bins, width=width))
+
+    def bar(
+        self,
+        cat: str | None = None,
+        val: str | None = None,
+        *,
+        limit: tuple[float, float] | list[float] | None = None,
+        pct: bool = False,
+        width: int = 20,
+    ) -> DataFrame:
+        """Compute an in-terminal bar representation for a numeric column across categories."""
+        from pytae.other_utilities import bar as _bar
+
+        return DataFrame(_bar(self._df, cat=cat, val=val, limit=limit, pct=pct, width=width))
+
+    def scatter(
+        self,
+        x: str | None = None,
+        y: str | None = None,
+        *,
+        width: int = 50,
+        height: int = 15,
+        limit_x: tuple[float, float] | list[float] | None = None,
+        limit_y: tuple[float, float] | list[float] | None = None,
+    ) -> str:
+        """Render an in-terminal 2D Unicode Braille scatter plot for two numeric columns."""
+        from pytae.other_utilities import scatter as _scatter
+
+        return _scatter(self._df, x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+    def corr(
+        self,
+        target: str | None = None,
+        *,
+        cols: list[str] | None = None,
+        pairs: bool = False,
+        method: str = "pearson",
+    ) -> DataFrame:
+        """Compute pairwise correlation matrix or ranked pairs for numeric columns."""
+        from pytae.other_utilities import corr as _corr
+
+        return DataFrame(_corr(self._df, target=target, cols=cols, pairs=pairs, method=method))
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Apply a callable function taking DataFrame as its first argument."""
@@ -1313,6 +1357,7 @@ class GroupedDataFrame:
         df._orig_index = self._orig_index
         attr = getattr(df, name)
         if callable(attr):
+
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 res = attr(*args, **kwargs)
                 if isinstance(res, DataFrame):
@@ -1325,6 +1370,7 @@ class GroupedDataFrame:
                         _last_sort_desc=res._last_sort_desc,
                     )
                 return res
+
             return wrapper
         return attr
 
@@ -1334,7 +1380,7 @@ class GroupedDataFrame:
         cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
         descending = [not a for a in asc]
         all_cols = self._by + [c for c in cols if c not in self._by]
-        all_desc = [False] * len(self._by) + [descending[cols.index(c)] for c in all_cols[len(self._by):]]
+        all_desc = [False] * len(self._by) + [descending[cols.index(c)] for c in all_cols[len(self._by) :]]
         sorted_df = self._df.sort(all_cols, descending=all_desc, nulls_last=na_last)
         return GroupedDataFrame(
             sorted_df,

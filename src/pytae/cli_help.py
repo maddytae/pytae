@@ -443,7 +443,79 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -hist "body_mass_g:15"',
             "pytae penguins.parquet -hist bill_length_mm:5",
         ],
-        see_also=["-freq", "-describe"],
+        see_also=["-freq", "-describe", "-bar", "-scatter"],
+    ),
+    "bar": KeywordHelp(
+        name="bar",
+        flag="-bar, --bar [SPEC]",
+        syntax='pytae <path> -bar [COLUMN | "CAT:VAL" | "VAL,limit=(min,max),pct=true,width=N"]',
+        summary="Render in-terminal horizontal bars for metric values across categories.",
+        description=(
+            "Displays ASCII bar visualizations for metric values (averages, sums, metrics).\n"
+            "Automatically selects 1 numeric and 1 non-numeric column when run bare on a 2-column table.\n"
+            "Preserves table row order and metadata columns intact, appending 'Bar' to the far right."
+        ),
+        options=[
+            "COLUMN : Metric column to visualize (keeps other columns as context).",
+            "CAT:VAL : Explicit category and value columns.",
+            "limit=(min,max) : Optional custom bounds for scaling (default: 0 to max).",
+            "pct=true|false : Whether to append percentage of total to each bar (default: false).",
+            "width=N : Maximum character width of bars (default: 20).",
+        ],
+        examples=[
+            "pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar",
+            "pytae penguins.parquet -by species -agg avg_mass=body_mass_g:mean -bar avg_mass",
+            'pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar "pct=true"',
+            'pytae summary.csv -bar "island:avg_mass,limit=(3000,5000)"',
+        ],
+        see_also=["-freq", "-hist", "-scatter", "-corr"],
+    ),
+    "scatter": KeywordHelp(
+        name="scatter",
+        flag="-scatter, --scatter [SPEC]",
+        syntax='pytae <path> -scatter ["X:Y" | "X:Y,width=W,height=H,limit_x=(min,max),limit_y=(min,max)"]',
+        summary="Render in-terminal 2D Unicode Braille scatter plot for bivariate data.",
+        description=(
+            "High-resolution 2D terminal scatter plot using Unicode Braille subpixels (2x4 per cell).\n"
+            "Automatically picks 2 numeric columns if the table contains exactly two.\n"
+            "Displays X/Y axis ticks and a summary footer with point counts and Pearson correlation (r)."
+        ),
+        options=[
+            "X:Y : Numeric columns for X and Y axes.",
+            "width=N : Canvas width in terminal characters (default: 50).",
+            "height=N : Canvas height in terminal lines (default: 15).",
+            "limit_x=(min,max) : Custom limits for X-axis.",
+            "limit_y=(min,max) : Custom limits for Y-axis.",
+        ],
+        examples=[
+            'pytae penguins.parquet -scatter "bill_length_mm:bill_depth_mm"',
+            'pytae penguins.parquet -select "bill_length_mm,bill_depth_mm" -scatter',
+            'pytae penguins.parquet -scatter "bill_length_mm:bill_depth_mm,width=60,height=20"',
+        ],
+        see_also=["-corr", "-hist", "-bar", "-plot"],
+    ),
+    "corr": KeywordHelp(
+        name="corr",
+        flag="-corr, --corr [SPEC]",
+        syntax='pytae <path> -corr [pairs | "target=COLUMN" | "method=spearman"]',
+        summary="Render pairwise correlation matrix or ranked pairs for numeric columns.",
+        description=(
+            "Computes pairwise correlations across numeric columns with pairwise null handling.\n"
+            "Defaults to a symmetric NxN matrix view; use 'pairs' for a ranked list of unique pairs\n"
+            "with visual strength bars, or 'target=col' to screen all features against one target."
+        ),
+        options=[
+            "pairs : Output ranked unique pairs sorted descending by absolute correlation.",
+            "target=COL : Correlate all other numeric columns against a single target column.",
+            "method=pearson|spearman : Correlation algorithm (default: pearson).",
+        ],
+        examples=[
+            "pytae penguins.parquet -corr",
+            "pytae penguins.parquet -corr pairs",
+            'pytae penguins.parquet -corr "target=body_mass_g"',
+            'pytae penguins.parquet -corr "pairs,method=spearman"',
+        ],
+        see_also=["-scatter", "-bar", "-describe"],
     ),
     "meta": KeywordHelp(
         name="meta",

@@ -174,7 +174,9 @@ def tail(df: Any, n: int | str | None = None, *, prop: float | None = None, with
 
 
 def pick(*args: Any, **kwargs: Any) -> Any:
-    raise AttributeError("pt.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
+    raise AttributeError(
+        "pt.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing)."
+    )
 
 
 def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
@@ -214,8 +216,6 @@ def sql(df: Any, query: str) -> DataFrame:
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
     return DataFrame(df).by(*cols)
-
-
 
 
 def agg(df: Any, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
@@ -273,12 +273,48 @@ def glimpse(df: Any, width: int | None = None) -> DataFrame:
     return DataFrame(df).glimpse(width=width)
 
 
-def freq(df: Any, col: str | None = None, dropna: bool = False) -> DataFrame:
-    return DataFrame(df).freq(col=col, dropna=dropna)
+def freq(df: Any, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
+    return DataFrame(df).freq(col=col, dropna=dropna, width=width)
 
 
-def hist(df: Any, col: str | None = None, bins: int = 10) -> DataFrame:
-    return DataFrame(df).hist(col=col, bins=bins)
+def hist(df: Any, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
+    return DataFrame(df).hist(col=col, bins=bins, width=width)
+
+
+def bar(
+    df: Any,
+    cat: str | None = None,
+    val: str | None = None,
+    *,
+    limit: tuple[float, float] | list[float] | None = None,
+    pct: bool = False,
+    width: int = 20,
+) -> DataFrame:
+    return DataFrame(df).bar(cat=cat, val=val, limit=limit, pct=pct, width=width)
+
+
+def scatter(
+    df: Any,
+    x: str | None = None,
+    y: str | None = None,
+    *,
+    width: int = 50,
+    height: int = 15,
+    limit_x: tuple[float, float] | list[float] | None = None,
+    limit_y: tuple[float, float] | list[float] | None = None,
+) -> str:
+    return DataFrame(df).scatter(x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+
+def corr(
+    df: Any,
+    target: str | None = None,
+    *,
+    cols: list[str] | None = None,
+    pairs: bool = False,
+    method: str = "pearson",
+) -> DataFrame:
+    return DataFrame(df).corr(target=target, cols=cols, pairs=pairs, method=method)
 
 
 def join(
@@ -377,6 +413,9 @@ class _PytaeModule(ModuleType):
     glimpse = _VerbDescriptor(glimpse)
     freq = _VerbDescriptor(freq)
     hist = _VerbDescriptor(hist)
+    bar = _VerbDescriptor(bar)
+    scatter = _VerbDescriptor(scatter)
+    corr = _VerbDescriptor(corr)
     join = _VerbDescriptor(join)
     concat = _VerbDescriptor(concat)
     slice_max = _VerbDescriptor(slice_max)
@@ -462,6 +501,9 @@ __all__ = [
     "glimpse",
     "format_glimpse",
     "hist",
+    "bar",
+    "scatter",
+    "corr",
     "clean_columns",
     "everything",
     "PolarsPtAccessor",

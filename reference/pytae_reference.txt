@@ -4166,6 +4166,9 @@ pytae penguins.parquet \
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Terminal Frequency Distribution (`-freq`)](#terminal-frequency-distribution--freq)
 - [Terminal Numeric Histograms (`-hist`)](#terminal-numeric-histograms--hist)
+- [Terminal Metric Value Bars (`-bar`)](#terminal-metric-value-bars--bar)
+- [Terminal 2D Braille Scatter Plot (`-scatter`)](#terminal-2d-braille-scatter-plot--scatter)
+- [Terminal Correlation Matrix & Pairs (`-corr`)](#terminal-correlation-matrix--pairs--corr)
 - [Headless Figure Plotting (`-plot` & `-finalize`)](#headless-figure-plotting--plot--finalize)
   - [1. Single Plots with Explicit Pipeline Aggregation](#1-single-plots-with-explicit-pipeline-aggregation)
   - [2. Multi-Dimensional Categorical Grouping (`by=`)](#2-multi-dimensional-categorical-grouping-by)
@@ -4182,6 +4185,9 @@ pytae penguins.parquet \
 |---|---|---|---|
 | `-freq COL` | Terminal ASCII | Categorical distribution bar chart | `pytae penguins.parquet -freq species` |
 | `-hist COL[:BINS]` | Terminal ASCII | Numeric binned distribution histogram | `pytae penguins.parquet -hist body_mass_g:8` |
+| `-bar [SPEC]` | Terminal ASCII | Metric value magnitude bars across categories | `pytae penguins.parquet -by island -agg avg=mass:mean -bar` |
+| `-scatter [SPEC]` | Terminal Braille | 2D in-terminal high-res bivariate scatter plot | `pytae penguins.parquet -scatter "bill_len:bill_depth"` |
+| `-corr [SPEC]` | Terminal ASCII | Pairwise correlation matrix or ranked pairs | `pytae penguins.parquet -corr pairs` |
 | `-plot SPEC` | Figure Plot | Draw bar, line, scatter, box, area, kde | `pytae data.csv -plot "kind=bar,x=cat,y=val"` |
 | `-finalize SPEC` | Figure Style | Title, axis labels, styles, tight layout | `pytae data.csv -finalize "title='Sales',style=dark_background"` |
 | `-o TARGET.ext` | Export | Save figure to PNG, SVG, PDF, etc. | `-o chart.png -out_dir ./figures` |
@@ -4239,6 +4245,123 @@ body_mass_g            count
 
 - If bins count is omitted (`-hist body_mass_g`), defaults to 10 bins.
 - Automatically handles missing values and filters out non-numeric rows.
+
+---
+
+## Terminal Metric Value Bars (`-bar`)
+
+While `-freq` visualizes row counts, `-bar` visualizes **pre-aggregated metric values** (such as averages, sums, or calculated ratios) directly in your terminal table.
+
+### 1. Bare `-bar` with 2 Columns (Auto-detect)
+When grouping and aggregating down to 2 columns (1 numeric, 1 non-numeric), bare `-bar` automatically targets the value:
+```bash
+pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar
+```
+
+**Output:**
+```text
+┌───────────┬─────────────┬──────────────────────┐
+│ island    ┆ avg_mass    ┆ Bar                  │
+╞═══════════╪═════════════╪══════════════════════╡
+│ Biscoe    ┆ 4716.017964 ┆ ████████████████████ │
+│ Dream     ┆ 3712.903226 ┆ ████████████████     │
+│ Torgersen ┆ 3706.372549 ┆ ████████████████     │
+└───────────┴─────────────┴──────────────────────┘
+```
+
+### 2. Multi-Column Tables (Preserves Metadata)
+Target a specific value column while preserving other grouping dimensions:
+```bash
+pytae penguins.parquet -by species,island -agg avg_mass=body_mass_g:mean -bar avg_mass
+```
+
+### 3. Percentages & Custom Bounds
+Append percentage of total (`pct=true`) or set custom bounds (`limit=(min,max)`):
+```bash
+pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar "pct=true"
+pytae data.csv -bar "island:avg_mass,limit=(3000,5000),width=30"
+```
+
+---
+
+## Terminal 2D Braille Scatter Plot (`-scatter`)
+
+Inspect bivariate correlation, non-linear trends, and outliers directly inside your terminal using high-resolution Unicode Braille characters (2×4 subpixels per character cell):
+
+```bash
+pytae penguins.parquet -scatter "bill_length_mm:bill_depth_mm"
+```
+
+**Output:**
+```text
+ bill_depth_mm
+    21.5 ┤     ⠠      ⠠⠠   ⠠ ⠄      ⠁                        
+         │          ⡀  ⠠⠂    ⠐                ⠐   ⠈          
+         │           ⡤ ⠄ ⠐ ⠌⠐      ⠁     ⢀ ⠠ ⢀⠁ ⡄⢀   ⢀       
+         │      ⠄ ⠠⡀⢄  ⠐    ⠤⠄  ⠈  ⠄     ⠆ ⠄⠇ ⠠              
+         │   ⠐  ⠠⠈ ⠄⠨⡀⠑⣄⠬⠄⠦⠃ ⠁⠘   ⢀⠠⠄     ⠂⢠⠘⢜⠐⠄             
+         │    ⢀⡂  ⠂⠊⡐⣍ ⠈⡐⠐⠑⡹ ⠂⠖⢀    ⡈ ⠠  ⢀⢈ ⠒⢀⢀              
+         │      ⠂⠁⠊⠂⠂⢀⠐⡂⠶⠈⠂⡀⠁ ⡀ ⠈ ⠐ ⠐⠂     ⠂⠐            ⠐   
+    17.3 ┤    ⠄⠠ ⡁⢦ ⢀⢆⢠⠅⠅⢠⡄⠁ ⠐   ⠂ ⡢⠁⠐  ⠈ ⠐ ⠐  ⡄     ⢀      ⢀
+         │       ⠡⠠⢈⠂⢀  ⠂ ⠰  ⠐⠠   ⢠  ⡠⠐⢀  ⠐  ⡀               
+         │  ⠐   ⢀⠂⠂  ⠄               ⠂  ⠡⠂⢢⡃⡀⠉      ⠄        
+         │ ⠄                     ⠁⠌ ⠘⡄⡄⠐⠈⠈⠁⣈⠈  ⠐ ⠁⠈          
+         │                  ⡀  ⠈ ⡀⢀⠂⢕ ⠐⠊⠘⢘⠐⠃⠃                
+         │                    ⡐⢂ ⠄⠊⢊⡒⡌⢘⠠⢃⠐ ⠠ ⢀               
+         │                ⠠  ⠠⠄⠑⡂ ⠤⠆  ⠌                      
+    13.1 ┤                  ⠈ ⡀⠁  ⠂ ⠌                        
+         ┼──────────────────────────────────────────────────
+          32.1                   45.9                   59.6  bill_length_mm
+
+  Points: 342 (2 nulls excluded) | Corr (r): -0.235
+```
+
+- **Bare `-scatter`**: If the table contains exactly 2 numeric columns (e.g. after `-select "x,y"`), bare `-scatter` auto-selects them!
+- Custom dimensions: `-scatter "x:y,width=60,height=20"`.
+
+---
+
+## Terminal Correlation Matrix & Pairs (`-corr`)
+
+Compute Pearson or Spearman correlation coefficients across numeric columns with pairwise null handling:
+
+### 1. Symmetric Correlation Matrix (Default)
+```bash
+pytae penguins.parquet -select "bill_length_mm,bill_depth_mm,body_mass_g" -corr
+```
+```text
+┌────────────────┬────────────────┬───────────────┬─────────────┐
+│ column         ┆ bill_length_mm ┆ bill_depth_mm ┆ body_mass_g │
+╞════════════════╪════════════════╪═══════════════╪═════════════╡
+│ bill_length_mm ┆ 1.0            ┆ -0.24         ┆ 0.6         │
+│ bill_depth_mm  ┆ -0.24          ┆ 1.0           ┆ -0.47       │
+│ body_mass_g    ┆ 0.6            ┆ -0.47         ┆ 1.0         │
+└────────────────┴───────────────┴───────────────┴─────────────┘
+```
+
+### 2. Ranked Correlation Pairs (`-corr pairs`)
+Unnest the matrix into unique pairs sorted by correlation strength with visual bars:
+```bash
+pytae penguins.parquet -corr pairs
+```
+```text
+┌───────────────────┬───────────────────┬───────┬───────────────────────┐
+│ Column A          ┆ Column B          ┆ Corr  ┆ Strength              │
+╞═══════════════════╪═══════════════════╪═══════╪═══════════════════════╡
+│ flipper_length_mm ┆ body_mass_g       ┆ 0.87  ┆ █████████ Very Strong │
+│ bill_length_mm    ┆ flipper_length_mm ┆ 0.66  ┆ ███████ Strong        │
+│ bill_length_mm    ┆ body_mass_g       ┆ 0.6   ┆ ██████ Moderate       │
+│ bill_depth_mm     ┆ flipper_length_mm ┆ -0.58 ┆ ▒▒▒▒▒▒ Moderate (-)   │
+│ bill_depth_mm     ┆ body_mass_g       ┆ -0.47 ┆ ▒▒▒▒▒ Moderate (-)    │
+│ bill_length_mm    ┆ bill_depth_mm     ┆ -0.24 ┆ ▒▒ Weak (-)           │
+└───────────────────┴───────────────────┴───────┴───────────────────────┘
+```
+
+### 3. Single-Target Screening
+Screen all numeric features against a specific target column:
+```bash
+pytae penguins.parquet -corr "target=body_mass_g"
+```
 
 ---
 
@@ -11686,10 +11809,10 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |
-| **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist` |
+| **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
 | **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
-| **Plotting** | **[plotting.ipynb](detailed_docs/plotting/plotting.ipynb)** | **[plotting.md](detailed_docs/cli/plotting.md)** | `df.plot()`, `-plot`, `-finalize`, bar, line, scatter, hist, box, violin, corr, heat |
+| **Plotting** | **[plotting.ipynb](detailed_docs/plotting/plotting.ipynb)** | **[plotting.md](detailed_docs/cli/plotting.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Comparisons** | **[vs. Pandas](comparison_to_pandas.md)**<br>**[vs. dplyr](comparison_to_dplyr.md)**<br>**[vs. SAS](comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
 | **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 
@@ -13390,7 +13513,7 @@ pretty = true
 exclude = ["src/pytae/plotting.py"]
 
 [[tool.mypy.overrides]]
-module = ["pytae.plotting", "pytae.plotting.*"]
+module = ["pytae.*"]
 ignore_errors = true
 
 ================================================================================
@@ -13576,7 +13699,9 @@ def tail(df: Any, n: int | str | None = None, *, prop: float | None = None, with
 
 
 def pick(*args: Any, **kwargs: Any) -> Any:
-    raise AttributeError("pt.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
+    raise AttributeError(
+        "pt.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing)."
+    )
 
 
 def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
@@ -13616,8 +13741,6 @@ def sql(df: Any, query: str) -> DataFrame:
 
 def by(df: Any, *cols: Any) -> GroupedDataFrame:
     return DataFrame(df).by(*cols)
-
-
 
 
 def agg(df: Any, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
@@ -13675,12 +13798,48 @@ def glimpse(df: Any, width: int | None = None) -> DataFrame:
     return DataFrame(df).glimpse(width=width)
 
 
-def freq(df: Any, col: str | None = None, dropna: bool = False) -> DataFrame:
-    return DataFrame(df).freq(col=col, dropna=dropna)
+def freq(df: Any, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
+    return DataFrame(df).freq(col=col, dropna=dropna, width=width)
 
 
-def hist(df: Any, col: str | None = None, bins: int = 10) -> DataFrame:
-    return DataFrame(df).hist(col=col, bins=bins)
+def hist(df: Any, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
+    return DataFrame(df).hist(col=col, bins=bins, width=width)
+
+
+def bar(
+    df: Any,
+    cat: str | None = None,
+    val: str | None = None,
+    *,
+    limit: tuple[float, float] | list[float] | None = None,
+    pct: bool = False,
+    width: int = 20,
+) -> DataFrame:
+    return DataFrame(df).bar(cat=cat, val=val, limit=limit, pct=pct, width=width)
+
+
+def scatter(
+    df: Any,
+    x: str | None = None,
+    y: str | None = None,
+    *,
+    width: int = 50,
+    height: int = 15,
+    limit_x: tuple[float, float] | list[float] | None = None,
+    limit_y: tuple[float, float] | list[float] | None = None,
+) -> str:
+    return DataFrame(df).scatter(x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+
+def corr(
+    df: Any,
+    target: str | None = None,
+    *,
+    cols: list[str] | None = None,
+    pairs: bool = False,
+    method: str = "pearson",
+) -> DataFrame:
+    return DataFrame(df).corr(target=target, cols=cols, pairs=pairs, method=method)
 
 
 def join(
@@ -13779,6 +13938,9 @@ class _PytaeModule(ModuleType):
     glimpse = _VerbDescriptor(glimpse)
     freq = _VerbDescriptor(freq)
     hist = _VerbDescriptor(hist)
+    bar = _VerbDescriptor(bar)
+    scatter = _VerbDescriptor(scatter)
+    corr = _VerbDescriptor(corr)
     join = _VerbDescriptor(join)
     concat = _VerbDescriptor(concat)
     slice_max = _VerbDescriptor(slice_max)
@@ -13864,6 +14026,9 @@ __all__ = [
     "glimpse",
     "format_glimpse",
     "hist",
+    "bar",
+    "scatter",
+    "corr",
     "clean_columns",
     "everything",
     "PolarsPtAccessor",
@@ -14638,7 +14803,9 @@ class PolarsPtAccessor:
         return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
-        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
+        raise AttributeError(
+            "df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def sample(
         self,
@@ -14720,11 +14887,44 @@ class PolarsPtAccessor:
         print(format_glimpse(self._obj, width=width))
         return self._obj
 
-    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
-        return DataFrame(self._obj).freq(col=col, dropna=dropna)
+    def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).freq(col=col, dropna=dropna, width=width)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
-        return DataFrame(self._obj).hist(col=col, bins=bins)
+    def hist(self, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).hist(col=col, bins=bins, width=width)
+
+    def bar(
+        self,
+        cat: str | None = None,
+        val: str | None = None,
+        *,
+        limit: tuple[float, float] | list[float] | None = None,
+        pct: bool = False,
+        width: int = 20,
+    ) -> DataFrame:
+        return DataFrame(self._obj).bar(cat=cat, val=val, limit=limit, pct=pct, width=width)
+
+    def scatter(
+        self,
+        x: str | None = None,
+        y: str | None = None,
+        *,
+        width: int = 50,
+        height: int = 15,
+        limit_x: tuple[float, float] | list[float] | None = None,
+        limit_y: tuple[float, float] | list[float] | None = None,
+    ) -> str:
+        return DataFrame(self._obj).scatter(x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+    def corr(
+        self,
+        target: str | None = None,
+        *,
+        cols: list[str] | None = None,
+        pairs: bool = False,
+        method: str = "pearson",
+    ) -> DataFrame:
+        return DataFrame(self._obj).corr(target=target, cols=cols, pairs=pairs, method=method)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).pipe(func, *args, **kwargs)
@@ -14831,7 +15031,9 @@ class PandasPtAccessor:
         return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
-        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
+        raise AttributeError(
+            "df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def sample(
         self,
@@ -14917,11 +15119,44 @@ class PandasPtAccessor:
         print(format_glimpse(self._obj, width=width))
         return self._obj
 
-    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
-        return DataFrame(self._obj).freq(col=col, dropna=dropna)
+    def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).freq(col=col, dropna=dropna, width=width)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
-        return DataFrame(self._obj).hist(col=col, bins=bins)
+    def hist(self, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).hist(col=col, bins=bins, width=width)
+
+    def bar(
+        self,
+        cat: str | None = None,
+        val: str | None = None,
+        *,
+        limit: tuple[float, float] | list[float] | None = None,
+        pct: bool = False,
+        width: int = 20,
+    ) -> DataFrame:
+        return DataFrame(self._obj).bar(cat=cat, val=val, limit=limit, pct=pct, width=width)
+
+    def scatter(
+        self,
+        x: str | None = None,
+        y: str | None = None,
+        *,
+        width: int = 50,
+        height: int = 15,
+        limit_x: tuple[float, float] | list[float] | None = None,
+        limit_y: tuple[float, float] | list[float] | None = None,
+    ) -> str:
+        return DataFrame(self._obj).scatter(x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+    def corr(
+        self,
+        target: str | None = None,
+        *,
+        cols: list[str] | None = None,
+        pairs: bool = False,
+        method: str = "pearson",
+    ) -> DataFrame:
+        return DataFrame(self._obj).corr(target=target, cols=cols, pairs=pairs, method=method)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).pipe(func, *args, **kwargs)
@@ -15170,6 +15405,12 @@ _CLI_FLAGS = {
     "--freq",
     "-hist",
     "--hist",
+    "-bar",
+    "--bar",
+    "-scatter",
+    "--scatter",
+    "-corr",
+    "--corr",
     "-plot",
     "--plot",
     "-finalize",
@@ -15389,6 +15630,42 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="COLUMN[:BINS]",
         help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)",
+    )
+    parser.add_argument(
+        "-bar",
+        "--bar",
+        dest="bar",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="render in-terminal horizontal bars for metric values, "
+        'e.g. -bar, -bar avg_mass, -bar "island:avg_mass", or -bar "avg_mass,limit=(0,5000),pct=true"',
+    )
+    parser.add_argument(
+        "-scatter",
+        "--scatter",
+        dest="scatter",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="render an in-terminal 2D Braille scatter plot for two numeric columns, "
+        'e.g. -scatter, -scatter "x:y", or -scatter "x:y,width=60,height=20"',
+    )
+    parser.add_argument(
+        "-corr",
+        "--corr",
+        dest="corr",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="render pairwise correlation matrix or ranked pairs for numeric columns, "
+        'e.g. -corr, -corr pairs, -corr "target=body_mass_g", or -corr "pairs,method=spearman"',
     )
     parser.add_argument(
         "-distinct",
@@ -15831,8 +16108,14 @@ def main(argv: list[str] | None = None) -> int:
         (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
         (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
         (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
-        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-arrange ... -tail N' (or '-arrange ... desc -head N') instead"),
-        (("-pick", "--pick"), "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead"),
+        (
+            ("-slice_min", "--slice_min"),
+            "'-slice_min' has been removed; use '-arrange ... -tail N' (or '-arrange ... desc -head N') instead",
+        ),
+        (
+            ("-pick", "--pick"),
+            "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead",
+        ),
         (("-group_by", "--group_by", "-groupby", "--groupby"), "'-group_by' has been removed; use '-by' instead"),
         (("-handle_missing", "--handle_missing"), "'-handle_missing' has been removed; use '-fillna' instead"),
         (("-fill_null", "--fill_null"), "'-fill_null' has been removed; use '-fillna' instead"),
@@ -15941,6 +16224,9 @@ def main(argv: list[str] | None = None) -> int:
             args.count is not None,
             args.freq is not None,
             args.hist is not None,
+            args.bar is not None,
+            args.scatter is not None,
+            args.corr is not None,
             args.head is not None,
             args.tail is not None,
             args.sample is not None,
@@ -15976,6 +16262,8 @@ def main(argv: list[str] | None = None) -> int:
             args.count is not None,
             args.freq is not None,
             args.hist is not None,
+            args.bar is not None,
+            args.corr is not None,
             args.head is not None,
             args.tail is not None,
             args.sample is not None,
@@ -15996,10 +16284,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
             "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-count/-sample/-arrange/"
-            "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
+            "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-bar/-corr/-plot; "
             "run -shape separately"
         )
-    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None and args.count is None:
+    if (
+        args.by is not None
+        and args.agg is None
+        and not args.mutate
+        and args.head is None
+        and args.tail is None
+        and args.count is None
+    ):
         parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")
@@ -16595,7 +16890,79 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -hist "body_mass_g:15"',
             "pytae penguins.parquet -hist bill_length_mm:5",
         ],
-        see_also=["-freq", "-describe"],
+        see_also=["-freq", "-describe", "-bar", "-scatter"],
+    ),
+    "bar": KeywordHelp(
+        name="bar",
+        flag="-bar, --bar [SPEC]",
+        syntax='pytae <path> -bar [COLUMN | "CAT:VAL" | "VAL,limit=(min,max),pct=true,width=N"]',
+        summary="Render in-terminal horizontal bars for metric values across categories.",
+        description=(
+            "Displays ASCII bar visualizations for metric values (averages, sums, metrics).\n"
+            "Automatically selects 1 numeric and 1 non-numeric column when run bare on a 2-column table.\n"
+            "Preserves table row order and metadata columns intact, appending 'Bar' to the far right."
+        ),
+        options=[
+            "COLUMN : Metric column to visualize (keeps other columns as context).",
+            "CAT:VAL : Explicit category and value columns.",
+            "limit=(min,max) : Optional custom bounds for scaling (default: 0 to max).",
+            "pct=true|false : Whether to append percentage of total to each bar (default: false).",
+            "width=N : Maximum character width of bars (default: 20).",
+        ],
+        examples=[
+            "pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar",
+            "pytae penguins.parquet -by species -agg avg_mass=body_mass_g:mean -bar avg_mass",
+            'pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar "pct=true"',
+            'pytae summary.csv -bar "island:avg_mass,limit=(3000,5000)"',
+        ],
+        see_also=["-freq", "-hist", "-scatter", "-corr"],
+    ),
+    "scatter": KeywordHelp(
+        name="scatter",
+        flag="-scatter, --scatter [SPEC]",
+        syntax='pytae <path> -scatter ["X:Y" | "X:Y,width=W,height=H,limit_x=(min,max),limit_y=(min,max)"]',
+        summary="Render in-terminal 2D Unicode Braille scatter plot for bivariate data.",
+        description=(
+            "High-resolution 2D terminal scatter plot using Unicode Braille subpixels (2x4 per cell).\n"
+            "Automatically picks 2 numeric columns if the table contains exactly two.\n"
+            "Displays X/Y axis ticks and a summary footer with point counts and Pearson correlation (r)."
+        ),
+        options=[
+            "X:Y : Numeric columns for X and Y axes.",
+            "width=N : Canvas width in terminal characters (default: 50).",
+            "height=N : Canvas height in terminal lines (default: 15).",
+            "limit_x=(min,max) : Custom limits for X-axis.",
+            "limit_y=(min,max) : Custom limits for Y-axis.",
+        ],
+        examples=[
+            'pytae penguins.parquet -scatter "bill_length_mm:bill_depth_mm"',
+            'pytae penguins.parquet -select "bill_length_mm,bill_depth_mm" -scatter',
+            'pytae penguins.parquet -scatter "bill_length_mm:bill_depth_mm,width=60,height=20"',
+        ],
+        see_also=["-corr", "-hist", "-bar", "-plot"],
+    ),
+    "corr": KeywordHelp(
+        name="corr",
+        flag="-corr, --corr [SPEC]",
+        syntax='pytae <path> -corr [pairs | "target=COLUMN" | "method=spearman"]',
+        summary="Render pairwise correlation matrix or ranked pairs for numeric columns.",
+        description=(
+            "Computes pairwise correlations across numeric columns with pairwise null handling.\n"
+            "Defaults to a symmetric NxN matrix view; use 'pairs' for a ranked list of unique pairs\n"
+            "with visual strength bars, or 'target=col' to screen all features against one target."
+        ),
+        options=[
+            "pairs : Output ranked unique pairs sorted descending by absolute correlation.",
+            "target=COL : Correlate all other numeric columns against a single target column.",
+            "method=pearson|spearman : Correlation algorithm (default: pearson).",
+        ],
+        examples=[
+            "pytae penguins.parquet -corr",
+            "pytae penguins.parquet -corr pairs",
+            'pytae penguins.parquet -corr "target=body_mass_g"',
+            'pytae penguins.parquet -corr "pairs,method=spearman"',
+        ],
+        see_also=["-scatter", "-bar", "-describe"],
     ),
     "meta": KeywordHelp(
         name="meta",
@@ -17267,7 +17634,9 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
                     raise ValueError
                 prop = p_val
             except ValueError:
-                raise argparse.ArgumentTypeError(f"{flag_name}: invalid prop value '{v_str}'; must be a number between 0 and 1")
+                raise argparse.ArgumentTypeError(
+                    f"{flag_name}: invalid prop value '{v_str}'; must be a number between 0 and 1"
+                )
         elif tok.endswith("%"):
             try:
                 p_val = float(tok[:-1]) / 100.0
@@ -17275,7 +17644,9 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
                     raise ValueError
                 prop = p_val
             except ValueError:
-                raise argparse.ArgumentTypeError(f"{flag_name}: invalid percentage '{tok}'; must be between 0% and 100%")
+                raise argparse.ArgumentTypeError(
+                    f"{flag_name}: invalid percentage '{tok}'; must be between 0% and 100%"
+                )
         else:
             try:
                 if "." in tok:
@@ -17299,7 +17670,9 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
 
 
 def parse_pick_spec(*args: Any, **kwargs: Any) -> Any:
-    raise SystemExit("'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead.")
+    raise SystemExit(
+        "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
+    )
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -17794,8 +18167,6 @@ def parse_pivot_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_PIVOT_KEYS, flag="-pivot")
 
 
-
-
 def parse_bool_text(raw: str) -> bool:
     """Parse a required true/false text flag value into bool."""
     lowered = raw.strip().lower()
@@ -18088,6 +18459,172 @@ def normalize_sql(query: str) -> str:
         out_chars.append(ch)
         i += 1
     return "".join(out_chars)
+
+
+def parse_bar_spec(raw: str | None) -> dict[str, Any]:
+    """Parse -bar specification: e.g. bare (None/""), "col", "cat:val",
+    "cat:val,limit=(min,max),pct=true,width=30", "limit=(0,5000),pct=true"."""
+    result: dict[str, Any] = {
+        "cat": None,
+        "val": None,
+        "limit": None,
+        "pct": False,
+        "width": 20,
+    }
+    if not raw or not raw.strip():
+        return result
+
+    tokens = _tokenize(raw.strip(), ",", keep_quotes=True, track_brackets=True)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if "=" in token:
+            key, _, val_str = token.partition("=")
+            key = key.strip().lower()
+            val_str = val_str.strip()
+            if key == "limit":
+                v = val_str.strip("()[]")
+                lim_parts = [p.strip() for p in (v.split(":") if ":" in v else v.split(",")) if p.strip()]
+                if len(lim_parts) == 2:
+                    try:
+                        result["limit"] = (float(lim_parts[0]), float(lim_parts[1]))
+                    except ValueError:
+                        raise SystemExit(f"-bar: invalid limit='{val_str}'; expected (min, max)")
+                else:
+                    raise SystemExit(f"-bar: invalid limit='{val_str}'; expected (min, max)")
+            elif key == "pct":
+                result["pct"] = parse_bool_text(val_str)
+            elif key == "width":
+                try:
+                    result["width"] = int(val_str)
+                except ValueError:
+                    raise SystemExit(f"-bar: invalid width='{val_str}'; expected positive integer")
+            elif key in ("val", "value"):
+                result["val"] = _unquote_name(val_str)
+            elif key in ("cat", "category"):
+                result["cat"] = _unquote_name(val_str)
+            else:
+                raise SystemExit(f"-bar: unrecognized option '{key}'")
+        else:
+            if ":" in token:
+                cp, _, vp = token.partition(":")
+                result["cat"] = _unquote_name(cp.strip())
+                result["val"] = _unquote_name(vp.strip())
+            else:
+                result["val"] = _unquote_name(token)
+    return result
+
+
+def parse_scatter_spec(raw: str | None) -> dict[str, Any]:
+    """Parse -scatter specification: e.g. bare (None/""), "x:y",
+    "x:y,width=60,height=20,limit_x=(min,max),limit_y=(min,max)"."""
+    result: dict[str, Any] = {
+        "x": None,
+        "y": None,
+        "width": 50,
+        "height": 15,
+        "limit_x": None,
+        "limit_y": None,
+    }
+    if not raw or not raw.strip():
+        return result
+
+    tokens = _tokenize(raw.strip(), ",", keep_quotes=True, track_brackets=True)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if "=" in token:
+            key, _, val_str = token.partition("=")
+            key = key.strip().lower()
+            val_str = val_str.strip()
+            if key in ("limit_x", "xlim"):
+                v = val_str.strip("()[]")
+                lim_parts = [p.strip() for p in (v.split(":") if ":" in v else v.split(",")) if p.strip()]
+                if len(lim_parts) == 2:
+                    try:
+                        result["limit_x"] = (float(lim_parts[0]), float(lim_parts[1]))
+                    except ValueError:
+                        raise SystemExit(f"-scatter: invalid limit_x='{val_str}'; expected (min, max)")
+                else:
+                    raise SystemExit(f"-scatter: invalid limit_x='{val_str}'; expected (min, max)")
+            elif key in ("limit_y", "ylim"):
+                v = val_str.strip("()[]")
+                lim_parts = [p.strip() for p in (v.split(":") if ":" in v else v.split(",")) if p.strip()]
+                if len(lim_parts) == 2:
+                    try:
+                        result["limit_y"] = (float(lim_parts[0]), float(lim_parts[1]))
+                    except ValueError:
+                        raise SystemExit(f"-scatter: invalid limit_y='{val_str}'; expected (min, max)")
+                else:
+                    raise SystemExit(f"-scatter: invalid limit_y='{val_str}'; expected (min, max)")
+            elif key == "width":
+                try:
+                    result["width"] = int(val_str)
+                except ValueError:
+                    raise SystemExit(f"-scatter: invalid width='{val_str}'; expected positive integer")
+            elif key == "height":
+                try:
+                    result["height"] = int(val_str)
+                except ValueError:
+                    raise SystemExit(f"-scatter: invalid height='{val_str}'; expected positive integer")
+            elif key == "x":
+                result["x"] = _unquote_name(val_str)
+            elif key == "y":
+                result["y"] = _unquote_name(val_str)
+            else:
+                raise SystemExit(f"-scatter: unrecognized option '{key}'")
+        else:
+            if ":" in token:
+                xp, _, yp = token.partition(":")
+                result["x"] = _unquote_name(xp.strip())
+                result["y"] = _unquote_name(yp.strip())
+            else:
+                result["x"] = _unquote_name(token)
+    return result
+
+
+def parse_corr_spec(raw: str | None) -> dict[str, Any]:
+    """Parse -corr specification: e.g. bare (None/""), "pairs", "target=col",
+    "method=spearman", "pairs,method=spearman"."""
+    result: dict[str, Any] = {
+        "target": None,
+        "pairs": False,
+        "method": "pearson",
+    }
+    if not raw or not raw.strip():
+        return result
+
+    tokens = _tokenize(raw.strip(), ",", keep_quotes=True, track_brackets=True)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if "=" in token:
+            key, _, val_str = token.partition("=")
+            key = key.strip().lower()
+            val_str = val_str.strip()
+            if key in ("target", "y"):
+                result["target"] = _unquote_name(val_str)
+            elif key == "method":
+                m = val_str.lower().strip()
+                if m not in ("pearson", "spearman"):
+                    raise SystemExit(f"-corr: invalid method '{val_str}'; expected 'pearson' or 'spearman'")
+                result["method"] = m
+            elif key == "pairs":
+                result["pairs"] = parse_bool_text(val_str)
+            else:
+                raise SystemExit(f"-corr: unrecognized option '{key}'")
+        else:
+            t_lower = token.lower()
+            if t_lower == "pairs":
+                result["pairs"] = True
+            elif t_lower in ("pearson", "spearman"):
+                result["method"] = t_lower
+            else:
+                result["target"] = _unquote_name(token)
+    return result
 
 ################################################################################
 # FILE: src/pytae/cli_pipeline.py
@@ -18761,8 +19298,17 @@ def _format_table(
 def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
     from pytae.other_utilities import freq
 
+    width = 20
+    target_col = col
+    if col and ",width=" in col:
+        c_part, _, w_part = col.partition(",width=")
+        target_col = c_part.strip()
+        try:
+            width = int(w_part.strip())
+        except ValueError:
+            raise SystemExit(f"-freq: invalid width='{w_part.strip()}'; expected positive integer")
     try:
-        return freq(source_df, col=col, dropna=dropna)
+        return freq(source_df, col=target_col, dropna=dropna, width=width)
     except KeyError as exc:
         raise SystemExit(str(exc))
     except ValueError as exc:
@@ -18772,12 +19318,80 @@ def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
 def _compute_hist(source_df: Any, hist_arg: str | None) -> Any:
     from pytae.other_utilities import hist
 
+    width = 20
+    target_arg = hist_arg
+    if hist_arg and ",width=" in hist_arg:
+        h_part, _, w_part = hist_arg.partition(",width=")
+        target_arg = h_part.strip()
+        try:
+            width = int(w_part.strip())
+        except ValueError:
+            raise SystemExit(f"-hist: invalid width='{w_part.strip()}'; expected positive integer")
     try:
-        return hist(source_df, col=hist_arg)
+        return hist(source_df, col=target_arg, width=width)
     except KeyError as exc:
         raise SystemExit(str(exc))
     except ValueError as exc:
         raise SystemExit(f"-hist: {exc}")
+
+
+def _compute_bar(source_df: Any, bar_arg: str | None) -> Any:
+    from pytae.cli_parsing import parse_bar_spec
+    from pytae.other_utilities import bar
+
+    spec = parse_bar_spec(bar_arg)
+    try:
+        return bar(
+            source_df,
+            cat=spec["cat"],
+            val=spec["val"],
+            limit=spec["limit"],
+            pct=spec["pct"],
+            width=spec["width"],
+        )
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-bar: {exc}")
+
+
+def _compute_scatter(source_df: Any, scatter_arg: str | None) -> str:
+    from pytae.cli_parsing import parse_scatter_spec
+    from pytae.other_utilities import scatter
+
+    spec = parse_scatter_spec(scatter_arg)
+    try:
+        return scatter(
+            source_df,
+            x=spec["x"],
+            y=spec["y"],
+            width=spec["width"],
+            height=spec["height"],
+            limit_x=spec["limit_x"],
+            limit_y=spec["limit_y"],
+        )
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-scatter: {exc}")
+
+
+def _compute_corr(source_df: Any, corr_arg: str | None) -> Any:
+    from pytae.cli_parsing import parse_corr_spec
+    from pytae.other_utilities import corr
+
+    spec = parse_corr_spec(corr_arg)
+    try:
+        return corr(
+            source_df,
+            target=spec["target"],
+            pairs=spec["pairs"],
+            method=spec["method"],
+        )
+    except KeyError as exc:
+        raise SystemExit(str(exc))
+    except ValueError as exc:
+        raise SystemExit(f"-corr: {exc}")
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -19035,7 +19649,7 @@ def _compute_diff(
 # Ops whose pandas equivalent does not return a DataFrame (shape -> tuple, cols -> Index,
 # dtype -> Series, nulls -> Series, info() -> None, meta -> str, diff -> str). Like real method
 # chaining, nothing can follow them except -o clip.
-NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "meta", "diff", "glimpse"})
+NON_DF_TERMINAL_OPS = frozenset({"shape", "cols", "dtype", "nulls", "meta", "diff", "glimpse", "scatter"})
 
 
 def _list_order_names(names, order):
@@ -19455,6 +20069,32 @@ def _process_path(
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "bar":
+            bar_arg = _next_op_val("bar", getattr(args, "bar", None))
+            source_df = pipeline.current_frame()
+            result = _compute_bar(source_df, bar_arg)
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+        elif op == "scatter":
+            scatter_arg = _next_op_val("scatter", getattr(args, "scatter", None))
+            source_df = pipeline.current_frame()
+            scatter_str = _compute_scatter(source_df, scatter_arg)
+            if should_print(idx):
+                _output_text(scatter_str, args)
+            if is_clip:
+                clip_action = lambda s=scatter_str: _copy_to_clipboard(s)
+        elif op == "corr":
+            corr_arg = _next_op_val("corr", getattr(args, "corr", None))
+            source_df = pipeline.current_frame()
+            result = _compute_corr(source_df, corr_arg)
+            pipeline._df = result
+            if should_print(idx):
+                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
+            if is_clip:
+                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "distinct":
             distinct_val = _next_op_val("distinct", getattr(args, "distinct", None))
             err = pipeline.apply_distinct(distinct_val)
@@ -19462,22 +20102,14 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "count":
-            by_cols = (
-                parse_columns(args.by)
-                if (args.by and args.agg is None and not args.mutate)
-                else None
-            )
+            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
             count_val = _next_op_val("count", getattr(args, "count", None))
             err = pipeline.apply_count(count_val, by_cols=by_cols)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "head":
-            by_cols = (
-                parse_columns(args.by)
-                if (args.by and args.agg is None and not args.mutate)
-                else None
-            )
+            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
             if by_cols:
                 avail_cols = pipeline.columns()
                 if any(c not in avail_cols for c in by_cols):
@@ -19496,11 +20128,7 @@ def _process_path(
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
-            by_cols = (
-                parse_columns(args.by)
-                if (args.by and args.agg is None and not args.mutate)
-                else None
-            )
+            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
             if by_cols:
                 avail_cols = pipeline.columns()
                 if any(c not in avail_cols for c in by_cols):
@@ -20627,7 +21255,9 @@ class DataFrame:
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
         """Deprecated: pick() has been removed in favor of arrange().head(n) / arrange().tail(n)."""
-        raise AttributeError("df.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing).")
+        raise AttributeError(
+            "df.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         """Establish a grouping context for subsequent .mutate(), .agg(), or .head()/.tail() operations."""
@@ -20919,17 +21549,59 @@ class DataFrame:
         print(format_glimpse(self, width=width))
         return self
 
-    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
+    def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
         """Calculate frequency distribution of unique column values."""
         from pytae.other_utilities import freq as _freq
 
-        return DataFrame(_freq(self._df, col=col, dropna=dropna))
+        return DataFrame(_freq(self._df, col=col, dropna=dropna, width=width))
 
-    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
+    def hist(self, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
         """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column."""
         from pytae.other_utilities import hist as _hist
 
-        return DataFrame(_hist(self._df, col=col, bins=bins))
+        return DataFrame(_hist(self._df, col=col, bins=bins, width=width))
+
+    def bar(
+        self,
+        cat: str | None = None,
+        val: str | None = None,
+        *,
+        limit: tuple[float, float] | list[float] | None = None,
+        pct: bool = False,
+        width: int = 20,
+    ) -> DataFrame:
+        """Compute an in-terminal bar representation for a numeric column across categories."""
+        from pytae.other_utilities import bar as _bar
+
+        return DataFrame(_bar(self._df, cat=cat, val=val, limit=limit, pct=pct, width=width))
+
+    def scatter(
+        self,
+        x: str | None = None,
+        y: str | None = None,
+        *,
+        width: int = 50,
+        height: int = 15,
+        limit_x: tuple[float, float] | list[float] | None = None,
+        limit_y: tuple[float, float] | list[float] | None = None,
+    ) -> str:
+        """Render an in-terminal 2D Unicode Braille scatter plot for two numeric columns."""
+        from pytae.other_utilities import scatter as _scatter
+
+        return _scatter(self._df, x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+    def corr(
+        self,
+        target: str | None = None,
+        *,
+        cols: list[str] | None = None,
+        pairs: bool = False,
+        method: str = "pearson",
+    ) -> DataFrame:
+        """Compute pairwise correlation matrix or ranked pairs for numeric columns."""
+        from pytae.other_utilities import corr as _corr
+
+        return DataFrame(_corr(self._df, target=target, cols=cols, pairs=pairs, method=method))
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Apply a callable function taking DataFrame as its first argument."""
@@ -21068,6 +21740,7 @@ class GroupedDataFrame:
         df._orig_index = self._orig_index
         attr = getattr(df, name)
         if callable(attr):
+
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 res = attr(*args, **kwargs)
                 if isinstance(res, DataFrame):
@@ -21080,6 +21753,7 @@ class GroupedDataFrame:
                         _last_sort_desc=res._last_sort_desc,
                     )
                 return res
+
             return wrapper
         return attr
 
@@ -21089,7 +21763,7 @@ class GroupedDataFrame:
         cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
         descending = [not a for a in asc]
         all_cols = self._by + [c for c in cols if c not in self._by]
-        all_desc = [False] * len(self._by) + [descending[cols.index(c)] for c in all_cols[len(self._by):]]
+        all_desc = [False] * len(self._by) + [descending[cols.index(c)] for c in all_cols[len(self._by) :]]
         sorted_df = self._df.sort(all_cols, descending=all_desc, nulls_last=na_last)
         return GroupedDataFrame(
             sorted_df,
@@ -21724,6 +22398,7 @@ def freq(
     col: str | None = None,
     *,
     dropna: bool = False,
+    width: int = 20,
 ) -> Any:
     """Compute a frequency table with ASCII distribution bars and percentages for a column.
 
@@ -21735,6 +22410,8 @@ def freq(
         Column name to inspect. Required unless `df` has only a single column.
     dropna : bool, default False
         Whether to exclude NA/null values from the frequency counts.
+    width : int, default 20
+        Maximum character width of the bars.
 
     Returns:
     --------
@@ -21781,7 +22458,7 @@ def freq(
 
     total = counted["Count"].sum() if len(counted) > 0 else 0
     max_cnt = counted["Count"].max() if len(counted) > 0 else 1
-    bar_max_width = 20
+    bar_max_width = width
 
     cats: list[str] = []
     counts_list: list[int] = []
@@ -21813,6 +22490,8 @@ def hist(
     df: Any,
     col: str | None = None,
     bins: int = 10,
+    *,
+    width: int = 20,
 ) -> Any:
     """Compute a binned distribution histogram with ASCII bars and percentages for a numeric column.
 
@@ -21825,6 +22504,8 @@ def hist(
         Required unless `df` has only a single column.
     bins : int, default 10
         Number of equal-width bins (overridden if `:bins` or `,bins=` is specified in `col`).
+    width : int, default 20
+        Maximum character width of the bars.
 
     Returns:
     --------
@@ -21925,7 +22606,7 @@ def hist(
         bin_counts[idx] += 1
 
     max_cnt = max(bin_counts) if bin_counts else 1
-    bar_max_width = 20
+    bar_max_width = width
     ranges = []
     counts = []
     distributions = []
@@ -21953,6 +22634,571 @@ def hist(
         }
     )
     return DataFrame(res_df)
+
+
+def bar(
+    df: Any,
+    cat: str | None = None,
+    val: str | None = None,
+    *,
+    limit: tuple[float, float] | list[float] | None = None,
+    pct: bool = False,
+    width: int = 20,
+) -> Any:
+    """Compute an in-terminal bar representation for a numeric column across categories.
+
+    Parameters:
+    -----------
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
+    cat : str, optional
+        Category column name, or `'cat:val'` / `'val'` specification.
+    val : str, optional
+        Numeric value column to visualize with bars.
+    limit : tuple of (float, float), optional
+        Custom (min, max) limits for scaling bar lengths.
+    pct : bool, default False
+        Whether to append the percentage of total to each bar.
+    width : int, default 20
+        Maximum character width of the bars.
+
+    Returns:
+    --------
+    DataFrame
+        DataFrame with an added 'Bar' column.
+    """
+    import math
+
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
+    if not cols:
+        return DataFrame(pldf)
+
+    cat_col: str | None = None
+    val_col: str | None = None
+    explicit_pair = False
+
+    if cat is not None and not isinstance(cat, str):
+        cat = str(cat)
+    if val is not None and not isinstance(val, str):
+        val = str(val)
+
+    if cat and ":" in cat and val is None:
+        c_part, _, v_part = cat.partition(":")
+        cat_col = _unquote_name(c_part.strip())
+        val_col = _unquote_name(v_part.strip())
+        explicit_pair = True
+    elif cat and val:
+        cat_col = _unquote_name(cat.strip())
+        val_col = _unquote_name(val.strip())
+        explicit_pair = True
+    elif cat and val is None:
+        cand = _unquote_name(cat.strip())
+        if cand in cols and pldf[cand].dtype.is_numeric():
+            val_col = cand
+            cat_col = None
+        elif cand in cols:
+            cat_col = cand
+            val_col = None
+        else:
+            val_col = cand
+    elif val and cat is None:
+        val_col = _unquote_name(val.strip())
+        cat_col = None
+    else:
+        # Bare -bar: auto-detect
+        if len(cols) == 2:
+            num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+            non_num_cols = [c for c in cols if not pldf[c].dtype.is_numeric()]
+            if len(num_cols) == 1 and len(non_num_cols) == 1:
+                val_col = num_cols[0]
+                cat_col = non_num_cols[0]
+                explicit_pair = True
+            else:
+                cat_col = cols[0]
+                val_col = cols[1]
+                explicit_pair = True
+        elif len(cols) == 1:
+            val_col = cols[0]
+            cat_col = None
+        else:
+            num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+            if len(num_cols) == 1:
+                val_col = num_cols[0]
+                cat_col = None
+            else:
+                raise ValueError(
+                    "bar() requires a column specification (e.g. bar('mass') or bar('species:mass')) when DataFrame has multiple numeric columns"
+                )
+
+    if val_col is None:
+        num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+        if len(num_cols) == 1:
+            val_col = num_cols[0]
+        else:
+            raise ValueError("bar() requires a numeric value column to plot")
+
+    if val_col not in cols:
+        raise KeyError(f"bar: column '{val_col}' not found in DataFrame. Available columns: {cols}")
+
+    if cat_col is not None and cat_col not in cols:
+        raise KeyError(f"bar: category column '{cat_col}' not found in DataFrame. Available columns: {cols}")
+
+    s_val = pldf[val_col].cast(pl.Float64, strict=False)
+    vals = s_val.drop_nulls().drop_nans().to_list()
+
+    if not vals:
+        min_limit, max_limit = 0.0, 1.0
+    elif limit is not None:
+        min_limit, max_limit = float(limit[0]), float(limit[1])
+    else:
+        min_data = min(vals)
+        max_data = max(vals)
+        if min_data >= 0:
+            min_limit = 0.0
+            max_limit = max_data if max_data > 0 else 1.0
+        else:
+            min_limit = min_data
+            max_limit = max_data if max_data > min_data else min_data + 1.0
+
+    denom = max_limit - min_limit if max_limit != min_limit else 1.0
+    total_pos = sum(v for v in vals if v > 0)
+    bars_list: list[str] = []
+
+    for v in s_val.to_list():
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            bars_list.append("")
+            continue
+        clamped_v = max(min_limit, min(max_limit, v))
+        fraction = (clamped_v - min_limit) / denom
+        fraction = max(0.0, min(1.0, fraction))
+        bar_len = int(round(fraction * width))
+        bar_str = "█" * bar_len
+        if pct:
+            pct_val = (v / total_pos * 100) if total_pos > 0 else 0.0
+            pct_str = f"({pct_val:.1f}%)"
+            bars_list.append(f"{bar_str} {pct_str}".strip() if bar_str else pct_str)
+        else:
+            bars_list.append(bar_str)
+
+    if explicit_pair and cat_col is not None:
+        out_pl = pldf.select([cat_col, val_col]).with_columns(pl.Series("Bar", bars_list))
+    else:
+        out_pl = pldf.with_columns(pl.Series("Bar", bars_list))
+
+    return DataFrame(out_pl)
+
+
+def scatter(
+    df: Any,
+    x: str | None = None,
+    y: str | None = None,
+    *,
+    width: int = 50,
+    height: int = 15,
+    limit_x: tuple[float, float] | list[float] | None = None,
+    limit_y: tuple[float, float] | list[float] | None = None,
+) -> str:
+    """Render an in-terminal 2D Unicode Braille scatter plot for two numeric columns.
+
+    Parameters:
+    -----------
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
+    x : str, optional
+        X-axis column name, or `'x:y'` specification.
+    y : str, optional
+        Y-axis column name.
+    width : int, default 50
+        Width of the plot canvas in terminal characters (each char has 2 subpixels).
+    height : int, default 15
+        Height of the plot canvas in terminal lines (each line has 4 subpixels).
+    limit_x : tuple of (float, float), optional
+        Custom (min, max) limits for X-axis.
+    limit_y : tuple of (float, float), optional
+        Custom (min, max) limits for Y-axis.
+
+    Returns:
+    --------
+    str
+        Formatted 2D Braille scatter plot string with axes and footer stats.
+    """
+    import math
+
+    import polars as pl
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    cols = list(pldf.columns)
+    x_col: str | None = None
+    y_col: str | None = None
+
+    if x is not None and ":" in str(x) and y is None:
+        xp, _, yp = str(x).partition(":")
+        x_col = _unquote_name(xp.strip())
+        y_col = _unquote_name(yp.strip())
+    elif x is not None and y is not None:
+        x_col = _unquote_name(str(x).strip())
+        y_col = _unquote_name(str(y).strip())
+    elif x is not None and y is None:
+        x_col = _unquote_name(str(x).strip())
+        other_nums = [c for c in cols if c != x_col and pldf[c].dtype.is_numeric()]
+        if len(other_nums) == 1:
+            y_col = other_nums[0]
+        else:
+            raise ValueError(f"scatter() requires two numeric columns; specify 'x:y' (e.g. scatter('{x_col}:col2'))")
+    else:
+        num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
+        if len(num_cols) == 2:
+            x_col = num_cols[0]
+            y_col = num_cols[1]
+        else:
+            raise ValueError(
+                f"scatter() requires column specification (e.g. scatter('x:y')) when DataFrame has {len(num_cols)} numeric columns"
+            )
+
+    if x_col not in cols:
+        raise KeyError(f"scatter: column '{x_col}' not found in DataFrame. Available columns: {cols}")
+    if y_col not in cols:
+        raise KeyError(f"scatter: column '{y_col}' not found in DataFrame. Available columns: {cols}")
+
+    total_rows = pldf.height
+    clean = pldf.select(
+        [
+            pl.col(x_col).cast(pl.Float64, strict=False).alias("x"),
+            pl.col(y_col).cast(pl.Float64, strict=False).alias("y"),
+        ]
+    ).filter(
+        pl.col("x").is_not_null() & pl.col("y").is_not_null() & pl.col("x").is_not_nan() & pl.col("y").is_not_nan()
+    )
+    valid_points = clean.height
+    null_points = total_rows - valid_points
+
+    if valid_points == 0:
+        return f"Empty scatter plot: no valid numeric pairs in '{x_col}' and '{y_col}'"
+
+    corr_str = "N/A"
+    if valid_points >= 2:
+        try:
+            r = clean.select(pl.corr("x", "y")).item()
+            corr_str = f"{r:+.3f}" if r is not None and not math.isnan(r) else "N/A"
+        except Exception:
+            corr_str = "N/A"
+
+    xs = clean["x"].to_list()
+    ys = clean["y"].to_list()
+
+    min_x = float(limit_x[0]) if limit_x is not None else min(xs)
+    max_x = float(limit_x[1]) if limit_x is not None else max(xs)
+    min_y = float(limit_y[0]) if limit_y is not None else min(ys)
+    max_y = float(limit_y[1]) if limit_y is not None else max(ys)
+
+    pw = max(width * 2, 2)
+    ph = max(height * 4, 4)
+    canvas = [[0] * width for _ in range(height)]
+    dot_map = {
+        (0, 0): 0x01,
+        (0, 1): 0x02,
+        (0, 2): 0x04,
+        (0, 3): 0x40,
+        (1, 0): 0x08,
+        (1, 1): 0x10,
+        (1, 2): 0x20,
+        (1, 3): 0x80,
+    }
+
+    denom_x = max_x - min_x if max_x != min_x else 1.0
+    denom_y = max_y - min_y if max_y != min_y else 1.0
+
+    for x_val, y_val in zip(xs, ys):
+        if not (min_x <= x_val <= max_x and min_y <= y_val <= max_y):
+            continue
+        nx = int((x_val - min_x) / denom_x * (pw - 1))
+        ny = int((max_y - y_val) / denom_y * (ph - 1))
+        nx = max(0, min(pw - 1, nx))
+        ny = max(0, min(ph - 1, ny))
+        c_col, s_x = divmod(nx, 2)
+        c_row, s_y = divmod(ny, 4)
+        canvas[c_row][c_col] |= dot_map[(s_x, s_y)]
+
+    lines: list[str] = []
+    lines.append(f" {y_col}")
+
+    mid_y = (min_y + max_y) / 2.0
+    mid_x = (min_x + max_x) / 2.0
+
+    for r in range(height):
+        if r == 0:
+            prefix = f"{max_y:>8.1f} ┤ "
+        elif r == height // 2:
+            prefix = f"{mid_y:>8.1f} ┤ "
+        elif r == height - 1:
+            prefix = f"{min_y:>8.1f} ┤ "
+        else:
+            prefix = "         │ "
+        row_chars = "".join(chr(0x2800 + cell) if cell else " " for cell in canvas[r])
+        lines.append(prefix + row_chars)
+
+    lines.append("         ┼" + "─" * width)
+
+    tick_spacing = max(width - 24, 4)
+    half_space = tick_spacing // 2
+    x_ticks_line = f"          {min_x:<8.1f}{' ' * half_space}{mid_x:^8.1f}{' ' * (tick_spacing - half_space)}{max_x:>8.1f}  {x_col}"
+    lines.append(x_ticks_line)
+    lines.append("")
+    null_suffix = f" ({null_points} nulls excluded)" if null_points > 0 else ""
+    lines.append(f"  Points: {valid_points}{null_suffix} | Corr (r): {corr_str}")
+
+    return "\n".join(lines)
+
+
+def corr(
+    df: Any,
+    target: str | None = None,
+    *,
+    cols: list[str] | None = None,
+    pairs: bool = False,
+    method: str = "pearson",
+) -> Any:
+    """Compute pairwise correlation matrix or ranked pairs for numeric columns.
+
+    Parameters:
+    -----------
+    df : Any
+        Input DataFrame, Polars DataFrame, or Pandas DataFrame.
+    target : str, optional
+        Screen correlations of all other numeric columns against this target column.
+    cols : list of str, optional
+        Subset of numeric columns to evaluate.
+    pairs : bool, default False
+        If True, return a ranked pairwise list sorted descending by absolute correlation.
+    method : str, default 'pearson'
+        Correlation method: 'pearson' or 'spearman'.
+
+    Returns:
+    --------
+    DataFrame
+        Correlation matrix or ranked pairs DataFrame.
+    """
+    import math
+
+    import polars as pl
+
+    from pytae.dataframe import DataFrame
+
+    if isinstance(df, pl.LazyFrame):
+        pldf = df.collect()
+    elif isinstance(df, pl.DataFrame):
+        pldf = df
+    elif hasattr(df, "_df"):
+        inner = df._df
+        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
+    else:
+        try:
+            if isinstance(df, pd.DataFrame):
+                pldf = pl.from_pandas(df)
+            else:
+                pldf = pl.DataFrame(df)
+        except Exception:
+            pldf = pl.DataFrame(df)
+
+    all_num_cols = [c for c in pldf.columns if pldf[c].dtype.is_numeric()]
+    if cols is not None:
+        num_cols = [c for c in cols if c in all_num_cols]
+    else:
+        num_cols = all_num_cols
+
+    if len(num_cols) < 2 and target is None:
+        raise ValueError("corr() requires at least two numeric columns")
+
+    method_clean = method.lower().strip()
+    if method_clean not in ("pearson", "spearman"):
+        raise ValueError(f"corr: invalid method '{method}'; must be 'pearson' or 'spearman'")
+
+    if target is not None:
+        target_col = _unquote_name(str(target).strip())
+        if target_col not in all_num_cols:
+            raise KeyError(
+                f"corr: target column '{target_col}' not found or is not numeric. Numeric columns: {all_num_cols}"
+            )
+        features = [c for c in num_cols if c != target_col]
+        if not features:
+            features = [c for c in all_num_cols if c != target_col]
+        if not features:
+            raise ValueError(f"corr: no other numeric columns to correlate with target '{target_col}'")
+
+        feature_names: list[str] = []
+        corr_vals: list[float] = []
+        bars: list[str] = []
+        abs_vals: list[float] = []
+
+        for feat in features:
+            clean = pldf.select(
+                [
+                    pl.col(target_col).cast(pl.Float64, strict=False).alias("y"),
+                    pl.col(feat).cast(pl.Float64, strict=False).alias("x"),
+                ]
+            ).filter(
+                pl.col("y").is_not_null()
+                & pl.col("x").is_not_null()
+                & pl.col("y").is_not_nan()
+                & pl.col("x").is_not_nan()
+            )
+            if clean.height < 2:
+                r_val = 0.0
+            else:
+                try:
+                    r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+                    r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
+                except Exception:
+                    r_val = 0.0
+
+            abs_r = abs(r_val)
+            bar_len = int(round(abs_r * 15))
+            bar_char = "█" if r_val >= 0 else "▒"
+            feature_names.append(feat)
+            corr_vals.append(round(r_val, 2))
+            bars.append(bar_char * bar_len)
+            abs_vals.append(abs_r)
+
+        paired = sorted(zip(feature_names, corr_vals, bars, abs_vals), key=lambda t: t[3], reverse=True)
+        out_pl = pl.DataFrame(
+            {
+                "Feature": [p[0] for p in paired],
+                "Corr": [p[1] for p in paired],
+                "Bar": [p[2] for p in paired],
+            }
+        )
+        return DataFrame(out_pl)
+
+    if pairs:
+        col_a_list: list[str] = []
+        col_b_list: list[str] = []
+        corr_vals = []
+        strengths: list[str] = []
+        abs_vals = []
+
+        for i in range(len(num_cols)):
+            for j in range(i + 1, len(num_cols)):
+                c1, c2 = num_cols[i], num_cols[j]
+                clean = pldf.select(
+                    [
+                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
+                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
+                    ]
+                ).filter(
+                    pl.col("x").is_not_null()
+                    & pl.col("y").is_not_null()
+                    & pl.col("x").is_not_nan()
+                    & pl.col("y").is_not_nan()
+                )
+                if clean.height < 2:
+                    r_val = 0.0
+                else:
+                    try:
+                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
+                    except Exception:
+                        r_val = 0.0
+
+                abs_r = abs(r_val)
+                if abs_r >= 0.8:
+                    label = "Very Strong"
+                elif abs_r >= 0.6:
+                    label = "Strong"
+                elif abs_r >= 0.4:
+                    label = "Moderate"
+                elif abs_r >= 0.2:
+                    label = "Weak"
+                else:
+                    label = "Very Weak"
+
+                bar_char = "█" if r_val >= 0 else "▒"
+                suffix = "" if r_val >= 0 else " (-)"
+                bar_len = int(round(abs_r * 10))
+                strength_bar = f"{bar_char * bar_len} {label}{suffix}".strip()
+
+                col_a_list.append(c1)
+                col_b_list.append(c2)
+                corr_vals.append(round(r_val, 2))
+                strengths.append(strength_bar)
+                abs_vals.append(abs_r)
+
+        paired = sorted(zip(col_a_list, col_b_list, corr_vals, strengths, abs_vals), key=lambda t: t[4], reverse=True)
+        out_pl = pl.DataFrame(
+            {
+                "Column A": [p[0] for p in paired],
+                "Column B": [p[1] for p in paired],
+                "Corr": [p[2] for p in paired],
+                "Strength": [p[3] for p in paired],
+            }
+        )
+        return DataFrame(out_pl)
+
+    # Matrix view (default)
+    matrix_data: dict[str, list[Any]] = {"column": num_cols}
+    for c2 in num_cols:
+        col_vals = []
+        for c1 in num_cols:
+            if c1 == c2:
+                col_vals.append(1.0)
+            else:
+                clean = pldf.select(
+                    [
+                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
+                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
+                    ]
+                ).filter(
+                    pl.col("x").is_not_null()
+                    & pl.col("y").is_not_null()
+                    & pl.col("x").is_not_nan()
+                    & pl.col("y").is_not_nan()
+                )
+                if clean.height < 2:
+                    r_val = 0.0
+                else:
+                    try:
+                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
+                    except Exception:
+                        r_val = 0.0
+                col_vals.append(round(r_val, 2))
+        matrix_data[c2] = col_vals
+
+    return DataFrame(pl.DataFrame(matrix_data))
 
 ################################################################################
 # FILE: src/pytae/plotting.py
@@ -31560,6 +32806,184 @@ def test_cli_sql_works_without_duckdb(tmp_path, capsys, monkeypatch):
     exit_code = cli.main([str(path), "-sql", "select y from data where x >= 20", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
+
+################################################################################
+# FILE: tests/test_cli_visualizations.py
+################################################################################
+import os
+import sys
+
+import pandas as pd
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
+import pytae as pt
+from pytae.cli import main
+
+
+@pytest.fixture
+def sample_file(tmp_path):
+    path = tmp_path / "penguins_sample.parquet"
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Gentoo", "Chinstrap"],
+            "island": ["Torgersen", "Biscoe", "Biscoe", "Dream"],
+            "body_mass_g": [3750.0, 3800.0, 5000.0, 3900.0],
+            "bill_len": [39.1, 39.5, 47.5, 48.8],
+            "bill_depth": [18.7, 17.4, 14.8, 18.0],
+        }
+    )
+    df.to_parquet(path, index=False)
+    return path
+
+
+def test_library_bar_auto_detect_two_columns():
+    df = pd.DataFrame(
+        {
+            "island": ["Biscoe", "Dream", "Torgersen"],
+            "avg_mass": [4716.0, 3712.0, 3706.0],
+        }
+    )
+    res = pt.bar(df)
+    assert list(res.columns) == ["island", "avg_mass", "Bar"]
+    assert "█" in res["Bar"].iloc[0]
+    # Max value has full 20 chars by default
+    assert res["Bar"].iloc[0] == "█" * 20
+    # Preserves row order
+    assert res["island"].tolist() == ["Biscoe", "Dream", "Torgersen"]
+
+
+def test_library_bar_preserves_metadata_columns():
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Gentoo"],
+            "island": ["Torgersen", "Biscoe"],
+            "avg_mass": [3700.0, 5000.0],
+        }
+    )
+    res = df.pt.bar("avg_mass")
+    assert list(res.columns) == ["species", "island", "avg_mass", "Bar"]
+    assert res["Bar"].iloc[1] == "█" * 20
+
+
+def test_library_bar_options():
+    df = pd.DataFrame(
+        {
+            "island": ["A", "B"],
+            "val": [50.0, 100.0],
+        }
+    )
+    # pct=True
+    res_pct = pt.bar(df, "val", pct=True)
+    assert "(66.7%)" in res_pct["Bar"].iloc[1]
+
+    # custom limit and width
+    res_lim = pt.bar(df, "val", limit=(0, 200), width=10)
+    assert res_lim["Bar"].iloc[1] == "█" * 5  # 100 / 200 * 10 = 5
+
+    # explicit pair
+    res_pair = pt.bar(df, cat="island", val="val")
+    assert list(res_pair.columns) == ["island", "val", "Bar"]
+
+
+def test_library_scatter():
+    df = pd.DataFrame(
+        {
+            "x": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "y": [2.0, 4.0, 6.0, 8.0, 10.0],
+        }
+    )
+    out = pt.scatter(df, "x:y", width=30, height=8)
+    assert "Points: 5" in out
+    assert "Corr (r): +1.000" in out
+    assert "x" in out and "y" in out
+
+    # Bare scatter on 2 numeric columns auto-detects
+    out_bare = df.pt.scatter()
+    assert "Points: 5" in out_bare
+
+
+def test_library_corr_matrix_and_pairs():
+    df = pd.DataFrame(
+        {
+            "a": [1.0, 2.0, 3.0, 4.0],
+            "b": [2.0, 4.0, 6.0, 8.0],
+            "c": [4.0, 3.0, 2.0, 1.0],
+            "label": ["w", "x", "y", "z"],  # non-numeric ignored
+        }
+    )
+    # Matrix view (default)
+    mat = pt.corr(df)
+    assert list(mat.columns) == ["column", "a", "b", "c"]
+    assert mat["column"].tolist() == ["a", "b", "c"]
+    assert mat["b"].iloc[0] == 1.0
+    assert mat["c"].iloc[0] == -1.0
+
+    # Pairs view
+    pairs = df.pt.corr(pairs=True)
+    assert list(pairs.columns) == ["Column A", "Column B", "Corr", "Strength"]
+    assert len(pairs) == 3
+    assert pairs["Corr"].iloc[0] in (1.0, -1.0)
+    assert "Very Strong" in pairs["Strength"].iloc[0]
+
+    # Target screening
+    tgt = df.pt.corr(target="a")
+    assert list(tgt.columns) == ["Feature", "Corr", "Bar"]
+    assert set(tgt["Feature"].tolist()) == {"b", "c"}
+    assert "█" in tgt["Bar"].iloc[0] or "▒" in tgt["Bar"].iloc[0]
+
+
+def test_library_freq_and_hist_width():
+    df = pd.DataFrame({"cat": ["x", "x", "y"], "num": [10.0, 20.0, 30.0]})
+    f = df.pt.freq("cat", width=30)
+    assert len(f["Distribution"].iloc[0].split()[0]) == 30
+
+    h = df.pt.hist("num:3", width=40)
+    assert "█" in h["Distribution"].iloc[0]
+
+
+def test_cli_bar_and_scatter_and_corr(sample_file, capsys):
+    # CLI -bar
+    code = main([str(sample_file), "-by", "island", "-agg", "avg_mass=body_mass_g:mean", "-bar"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Bar" in out
+    assert "Biscoe" in out
+
+    # CLI -bar with options
+    code = main([str(sample_file), "-by", "island", "-agg", "avg_mass=body_mass_g:mean", "-bar", "pct=true"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "%" in out
+
+    # CLI -scatter
+    code = main([str(sample_file), "-scatter", "bill_len:bill_depth"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Points: 4" in out
+    assert "bill_depth" in out
+
+    # CLI -corr matrix
+    code = main([str(sample_file), "-select", "bill_len,bill_depth,body_mass_g", "-corr"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "column" in out
+    assert "bill_len" in out
+
+    # CLI -corr pairs
+    code = main([str(sample_file), "-select", "bill_len,bill_depth,body_mass_g", "-corr", "pairs"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Column A" in out
+    assert "Strength" in out
+
+    # CLI -corr target
+    code = main([str(sample_file), "-corr", "target=body_mass_g"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Feature" in out
+    assert "Bar" in out
 
 ################################################################################
 # FILE: tests/test_count.py

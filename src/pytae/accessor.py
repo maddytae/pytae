@@ -66,7 +66,9 @@ class PolarsPtAccessor:
         return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
-        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
+        raise AttributeError(
+            "df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def sample(
         self,
@@ -148,11 +150,44 @@ class PolarsPtAccessor:
         print(format_glimpse(self._obj, width=width))
         return self._obj
 
-    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
-        return DataFrame(self._obj).freq(col=col, dropna=dropna)
+    def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).freq(col=col, dropna=dropna, width=width)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
-        return DataFrame(self._obj).hist(col=col, bins=bins)
+    def hist(self, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).hist(col=col, bins=bins, width=width)
+
+    def bar(
+        self,
+        cat: str | None = None,
+        val: str | None = None,
+        *,
+        limit: tuple[float, float] | list[float] | None = None,
+        pct: bool = False,
+        width: int = 20,
+    ) -> DataFrame:
+        return DataFrame(self._obj).bar(cat=cat, val=val, limit=limit, pct=pct, width=width)
+
+    def scatter(
+        self,
+        x: str | None = None,
+        y: str | None = None,
+        *,
+        width: int = 50,
+        height: int = 15,
+        limit_x: tuple[float, float] | list[float] | None = None,
+        limit_y: tuple[float, float] | list[float] | None = None,
+    ) -> str:
+        return DataFrame(self._obj).scatter(x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+    def corr(
+        self,
+        target: str | None = None,
+        *,
+        cols: list[str] | None = None,
+        pairs: bool = False,
+        method: str = "pearson",
+    ) -> DataFrame:
+        return DataFrame(self._obj).corr(target=target, cols=cols, pairs=pairs, method=method)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).pipe(func, *args, **kwargs)
@@ -259,7 +294,9 @@ class PandasPtAccessor:
         return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
-        raise AttributeError("df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing).")
+        raise AttributeError(
+            "df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def sample(
         self,
@@ -345,11 +382,44 @@ class PandasPtAccessor:
         print(format_glimpse(self._obj, width=width))
         return self._obj
 
-    def freq(self, col: str | None = None, dropna: bool = False) -> DataFrame:
-        return DataFrame(self._obj).freq(col=col, dropna=dropna)
+    def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).freq(col=col, dropna=dropna, width=width)
 
-    def hist(self, col: str | None = None, bins: int = 10) -> DataFrame:
-        return DataFrame(self._obj).hist(col=col, bins=bins)
+    def hist(self, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
+        return DataFrame(self._obj).hist(col=col, bins=bins, width=width)
+
+    def bar(
+        self,
+        cat: str | None = None,
+        val: str | None = None,
+        *,
+        limit: tuple[float, float] | list[float] | None = None,
+        pct: bool = False,
+        width: int = 20,
+    ) -> DataFrame:
+        return DataFrame(self._obj).bar(cat=cat, val=val, limit=limit, pct=pct, width=width)
+
+    def scatter(
+        self,
+        x: str | None = None,
+        y: str | None = None,
+        *,
+        width: int = 50,
+        height: int = 15,
+        limit_x: tuple[float, float] | list[float] | None = None,
+        limit_y: tuple[float, float] | list[float] | None = None,
+    ) -> str:
+        return DataFrame(self._obj).scatter(x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
+
+    def corr(
+        self,
+        target: str | None = None,
+        *,
+        cols: list[str] | None = None,
+        pairs: bool = False,
+        method: str = "pearson",
+    ) -> DataFrame:
+        return DataFrame(self._obj).corr(target=target, cols=cols, pairs=pairs, method=method)
 
     def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).pipe(func, *args, **kwargs)

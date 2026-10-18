@@ -183,6 +183,12 @@ _CLI_FLAGS = {
     "--freq",
     "-hist",
     "--hist",
+    "-bar",
+    "--bar",
+    "-scatter",
+    "--scatter",
+    "-corr",
+    "--corr",
     "-plot",
     "--plot",
     "-finalize",
@@ -402,6 +408,42 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="COLUMN[:BINS]",
         help="render an in-terminal distribution histogram for a numeric column (e.g. -hist mass or -hist mass:10)",
+    )
+    parser.add_argument(
+        "-bar",
+        "--bar",
+        dest="bar",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="render in-terminal horizontal bars for metric values, "
+        'e.g. -bar, -bar avg_mass, -bar "island:avg_mass", or -bar "avg_mass,limit=(0,5000),pct=true"',
+    )
+    parser.add_argument(
+        "-scatter",
+        "--scatter",
+        dest="scatter",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="render an in-terminal 2D Braille scatter plot for two numeric columns, "
+        'e.g. -scatter, -scatter "x:y", or -scatter "x:y,width=60,height=20"',
+    )
+    parser.add_argument(
+        "-corr",
+        "--corr",
+        dest="corr",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help="render pairwise correlation matrix or ranked pairs for numeric columns, "
+        'e.g. -corr, -corr pairs, -corr "target=body_mass_g", or -corr "pairs,method=spearman"',
     )
     parser.add_argument(
         "-distinct",
@@ -844,8 +886,14 @@ def main(argv: list[str] | None = None) -> int:
         (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
         (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
         (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
-        (("-slice_min", "--slice_min"), "'-slice_min' has been removed; use '-arrange ... -tail N' (or '-arrange ... desc -head N') instead"),
-        (("-pick", "--pick"), "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead"),
+        (
+            ("-slice_min", "--slice_min"),
+            "'-slice_min' has been removed; use '-arrange ... -tail N' (or '-arrange ... desc -head N') instead",
+        ),
+        (
+            ("-pick", "--pick"),
+            "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead",
+        ),
         (("-group_by", "--group_by", "-groupby", "--groupby"), "'-group_by' has been removed; use '-by' instead"),
         (("-handle_missing", "--handle_missing"), "'-handle_missing' has been removed; use '-fillna' instead"),
         (("-fill_null", "--fill_null"), "'-fill_null' has been removed; use '-fillna' instead"),
@@ -954,6 +1002,9 @@ def main(argv: list[str] | None = None) -> int:
             args.count is not None,
             args.freq is not None,
             args.hist is not None,
+            args.bar is not None,
+            args.scatter is not None,
+            args.corr is not None,
             args.head is not None,
             args.tail is not None,
             args.sample is not None,
@@ -989,6 +1040,8 @@ def main(argv: list[str] | None = None) -> int:
             args.count is not None,
             args.freq is not None,
             args.hist is not None,
+            args.bar is not None,
+            args.corr is not None,
             args.head is not None,
             args.tail is not None,
             args.sample is not None,
@@ -1009,10 +1062,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
             "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-count/-sample/-arrange/"
-            "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-plot; "
+            "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-bar/-corr/-plot; "
             "run -shape separately"
         )
-    if args.by is not None and args.agg is None and not args.mutate and args.head is None and args.tail is None and args.count is None:
+    if (
+        args.by is not None
+        and args.agg is None
+        and not args.mutate
+        and args.head is None
+        and args.tail is None
+        and args.count is None
+    ):
         parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
     if args.frac is not None and args.sample is None:
         parser.error("-frac requires -sample")

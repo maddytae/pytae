@@ -288,7 +288,9 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
                     raise ValueError
                 prop = p_val
             except ValueError:
-                raise argparse.ArgumentTypeError(f"{flag_name}: invalid prop value '{v_str}'; must be a number between 0 and 1")
+                raise argparse.ArgumentTypeError(
+                    f"{flag_name}: invalid prop value '{v_str}'; must be a number between 0 and 1"
+                )
         elif tok.endswith("%"):
             try:
                 p_val = float(tok[:-1]) / 100.0
@@ -296,7 +298,9 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
                     raise ValueError
                 prop = p_val
             except ValueError:
-                raise argparse.ArgumentTypeError(f"{flag_name}: invalid percentage '{tok}'; must be between 0% and 100%")
+                raise argparse.ArgumentTypeError(
+                    f"{flag_name}: invalid percentage '{tok}'; must be between 0% and 100%"
+                )
         else:
             try:
                 if "." in tok:
@@ -320,7 +324,9 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
 
 
 def parse_pick_spec(*args: Any, **kwargs: Any) -> Any:
-    raise SystemExit("'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead.")
+    raise SystemExit(
+        "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
+    )
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -815,8 +821,6 @@ def parse_pivot_arg(raw: str | None) -> dict:
     return parse_reshape_kwargs(raw, keys=_PIVOT_KEYS, flag="-pivot")
 
 
-
-
 def parse_bool_text(raw: str) -> bool:
     """Parse a required true/false text flag value into bool."""
     lowered = raw.strip().lower()
@@ -1109,3 +1113,169 @@ def normalize_sql(query: str) -> str:
         out_chars.append(ch)
         i += 1
     return "".join(out_chars)
+
+
+def parse_bar_spec(raw: str | None) -> dict[str, Any]:
+    """Parse -bar specification: e.g. bare (None/""), "col", "cat:val",
+    "cat:val,limit=(min,max),pct=true,width=30", "limit=(0,5000),pct=true"."""
+    result: dict[str, Any] = {
+        "cat": None,
+        "val": None,
+        "limit": None,
+        "pct": False,
+        "width": 20,
+    }
+    if not raw or not raw.strip():
+        return result
+
+    tokens = _tokenize(raw.strip(), ",", keep_quotes=True, track_brackets=True)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if "=" in token:
+            key, _, val_str = token.partition("=")
+            key = key.strip().lower()
+            val_str = val_str.strip()
+            if key == "limit":
+                v = val_str.strip("()[]")
+                lim_parts = [p.strip() for p in (v.split(":") if ":" in v else v.split(",")) if p.strip()]
+                if len(lim_parts) == 2:
+                    try:
+                        result["limit"] = (float(lim_parts[0]), float(lim_parts[1]))
+                    except ValueError:
+                        raise SystemExit(f"-bar: invalid limit='{val_str}'; expected (min, max)")
+                else:
+                    raise SystemExit(f"-bar: invalid limit='{val_str}'; expected (min, max)")
+            elif key == "pct":
+                result["pct"] = parse_bool_text(val_str)
+            elif key == "width":
+                try:
+                    result["width"] = int(val_str)
+                except ValueError:
+                    raise SystemExit(f"-bar: invalid width='{val_str}'; expected positive integer")
+            elif key in ("val", "value"):
+                result["val"] = _unquote_name(val_str)
+            elif key in ("cat", "category"):
+                result["cat"] = _unquote_name(val_str)
+            else:
+                raise SystemExit(f"-bar: unrecognized option '{key}'")
+        else:
+            if ":" in token:
+                cp, _, vp = token.partition(":")
+                result["cat"] = _unquote_name(cp.strip())
+                result["val"] = _unquote_name(vp.strip())
+            else:
+                result["val"] = _unquote_name(token)
+    return result
+
+
+def parse_scatter_spec(raw: str | None) -> dict[str, Any]:
+    """Parse -scatter specification: e.g. bare (None/""), "x:y",
+    "x:y,width=60,height=20,limit_x=(min,max),limit_y=(min,max)"."""
+    result: dict[str, Any] = {
+        "x": None,
+        "y": None,
+        "width": 50,
+        "height": 15,
+        "limit_x": None,
+        "limit_y": None,
+    }
+    if not raw or not raw.strip():
+        return result
+
+    tokens = _tokenize(raw.strip(), ",", keep_quotes=True, track_brackets=True)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if "=" in token:
+            key, _, val_str = token.partition("=")
+            key = key.strip().lower()
+            val_str = val_str.strip()
+            if key in ("limit_x", "xlim"):
+                v = val_str.strip("()[]")
+                lim_parts = [p.strip() for p in (v.split(":") if ":" in v else v.split(",")) if p.strip()]
+                if len(lim_parts) == 2:
+                    try:
+                        result["limit_x"] = (float(lim_parts[0]), float(lim_parts[1]))
+                    except ValueError:
+                        raise SystemExit(f"-scatter: invalid limit_x='{val_str}'; expected (min, max)")
+                else:
+                    raise SystemExit(f"-scatter: invalid limit_x='{val_str}'; expected (min, max)")
+            elif key in ("limit_y", "ylim"):
+                v = val_str.strip("()[]")
+                lim_parts = [p.strip() for p in (v.split(":") if ":" in v else v.split(",")) if p.strip()]
+                if len(lim_parts) == 2:
+                    try:
+                        result["limit_y"] = (float(lim_parts[0]), float(lim_parts[1]))
+                    except ValueError:
+                        raise SystemExit(f"-scatter: invalid limit_y='{val_str}'; expected (min, max)")
+                else:
+                    raise SystemExit(f"-scatter: invalid limit_y='{val_str}'; expected (min, max)")
+            elif key == "width":
+                try:
+                    result["width"] = int(val_str)
+                except ValueError:
+                    raise SystemExit(f"-scatter: invalid width='{val_str}'; expected positive integer")
+            elif key == "height":
+                try:
+                    result["height"] = int(val_str)
+                except ValueError:
+                    raise SystemExit(f"-scatter: invalid height='{val_str}'; expected positive integer")
+            elif key == "x":
+                result["x"] = _unquote_name(val_str)
+            elif key == "y":
+                result["y"] = _unquote_name(val_str)
+            else:
+                raise SystemExit(f"-scatter: unrecognized option '{key}'")
+        else:
+            if ":" in token:
+                xp, _, yp = token.partition(":")
+                result["x"] = _unquote_name(xp.strip())
+                result["y"] = _unquote_name(yp.strip())
+            else:
+                result["x"] = _unquote_name(token)
+    return result
+
+
+def parse_corr_spec(raw: str | None) -> dict[str, Any]:
+    """Parse -corr specification: e.g. bare (None/""), "pairs", "target=col",
+    "method=spearman", "pairs,method=spearman"."""
+    result: dict[str, Any] = {
+        "target": None,
+        "pairs": False,
+        "method": "pearson",
+    }
+    if not raw or not raw.strip():
+        return result
+
+    tokens = _tokenize(raw.strip(), ",", keep_quotes=True, track_brackets=True)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if "=" in token:
+            key, _, val_str = token.partition("=")
+            key = key.strip().lower()
+            val_str = val_str.strip()
+            if key in ("target", "y"):
+                result["target"] = _unquote_name(val_str)
+            elif key == "method":
+                m = val_str.lower().strip()
+                if m not in ("pearson", "spearman"):
+                    raise SystemExit(f"-corr: invalid method '{val_str}'; expected 'pearson' or 'spearman'")
+                result["method"] = m
+            elif key == "pairs":
+                result["pairs"] = parse_bool_text(val_str)
+            else:
+                raise SystemExit(f"-corr: unrecognized option '{key}'")
+        else:
+            t_lower = token.lower()
+            if t_lower == "pairs":
+                result["pairs"] = True
+            elif t_lower in ("pearson", "spearman"):
+                result["method"] = t_lower
+            else:
+                result["target"] = _unquote_name(token)
+    return result

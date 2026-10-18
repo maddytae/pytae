@@ -13,6 +13,9 @@
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Terminal Frequency Distribution (`-freq`)](#terminal-frequency-distribution--freq)
 - [Terminal Numeric Histograms (`-hist`)](#terminal-numeric-histograms--hist)
+- [Terminal Metric Value Bars (`-bar`)](#terminal-metric-value-bars--bar)
+- [Terminal 2D Braille Scatter Plot (`-scatter`)](#terminal-2d-braille-scatter-plot--scatter)
+- [Terminal Correlation Matrix & Pairs (`-corr`)](#terminal-correlation-matrix--pairs--corr)
 - [Headless Figure Plotting (`-plot` & `-finalize`)](#headless-figure-plotting--plot--finalize)
   - [1. Single Plots with Explicit Pipeline Aggregation](#1-single-plots-with-explicit-pipeline-aggregation)
   - [2. Multi-Dimensional Categorical Grouping (`by=`)](#2-multi-dimensional-categorical-grouping-by)
@@ -29,6 +32,9 @@
 |---|---|---|---|
 | `-freq COL` | Terminal ASCII | Categorical distribution bar chart | `pytae penguins.parquet -freq species` |
 | `-hist COL[:BINS]` | Terminal ASCII | Numeric binned distribution histogram | `pytae penguins.parquet -hist body_mass_g:8` |
+| `-bar [SPEC]` | Terminal ASCII | Metric value magnitude bars across categories | `pytae penguins.parquet -by island -agg avg=mass:mean -bar` |
+| `-scatter [SPEC]` | Terminal Braille | 2D in-terminal high-res bivariate scatter plot | `pytae penguins.parquet -scatter "bill_len:bill_depth"` |
+| `-corr [SPEC]` | Terminal ASCII | Pairwise correlation matrix or ranked pairs | `pytae penguins.parquet -corr pairs` |
 | `-plot SPEC` | Figure Plot | Draw bar, line, scatter, box, area, kde | `pytae data.csv -plot "kind=bar,x=cat,y=val"` |
 | `-finalize SPEC` | Figure Style | Title, axis labels, styles, tight layout | `pytae data.csv -finalize "title='Sales',style=dark_background"` |
 | `-o TARGET.ext` | Export | Save figure to PNG, SVG, PDF, etc. | `-o chart.png -out_dir ./figures` |
@@ -86,6 +92,123 @@ body_mass_g            count
 
 - If bins count is omitted (`-hist body_mass_g`), defaults to 10 bins.
 - Automatically handles missing values and filters out non-numeric rows.
+
+---
+
+## Terminal Metric Value Bars (`-bar`)
+
+While `-freq` visualizes row counts, `-bar` visualizes **pre-aggregated metric values** (such as averages, sums, or calculated ratios) directly in your terminal table.
+
+### 1. Bare `-bar` with 2 Columns (Auto-detect)
+When grouping and aggregating down to 2 columns (1 numeric, 1 non-numeric), bare `-bar` automatically targets the value:
+```bash
+pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar
+```
+
+**Output:**
+```text
+┌───────────┬─────────────┬──────────────────────┐
+│ island    ┆ avg_mass    ┆ Bar                  │
+╞═══════════╪═════════════╪══════════════════════╡
+│ Biscoe    ┆ 4716.017964 ┆ ████████████████████ │
+│ Dream     ┆ 3712.903226 ┆ ████████████████     │
+│ Torgersen ┆ 3706.372549 ┆ ████████████████     │
+└───────────┴─────────────┴──────────────────────┘
+```
+
+### 2. Multi-Column Tables (Preserves Metadata)
+Target a specific value column while preserving other grouping dimensions:
+```bash
+pytae penguins.parquet -by species,island -agg avg_mass=body_mass_g:mean -bar avg_mass
+```
+
+### 3. Percentages & Custom Bounds
+Append percentage of total (`pct=true`) or set custom bounds (`limit=(min,max)`):
+```bash
+pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar "pct=true"
+pytae data.csv -bar "island:avg_mass,limit=(3000,5000),width=30"
+```
+
+---
+
+## Terminal 2D Braille Scatter Plot (`-scatter`)
+
+Inspect bivariate correlation, non-linear trends, and outliers directly inside your terminal using high-resolution Unicode Braille characters (2×4 subpixels per character cell):
+
+```bash
+pytae penguins.parquet -scatter "bill_length_mm:bill_depth_mm"
+```
+
+**Output:**
+```text
+ bill_depth_mm
+    21.5 ┤     ⠠      ⠠⠠   ⠠ ⠄      ⠁                        
+         │          ⡀  ⠠⠂    ⠐                ⠐   ⠈          
+         │           ⡤ ⠄ ⠐ ⠌⠐      ⠁     ⢀ ⠠ ⢀⠁ ⡄⢀   ⢀       
+         │      ⠄ ⠠⡀⢄  ⠐    ⠤⠄  ⠈  ⠄     ⠆ ⠄⠇ ⠠              
+         │   ⠐  ⠠⠈ ⠄⠨⡀⠑⣄⠬⠄⠦⠃ ⠁⠘   ⢀⠠⠄     ⠂⢠⠘⢜⠐⠄             
+         │    ⢀⡂  ⠂⠊⡐⣍ ⠈⡐⠐⠑⡹ ⠂⠖⢀    ⡈ ⠠  ⢀⢈ ⠒⢀⢀              
+         │      ⠂⠁⠊⠂⠂⢀⠐⡂⠶⠈⠂⡀⠁ ⡀ ⠈ ⠐ ⠐⠂     ⠂⠐            ⠐   
+    17.3 ┤    ⠄⠠ ⡁⢦ ⢀⢆⢠⠅⠅⢠⡄⠁ ⠐   ⠂ ⡢⠁⠐  ⠈ ⠐ ⠐  ⡄     ⢀      ⢀
+         │       ⠡⠠⢈⠂⢀  ⠂ ⠰  ⠐⠠   ⢠  ⡠⠐⢀  ⠐  ⡀               
+         │  ⠐   ⢀⠂⠂  ⠄               ⠂  ⠡⠂⢢⡃⡀⠉      ⠄        
+         │ ⠄                     ⠁⠌ ⠘⡄⡄⠐⠈⠈⠁⣈⠈  ⠐ ⠁⠈          
+         │                  ⡀  ⠈ ⡀⢀⠂⢕ ⠐⠊⠘⢘⠐⠃⠃                
+         │                    ⡐⢂ ⠄⠊⢊⡒⡌⢘⠠⢃⠐ ⠠ ⢀               
+         │                ⠠  ⠠⠄⠑⡂ ⠤⠆  ⠌                      
+    13.1 ┤                  ⠈ ⡀⠁  ⠂ ⠌                        
+         ┼──────────────────────────────────────────────────
+          32.1                   45.9                   59.6  bill_length_mm
+
+  Points: 342 (2 nulls excluded) | Corr (r): -0.235
+```
+
+- **Bare `-scatter`**: If the table contains exactly 2 numeric columns (e.g. after `-select "x,y"`), bare `-scatter` auto-selects them!
+- Custom dimensions: `-scatter "x:y,width=60,height=20"`.
+
+---
+
+## Terminal Correlation Matrix & Pairs (`-corr`)
+
+Compute Pearson or Spearman correlation coefficients across numeric columns with pairwise null handling:
+
+### 1. Symmetric Correlation Matrix (Default)
+```bash
+pytae penguins.parquet -select "bill_length_mm,bill_depth_mm,body_mass_g" -corr
+```
+```text
+┌────────────────┬────────────────┬───────────────┬─────────────┐
+│ column         ┆ bill_length_mm ┆ bill_depth_mm ┆ body_mass_g │
+╞════════════════╪════════════════╪═══════════════╪═════════════╡
+│ bill_length_mm ┆ 1.0            ┆ -0.24         ┆ 0.6         │
+│ bill_depth_mm  ┆ -0.24          ┆ 1.0           ┆ -0.47       │
+│ body_mass_g    ┆ 0.6            ┆ -0.47         ┆ 1.0         │
+└────────────────┴───────────────┴───────────────┴─────────────┘
+```
+
+### 2. Ranked Correlation Pairs (`-corr pairs`)
+Unnest the matrix into unique pairs sorted by correlation strength with visual bars:
+```bash
+pytae penguins.parquet -corr pairs
+```
+```text
+┌───────────────────┬───────────────────┬───────┬───────────────────────┐
+│ Column A          ┆ Column B          ┆ Corr  ┆ Strength              │
+╞═══════════════════╪═══════════════════╪═══════╪═══════════════════════╡
+│ flipper_length_mm ┆ body_mass_g       ┆ 0.87  ┆ █████████ Very Strong │
+│ bill_length_mm    ┆ flipper_length_mm ┆ 0.66  ┆ ███████ Strong        │
+│ bill_length_mm    ┆ body_mass_g       ┆ 0.6   ┆ ██████ Moderate       │
+│ bill_depth_mm     ┆ flipper_length_mm ┆ -0.58 ┆ ▒▒▒▒▒▒ Moderate (-)   │
+│ bill_depth_mm     ┆ body_mass_g       ┆ -0.47 ┆ ▒▒▒▒▒ Moderate (-)    │
+│ bill_length_mm    ┆ bill_depth_mm     ┆ -0.24 ┆ ▒▒ Weak (-)           │
+└───────────────────┴───────────────────┴───────┴───────────────────────┘
+```
+
+### 3. Single-Target Screening
+Screen all numeric features against a specific target column:
+```bash
+pytae penguins.parquet -corr "target=body_mass_g"
+```
 
 ---
 
