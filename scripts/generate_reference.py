@@ -657,14 +657,14 @@ Signature:
 Parameters:
   r: Row grouping column(s).
   c: Column dimension(s) to spread as headers.
-  v: Value column(s) to aggregate. Optional when counting (a="n").
-  a: Aggregation function (default: "sum"; use "n" for row counts).
+  v: Value column(s) to aggregate. Optional when counting (a="count").
+  a: Aggregation function (default: "sum"; use "count" for row counts).
   dropna: Whether to drop NA categories in row/column keys (default: False).
-  f_v: Scalar value for missing grid intersections (default: 0 for a="n").
+  f_v: Scalar value for missing grid intersections (default: 0 for a="count").
 
 Examples:
   df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
-  df.pt.pivot(r="island", c="species", a="n")
+  df.pt.pivot(r="island", c="species", a="count")
 
 
 4.12. Other Utilities
@@ -1033,7 +1033,7 @@ agg_summary = (
 grid = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
 
 # 3. Frequency Cross-Tabulation (Counts across dimensions, v is omitted)
-counts = penguins.pt.pivot(r="island", c="species", a="n")
+counts = penguins.pt.pivot(r="island", c="species", a="count")
 ```
 
 ```bash

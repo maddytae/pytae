@@ -100,7 +100,7 @@ Rename aggregated outputs cleanly using `new_name = col:aggfunc`:
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = n" \
+  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = count" \
   -round 1
 ```
 

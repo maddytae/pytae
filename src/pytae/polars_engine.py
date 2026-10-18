@@ -558,7 +558,7 @@ def pivot_polars(
         if all(m.aggfunc in ("size", "len") for m in metrics if m.src_col in overlap):
             raise ValueError(
                 f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
-                "For row counts (a='n'), omit 'v' or specify a non-grouping column."
+                "For row counts (a='count'), omit 'v' or specify a non-grouping column."
             )
         else:
             raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
@@ -574,7 +574,7 @@ def pivot_polars(
                 if m.aggfunc in ("size", "len"):
                     raise ValueError(
                         f"pivot(): count column name '{m.out_name}' collides with row grouping column. "
-                        "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                        "For row counts (a='count'), omit 'v' or specify a non-colliding column name."
                     )
                 else:
                     raise ValueError(

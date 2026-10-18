@@ -192,9 +192,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
-            'pytae penguins.parquet -by "species,island" -agg "mean,sum,n"',
-            'pytae penguins.parquet -agg "mean,n"   # Whole-table summary (grand total)',
-            'pytae penguins.parquet -by species -agg "total_mass = body_mass_g:sum, n = n"',
+            'pytae penguins.parquet -by "species,island" -agg "mean,sum,count"',
+            'pytae penguins.parquet -agg "mean,count"   # Whole-table summary (grand total)',
+            'pytae penguins.parquet -by species -agg "total_mass = body_mass_g:sum, total = count"',
             'pytae penguins.parquet -by sex -agg "body_mass_g = mean, dropna = false"',
         ],
         see_also=["-by", "-pivot", "-mutate", "-dropna"],
@@ -206,16 +206,16 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
             "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
-            "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('n').\n"
-            "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, count=n, col:[f1, f2]).\n"
+            "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('count').\n"
+            "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, total=count, col:[f1, f2]).\n"
             "Flattens multi-level column hierarchies to clean 1D strings and resets index to RangeIndex.\n"
             "Missing combinations default to f_v (or 0 for row counts)."
         ),
         options=[
             "r=row_cols : Row grouping dimension(s).",
             "c=col_cols : Column dimension(s) to spread as headers (optional for 1D aggregations).",
-            "v=spec : Metric specification (optional; defaults to row count 'n' when omitted).",
-            "a=func : Default aggregation function (default: sum; 'n' for counts).",
+            "v=spec : Metric specification (optional; defaults to row count 'count' when omitted).",
+            "a=func : Default aggregation function (default: sum; 'count' for counts).",
             "f_v=val : Replacement for empty grid cells (default 0 for counts, NaN for metric averages).",
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
@@ -223,8 +223,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -pivot "r=island,c=species"   # 2D cross-tabulation count matrix',
             'pytae penguins.parquet -pivot "r=island,sex"   # 1D frequency table',
             'pytae penguins.parquet -pivot "r=island,c=species,v=body_mass_g,a=mean"',
-            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, count=n'\"   # 1D summary",
-            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=n'\"",
+            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, total=count'\"   # 1D summary",
+            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=count'\"",
             "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,f_v=0\"",
         ],
         see_also=["-agg", "-long", "-wide"],

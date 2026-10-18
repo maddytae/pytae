@@ -132,7 +132,7 @@ pytae items.parquet \
 | **Unique key-value pairs (1:1 un-melting)** | ✅ Yes | Optional |
 | **Duplicate key-value combinations** | ❌ Raises error | ✅ Yes (aggregates) |
 | **Mathematical summaries (`sum`, `mean`, etc.)** | ❌ Not supported | ✅ Yes (`a=sum`, `a=mean`) |
-| **Two-way frequency counts (`a=n`)** | ❌ Not supported | ✅ Yes (`a=n`) |
+| **Two-way frequency counts (`a=count`)** | ❌ Not supported | ✅ Yes (`a=count`) |
 | **Fill empty cells (`f_v=0`)** | ❌ (leaves `NaN`) | ✅ Yes (`f_v=0`) |
 
 If duplicate keys are passed to `-wide`, `pytae` stops immediately and directs you to `-pivot`:

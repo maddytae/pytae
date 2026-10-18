@@ -648,14 +648,14 @@ Signature:
 Parameters:
   r: Row grouping column(s).
   c: Column dimension(s) to spread as headers.
-  v: Value column(s) to aggregate. Optional when counting (a="n").
-  a: Aggregation function (default: "sum"; use "n" for row counts).
+  v: Value column(s) to aggregate. Optional when counting (a="count").
+  a: Aggregation function (default: "sum"; use "count" for row counts).
   dropna: Whether to drop NA categories in row/column keys (default: False).
-  f_v: Scalar value for missing grid intersections (default: 0 for a="n").
+  f_v: Scalar value for missing grid intersections (default: 0 for a="count").
 
 Examples:
   df.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
-  df.pt.pivot(r="island", c="species", a="n")
+  df.pt.pivot(r="island", c="species", a="count")
 
 
 4.12. Other Utilities
@@ -1022,7 +1022,7 @@ agg_summary = (
 grid = penguins.pt.pivot(r="island", c="species", v="body_mass_g", a="mean")
 
 # 3. Frequency Cross-Tabulation (Counts across dimensions, v is omitted)
-counts = penguins.pt.pivot(r="island", c="species", a="n")
+counts = penguins.pt.pivot(r="island", c="species", a="count")
 ```
 
 ```bash
@@ -1238,7 +1238,7 @@ Rename aggregated outputs cleanly using `new_name = col:aggfunc`:
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = n" \
+  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = count" \
   -round 1
 ```
 
@@ -3969,8 +3969,8 @@ pytae -help distinct
 |---|---|---|---|
 | `r` | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
 | `c` | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
-| `v` | Metric column(s) to aggregate | *Optional (defaults to row counts `n`)* | `v=Sales` or `v=Sales,Profit` |
-| `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
+| `v` | Metric column(s) to aggregate | *Optional (defaults to row counts)* | `v=Sales` or `v=Sales,Profit` |
+| `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=count` |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
 | `f_v` | Fill for empty cells | `None` (`0` for counts) | `f_v=0` |
 
@@ -4757,7 +4757,7 @@ pytae items.parquet \
 | **Unique key-value pairs (1:1 un-melting)** | ✅ Yes | Optional |
 | **Duplicate key-value combinations** | ❌ Raises error | ✅ Yes (aggregates) |
 | **Mathematical summaries (`sum`, `mean`, etc.)** | ❌ Not supported | ✅ Yes (`a=sum`, `a=mean`) |
-| **Two-way frequency counts (`a=n`)** | ❌ Not supported | ✅ Yes (`a=n`) |
+| **Two-way frequency counts (`a=count`)** | ❌ Not supported | ✅ Yes (`a=count`) |
 | **Fill empty cells (`f_v=0`)** | ❌ (leaves `NaN`) | ✅ Yes (`f_v=0`) |
 
 If duplicate keys are passed to `-wide`, `pytae` stops immediately and directs you to `-pivot`:
@@ -5012,7 +5012,7 @@ pytae penguins.parquet -select "dtype=numeric" -select "-bill_depth_mm" -head 3
 # Narrowing output columns after an aggregation
 pytae penguins.parquet \
   -by species \
-  -agg "avg_mass = body_mass_g:mean, total = n" \
+  -agg "avg_mass = body_mass_g:mean, total = count" \
   -select "species,avg_mass"
 ```
 
@@ -9254,12 +9254,12 @@ shape: (3, 4)
 └───────────┴─────────────┴─────────────┴────────────┘
 ```
 
-## 2. Frequency Matrix via Row Counts (`a="n"`)
+## 2. Frequency Matrix via Row Counts ()
 
 Count occurrences across dimensions (the direct successor to cross-tabulation):
 
 ```python
-penguins.pivot(r="island", c="species", v="sex", a="n")
+penguins.pivot(r="island", c="species", a="count")
 ```
 Output:
 ```text
@@ -16344,9 +16344,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
-            'pytae penguins.parquet -by "species,island" -agg "mean,sum,n"',
-            'pytae penguins.parquet -agg "mean,n"   # Whole-table summary (grand total)',
-            'pytae penguins.parquet -by species -agg "total_mass = body_mass_g:sum, n = n"',
+            'pytae penguins.parquet -by "species,island" -agg "mean,sum,count"',
+            'pytae penguins.parquet -agg "mean,count"   # Whole-table summary (grand total)',
+            'pytae penguins.parquet -by species -agg "total_mass = body_mass_g:sum, total = count"',
             'pytae penguins.parquet -by sex -agg "body_mass_g = mean, dropna = false"',
         ],
         see_also=["-by", "-pivot", "-mutate", "-dropna"],
@@ -16358,16 +16358,16 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
             "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
-            "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('n').\n"
-            "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, count=n, col:[f1, f2]).\n"
+            "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('count').\n"
+            "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, total=count, col:[f1, f2]).\n"
             "Flattens multi-level column hierarchies to clean 1D strings and resets index to RangeIndex.\n"
             "Missing combinations default to f_v (or 0 for row counts)."
         ),
         options=[
             "r=row_cols : Row grouping dimension(s).",
             "c=col_cols : Column dimension(s) to spread as headers (optional for 1D aggregations).",
-            "v=spec : Metric specification (optional; defaults to row count 'n' when omitted).",
-            "a=func : Default aggregation function (default: sum; 'n' for counts).",
+            "v=spec : Metric specification (optional; defaults to row count 'count' when omitted).",
+            "a=func : Default aggregation function (default: sum; 'count' for counts).",
             "f_v=val : Replacement for empty grid cells (default 0 for counts, NaN for metric averages).",
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
@@ -16375,8 +16375,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -pivot "r=island,c=species"   # 2D cross-tabulation count matrix',
             'pytae penguins.parquet -pivot "r=island,sex"   # 1D frequency table',
             'pytae penguins.parquet -pivot "r=island,c=species,v=body_mass_g,a=mean"',
-            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, count=n'\"   # 1D summary",
-            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=n'\"",
+            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, total=count'\"   # 1D summary",
+            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=count'\"",
             "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,f_v=0\"",
         ],
         see_also=["-agg", "-long", "-wide"],
@@ -17634,13 +17634,13 @@ def parse_qry(raw: str) -> list[tuple[str, Any]]:
 
 
 def parse_agg(raw: str):
-    """Parse -agg: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
-    mapping (val = sum, n = n, total = v1:sum). Quote a mapping key only to protect a comma."""
+    """Parse -agg: a name (mean), a comma list (mean,sum,count), or a col=aggfunc
+    mapping (val = sum, n = count, total = v1:sum). Quote a mapping key only to protect a comma."""
     raw = (raw or "").strip()
     if not raw:
         return "sum"
     if raw.startswith("{") or (raw.startswith("[") and "=" not in raw):
-        raise SystemExit("-agg: use a name (mean), a comma list (mean,sum), or a mapping (col = mean, n = n)")
+        raise SystemExit("-agg: use a name (mean), a comma list (mean,sum), or a mapping (col = mean, total = count)")
     entries = [e for e in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if e]
     if not entries:
         raise SystemExit("-agg: expected a name, a comma list, or a mapping")
@@ -23798,7 +23798,7 @@ def pivot_polars(
         if all(m.aggfunc in ("size", "len") for m in metrics if m.src_col in overlap):
             raise ValueError(
                 f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c). "
-                "For row counts (a='n'), omit 'v' or specify a non-grouping column."
+                "For row counts (a='count'), omit 'v' or specify a non-grouping column."
             )
         else:
             raise ValueError(f"pivot(): value column(s) {overlap} cannot also be in grouping dimensions (r/c)")
@@ -23814,7 +23814,7 @@ def pivot_polars(
                 if m.aggfunc in ("size", "len"):
                     raise ValueError(
                         f"pivot(): count column name '{m.out_name}' collides with row grouping column. "
-                        "For row counts (a='n'), omit 'v' or specify a non-colliding column name."
+                        "For row counts (a='count'), omit 'v' or specify a non-colliding column name."
                     )
                 else:
                     raise ValueError(

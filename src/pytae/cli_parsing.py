@@ -655,13 +655,13 @@ def parse_qry(raw: str) -> list[tuple[str, Any]]:
 
 
 def parse_agg(raw: str):
-    """Parse -agg: a name (mean), a comma list (mean,sum,n), or a col=aggfunc
-    mapping (val = sum, n = n, total = v1:sum). Quote a mapping key only to protect a comma."""
+    """Parse -agg: a name (mean), a comma list (mean,sum,count), or a col=aggfunc
+    mapping (val = sum, n = count, total = v1:sum). Quote a mapping key only to protect a comma."""
     raw = (raw or "").strip()
     if not raw:
         return "sum"
     if raw.startswith("{") or (raw.startswith("[") and "=" not in raw):
-        raise SystemExit("-agg: use a name (mean), a comma list (mean,sum), or a mapping (col = mean, n = n)")
+        raise SystemExit("-agg: use a name (mean), a comma list (mean,sum), or a mapping (col = mean, total = count)")
     entries = [e for e in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if e]
     if not entries:
         raise SystemExit("-agg: expected a name, a comma list, or a mapping")

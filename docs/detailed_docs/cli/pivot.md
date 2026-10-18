@@ -34,8 +34,8 @@
 |---|---|---|---|
 | `r` | Row dimension(s) | *None (optional)* | `r=Region` or `r=Region,Store` |
 | `c` | Column header dimension(s) | *None (optional)* | `c=Year` or `c=Year,Quarter` |
-| `v` | Metric column(s) to aggregate | *Optional (defaults to row counts `n`)* | `v=Sales` or `v=Sales,Profit` |
-| `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=n` (count) |
+| `v` | Metric column(s) to aggregate | *Optional (defaults to row counts)* | `v=Sales` or `v=Sales,Profit` |
+| `a` | Aggregation function | `sum` | `a=mean`, `a=sum`, `a=count` |
 | `dropna` | Drop NA categories | `false` | `dropna=false` (keeps NA groups) |
 | `f_v` | Fill for empty cells | `None` (`0` for counts) | `f_v=0` |
 
