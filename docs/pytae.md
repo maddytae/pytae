@@ -356,8 +356,8 @@ report = (
     .by("species", "island")
     .agg(
         n="count",
-        avg_mass_kg="mean(body_mass_kg)",
-        max_ratio="max(bill_ratio)"
+        avg_mass_kg="body_mass_kg:mean",
+        max_ratio="bill_ratio:max"
     )
     .arrange("avg_mass_kg desc")
 )
@@ -374,7 +374,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500, sex.notna()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
-  -agg "n = count, avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
+  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```
