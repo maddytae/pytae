@@ -31,7 +31,7 @@ TABLE OF CONTENTS
           - pt.join() / df.pt.join() / df.join() (Polars Join Engine)
           - pt.concat() / df.pt.concat() / df.concat() (Stacking Engine)
           - Transparent Polars Verb Delegation (__getattr__)
-          - pt.handle_missing() / df.pt.handle_missing()
+          - pt.fillna() / df.pt.fillna()
           - pt.clean_columns() / df.pt.clean_columns()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
@@ -153,7 +153,7 @@ Top-Level Functions exported by `pytae`:
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, f_v=None)
-  - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
+  - pt.fillna(df, value=None, *cols, subset=None, nans=True, **kwargs)
   - pt.cols(df, ascending=True)
   - pt.glimpse(df, width=None)
   - pt.freq(df, col=None, *, dropna=False)
@@ -190,7 +190,7 @@ DataFrame Accessor (`df.pt`):
     df.pt.long(...)
     df.pt.wide(...)
     df.pt.pivot(...)
-    df.pt.handle_missing(...)
+    df.pt.fillna(...)
     df.pt.cols(...)
     df.pt.glimpse(...)
     df.pt.freq(...)
@@ -694,8 +694,8 @@ Examples:
 - Transparent Polars Verb Delegation (__getattr__):
   Any native Polars method (e.g. .with_columns(), .slice(), .describe(), .explode()) can be called directly on pytae.DataFrame.
   Arguments are auto-unwrapped and results are rewrapped into pytae.DataFrame so method chains never break.
-- pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True):
-  Sanitizes missing values with type-safe defaults.
+- pt.fillna(df, value=None, *cols, subset=None, nans=True, **kwargs) / df.pt.fillna(...):
+  Imputes missing values (Arrow null and/or float NaN) across the entire DataFrame or specific columns.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
   Systematically sanitizes DataFrame header names.
 - pt.safe_reset_index(df) / df.pt.safe_reset_index():
@@ -768,11 +768,9 @@ Inspection & Summary Flags:
   -dtype [ORDER]        Print column data types (ORDER: asc, desc, file)
   -nulls [ORDER]        Print null value counts per column (ORDER: asc, desc, file)
   -describe             Descriptive statistics for numeric columns
-  -info                 DataFrame summary (dtypes, non-null counts, memory)
   -glimpse              Transposed column overview with dtypes and sample values
   -meta                 Display zero-scan Parquet metadata
   -diff PATH            Compare schema, shape, null counts against another file
-  -value_counts         Value counts for categorical/string columns
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
   -sample [N]           Random sample of N rows (default 5)
@@ -791,6 +789,7 @@ In-Terminal Visualizations:
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
+  -fillna [VAL]         Impute missing values (e.g. -fillna 0 or -fillna "col:val")
   -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
   -tail [LIMIT]         Extract last N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
 
@@ -799,7 +798,6 @@ Column Transformation Flags:
   -mutate SPEC          Create/overwrite columns ("new_col = expr" or multi-column "[prefix](col1, col2)[suffix] = expr" using _ placeholder)
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
-  -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
   -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass desc" -head 1)
@@ -818,7 +816,6 @@ SQL & Multi-File Flags:
 Output & Formatting Flags:
   -o TARGET             Output destination (file path, format for batch conversion, or 'clip')
   -out_dir, -od DIR     Target directory for exported files
-  -pretty               Pretty-print tables with bordered markdown formatting
   -pager                Pipe output through system pager ($PAGER or less)
   -round N              Round numeric output columns to N decimal places
 
@@ -1531,7 +1528,7 @@ pytae sales.csv -arrange "[annual revenue] desc" -head 5
 ################################################################################
 # CLI Feature Guide: Data Cleaning, Imputation, & Renaming
 
-Standardize messy column headers (`-clean` / `-clean_columns`), impute missing values (`-fillna` / `-fill_nulls`), drop missing rows (`-dropna` / `-drop_nulls`), rename columns (`-rename`), and recode cell values via `-mutate "map(...)"`.
+Standardize messy column headers (`-clean` / `-clean_columns`), impute missing values (`-fillna`), drop missing rows (`-dropna`), rename columns (`-rename`), and recode cell values via `-mutate "map(...)"`.
 
 ---
 
@@ -1541,8 +1538,8 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 - [Header Standardization (`-clean` / `-clean_columns`)](#header-standardization--clean--clean_columns)
   - [Supported Pipeline Steps](#supported-pipeline-steps)
   - [Cleaning Examples](#cleaning-examples)
-- [Missing Value Imputation (`-fillna` / `-fill_nulls`)](#missing-value-imputation--fillna--fill_nulls)
-- [Dropping Missing Rows (`-dropna` / `-drop_nulls`)](#dropping-missing-rows--dropna--drop_nulls)
+- [Missing Value Imputation (`-fillna`)](#missing-value-imputation--fillna)
+- [Dropping Missing Rows (`-dropna`)](#dropping-missing-rows--dropna)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 - [Recoding Categorical Values (`-mutate "map(...)"`)](#recoding-categorical-values--mutate-map)
 
@@ -1553,8 +1550,8 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 | Flag | Scope | Delimiter / Syntax | Description |
 |---|---|---|---|
 | `-clean` / `-clean_columns` | Column headers | `,` / `=` | Standardizes headers (strip, squeeze, fill, case, dedupe) |
-| `-fillna` / `-fill_nulls` | Cell contents | Scalar or `val=..., cols=...` | Replaces null / NaN with replacement values |
-| `-dropna` / `-drop_nulls` | Rows | Bare or `col1, col2` | Drops null / NaN rows (Zero Data Loss default) |
+| `-fillna` | Cell contents | Scalar or `val=..., cols=...` | Replaces null / NaN with replacement values |
+| `-dropna` | Rows | Bare or `col1, col2` | Drops null / NaN rows (Zero Data Loss default) |
 | `-rename` | Column headers | `old:new` | Explicitly renames column names |
 | `-mutate "col = map(...)"` | Cell contents | Dictionary mapping | Vectorized value recoding via Polars engine |
 
@@ -1597,7 +1594,7 @@ hello world    10.5 draft_stage
 
 ---
 
-## Missing Value Imputation (`-fillna` / `-fill_nulls`)
+## Missing Value Imputation (`-fillna`)
 
 Replace missing values (`null` and `NaN`) across the dataset or within specific columns:
 
@@ -1608,20 +1605,20 @@ pytae dataset.parquet -fillna 0 -head 5
 # Impute specific columns
 pytae dataset.parquet -fillna "val='Unknown', cols='status, category'" -head 5
 
-# Polars alias works identically
-pytae dataset.parquet -fill_nulls 0 -head 5
+# Only replace Arrow nulls (leave float NaNs intact)
+pytae dataset.parquet -fillna "val=0, nans=false" -head 5
 ```
 
 ---
 
-## Dropping Missing Values (`-dropna`, `-drop_nulls`)
+## Dropping Missing Values (`-dropna`)
 
 Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values (Arrow `null`s and IEEE-754 float `NaN`s).
 
-- **Bare `-dropna` / `-drop_nulls`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
+- **Bare `-dropna`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
 - **Targeted `-dropna "col1, col2"`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
 - **Explicit `how=any`**: Drops rows containing *any* missing value across all columns.
-- **Aliases**: `-drop_nulls` and `-drop_na` are 100% interchangeable aliases for `-dropna`.
+- **Optional `drop_nans=false`**: Drops only Arrow nulls, preserving float IEEE-754 NaNs.
 
 ```bash
 # Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
@@ -1635,15 +1632,11 @@ pytae penguins.parquet -dropna body_mass_g -shape
 # Explicit how=any drops rows with any missing value (344 -> 333 rows)
 pytae penguins.parquet -dropna how=any -shape
 # (333, 7)
-
-# Polars alias works identically
-pytae penguins.parquet -drop_nulls "body_mass_g, sex" -shape
-# (333, 7)
 ```
 
 > [!NOTE]
 > - **Top-level `-dropna [COLS]`**: Operates as a row filter. Bare calls use `how="all"` (Zero Data Loss), while targeted calls use `how="any"` on the specified columns. Both Arrow `null` and float `NaN` are cleaned by default.
-> - **Scoped `dropna=bool` / `drop_nulls=bool`**: In `-pivot` and `-agg`, default is `dropna=false` (retains missing group keys without silent data loss). Pass `dropna=true` inside the spec (e.g. `-agg "a=mean, dropna=true"`) to exclude NA groups.
+> - **Scoped `dropna=bool`**: In `-pivot` and `-agg`, default is `dropna=false` (retains missing group keys without silent data loss). Pass `dropna=true` inside the spec (e.g. `-agg "a=mean, dropna=true"`) to exclude NA groups.
 
 ---
 
@@ -2682,9 +2675,9 @@ Inspect file dimensions, structure, sample rows, statistical distributions, and 
 - [Dataset Dimensions (`-shape`)](#dataset-dimensions--shape)
 - [Column Names & Ordering (`-cols`)](#column-names--ordering--cols)
 - [Data Types & Null Counts (`-dtype`, `-nulls`)](#data-types--null-counts--dtype--nulls)
-- [Statistical Summaries (`-describe`, `-info`)](#statistical-summaries--describe--info)
+- [Statistical Summaries (`-describe`)](#statistical-summaries--describe)
 - [Terminal Paging (`-pager`)](#terminal-paging--pager)
-- [Display Modifiers (`-pretty`, `-round`)](#display-modifiers--pretty--round)
+- [Display Modifiers (`-round`)](#display-modifiers--round)
 - [Chaining & Terminal Operation Rules](#chaining--terminal-operation-rules)
 
 ---
@@ -2707,12 +2700,9 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 | `-dtype [ORDER]` | Print data types per column | **Yes** (terminal) |
 | `-nulls [ORDER]` | Print count of missing / NaN values per column | **Yes** (terminal) |
 | `-meta` | Zero-scan Parquet metadata (row groups, compression, schema) | **Yes** (terminal) |
-| `-info` | Pandas `info()` memory and non-null summary | **Yes** (terminal) |
 | `-glimpse` | Transposed column overview with dtypes and inline sample values | **Yes** (terminal) |
-| `-describe` | Pandas `describe()` statistical summary | No (returns DataFrame) |
-| `-value_counts` | Group counts across current working columns (pair with `-select`) | No (returns DataFrame) |
+| `-describe` | Statistical summary (count, mean, std, quartiles) | No (returns DataFrame) |
 | `-pager` | Pipe long outputs through system pager (`$PAGER` or `less`) | Display flag |
-| `-pretty` | Render plain tables with bordered markdown formatting | Display flag |
 | `-round N` | Round numeric columns to N decimal places | Display flag |
 
 > [!NOTE]
@@ -2981,7 +2971,7 @@ pytae penguins.parquet -nulls desc
 
 ---
 
-## Statistical Summaries (`-describe`, `-info`)
+## Statistical Summaries (`-describe`)
 
 ### Five-Number Summary (`-describe`)
 
@@ -3007,32 +2997,6 @@ pytae penguins.parquet -describe -round 1
 Because `-describe` returns a DataFrame, it can be filtered, rounded, or exported:
 ```bash
 pytae penguins.parquet -describe -round 2 -o summary.csv
-```
-
-### Technical Info (`-info`)
-
-Prints columns, non-null counts, dtypes, and memory usage:
-
-```bash
-pytae penguins.parquet -info
-```
-
-**Output:**
-```text
-<class 'pandas.DataFrame'>
-RangeIndex: 344 entries, 0 to 343
-Data columns (total 7 columns):
- #   Column             Non-Null Count  Dtype  
----  ------             --------------  -----  
- 0   species            344 non-null    str    
- 1   island             344 non-null    str    
- 2   bill_length_mm     342 non-null    float64
- 3   bill_depth_mm      342 non-null    float64
- 4   flipper_length_mm  342 non-null    float64
- 5   body_mass_g        342 non-null    float64
- 6   sex                333 non-null    str    
-dtypes: float64(4), str(3)
-memory usage: 24.9 KB
 ```
 
 ### Transposed Summary (`-glimpse`)
@@ -3072,23 +3036,7 @@ pytae data.parquet -head 100 -pager
 
 ---
 
-## Display Modifiers (`-pretty`, `-round`)
-
-### Bordered Tables (`-pretty`)
-
-Renders tables with bordered markdown layout:
-
-```bash
-pytae penguins.parquet -head 3 -pretty
-```
-
-**Output:**
-
-| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
-|:---|:---|---:|---:|---:|---:|:---|
-| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
-| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
-| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+## Display Modifiers (`-round`)
 
 ### Rounding Decimals (`-round`)
 
@@ -3983,14 +3931,13 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Inspection & Summary Flags](#inspection--summary-flags)
   - [Zero-Scan Parquet Metadata (`-meta`)](#zero-scan-parquet-metadata--meta)
-  - [Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-info`, `-describe`)](#rows-shape--overview--head--tail--sample--shape--glimpse--info--describe)
+  - [Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-describe`)](#rows-shape--overview--head--tail--sample--shape--glimpse--describe)
   - [Column Names, Data Types & Missing Counts (`-cols`, `-dtype`, `-nulls`)](#column-names-data-types--missing-counts--cols--dtype--nulls)
-  - [Distribution & Frequency Analysis (`-value_counts`, `-freq`, `-hist`)](#distribution--frequency-analysis--value_counts--freq--hist)
+  - [Distribution & Frequency Analysis (`-freq`, `-hist`)](#distribution--frequency-analysis--freq--hist)
   - [Dataset & Schema Comparison (`-diff`)](#dataset--schema-comparison--diff)
 - [Data Cleaning & Header Standardization](#data-cleaning--header-standardization)
   - [Header Cleaning (`-clean_columns`)](#header-cleaning--clean_columns)
-  - [Value Replacement (`-replace_values`)](#value-replacement--replace_values)
-  - [Missing Value Imputation (`-handle_missing`)](#missing-value-imputation--handle_missing)
+  - [Missing Value Imputation (`-fillna`)](#missing-value-imputation--fillna)
   - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
   - [Renaming Columns (`-rename`)](#renaming-columns--rename)
 - [Multi-File Pipelines & Operations](#multi-file-pipelines--operations)
@@ -4004,7 +3951,6 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
   - [Clipboard Export (`-o clip`)](#clipboard-export--o-clip)
   - [Execution Progress (`-progress`)](#execution-progress--progress)
 - [Formatting & Display Modifiers](#formatting--display-modifiers)
-  - [Markdown Tables (`-pretty`)](#markdown-tables--pretty)
   - [Rounding Decimals (`-round`)](#rounding-decimals--round)
   - [Interactive Paging (`-pager`)](#interactive-paging--pager)
 - [Version & Help Diagnostics](#version--help-diagnostics)
@@ -4025,16 +3971,13 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 | `-dtype [ORDER]` | Inspection | Optional `asc` or `desc` | Prints column data types |
 | `-nulls [ORDER]` | Inspection | Optional `asc` or `desc` | Prints null / NaN count per column |
 | `-describe` | Inspection | Flag | Computes summary statistics (count, mean, std, min, max, quartiles) |
-| `-info` | Inspection | Flag | Prints pandas memory footprint and non-null counts |
 | `-glimpse` | Inspection | Flag | Transposed column overview with dtypes and sample values |
 | `-meta` | Inspection | Flag | Instant Parquet metadata (row groups, compression, schema) |
 | `-diff PATH` | Inspection | File path | Compares schemas, shapes, column drift, and cell values against another dataset |
-| `-value_counts` | Inspection | Flag | Shows frequency counts across current working columns (use with `-select`) |
 | `-freq COL` | Inspection | Column name | Renders horizontal ASCII frequency bars with percentages |
 | `-hist COL[:BINS]` | Inspection | `col` or `col:bins` | Renders in-terminal ASCII distribution histogram |
 | `-clean_columns SPEC` | Cleaning | `strip,fill=_,case=lower,...` | Normalizes messy column header names |
-| `-replace_values SPEC` | Cleaning | `old:new` or `c=col,old:new` | Replaces cell values (exact or substring) |
-| `-handle_missing [FILL]`| Cleaning | Imputation string (default: `.`) | Fills text NaN with marker, numeric NaN with 0 |
+| `-fillna [VAL]` | Cleaning | Scalar or `col:val,...` | Imputes missing values (`null` and `NaN`) |
 | `-dropna [COLS]` | Cleaning | Optional comma-separated list | Drops rows containing NaN (across all columns or specified subset) |
 | `-rename SPEC` | Cleaning | `old:new,...` | Explicitly renames column headers |
 | `-file SPEC` | Multi-File | `path=alias;...` | Loads multiple input files into named aliases |
@@ -4047,7 +3990,6 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 | `-o TARGET` | Output I/O | File path, format, or `clip` | Exports result or copies to clipboard |
 | `-out_dir DIR` / `-od` | Output I/O | Directory path | Destination directory for exported files |
 | `-progress [N]` | Diagnostics | Optional row frequency | Streaming row count progress during read/write |
-| `-pretty` | Formatting | Flag | Formats terminal tables with Markdown borders |
 | `-round N` | Formatting | Integer decimals | Rounds floating-point numbers to N places |
 | `-pager` | Output | Flag | Pipes terminal output through interactive system pager (`less`) |
 | `-version` | Meta | Flag | Displays pytae version information and exits |
@@ -4063,7 +4005,7 @@ Reads metadata footers in sub-milliseconds without scanning table data:
 pytae transactions.parquet -meta
 ```
 
-### Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-info`, `-describe`)
+### Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-describe`)
 ```bash
 # Peek at initial or final records
 pytae penguins.parquet -head 3
@@ -4073,10 +4015,9 @@ pytae penguins.parquet -tail 3
 pytae penguins.parquet -sample 5 -seed 42
 pytae penguins.parquet -sample -frac 0.05 -seed 42
 
-# Dimensions, memory, and statistical summaries
+# Dimensions, schema, and statistical summaries
 pytae penguins.parquet -shape
 pytae penguins.parquet -glimpse
-pytae penguins.parquet -info
 pytae penguins.parquet -describe
 ```
 
@@ -4093,10 +4034,9 @@ pytae penguins.parquet -dtype
 pytae penguins.parquet -nulls desc
 ```
 
-### Distribution & Frequency Analysis (`-value_counts`, `-freq`, `-hist`)
+### Distribution & Frequency Analysis (`-freq`, `-hist`)
 ```bash
-# Frequency breakdown of categorical values
-pytae penguins.parquet -select "species,island" -value_counts
+# Categorical frequency breakdown with percentage bars
 pytae penguins.parquet -freq species
 
 # Numeric distribution histogram directly in terminal
@@ -4120,38 +4060,14 @@ Standardizes headers in order: `strip` -> `strip_special` -> `squeeze` -> `fill`
 pytae messy.csv -clean_columns "strip,strip_special,fill=_,case=lower" -head 3
 ```
 
-### Value Replacement (`-replace_values`)
-Swap cell contents with exact matching or substring matching:
+### Missing Value Imputation (`-fillna`)
+Imputes missing values (`null` and `NaN`) across all columns or specific targets:
 ```bash
-# Exact replacement across all columns
-pytae penguins.parquet -replace_values "Male:M,Female:F" -head 3
+# Impute all numeric missing values with 0
+pytae penguins.parquet -fillna 0 -head 5
 
-# Restrict replacement to specific column
-pytae penguins.parquet -replace_values "c=sex,Male:M,Female:F" -head 3
-
-# Substring matching anywhere inside cell
-pytae logs.csv -replace_values "exact=false,WARN:WARNING" -head 3
-```
-
-### Missing Value Imputation (`-handle_missing`)
-Fills text NaN with a visible marker (default `.`) and numeric NaN with `0`:
-```bash
-pytae penguins.parquet -handle_missing -head 5
-```
-
-**Output:**
-
-| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
-|:---|:---|---:|---:|---:|---:|:---|
-| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
-| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
-| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
-| Adelie | Torgersen | 0.0 | 0.0 | 0.0 | 0.0 | . |
-| Adelie | Torgersen | 36.7 | 19.3 | 193.0 | 3450.0 | Female |
-
-Custom string marker:
-```bash
-pytae penguins.parquet -handle_missing "Unknown" -head 5
+# Impute specific columns with replacement value
+pytae penguins.parquet -fillna "val='Unknown', cols='sex'" -head 5
 ```
 
 ### Dropping Missing Values (`-dropna`)
@@ -4243,12 +4159,6 @@ pytae huge_events.csv -progress -o events.parquet
 ---
 
 ## Formatting & Display Modifiers
-
-### Markdown Tables (`-pretty`)
-Renders formatted ASCII table with Markdown borders (`df.to_markdown()`):
-```bash
-pytae penguins.parquet -by species -agg mean -pretty
-```
 
 ### Rounding Decimals (`-round`)
 Rounds all numeric columns to N decimals on display:
@@ -6328,7 +6238,7 @@ shape: (10, 7)
 ```
 
 ```python
-# 2. String expressions — matches pytae CLI -qry syntax; supports comma-separated conditions
+# 2. String expressions — matches pytae CLI -filter syntax; supports comma-separated conditions
 (
     penguins
     .filter("species = 'Adelie', body_mass_g > 4000")
@@ -6655,7 +6565,7 @@ shape: (10, 7)
 ```
 
 ```python
-# Combine multiple column conditions in one qry call
+# Combine multiple column conditions in one filter call
 # Gentoo females with large bills — multi-condition kwargs:
 (
     penguins
@@ -7055,7 +6965,7 @@ Did you mean "species"?
 
 ```python
 # Tips: weekend dinner table of 2+, spending > $10 — average tip and bill by smoker status
-# Using bracket notation [total bill] across qry and agg:
+# Using bracket notation [total bill] across filter and agg:
 (
     tips
     .rename(columns={'total_bill': 'total bill'})
@@ -8916,7 +8826,6 @@ Pytae provides a cohesive suite of data cleaning, profiling, inspection, and exp
 |---|---|---|
 | `.dropna()` | `*cols`, `subset=`, `how='all'|'any'`, `drop_nans=True` | Drops missing values with **Zero Data Loss by default** |
 | `.fillna()` | `value`, `*cols`, `subset=`, `nans=True` | Imputes missing values (scalars, dicts, column-specific) |
-| `.fill_null()` / `.fill_nan()` | `value` | Granular Arrow null vs float NaN imputation |
 | `.clean_columns()` | `strip=`, `strip_special=`, `squeeze=`, `fill=`, `case=`, `dedupe=` | Normalizes messy spreadsheet column headers |
 | `.rename()` | `*args`, `columns=`, `**kwargs` | Renames columns via string specs (`old:new`), dicts, or kwargs |
 | `.cols()` | `ascending=True|False|None` | Returns sorted or original file order column names |
@@ -9055,7 +8964,7 @@ shape: (5, 4)
 └─────────┴───────────┴─────────────┴────────┘
 ```
 
-## 2. `fillna()`, `fill_null()` & `fill_nan()` — Missing Value Imputation
+## 2. `fillna()` — Missing Value Imputation
 
 `.fillna()` provides flexible missing value imputation:
 - **Default `nans=True`**: Imputes both Arrow `null` and floating-point `NaN` values.
@@ -9133,66 +9042,14 @@ shape: (5, 7)
 ```
 
 ```python
-# Demonstrate granular null vs NaN imputation
+# Demonstrate granular null vs NaN imputation using the nans= parameter
 nan_df = pt.DataFrame({
     "val": [1.0, float("nan"), None, 4.0],
 })
 
 print("Original:\n", nan_df)
-print("fill_null(0.0) -> fills null only, leaves NaN intact:\n", nan_df.fill_null(0.0))
-print("fill_nan(0.0)  -> fills NaN only, leaves null intact:\n", nan_df.fill_nan(0.0))
-print("fillna(0.0)    -> fills both null and NaN by default:\n", nan_df.fillna(0.0))
-```
-Output:
-```text
-Original:
- shape: (4, 1)
-┌──────┐
-│ val  │
-│ ---  │
-│ f64  │
-╞══════╡
-│ 1.0  │
-│ NaN  │
-│ null │
-│ 4.0  │
-└──────┘
-fill_null(0.0) -> fills null only, leaves NaN intact:
- shape: (4, 1)
-┌─────┐
-│ val │
-│ --- │
-│ f64 │
-╞═════╡
-│ 1.0 │
-│ NaN │
-│ 0.0 │
-│ 4.0 │
-└─────┘
-fill_nan(0.0)  -> fills NaN only, leaves null intact:
- shape: (4, 1)
-┌──────┐
-│ val  │
-│ ---  │
-│ f64  │
-╞══════╡
-│ 1.0  │
-│ 0.0  │
-│ null │
-│ 4.0  │
-└──────┘
-fillna(0.0)    -> fills both null and NaN by default:
- shape: (4, 1)
-┌─────┐
-│ val │
-│ --- │
-│ f64 │
-╞═════╡
-│ 1.0 │
-│ 0.0 │
-│ 0.0 │
-│ 4.0 │
-└─────┘
+print("fillna(0.0, nans=False) -> fills null only, leaves float NaN intact:\n", nan_df.fillna(0.0, nans=False))
+print("fillna(0.0, nans=True)  -> fills both null and float NaN (default):\n", nan_df.fillna(0.0, nans=True))
 ```
 
 ## 3. `clean_columns()` — Header Normalization
@@ -13997,11 +13854,17 @@ def concat(
 
 
 def slice_max(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError("pt.slice_max() has been removed; use pt.pick() instead")
+    raise AttributeError(
+        "pt.slice_max() has been removed; use df.arrange(...).head(n) instead "
+        "(or df.by(...).arrange(...).head(n) for grouped slicing)."
+    )
 
 
 def slice_min(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError("pt.slice_min() has been removed; use pt.pick(..., order='min') instead")
+    raise AttributeError(
+        "pt.slice_min() has been removed; use df.arrange(...).tail(n) instead "
+        "(or df.by(...).arrange(...).tail(n) for grouped slicing)."
+    )
 
 
 def lit(*args: Any, **kwargs: Any) -> None:
@@ -14107,8 +13970,6 @@ __all__ = [
     "scan_csv",
     "scan_ndjson",
     "scan_ipc",
-    "read",
-    "scan",
     "sample_data",
     "sample",
     "select",
@@ -14120,7 +13981,6 @@ __all__ = [
     "arrange",
     "head",
     "tail",
-    "pick",
     "distinct",
     "count",
     "dropna",
@@ -16184,7 +16044,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TARGET",
         help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
         "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
-        "or 'clip'/'clipboard' to copy to system clipboard",
+        "or 'clip' to copy to system clipboard",
     )
     parser.add_argument(
         "-out_dir",
@@ -16438,7 +16298,7 @@ def main(argv: list[str] | None = None) -> int:
         (("-dedupe", "--dedupe"), "'-dedupe' has been removed; use '-distinct' instead"),
         (("-sort_by", "--sort_by", "-sort", "--sort"), "'-sort_by' has been deprecated; use '-arrange' instead"),
         (("-agg_df", "--agg_df"), "'-agg_df' has been removed; use '-agg' instead"),
-        (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
+        (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' instead"),
         (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
         (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
         (
@@ -16505,8 +16365,10 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     out_target = str(args.output).strip() if args.output is not None else None
+    if out_target is not None and out_target.lower() == "clipboard":
+        parser.error("'-o clipboard' is not supported; use '-o clip' instead")
     args.output = out_target
-    is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
+    is_clip = out_target is not None and out_target.lower() == "clip"
     is_file = out_target is not None and not is_clip
 
     if args.out_dir is not None:
@@ -21190,15 +21052,20 @@ class DataFrame:
         by_cols = [by] if isinstance(by, str) else list(by)
         return DataFrame(self._df.sort(by_cols, descending=descending, nulls_last=nulls_last))
 
-    def query(self, *conditions: Any, **kwargs: Any) -> DataFrame:
-        """Pandas-compatible query(), delegating to Pytae filter()."""
-        return self.filter(*conditions, **kwargs)
+    def query(self, *conditions: Any, **kwargs: Any) -> None:
+        raise AttributeError("df.query() has been removed; use df.filter() instead")
 
     def slice_max(self, *args: Any, **kwargs: Any) -> None:
-        raise AttributeError("df.pt.slice_max() has been removed; use df.pt.pick() instead")
+        raise AttributeError(
+            "df.pt.slice_max() has been removed; use df.arrange(...).head(n) instead "
+            "(or df.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def slice_min(self, *args: Any, **kwargs: Any) -> None:
-        raise AttributeError("df.pt.slice_min() has been removed; use df.pt.pick(..., order='min') instead")
+        raise AttributeError(
+            "df.pt.slice_min() has been removed; use df.arrange(...).tail(n) instead "
+            "(or df.by(...).arrange(...).tail(n) for grouped slicing)."
+        )
 
     def agg_df(self, *args: Any, **kwargs: Any) -> None:
         raise AttributeError("df.pt.agg_df() has been removed; use df.pt.agg() instead")
@@ -32945,6 +32812,12 @@ def test_cli_clipboard_ingestion(monkeypatch, capsys):
 
     with pytest.raises(SystemExit):
         main(["clipboard", "-shape"])
+
+    # -o clipboard is not supported (strictly -o clip)
+    with pytest.raises(SystemExit):
+        main(["clip", "-o", "clipboard"])
+    err = capsys.readouterr().err
+    assert "'-o clipboard' is not supported; use '-o clip' instead" in err
 
 ################################################################################
 # FILE: tests/test_cli_parse.py

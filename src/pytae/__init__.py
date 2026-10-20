@@ -371,11 +371,17 @@ def concat(
 
 
 def slice_max(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError("pt.slice_max() has been removed; use pt.pick() instead")
+    raise AttributeError(
+        "pt.slice_max() has been removed; use df.arrange(...).head(n) instead "
+        "(or df.by(...).arrange(...).head(n) for grouped slicing)."
+    )
 
 
 def slice_min(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError("pt.slice_min() has been removed; use pt.pick(..., order='min') instead")
+    raise AttributeError(
+        "pt.slice_min() has been removed; use df.arrange(...).tail(n) instead "
+        "(or df.by(...).arrange(...).tail(n) for grouped slicing)."
+    )
 
 
 def lit(*args: Any, **kwargs: Any) -> None:
@@ -481,8 +487,6 @@ __all__ = [
     "scan_csv",
     "scan_ndjson",
     "scan_ipc",
-    "read",
-    "scan",
     "sample_data",
     "sample",
     "select",
@@ -494,7 +498,6 @@ __all__ = [
     "arrange",
     "head",
     "tail",
-    "pick",
     "distinct",
     "count",
     "dropna",

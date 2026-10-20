@@ -1,6 +1,6 @@
 # CLI Feature Guide: Data Cleaning, Imputation, & Renaming
 
-Standardize messy column headers (`-clean` / `-clean_columns`), impute missing values (`-fillna` / `-fill_nulls`), drop missing rows (`-dropna` / `-drop_nulls`), rename columns (`-rename`), and recode cell values via `-mutate "map(...)"`.
+Standardize messy column headers (`-clean` / `-clean_columns`), impute missing values (`-fillna`), drop missing rows (`-dropna`), rename columns (`-rename`), and recode cell values via `-mutate "map(...)"`.
 
 ---
 
@@ -10,8 +10,8 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 - [Header Standardization (`-clean` / `-clean_columns`)](#header-standardization--clean--clean_columns)
   - [Supported Pipeline Steps](#supported-pipeline-steps)
   - [Cleaning Examples](#cleaning-examples)
-- [Missing Value Imputation (`-fillna` / `-fill_nulls`)](#missing-value-imputation--fillna--fill_nulls)
-- [Dropping Missing Rows (`-dropna` / `-drop_nulls`)](#dropping-missing-rows--dropna--drop_nulls)
+- [Missing Value Imputation (`-fillna`)](#missing-value-imputation--fillna)
+- [Dropping Missing Rows (`-dropna`)](#dropping-missing-rows--dropna)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 - [Recoding Categorical Values (`-mutate "map(...)"`)](#recoding-categorical-values--mutate-map)
 
@@ -22,8 +22,8 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 | Flag | Scope | Delimiter / Syntax | Description |
 |---|---|---|---|
 | `-clean` / `-clean_columns` | Column headers | `,` / `=` | Standardizes headers (strip, squeeze, fill, case, dedupe) |
-| `-fillna` / `-fill_nulls` | Cell contents | Scalar or `val=..., cols=...` | Replaces null / NaN with replacement values |
-| `-dropna` / `-drop_nulls` | Rows | Bare or `col1, col2` | Drops null / NaN rows (Zero Data Loss default) |
+| `-fillna` | Cell contents | Scalar or `val=..., cols=...` | Replaces null / NaN with replacement values |
+| `-dropna` | Rows | Bare or `col1, col2` | Drops null / NaN rows (Zero Data Loss default) |
 | `-rename` | Column headers | `old:new` | Explicitly renames column names |
 | `-mutate "col = map(...)"` | Cell contents | Dictionary mapping | Vectorized value recoding via Polars engine |
 
@@ -66,7 +66,7 @@ hello world    10.5 draft_stage
 
 ---
 
-## Missing Value Imputation (`-fillna` / `-fill_nulls`)
+## Missing Value Imputation (`-fillna`)
 
 Replace missing values (`null` and `NaN`) across the dataset or within specific columns:
 
@@ -77,20 +77,20 @@ pytae dataset.parquet -fillna 0 -head 5
 # Impute specific columns
 pytae dataset.parquet -fillna "val='Unknown', cols='status, category'" -head 5
 
-# Polars alias works identically
-pytae dataset.parquet -fill_nulls 0 -head 5
+# Only replace Arrow nulls (leave float NaNs intact)
+pytae dataset.parquet -fillna "val=0, nans=false" -head 5
 ```
 
 ---
 
-## Dropping Missing Values (`-dropna`, `-drop_nulls`)
+## Dropping Missing Values (`-dropna`)
 
 Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values (Arrow `null`s and IEEE-754 float `NaN`s).
 
-- **Bare `-dropna` / `-drop_nulls`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
+- **Bare `-dropna`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
 - **Targeted `-dropna "col1, col2"`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
 - **Explicit `how=any`**: Drops rows containing *any* missing value across all columns.
-- **Aliases**: `-drop_nulls` and `-drop_na` are 100% interchangeable aliases for `-dropna`.
+- **Optional `drop_nans=false`**: Drops only Arrow nulls, preserving float IEEE-754 NaNs.
 
 ```bash
 # Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
@@ -104,15 +104,11 @@ pytae penguins.parquet -dropna body_mass_g -shape
 # Explicit how=any drops rows with any missing value (344 -> 333 rows)
 pytae penguins.parquet -dropna how=any -shape
 # (333, 7)
-
-# Polars alias works identically
-pytae penguins.parquet -drop_nulls "body_mass_g, sex" -shape
-# (333, 7)
 ```
 
 > [!NOTE]
 > - **Top-level `-dropna [COLS]`**: Operates as a row filter. Bare calls use `how="all"` (Zero Data Loss), while targeted calls use `how="any"` on the specified columns. Both Arrow `null` and float `NaN` are cleaned by default.
-> - **Scoped `dropna=bool` / `drop_nulls=bool`**: In `-pivot` and `-agg`, default is `dropna=false` (retains missing group keys without silent data loss). Pass `dropna=true` inside the spec (e.g. `-agg "a=mean, dropna=true"`) to exclude NA groups.
+> - **Scoped `dropna=bool`**: In `-pivot` and `-agg`, default is `dropna=false` (retains missing group keys without silent data loss). Pass `dropna=true` inside the spec (e.g. `-agg "a=mean, dropna=true"`) to exclude NA groups.
 
 ---
 

@@ -11,14 +11,13 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Inspection & Summary Flags](#inspection--summary-flags)
   - [Zero-Scan Parquet Metadata (`-meta`)](#zero-scan-parquet-metadata--meta)
-  - [Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-info`, `-describe`)](#rows-shape--overview--head--tail--sample--shape--glimpse--info--describe)
+  - [Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-describe`)](#rows-shape--overview--head--tail--sample--shape--glimpse--describe)
   - [Column Names, Data Types & Missing Counts (`-cols`, `-dtype`, `-nulls`)](#column-names-data-types--missing-counts--cols--dtype--nulls)
-  - [Distribution & Frequency Analysis (`-value_counts`, `-freq`, `-hist`)](#distribution--frequency-analysis--value_counts--freq--hist)
+  - [Distribution & Frequency Analysis (`-freq`, `-hist`)](#distribution--frequency-analysis--freq--hist)
   - [Dataset & Schema Comparison (`-diff`)](#dataset--schema-comparison--diff)
 - [Data Cleaning & Header Standardization](#data-cleaning--header-standardization)
   - [Header Cleaning (`-clean_columns`)](#header-cleaning--clean_columns)
-  - [Value Replacement (`-replace_values`)](#value-replacement--replace_values)
-  - [Missing Value Imputation (`-handle_missing`)](#missing-value-imputation--handle_missing)
+  - [Missing Value Imputation (`-fillna`)](#missing-value-imputation--fillna)
   - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
   - [Renaming Columns (`-rename`)](#renaming-columns--rename)
 - [Multi-File Pipelines & Operations](#multi-file-pipelines--operations)
@@ -32,7 +31,6 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
   - [Clipboard Export (`-o clip`)](#clipboard-export--o-clip)
   - [Execution Progress (`-progress`)](#execution-progress--progress)
 - [Formatting & Display Modifiers](#formatting--display-modifiers)
-  - [Markdown Tables (`-pretty`)](#markdown-tables--pretty)
   - [Rounding Decimals (`-round`)](#rounding-decimals--round)
   - [Interactive Paging (`-pager`)](#interactive-paging--pager)
 - [Version & Help Diagnostics](#version--help-diagnostics)
@@ -53,16 +51,13 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 | `-dtype [ORDER]` | Inspection | Optional `asc` or `desc` | Prints column data types |
 | `-nulls [ORDER]` | Inspection | Optional `asc` or `desc` | Prints null / NaN count per column |
 | `-describe` | Inspection | Flag | Computes summary statistics (count, mean, std, min, max, quartiles) |
-| `-info` | Inspection | Flag | Prints pandas memory footprint and non-null counts |
 | `-glimpse` | Inspection | Flag | Transposed column overview with dtypes and sample values |
 | `-meta` | Inspection | Flag | Instant Parquet metadata (row groups, compression, schema) |
 | `-diff PATH` | Inspection | File path | Compares schemas, shapes, column drift, and cell values against another dataset |
-| `-value_counts` | Inspection | Flag | Shows frequency counts across current working columns (use with `-select`) |
 | `-freq COL` | Inspection | Column name | Renders horizontal ASCII frequency bars with percentages |
 | `-hist COL[:BINS]` | Inspection | `col` or `col:bins` | Renders in-terminal ASCII distribution histogram |
 | `-clean_columns SPEC` | Cleaning | `strip,fill=_,case=lower,...` | Normalizes messy column header names |
-| `-replace_values SPEC` | Cleaning | `old:new` or `c=col,old:new` | Replaces cell values (exact or substring) |
-| `-handle_missing [FILL]`| Cleaning | Imputation string (default: `.`) | Fills text NaN with marker, numeric NaN with 0 |
+| `-fillna [VAL]` | Cleaning | Scalar or `col:val,...` | Imputes missing values (`null` and `NaN`) |
 | `-dropna [COLS]` | Cleaning | Optional comma-separated list | Drops rows containing NaN (across all columns or specified subset) |
 | `-rename SPEC` | Cleaning | `old:new,...` | Explicitly renames column headers |
 | `-file SPEC` | Multi-File | `path=alias;...` | Loads multiple input files into named aliases |
@@ -75,7 +70,6 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 | `-o TARGET` | Output I/O | File path, format, or `clip` | Exports result or copies to clipboard |
 | `-out_dir DIR` / `-od` | Output I/O | Directory path | Destination directory for exported files |
 | `-progress [N]` | Diagnostics | Optional row frequency | Streaming row count progress during read/write |
-| `-pretty` | Formatting | Flag | Formats terminal tables with Markdown borders |
 | `-round N` | Formatting | Integer decimals | Rounds floating-point numbers to N places |
 | `-pager` | Output | Flag | Pipes terminal output through interactive system pager (`less`) |
 | `-version` | Meta | Flag | Displays pytae version information and exits |
@@ -91,7 +85,7 @@ Reads metadata footers in sub-milliseconds without scanning table data:
 pytae transactions.parquet -meta
 ```
 
-### Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-info`, `-describe`)
+### Rows, Shape & Overview (`-head`, `-tail`, `-sample`, `-shape`, `-glimpse`, `-describe`)
 ```bash
 # Peek at initial or final records
 pytae penguins.parquet -head 3
@@ -101,10 +95,9 @@ pytae penguins.parquet -tail 3
 pytae penguins.parquet -sample 5 -seed 42
 pytae penguins.parquet -sample -frac 0.05 -seed 42
 
-# Dimensions, memory, and statistical summaries
+# Dimensions, schema, and statistical summaries
 pytae penguins.parquet -shape
 pytae penguins.parquet -glimpse
-pytae penguins.parquet -info
 pytae penguins.parquet -describe
 ```
 
@@ -121,10 +114,9 @@ pytae penguins.parquet -dtype
 pytae penguins.parquet -nulls desc
 ```
 
-### Distribution & Frequency Analysis (`-value_counts`, `-freq`, `-hist`)
+### Distribution & Frequency Analysis (`-freq`, `-hist`)
 ```bash
-# Frequency breakdown of categorical values
-pytae penguins.parquet -select "species,island" -value_counts
+# Categorical frequency breakdown with percentage bars
 pytae penguins.parquet -freq species
 
 # Numeric distribution histogram directly in terminal
@@ -148,38 +140,14 @@ Standardizes headers in order: `strip` -> `strip_special` -> `squeeze` -> `fill`
 pytae messy.csv -clean_columns "strip,strip_special,fill=_,case=lower" -head 3
 ```
 
-### Value Replacement (`-replace_values`)
-Swap cell contents with exact matching or substring matching:
+### Missing Value Imputation (`-fillna`)
+Imputes missing values (`null` and `NaN`) across all columns or specific targets:
 ```bash
-# Exact replacement across all columns
-pytae penguins.parquet -replace_values "Male:M,Female:F" -head 3
+# Impute all numeric missing values with 0
+pytae penguins.parquet -fillna 0 -head 5
 
-# Restrict replacement to specific column
-pytae penguins.parquet -replace_values "c=sex,Male:M,Female:F" -head 3
-
-# Substring matching anywhere inside cell
-pytae logs.csv -replace_values "exact=false,WARN:WARNING" -head 3
-```
-
-### Missing Value Imputation (`-handle_missing`)
-Fills text NaN with a visible marker (default `.`) and numeric NaN with `0`:
-```bash
-pytae penguins.parquet -handle_missing -head 5
-```
-
-**Output:**
-
-| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
-|:---|:---|---:|---:|---:|---:|:---|
-| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
-| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
-| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
-| Adelie | Torgersen | 0.0 | 0.0 | 0.0 | 0.0 | . |
-| Adelie | Torgersen | 36.7 | 19.3 | 193.0 | 3450.0 | Female |
-
-Custom string marker:
-```bash
-pytae penguins.parquet -handle_missing "Unknown" -head 5
+# Impute specific columns with replacement value
+pytae penguins.parquet -fillna "val='Unknown', cols='sex'" -head 5
 ```
 
 ### Dropping Missing Values (`-dropna`)
@@ -271,12 +239,6 @@ pytae huge_events.csv -progress -o events.parquet
 ---
 
 ## Formatting & Display Modifiers
-
-### Markdown Tables (`-pretty`)
-Renders formatted ASCII table with Markdown borders (`df.to_markdown()`):
-```bash
-pytae penguins.parquet -by species -agg mean -pretty
-```
 
 ### Rounding Decimals (`-round`)
 Rounds all numeric columns to N decimals on display:

@@ -393,15 +393,20 @@ class DataFrame:
         by_cols = [by] if isinstance(by, str) else list(by)
         return DataFrame(self._df.sort(by_cols, descending=descending, nulls_last=nulls_last))
 
-    def query(self, *conditions: Any, **kwargs: Any) -> DataFrame:
-        """Pandas-compatible query(), delegating to Pytae filter()."""
-        return self.filter(*conditions, **kwargs)
+    def query(self, *conditions: Any, **kwargs: Any) -> None:
+        raise AttributeError("df.query() has been removed; use df.filter() instead")
 
     def slice_max(self, *args: Any, **kwargs: Any) -> None:
-        raise AttributeError("df.pt.slice_max() has been removed; use df.pt.pick() instead")
+        raise AttributeError(
+            "df.pt.slice_max() has been removed; use df.arrange(...).head(n) instead "
+            "(or df.by(...).arrange(...).head(n) for grouped slicing)."
+        )
 
     def slice_min(self, *args: Any, **kwargs: Any) -> None:
-        raise AttributeError("df.pt.slice_min() has been removed; use df.pt.pick(..., order='min') instead")
+        raise AttributeError(
+            "df.pt.slice_min() has been removed; use df.arrange(...).tail(n) instead "
+            "(or df.by(...).arrange(...).tail(n) for grouped slicing)."
+        )
 
     def agg_df(self, *args: Any, **kwargs: Any) -> None:
         raise AttributeError("df.pt.agg_df() has been removed; use df.pt.agg() instead")

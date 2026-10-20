@@ -672,7 +672,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TARGET",
         help="output destination: a file path (e.g. 'out.csv', 'out.parquet'), "
         "a format for in-place or batch conversion ('csv', 'parquet', 'txt', 'dat', 'jsonl', 'csv.gz', 'jsonl.gz'), "
-        "or 'clip'/'clipboard' to copy to system clipboard",
+        "or 'clip' to copy to system clipboard",
     )
     parser.add_argument(
         "-out_dir",
@@ -926,7 +926,7 @@ def main(argv: list[str] | None = None) -> int:
         (("-dedupe", "--dedupe"), "'-dedupe' has been removed; use '-distinct' instead"),
         (("-sort_by", "--sort_by", "-sort", "--sort"), "'-sort_by' has been deprecated; use '-arrange' instead"),
         (("-agg_df", "--agg_df"), "'-agg_df' has been removed; use '-agg' instead"),
-        (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' or '-o clipboard' instead"),
+        (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' instead"),
         (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
         (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
         (
@@ -993,8 +993,10 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     out_target = str(args.output).strip() if args.output is not None else None
+    if out_target is not None and out_target.lower() == "clipboard":
+        parser.error("'-o clipboard' is not supported; use '-o clip' instead")
     args.output = out_target
-    is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
+    is_clip = out_target is not None and out_target.lower() == "clip"
     is_file = out_target is not None and not is_clip
 
     if args.out_dir is not None:

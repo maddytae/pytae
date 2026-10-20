@@ -15,9 +15,9 @@ Inspect file dimensions, structure, sample rows, statistical distributions, and 
 - [Dataset Dimensions (`-shape`)](#dataset-dimensions--shape)
 - [Column Names & Ordering (`-cols`)](#column-names--ordering--cols)
 - [Data Types & Null Counts (`-dtype`, `-nulls`)](#data-types--null-counts--dtype--nulls)
-- [Statistical Summaries (`-describe`, `-info`)](#statistical-summaries--describe--info)
+- [Statistical Summaries (`-describe`)](#statistical-summaries--describe)
 - [Terminal Paging (`-pager`)](#terminal-paging--pager)
-- [Display Modifiers (`-pretty`, `-round`)](#display-modifiers--pretty--round)
+- [Display Modifiers (`-round`)](#display-modifiers--round)
 - [Chaining & Terminal Operation Rules](#chaining--terminal-operation-rules)
 
 ---
@@ -40,12 +40,9 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 | `-dtype [ORDER]` | Print data types per column | **Yes** (terminal) |
 | `-nulls [ORDER]` | Print count of missing / NaN values per column | **Yes** (terminal) |
 | `-meta` | Zero-scan Parquet metadata (row groups, compression, schema) | **Yes** (terminal) |
-| `-info` | Pandas `info()` memory and non-null summary | **Yes** (terminal) |
 | `-glimpse` | Transposed column overview with dtypes and inline sample values | **Yes** (terminal) |
-| `-describe` | Pandas `describe()` statistical summary | No (returns DataFrame) |
-| `-value_counts` | Group counts across current working columns (pair with `-select`) | No (returns DataFrame) |
+| `-describe` | Statistical summary (count, mean, std, quartiles) | No (returns DataFrame) |
 | `-pager` | Pipe long outputs through system pager (`$PAGER` or `less`) | Display flag |
-| `-pretty` | Render plain tables with bordered markdown formatting | Display flag |
 | `-round N` | Round numeric columns to N decimal places | Display flag |
 
 > [!NOTE]
@@ -314,7 +311,7 @@ pytae penguins.parquet -nulls desc
 
 ---
 
-## Statistical Summaries (`-describe`, `-info`)
+## Statistical Summaries (`-describe`)
 
 ### Five-Number Summary (`-describe`)
 
@@ -340,32 +337,6 @@ pytae penguins.parquet -describe -round 1
 Because `-describe` returns a DataFrame, it can be filtered, rounded, or exported:
 ```bash
 pytae penguins.parquet -describe -round 2 -o summary.csv
-```
-
-### Technical Info (`-info`)
-
-Prints columns, non-null counts, dtypes, and memory usage:
-
-```bash
-pytae penguins.parquet -info
-```
-
-**Output:**
-```text
-<class 'pandas.DataFrame'>
-RangeIndex: 344 entries, 0 to 343
-Data columns (total 7 columns):
- #   Column             Non-Null Count  Dtype  
----  ------             --------------  -----  
- 0   species            344 non-null    str    
- 1   island             344 non-null    str    
- 2   bill_length_mm     342 non-null    float64
- 3   bill_depth_mm      342 non-null    float64
- 4   flipper_length_mm  342 non-null    float64
- 5   body_mass_g        342 non-null    float64
- 6   sex                333 non-null    str    
-dtypes: float64(4), str(3)
-memory usage: 24.9 KB
 ```
 
 ### Transposed Summary (`-glimpse`)
@@ -405,23 +376,7 @@ pytae data.parquet -head 100 -pager
 
 ---
 
-## Display Modifiers (`-pretty`, `-round`)
-
-### Bordered Tables (`-pretty`)
-
-Renders tables with bordered markdown layout:
-
-```bash
-pytae penguins.parquet -head 3 -pretty
-```
-
-**Output:**
-
-| species | island | bill_length_mm | bill_depth_mm | flipper_length_mm | body_mass_g | sex |
-|:---|:---|---:|---:|---:|---:|:---|
-| Adelie | Torgersen | 39.1 | 18.7 | 181.0 | 3750.0 | Male |
-| Adelie | Torgersen | 39.5 | 17.4 | 186.0 | 3800.0 | Female |
-| Adelie | Torgersen | 40.3 | 18.0 | 195.0 | 3250.0 | Female |
+## Display Modifiers (`-round`)
 
 ### Rounding Decimals (`-round`)
 

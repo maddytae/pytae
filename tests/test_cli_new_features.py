@@ -109,3 +109,9 @@ def test_cli_clipboard_ingestion(monkeypatch, capsys):
 
     with pytest.raises(SystemExit):
         main(["clipboard", "-shape"])
+
+    # -o clipboard is not supported (strictly -o clip)
+    with pytest.raises(SystemExit):
+        main(["clip", "-o", "clipboard"])
+    err = capsys.readouterr().err
+    assert "'-o clipboard' is not supported; use '-o clip' instead" in err

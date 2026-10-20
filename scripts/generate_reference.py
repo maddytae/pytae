@@ -40,7 +40,7 @@ TABLE OF CONTENTS
           - pt.join() / df.pt.join() / df.join() (Polars Join Engine)
           - pt.concat() / df.pt.concat() / df.concat() (Stacking Engine)
           - Transparent Polars Verb Delegation (__getattr__)
-          - pt.handle_missing() / df.pt.handle_missing()
+          - pt.fillna() / df.pt.fillna()
           - pt.clean_columns() / df.pt.clean_columns()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
@@ -162,7 +162,7 @@ Top-Level Functions exported by `pytae`:
   - pt.long(df, cols=None, id_vars=None, c="variable", v="value")
   - pt.wide(df, r=None, c="variable", v="value")
   - pt.pivot(df, r=None, c=None, v=None, a="sum", dropna=False, f_v=None)
-  - pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True)
+  - pt.fillna(df, value=None, *cols, subset=None, nans=True, **kwargs)
   - pt.cols(df, ascending=True)
   - pt.glimpse(df, width=None)
   - pt.freq(df, col=None, *, dropna=False)
@@ -199,7 +199,7 @@ DataFrame Accessor (`df.pt`):
     df.pt.long(...)
     df.pt.wide(...)
     df.pt.pivot(...)
-    df.pt.handle_missing(...)
+    df.pt.fillna(...)
     df.pt.cols(...)
     df.pt.glimpse(...)
     df.pt.freq(...)
@@ -703,8 +703,8 @@ Examples:
 - Transparent Polars Verb Delegation (__getattr__):
   Any native Polars method (e.g. .with_columns(), .slice(), .describe(), .explode()) can be called directly on pytae.DataFrame.
   Arguments are auto-unwrapped and results are rewrapped into pytae.DataFrame so method chains never break.
-- pt.handle_missing(df, fillna=".", numeric_fill=0, cols=None, preserve_categories=True):
-  Sanitizes missing values with type-safe defaults.
+- pt.fillna(df, value=None, *cols, subset=None, nans=True, **kwargs) / df.pt.fillna(...):
+  Imputes missing values (Arrow null and/or float NaN) across the entire DataFrame or specific columns.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
   Systematically sanitizes DataFrame header names.
 - pt.safe_reset_index(df) / df.pt.safe_reset_index():
@@ -777,11 +777,9 @@ Inspection & Summary Flags:
   -dtype [ORDER]        Print column data types (ORDER: asc, desc, file)
   -nulls [ORDER]        Print null value counts per column (ORDER: asc, desc, file)
   -describe             Descriptive statistics for numeric columns
-  -info                 DataFrame summary (dtypes, non-null counts, memory)
   -glimpse              Transposed column overview with dtypes and sample values
   -meta                 Display zero-scan Parquet metadata
   -diff PATH            Compare schema, shape, null counts against another file
-  -value_counts         Value counts for categorical/string columns
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
   -sample [N]           Random sample of N rows (default 5)
@@ -800,6 +798,7 @@ In-Terminal Visualizations:
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
+  -fillna [VAL]         Impute missing values (e.g. -fillna 0 or -fillna "col:val")
   -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
   -tail [LIMIT]         Extract last N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
 
@@ -808,7 +807,6 @@ Column Transformation Flags:
   -mutate SPEC          Create/overwrite columns ("new_col = expr" or multi-column "[prefix](col1, col2)[suffix] = expr" using _ placeholder)
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
-  -handle_missing [VAL] Impute missing values with type-safe defaults (default: '.')
 
 Aggregation & Reshaping Flags:
   -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass desc" -head 1)
@@ -827,7 +825,6 @@ SQL & Multi-File Flags:
 Output & Formatting Flags:
   -o TARGET             Output destination (file path, format for batch conversion, or 'clip')
   -out_dir, -od DIR     Target directory for exported files
-  -pretty               Pretty-print tables with bordered markdown formatting
   -pager                Pipe output through system pager ($PAGER or less)
   -round N              Round numeric output columns to N decimal places
 
