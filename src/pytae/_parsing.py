@@ -277,9 +277,9 @@ def _parse_mutate_spec_entries(raw: str) -> list[tuple[str, str, bool]]:
     return entries
 
 
-def _rewrite_fallback_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[str, str]]:
+def _rewrite_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[str, str]]:
     """Rewrite `col` and [col] for known columns to synthetic identifiers like __col_safe_0__
-    for the plain Python eval() fallback, outside string literals."""
+    for Polars AST compilation, outside string literals."""
     out_chars: list[str] = []
     quote = None
     i, n = 0, len(expr)
@@ -350,9 +350,8 @@ def _rewrite_fallback_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[
 
 
 def _strip_at_refs(expr: str) -> tuple[str, set[str]]:
-    """Rewrite pandas-eval `@name` local-variable refs to bare `name` for the
-    plain Python eval() fallback (which has no `@` syntax), and report which
-    names were referenced. `@` inside string literals is left untouched."""
+    """Rewrite `@name` local-variable refs to bare `name` for AST compilation,
+    and report which names were referenced. `@` inside string literals is left untouched."""
     out_chars: list[str] = []
     names: set[str] = set()
     quote = None

@@ -100,8 +100,8 @@ class ParquetReader:
         nrows: int | None = None,
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
-        if not progress and nrows is None:
-            df = pd.read_parquet(self.path, columns=columns)
+        if not progress:
+            df = self.to_polars(columns=columns, nrows=nrows).to_pandas()
             if "_pt_by" in df.attrs:
                 del df.attrs["_pt_by"]
             return df
@@ -221,6 +221,11 @@ class CsvReader:
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
         if not progress:
+            if self.encoding is None or self.encoding.lower() in ("utf-8", "utf8"):
+                try:
+                    return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+                except Exception:
+                    pass
             return pd.read_csv(
                 self.path,
                 sep=self.sep,
@@ -356,6 +361,11 @@ class TxtReader:
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
         if not progress:
+            if self.encoding is None or self.encoding.lower() in ("utf-8", "utf8"):
+                try:
+                    return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+                except Exception:
+                    pass
             return pd.read_csv(
                 self.path,
                 sep=self.sep,
@@ -833,6 +843,38 @@ def write_dataframe(
     index: bool | None = None,
 ) -> None:
     import polars as pl
+
+    if hasattr(df, "_df") and isinstance(df._df, (pl.DataFrame, pl.LazyFrame)):
+        df = df._df
+
+    if isinstance(df, pl.LazyFrame):
+        suffix, compression = _split_path_suffixes(dest)
+        if suffix in (".parquet", ".pq"):
+            try:
+                df.sink_parquet(dest)
+                return
+            except Exception:
+                df = df.collect()
+        elif suffix == ".csv":
+            if compression != "gzip" and (encoding is None or encoding.lower() in ("utf-8", "utf8")):
+                try:
+                    df.sink_csv(dest, separator=sep or ",")
+                    return
+                except Exception:
+                    df = df.collect()
+            else:
+                df = df.collect()
+        elif suffix in (".jsonl", ".ndjson"):
+            if compression is None:
+                try:
+                    df.sink_ndjson(dest)
+                    return
+                except Exception:
+                    df = df.collect()
+            else:
+                df = df.collect()
+        else:
+            df = df.collect()
 
     if isinstance(df, pl.DataFrame):
         suffix, compression = _split_path_suffixes(dest)

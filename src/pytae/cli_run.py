@@ -525,7 +525,22 @@ def cmd_convert(
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if announce:
-        print(f"Wrote {len(df)} rows to {dest}")
+        import polars as pl
+
+        if isinstance(df, pl.LazyFrame):
+            if dest.suffix in (".parquet", ".pq") and dest.exists():
+                import pyarrow.parquet as pa_parquet
+
+                num_rows = pa_parquet.ParquetFile(dest).metadata.num_rows
+            elif dest.suffix in (".csv", ".tsv", ".txt") and dest.exists():
+                num_rows = pl.scan_csv(dest, separator=sep or ",").select(pl.len()).collect().item()
+            elif dest.suffix in (".jsonl", ".ndjson") and dest.exists():
+                num_rows = pl.scan_ndjson(dest).select(pl.len()).collect().item()
+            else:
+                num_rows = df.select(pl.len()).collect().item()
+        else:
+            num_rows = len(df)
+        print(f"Wrote {num_rows} rows to {dest}")
 
 
 def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
@@ -1193,7 +1208,12 @@ def _process_path(
             if out_dir is not None and not dest.is_absolute():
                 dest = out_dir / dest
 
-        df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
+        import polars as pl
+
+        if args.round_ndigits is None and pipeline._pldf is not None and isinstance(pipeline._pldf, pl.LazyFrame):
+            df_to_write = pipeline._pldf
+        else:
+            df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
         try:
             cmd_convert(
                 df_to_write,

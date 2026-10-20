@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
+import polars as pl
 
 
 def _run_cli(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -263,3 +264,32 @@ def test_cli_special_columns_filter_and_mutate(tmp_path: Path):
     )
     assert proc_mutate.returncode == 0
     assert "45.0" in proc_mutate.stdout
+
+
+def test_cli_lazy_streaming_filter_sink(tmp_path: Path):
+    pq_in = tmp_path / "penguins_in.parquet"
+    pq_out = tmp_path / "null_sex.parquet"
+
+    df = pl.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Gentoo", "Gentoo"],
+            "sex": ["Male", None, "Female", None],
+            "body_mass_g": [3800, 3200, 5000, 4700],
+        }
+    )
+    df.write_parquet(pq_in)
+
+    proc = _run_cli(
+        str(pq_in),
+        "-filter",
+        "sex.is_null()",
+        "-o",
+        str(pq_out),
+    )
+    assert proc.returncode == 0
+    assert "Wrote 2 rows to" in proc.stdout
+    assert pq_out.exists()
+
+    res = pl.read_parquet(pq_out)
+    assert len(res) == 2
+    assert res["sex"].to_list() == [None, None]

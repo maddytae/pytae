@@ -18,7 +18,7 @@ from pytae._parsing import (
     _extract_arrange_specs,
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
-    _rewrite_fallback_col_refs,
+    _rewrite_col_refs,
     _strip_at_refs,
 )
 from pytae._text import _ColRef
@@ -42,7 +42,7 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
     """Convert a pytae filter condition tuple/value into a Polars Expression."""
     if schema is not None and col not in schema and ("." in col or "(" in col):
         cur_cols = set(schema.names())
-        safe_expr, col_map = _rewrite_fallback_col_refs(col, cur_cols)
+        safe_expr, col_map = _rewrite_col_refs(col, cur_cols)
         parsed = ast.parse(safe_expr, mode="eval")
         col_expr = _ast_to_polars_expr(parsed, cur_cols, col_map, schema=schema)
         is_numeric = False
@@ -1548,7 +1548,7 @@ def mutate_polars(
                         raise KeyError(f"local variable '@{var_name}' is not defined{hint}")
 
             cur_cols = set(_df_columns(cur))
-            safe_expr, col_map = _rewrite_fallback_col_refs(expr_str, cur_cols)
+            safe_expr, col_map = _rewrite_col_refs(expr_str, cur_cols)
             try:
                 parsed = ast.parse(safe_expr, mode="eval")
                 expr = _ast_to_polars_expr(parsed, cur_cols, col_map, by=by, schema=_df_schema(cur), params=params)
