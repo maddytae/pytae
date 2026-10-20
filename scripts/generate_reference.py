@@ -98,7 +98,7 @@ Key principles:
    zero-copy operations, and lazy evaluation (`pt.scan()`).
 2. Zero Data Loss by Default: Missing values (`null`/`NaN`) are preserved across 
    analytical operations (`agg`, `pivot`, `mutate`, `freq`) by default (`dropna=False`).
-   The `dropna()` / `drop_nulls()` verb defaults to `how='all'` (dropping only 100%
+   The `dropna()` verb defaults to `how='all'` (dropping only 100%
    blank rows), protecting partial-row business data from accidental loss.
 3. Seamless Pandas & Polars Interoperability: Works seamlessly with both Pandas and 
    Polars DataFrames. Use `df.pt.<verb>()` or `pt.<verb>(df)`. Converts back to 
@@ -148,8 +148,6 @@ Top-Level Functions exported by `pytae`:
   - pt.scan_ndjson(source, **kwargs) -> DataFrame (Lazy NDJSON scanner)
   - pt.scan_ipc(source, **kwargs) -> DataFrame (Lazy Arrow IPC scanner)
   - pt.fillna(df, value, *cols, subset=None, nans=True) -> DataFrame (Fill null/NaN)
-  - pt.fill_null(df, value, *cols, subset=None) -> DataFrame (Fill null)
-  - pt.fill_nan(df, value, *cols, subset=None) -> DataFrame (Fill float NaN)
   - pt.select(df, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)
@@ -679,9 +677,9 @@ Examples:
 
 4.12. Other Utilities
 --------------------------------------------------------------------------------
-- pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...) / pt.drop_nulls(...) / pt.drop_na(...):
+- pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...):
   Drops rows with missing values (Arrow null and float NaN). Defaults to how='all' (Zero Data Loss) when cols is empty,
-  or how='any' when columns are explicitly passed. Supports aliases drop_nulls and drop_na across library and CLI.
+  or how='any' when columns are explicitly passed. Pass drop_nans=False to drop only Arrow nulls and preserve float NaNs.
 - pt.cols(df, ascending=True):
   Returns list of column names (ascending=True for A-Z, False for Z-A, None for file order).
 - pt.glimpse(df, width=None) / df.pt.glimpse(width=None):
