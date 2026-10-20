@@ -823,6 +823,27 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-progress"],
     ),
+    "check": KeywordHelp(
+        name="check",
+        flag="check, -check [PATHS...]",
+        syntax="pytae check [PATH...]",
+        summary="Statically inspect Python files and check pytae DSL expressions for syntax errors.",
+        description=(
+            "Statically parses Python scripts (using ast.parse) and validates all pytae DSL expressions\n"
+            "passed to .mutate(), .filter(), .select(), .arrange(), and .agg().\n"
+            "Catches unclosed parentheses, malformed case_when() tuples, retired syntax (like exclude=),\n"
+            "and invalid operators before running code. Perfect for CI and git pre-commit hooks."
+        ),
+        options=[
+            "PATHS : One or more Python files or directories to recursively inspect (default: current directory).",
+        ],
+        examples=[
+            "pytae check pipeline.py",
+            "pytae check src/ tests/",
+            "pytae check",
+        ],
+        see_also=["-mutate", "-filter", "-select"],
+    ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries

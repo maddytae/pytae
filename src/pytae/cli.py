@@ -903,6 +903,12 @@ def _format_timing_summary(durations: list[float]) -> str:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else list(argv)
 
+    # Check for static DSL syntax check subcommand: `pytae check [paths...]` or `pytae -check [paths...]`
+    if raw_argv and raw_argv[0] in ("check", "-check", "--check"):
+        from pytae.validation import run_cli_check
+
+        return run_cli_check(raw_argv[1:])
+
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
         from pytae.cli_help import get_keyword_help

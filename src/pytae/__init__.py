@@ -30,6 +30,14 @@ from pytae.readers import (
     scan_parquet,
 )
 from pytae.select import everything
+from pytae.validation import (
+    DSLDiagnostic,
+    PipelineValidationError,
+    check_dsl_file,
+    check_dsl_paths,
+    check_dsl_string,
+    validate_pipeline,
+)
 
 __version__ = "3.10.2"
 
@@ -436,6 +444,8 @@ class _PytaeModule(ModuleType):
     scan_ipc = _VerbDescriptor(scan_ipc)
     read = _VerbDescriptor(read)
     scan = _VerbDescriptor(scan)
+    validate_pipeline = _VerbDescriptor(validate_pipeline)
+    check_dsl = _VerbDescriptor(check_dsl_string)
 
 
 sys.modules[__name__].__class__ = _PytaeModule
@@ -506,6 +516,12 @@ __all__ = [
     "corr",
     "clean_columns",
     "everything",
+    "validate_pipeline",
+    "PipelineValidationError",
+    "check_dsl_string",
+    "check_dsl_file",
+    "check_dsl_paths",
+    "DSLDiagnostic",
     "PolarsPtAccessor",
     "PandasPtAccessor",
 ]

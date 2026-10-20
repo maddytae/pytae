@@ -176,6 +176,10 @@ Top-Level Functions exported by `pytae`:
   - pt.safe_reset_index(df)
   - pt.sample(data_or_name="penguins", n=None, frac=None, seed=None)
   - pt.sample_data (Mapping of bundled datasets)
+  - pt.validate_pipeline(pipeline, source, **kwargs) -> DataFrame (Zero-data pre-flight pipeline validator)
+  - pt.check_dsl_string(verb, spec) -> list[str] (Validate DSL syntax without data)
+  - pt.check_dsl_file(file_path) -> list[DSLDiagnostic] (Static DSL linter for Python file)
+  - pt.check_dsl_paths(paths) -> tuple[int, list[DSLDiagnostic]] (Static DSL linter for paths)
   - pt.Plotter (lazy loaded when matplotlib is installed)
   - pt.plot(df, *args, **kwargs)
   - pt.finalize(plotter=None, **kwargs)
@@ -828,6 +832,9 @@ Output & Formatting Flags:
   -pretty               Pretty-print tables with bordered markdown formatting
   -pager                Pipe output through system pager ($PAGER or less)
   -round N              Round numeric output columns to N decimal places
+
+DSL Validation & Linting:
+  check, -check [PATHS] Statically inspect Python scripts and check pytae DSL expressions for syntax errors
 
 
 5.4. In-Terminal Visualizations (-freq, -hist, -bar, -scatter, -corr)
