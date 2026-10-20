@@ -166,7 +166,9 @@ class DataFrame:
     ) -> None:
         self._orig_col_map: dict[str, Any] = dict(orig_col_map) if orig_col_map else {}
         self._col_collisions: set[str] = set()
-        self._orig_index: list[Any] | None = list(data.index) if hasattr(data, "index") else None
+        self._orig_index: list[Any] | None = (
+            list(data.index) if hasattr(data, "index") and not callable(getattr(data, "index", None)) else None
+        )
         self._last_sort_cols: list[str] | None = _last_sort_cols
         self._last_sort_desc: list[bool] | None = _last_sort_desc
 
@@ -723,10 +725,34 @@ class DataFrame:
             else:
                 return DataFrame(eager_self._df.filter(pl.Series(list(mask))))
 
+        import inspect
+
+        _here = inspect.currentframe()
+        caller_frame = None if _here is None else _here.f_back
+        del _here
+        while caller_frame is not None:
+            name = caller_frame.f_globals.get("__name__") or ""
+            if name != "pytae" and not name.startswith("pytae."):
+                break
+            caller_frame = caller_frame.f_back
+        frame_vars: dict[str, Any] = {}
+        if caller_frame is not None:
+            frame_vars.update(caller_frame.f_globals)
+            frame_vars.update(caller_frame.f_locals)
+        del caller_frame
+
+        params = kwargs.pop("_params", None)
+        if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
+            params = kwargs.pop("params")
+
+        merged_params = dict(frame_vars)
+        if params:
+            merged_params.update(params)
+
         cond_pairs: list[tuple[str, Any]] = []
         for cond in conditions:
             if isinstance(cond, str):
-                cond_pairs.extend(_parse_filter_string(cond))
+                cond_pairs.extend(_parse_filter_string(cond, params=merged_params))
             elif isinstance(cond, dict):
                 cond_pairs.extend(cond.items())
             elif isinstance(cond, (list, tuple)) and cond and isinstance(cond[0], tuple):

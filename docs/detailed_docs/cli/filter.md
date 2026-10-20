@@ -12,6 +12,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
 - [Pytae Filtering (`-filter`)](#pytae-filtering--filter)
   - [Exact Matching](#exact-matching)
   - [Comparisons (`>`, `<`, `>=`, `<=`, `!=`)](#comparisons)
+  - [Column-to-Column Comparisons (`col_a == col_b` or `col(...)`)](#column-to-column-comparisons-col_a--col_b-or-col)
   - [Intervals & Ranges (`[start, end]`)](#intervals--ranges)
   - [List Membership (`['a', 'b']`)](#list-membership)
   - [Filtering Non-Missing Values (`notna`) & Columns with Spaces](#filtering-non-missing-values-notna--columns-with-spaces)
@@ -70,6 +71,23 @@ pytae penguins.parquet -filter "body_mass_g > 5500" -select "species,island,body
 | Gentoo    | Biscoe   |          5700 |
 | Gentoo    | Biscoe   |          5700 |
 | Gentoo    | Biscoe   |          5550 |
+
+### Column-to-Column Comparisons (`col_a == col_b` or `col(...)`)
+
+You can compare two columns directly against each other (e.g. reconciling IDs, detecting limit breaches):
+
+```bash
+# In Python API
+df.filter("tranche_id == deal_id")
+df.filter("amount > limit")
+
+# In CLI (using col() to reference explicit column names)
+pytae loans.parquet -filter "tranche_id == col(deal_id)"
+pytae loans.parquet -filter "amount > col(limit)"
+```
+
+> [!NOTE]
+> In `pytae`, unquoted identifiers on the right-hand side of a comparison resolve to the corresponding DataFrame column. If the name is not found in the DataFrame schema, `pytae` raises an explicit error with a fuzzy-match suggestion and a reminder to quote string literals, preventing silent zero-row matches.
 
 ### Intervals & Ranges (`[start, end]`)
 

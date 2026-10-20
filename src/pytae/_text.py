@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 
+class _ColRef(str):
+    """Sentinel string indicating an unquoted identifier meant to be resolved as a column reference."""
+
+    pass
+
+
 def tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: bool = False) -> list[str]:
     """Split raw into segments at top-level occurrences of any character in `seps`,
     respecting quotes (a matched quote pair is never split inside) and, if

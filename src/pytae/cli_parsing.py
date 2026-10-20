@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from pytae._text import _is_enclosed_pair
+from pytae._text import _ColRef, _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
@@ -632,23 +632,35 @@ def parse_filter(raw: str) -> list[tuple[str, Any]]:
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
-            try:
-                sub_val = ast.literal_eval(sub_raw)
-            except (ValueError, SyntaxError) as exc:
-                raise SystemExit(
-                    f"invalid --filter conditions: value for '{key}' ('{sub_raw}') must be quoted "
-                    "(e.g. 'Male') or a valid literal (number/tuple/list)"
-                ) from exc
+            if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
+                sub_val = sub_raw[1:-1]
+            elif sub_raw.startswith("col(") and sub_raw.endswith(")"):
+                inner = sub_raw[4:-1].strip().strip("'\"")
+                sub_val = _ColRef(inner)
+            else:
+                try:
+                    sub_val = ast.literal_eval(sub_raw)
+                except (ValueError, SyntaxError) as exc:
+                    raise SystemExit(
+                        f"invalid --filter conditions: value for '{key}' ('{sub_raw}') must be quoted "
+                        "(e.g. 'Male') or a valid literal (number/tuple/list)"
+                    ) from exc
             conditions.append((key, (op, sub_val)))
             continue
 
-        try:
-            value = ast.literal_eval(val_strip)
-        except (ValueError, SyntaxError) as exc:
-            raise SystemExit(
-                f"invalid --filter conditions: value for '{key}' ('{val_strip}') must be quoted "
-                "(e.g. 'Male') or a valid literal (number/tuple/list)"
-            ) from exc
+        if len(val_strip) >= 2 and val_strip[0] in "'\"" and val_strip[-1] == val_strip[0]:
+            value = val_strip[1:-1]
+        elif val_strip.startswith("col(") and val_strip.endswith(")"):
+            inner = val_strip[4:-1].strip().strip("'\"")
+            value = _ColRef(inner)
+        else:
+            try:
+                value = ast.literal_eval(val_strip)
+            except (ValueError, SyntaxError) as exc:
+                raise SystemExit(
+                    f"invalid --filter conditions: value for '{key}' ('{val_strip}') must be quoted "
+                    "(e.g. 'Male') or a valid literal (number/tuple/list)"
+                ) from exc
         conditions.append((key, value))
     if not conditions:
         raise SystemExit(

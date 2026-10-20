@@ -672,7 +672,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="ENC",
         help="text encoding for .csv/.txt/.dat/.sas7bdat, e.g. latin-1 "
-        "(default: utf-8 for .sas7bdat, latin-1 for .dat, pandas infer for .csv/.txt); "
+        "(default: latin-1 for .sas7bdat and .dat, pandas infer for .csv/.txt); "
         "not used for .parquet",
     )
     parser.add_argument(

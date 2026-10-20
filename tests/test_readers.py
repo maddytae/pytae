@@ -195,10 +195,10 @@ def test_csv_and_txt_dtypes_sample_not_full_file(tmp_path, monkeypatch):
     assert not pd.api.types.is_integer_dtype(full["n"])
 
 
-def test_sas_reader_defaults_to_utf8():
+def test_sas_reader_defaults_to_latin1():
     path = Path("dummy.sas7bdat")
-    assert get_reader(path).encoding == "utf-8"
-    assert get_reader(path, encoding="latin-1").encoding == "latin-1"
+    assert get_reader(path).encoding == "latin-1"
+    assert get_reader(path, encoding="utf-8").encoding == "utf-8"
 
 
 def test_get_reader_missing_suffix(tmp_path):

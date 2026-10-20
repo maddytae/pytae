@@ -21,6 +21,7 @@ from pytae._parsing import (
     _rewrite_fallback_col_refs,
     _strip_at_refs,
 )
+from pytae._text import _ColRef
 from pytae._text import unquote_name as _unquote_name
 from pytae.select import resolve_select_columns
 
@@ -150,6 +151,45 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 _coerce_val(val)
                 return col_expr.cast(pl.String).str.contains(str(val))
 
+            if isinstance(val, _ColRef):
+                if schema is not None and val in schema:
+                    rhs = pl.col(str(val))
+                else:
+                    import difflib
+
+                    avail = list(schema.names()) if schema is not None else []
+                    close = difflib.get_close_matches(str(val), avail, n=1)
+                    hint = f" (did you mean '{close[0]}'?)" if close else ""
+                    raise KeyError(
+                        f"column '{val}' not found in DataFrame{hint}. "
+                        f"if you intended a string literal, quote it like '{val}'"
+                    )
+                if op == "==":
+                    return col_expr == rhs
+                if op == "!=":
+                    return col_expr != rhs
+                if op == ">":
+                    return col_expr > rhs
+                if op == ">=":
+                    return col_expr >= rhs
+                if op == "<":
+                    return col_expr < rhs
+                if op == "<=":
+                    return col_expr <= rhs
+            elif isinstance(val, pl.Expr):
+                if op == "==":
+                    return col_expr == val
+                if op == "!=":
+                    return col_expr != val
+                if op == ">":
+                    return col_expr > val
+                if op == ">=":
+                    return col_expr >= val
+                if op == "<":
+                    return col_expr < val
+                if op == "<=":
+                    return col_expr <= val
+
             cval = _coerce_val(val)
             if op == "==":
                 if cval is None or str(cval).lower() in ("none", "null"):
@@ -198,16 +238,32 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
-            try:
-                sub_val = ast.literal_eval(sub_raw)
-            except (ValueError, SyntaxError):
-                if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
-                    sub_val = sub_raw[1:-1]
-                else:
-                    sub_val = sub_raw
+            if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
+                sub_val = sub_raw[1:-1]
+            else:
+                try:
+                    sub_val = ast.literal_eval(sub_raw)
+                except (ValueError, SyntaxError):
+                    sub_val = _ColRef(_unquote_name(sub_raw))
             return _cond_to_polars_expr(col, (op, sub_val), schema=schema)
 
-    # Default direct scalar equality
+    # Default direct scalar equality or column reference
+    if isinstance(cond, _ColRef):
+        if schema is not None and cond in schema:
+            return col_expr == pl.col(str(cond))
+        else:
+            import difflib
+
+            avail = list(schema.names()) if schema is not None else []
+            close = difflib.get_close_matches(str(cond), avail, n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(
+                f"column '{cond}' not found in DataFrame{hint}. "
+                f"if you intended a string literal, quote it like '{cond}'"
+            )
+    if isinstance(cond, pl.Expr):
+        return col_expr == cond
+
     return col_expr == _coerce_val(cond)
 
 
@@ -1151,6 +1207,29 @@ def _ast_to_polars_expr(
                         expr = obj_expr.fill_null(val_expr)
                     return expr.over(by) if by else expr
 
+        # col(...) dynamic column resolution
+        if func_name == "col" and len(node.args) >= 1:
+            first_arg = node.args[0]
+            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                cname = str(first_arg.value)
+            elif isinstance(first_arg, ast.Name):
+                cname = col_map.get(first_arg.id, first_arg.id)
+            else:
+                try:
+                    eval_res = ast.literal_eval(first_arg)
+                    cname = str(eval_res)
+                except Exception:
+                    cname = ""
+            cname = col_map.get(cname, cname)
+            if schema is not None and cname not in schema:
+                import difflib
+
+                avail = list(schema.names()) if schema is not None else []
+                close = difflib.get_close_matches(cname, avail, n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"column '{cname}' not found in DataFrame{hint}")
+            return pl.col(cname)
+
         # 2. Functional map(...)
         if func_name == "map" and len(node.args) >= 2:
             col_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
@@ -1174,7 +1253,45 @@ def _ast_to_polars_expr(
                         default_node = kw.value
                         break
 
-            if default_node is not None:
+            # Analyze value types in mapping
+            val_types = {type(v) for v in mapping.values()}
+            has_bool_val = bool in val_types
+            has_non_bool_val = any(t is not bool for t in val_types)
+
+            if has_bool_val and has_non_bool_val:
+                raise TypeError(
+                    "map() cannot mix boolean and non-boolean values in mapping dictionary. "
+                    "Polars requires homogeneous column dtypes; mixing them coerces booleans "
+                    "to strings ('true'/'false'), which are both truthy in Python."
+                )
+
+            def_val = None
+            def_is_constant = False
+            if default_node is not None and isinstance(default_node, ast.Constant):
+                def_val = default_node.value
+                def_is_constant = True
+
+            if has_bool_val:
+                if def_is_constant and def_val is not None and not isinstance(def_val, bool):
+                    raise TypeError(
+                        f"map() cannot mix boolean mapping values with non-boolean default {def_val!r}. "
+                        "Polars requires homogeneous column dtypes; coercing booleans to strings "
+                        "would evaluate 'false' as truthy in Python."
+                    )
+            elif def_is_constant and isinstance(def_val, bool):
+                raise TypeError(
+                    f"map() cannot mix non-boolean mapping values with boolean default {def_val!r}. "
+                    "Polars requires homogeneous column dtypes; coercing booleans to strings "
+                    "would evaluate 'false' as truthy in Python."
+                )
+
+            if has_bool_val:
+                if default_node is not None:
+                    default_expr = _ast_to_polars_expr(default_node, col_names, col_map, by, schema, params)
+                    expr = col_expr.replace_strict(mapping, default=default_expr, return_dtype=pl.Boolean)
+                else:
+                    expr = col_expr.replace_strict(mapping, default=None, return_dtype=pl.Boolean)
+            elif default_node is not None:
                 default_expr = _ast_to_polars_expr(default_node, col_names, col_map, by, schema, params)
                 if hasattr(pl.Expr, "replace_strict"):
                     expr = col_expr.replace_strict(mapping, default=default_expr)

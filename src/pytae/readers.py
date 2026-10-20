@@ -419,7 +419,7 @@ class SasReader:
 
     def __init__(self, path: Path, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
         self.path = path
-        self.encoding = "utf-8" if encoding is None else encoding
+        self.encoding = "latin-1" if encoding is None else encoding
         self.chunk_size = chunk_size
 
     def _open(self):

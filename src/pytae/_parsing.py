@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pytae._text import _ColRef
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 from pytae.cli_parsing import _split_qry_entries
@@ -106,11 +107,24 @@ def _extract_arrange_specs(
 # -----------------------------------------------------------------------------
 
 
-def _parse_filter_string(raw: str) -> list[tuple[str, Any]]:
+def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> list[tuple[str, Any]]:
     """Parse filter conditions from a query string."""
     stripped = raw.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         stripped = stripped[1:-1]
+    if "@" in stripped:
+        _, at_tokens = _strip_at_refs(stripped)
+        for var_name in at_tokens:
+            if params and var_name in params:
+                val_p = params[var_name]
+                stripped = re.sub(rf"@{var_name}\b", repr(val_p), stripped)
+            else:
+                all_avail = list(params.keys()) if params else []
+                import difflib
+
+                close = difflib.get_close_matches(var_name, all_avail, n=1)
+                hint = f" (did you mean '@{close[0]}'?)" if close else ""
+                raise KeyError(f"local variable '@{var_name}' is not defined{hint}")
     try:
         entries = _split_qry_entries(stripped)
     except SystemExit as exc:
@@ -150,22 +164,29 @@ def _parse_filter_string(raw: str) -> list[tuple[str, Any]]:
         if op_match:
             op = op_match.group(1)
             sub_raw = op_match.group(2).strip()
-            try:
-                sub_val = ast.literal_eval(sub_raw)
-            except (ValueError, SyntaxError):
-                if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
-                    sub_val = sub_raw[1:-1]
-                else:
-                    sub_val = sub_raw
+            if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
+                sub_val = sub_raw[1:-1]
+            elif sub_raw.startswith("col(") and sub_raw.endswith(")"):
+                inner = sub_raw[4:-1].strip().strip("'\"")
+                sub_val = _ColRef(_unquote_name(inner))
+            else:
+                try:
+                    sub_val = ast.literal_eval(sub_raw)
+                except (ValueError, SyntaxError):
+                    sub_val = _ColRef(_unquote_name(sub_raw))
             pairs.append((key, (op, sub_val)))
             continue
-        try:
-            value = ast.literal_eval(val_strip)
-        except (ValueError, SyntaxError):
-            if len(val_strip) >= 2 and val_strip[0] in "'\"" and val_strip[-1] == val_strip[0]:
-                value = val_strip[1:-1]
-            else:
-                value = val_strip
+
+        if len(val_strip) >= 2 and val_strip[0] in "'\"" and val_strip[-1] == val_strip[0]:
+            value = val_strip[1:-1]
+        elif val_strip.startswith("col(") and val_strip.endswith(")"):
+            inner = val_strip[4:-1].strip().strip("'\"")
+            value = _ColRef(_unquote_name(inner))
+        else:
+            try:
+                value = ast.literal_eval(val_strip)
+            except (ValueError, SyntaxError):
+                value = _ColRef(_unquote_name(val_strip))
         pairs.append((key, value))
     if not pairs:
         raise ValueError("filter() expects at least one condition")
@@ -264,6 +285,9 @@ def _rewrite_fallback_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[
     i, n = 0, len(expr)
     mapping: dict[str, str] = {}
     col_idx = 0
+    # Special columns that are not valid Python identifiers (e.g. contain parentheses, spaces, hyphens)
+    special_cols = sorted([c for c in columns if not c.isidentifier()], key=len, reverse=True)
+
     while i < n:
         ch = expr[i]
         if quote is not None:
@@ -303,6 +327,23 @@ def _rewrite_fallback_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[
                     out_chars.append(alias)
                     i = j + 1
                     continue
+        if special_cols:
+            matched_special = False
+            for col_cand in special_cols:
+                k = len(col_cand)
+                if expr[i : i + k] == col_cand:
+                    prev_char = expr[i - 1] if i > 0 else ""
+                    next_char = expr[i + k] if i + k < n else ""
+                    if (not prev_char.isalnum() and prev_char != "_") and (not next_char.isalnum() and next_char != "_"):
+                        alias = f"__col_safe_{col_idx}__"
+                        col_idx += 1
+                        mapping[alias] = col_cand
+                        out_chars.append(alias)
+                        i += k
+                        matched_special = True
+                        break
+            if matched_special:
+                continue
         out_chars.append(ch)
         i += 1
     return "".join(out_chars), mapping
