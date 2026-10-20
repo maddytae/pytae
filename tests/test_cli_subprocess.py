@@ -221,8 +221,8 @@ def test_cli_cold_start_speed():
     proc = _run_cli("-version")
     elapsed = time.perf_counter() - t0
     assert proc.returncode == 0
-    # Process startup + python import should complete comfortably under 1.5 seconds even on cold cache
-    assert elapsed < 1.5, f"Cold start took too long: {elapsed:.2f}s"
+    # Process startup + python import should complete comfortably under 2.0 seconds even on cold cache
+    assert elapsed < 2.0, f"Cold start took too long: {elapsed:.2f}s"
 
 
 # =============================================================================

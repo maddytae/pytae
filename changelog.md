@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.10.2] - 2026-10-19
+
+### Added
+- **Unified `rcva` Reshaping Grammar Across `long`, `wide`, and `pivot`**:
+  - Extended the canonical `rcva` grammar (`r=`, `c=`, `v=`) to `-long` and `df.long()` (with `r=` as the row identifier alias for `id_vars`).
+  - Now all three table reshaping operations share identical parameter vocabulary:
+    - `pivot`: `r` (row index), `c` (pivot columns), `v` (values), `a` (aggregation)
+    - `wide`: `r` (row index), `c` (header source), `v` (values)
+    - `long`: `r` (row identifiers to keep), `c` (unpivoted metric name), `v` (unpivoted value name)
+- **Standardized Negation Prefix (`!col`)**:
+  - Supported standard Unix/zsh exclamation prefix `!col` for column exclusions across `--select "!col1,!col2"` and `df.select("!col1", "!col2")`.
+  - Completely avoids `argparse` flag collision issues with leading hyphens (e.g. `-sex` being misidentified as a CLI argument).
+- **Lazy Streaming Out-of-Core Sinks**:
+  - Implemented streaming file export for `pl.LazyFrame` in `write_dataframe` via native Polars sinks (`sink_parquet`, `sink_csv`, `sink_ndjson`).
+  - Pipeline commands like `pytae data.parquet -filter ... -o out.parquet` now execute completely lazily via Polars' streaming engine without materializing intermediate tables into memory.
+
+### Optimized & Refactored
+- **Native Polars Rust I/O Delegation**:
+  - Refactored `ParquetReader.to_dataframe()`, `CsvReader.to_dataframe()`, and `TxtReader.to_dataframe()` in `readers.py` to delegate directly to Polars' native multithreaded Rust readers (`self.to_polars().to_pandas()`).
+  - Bypassed legacy Python 200,000-row chunk concatenation for standard UTF-8 files, yielding 3x–5x faster CSV and Parquet ingestion.
+- **Pure Relational Flat Table Architecture**:
+  - Dropped fragile `_orig_index` tracking and restoration loops from DataFrame transformations, guaranteeing clean 1D RangeIndex tables with zero MultiIndex traps.
+- **Pure Polars AST Expression Compilation**:
+  - Refactored formula and predicate compilation (`_rewrite_col_refs`) in `_parsing.py` and `polars_engine.py` to be 100% native Polars expressions (`pl.Expr`) without legacy Python `eval()` fallbacks.
+
+### Documentation
+- **Comprehensive Notebook Re-Execution & Output Synchronization**:
+  - Re-run and synchronized all 15 documentation Jupyter Notebooks (`.ipynb`) and reproducible benchmark figures.
+  - Updated CLI Cheatsheet (`docs/cli_cheatsheet.md`, `src/pytae/cheatsheet.py`), in-terminal interactive help (`src/pytae/cli_help.py`), topic guides (`docs/detailed_docs/cli/`), and reference manual (`reference/pytae_reference.txt`).
+
 ## [3.10.1] - 2026-10-18
 
 ### Added
