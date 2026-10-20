@@ -587,8 +587,8 @@ def build_parser() -> argparse.ArgumentParser:
         action=_OrderedValue,
         help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
         "without -by, computes a whole-table summary (grand total). "
-        "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
-        "(v1 = sum, total = v1:sum, count = n). Defaults to sum.",
+        "Accepts a name (mean), a comma list (mean,sum,count), or column mappings "
+        "(v1 = sum, total = v1:sum, n = count). Defaults to sum.",
     )
     parser.add_argument(
         "-fillna",

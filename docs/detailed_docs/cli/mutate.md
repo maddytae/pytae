@@ -393,7 +393,7 @@ Combine `-by` with `-mutate`:
 pytae tips.parquet \
   -select "day,total_bill,tip" \
   -by day \
-  -mutate "avg_tip = mean(tip), diff = tip - avg_tip, cnt = n" \
+  -mutate "avg_tip = mean(tip), diff = tip - avg_tip, cnt = count()" \
   -head 5 \
   -round 2
 ```
@@ -412,7 +412,7 @@ pytae tips.parquet \
 
 Within grouped `-mutate` expressions, the following aggregations evaluate per group:
 - `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`
-- `n` or `n()`: Group row count (sample size)
+- `count()`: Group row count (sample size)
 
 ### Multi-Column Grouping and Spaced Columns
 

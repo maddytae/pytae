@@ -382,7 +382,7 @@ summary = (
     )
     .by("TRTP", "SEX")
     .agg(
-        n_subjects="n",
+        n_subjects="count",
         mean_sysbp="SYSBP:mean",
         mean_pp="pulse_pressure:mean"
     )
@@ -400,7 +400,7 @@ pytae vsl.sas7bdat \
   -join "dm.sas7bdat,on=USUBJID,how=inner" \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
   -by TRTP,SEX \
-  -agg "n_subjects = n, mean_sysbp = mean(SYSBP), mean_pp = mean(pulse_pressure)" \
+  -agg "n_subjects = count, mean_sysbp = mean(SYSBP), mean_pp = mean(pulse_pressure)" \
   -arrange "mean_sysbp desc" \
   -o summary.parquet
 ```

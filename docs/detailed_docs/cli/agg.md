@@ -11,7 +11,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
 - [Overview & Differences](#overview--differences)
 - [Group Aggregations (`-by` + `-agg`)](#group-aggregations--by--agg)
   - [Single Function across Numeric Columns](#single-function-across-numeric-columns)
-  - [Multiple Functions (`"mean,n"`)](#multiple-functions-meann)
+  - [Multiple Functions (`"mean,count"`)](#multiple-functions-meancount)
   - [Column-Specific Mapping](#column-specific-mapping)
   - [Named Outputs (`total = col:aggfunc`)](#named-outputs-total--colaggfunc)
 - [Whole-Table Summaries (Grand Totals)](#whole-table-summaries-grand-totals)
@@ -35,7 +35,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
 
 Specify grouping column(s) with `-by` (or `--by`), and aggregation function(s) with `-agg` (or `--agg`). Defaults to `sum` if `-agg` is given without an argument.
 
-Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `n` (row count), etc.
+Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` (row count), etc.
 
 > [!TIP]
 > **Column Scoping in Aggregations**:
@@ -81,7 +81,7 @@ Assign different aggregate functions to specific columns:
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "body_mass_g = mean, flipper_length_mm = max, n = n" \
+  -agg "body_mass_g = mean, flipper_length_mm = max, n = count" \
   -round 1
 ```
 
@@ -121,7 +121,7 @@ pytae tips.parquet \
   -filter "day = ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
   -rename "total_bill:[total bill]" \
   -by smoker \
-  -agg "tip = mean, [total bill] = mean, n = n"
+  -agg "tip = mean, [total bill] = mean, n = count"
 ```
 
 **Output:**
@@ -140,7 +140,7 @@ Multiple grouping columns can be passed comma-separated: `-by "species,island"` 
 Omit `-by` to compute a grand total across all rows (producing a 1-row summary):
 
 ```bash
-pytae penguins.parquet -agg "body_mass_g = mean, count = n" -round 1
+pytae penguins.parquet -agg "body_mass_g = mean, count = count" -round 1
 ```
 
 **Output:**
@@ -169,7 +169,7 @@ pytae penguins.parquet -agg mean -round 1
 Appends group statistics and window calculations back to every individual row without collapsing the dataset (equivalent to Pandas `transform` or SQL `OVER (PARTITION BY ...)`).
 
 Grouped mutations are evaluated per group by combining `-by` with `-mutate`:
-- Available aggregations in `-mutate`: `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`, `n` (or `n()`).
+- Available aggregations in `-mutate`: `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`, `count()` (or `count(col)`).
 - Multiple sequential calculations can be combined in one `-mutate` flag.
 - Custom target column names are supported freely.
 
@@ -191,7 +191,7 @@ pytae penguins.parquet \
 | Adelie    | Female |          3250 |       4775 |  -1525 |
 | Adelie    | nan    |           nan |       4775 |    nan |
 
-For more examples including group counts (`n`), multi-column grouping, and spaced column names, see the [Mutating & Computing Guide](mutate.md#grouped-mutations--by--mutate).
+For more examples including group counts (`count()`), multi-column grouping, and spaced column names, see the [Mutating & Computing Guide](mutate.md#grouped-mutations--by--mutate).
 
 
 ---

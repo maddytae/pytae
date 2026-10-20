@@ -179,14 +179,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Computes summary statistics on numeric columns.\n"
             "If -by is omitted, produces a whole-table grand total summary.\n"
-            "Accepts a function name ('mean'), a list ('mean,sum,n'), or mapped expressions ('avg=mean,total=sum').\n"
+            "Accepts a function name ('mean'), a list ('mean,sum,count'), or mapped expressions ('avg=mean,total=sum').\n"
             "By default, missing values (NaN) in group columns form their own group (dropna=False) to prevent silent data loss.\n"
             "To exclude rows with missing group keys, chain -dropna before -agg (e.g. -dropna species -by species -agg mean)."
         ),
         options=[
             "-by <cols> : Grouping column(s) (comma-separated).",
             "mean, sum, median, min, max, std, var : Built-in aggregation functions.",
-            "n : Group row count (pure integer).",
+            "count : Group row count (pure integer).",
             "col = func : Column-specific mapping (e.g. 'total=sum,avg=mean').",
             "dropna = bool : In-spec dropna setting (default: false preserves NA groups).",
         ],
@@ -289,7 +289,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
-            'pytae penguins.parquet -by "species,island" -agg "mean,n"',
+            'pytae penguins.parquet -by "species,island" -agg "mean,count"',
             'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
             'pytae penguins.parquet -by species -mutate "avg = mean(body_mass_g)"',
         ],

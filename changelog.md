@@ -143,7 +143,7 @@ All notable changes to this project are documented in this file.
     - `-distinct`: deduplication with `keep=first|last|none`.
     - `-dropna`: row-level null drops.
     - `-rename`: fast column renaming.
-    - `-pivot`: 1D, 2D, and whole-table pivot engine with rich metric expressions (`v="rev = sales:sum, orders = n"`), multi-func shorthand (`v="sales:[mean, sum]"`), optional `v` (defaults to row counts `n`), strict `f_v` fill parameter, and unprefixed 2D column headers for single metrics.
+    - `-pivot`: 1D, 2D, and whole-table pivot engine with rich metric expressions (`v="rev = sales:sum, orders = count"`), multi-func shorthand (`v="sales:[mean, sum]"`), optional `v` (defaults to row counts `'count'`), strict `f_v` fill parameter, and unprefixed 2D column headers for single metrics.
     - `-mutate`: AST expression compiler translating arithmetic, scientific notation (`1e6`), bracketed spaced columns (`[col name]`), `if_else`, functional `map()`, and `.over(by)` window functions into native Polars vector expressions.
     - `-pick`: extreme row selection (canonical verb replacing deprecated slice_max/min).
     - `-value_counts`: multi-column frequency counting with automated collision avoidance.

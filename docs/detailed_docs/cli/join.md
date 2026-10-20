@@ -145,7 +145,7 @@ Stack multiple files sharing identical schemas into a single view:
 pytae -file "q1.parquet=q1; q2.parquet=q2; q3.parquet=q3; q4.parquet=q4" \
   -concat "q1, q2, q3, q4" \
   -by quarter \
-  -agg "total_revenue = amount:sum, order_count = n" \
+  -agg "total_revenue = amount:sum, order_count = count" \
   -o annual_summary.csv
 ```
 
@@ -161,7 +161,7 @@ pytae -file "orders.parquet=o; customers.csv=c" \
   -filter "region == 'West' and amount > 100" \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
-  -agg "spent = total:sum, orders = n" \
+  -agg "spent = total:sum, orders = count" \
   -arrange "spent desc" \
   -head 10 \
   -o top_west_customers.parquet

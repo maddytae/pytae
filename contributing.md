@@ -36,8 +36,8 @@ When contributing code, designing new features, or refactoring existing modules 
 - DataFrames produced by `pytae` operations should be clean and immediately usable:
   - Standard integer `RangeIndex(0, 1, 2, ...)` (no lingering MultiIndex on rows or columns).
   - Clean, 1D string column headers.
-  - Numerical counts (`a='n'`) return standard integer types (`int64` or nullable `Int64`), not floats.
-  - Missing grid intersections default to 0 for count operations (`a='n'`).
+  - Numerical counts (`a='count'`) return standard integer types (`int64` or nullable `Int64`), not floats.
+  - Missing grid intersections default to 0 for count operations (`a='count'`).
 
 ### 4. Consistent defaults across CLI and Library
 - Defaults are uniform across all verbs:
