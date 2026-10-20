@@ -537,7 +537,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             entries.append((col, f"{op} {val}"))
             continue
         # SQL-style null checks: col is not null, col is null, col is not na, col is na
-        m_sql_null = re.match(r"^([^()]+?)\s+is\s+(not\s+null|null|not\s+na|na)$", raw_entry, flags=re.IGNORECASE)
+        m_sql_null = re.match(r"^(.+?)\s+is\s+(not\s+null|null|not\s+na|na)$", raw_entry, flags=re.IGNORECASE)
         if m_sql_null:
             col = m_sql_null.group(1).strip()
             m_name = m_sql_null.group(2).strip().lower()
@@ -553,7 +553,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             entries.append((col, (op, None)))
             continue
         # String method calls: col.str.contains('val'), col.str.starts_with('val'), col.str.endswith('val')
-        m_str = re.match(r"^([^()]+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw_entry)
+        m_str = re.match(r"^(.+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw_entry)
         if m_str:
             col = m_str.group(1).strip()
             method = m_str.group(2).strip()
@@ -564,7 +564,7 @@ def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
             entries.append((col, (op, val)))
             continue
         # Null check method calls: col.is_null(), col.is_not_null(), col.isna(), col.notna()
-        m_null = re.match(r"^([^()]+?)\.(is_null|isna|is_not_null|notna)\(\)$", raw_entry)
+        m_null = re.match(r"^(.+?)\.(is_null|isna|is_not_null|notna)\(\)$", raw_entry)
         if m_null:
             col = m_null.group(1).strip()
             m_name = m_null.group(2).strip()

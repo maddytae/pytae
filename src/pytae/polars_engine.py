@@ -1258,18 +1258,22 @@ def _ast_to_polars_expr(
             has_bool_val = bool in val_types
             has_non_bool_val = any(t is not bool for t in val_types)
 
+            def_val = None
+            def_is_constant = False
+            if default_node is not None and isinstance(default_node, ast.Constant):
+                def_val = default_node.value
+                def_is_constant = True
+
+            # If mapping dictionary is empty and default is boolean, treat as boolean mapping
+            if not mapping and def_is_constant and isinstance(def_val, bool):
+                has_bool_val = True
+
             if has_bool_val and has_non_bool_val:
                 raise TypeError(
                     "map() cannot mix boolean and non-boolean values in mapping dictionary. "
                     "Polars requires homogeneous column dtypes; mixing them coerces booleans "
                     "to strings ('true'/'false'), which are both truthy in Python."
                 )
-
-            def_val = None
-            def_is_constant = False
-            if default_node is not None and isinstance(default_node, ast.Constant):
-                def_val = default_node.value
-                def_is_constant = True
 
             if has_bool_val:
                 if def_is_constant and def_val is not None and not isinstance(def_val, bool):

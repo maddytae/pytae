@@ -228,3 +228,31 @@ def test_col_with_unknown_name_raises_keyerror_with_hint():
     msg = str(exc_info.value)
     assert "column 'revenu' not found in DataFrame" in msg
     assert "did you mean 'revenue'?" in msg
+
+
+def test_special_column_names_with_null_predicates():
+    df = pt.DataFrame(
+        {
+            "counterparty_class_(irb)": ["Sovereign", None, "Corporate"],
+            "counterparty class (irb)": ["Gov", "Bank", None],
+        }
+    )
+    assert len(df.filter("counterparty_class_(irb).notna()")) == 2
+    assert len(df.filter("counterparty_class_(irb).is_null()")) == 1
+    assert len(df.filter("counterparty_class_(irb) is not null")) == 2
+    assert len(df.filter("counterparty_class_(irb) is null")) == 1
+    assert len(df.filter("[counterparty class (irb)].notna()")) == 2
+    assert len(df.filter("[counterparty class (irb)] is not null")) == 2
+    assert len(df.filter("[counterparty class (irb)].is_null()")) == 1
+
+
+def test_map_empty_dict_with_boolean_default():
+    df = pt.DataFrame({"post_crm_brr": ["A", "B", "C"]})
+    res_false = df.mutate("flag = map(post_crm_brr, {}, default=False)")
+    assert res_false["flag"].dtype == pl.Boolean
+    assert list(res_false["flag"]) == [False, False, False]
+
+    res_true = df.mutate("flag = map(post_crm_brr, {}, True)")
+    assert res_true["flag"].dtype == pl.Boolean
+    assert list(res_true["flag"]) == [True, True, True]
+
