@@ -455,7 +455,7 @@ def _resolve_multi_target_cols(df: Any, inner_spec: str, by_cols: list[str] | No
                 else:
                     kwargs[k] = v
                 continue
-        names.append(token if ":" in token or token.startswith(("-", "~")) else _unquote_name(token))
+        names.append(token if ":" in token or token.startswith(("-", "~", "!")) else _unquote_name(token))
 
     all_cols = list(df.collect_schema().names()) if hasattr(df, "collect_schema") else list(df.columns)
     schema = df.collect_schema() if hasattr(df, "collect_schema") else getattr(df, "schema", None)

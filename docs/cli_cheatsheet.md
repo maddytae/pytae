@@ -125,8 +125,8 @@ Select, reorder, and drop columns with flexible pattern matching:
 # Explicit column selection and reordering
 pytae data.parquet --select "species,island,body_mass_g"
 
-# Drop columns with negative prefix (-col)
-pytae data.parquet --select "-sex,-year"
+# Drop columns using exclamation mark negation (!col)
+pytae data.parquet --select "!sex,!year"
 
 # Pattern and prefix matching
 pytae data.parquet --select "startswith=bill_"

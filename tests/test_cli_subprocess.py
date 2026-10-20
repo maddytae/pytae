@@ -108,6 +108,16 @@ def test_cli_stdin_pipeline_filter_mutate_select():
     assert "Chinstrap" not in out
 
 
+def test_cli_select_negation_exclamation():
+    csv_data = "cola,colb,sex,year\n1,2,F,2020\n3,4,M,2021\n"
+    proc = _run_cli("-", "-fmt", "csv", "-select", "!sex,!year", "-cols", stdin=csv_data)
+    assert proc.returncode == 0
+    assert "cola" in proc.stdout
+    assert "colb" in proc.stdout
+    assert "sex" not in proc.stdout
+    assert "year" not in proc.stdout
+
+
 # =============================================================================
 # 3. Exit Codes
 # =============================================================================

@@ -187,7 +187,7 @@ def resolve_select_columns(
                     selected_cols.add(clean_col)
                     if clean_col not in ordered_cols:
                         ordered_cols.append(clean_col)
-                elif isinstance(col, str) and col.startswith(("-", "~")):
+                elif isinstance(col, str) and col.startswith(("-", "~", "!")):
                     excluded_cols.update(_resolve_negation(col[1:]))
                 else:
                     close = difflib.get_close_matches(str(clean_col), [str(c) for c in all_cols], n=1)
@@ -203,7 +203,7 @@ def resolve_select_columns(
                 selected_cols.add(clean_arg)
                 if clean_arg not in ordered_cols:
                     ordered_cols.append(clean_arg)
-            elif arg.startswith(("-", "~")):
+            elif arg.startswith(("-", "~", "!")):
                 excluded_cols.update(_resolve_negation(arg[1:]))
             elif ":" in arg:
                 start_raw, end_raw = arg.split(":", 1)
@@ -231,7 +231,7 @@ def resolve_select_columns(
                         selected_cols.add(clean_sub)
                         if clean_sub not in ordered_cols:
                             ordered_cols.append(clean_sub)
-                    elif sub_token.startswith(("-", "~")):
+                    elif sub_token.startswith(("-", "~", "!")):
                         excluded_cols.update(_resolve_negation(sub_token[1:]))
                     elif ":" in sub_token:
                         s_raw, e_raw = sub_token.split(":", 1)
