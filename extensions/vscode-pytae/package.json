@@ -1,7 +1,7 @@
 {
   "name": "pytae",
   "displayName": "Pytae - Tabular Data DSL",
-  "description": "Syntax highlighting, snippets, and tool support for Pytae tabular data manipulation in Python",
+  "description": "Dark green syntax highlighting, themes, snippets, and tool support for Pytae tabular data manipulation in Python",
   "version": "3.10.2",
   "publisher": "maddytae",
   "author": {
@@ -27,12 +27,14 @@
     "case_when",
     "tabular",
     "dsl",
-    "syntax"
+    "syntax",
+    "green"
   ],
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
+    "Themes",
     "Programming Languages",
     "Snippets"
   ],
@@ -51,7 +53,91 @@
         "language": "python",
         "path": "./snippets/snippets.json"
       }
-    ]
+    ],
+    "themes": [
+      {
+        "label": "Pytae Dark Green",
+        "uiTheme": "vs-dark",
+        "path": "./themes/pytae-dark-green.json"
+      }
+    ],
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": [
+              "source.pytae",
+              "meta.embedded.pytae"
+            ],
+            "settings": {
+              "foreground": "#52b788"
+            }
+          },
+          {
+            "scope": [
+              "support.function.pytae"
+            ],
+            "settings": {
+              "foreground": "#40916c",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "variable.other.assignment.pytae",
+              "meta.target.multi.pytae"
+            ],
+            "settings": {
+              "foreground": "#2d6a4f",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "variable.parameter.pytae",
+              "variable.other.bracketed.pytae",
+              "variable.other.backtick.pytae"
+            ],
+            "settings": {
+              "foreground": "#74c69d"
+            }
+          },
+          {
+            "scope": [
+              "keyword.control.pytae"
+            ],
+            "settings": {
+              "foreground": "#1b4332",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "keyword.operator.pytae"
+            ],
+            "settings": {
+              "foreground": "#95d5b2"
+            }
+          },
+          {
+            "scope": [
+              "constant.numeric.pytae"
+            ],
+            "settings": {
+              "foreground": "#b7e4c7"
+            }
+          },
+          {
+            "scope": [
+              "string.quoted.single.pytae",
+              "string.quoted.double.pytae"
+            ],
+            "settings": {
+              "foreground": "#ffd166"
+            }
+          }
+        ]
+      }
+    }
   }
 }
-

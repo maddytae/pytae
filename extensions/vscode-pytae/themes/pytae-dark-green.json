@@ -1,0 +1,166 @@
+{
+  "name": "Pytae Dark Green",
+  "type": "dark",
+  "colors": {
+    "activityBar.background": "#0b130e",
+    "activityBar.foreground": "#52b788",
+    "activityBarBadge.background": "#2d6a4f",
+    "activityBarBadge.foreground": "#ffffff",
+    "badge.background": "#1b4332",
+    "badge.foreground": "#d8f3dc",
+    "button.background": "#2d6a4f",
+    "button.foreground": "#ffffff",
+    "button.hoverBackground": "#40916c",
+    "editor.background": "#0d140f",
+    "editor.foreground": "#d8f3dc",
+    "editor.lineHighlightBackground": "#13211780",
+    "editor.selectionBackground": "#2d6a4f55",
+    "editorCursor.foreground": "#52b788",
+    "editorGroupHeader.tabsBackground": "#0b130e",
+    "editorLineNumber.activeForeground": "#74c69d",
+    "editorLineNumber.foreground": "#2d4a36",
+    "editorWidget.background": "#111c14",
+    "editorWidget.border": "#2d6a4f",
+    "focusBorder": "#40916c",
+    "list.activeSelectionBackground": "#1b4332",
+    "list.activeSelectionForeground": "#ffffff",
+    "list.hoverBackground": "#132117",
+    "sideBar.background": "#0b130e",
+    "sideBar.border": "#132117",
+    "sideBar.foreground": "#b7e4c7",
+    "sideBarSectionHeader.background": "#111c14",
+    "sideBarTitle.foreground": "#74c69d",
+    "statusBar.background": "#1b4332",
+    "statusBar.foreground": "#d8f3dc",
+    "tab.activeBackground": "#0d140f",
+    "tab.activeBorder": "#52b788",
+    "tab.activeForeground": "#ffffff",
+    "tab.inactiveBackground": "#0b130e",
+    "tab.inactiveForeground": "#74c69d",
+    "terminal.background": "#0d140f",
+    "terminal.foreground": "#d8f3dc"
+  },
+  "tokenColors": [
+    {
+      "name": "Comment",
+      "scope": ["comment", "punctuation.definition.comment"],
+      "settings": {
+        "foreground": "#496954",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Keyword",
+      "scope": ["keyword", "storage.type", "storage.modifier"],
+      "settings": {
+        "foreground": "#52b788",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Function Name",
+      "scope": ["entity.name.function", "support.function"],
+      "settings": {
+        "foreground": "#74c69d"
+      }
+    },
+    {
+      "name": "String",
+      "scope": ["string", "punctuation.definition.string"],
+      "settings": {
+        "foreground": "#ffd166"
+      }
+    },
+    {
+      "name": "Number",
+      "scope": ["constant.numeric"],
+      "settings": {
+        "foreground": "#b7e4c7"
+      }
+    },
+    {
+      "name": "Constant",
+      "scope": ["constant.language"],
+      "settings": {
+        "foreground": "#95d5b2"
+      }
+    },
+    {
+      "name": "Variable",
+      "scope": ["variable", "variable.other"],
+      "settings": {
+        "foreground": "#d8f3dc"
+      }
+    },
+    {
+      "name": "Operator",
+      "scope": ["keyword.operator"],
+      "settings": {
+        "foreground": "#52b788"
+      }
+    },
+    {
+      "name": "Pytae Embedded Block",
+      "scope": ["source.pytae", "meta.embedded.pytae"],
+      "settings": {
+        "foreground": "#52b788"
+      }
+    },
+    {
+      "name": "Pytae Vectorized Functions",
+      "scope": ["support.function.pytae"],
+      "settings": {
+        "foreground": "#40916c",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pytae Assignment Target",
+      "scope": ["variable.other.assignment.pytae", "meta.target.multi.pytae"],
+      "settings": {
+        "foreground": "#2d6a4f",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pytae Parameters and Bracketed Columns",
+      "scope": [
+        "variable.parameter.pytae",
+        "variable.other.bracketed.pytae",
+        "variable.other.backtick.pytae"
+      ],
+      "settings": {
+        "foreground": "#74c69d"
+      }
+    },
+    {
+      "name": "Pytae Control Keywords",
+      "scope": ["keyword.control.pytae"],
+      "settings": {
+        "foreground": "#1b4332",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pytae Operators",
+      "scope": ["keyword.operator.pytae"],
+      "settings": {
+        "foreground": "#95d5b2"
+      }
+    },
+    {
+      "name": "Pytae Numbers",
+      "scope": ["constant.numeric.pytae"],
+      "settings": {
+        "foreground": "#b7e4c7"
+      }
+    },
+    {
+      "name": "Pytae Nested Strings",
+      "scope": ["string.quoted.single.pytae", "string.quoted.double.pytae"],
+      "settings": {
+        "foreground": "#ffd166"
+      }
+    }
+  ]
+}

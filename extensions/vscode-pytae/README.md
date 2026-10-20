@@ -6,14 +6,17 @@ Rich syntax highlighting, snippets, and editor support for [Pytae](https://githu
 
 ## ✨ Features
 
-- **Embedded DSL Syntax Highlighting**:
-  Automatically highlights expressions inside `pt.mutate()`, `df.mutate()`, `.filter()`, `.select()`, `.arrange()`, and `.agg()` strings.
-  - **Vectorized Functions**: `case_when`, `if_else`, `coalesce`, `fillna`, `clip`, `sqrt`, `round`, `abs`, etc.
-  - **Keywords & Control**: `default`, `asc`, `desc`, `and`, `or`, `in`.
-  - **Identifiers & Spaced Columns**: Bracketed columns `[annual salary]` and backtick columns `` `total bill` ``.
-  - **Pipeline Parameters**: `@threshold`, `@target`.
-  - **Operators & Numbers**: `==`, `!=`, `<=`, `**`, `//`, `1e-9`, `3.14`.
-  - **Nested Strings**: `'Pass'`, `'Fail'`, `"Active"`.
+- **Dark Green Expression Highlighting**:
+  Pytae expressions are automatically styled with rich dark green and emerald tones, matching Pytae's visual brand across all themes:
+  - **Vectorized Functions**: `case_when`, `if_else`, `coalesce`, `fillna`, `clip`, `sqrt`, `round` → Deep Forest Green (`#40916c`, bold)
+  - **Assignment Targets**: `bmi = ...`, `(cols) = ...` → Dark Pine Green (`#2d6a4f`, bold)
+  - **Control Keywords**: `default`, `asc`, `desc`, `and`, `or` → Deep Spruce Green (`#1b4332`, bold)
+  - **Parameters & Bracketed Columns**: `@threshold`, `[total bill]` → Sage & Mint Green (`#74c69d`)
+  - **Operators & Numbers**: `==`, `!=`, `<=`, `**`, `//`, `1e-9`, `3.14` → Pale Green / Seafoam (`#95d5b2` / `#b7e4c7`)
+  - **Nested Strings**: `'Pass'`, `'Fail'` → Warm Golden Amber (`#ffd166`)
+
+- **Bundled "Pytae Dark Green" Theme**:
+  Prefer a complete, cohesive dark green editor experience? Switch your theme to **Pytae Dark Green** (`Cmd+K Cmd+T` / `Ctrl+K Ctrl+T`) for a sleek dark slate background with pine and emerald syntax accents.
 
 - **Tagged Strings Support**:
   Add `# pytae` above any multiline string to immediately activate Pytae highlighting:
