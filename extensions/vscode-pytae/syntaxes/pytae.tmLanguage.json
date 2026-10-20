@@ -1,0 +1,247 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Pytae DSL Injection",
+  "scopeName": "pytae.injection",
+  "injectionSelector": "L:source.python",
+  "patterns": [
+    {
+      "include": "#pytae-verb-call-triple-double"
+    },
+    {
+      "include": "#pytae-verb-call-triple-single"
+    },
+    {
+      "include": "#pytae-verb-call-single-double"
+    },
+    {
+      "include": "#pytae-verb-call-single-single"
+    },
+    {
+      "include": "#pytae-tagged-string-triple-double"
+    },
+    {
+      "include": "#pytae-tagged-string-triple-single"
+    },
+    {
+      "include": "#pytae-tagged-string-single-double"
+    },
+    {
+      "include": "#pytae-tagged-string-single-single"
+    }
+  ],
+  "repository": {
+    "pytae-verb-call-triple-double": {
+      "name": "meta.embedded.pytae",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (\"\"\")",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(\"\"\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-verb-call-triple-single": {
+      "name": "meta.embedded.pytae",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (''')",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(''')",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-verb-call-single-double": {
+      "name": "meta.embedded.pytae",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (\")",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-verb-call-single-single": {
+      "name": "meta.embedded.pytae",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (')",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(')",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-tagged-string-triple-double": {
+      "name": "meta.embedded.pytae",
+      "begin": "(#\\s*(?:pytae|dsl)\\b[^\\n]*\\n\\s*)(\"\"\")",
+      "beginCaptures": {
+        "1": { "name": "comment.line.number-sign.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(\"\"\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-tagged-string-triple-single": {
+      "name": "meta.embedded.pytae",
+      "begin": "(#\\s*(?:pytae|dsl)\\b[^\\n]*\\n\\s*)(''')",
+      "beginCaptures": {
+        "1": { "name": "comment.line.number-sign.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(''')",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-tagged-string-single-double": {
+      "name": "meta.embedded.pytae",
+      "begin": "(#\\s*(?:pytae|dsl)\\b[^\\n]*\\n\\s*)(\")",
+      "beginCaptures": {
+        "1": { "name": "comment.line.number-sign.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-tagged-string-single-single": {
+      "name": "meta.embedded.pytae",
+      "begin": "(#\\s*(?:pytae|dsl)\\b[^\\n]*\\n\\s*)(')",
+      "beginCaptures": {
+        "1": { "name": "comment.line.number-sign.python" },
+        "2": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "(')",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.python" }
+      },
+      "patterns": [
+        { "include": "#pytae-expression" }
+      ]
+    },
+    "pytae-expression": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.pytae",
+          "match": "#.*$"
+        },
+        {
+          "name": "string.quoted.single.pytae",
+          "match": "'(?:[^'\\\\]|\\\\.)*'"
+        },
+        {
+          "name": "string.quoted.double.pytae",
+          "match": "\"(?:[^\"\\\\]|\\\\.)*\""
+        },
+        {
+          "name": "meta.variable.bracketed.pytae",
+          "match": "(\\[)(.*?)(\\])",
+          "captures": {
+            "1": { "name": "punctuation.definition.variable.bracket.pytae" },
+            "2": { "name": "variable.other.bracketed.pytae" },
+            "3": { "name": "punctuation.definition.variable.bracket.pytae" }
+          }
+        },
+        {
+          "name": "meta.variable.backtick.pytae",
+          "match": "(`)(.*?)(`)",
+          "captures": {
+            "1": { "name": "punctuation.definition.variable.backtick.pytae" },
+            "2": { "name": "variable.other.backtick.pytae" },
+            "3": { "name": "punctuation.definition.variable.backtick.pytae" }
+          }
+        },
+        {
+          "name": "variable.parameter.pytae",
+          "match": "(@)([a-zA-Z_][a-zA-Z0-9_]*)"
+        },
+        {
+          "name": "support.function.pytae",
+          "match": "\\b(case_when|if_else|coalesce|fillna|clip|lead|lag|round|abs|sqrt|log|exp|sin|cos|tan|floor|ceil|trunc|len|str|int|float|mean|sum|std|var|min|max|count|median|first|last|n_unique|cumsum|cummin|cummax|cumprod|zfill|truncate)\\b"
+        },
+        {
+          "name": "meta.target.multi.pytae",
+          "match": "(\\()([^\\)]+)(\\))(?:_([a-zA-Z0-9_]+))?\\s*(=)(?!=)",
+          "captures": {
+            "1": { "name": "punctuation.definition.target.bracket.pytae" },
+            "2": { "name": "variable.other.target.multi.pytae" },
+            "3": { "name": "punctuation.definition.target.bracket.pytae" },
+            "4": { "name": "variable.other.target.suffix.pytae" },
+            "5": { "name": "keyword.operator.assignment.pytae" }
+          }
+        },
+        {
+          "name": "meta.assignment.pytae",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=)(?!=)",
+          "captures": {
+            "1": { "name": "variable.other.assignment.pytae" },
+            "2": { "name": "keyword.operator.assignment.pytae" }
+          }
+        },
+        {
+          "name": "meta.criteria.pytae",
+          "match": "\\b(contains|startswith|endswith|regex|dtype|exclude_dtype)\\s*(=)",
+          "captures": {
+            "1": { "name": "variable.parameter.criteria.pytae" },
+            "2": { "name": "keyword.operator.assignment.pytae" }
+          }
+        },
+        {
+          "name": "keyword.control.pytae",
+          "match": "\\b(default|asc|desc|ascending|descending|and|or|not|in)\\b"
+        },
+        {
+          "name": "constant.language.pytae",
+          "match": "\\b(True|False|None|null|nan|na|NA)\\b"
+        },
+        {
+          "name": "constant.numeric.pytae",
+          "match": "\\b\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b"
+        },
+        {
+          "name": "variable.language.placeholder.pytae",
+          "match": "\\b_\\b"
+        },
+        {
+          "name": "keyword.operator.pytae",
+          "match": "(\\*\\*|\\/\\/|==|!=|<=|>=|=>|->|[+\\-*\\/%<>&|~^!:])"
+        },
+        {
+          "name": "punctuation.separator.pytae",
+          "match": "[,()]"
+        }
+      ]
+    }
+  }
+}

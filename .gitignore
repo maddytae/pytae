@@ -17,6 +17,7 @@ __pycache__/
 
 # Log files
 *.log
+*.vsix
 
 # Package files
 *.jar

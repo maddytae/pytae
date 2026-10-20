@@ -1,0 +1,56 @@
+{
+  "name": "pytae",
+  "displayName": "Pytae - Tabular Data DSL",
+  "description": "Syntax highlighting, snippets, and tool support for Pytae tabular data manipulation in Python",
+  "version": "3.10.2",
+  "publisher": "maddytae",
+  "author": {
+    "name": "Pytae Contributors",
+    "url": "https://github.com/maddytae/pytae"
+  },
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maddytae/pytae.git"
+  },
+  "homepage": "https://github.com/maddytae/pytae",
+  "bugs": {
+    "url": "https://github.com/maddytae/pytae/issues"
+  },
+  "keywords": [
+    "pytae",
+    "polars",
+    "pandas",
+    "dataframe",
+    "mutate",
+    "case_when",
+    "tabular",
+    "dsl",
+    "syntax"
+  ],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "contributes": {
+    "grammars": [
+      {
+        "scopeName": "pytae.injection",
+        "path": "./syntaxes/pytae.tmLanguage.json",
+        "injectTo": [
+          "source.python"
+        ]
+      }
+    ],
+    "snippets": [
+      {
+        "language": "python",
+        "path": "./snippets/snippets.json"
+      }
+    ]
+  }
+}
