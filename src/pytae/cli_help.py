@@ -79,7 +79,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Restricts and reorders columns at this point in the pipeline.\n"
             "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (!col, -col, ~col),\n"
-            "and criteria matchers (contains=, startswith=, endswith=, regex=, dtype=, exclude=)."
+            "and criteria matchers (contains=, startswith=, endswith=, regex=, dtype=)."
         ),
         options=[
             "col1,col2 : Keep specific columns in the exact order requested.",

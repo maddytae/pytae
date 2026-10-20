@@ -572,9 +572,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SPEC",
         help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
-        "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
-        "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
-        'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"',
+        "names, start:end slices, !negated names/slices (!col, -col, ~col), and key=value (dtype, "
+        "contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
+        'including after -agg/-long/-wide, e.g. -select "!species" or -select "contains=bill"',
     )
     parser.add_argument(
         "-agg",

@@ -10,7 +10,7 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 
 - [Overview](#overview)
 - [Selecting Explicit Columns](#selecting-explicit-columns)
-- [Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)](#negative-selection--exclusion)
+- [Negative Selection & Exclusion (`!col`, `!start:end`)](#negative-selection--exclusion)
 - [Slice Notation (`start:end`)](#slice-notation-startend)
 - [Pattern Matching (`contains=`, `startswith=`, `endswith=`, `regex=`)](#pattern-matching)
 - [Data Type Filtering (`dtype=`, `exclude_dtype=`)](#data-type-filtering)
@@ -25,9 +25,8 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 | Capability | Syntax / Flag | Example |
 |---|---|---|
 | Explicit names | `col1,col2` | `-select "species,island,body_mass_g"` |
-| Negative selection | `!col` (recommended), `-col`, or `~col` | `-select "!species"` or `-select "!sex,!year"` |
-| Negative slices | `!start:end` or `-start:end` | `-select "!bill_length_mm:flipper_length_mm"` |
-| Keyword exclusion | `exclude=col` | `-select "exclude=species"` |
+| Negative selection | `!col` | `-select "!species"` or `-select "!sex,!year"` |
+| Negative slices | `!start:end` | `-select "!bill_length_mm:flipper_length_mm"` |
 | Column slice | `start:end` | `-select "bill_length_mm:body_mass_g"` |
 | Substring / prefix / suffix | `contains=`, `startswith=`, `endswith=` | `-select "contains=bill"` |
 | Regular expression | `regex=PATTERN` | `-select "regex=^bill_.*mm$"` |
@@ -67,11 +66,11 @@ pytae penguins.parquet -select "body_mass_g,species" -head 3
 ---
 
 <a id="negative-selection--exclusion"></a>
-## Negative Selection & Exclusion (`!col`, `exclude=`, `-col`, `~col`)
+## Negative Selection & Exclusion (`!col`, `!start:end`)
 
 You can exclude specific columns, combinations, or slices directly within `-select`. Remaining columns preserve their original relative order.
 
-### Negated Column Names (`!col` — Recommended)
+### Negated Column Names (`!col`)
 
 Prefix a column name with `!` (or `-` / `~`) to exclude it. Using `!` avoids any collision with CLI command flags:
 
@@ -100,7 +99,7 @@ pytae penguins.parquet -select "!species, !island, !sex" -head 3
 |             39.5 |            17.4 |                 186 |          3800 |
 |             40.3 |            18   |                 195 |          3250 |
 
-### Negated Slices (`!start:end` or `-start:end`)
+### Negated Slices (`!start:end`)
 
 Exclude a contiguous range of columns:
 ```bash
@@ -114,21 +113,6 @@ pytae penguins.parquet -select "!bill_length_mm:flipper_length_mm" -head 3
 | Adelie    | Torgersen |          3750 | Male   |
 | Adelie    | Torgersen |          3800 | Female |
 | Adelie    | Torgersen |          3250 | Female |
-
-### Keyword Exclusion (`exclude=`)
-
-Use the `exclude=` parameter to exclude one or more columns:
-```bash
-pytae penguins.parquet -select "exclude=species" -head 3
-```
-
-**Output:**
-
-| island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
-|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
-| Torgersen |             39.1 |            18.7 |                 181 |          3750 | Male   |
-| Torgersen |             39.5 |            17.4 |                 186 |          3800 | Female |
-| Torgersen |             40.3 |            18   |                 195 |          3250 | Female |
 
 ---
 

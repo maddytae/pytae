@@ -150,7 +150,7 @@ Top-Level Functions exported by `pytae`:
   - pt.fillna(df, value, *cols, subset=None, nans=True) -> DataFrame (Fill null/NaN)
   - pt.fill_null(df, value, *cols, subset=None) -> DataFrame (Fill null)
   - pt.fill_nan(df, value, *cols, subset=None) -> DataFrame (Fill float NaN)
-  - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
+  - pt.select(df, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)
   - pt.by(df, *cols)
@@ -432,7 +432,6 @@ Signature:
   pt.select(
       df: pd.DataFrame,
       *args: Any,
-      exclude: str | Sequence[str] | None = None,
       dtype: str | type | Sequence[str | type] | None = None,
       exclude_dtype: str | type | Sequence[str | type] | None = None,
       contains: str | Sequence[str] | None = None,
@@ -457,14 +456,12 @@ Argument Types for *args:
     df.pt.select(lambda c: c.startswith("b"))
 
 Negative Column Selection & Exclusions:
-  - Positional Negation: Pass names prefixed with `-` or `~`:
-    df.pt.select("-species")                      # Drop species, keep the rest
-    df.pt.select("-species", "-island")           # Drop multiple
-    df.pt.select("-bill_length_mm:body_mass_g")   # Drop contiguous slice range
-  - Keyword Exclusion (`exclude=`):
-    df.pt.select(exclude="species")
-    df.pt.select(exclude=["species", "island"])
-    df.pt.select(exclude="[col a, col b]")
+  - Positional Negation: Pass names prefixed with `!` (or `-` / `~`):
+    df.pt.select("!species")                      # Drop species, keep the rest
+    df.pt.select("!species", "!island")           # Drop multiple
+    df.pt.select("!bill_length_mm:body_mass_g")   # Drop contiguous slice range
+    df.pt.select("![col a]", "![col b]")          # Drop columns with spaces
+  - Note: 'exclude=' is retired in favor of positional '!' negation.
   - Automatic Inversion: If ONLY exclusions are specified, `select()` automatically starts 
     with all columns and drops the excluded ones.
 
@@ -805,7 +802,7 @@ Row Filtering & Slicing Flags:
   -tail [LIMIT]         Extract last N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
 
 Column Transformation Flags:
-  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
+  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '!col', '-col', '~col')
   -mutate SPEC          Create/overwrite columns ("new_col = expr" or multi-column "[prefix](col1, col2)[suffix] = expr" using _ placeholder)
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
@@ -947,7 +944,8 @@ When passed directly, `mutate` passes the entire DataFrame to `my_func`. Use `la
 
 6.9. How do negative column exclusions work in `select()` and CLI `-select`?
 ----------------------------------------------------------------------------
-Pass negative prefixes `pt.select(df, "-species", "-island")` or `exclude=["species", "island"]`.
+Pass negative prefix '!' (or '-' / '~'): `pt.select(df, "!species", "!island")` or in CLI `-select "!species,!island"`.
+Note: `exclude=` is retired in favor of positional '!' negation.
 
 6.10. How do columns with spaces work across expressions?
 ---------------------------------------------------------

@@ -148,30 +148,10 @@ def resolve_select_columns(
             raise KeyError(f"Column to exclude not found: '{raw}'{hint}")
 
     if exclude is not None:
-        if isinstance(exclude, str):
-            raw_exclude = exclude.strip()
-            if raw_exclude.startswith("[") and raw_exclude.endswith("]"):
-                raw_exclude = raw_exclude[1:-1].strip()
-            for token in _tokenize(raw_exclude, ",", keep_quotes=True, track_brackets=True):
-                token = _unquote_name(token.strip())
-                if token:
-                    excluded_cols.update(_resolve_negation(token))
-        elif isinstance(exclude, (list, tuple, set)):
-            for item in exclude:
-                if isinstance(item, str):
-                    clean_item = _unquote_name(item.strip())
-                    if clean_item.startswith("[") and clean_item.endswith("]"):
-                        clean_item = clean_item[1:-1].strip()
-                    for sub in _tokenize(clean_item, ",", keep_quotes=True, track_brackets=True):
-                        sub = _unquote_name(sub.strip())
-                        if sub:
-                            excluded_cols.update(_resolve_negation(sub))
-                elif item in all_cols:
-                    excluded_cols.add(item)
-                else:
-                    raise KeyError(f"Column to exclude not found: '{item}'")
-        else:
-            raise TypeError(f"exclude must be a string or sequence of strings, got {type(exclude)}")
+        raise ValueError(
+            "select(): 'exclude=' is retired in favor of '!' negation. "
+            "Use positional negation instead: e.g. select('!col') or select('!col1', '!col2')."
+        )
 
     for arg in args:
         if arg is everything or isinstance(arg, everything):

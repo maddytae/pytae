@@ -141,7 +141,7 @@ Top-Level Functions exported by `pytae`:
   - pt.fillna(df, value, *cols, subset=None, nans=True) -> DataFrame (Fill null/NaN)
   - pt.fill_null(df, value, *cols, subset=None) -> DataFrame (Fill null)
   - pt.fill_nan(df, value, *cols, subset=None) -> DataFrame (Fill float NaN)
-  - pt.select(df, *args, exclude=None, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
+  - pt.select(df, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
   - pt.filter(df, *args, **kwargs)
   - pt.by(df, *cols)
@@ -423,7 +423,6 @@ Signature:
   pt.select(
       df: pd.DataFrame,
       *args: Any,
-      exclude: str | Sequence[str] | None = None,
       dtype: str | type | Sequence[str | type] | None = None,
       exclude_dtype: str | type | Sequence[str | type] | None = None,
       contains: str | Sequence[str] | None = None,
@@ -448,14 +447,12 @@ Argument Types for *args:
     df.pt.select(lambda c: c.startswith("b"))
 
 Negative Column Selection & Exclusions:
-  - Positional Negation: Pass names prefixed with `!`, `-`, or `~`:
-    df.pt.select("!species")                      # Drop species, keep the rest (recommended)
+  - Positional Negation: Pass names prefixed with `!` (or `-` / `~`):
+    df.pt.select("!species")                      # Drop species, keep the rest
     df.pt.select("!species", "!island")           # Drop multiple
     df.pt.select("!bill_length_mm:body_mass_g")   # Drop contiguous slice range
-  - Keyword Exclusion (`exclude=`):
-    df.pt.select(exclude="species")
-    df.pt.select(exclude=["species", "island"])
-    df.pt.select(exclude="[col a, col b]")
+    df.pt.select("![col a]", "![col b]")          # Drop columns with spaces
+  - Note: 'exclude=' is retired in favor of positional '!' negation.
   - Automatic Inversion: If ONLY exclusions are specified, `select()` automatically starts 
     with all columns and drops the excluded ones.
 
@@ -616,13 +613,12 @@ Key Rules & Behaviors:
 --------------------------------------------------------------------------------
 Pure structural reshaping between long and wide formats without aggregation.
 
-pt.long(df, cols=None, id_vars=None, c="variable", v="value", r=None):
+pt.long(df, cols=None, id_vars=None, c="variable", v="value"):
   Melts columns to rows. If cols is None, melts all numeric columns, keeping 
   non-numeric columns as ID variables.
   Parameters:
-    r: Identifier column(s) to keep as rows (rcva grammar alias for id_vars).
-    id_vars: Identifier column(s) to keep as rows.
     cols: Column(s) to melt to rows. Supports bracketed names `[col name]`.
+    id_vars: Identifier column(s) to keep as rows.
     c: column name for melted metric names (default: "variable")
     v: column name for melted metric values (default: "value")
 
@@ -797,7 +793,7 @@ Row Filtering & Slicing Flags:
   -tail [LIMIT]         Extract last N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
 
 Column Transformation Flags:
-  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '-col', '~col', exclude=)
+  -select SPEC          Select columns (names, slices 'a:b', contains, dtypes, negative '!col', '-col', '~col')
   -mutate SPEC          Create/overwrite columns ("new_col = expr" or multi-column "[prefix](col1, col2)[suffix] = expr" using _ placeholder)
   -rename OLD:NEW,...   Rename columns using ':' delimiter (e.g. "a:alpha, b:beta")
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
@@ -937,7 +933,8 @@ When passed directly, `mutate` passes the entire DataFrame to `my_func`. Use `la
 
 6.9. How do negative column exclusions work in `select()` and CLI `-select`?
 ----------------------------------------------------------------------------
-Pass negative prefixes `pt.select(df, "-species", "-island")` or `exclude=["species", "island"]`.
+Pass negative prefix '!' (or '-' / '~'): `pt.select(df, "!species", "!island")` or in CLI `-select "!species,!island"`.
+Note: `exclude=` is retired in favor of positional '!' negation.
 
 6.10. How do columns with spaces work across expressions?
 ---------------------------------------------------------
@@ -1182,7 +1179,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
 - [Overview & Differences](#overview--differences)
 - [Group Aggregations (`-by` + `-agg`)](#group-aggregations--by--agg)
   - [Single Function across Numeric Columns](#single-function-across-numeric-columns)
-  - [Multiple Functions (`"mean,n"`)](#multiple-functions-meann)
+  - [Multiple Functions (`"mean,count"`)](#multiple-functions-meancount)
   - [Column-Specific Mapping](#column-specific-mapping)
   - [Named Outputs (`total = col:aggfunc`)](#named-outputs-total--colaggfunc)
 - [Whole-Table Summaries (Grand Totals)](#whole-table-summaries-grand-totals)
@@ -1206,7 +1203,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
 
 Specify grouping column(s) with `-by` (or `--by`), and aggregation function(s) with `-agg` (or `--agg`). Defaults to `sum` if `-agg` is given without an argument.
 
-Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `n` (row count), etc.
+Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` (row count), etc.
 
 > [!TIP]
 > **Column Scoping in Aggregations**:
@@ -1252,7 +1249,7 @@ Assign different aggregate functions to specific columns:
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "body_mass_g = mean, flipper_length_mm = max, n = n" \
+  -agg "body_mass_g = mean, flipper_length_mm = max, n = count" \
   -round 1
 ```
 
@@ -1292,7 +1289,7 @@ pytae tips.parquet \
   -filter "day = ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
   -rename "total_bill:[total bill]" \
   -by smoker \
-  -agg "tip = mean, [total bill] = mean, n = n"
+  -agg "tip = mean, [total bill] = mean, n = count"
 ```
 
 **Output:**
@@ -1311,7 +1308,7 @@ Multiple grouping columns can be passed comma-separated: `-by "species,island"` 
 Omit `-by` to compute a grand total across all rows (producing a 1-row summary):
 
 ```bash
-pytae penguins.parquet -agg "body_mass_g = mean, count = n" -round 1
+pytae penguins.parquet -agg "body_mass_g = mean, count = count" -round 1
 ```
 
 **Output:**
@@ -1340,7 +1337,7 @@ pytae penguins.parquet -agg mean -round 1
 Appends group statistics and window calculations back to every individual row without collapsing the dataset (equivalent to Pandas `transform` or SQL `OVER (PARTITION BY ...)`).
 
 Grouped mutations are evaluated per group by combining `-by` with `-mutate`:
-- Available aggregations in `-mutate`: `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`, `n` (or `n()`).
+- Available aggregations in `-mutate`: `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`, `count()` (or `count(col)`).
 - Multiple sequential calculations can be combined in one `-mutate` flag.
 - Custom target column names are supported freely.
 
@@ -1362,7 +1359,7 @@ pytae penguins.parquet \
 | Adelie    | Female |          3250 |       4775 |  -1525 |
 | Adelie    | nan    |           nan |       4775 |    nan |
 
-For more examples including group counts (`n`), multi-column grouping, and spaced column names, see the [Mutating & Computing Guide](mutate.md#grouped-mutations--by--mutate).
+For more examples including group counts (`count()`), multi-column grouping, and spaced column names, see the [Mutating & Computing Guide](mutate.md#grouped-mutations--by--mutate).
 
 
 ---
@@ -3268,7 +3265,7 @@ Stack multiple files sharing identical schemas into a single view:
 pytae -file "q1.parquet=q1; q2.parquet=q2; q3.parquet=q3; q4.parquet=q4" \
   -concat "q1, q2, q3, q4" \
   -by quarter \
-  -agg "total_revenue = amount:sum, order_count = n" \
+  -agg "total_revenue = amount:sum, order_count = count" \
   -o annual_summary.csv
 ```
 
@@ -3284,7 +3281,7 @@ pytae -file "orders.parquet=o; customers.csv=c" \
   -filter "region == 'West' and amount > 100" \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
-  -agg "spent = total:sum, orders = n" \
+  -agg "spent = total:sum, orders = count" \
   -arrange "spent desc" \
   -head 10 \
   -o top_west_customers.parquet
@@ -3862,7 +3859,7 @@ Combine `-by` with `-mutate`:
 pytae tips.parquet \
   -select "day,total_bill,tip" \
   -by day \
-  -mutate "avg_tip = mean(tip), diff = tip - avg_tip, cnt = n" \
+  -mutate "avg_tip = mean(tip), diff = tip - avg_tip, cnt = count()" \
   -head 5 \
   -round 2
 ```
@@ -3881,7 +3878,7 @@ pytae tips.parquet \
 
 Within grouped `-mutate` expressions, the following aggregations evaluate per group:
 - `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`
-- `n` or `n()`: Group row count (sample size)
+- `count()`: Group row count (sample size)
 
 ### Multi-Column Grouping and Spaced Columns
 
@@ -4828,7 +4825,7 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
 
 | Flag | Description | Key Parameters |
 |---|---|---|
-| `-long [SPEC]` | Melt numeric columns into rows | `cols=` (columns to melt), `id_vars=` (fixed rows), `c=` (metric header), `v=` (value header) |
+| `-long [SPEC]` | Melt numeric columns into rows | `r=` or `id_vars=` (fixed rows), `c=` (metric header), `v=` (value header), `cols=` (optional melt subset) |
 | `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `r=` (row index), `c=` (header source), `v=` (values) |
 
 > [!IMPORTANT]
@@ -4857,9 +4854,9 @@ pytae penguins.parquet \
 | Adelie    | bill_length_mm |    40.3 |
 | Adelie    | bill_length_mm |   nan   |
 
-Customize column names with `c=` and `v=`:
+Using the unified `rcva` grammar with `r=`, `c=`, and `v=`:
 ```bash
-pytae penguins.parquet -long "c=metric,v=measurement" -head 4
+pytae penguins.parquet -long "r=species,c=metric,v=measurement" -head 4
 ```
 
 **Output:**
@@ -4962,7 +4959,7 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 
 - [Overview](#overview)
 - [Selecting Explicit Columns](#selecting-explicit-columns)
-- [Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)](#negative-selection--exclusion)
+- [Negative Selection & Exclusion (`!col`, `!start:end`)](#negative-selection--exclusion)
 - [Slice Notation (`start:end`)](#slice-notation-startend)
 - [Pattern Matching (`contains=`, `startswith=`, `endswith=`, `regex=`)](#pattern-matching)
 - [Data Type Filtering (`dtype=`, `exclude_dtype=`)](#data-type-filtering)
@@ -4977,9 +4974,8 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 | Capability | Syntax / Flag | Example |
 |---|---|---|
 | Explicit names | `col1,col2` | `-select "species,island,body_mass_g"` |
-| Negative selection | `-col` or `~col` | `-select "-species"` or `-select "~island"` |
-| Negative slices | `-start:end` | `-select "-bill_length_mm:flipper_length_mm"` |
-| Keyword exclusion | `exclude=col` | `-select "exclude=species"` |
+| Negative selection | `!col` | `-select "!species"` or `-select "!sex,!year"` |
+| Negative slices | `!start:end` | `-select "!bill_length_mm:flipper_length_mm"` |
 | Column slice | `start:end` | `-select "bill_length_mm:body_mass_g"` |
 | Substring / prefix / suffix | `contains=`, `startswith=`, `endswith=` | `-select "contains=bill"` |
 | Regular expression | `regex=PATTERN` | `-select "regex=^bill_.*mm$"` |
@@ -5019,16 +5015,16 @@ pytae penguins.parquet -select "body_mass_g,species" -head 3
 ---
 
 <a id="negative-selection--exclusion"></a>
-## Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)
+## Negative Selection & Exclusion (`!col`, `!start:end`)
 
 You can exclude specific columns, combinations, or slices directly within `-select`. Remaining columns preserve their original relative order.
 
-### Negated Column Names (`-col` or `~col`)
+### Negated Column Names (`!col`)
 
-Prefix a column name with `-` or `~` to exclude it:
+Prefix a column name with `!` (or `-` / `~`) to exclude it. Using `!` avoids any collision with CLI command flags:
 
 ```bash
-pytae penguins.parquet -select "-species" -head 3
+pytae penguins.parquet -select "!species" -head 3
 ```
 
 **Output:**
@@ -5041,7 +5037,7 @@ pytae penguins.parquet -select "-species" -head 3
 
 Multiple negated columns can be combined in quotes:
 ```bash
-pytae penguins.parquet -select "-species, -island, -sex" -head 3
+pytae penguins.parquet -select "!species, !island, !sex" -head 3
 ```
 
 **Output:**
@@ -5052,11 +5048,11 @@ pytae penguins.parquet -select "-species, -island, -sex" -head 3
 |             39.5 |            17.4 |                 186 |          3800 |
 |             40.3 |            18   |                 195 |          3250 |
 
-### Negated Slices (`-start:end`)
+### Negated Slices (`!start:end`)
 
 Exclude a contiguous range of columns:
 ```bash
-pytae penguins.parquet -select "-bill_length_mm:flipper_length_mm" -head 3
+pytae penguins.parquet -select "!bill_length_mm:flipper_length_mm" -head 3
 ```
 
 **Output:**
@@ -5066,21 +5062,6 @@ pytae penguins.parquet -select "-bill_length_mm:flipper_length_mm" -head 3
 | Adelie    | Torgersen |          3750 | Male   |
 | Adelie    | Torgersen |          3800 | Female |
 | Adelie    | Torgersen |          3250 | Female |
-
-### Keyword Exclusion (`exclude=`)
-
-Use the `exclude=` parameter to exclude one or more columns:
-```bash
-pytae penguins.parquet -select "exclude=species" -head 3
-```
-
-**Output:**
-
-| island    |   bill_length_mm |   bill_depth_mm |   flipper_length_mm |   body_mass_g | sex    |
-|:----------|-----------------:|----------------:|--------------------:|--------------:|:-------|
-| Torgersen |             39.1 |            18.7 |                 181 |          3750 | Male   |
-| Torgersen |             39.5 |            17.4 |                 186 |          3800 | Female |
-| Torgersen |             40.3 |            18   |                 195 |          3250 | Female |
 
 ---
 
@@ -5401,7 +5382,7 @@ pytae -file "customers.csv=c; orders.parquet=o" \
    Every output column is explicitly declared as a keyword argument. No columns are created on the fly with unexpected suffixes.
    ```python
    df.by("species").agg(
-       n="n",
+       n="count",
        avg_bill="bill_length_mm:mean",
        total_mass="body_mass_g:sum",
        max_mass="body_mass_g:max",
@@ -5412,7 +5393,7 @@ pytae -file "customers.csv=c; orders.parquet=o" \
    Keep the original column name unchanged when performing a single aggregation on that column:
    ```python
    df.by("species").agg(
-       n="n",
+       n="count",
        bill_length_mm="mean",
        body_mass_g="sum",
    )
@@ -5422,7 +5403,7 @@ pytae -file "customers.csv=c; orders.parquet=o" \
    Combine preserved column names and explicit aliases seamlessly in a single `.agg()` call:
    ```python
    tips.by("smoker", "time").agg(
-       cnt="n",
+       cnt="count",
        total_bill="mean",       # preserved 1-to-1 column name
        avg_tip="tip:mean",      # explicit alias
        max_tip="tip:max",       # explicit alias
@@ -5432,19 +5413,19 @@ pytae -file "customers.csv=c; orders.parquet=o" \
 4. **Columns with Spaces (String Specifications)**:
    Bracket spaced columns matching the CLI `-agg` flag:
    ```python
-   df.by("species").agg("[avg bill] = [total bill]:mean, cnt = n")
+   df.by("species").agg("[avg bill] = [total bill]:mean, cnt = count")
    ```
 
 5. **Table-Wide Uniform Aggregations**:
    Aggregate all numeric columns uniformly across groups:
    ```python
-   df.by("species").agg(a=["mean", "n"])
+   df.by("species").agg(a=["mean", "count"])
    ```
 
 6. **Whole-Table Summary**:
    Omit `.by(...)` to compute grand totals across the entire table:
    ```python
-   df.agg(n="n", avg_bill="bill_length_mm:mean")
+   df.agg(n="count", avg_bill="bill_length_mm:mean")
    ```
 
 ---
@@ -5471,7 +5452,7 @@ Every output column name is explicitly declared on the left side of `=`. No colu
 (penguins
  .by('species')
  .agg(
-     n='n',
+     n='count',
      bill_length_mm='mean',
      mass_sum='body_mass_g:sum',
      mass_mean='body_mass_g:mean',
@@ -5498,7 +5479,7 @@ You can cleanly combine 1-to-1 preserved column names (`col='operation'`) and ex
 
 ```python
 # Place count first (n at front), then preserved columns and explicit aliases:
-# - cnt='n': row count
+# - cnt='count': row count
 # - total_bill='mean': 1-to-1 preserved column name (mean of total_bill kept as total_bill)
 # - avg_tip='tip:mean', max_tip='tip:max': explicit aliases (no columns created on the fly)
 (
@@ -5506,7 +5487,7 @@ You can cleanly combine 1-to-1 preserved column names (`col='operation'`) and ex
     .select('smoker', 'time', 'total_bill', 'tip')
     .by('smoker', 'time')
     .agg(
-        cnt='n',
+        cnt='count',
         total_bill='mean',
         avg_tip='tip:mean',
         max_tip='tip:max',
@@ -5530,12 +5511,12 @@ shape: (4, 6)
 
 ```python
 # You can name the count column anything you like as a keyword argument
-# Here maddy='n' creates a column called 'maddy' that holds the group count
+# Here maddy='count' creates a column called 'maddy' that holds the group count
 (
     penguins
     .select('species', 'island', 'body_mass_g')
     .by('species')
-    .agg(maddy='n', body_mass_g='sum')
+    .agg(maddy='count', body_mass_g='sum')
 )
 ```
 Output:
@@ -5558,7 +5539,7 @@ shape: (3, 3)
     penguins
     .select('species', 'island', 'body_mass_g')
     .by('species')
-    .agg(count='n', countv2='n', body_mass_g='mean')
+    .agg(count='count', countv2='count', body_mass_g='mean')
 )
 ```
 Output:
@@ -5577,14 +5558,18 @@ shape: (3, 4)
 
 ## Table-Wide Uniform Aggregations (`a=...`)
 
-When you want to apply the same aggregation function(s) across **all** numeric columns uniformly without declaring each column individually, pass `a` or a list. Regardless of list order, `n` is always placed first.
+When you want to apply a single aggregation function across **all** numeric columns uniformly without declaring each column individually, pass `a="mean"` (or `a=["mean", "count"]`). Numeric column names are strictly preserved 1-to-1 without mangling or magic suffixes, and `count` adds the canonical tally column `n`.
+
+> [!NOTE]
+> **Zero Columns Created On The Fly**: To ensure column names are never invented behind your back (no `col_mean` or `col_sum`), applying multiple metric operations to columns requires explicit output aliases via **Paradigm 2** (e.g. `avg_mass="body_mass_g:mean", max_mass="body_mass_g:max"`). Attempting to apply multiple metric functions without aliases raises an immediate `ValueError`.
 
 ```python
-# mean + n: regardless of list order, n always comes first before aggregated columns
-(penguins
- .select('species', 'island', 'bill_length_mm', 'body_mass_g')
- .by('species', 'island')
- .agg(a=['mean', 'n'])  # notice n comes first
+# Single metric across all numeric columns + count: names preserved 1-to-1
+(
+    penguins
+    .select("species", "island", "bill_length_mm", "body_mass_g")
+    .by("species", "island")
+    .agg(a=["mean", "count"])
 )
 ```
 Output:
@@ -5604,52 +5589,53 @@ shape: (5, 5)
 ```
 
 ```python
-# Multiple numeric aggregations across all numeric columns
-(penguins
- .select('species', 'bill_length_mm', 'body_mass_g')
- .by('species')
- .agg(a=['sum', 'mean', 'max', 'n'])
+# Multiple metrics require explicit aliases (Paradigm 2) so column names are never created on the fly
+(
+    penguins
+    .by("species")
+    .agg(
+        n="count",
+        avg_mass="body_mass_g:mean",
+        max_mass="body_mass_g:max",
+        sum_bill="bill_length_mm:sum",
+    )
 )
 ```
 Output:
 ```text
-shape: (3, 8)
-┌───────────┬─────┬─────────────┬─────────────┬─────────────┬────────────┬────────────┬────────────┐
-│ species   ┆ n   ┆ bill_length ┆ bill_length ┆ bill_length ┆ body_mass_ ┆ body_mass_ ┆ body_mass_ │
-│ ---       ┆ --- ┆ _mm_sum     ┆ _mm_mean    ┆ _mm_max     ┆ g_sum      ┆ g_mean     ┆ g_max      │
-│ str       ┆ i64 ┆ ---         ┆ ---         ┆ ---         ┆ ---        ┆ ---        ┆ ---        │
-│           ┆     ┆ f64         ┆ f64         ┆ f64         ┆ f64        ┆ f64        ┆ f64        │
-╞═══════════╪═════╪═════════════╪═════════════╪═════════════╪════════════╪════════════╪════════════╡
-│ Adelie    ┆ 152 ┆ 5857.5      ┆ 38.791391   ┆ 46.0        ┆ 558800.0   ┆ 3700.66225 ┆ 4775.0     │
-│           ┆     ┆             ┆             ┆             ┆            ┆ 2          ┆            │
-│ Chinstrap ┆ 68  ┆ 3320.7      ┆ 48.833824   ┆ 58.0        ┆ 253850.0   ┆ 3733.08823 ┆ 4800.0     │
-│           ┆     ┆             ┆             ┆             ┆            ┆ 5          ┆            │
-│ Gentoo    ┆ 124 ┆ 5843.1      ┆ 47.504878   ┆ 59.6        ┆ 624350.0   ┆ 5076.01626 ┆ 6300.0     │
-└───────────┴─────┴─────────────┴─────────────┴─────────────┴────────────┴────────────┴────────────┘
+shape: (3, 5)
+┌───────────┬─────┬─────────────┬──────────┬──────────┐
+│ species   ┆ n   ┆ avg_mass    ┆ max_mass ┆ sum_bill │
+│ ---       ┆ --- ┆ ---         ┆ ---      ┆ ---      │
+│ str       ┆ i64 ┆ f64         ┆ f64      ┆ f64      │
+╞═══════════╪═════╪═════════════╪══════════╪══════════╡
+│ Adelie    ┆ 152 ┆ 3700.662252 ┆ 4775.0   ┆ 5857.5   │
+│ Chinstrap ┆ 68  ┆ 3733.088235 ┆ 4800.0   ┆ 3320.7   │
+│ Gentoo    ┆ 124 ┆ 5076.01626  ┆ 6300.0   ┆ 5843.1   │
+└───────────┴─────┴─────────────┴──────────┴──────────┘
 ```
 
 ```python
-# median is a standard aggfunc — works across all numeric columns or as a keyword argument
+# Single metric median across all numeric columns + count (preserved 1-to-1)
 (
     penguins
-    .select('species', 'island', 'bill_length_mm', 'body_mass_g')
-    .by('species')
-    .agg(a=['median', 'mean', 'n'])
+    .select("species", "bill_length_mm", "body_mass_g")
+    .by("species")
+    .agg(a=["median", "count"])
 )
 ```
 Output:
 ```text
-shape: (3, 6)
-┌───────────┬─────┬────────────────────┬────────────────────┬───────────────────┬──────────────────┐
-│ species   ┆ n   ┆ bill_length_mm_med ┆ bill_length_mm_mea ┆ body_mass_g_media ┆ body_mass_g_mean │
-│ ---       ┆ --- ┆ ian                ┆ n                  ┆ n                 ┆ ---              │
-│ str       ┆ i64 ┆ ---                ┆ ---                ┆ ---               ┆ f64              │
-│           ┆     ┆ f64                ┆ f64                ┆ f64               ┆                  │
-╞═══════════╪═════╪════════════════════╪════════════════════╪═══════════════════╪══════════════════╡
-│ Adelie    ┆ 152 ┆ 38.8               ┆ 38.791391          ┆ 3700.0            ┆ 3700.662252      │
-│ Chinstrap ┆ 68  ┆ 49.55              ┆ 48.833824          ┆ 3700.0            ┆ 3733.088235      │
-│ Gentoo    ┆ 124 ┆ 47.3               ┆ 47.504878          ┆ 5000.0            ┆ 5076.01626       │
-└───────────┴─────┴────────────────────┴────────────────────┴───────────────────┴──────────────────┘
+shape: (3, 4)
+┌───────────┬─────┬────────────────┬─────────────┐
+│ species   ┆ n   ┆ bill_length_mm ┆ body_mass_g │
+│ ---       ┆ --- ┆ ---            ┆ ---         │
+│ str       ┆ i64 ┆ f64            ┆ f64         │
+╞═══════════╪═════╪════════════════╪═════════════╡
+│ Adelie    ┆ 152 ┆ 38.8           ┆ 3700.0      │
+│ Chinstrap ┆ 68  ┆ 49.55          ┆ 3700.0      │
+│ Gentoo    ┆ 124 ┆ 47.3           ┆ 5000.0      │
+└───────────┴─────┴────────────────┴─────────────┘
 ```
 
 ## Handling Missing Group Keys (`dropna`)
@@ -5659,7 +5645,7 @@ shape: (3, 6)
 (penguins
  .select('species', 'sex', 'bill_length_mm', 'body_mass_g')
  .by('species', 'sex')
- .agg(a=['mean', 'n'])
+ .agg(a=['mean', 'count'])
 )
 ```
 Output:
@@ -5686,7 +5672,7 @@ shape: (8, 5)
 (penguins
  .select('species', 'sex', 'bill_length_mm', 'body_mass_g')
  .by('species', 'sex')
- .agg(a=['mean', 'n'], dropna=True)
+ .agg(a=['mean', 'count'], dropna=True)
 )
 ```
 Output:
@@ -5713,7 +5699,7 @@ shape: (6, 5)
 (penguins
  .select(exclude_dtype='number')
  .by('species', 'island')
- .agg(a='n')
+ .agg(a='count')
 )
 ```
 Output:
@@ -5743,7 +5729,7 @@ Because `pytae` operations return native `DataFrame` objects, you can chain verb
     .select('species', 'sex', 'body_mass_g')
     .by('species', 'sex')
     .agg(
-        cnt='n',
+        cnt='count',
         avg_mass='body_mass_g:mean',
         max_mass='body_mass_g:max',
     )
@@ -5783,7 +5769,7 @@ tips_spaced = tips.rename(columns={'total_bill': 'total bill'})
 (
     tips_spaced
     .by('smoker')
-    .agg("tip = mean, [total bill] = mean, n = n")
+    .agg("tip = mean, [total bill] = mean, n = count")
 )
 ```
 Output:
@@ -5804,7 +5790,7 @@ shape: (2, 4)
 (
     tips_spaced
     .by('smoker')
-    .agg("tip = mean", "[total bill] = mean", "n = n")
+    .agg("tip = mean", "[total bill] = mean", "n = count")
 )
 ```
 Output:
@@ -5825,7 +5811,7 @@ shape: (2, 4)
 (
     tips_spaced
     .by('smoker')
-    .agg("[avg bill] = [total bill]:mean, [total tip] = tip:sum, [table count] = n")
+    .agg("[avg bill] = [total bill]:mean, [total tip] = tip:sum, [table count] = count")
 )
 ```
 Output:
@@ -5849,7 +5835,7 @@ shape: (2, 4)
     .filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
     .select('smoker', 'tip', '[total bill]')
     .by('smoker')
-    .agg("tip = mean, [total bill] = mean, n = n")
+    .agg("tip = mean, [total bill] = mean, n = count")
 )
 ```
 Output:
@@ -6323,16 +6309,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Dream  ┆ 39.5           ┆ 16.7          ┆ 178.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.9           ┆ 18.6          ┆ 189.0             ┆ 3500.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 33.1           ┆ 16.1          ┆ 178.0             ┆ 2900.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 38.1           ┆ 17.6          ┆ 187.0             ┆ 3425.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.4           ┆ 17.0          ┆ 195.0             ┆ 3325.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.9          ┆ 190.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 37.3           ┆ 17.8          ┆ 191.0             ┆ 3350.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.6           ┆ 18.1          ┆ 186.0             ┆ 4450.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 40.7           ┆ 17.0          ┆ 190.0             ┆ 3725.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 37.3           ┆ 16.8          ┆ 192.0             ┆ 3000.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 41.5           ┆ 18.5          ┆ 201.0             ┆ 4000.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6352,16 +6338,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Adelie  ┆ Torgersen ┆ 34.6           ┆ 21.1          ┆ 198.0             ┆ 4400.0      ┆ Male │
-│ Adelie  ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0             ┆ 4500.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 39.2           ┆ 19.6          ┆ 195.0             ┆ 4675.0      ┆ Male │
+│ Adelie  ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0             ┆ 4250.0      ┆ null │
+│ Adelie  ┆ Dream     ┆ 39.8           ┆ 19.1          ┆ 184.0             ┆ 4650.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 42.0           ┆ 19.5          ┆ 200.0             ┆ 4050.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 41.3           ┆ 21.1          ┆ 195.0             ┆ 4400.0      ┆ Male │
+│ Adelie  ┆ Biscoe    ┆ 41.1           ┆ 18.2          ┆ 192.0             ┆ 4050.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 41.1           ┆ 19.1          ┆ 188.0             ┆ 4100.0      ┆ Male │
 │ Adelie  ┆ Dream     ┆ 39.6           ┆ 18.1          ┆ 186.0             ┆ 4450.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 45.6           ┆ 20.3          ┆ 191.0             ┆ 4600.0      ┆ Male │
+│ Adelie  ┆ Dream     ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male │
 │ Adelie  ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0             ┆ 4275.0      ┆ Male │
-│ Adelie  ┆ Biscoe    ┆ 42.7           ┆ 18.3          ┆ 196.0             ┆ 4075.0      ┆ Male │
-│ Adelie  ┆ Dream     ┆ 37.5           ┆ 18.5          ┆ 199.0             ┆ 4475.0      ┆ Male │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
@@ -6382,15 +6368,15 @@ shape: (10, 7)
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
 │ Adelie  ┆ Dream  ┆ 39.5           ┆ 17.8          ┆ 188.0             ┆ 3300.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 41.1           ┆ 19.0          ┆ 182.0             ┆ 3425.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.9          ┆ 190.0             ┆ 3450.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 38.1           ┆ 18.6          ┆ 190.0             ┆ 3700.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 38.9           ┆ 18.8          ┆ 190.0             ┆ 3600.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 36.2           ┆ 17.3          ┆ 187.0             ┆ 3300.0      ┆ Female │
 │ Adelie  ┆ Dream  ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream  ┆ 35.6           ┆ 17.5          ┆ 191.0             ┆ 3175.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 32.1           ┆ 15.5          ┆ 188.0             ┆ 3050.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 40.7           ┆ 17.0          ┆ 190.0             ┆ 3725.0      ┆ Male   │
 │ Adelie  ┆ Dream  ┆ 37.3           ┆ 16.8          ┆ 192.0             ┆ 3000.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
-│ Adelie  ┆ Dream  ┆ 36.6           ┆ 18.4          ┆ 184.0             ┆ 3475.0      ┆ Female │
-│ Adelie  ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6410,16 +6396,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 43.3           ┆ 13.4          ┆ 209.0             ┆ 4400.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 40.9           ┆ 13.7          ┆ 214.0             ┆ 4650.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 13.2          ┆ 211.0             ┆ 4500.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 14.8          ┆ 220.0             ┆ 5150.0      ┆ Female │
 │ Gentoo  ┆ Biscoe ┆ 44.0           ┆ 13.6          ┆ 208.0             ┆ 4350.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.4          ┆ 217.0             ┆ 4900.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 43.2           ┆ 14.5          ┆ 208.0             ┆ 4450.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 44.9           ┆ 13.8          ┆ 212.0             ┆ 4750.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 44.5           ┆ 14.7          ┆ 214.0             ┆ 4850.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.1          ┆ 217.0             ┆ 4375.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 13.9          ┆ 210.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.3           ┆ 13.8          ┆ 208.0             ┆ 4200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.2          ┆ 219.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 41.7           ┆ 14.7          ┆ 210.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 43.5           ┆ 15.2          ┆ 213.0             ┆ 4650.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 47.2           ┆ 13.7          ┆ 214.0             ┆ 4925.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6435,16 +6421,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.2          ┆ 218.0             ┆ 5700.0      ┆ Male   │
 │ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.0           ┆ 15.4          ┆ 220.0             ┆ 5050.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 59.6           ┆ 17.0          ┆ 230.0             ┆ 6050.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.4           ┆ 15.3          ┆ 224.0             ┆ 5550.0      ┆ Male   │
 │ Gentoo  ┆ Biscoe ┆ 54.3           ┆ 15.7          ┆ 231.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.8           ┆ 17.3          ┆ 228.0             ┆ 5600.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.1          ┆ 224.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.8          ┆ 217.0             ┆ 5200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 49.9           ┆ 16.1          ┆ 213.0             ┆ 5400.0      ┆ Male   │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6468,22 +6454,22 @@ penguins_spaces = penguins.rename(
 Output:
 ```text
 shape: (10, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill length mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Chinstrap ┆ Dream  ┆ 52.8           ┆ 20.0          ┆ 205.0             ┆ 4550.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 50.0           ┆ 15.2          ┆ 218.0             ┆ 5700.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.5           ┆ 14.5          ┆ 213.0             ┆ 4400.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 47.8           ┆ 15.0          ┆ 215.0             ┆ 5650.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe ┆ 45.2           ┆ 13.8          ┆ 215.0             ┆ 4750.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 47.5           ┆ 15.0          ┆ 218.0             ┆ 4950.0      ┆ Female │
-│ Gentoo    ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill length mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body mass g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 13.2          ┆ 211.0             ┆ 4500.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 48.5           ┆ 14.1          ┆ 220.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 50.1           ┆ 15.0          ┆ 225.0             ┆ 5000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.4          ┆ 217.0             ┆ 4900.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.5           ┆ 15.0          ┆ 220.0             ┆ 5000.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 47.7           ┆ 15.0          ┆ 216.0             ┆ 4750.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.2           ┆ 15.6          ┆ 221.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male   │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6531,16 +6517,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 39.2           ┆ 21.1          ┆ 196.0             ┆ 4150.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 40.3           ┆ 18.5          ┆ 196.0             ┆ 4350.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 43.2           ┆ 18.5          ┆ 192.0             ┆ 4100.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 38.1           ┆ 17.6          ┆ 187.0             ┆ 3425.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 40.6           ┆ 17.2          ┆ 187.0             ┆ 3475.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 36.0           ┆ 17.1          ┆ 187.0             ┆ 3700.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 51.3           ┆ 18.2          ┆ 197.0             ┆ 3750.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 43.2           ┆ 16.6          ┆ 187.0             ┆ 2900.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 45.2           ┆ 16.6          ┆ 191.0             ┆ 3250.0      ┆ Female │
-│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 39.8           ┆ 19.1          ┆ 184.0             ┆ 4650.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 42.4           ┆ 17.3          ┆ 181.0             ┆ 3600.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 52.8           ┆ 20.0          ┆ 205.0             ┆ 4550.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 46.9           ┆ 16.6          ┆ 192.0             ┆ 2700.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 53.5           ┆ 19.9          ┆ 205.0             ┆ 4500.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 18.5          ┆ 201.0             ┆ 4450.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 50.1           ┆ 17.9          ┆ 190.0             ┆ 3400.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 52.2           ┆ 18.8          ┆ 197.0             ┆ 3450.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 45.7           ┆ 17.0          ┆ 195.0             ┆ 3650.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 55.8           ┆ 19.8          ┆ 207.0             ┆ 4000.0      ┆ Male   │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6552,7 +6538,7 @@ shape: (10, 7)
     .filter(species=['Adelie', 'Chinstrap'])
     .select('species', 'island', 'body_mass_g')
     .by('species', 'island')
-    .agg(a=['mean', 'n'])
+    .agg(a=['mean', 'count'])
 )
 ```
 Output:
@@ -6587,16 +6573,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 35.9           ┆ 16.6          ┆ 190.0            ┆ 3050.0      ┆ Female │
-│ Adelie    ┆ Torgersen ┆ 39.6           ┆ 17.2          ┆ 196.0            ┆ 3550.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 35.6           ┆ 17.5          ┆ 191.0            ┆ 3175.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 50.5           ┆ 18.4          ┆ 200.0            ┆ 3400.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 40.9           ┆ 16.6          ┆ 187.0            ┆ 3200.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 46.9           ┆ 16.6          ┆ 192.0            ┆ 2700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 44.9           ┆ 13.3          ┆ 213.0            ┆ 5100.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 45.2           ┆ 13.8          ┆ 215.0            ┆ 4750.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 47.4           ┆ 14.6          ┆ 212.0            ┆ 4725.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.2           ┆ 14.1          ┆ 217.0            ┆ 4375.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 36.5           ┆ 18.0          ┆ 182.0            ┆ 3150.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0            ┆ 3600.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 39.0           ┆ 17.1          ┆ 191.0            ┆ 3050.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 36.8           ┆ 18.5          ┆ 193.0            ┆ 3500.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 50.2           ┆ 18.7          ┆ 198.0            ┆ 3775.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 45.4           ┆ 14.6          ┆ 211.0            ┆ 4800.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 46.2           ┆ 14.5          ┆ 209.0            ┆ 4800.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 44.0           ┆ 13.6          ┆ 208.0            ┆ 4350.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 42.7           ┆ 13.7          ┆ 208.0            ┆ 3950.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.5           ┆ 15.0          ┆ 218.0            ┆ 4950.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6616,22 +6602,22 @@ Supported comparison operators: `>`, `>=`, `<`, `<=`, `==`, `!=`.
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
-│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.1          ┆ 222.0             ┆ 5350.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 50.2           ┆ 14.3          ┆ 218.0             ┆ 5700.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 16.8          ┆ 230.0             ┆ 5700.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.5           ┆ 16.2          ┆ 229.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 52.5           ┆ 15.6          ┆ 221.0             ┆ 5450.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Gentoo  ┆ Biscoe ┆ 47.3           ┆ 15.3          ┆ 222.0             ┆ 5250.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.7           ┆ 15.7          ┆ 208.0             ┆ 5350.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 54.3           ┆ 15.7          ┆ 231.0             ┆ 5650.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 16.4          ┆ 223.0             ┆ 5950.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 15.0          ┆ 228.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male   │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6645,22 +6631,22 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
-│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
-│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
-│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
-╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
-│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.3           ┆ 15.7          ┆ 217.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 16.8          ┆ 230.0             ┆ 5700.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 48.6           ┆ 16.0          ┆ 230.0             ┆ 5800.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 51.3           ┆ 14.2          ┆ 218.0             ┆ 5300.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 55.9           ┆ 17.0          ┆ 228.0             ┆ 5600.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.8           ┆ 15.9          ┆ 229.0             ┆ 5950.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 51.5           ┆ 16.3          ┆ 230.0             ┆ 5500.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male │
-│ Gentoo  ┆ Biscoe ┆ 49.9           ┆ 16.1          ┆ 213.0             ┆ 5400.0      ┆ Male │
-└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 16.3          ┆ 230.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.7           ┆ 15.3          ┆ 219.0             ┆ 5200.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 207.0             ┆ 5050.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.5           ┆ 14.1          ┆ 220.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 48.2           ┆ 15.6          ┆ 221.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.5          ┆ 225.0             ┆ 5250.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 51.5           ┆ 16.3          ┆ 230.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 55.1           ┆ 16.0          ┆ 230.0             ┆ 5850.0      ┆ Male   │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6681,15 +6667,15 @@ shape: (10, 5)
 │ ---     ┆ ---    ┆ ---    ┆ ---            ┆ ---         │
 │ str     ┆ str    ┆ str    ┆ f64            ┆ f64         │
 ╞═════════╪════════╪════════╪════════════════╪═════════════╡
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.1           ┆ 4500.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.4           ┆ 4800.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 4400.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 4400.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.7           ┆ 4400.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.5           ┆ 4600.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.9           ┆ 4875.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 48.4           ┆ 4625.0      │
-│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.2           ┆ 4975.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 48.7           ┆ 4450.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.5           ┆ 4550.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.8           ┆ 4200.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 5000.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.1           ┆ 5050.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 46.6           ┆ 4850.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.8           ┆ 4700.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 45.2           ┆ 4750.0      │
+│ Gentoo  ┆ Biscoe ┆ Female ┆ 47.5           ┆ 4950.0      │
 │ Gentoo  ┆ Biscoe ┆ Female ┆ 46.2           ┆ 4375.0      │
 └─────────┴────────┴────────┴────────────────┴─────────────┘
 ```
@@ -6714,16 +6700,16 @@ shape: (10, 7)
 │ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Biscoe ┆ 37.7           ┆ 18.7          ┆ 180.0             ┆ 3600.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 42.3           ┆ 21.2          ┆ 191.0             ┆ 4150.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 36.3           ┆ 19.5          ┆ 190.0             ┆ 3800.0      ┆ Male   │
-│ Adelie    ┆ Dream  ┆ 38.9           ┆ 18.8          ┆ 190.0             ┆ 3600.0      ┆ Female │
-│ Adelie    ┆ Biscoe ┆ 35.0           ┆ 17.9          ┆ 192.0             ┆ 3725.0      ┆ Female │
-│ Adelie    ┆ Dream  ┆ 39.2           ┆ 18.6          ┆ 190.0             ┆ 4250.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 51.3           ┆ 19.2          ┆ 193.0             ┆ 3650.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 51.9           ┆ 19.5          ┆ 206.0             ┆ 3950.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.8           ┆ 19.0          ┆ 210.0             ┆ 4100.0      ┆ Male   │
+│ Adelie    ┆ Biscoe ┆ 40.6           ┆ 18.6          ┆ 183.0             ┆ 3550.0      ┆ Male   │
+│ Adelie    ┆ Dream  ┆ 42.2           ┆ 18.5          ┆ 180.0             ┆ 3550.0      ┆ Female │
+│ Adelie    ┆ Biscoe ┆ 41.4           ┆ 18.6          ┆ 191.0             ┆ 3700.0      ┆ Male   │
+│ Adelie    ┆ Biscoe ┆ 39.7           ┆ 18.9          ┆ 184.0             ┆ 3550.0      ┆ Male   │
+│ Adelie    ┆ Biscoe ┆ 38.2           ┆ 20.0          ┆ 190.0             ┆ 3900.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 52.7           ┆ 19.8          ┆ 197.0             ┆ 3725.0      ┆ Male   │
+│ Chinstrap ┆ Dream  ┆ 45.2           ┆ 17.8          ┆ 198.0             ┆ 3950.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 58.0           ┆ 17.8          ┆ 181.0             ┆ 3700.0      ┆ Female │
+│ Chinstrap ┆ Dream  ┆ 46.4           ┆ 17.8          ┆ 191.0             ┆ 3700.0      ┆ Female │
+│ Gentoo    ┆ Biscoe ┆ 42.7           ┆ 13.7          ┆ 208.0             ┆ 3950.0      ┆ Female │
 └───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6744,16 +6730,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0            ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 41.3           ┆ 21.1          ┆ 195.0            ┆ 4400.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 41.5           ┆ 18.3          ┆ 195.0            ┆ 4300.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 47.5           ┆ 16.8          ┆ 199.0            ┆ 3900.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 16.6          ┆ 191.0            ┆ 3250.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.5           ┆ 13.5          ┆ 210.0            ┆ 4550.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.7           ┆ 15.3          ┆ 219.0            ┆ 5200.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0            ┆ 5100.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 43.4           ┆ 14.4          ┆ 218.0            ┆ 4600.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 44.5           ┆ 15.7          ┆ 217.0            ┆ 4875.0      ┆ null   │
+│ Adelie    ┆ Torgersen ┆ 42.1           ┆ 19.1          ┆ 195.0            ┆ 4000.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 40.6           ┆ 19.0          ┆ 199.0            ┆ 4000.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 49.7           ┆ 18.6          ┆ 195.0            ┆ 3600.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 47.6           ┆ 14.5          ┆ 215.0            ┆ 5400.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 42.9           ┆ 13.1          ┆ 215.0            ┆ 5000.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 44.5           ┆ 14.3          ┆ 216.0            ┆ 4100.0      ┆ null   │
+│ Gentoo    ┆ Biscoe    ┆ 47.5           ┆ 15.0          ┆ 218.0            ┆ 4950.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 49.5           ┆ 16.1          ┆ 224.0            ┆ 5650.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 16.1          ┆ 215.0            ┆ 5500.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 49.8           ┆ 15.9          ┆ 229.0            ┆ 5950.0      ┆ Male   │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6774,16 +6760,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 37.8           ┆ 17.3          ┆ 180.0            ┆ 3700.0      ┆ null   │
-│ Adelie    ┆ Torgersen ┆ 37.2           ┆ 19.4          ┆ 184.0            ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0            ┆ 3600.0      ┆ Female │
-│ Adelie    ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0            ┆ 3900.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 40.2           ┆ 20.1          ┆ 200.0            ┆ 3975.0      ┆ Male   │
-│ Adelie    ┆ Dream     ┆ 40.7           ┆ 17.0          ┆ 190.0            ┆ 3725.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 40.5           ┆ 18.9          ┆ 180.0            ┆ 3950.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.8           ┆ 18.4          ┆ 195.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0            ┆ 3800.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 36.9           ┆ 18.6          ┆ 189.0            ┆ 3500.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 41.4           ┆ 18.5          ┆ 202.0            ┆ 3875.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 44.1           ┆ 18.0          ┆ 210.0            ┆ 4000.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 45.2           ┆ 17.8          ┆ 198.0            ┆ 3950.0      ┆ Female │
 │ Chinstrap ┆ Dream     ┆ 58.0           ┆ 17.8          ┆ 181.0            ┆ 3700.0      ┆ Female │
 │ Chinstrap ┆ Dream     ┆ 50.6           ┆ 19.4          ┆ 193.0            ┆ 3800.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 45.5           ┆ 17.0          ┆ 196.0            ┆ 3500.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.0          ┆ 195.0            ┆ 3650.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 45.7           ┆ 17.3          ┆ 193.0            ┆ 3600.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -6799,17 +6785,17 @@ shape: (10, 7)
 Output:
 ```text
 shape: (5, 7)
-┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Dream  ┆ 44.1           ┆ 19.7          ┆ 196.0             ┆ 4400.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 50.0           ┆ 19.5          ┆ 196.0             ┆ 3900.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 49.5           ┆ 19.0          ┆ 200.0             ┆ 3800.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 49.7           ┆ 18.6          ┆ 195.0             ┆ 3600.0      ┆ Male   │
-│ Chinstrap ┆ Dream  ┆ 46.2           ┆ 17.5          ┆ 187.0             ┆ 3650.0      ┆ Female │
-└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌───────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬──────┐
+│ species   ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex  │
+│ ---       ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---  │
+│ str       ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str  │
+╞═══════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪══════╡
+│ Chinstrap ┆ Dream  ┆ 50.0           ┆ 19.5          ┆ 196.0             ┆ 3900.0      ┆ Male │
+│ Chinstrap ┆ Dream  ┆ 50.5           ┆ 19.6          ┆ 201.0             ┆ 4050.0      ┆ Male │
+│ Chinstrap ┆ Dream  ┆ 50.7           ┆ 19.7          ┆ 203.0             ┆ 4050.0      ┆ Male │
+│ Chinstrap ┆ Dream  ┆ 55.8           ┆ 19.8          ┆ 207.0             ┆ 4000.0      ┆ Male │
+│ Chinstrap ┆ Dream  ┆ 49.6           ┆ 18.2          ┆ 193.0             ┆ 3775.0      ┆ Male │
+└───────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴──────┘
 ```
 
 ## String matching and null checks
@@ -6833,16 +6819,16 @@ shape: (10, 7)
 │ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Biscoe    ┆ 39.6           ┆ 17.7          ┆ 186.0             ┆ 3500.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0             ┆ 3800.0      ┆ Male   │
-│ Adelie  ┆ Biscoe    ┆ 35.7           ┆ 16.9          ┆ 185.0             ┆ 3150.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 33.1           ┆ 16.1          ┆ 178.0             ┆ 2900.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 37.7           ┆ 16.0          ┆ 183.0             ┆ 3075.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 38.2           ┆ 18.1          ┆ 185.0             ┆ 3950.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Dream     ┆ 36.0           ┆ 18.5          ┆ 186.0             ┆ 3100.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 38.9           ┆ 18.8          ┆ 190.0             ┆ 3600.0      ┆ Female │
+│ Adelie  ┆ Dream     ┆ 40.8           ┆ 18.9          ┆ 208.0             ┆ 4300.0      ┆ Male   │
+│ Adelie  ┆ Biscoe    ┆ 38.1           ┆ 17.0          ┆ 181.0             ┆ 3175.0      ┆ Female │
+│ Adelie  ┆ Biscoe    ┆ 43.2           ┆ 19.0          ┆ 197.0             ┆ 4775.0      ┆ Male   │
+│ Adelie  ┆ Biscoe    ┆ 42.2           ┆ 19.5          ┆ 197.0             ┆ 4275.0      ┆ Male   │
 │ Adelie  ┆ Torgersen ┆ 37.3           ┆ 20.5          ┆ 199.0             ┆ 3775.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 41.1           ┆ 18.6          ┆ 189.0             ┆ 3325.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 37.7           ┆ 19.8          ┆ 198.0             ┆ 3500.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
-│ Adelie  ┆ Dream     ┆ 40.2           ┆ 20.1          ┆ 200.0             ┆ 3975.0      ┆ Male   │
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6857,22 +6843,22 @@ shape: (10, 7)
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Biscoe    ┆ 38.2           ┆ 18.1          ┆ 185.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0             ┆ 3800.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 39.6           ┆ 17.2          ┆ 196.0             ┆ 3550.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 37.3           ┆ 17.8          ┆ 191.0             ┆ 3350.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 35.0           ┆ 17.9          ┆ 192.0             ┆ 3725.0      ┆ Female │
-│ Adelie  ┆ Dream     ┆ 41.1           ┆ 17.5          ┆ 190.0             ┆ 3900.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 46.8           ┆ 15.4          ┆ 215.0             ┆ 5150.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0             ┆ 5100.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 44.5           ┆ 14.7          ┆ 214.0             ┆ 4850.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null   │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌─────────┬────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Dream  ┆ 40.9           ┆ 18.9          ┆ 184.0             ┆ 3900.0      ┆ Male   │
+│ Adelie  ┆ Biscoe ┆ 36.5           ┆ 16.6          ┆ 181.0             ┆ 2850.0      ┆ Female │
+│ Adelie  ┆ Dream  ┆ 39.0           ┆ 18.7          ┆ 185.0             ┆ 3650.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 40.9           ┆ 13.7          ┆ 214.0             ┆ 4650.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.5          ┆ 209.0             ┆ 4800.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.3           ┆ 15.8          ┆ 215.0             ┆ 5050.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 49.1           ┆ 14.8          ┆ 220.0             ┆ 5150.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 14.8          ┆ 217.0             ┆ 5200.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male   │
+└─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6891,16 +6877,16 @@ shape: (10, 7)
 │ ---     ┆ ---    ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
 │ str     ┆ str    ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
 ╞═════════╪════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 13.2          ┆ 211.0             ┆ 4500.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.5           ┆ 13.5          ┆ 210.0             ┆ 4550.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 45.8           ┆ 14.6          ┆ 210.0             ┆ 4200.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 46.1           ┆ 15.1          ┆ 215.0             ┆ 5100.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.0           ┆ 15.3          ┆ 220.0             ┆ 5550.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 50.5           ┆ 15.9          ┆ 225.0             ┆ 5400.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 43.5           ┆ 14.2          ┆ 220.0             ┆ 4700.0      ┆ Female │
-│ Gentoo  ┆ Biscoe ┆ 51.1           ┆ 16.3          ┆ 220.0             ┆ 6000.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 48.1           ┆ 15.1          ┆ 209.0             ┆ 5500.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 14.3          ┆ 215.0             ┆ 4850.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.5          ┆ 215.0             ┆ 5000.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 49.6           ┆ 16.0          ┆ 225.0             ┆ 5700.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.1           ┆ 14.4          ┆ 210.0             ┆ 4400.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 48.2           ┆ 15.6          ┆ 221.0             ┆ 5100.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 46.4           ┆ 15.0          ┆ 216.0             ┆ 4700.0      ┆ Female │
+│ Gentoo  ┆ Biscoe ┆ 52.1           ┆ 17.0          ┆ 230.0             ┆ 5550.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 47.3           ┆ 13.8          ┆ 216.0             ┆ 4725.0      ┆ null   │
+│ Gentoo  ┆ Biscoe ┆ 46.8           ┆ 16.1          ┆ 215.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 53.4           ┆ 15.8          ┆ 219.0             ┆ 5500.0      ┆ Male   │
+│ Gentoo  ┆ Biscoe ┆ 45.2           ┆ 14.8          ┆ 212.0             ┆ 5200.0      ┆ Female │
 └─────────┴────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
@@ -6962,22 +6948,23 @@ Because Python keyword arguments must have unique names, you cannot pass `bill_l
 Output:
 ```text
 shape: (10, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 41.1           ┆ 17.6          ┆ 182.0             ┆ 3200.0      ┆ Female │
-│ Adelie  ┆ Biscoe    ┆ 40.5           ┆ 18.9          ┆ 180.0             ┆ 3950.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 42.8           ┆ 18.5          ┆ 195.0             ┆ 4250.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0             ┆ 3450.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 43.1           ┆ 19.2          ┆ 197.0             ┆ 3500.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 49.2           ┆ 15.2          ┆ 221.0             ┆ 6300.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 44.9           ┆ 13.3          ┆ 213.0             ┆ 5100.0      ┆ Female │
-│ Gentoo  ┆ Biscoe    ┆ 46.2           ┆ 14.9          ┆ 221.0             ┆ 5300.0      ┆ Male   │
-│ Gentoo  ┆ Biscoe    ┆ 46.2           ┆ 14.4          ┆ 214.0             ┆ 4650.0      ┆ null   │
-│ Gentoo  ┆ Biscoe    ┆ 45.5           ┆ 14.5          ┆ 212.0             ┆ 4750.0      ┆ Female │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+┌───────────┬───────────┬────────────────┬───────────────┬──────────────────┬─────────────┬────────┐
+│ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_m ┆ body_mass_g ┆ sex    │
+│ ---       ┆ ---       ┆ ---            ┆ ---           ┆ m                ┆ ---         ┆ ---    │
+│ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
+│           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
+╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
+│ Adelie    ┆ Biscoe    ┆ 40.5           ┆ 17.9          ┆ 187.0            ┆ 3200.0      ┆ Female │
+│ Adelie    ┆ Biscoe    ┆ 41.1           ┆ 19.1          ┆ 188.0            ┆ 4100.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 42.9           ┆ 17.6          ┆ 196.0            ┆ 4700.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 41.5           ┆ 18.5          ┆ 201.0            ┆ 4000.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 49.7           ┆ 18.6          ┆ 195.0            ┆ 3600.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 49.8           ┆ 17.3          ┆ 198.0            ┆ 3675.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 49.3           ┆ 19.9          ┆ 203.0            ┆ 4050.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 42.9           ┆ 13.1          ┆ 215.0            ┆ 5000.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.3           ┆ 15.3          ┆ 222.0            ┆ 5250.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 47.2           ┆ 13.7          ┆ 214.0            ┆ 4925.0      ┆ Female │
+└───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
 ```python
@@ -6997,16 +6984,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
-│ Adelie    ┆ Biscoe    ┆ 40.6           ┆ 18.8          ┆ 193.0            ┆ 3800.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 45.6           ┆ 19.4          ┆ 194.0            ┆ 3525.0      ┆ Female │
+│ Adelie    ┆ Torgersen ┆ 42.5           ┆ 20.7          ┆ 197.0            ┆ 4500.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 44.1           ┆ 19.7          ┆ 196.0            ┆ 4400.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 41.8           ┆ 19.4          ┆ 198.0            ┆ 4450.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 42.1           ┆ 19.1          ┆ 195.0            ┆ 4000.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 43.2           ┆ 18.5          ┆ 192.0            ┆ 4100.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 42.4           ┆ 17.3          ┆ 181.0            ┆ 3600.0      ┆ Female │
+│ Chinstrap ┆ Dream     ┆ 46.8           ┆ 16.5          ┆ 189.0            ┆ 3650.0      ┆ Female │
 │ Gentoo    ┆ Biscoe    ┆ 45.4           ┆ 14.6          ┆ 211.0            ┆ 4800.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 46.4           ┆ 15.6          ┆ 221.0            ┆ 5000.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0            ┆ 5100.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 46.4           ┆ 15.0          ┆ 216.0            ┆ 4700.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 14.5          ┆ 212.0            ┆ 4625.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 49.1           ┆ 15.0          ┆ 228.0            ┆ 5500.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 48.8           ┆ 16.2          ┆ 222.0            ┆ 6000.0      ┆ Male   │
+│ Gentoo    ┆ Biscoe    ┆ 44.5           ┆ 14.3          ┆ 216.0            ┆ 4100.0      ┆ null   │
+│ Gentoo    ┆ Biscoe    ┆ 45.1           ┆ 14.4          ┆ 210.0            ┆ 4400.0      ┆ Female │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -7028,16 +7015,16 @@ shape: (10, 7)
 │ str       ┆ str       ┆ f64            ┆ f64           ┆ ---              ┆ f64         ┆ str    │
 │           ┆           ┆                ┆               ┆ f64              ┆             ┆        │
 ╞═══════════╪═══════════╪════════════════╪═══════════════╪══════════════════╪═════════════╪════════╡
-│ Adelie    ┆ Torgersen ┆ 42.0           ┆ 20.2          ┆ 190.0            ┆ 4250.0      ┆ null   │
-│ Adelie    ┆ Dream     ┆ 44.1           ┆ 19.7          ┆ 196.0            ┆ 4400.0      ┆ Male   │
-│ Adelie    ┆ Biscoe    ┆ 41.0           ┆ 20.0          ┆ 203.0            ┆ 4725.0      ┆ Male   │
-│ Adelie    ┆ Torgersen ┆ 40.2           ┆ 17.0          ┆ 176.0            ┆ 3450.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 46.4           ┆ 18.6          ┆ 190.0            ┆ 3450.0      ┆ Female │
-│ Chinstrap ┆ Dream     ┆ 48.5           ┆ 17.5          ┆ 191.0            ┆ 3400.0      ┆ Male   │
-│ Chinstrap ┆ Dream     ┆ 42.5           ┆ 17.3          ┆ 187.0            ┆ 3350.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 42.0           ┆ 13.5          ┆ 210.0            ┆ 4150.0      ┆ Female │
-│ Gentoo    ┆ Biscoe    ┆ 48.2           ┆ 15.6          ┆ 221.0            ┆ 5100.0      ┆ Male   │
-│ Gentoo    ┆ Biscoe    ┆ 46.8           ┆ 16.1          ┆ 215.0            ┆ 5500.0      ┆ Male   │
+│ Adelie    ┆ Dream     ┆ 40.9           ┆ 18.9          ┆ 184.0            ┆ 3900.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 40.1           ┆ 18.9          ┆ 188.0            ┆ 4300.0      ┆ Male   │
+│ Adelie    ┆ Biscoe    ┆ 41.1           ┆ 19.1          ┆ 188.0            ┆ 4100.0      ┆ Male   │
+│ Adelie    ┆ Torgersen ┆ 40.9           ┆ 16.8          ┆ 191.0            ┆ 3700.0      ┆ Female │
+│ Adelie    ┆ Dream     ┆ 41.1           ┆ 18.1          ┆ 205.0            ┆ 4300.0      ┆ Male   │
+│ Chinstrap ┆ Dream     ┆ 46.9           ┆ 16.6          ┆ 192.0            ┆ 2700.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 42.8           ┆ 14.2          ┆ 209.0            ┆ 4700.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 42.7           ┆ 13.7          ┆ 208.0            ┆ 3950.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 47.5           ┆ 15.0          ┆ 218.0            ┆ 4950.0      ┆ Female │
+│ Gentoo    ┆ Biscoe    ┆ 48.1           ┆ 15.1          ┆ 209.0            ┆ 5500.0      ┆ Male   │
 └───────────┴───────────┴────────────────┴───────────────┴──────────────────┴─────────────┴────────┘
 ```
 
@@ -7069,7 +7056,7 @@ Did you mean "species"?
     .rename(columns={'total_bill': 'total bill'})
     .filter("[total bill] > 10", day=['Sat', 'Sun'], time='Dinner', size='>= 2')
     .by('smoker')
-    .agg("tip = mean, [total bill] = mean, n = n")
+    .agg("tip = mean, [total bill] = mean, n = count")
 )
 ```
 Output:
@@ -7106,6 +7093,31 @@ print(df_risk.filter("exposure > limit"))
 print("\n--- Reconciled (tranche_id == deal_id) ---")
 print(df_risk.filter("tranche_id == deal_id"))
 ```
+Output:
+```text
+--- Breaches (exposure > limit) ---
+shape: (3, 4)
+┌──────────┬───────┬────────────┬─────────┐
+│ exposure ┆ limit ┆ tranche_id ┆ deal_id │
+│ ---      ┆ ---   ┆ ---        ┆ ---     │
+│ i64      ┆ i64   ┆ str        ┆ str     │
+╞══════════╪═══════╪════════════╪═════════╡
+│ 120      ┆ 100   ┆ T1         ┆ T1      │
+│ 250      ┆ 200   ┆ T2         ┆ D2      │
+│ 410      ┆ 400   ┆ T4         ┆ D4      │
+└──────────┴───────┴────────────┴─────────┘
+
+--- Reconciled (tranche_id == deal_id) ---
+shape: (2, 4)
+┌──────────┬───────┬────────────┬─────────┐
+│ exposure ┆ limit ┆ tranche_id ┆ deal_id │
+│ ---      ┆ ---   ┆ ---        ┆ ---     │
+│ i64      ┆ i64   ┆ str        ┆ str     │
+╞══════════╪═══════╪════════════╪═════════╡
+│ 120      ┆ 100   ┆ T1         ┆ T1      │
+│ 80       ┆ 150   ┆ T3         ┆ T3      │
+└──────────┴───────┴────────────┴─────────┘
+```
 
 ### Typo safety and quoting enforcement
 
@@ -7116,6 +7128,10 @@ try:
     df_risk.filter("tranche_id == Gentoo")
 except KeyError as e:
     print(e)
+```
+Output:
+```text
+"column 'Gentoo' not found in DataFrame. if you intended a string literal, quote it like 'Gentoo'"
 ```
 
 ### Dynamic Column Resolution via `col(@var)` and `@threshold`
@@ -7128,6 +7144,17 @@ target_col = "deal_id"
 
 # Inject scalar threshold and dynamic column comparison
 print(df_risk.filter("exposure > @threshold", "tranche_id == col(@target_col)"))
+```
+Output:
+```text
+shape: (1, 4)
+┌──────────┬───────┬────────────┬─────────┐
+│ exposure ┆ limit ┆ tranche_id ┆ deal_id │
+│ ---      ┆ ---   ┆ ---        ┆ ---     │
+│ i64      ┆ i64   ┆ str        ┆ str     │
+╞══════════╪═══════╪════════════╪═════════╡
+│ 120      ┆ 100   ┆ T1         ┆ T1      │
+└──────────┴───────┴────────────┴─────────┘
 ```
 
 ################################################################################
@@ -7662,16 +7689,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie    ┆ 3100.0      ┆ 36.0           ┆ 2.391975 │
-│ Adelie    ┆ 3350.0      ┆ 35.5           ┆ 2.658203 │
-│ Adelie    ┆ 4000.0      ┆ 42.1           ┆ 2.256814 │
-│ Adelie    ┆ 3400.0      ┆ 37.0           ┆ 2.483565 │
-│ Adelie    ┆ 4250.0      ┆ 39.2           ┆ 2.765775 │
-│ Chinstrap ┆ 4450.0      ┆ 50.8           ┆ 1.724378 │
-│ Chinstrap ┆ 3250.0      ┆ 45.2           ┆ 1.590767 │
-│ Chinstrap ┆ 3775.0      ┆ 49.6           ┆ 1.534453 │
-│ Gentoo    ┆ 5000.0      ┆ 45.5           ┆ 2.415167 │
-│ Gentoo    ┆ 5450.0      ┆ 52.5           ┆ 1.977324 │
+│ Adelie    ┆ 3800.0      ┆ 39.5           ┆ 2.435507 │
+│ Adelie    ┆ 3250.0      ┆ 40.3           ┆ 2.001121 │
+│ Adelie    ┆ 4075.0      ┆ 42.7           ┆ 2.234971 │
+│ Chinstrap ┆ 3650.0      ┆ 45.7           ┆ 1.747674 │
+│ Gentoo    ┆ 4100.0      ┆ 44.5           ┆ 2.070446 │
+│ Gentoo    ┆ 5250.0      ┆ 47.3           ┆ 2.346589 │
+│ Gentoo    ┆ 5050.0      ┆ 45.1           ┆ 2.48278  │
+│ Gentoo    ┆ 4700.0      ┆ 43.5           ┆ 2.483816 │
+│ Gentoo    ┆ 5550.0      ┆ 50.7           ┆ 2.159121 │
+│ Gentoo    ┆ 5400.0      ┆ 52.2           ┆ 1.981768 │
 └───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7708,16 +7735,16 @@ shape: (10, 4)
 │ ---       ┆ ---         ┆ ---     ┆ ---   │
 │ str       ┆ f64         ┆ f64     ┆ bool  │
 ╞═══════════╪═════════════╪═════════╪═══════╡
+│ Adelie    ┆ 3350.0      ┆ 3.35    ┆ false │
+│ Adelie    ┆ 4150.0      ┆ 4.15    ┆ true  │
+│ Adelie    ┆ 3350.0      ┆ 3.35    ┆ false │
+│ Adelie    ┆ 3325.0      ┆ 3.325   ┆ false │
 │ Adelie    ┆ 3500.0      ┆ 3.5     ┆ false │
-│ Adelie    ┆ 3950.0      ┆ 3.95    ┆ false │
-│ Chinstrap ┆ 3725.0      ┆ 3.725   ┆ false │
-│ Chinstrap ┆ 3950.0      ┆ 3.95    ┆ false │
-│ Chinstrap ┆ 3675.0      ┆ 3.675   ┆ false │
-│ Chinstrap ┆ 3350.0      ┆ 3.35    ┆ false │
-│ Gentoo    ┆ 5650.0      ┆ 5.65    ┆ true  │
-│ Gentoo    ┆ 5800.0      ┆ 5.8     ┆ true  │
-│ Gentoo    ┆ 5200.0      ┆ 5.2     ┆ true  │
-│ Gentoo    ┆ 6000.0      ┆ 6.0     ┆ true  │
+│ Chinstrap ┆ 3300.0      ┆ 3.3     ┆ false │
+│ Gentoo    ┆ 5550.0      ┆ 5.55    ┆ true  │
+│ Gentoo    ┆ 4600.0      ┆ 4.6     ┆ true  │
+│ Gentoo    ┆ 4725.0      ┆ 4.725   ┆ true  │
+│ Gentoo    ┆ 4375.0      ┆ 4.375   ┆ true  │
 └───────────┴─────────────┴─────────┴───────┘
 ```
 
@@ -7733,22 +7760,22 @@ shape: (10, 4)
 Output:
 ```text
 shape: (10, 4)
-┌───────────┬─────────────┬─────────┬───────────┐
-│ species   ┆ body_mass_g ┆ mass_kg ┆ mass_lb   │
-│ ---       ┆ ---         ┆ ---     ┆ ---       │
-│ str       ┆ f64         ┆ f64     ┆ f64       │
-╞═══════════╪═════════════╪═════════╪═══════════╡
-│ Adelie    ┆ 3500.0      ┆ 3.5     ┆ 7.71617   │
-│ Adelie    ┆ 3350.0      ┆ 3.35    ┆ 7.385477  │
-│ Adelie    ┆ 4000.0      ┆ 4.0     ┆ 8.81848   │
-│ Adelie    ┆ 3000.0      ┆ 3.0     ┆ 6.61386   │
-│ Adelie    ┆ 3650.0      ┆ 3.65    ┆ 8.046863  │
-│ Chinstrap ┆ 3650.0      ┆ 3.65    ┆ 8.046863  │
-│ Chinstrap ┆ 4000.0      ┆ 4.0     ┆ 8.81848   │
-│ Gentoo    ┆ 4875.0      ┆ 4.875   ┆ 10.747522 │
-│ Gentoo    ┆ 5500.0      ┆ 5.5     ┆ 12.12541  │
-│ Gentoo    ┆ 4875.0      ┆ 4.875   ┆ 10.747522 │
-└───────────┴─────────────┴─────────┴───────────┘
+┌─────────┬─────────────┬─────────┬───────────┐
+│ species ┆ body_mass_g ┆ mass_kg ┆ mass_lb   │
+│ ---     ┆ ---         ┆ ---     ┆ ---       │
+│ str     ┆ f64         ┆ f64     ┆ f64       │
+╞═════════╪═════════════╪═════════╪═══════════╡
+│ Adelie  ┆ 3600.0      ┆ 3.6     ┆ 7.936632  │
+│ Adelie  ┆ 3700.0      ┆ 3.7     ┆ 8.157094  │
+│ Adelie  ┆ 4250.0      ┆ 4.25    ┆ 9.369635  │
+│ Adelie  ┆ 3950.0      ┆ 3.95    ┆ 8.708249  │
+│ Adelie  ┆ 4250.0      ┆ 4.25    ┆ 9.369635  │
+│ Adelie  ┆ 3500.0      ┆ 3.5     ┆ 7.71617   │
+│ Adelie  ┆ 3175.0      ┆ 3.175   ┆ 6.9996685 │
+│ Adelie  ┆ 3650.0      ┆ 3.65    ┆ 8.046863  │
+│ Gentoo  ┆ 4500.0      ┆ 4.5     ┆ 9.92079   │
+│ Gentoo  ┆ 4600.0      ┆ 4.6     ┆ 10.141252 │
+└─────────┴─────────────┴─────────┴───────────┘
 ```
 
 ## String comparisons and local variables
@@ -7772,11 +7799,11 @@ shape: (10, 2)
 │ str       ┆ bool      │
 ╞═══════════╪═══════════╡
 │ Adelie    ┆ true      │
+│ Adelie    ┆ true      │
+│ Adelie    ┆ true      │
 │ Chinstrap ┆ false     │
 │ Chinstrap ┆ false     │
 │ Chinstrap ┆ false     │
-│ Gentoo    ┆ false     │
-│ Gentoo    ┆ false     │
 │ Gentoo    ┆ false     │
 │ Gentoo    ┆ false     │
 │ Gentoo    ┆ false     │
@@ -7804,16 +7831,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---   │
 │ str       ┆ f64         ┆ bool  │
 ╞═══════════╪═════════════╪═══════╡
-│ Adelie    ┆ 3250.0      ┆ false │
-│ Adelie    ┆ 4150.0      ┆ true  │
-│ Adelie    ┆ 3325.0      ┆ false │
+│ Adelie    ┆ 3900.0      ┆ false │
+│ Adelie    ┆ 3400.0      ┆ false │
 │ Adelie    ┆ 3450.0      ┆ false │
-│ Adelie    ┆ 4250.0      ┆ true  │
-│ Chinstrap ┆ 3950.0      ┆ false │
-│ Chinstrap ┆ 3600.0      ┆ false │
-│ Chinstrap ┆ 3350.0      ┆ false │
-│ Chinstrap ┆ 4100.0      ┆ true  │
-│ Gentoo    ┆ 4725.0      ┆ true  │
+│ Adelie    ┆ 3875.0      ┆ false │
+│ Adelie    ┆ 3275.0      ┆ false │
+│ Chinstrap ┆ 3800.0      ┆ false │
+│ Gentoo    ┆ 4550.0      ┆ true  │
+│ Gentoo    ┆ 5400.0      ┆ true  │
+│ Gentoo    ┆ 5300.0      ┆ true  │
+│ Gentoo    ┆ 5050.0      ┆ true  │
 └───────────┴─────────────┴───────┘
 ```
 
@@ -7831,22 +7858,22 @@ shape: (10, 3)
 Output:
 ```text
 shape: (10, 2)
-┌─────────┬─────────────┐
-│ species ┆ body_mass_g │
-│ ---     ┆ ---         │
-│ str     ┆ f64         │
-╞═════════╪═════════════╡
-│ Adelie  ┆ 4.5         │
-│ Adelie  ┆ 4.0         │
-│ Adelie  ┆ 3.8         │
-│ Adelie  ┆ 4.775       │
-│ Adelie  ┆ 3.475       │
-│ Adelie  ┆ 3.75        │
-│ Gentoo  ┆ 4.45        │
-│ Gentoo  ┆ 5.2         │
-│ Gentoo  ┆ 4.4         │
-│ Gentoo  ┆ 4.7         │
-└─────────┴─────────────┘
+┌───────────┬─────────────┐
+│ species   ┆ body_mass_g │
+│ ---       ┆ ---         │
+│ str       ┆ f64         │
+╞═══════════╪═════════════╡
+│ Adelie    ┆ 3.55        │
+│ Adelie    ┆ 3.45        │
+│ Adelie    ┆ 3.65        │
+│ Chinstrap ┆ 4.3         │
+│ Chinstrap ┆ 3.775       │
+│ Gentoo    ┆ 5.55        │
+│ Gentoo    ┆ 4.7         │
+│ Gentoo    ┆ 5.05        │
+│ Gentoo    ┆ 4.2         │
+│ Gentoo    ┆ 5.0         │
+└───────────┴─────────────┘
 ```
 
 ## Column names with spaces — bracket syntax
@@ -7892,16 +7919,16 @@ shape: (10, 5)
 │ ---     ┆ ---       ┆ ---         ┆ ---            ┆ ---      │
 │ str     ┆ str       ┆ f64         ┆ f64            ┆ f64      │
 ╞═════════╪═══════════╪═════════════╪════════════════╪══════════╡
-│ Adelie  ┆ Dream     ┆ 4150.0      ┆ 42.3           ┆ 2.319356 │
-│ Adelie  ┆ Dream     ┆ 3950.0      ┆ 38.3           ┆ 2.692772 │
-│ Adelie  ┆ Torgersen ┆ 4000.0      ┆ 40.6           ┆ 2.426654 │
-│ Gentoo  ┆ Biscoe    ┆ 5700.0      ┆ 50.0           ┆ 2.28     │
-│ Gentoo  ┆ Biscoe    ┆ 4800.0      ┆ 46.2           ┆ 2.248833 │
-│ Gentoo  ┆ Biscoe    ┆ 5400.0      ┆ 48.4           ┆ 2.30517  │
-│ Gentoo  ┆ Biscoe    ┆ 4350.0      ┆ 44.0           ┆ 2.246901 │
-│ Gentoo  ┆ Biscoe    ┆ 5050.0      ┆ 45.0           ┆ 2.493827 │
-│ Gentoo  ┆ Biscoe    ┆ 4700.0      ┆ 43.5           ┆ 2.483816 │
-│ Gentoo  ┆ Biscoe    ┆ 5350.0      ┆ 50.0           ┆ 2.14     │
+│ Adelie  ┆ Torgersen ┆ 3300.0      ┆ 37.8           ┆ 2.309566 │
+│ Adelie  ┆ Biscoe    ┆ 2850.0      ┆ 36.5           ┆ 2.139238 │
+│ Adelie  ┆ Torgersen ┆ 3700.0      ┆ 35.5           ┆ 2.935925 │
+│ Adelie  ┆ Dream     ┆ 4300.0      ┆ 40.8           ┆ 2.583141 │
+│ Adelie  ┆ Torgersen ┆ 4000.0      ┆ 44.1           ┆ 2.056756 │
+│ Gentoo  ┆ Biscoe    ┆ 4950.0      ┆ 42.6           ┆ 2.727633 │
+│ Gentoo  ┆ Biscoe    ┆ 5250.0      ┆ 44.4           ┆ 2.663136 │
+│ Gentoo  ┆ Biscoe    ┆ 4700.0      ┆ 45.8           ┆ 2.240613 │
+│ Gentoo  ┆ Biscoe    ┆ 5800.0      ┆ 48.6           ┆ 2.455588 │
+│ Gentoo  ┆ Biscoe    ┆ 4850.0      ┆ 48.5           ┆ 2.061856 │
 └─────────┴───────────┴─────────────┴────────────────┴──────────┘
 ```
 
@@ -7921,22 +7948,22 @@ Plain `eval()` has no ternary/`where()` support, so `mutate()` provides three dp
 Output:
 ```text
 shape: (10, 3)
-┌───────────┬─────────────┬──────────────┐
-│ species   ┆ body_mass_g ┆ weight_class │
-│ ---       ┆ ---         ┆ ---          │
-│ str       ┆ f64         ┆ str          │
-╞═══════════╪═════════════╪══════════════╡
-│ Adelie    ┆ 3900.0      ┆ light        │
-│ Adelie    ┆ 4450.0      ┆ heavy        │
-│ Chinstrap ┆ 3950.0      ┆ light        │
-│ Chinstrap ┆ 3400.0      ┆ light        │
-│ Gentoo    ┆ 4350.0      ┆ heavy        │
-│ Gentoo    ┆ 4900.0      ┆ heavy        │
-│ Gentoo    ┆ 4200.0      ┆ heavy        │
-│ Gentoo    ┆ 4700.0      ┆ heavy        │
-│ Gentoo    ┆ 5600.0      ┆ heavy        │
-│ Gentoo    ┆ 4875.0      ┆ heavy        │
-└───────────┴─────────────┴──────────────┘
+┌─────────┬─────────────┬──────────────┐
+│ species ┆ body_mass_g ┆ weight_class │
+│ ---     ┆ ---         ┆ ---          │
+│ str     ┆ f64         ┆ str          │
+╞═════════╪═════════════╪══════════════╡
+│ Adelie  ┆ 3550.0      ┆ light        │
+│ Adelie  ┆ 4400.0      ┆ heavy        │
+│ Adelie  ┆ 4600.0      ┆ heavy        │
+│ Adelie  ┆ 4050.0      ┆ heavy        │
+│ Adelie  ┆ 4200.0      ┆ heavy        │
+│ Adelie  ┆ 3050.0      ┆ light        │
+│ Adelie  ┆ 4000.0      ┆ light        │
+│ Gentoo  ┆ 5350.0      ┆ heavy        │
+│ Gentoo  ┆ 4700.0      ┆ heavy        │
+│ Gentoo  ┆ 5200.0      ┆ heavy        │
+└─────────┴─────────────┴──────────────┘
 ```
 
 ```python
@@ -7958,16 +7985,16 @@ shape: (10, 3)
 │ ---       ┆ ---         ┆ ---        │
 │ str       ┆ f64         ┆ str        │
 ╞═══════════╪═════════════╪════════════╡
-│ Adelie    ┆ 4725.0      ┆ large      │
-│ Adelie    ┆ 3550.0      ┆ medium     │
-│ Adelie    ┆ 4300.0      ┆ medium     │
-│ Adelie    ┆ 3050.0      ┆ small      │
-│ Chinstrap ┆ 4050.0      ┆ medium     │
-│ Chinstrap ┆ 2700.0      ┆ small      │
-│ Gentoo    ┆ 5100.0      ┆ large      │
-│ Gentoo    ┆ 5550.0      ┆ large      │
-│ Gentoo    ┆ 5800.0      ┆ large      │
-│ Gentoo    ┆ 4625.0      ┆ large      │
+│ Adelie    ┆ 3325.0      ┆ small      │
+│ Adelie    ┆ 4350.0      ┆ medium     │
+│ Chinstrap ┆ 3900.0      ┆ medium     │
+│ Chinstrap ┆ 3775.0      ┆ medium     │
+│ Chinstrap ┆ 4150.0      ┆ medium     │
+│ Chinstrap ┆ 3550.0      ┆ medium     │
+│ Chinstrap ┆ 3800.0      ┆ medium     │
+│ Gentoo    ┆ 5000.0      ┆ large      │
+│ Gentoo    ┆ 5700.0      ┆ large      │
+│ Gentoo    ┆ 5000.0      ┆ large      │
 └───────────┴─────────────┴────────────┘
 ```
 
@@ -7986,22 +8013,22 @@ shape: (10, 3)
 Output:
 ```text
 shape: (10, 3)
-┌─────────┬───────────┬─────────────┐
-│ species ┆ island    ┆ island_code │
-│ ---     ┆ ---       ┆ ---         │
-│ str     ┆ str       ┆ str         │
-╞═════════╪═══════════╪═════════════╡
-│ Adelie  ┆ Biscoe    ┆ BIS         │
-│ Adelie  ┆ Biscoe    ┆ BIS         │
-│ Adelie  ┆ Torgersen ┆ TOR         │
-│ Adelie  ┆ Dream     ┆ OTH         │
-│ Adelie  ┆ Torgersen ┆ TOR         │
-│ Adelie  ┆ Torgersen ┆ TOR         │
-│ Gentoo  ┆ Biscoe    ┆ BIS         │
-│ Gentoo  ┆ Biscoe    ┆ BIS         │
-│ Gentoo  ┆ Biscoe    ┆ BIS         │
-│ Gentoo  ┆ Biscoe    ┆ BIS         │
-└─────────┴───────────┴─────────────┘
+┌───────────┬───────────┬─────────────┐
+│ species   ┆ island    ┆ island_code │
+│ ---       ┆ ---       ┆ ---         │
+│ str       ┆ str       ┆ str         │
+╞═══════════╪═══════════╪═════════════╡
+│ Adelie    ┆ Dream     ┆ OTH         │
+│ Adelie    ┆ Torgersen ┆ TOR         │
+│ Adelie    ┆ Torgersen ┆ TOR         │
+│ Adelie    ┆ Dream     ┆ OTH         │
+│ Chinstrap ┆ Dream     ┆ OTH         │
+│ Chinstrap ┆ Dream     ┆ OTH         │
+│ Gentoo    ┆ Biscoe    ┆ BIS         │
+│ Gentoo    ┆ Biscoe    ┆ BIS         │
+│ Gentoo    ┆ Biscoe    ┆ BIS         │
+│ Gentoo    ┆ Biscoe    ┆ BIS         │
+└───────────┴───────────┴─────────────┘
 ```
 
 ## First non-null resolution — `coalesce()`
@@ -8144,17 +8171,17 @@ out
 Output:
 ```text
 shape: (5, 3)
-┌───────────┬─────────┬──────────┐
-│ species   ┆ mass_kg ┆ mass_lb  │
-│ ---       ┆ ---     ┆ ---      │
-│ str       ┆ f64     ┆ f64      │
-╞═══════════╪═════════╪══════════╡
-│ Adelie    ┆ 3.4     ┆ 7.495708 │
-│ Adelie    ┆ 3.45    ┆ 7.605939 │
-│ Chinstrap ┆ 3.7     ┆ 8.157094 │
-│ Chinstrap ┆ 3.6     ┆ 7.936632 │
-│ Chinstrap ┆ 3.45    ┆ 7.605939 │
-└───────────┴─────────┴──────────┘
+┌───────────┬─────────┬───────────┐
+│ species   ┆ mass_kg ┆ mass_lb   │
+│ ---       ┆ ---     ┆ ---       │
+│ str       ┆ f64     ┆ f64       │
+╞═══════════╪═════════╪═══════════╡
+│ Adelie    ┆ 4.25    ┆ 9.369635  │
+│ Chinstrap ┆ 3.35    ┆ 7.385477  │
+│ Chinstrap ┆ 4.3     ┆ 9.479866  │
+│ Gentoo    ┆ 5.8     ┆ 12.786796 │
+│ Gentoo    ┆ 5.5     ┆ 12.12541  │
+└───────────┴─────────┴───────────┘
 ```
 
 ## Columns with spaces — SQL-style brackets `[col]`
@@ -8246,7 +8273,7 @@ Unlike `pt.agg()` which collapses rows ($N \to K$), `df.by(...).mutate(...)` eva
 
 Supported features:
 - **Injected aggregation functions**: `mean(x)`, `sum(x)`, `median(x)`, `min(x)`, `max(x)`, `std(x)`, `var(x)`
-- **Group row count**: `n` or `n()` (dplyr / Polars convention)
+- **Group row count**: `count()` (canonical window counting function)
 - **Sequential expressions**: Later expressions within the same `mutate` call can immediately reference earlier group-derived columns (e.g. `diff = tip - avg_tip`)
 - **Arbitrary output column names**: Name target columns cleanly without hardcoded prefixes
 - **Multi-column grouping**: `.by('species', 'island')`
@@ -8260,7 +8287,7 @@ tips = pt.sample("tips")
     tips
     .select("day", "time", "total_bill", "tip")
     .by("day")
-    .mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = n")
+    .mutate("avg_tip = mean(tip), diff = tip - avg_tip, group_size = count()")
     .head(6)
 )
 ```
@@ -8288,7 +8315,7 @@ shape: (6, 7)
     .rename(columns={"total_bill": "total bill"})
     .select("day", "time", "total bill", "tip")
     .by("day", "time")
-    .mutate("[avg bill] = mean([total bill]), [bill diff] = [total bill] - [avg bill], count = n()")
+    .mutate("[avg bill] = mean([total bill]), [bill diff] = [total bill] - [avg bill], count = count()")
     .head(6)
 )
 ```
@@ -8386,7 +8413,7 @@ print("dropna=False (default):")
 print(
     sample_data
     .by("grp")
-    .mutate("avg = mean(val), sz = n", dropna=False)
+    .mutate("avg = mean(val), sz = count()", dropna=False)
 )
 
 # dropna=True: NA groups receive NaN
@@ -8394,7 +8421,7 @@ print("\ndropna=True:")
 print(
     sample_data
     .by("grp")
-    .mutate("avg = mean(val), sz = n", dropna=True)
+    .mutate("avg = mean(val), sz = count()", dropna=True)
 )
 ```
 Output:
@@ -8484,7 +8511,7 @@ master_df = (
         # 9. Grouped window transforms via standalone pt.by() without collapsing rows
         species_avg_mass="mean(mass_kg)",
         mass_diff="mass_kg - species_avg_mass",
-        group_size="n",
+        group_size="count()",
         
         # 2. lambda: custom callable inspecting the accumulated DataFrame
         is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5),
@@ -8786,6 +8813,20 @@ penguins.mutate(
     normalized_measure="col(@target_measure) / 1000.0"
 ).select("species", "body_mass_g", "normalized_measure").head(4)
 ```
+Output:
+```text
+shape: (4, 3)
+┌─────────┬─────────────┬────────────────────┐
+│ species ┆ body_mass_g ┆ normalized_measure │
+│ ---     ┆ ---         ┆ ---                │
+│ str     ┆ f64         ┆ f64                │
+╞═════════╪═════════════╪════════════════════╡
+│ Adelie  ┆ 3750.0      ┆ 3.75               │
+│ Adelie  ┆ 3800.0      ┆ 3.8                │
+│ Adelie  ┆ 3250.0      ┆ 3.25               │
+│ Adelie  ┆ null        ┆ null               │
+└─────────┴─────────────┴────────────────────┘
+```
 
 ## Boolean Safety in `map()` and Type Compatibility Guards
 
@@ -8799,6 +8840,20 @@ res_bool = df_credit.mutate(
 print(res_bool)
 print(res_bool.dtypes)
 ```
+Output:
+```text
+shape: (3, 2)
+┌────────┬─────────────────────┐
+│ rating ┆ is_investment_grade │
+│ ---    ┆ ---                 │
+│ str    ┆ bool                │
+╞════════╪═════════════════════╡
+│ 2B     ┆ true                │
+│ 3C     ┆ false               │
+│ 4D     ┆ false               │
+└────────┴─────────────────────┘
+[String, Boolean]
+```
 
 ### Strict Type Guards Against Mixing Incompatible Types
 
@@ -8809,6 +8864,10 @@ try:
     df_credit.mutate(out="map(rating, {'2B': 'Senior'}, default=False)")
 except TypeError as e:
     print(e)
+```
+Output:
+```text
+map() cannot mix non-boolean mapping values with boolean default False. Polars requires homogeneous column dtypes; coercing booleans to strings would evaluate 'false' as truthy in Python.
 ```
 
 ## Unbracketed Column Names with Special Characters
@@ -8824,6 +8883,19 @@ df_irba.mutate(
     delta="irba_unsecured_lgd_(1g00) - post_crm_lgd_(2a)",
     is_high_risk="irba_unsecured_lgd_(1g00) > 0.40",
 )
+```
+Output:
+```text
+shape: (3, 4)
+┌───────────────────────────┬───────────────────┬───────┬──────────────┐
+│ irba_unsecured_lgd_(1g00) ┆ post_crm_lgd_(2a) ┆ delta ┆ is_high_risk │
+│ ---                       ┆ ---               ┆ ---   ┆ ---          │
+│ f64                       ┆ f64               ┆ f64   ┆ bool         │
+╞═══════════════════════════╪═══════════════════╪═══════╪══════════════╡
+│ 0.25                      ┆ 0.2               ┆ 0.05  ┆ false        │
+│ 0.45                      ┆ 0.5               ┆ -0.05 ┆ true         │
+│ 0.7                       ┆ 0.6               ┆ 0.1   ┆ true         │
+└───────────────────────────┴───────────────────┴───────┴──────────────┘
 ```
 
 ################################################################################
@@ -9451,7 +9523,7 @@ Values:
     penguins
     .by("species")
     .agg(
-        cnt="n",
+        cnt="count",
         avg_mass="body_mass_g:mean",
         max_mass="body_mass_g:max",
     )
@@ -10087,15 +10159,14 @@ shape: (5, 13)
 
 # `select` — Reference
 
-`select` picks columns by name, slice, dtype, or substring. Negative names (`'-col'`, `'~col'`), negative slices (`'-start:end'`), and `exclude=` drop columns while preserving relative order. Regex is the `regex=` keyword — a positional string that is not an exact name is an error, not a silent regex. `everything()` pulls in "the rest" after pinning specific columns first.
+`select` picks columns by name, slice, dtype, or substring. Negative names (`'!col'`) and negative slices (`'!start:end'`) drop columns while preserving relative order. Regex is the `regex=` keyword — a positional string that is not an exact name is an error, not a silent regex. `everything()` pulls in "the rest" after pinning specific columns first.
 
 | Argument type | Example | Selects |
 |---|---|---|
 | List | `['a','b']` | exact named columns |
 | String (name) | `'species'` | exact column |
-| Negative string | `'-species'`, `'~island'` | exclude named column |
-| Negative slice | `'-bill_length_mm:body_mass_g'` | exclude contiguous range |
-| `exclude=` | `exclude='species'`, `exclude=['a','b']` | exclude specific column(s) |
+| Negative string | `'!species'`, `'!island'` | exclude named column |
+| Negative slice | `'!bill_length_mm:body_mass_g'` | exclude contiguous range |
 | String (slice) | `'bill_length_mm:body_mass_g'` | contiguous range |
 | `everything()` | after explicit cols | remaining columns |
 | callable | `lambda c: c.startswith('b')` | columns passing test |
@@ -10467,7 +10538,7 @@ shape: (5, 3)
     .filter(species=['Adelie', 'Gentoo'])
     .select('species', 'island', contains=['bill', 'flipper'])
     .by('species', 'island')
-    .agg(a=['mean', 'n'])
+    .agg(a=['mean', 'count'])
 )
 ```
 Output:
@@ -10485,13 +10556,14 @@ shape: (4, 6)
 └─────────┴───────────┴─────┴────────────────┴───────────────┴───────────────────┘
 ```
 
-## Negative selection & exclusion — `-col`, `~col`, negative slices, and `exclude=`
-Drop or exclude columns by prefixing names with `-` or `~`, passing a negative slice (`'-start:end'`), or using the `exclude=` parameter. Remaining columns preserve their original relative DataFrame order without needing a separate drop function.
+## Negative selection & exclusion — `!col`, negative slices
+
+Drop or exclude columns by prefixing names with `!` (or `-` / `~`) or passing a negative slice (`'!start:end'`). Remaining columns preserve their original relative DataFrame order without needing a separate drop function.
 
 ```python
-# Drop single column by negating with '-' or '~'
+# Drop single column by negating with '!'
 (
-    penguins.select('-species')
+    penguins.select('!species')
     .head(3)
 )
 ```
@@ -10512,7 +10584,7 @@ shape: (3, 6)
 ```python
 # Drop multiple columns
 (
-    penguins.select('-species', '-island', '-sex')
+    penguins.select('!species', '!island', '!sex')
     .head(3)
 )
 ```
@@ -10533,7 +10605,7 @@ shape: (3, 4)
 ```python
 # Exclude a contiguous slice of columns
 (
-    penguins.select('-bill_length_mm:body_mass_g')
+    penguins.select('!bill_length_mm:body_mass_g')
     .head(3)
 )
 ```
@@ -10552,9 +10624,9 @@ shape: (3, 3)
 ```
 
 ```python
-# Exclude columns using the exclude= keyword
+# Exclude multiple columns with positional negation
 (
-    penguins.select(exclude=['species', 'island'])
+    penguins.select('!species', '!island')
     .head(3)
 )
 ```
@@ -10576,7 +10648,7 @@ shape: (3, 5)
 # Combine positive selection with negative exclusion in a chain
 (penguins
  .select(dtype='numeric')
- .select('-bill_depth_mm')
+ .select('!bill_depth_mm')
  .head(3)
 )
 ```
@@ -10646,157 +10718,9 @@ shape: (5, 3)
 ```
 
 ```python
-# Drop a spaced column using negative bracket syntax -[col]
+# Drop a spaced column using negative bracket syntax ![col]
 (
-    penguins_spaced.select('species', '[bill length mm]', '-[bill length mm]')
-    .head()
-)
-```
-Output:
-```text
-shape: (5, 1)
-┌─────────┐
-│ species │
-│ ---     │
-│ str     │
-╞═════════╡
-│ Adelie  │
-│ Adelie  │
-│ Adelie  │
-│ Adelie  │
-│ Adelie  │
-└─────────┘
-```
-
-## Columns with spaces — bracket notation `[col]`
-
-Square brackets `[col name]` allow selecting and manipulating columns with spaces without quoting ambiguity, supporting individual names, comma lists, ranges, and exclusions:
-
-```python
-# Select columns with spaces using bracket notation
-penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'})
-(
-    penguins_spaced.select('species', '[bill length mm]', '[body mass g]')
-    .head()
-)
-```
-Output:
-```text
-shape: (5, 3)
-┌─────────┬────────────────┬─────────────┐
-│ species ┆ bill length mm ┆ body mass g │
-│ ---     ┆ ---            ┆ ---         │
-│ str     ┆ f64            ┆ f64         │
-╞═════════╪════════════════╪═════════════╡
-│ Adelie  ┆ 39.1           ┆ 3750.0      │
-│ Adelie  ┆ 39.5           ┆ 3800.0      │
-│ Adelie  ┆ 40.3           ┆ 3250.0      │
-│ Adelie  ┆ null           ┆ null        │
-│ Adelie  ┆ 36.7           ┆ 3450.0      │
-└─────────┴────────────────┴─────────────┘
-```
-
-```python
-# Comma-separated string with bracketed space columns
-(
-    penguins_spaced.select('species, [bill length mm], [body mass g]')
-    .head()
-)
-```
-Output:
-```text
-shape: (5, 3)
-┌─────────┬────────────────┬─────────────┐
-│ species ┆ bill length mm ┆ body mass g │
-│ ---     ┆ ---            ┆ ---         │
-│ str     ┆ f64            ┆ f64         │
-╞═════════╪════════════════╪═════════════╡
-│ Adelie  ┆ 39.1           ┆ 3750.0      │
-│ Adelie  ┆ 39.5           ┆ 3800.0      │
-│ Adelie  ┆ 40.3           ┆ 3250.0      │
-│ Adelie  ┆ null           ┆ null        │
-│ Adelie  ┆ 36.7           ┆ 3450.0      │
-└─────────┴────────────────┴─────────────┘
-```
-
-```python
-# Drop a spaced column using negative bracket syntax -[col]
-(
-    penguins_spaced.select('species', '[bill length mm]', '-[bill length mm]')
-    .head()
-)
-```
-Output:
-```text
-shape: (5, 1)
-┌─────────┐
-│ species │
-│ ---     │
-│ str     │
-╞═════════╡
-│ Adelie  │
-│ Adelie  │
-│ Adelie  │
-│ Adelie  │
-│ Adelie  │
-└─────────┘
-```
-
-## Columns with spaces — bracket notation `[col]`
-
-Square brackets `[col name]` allow selecting and manipulating columns with spaces without quoting ambiguity, supporting individual names, comma lists, ranges, and exclusions:
-
-```python
-# Select columns with spaces using bracket notation
-penguins_spaced = penguins.rename(columns={'bill_length_mm': 'bill length mm', 'body_mass_g': 'body mass g'})
-(
-    penguins_spaced.select('species', '[bill length mm]', '[body mass g]')
-    .head()
-)
-```
-Output:
-```text
-shape: (5, 3)
-┌─────────┬────────────────┬─────────────┐
-│ species ┆ bill length mm ┆ body mass g │
-│ ---     ┆ ---            ┆ ---         │
-│ str     ┆ f64            ┆ f64         │
-╞═════════╪════════════════╪═════════════╡
-│ Adelie  ┆ 39.1           ┆ 3750.0      │
-│ Adelie  ┆ 39.5           ┆ 3800.0      │
-│ Adelie  ┆ 40.3           ┆ 3250.0      │
-│ Adelie  ┆ null           ┆ null        │
-│ Adelie  ┆ 36.7           ┆ 3450.0      │
-└─────────┴────────────────┴─────────────┘
-```
-
-```python
-# Comma-separated string with bracketed space columns
-(
-    penguins_spaced.select('species, [bill length mm], [body mass g]')
-    .head()
-)
-```
-Output:
-```text
-shape: (5, 3)
-┌─────────┬────────────────┬─────────────┐
-│ species ┆ bill length mm ┆ body mass g │
-│ ---     ┆ ---            ┆ ---         │
-│ str     ┆ f64            ┆ f64         │
-╞═════════╪════════════════╪═════════════╡
-│ Adelie  ┆ 39.1           ┆ 3750.0      │
-│ Adelie  ┆ 39.5           ┆ 3800.0      │
-│ Adelie  ┆ 40.3           ┆ 3250.0      │
-│ Adelie  ┆ null           ┆ null        │
-│ Adelie  ┆ 36.7           ┆ 3450.0      │
-└─────────┴────────────────┴─────────────┘
-```
-
-```python
-# Drop a spaced column using negative bracket syntax -[col]
-(
-    penguins_spaced.select('species', '[bill length mm]', '-[bill length mm]')
+    penguins_spaced.select('species', '[bill length mm]', '![bill length mm]')
     .head()
 )
 ```
@@ -11078,7 +11002,7 @@ tips = pt.sample("tips")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x1137d5940>
+<pytae.plotting.Plotter at 0x10efd9a90>
 ```
 
 ```python
@@ -11098,7 +11022,7 @@ pt.finalize(p)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e5d5d10>
+<pytae.plotting.Plotter at 0x119e25f90>
 ```
 
 ```python
@@ -11112,7 +11036,7 @@ p = pt.Plotter(tips.by("day").agg(total_bill="mean"), figsize=(8, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e6af4d0>
+<pytae.plotting.Plotter at 0x119f03750>
 ```
 
 ## 2. Plot Kinds & Distribution Semantics
@@ -11139,7 +11063,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e6069e0>
+<pytae.plotting.Plotter at 0x119e42b10>
 ```
 
 ```python
@@ -11161,7 +11085,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e605cd0>
+<pytae.plotting.Plotter at 0x119e41e00>
 ```
 
 ```python
@@ -11183,7 +11107,7 @@ diamonds = pt.sample("diamonds").sample(1000, random_state=42)
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x112690710>
+<pytae.plotting.Plotter at 0x10de94710>
 ```
 
 ```python
@@ -11201,7 +11125,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e682360>
+<pytae.plotting.Plotter at 0x119c8b570>
 ```
 
 ```python
@@ -11224,7 +11148,7 @@ titanic = pt.sample("titanic")
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x113746580>
+<pytae.plotting.Plotter at 0x10ef47680>
 ```
 
 ```python
@@ -11242,7 +11166,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e825150>
+<pytae.plotting.Plotter at 0x119ec4c50>
 ```
 
 ## 3. Subplots & Multi-Panel Dashboards (With & Without Mosaic)
@@ -11267,7 +11191,7 @@ p_sub = pt.Plotter(nrows=1, ncols=2, figsize=(11, 4.5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e826050>
+<pytae.plotting.Plotter at 0x119ec6e50>
 ```
 
 ```python
@@ -11284,7 +11208,7 @@ k = pt.Plotter(figsize=(9, 5))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e824d50>
+<pytae.plotting.Plotter at 0x119ec5b50>
 ```
 
 ```python
@@ -11309,7 +11233,7 @@ p = pt.Plotter(mosaic=mosaic, figsize=(14, 9))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e826650>
+<pytae.plotting.Plotter at 0x119ec7450>
 ```
 
 ```python
@@ -11336,7 +11260,7 @@ p_multi = pt.Plotter(mosaic=mosaic_multi, figsize=(13, 7))
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11f070450>
+<pytae.plotting.Plotter at 0x11a8c1250>
 ```
 
 ## 4. Grid Faceting / Small Multiples (Auto-Faceting with `by` & `ncols`)
@@ -11362,7 +11286,7 @@ pt.plot(
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e825350>
+<pytae.plotting.Plotter at 0x119ec6150>
 ```
 
 ```python
@@ -11384,7 +11308,7 @@ Output:
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e825e50>
+<pytae.plotting.Plotter at 0x119ec5850>
 ```
 
 ## 5. End-to-End Pipelines: Mixing pandas, pytae, and Multi-Panel Mosaics
@@ -11425,7 +11349,7 @@ wrangle_penguins = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e39a650>
+<pytae.plotting.Plotter at 0x119b93450>
 ```
 
 ```python
@@ -11456,7 +11380,7 @@ cleaned_diamonds = (
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11e399750>
+<pytae.plotting.Plotter at 0x119b92550>
 ```
 
 ## 6. Advanced Controls & Customization (`_CONTROL_KWARGS`)
@@ -11553,7 +11477,7 @@ pre_aggregated = pt.DataFrame({
 ```
 Output:
 ```text
-<pytae.plotting.Plotter at 0x11f070550>
+<pytae.plotting.Plotter at 0x1085b0650>
 ```
 
 ```python
@@ -11743,10 +11667,10 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 
 ### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
 - Pytae uses strictly complementary, intuitive English opposites:
-  - **`long()`**: Turns wide tables into tall records (`id_vars=`, `cols=`).
+  - **`long()`**: Turns wide tables into tall records using the unified `rcva` grammar (`r=` or `id_vars=`, `c=`, `v=`).
   - **`wide()`**: Pure 1-to-1 structural unmelting without aggregation (`r=`, `c=`, `v=`).
   - **`pivot()`**: 2D cross-tabulation aggregation matrices (`r=`, `c=`, `v=`, `a=`).
-- Both `wide` and `pivot` produce pure, flat 1D column headers with zero MultiIndex traps.
+- All three verbs produce pure, flat 1D column headers with zero MultiIndex traps.
 
 ### 7. `count` for Fast Tallying & Intention-Revealing Aggregations
 - **Why `count`?** Counting occurrences of categories or combinations of factors is the single most common exploratory data analysis operation. In Pandas, users are forced to choose between `.value_counts()` (which returns a 1D Series with index labels, breaking fluent chaining) or `.groupby('col').size().reset_index(name='n')`.
@@ -11942,9 +11866,10 @@ For exhaustive syntax mappings, feature-by-feature Rosetta stones, and migration
 
 ## Detailed Documentation Directory
 
-All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented under **`docs/detailed_docs/`** in two dedicated folders:
-- **`detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
+All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented under **`docs/`**:
+- **`docs/cli_cheatsheet.md`**: [**The Definitive CLI Cheat Sheet & Cookbook**](cli_cheatsheet.md) — 11 curated sections of one-liner recipes and Unix shell workflows.
 - **`detailed_docs/cli/`**: Comprehensive Command Line Markdown guides (`.md`)
+- **`detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
 
 | Category | Python Library (Notebook) | CLI Guide (Markdown) | Key Capabilities & Verbs |
 |:---|:---|:---|:---|
@@ -13083,7 +13008,7 @@ summary = (
     )
     .by("TRTP", "SEX")
     .agg(
-        n_subjects="n",
+        n_subjects="count",
         mean_sysbp="SYSBP:mean",
         mean_pp="pulse_pressure:mean"
     )
@@ -13101,7 +13026,7 @@ pytae vsl.sas7bdat \
   -join "dm.sas7bdat,on=USUBJID,how=inner" \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
   -by TRTP,SEX \
-  -agg "n_subjects = n, mean_sysbp = mean(SYSBP), mean_pp = mean(pulse_pressure)" \
+  -agg "n_subjects = count, mean_sysbp = mean(SYSBP), mean_pp = mean(pulse_pressure)" \
   -arrange "mean_sysbp desc" \
   -o summary.parquet
 ```
@@ -13613,7 +13538,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.10.1"
+version = "3.10.2"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -13648,6 +13573,7 @@ pytae = "pytae.cli:main"
 "Bug Tracker" = "https://github.com/maddytae/pytae/issues"
 "Documentation" = "https://github.com/maddytae/pytae/blob/master/docs/pytae.md"
 "Detailed Docs" = "https://github.com/maddytae/pytae/tree/master/docs/detailed_docs"
+"Cheat Sheet" = "https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md"
 
 [tool.hatch.build.targets.wheel.force-include]
 "reference" = "pytae/reference"
@@ -13726,7 +13652,7 @@ from pytae.readers import (
 )
 from pytae.select import everything
 
-__version__ = "3.10.1"
+__version__ = "3.10.2"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -14501,9 +14427,9 @@ def _parse_mutate_spec_entries(raw: str) -> list[tuple[str, str, bool]]:
     return entries
 
 
-def _rewrite_fallback_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[str, str]]:
+def _rewrite_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[str, str]]:
     """Rewrite `col` and [col] for known columns to synthetic identifiers like __col_safe_0__
-    for the plain Python eval() fallback, outside string literals."""
+    for Polars AST compilation, outside string literals."""
     out_chars: list[str] = []
     quote = None
     i, n = 0, len(expr)
@@ -14574,9 +14500,8 @@ def _rewrite_fallback_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[
 
 
 def _strip_at_refs(expr: str) -> tuple[str, set[str]]:
-    """Rewrite pandas-eval `@name` local-variable refs to bare `name` for the
-    plain Python eval() fallback (which has no `@` syntax), and report which
-    names were referenced. `@` inside string literals is left untouched."""
+    """Rewrite `@name` local-variable refs to bare `name` for AST compilation,
+    and report which names were referenced. `@` inside string literals is left untouched."""
     out_chars: list[str] = []
     names: set[str] = set()
     quote = None
@@ -14679,7 +14604,7 @@ def _resolve_multi_target_cols(df: Any, inner_spec: str, by_cols: list[str] | No
                 else:
                     kwargs[k] = v
                 continue
-        names.append(token if ":" in token or token.startswith(("-", "~")) else _unquote_name(token))
+        names.append(token if ":" in token or token.startswith(("-", "~", "!")) else _unquote_name(token))
 
     all_cols = list(df.collect_schema().names()) if hasattr(df, "collect_schema") else list(df.columns)
     schema = df.collect_schema() if hasattr(df, "collect_schema") else getattr(df, "schema", None)
@@ -15435,6 +15360,133 @@ class PandasPtAccessor:
         return getattr(DataFrame(self._obj), name)
 
 ################################################################################
+# FILE: src/pytae/cheatsheet.py
+################################################################################
+"""Pytae CLI Cheat Sheet & Quick-Reference Cookbook.
+
+Provides built-in terminal cheat sheet accessible via `pytae -cheatsheet` or `pytae -examples`.
+"""
+
+from __future__ import annotations
+
+CHEATSHEET_TEXT = """\
+================================================================================
+                      PYTAE CLI CHEAT SHEET & COOKBOOK                          
+================================================================================
+
+1. ⚡ QUICK FILE INSPECTION & METADATA
+--------------------------------------------------------------------------------
+  pytae data.parquet -shape                      # Print (rows, cols)
+  pytae data.parquet -head                       # Preview first 5 rows
+  pytae data.parquet -head 10                    # Preview first 10 rows
+  pytae data.parquet -tail 5                     # Preview last 5 rows
+  pytae data.parquet -cols                       # Column names (file order)
+  pytae data.parquet -cols asc                   # Column names (alphabetical)
+  pytae data.parquet -dtype                      # Column data types
+  pytae data.parquet -nulls                      # Missing count per column
+  pytae data.parquet -glimpse                    # Transposed overview
+  pytae data.parquet -describe                   # Statistical summary
+  pytae data.parquet -meta                       # Parquet row groups/compression
+  pytae data.parquet -sample 10 -seed 42         # Random sample with seed
+  pytae data.parquet -sample -frac 0.05          # Sample 5% fraction of rows
+
+2. 🔍 ROW FILTERING & SLICING (-filter)
+--------------------------------------------------------------------------------
+  pytae data.parquet -filter "species = 'Gentoo'"
+  pytae data.parquet -filter "body_mass_g > 5000"
+  pytae data.parquet -filter "body_mass_g >= 3500, flipper_length_mm < 210"
+  pytae loans.parquet -filter "exposure > col(limit)"             # Column compare
+  pytae loans.parquet -filter "tranche_id == col(deal_id)"        # ID equality
+  pytae data.parquet -filter "body_mass_g = [3000, 3500]"         # Interval [min, max]
+  pytae data.parquet -filter "species = ['Adelie', 'Chinstrap']"  # Set membership
+  pytae data.parquet -filter "species not in ['Gentoo']"
+  pytae data.parquet -filter "sex.notna()"                        # Missing checks
+  pytae data.parquet -filter "sex is not null"
+  pytae data.parquet -filter "counterparty_class_(irb).notna()"   # Special columns
+  pytae data.parquet -dropna                                      # Drop 100% null rows
+  pytae data.parquet -dropna "body_mass_g,sex"
+
+3. 🛠 FEATURE ENGINEERING & MUTATION (-mutate)
+--------------------------------------------------------------------------------
+  pytae data.parquet -mutate "mass_kg = body_mass_g / 1000.0"
+  pytae data.parquet -mutate "kg = body_mass_g / 1000, lbs = kg * 2.20462"
+  pytae data.parquet -mutate "size = if_else(body_mass_g > 4000, 'Large', 'Small')"
+  pytae data.parquet -mutate "tier = case_when(body_mass_g > 5000, 'H', body_mass_g > 3500, 'M', default='L')"
+  pytae data.parquet -mutate "is_gentoo = map(species, {'Gentoo': True}, default=False)"
+  pytae data.parquet -mutate "region = map(island, {'Biscoe': 'South'}, default='Other')"
+  pytae data.parquet -mutate "species_lower = species.str.lower()"
+  pytae data.parquet -mutate "diff = irba_unsecured_lgd_(1g00) - post_crm_lgd_(2a)"
+
+4. 🎯 COLUMN SELECTION & RENAMING (--select, -rename)
+--------------------------------------------------------------------------------
+  pytae data.parquet --select "species,island,body_mass_g"
+  pytae data.parquet --select "!sex,!year"                        # Drop columns
+  pytae data.parquet --select "startswith=bill_"                  # Prefix match
+  pytae data.parquet --select "endswith=_mm"                      # Suffix match
+  pytae data.parquet --select "contains=length"                   # Substring match
+  pytae data.parquet --select "dtype=float"                       # Dtype match
+  pytae data.parquet -rename "body_mass_g:weight_g"               # Old:new
+  pytae messy.csv -clean_columns "strip,fill=_,case=lower,dedupe" # Header hygiene
+
+5. 📊 IN-TERMINAL VISUALIZATIONS
+--------------------------------------------------------------------------------
+  pytae data.parquet -freq species                                # Frequency table
+  pytae data.parquet -freq species -bar                           # ASCII bar chart
+  pytae data.parquet -hist body_mass_g                            # Histogram
+  pytae data.parquet -hist body_mass_g:20                         # 20-bin histogram
+  pytae data.parquet -scatter "bill_length_mm,bill_depth_mm"     # ASCII scatter
+  pytae data.parquet -corr                                        # Correlation matrix
+  pytae data.parquet -by species -agg "avg=body_mass_g:mean" \\
+    -plot "kind=bar, x=species, y=avg" -finalize "save=chart.png" # PNG figure
+
+6. 📈 AGGREGATION & GROUPING (-by, -agg)
+--------------------------------------------------------------------------------
+  pytae data.parquet -by species -count
+  pytae data.parquet -by species -agg "avg_mass=body_mass_g:mean, total=count"
+  pytae data.parquet -by "species,island" -agg "mean_mass=body_mass_g:mean"
+  pytae data.parquet -distinct "species,island"
+  pytae data.parquet -arrange "species asc, body_mass_g desc"
+
+7. 🔄 RESHAPING & PIVOTING (-long, -wide, -pivot)
+--------------------------------------------------------------------------------
+  pytae data.parquet -long "r=species,island, c=metric, v=val"
+  pytae long.parquet -wide "r=species, c=metric, v=val"
+  pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
+
+8. 🔗 MULTI-FILE RELATIONAL OPERATIONS (-file, -join, -concat, -sql)
+--------------------------------------------------------------------------------
+  pytae -file "orders.parquet=ord; customers.csv=cust" \\
+    -join "left=ord, right=cust, on=customer_id, how=left" -head 10
+  pytae -file "q1.parquet=a; q2.parquet=b" -concat "frames=a,b" -shape
+  pytae -file "sales.parquet=s; stores.csv=st" \\
+    -sql "SELECT st.region, SUM(s.amount) FROM s JOIN st ON s.store_id = st.id GROUP BY 1"
+
+9. 💾 FORMAT CONVERSIONS & SINKS (-o)
+--------------------------------------------------------------------------------
+  pytae legacy.sas7bdat -o clean.parquet                          # SAS to Parquet
+  pytae data.parquet -o export.csv                                # Parquet to CSV
+  pytae "raw/*.csv" -o parquet -out_dir "clean/"                  # Batch convert
+  pytae data.txt -dlim "\\t" -encoding latin-1 -o data.parquet
+  pytae data.parquet -filter "species == 'Gentoo'" -head 10 -o clip # System clipboard
+
+10. 🧪 DRIFT & DIFFERENCE DETECTION (-diff)
+--------------------------------------------------------------------------------
+  pytae baseline.parquet -diff current.parquet                    # Schema + cell diff
+  pytae baseline.parquet -diff current.parquet -tol 1e-4          # Numerical tolerance
+  pytae left.csv -diff right.csv -dlim "," -tol 0.001
+
+11. 🚰 UNIX SHELL PIPING
+--------------------------------------------------------------------------------
+  cat raw_stream.csv | pytae - -fmt csv -shape                    # Pipe from STDIN
+  pytae data.parquet -filter "body_mass_g > 4000" | grep "Biscoe" | less
+  pytae data.parquet -select "species,body_mass_g" > top.txt      # Redirect stdout
+  pytae archive.csv.gz -shape -head 5                             # Inspect gz stream
+
+Full documentation: https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md
+================================================================================
+"""
+
+################################################################################
 # FILE: src/pytae/cli.py
 ################################################################################
 """Command line tool for inspecting tabular files (parquet/csv/txt/sas7bdat) and converting between formats."""
@@ -15522,6 +15574,10 @@ def _is_path_like(token: str) -> bool:
 _CLI_FLAGS = {
     "-version",
     "--version",
+    "-cheatsheet",
+    "--cheatsheet",
+    "-examples",
+    "--examples",
     "-head",
     "--head",
     "-tail",
@@ -15713,6 +15769,31 @@ def _is_stdin_piped() -> bool:
         return False
 
 
+class _CheatsheetAction(argparse.Action):
+    """Custom action to print terminal cheatsheet and exit."""
+
+    def __init__(
+        self,
+        option_strings: Sequence[str],
+        dest: str = argparse.SUPPRESS,
+        default: Any = argparse.SUPPRESS,
+        help: str | None = None,
+    ) -> None:
+        super().__init__(option_strings=option_strings, dest=dest, default=default, nargs=0, help=help)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
+        from pytae.cheatsheet import CHEATSHEET_TEXT
+
+        sys.stdout.write(CHEATSHEET_TEXT)
+        parser.exit(0)
+
+
 class PytaeParser(argparse.ArgumentParser):
     """Custom parser that normalizes optional-value flags such as -progress and negative -select specs."""
 
@@ -15744,6 +15825,14 @@ def build_parser() -> argparse.ArgumentParser:
         "omit when piping from stdin or using -file with -join/-concat/-sql",
     )
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "-cheatsheet",
+        "--cheatsheet",
+        "-examples",
+        "--examples",
+        action=_CheatsheetAction,
+        help="print CLI quick-reference cheat sheet and cookbook recipes",
+    )
     parser.add_argument(
         "-head",
         "--head",
@@ -15974,9 +16063,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SPEC",
         help="restrict columns at this point in the pipeline (union of tokens in one SPEC): "
-        "names, start:end slices, -negated names/slices (-col, ~col), and key=value (dtype, "
-        "exclude, contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
-        'including after -agg/-long/-wide, e.g. -select "-species" or -select "contains=bill"',
+        "names, start:end slices, !negated names/slices (!col, -col, ~col), and key=value (dtype, "
+        "contains, startswith, endswith, regex, exclude_dtype); repeat to filter remaining columns, "
+        'including after -agg/-long/-wide, e.g. -select "!species" or -select "contains=bill"',
     )
     parser.add_argument(
         "-agg",
@@ -15989,8 +16078,8 @@ def build_parser() -> argparse.ArgumentParser:
         action=_OrderedValue,
         help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
         "without -by, computes a whole-table summary (grand total). "
-        "Accepts a name (mean), a comma list (mean,sum,n), or column mappings "
-        "(v1 = sum, total = v1:sum, count = n). Defaults to sum.",
+        "Accepts a name (mean), a comma list (mean,sum,count), or column mappings "
+        "(v1 = sum, total = v1:sum, n = count). Defaults to sum.",
     )
     parser.add_argument(
         "-fillna",
@@ -16742,14 +16831,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Select, reorder, slice, or exclude columns.",
         description=(
             "Restricts and reorders columns at this point in the pipeline.\n"
-            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (-col, ~col),\n"
-            "and criteria matchers (contains=, startswith=, endswith=, regex=, dtype=, exclude=)."
+            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (!col, -col, ~col),\n"
+            "and criteria matchers (contains=, startswith=, endswith=, regex=, dtype=)."
         ),
         options=[
             "col1,col2 : Keep specific columns in the exact order requested.",
             "start:end : Contiguous slice range (inclusive of both bounds).",
-            "-col, ~col : Exclude specified columns from the output.",
-            "-start:end : Drop a contiguous range of columns.",
+            "!col, -col, ~col : Exclude specified columns from output (!col recommended to avoid CLI flag collisions).",
+            "!start:end, -start:end : Drop a contiguous range of columns.",
             "contains=substr : Match columns containing substring.",
             "startswith=prefix : Match columns starting with prefix.",
             "endswith=suffix : Match columns ending with suffix.",
@@ -16760,7 +16849,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             'pytae penguins.parquet -select "species,island,body_mass_g"',
             'pytae penguins.parquet -select "bill_length_mm:body_mass_g"',
-            'pytae penguins.parquet -select "-sex, -year"',
+            'pytae penguins.parquet -select "!sex,!year"',
             'pytae penguins.parquet -select "contains=bill, species"',
             'pytae penguins.parquet -select "dtype=numeric"',
         ],
@@ -16843,14 +16932,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Computes summary statistics on numeric columns.\n"
             "If -by is omitted, produces a whole-table grand total summary.\n"
-            "Accepts a function name ('mean'), a list ('mean,sum,n'), or mapped expressions ('avg=mean,total=sum').\n"
+            "Accepts a function name ('mean'), a list ('mean,sum,count'), or mapped expressions ('avg=mean,total=sum').\n"
             "By default, missing values (NaN) in group columns form their own group (dropna=False) to prevent silent data loss.\n"
             "To exclude rows with missing group keys, chain -dropna before -agg (e.g. -dropna species -by species -agg mean)."
         ),
         options=[
             "-by <cols> : Grouping column(s) (comma-separated).",
             "mean, sum, median, min, max, std, var : Built-in aggregation functions.",
-            "n : Group row count (pure integer).",
+            "count : Group row count (pure integer).",
             "col = func : Column-specific mapping (e.g. 'total=sum,avg=mean').",
             "dropna = bool : In-spec dropna setting (default: false preserves NA groups).",
         ],
@@ -16896,20 +16985,21 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "long": KeywordHelp(
         name="long",
         flag="-long, --long [KEY=VALUE,...]",
-        syntax="pytae <path> -long [c=var,v=val,cols=cols,id_vars=id_cols]",
+        syntax="pytae <path> -long [r=id_cols,c=var,v=val,cols=cols]",
         summary="Melt wide tables to tall format (pure 1-to-1 unpivoting without aggregation).",
         description=(
             "Melts columns into variable/value rows.\n"
             "If cols is omitted, automatically melts all numeric columns, keeping non-numeric as ID variables."
         ),
         options=[
+            "r=cols (or id_vars=) : Identifier column(s) to preserve as rows (unified rcva grammar).",
             "c=name : Header column name for melted variables (default: 'variable').",
             "v=name : Value column name for measurements (default: 'value').",
             "cols=col1,col2 : Explicit columns to melt into rows.",
-            "id_vars=id1,id2 : Identifier columns to preserve as rows.",
         ],
         examples=[
             "pytae penguins.parquet -long",
+            'pytae penguins.parquet -long "r=species,c=metric,v=value"',
             'pytae penguins.parquet -long "c=measurement,v=value"',
             "pytae data.csv -long \"cols='q1,q2,q3,q4',c=quarter,v=revenue\"",
         ],
@@ -16952,7 +17042,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
-            'pytae penguins.parquet -by "species,island" -agg "mean,n"',
+            'pytae penguins.parquet -by "species,island" -agg "mean,count"',
             'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
             'pytae penguins.parquet -by species -mutate "avg = mean(body_mass_g)"',
         ],
@@ -17578,7 +17668,7 @@ from pytae._text import _ColRef, _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
-SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex", "exclude")
+SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
 
 
 def parse_columns(raw: str) -> list[str]:
@@ -17921,6 +18011,11 @@ def parse_select_spec(raw: str) -> tuple[list[str], dict]:
             key, _, value = token.partition("=")
             key = key.strip()
             value = value.strip()
+            if key == "exclude":
+                raise SystemExit(
+                    "-select: 'exclude=' is retired in favor of '!' negation. "
+                    "Use -select '!col' or -select '!col1,!col2' instead."
+                )
             if key in SELECT_KEYS:
                 if not value:
                     raise SystemExit(f"-select: {key}= needs a value")
@@ -17945,7 +18040,7 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
         clean = _unquote_name(token)
         if clean in available:
             continue
-        if token.startswith(("-", "~")):
+        if token.startswith(("-", "~", "!")):
             raw = _unquote_name(token[1:].strip())
             if raw in available:
                 continue
@@ -18280,6 +18375,8 @@ def parse_agg(raw: str):
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             if not key or not value:
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
+            if key in out:
+                raise ValueError(f"agg(): output column name '{key}' is duplicated in aggregation specification")
             out[key] = value
         if dropna_flag is not None:
             out["__dropna__"] = dropna_flag
@@ -18325,7 +18422,7 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_LONG_KEYS = ("cols", "id_vars", "c", "v")
+_LONG_KEYS = ("cols", "id_vars", "c", "v", "r")
 _WIDE_KEYS = ("r", "c", "v")
 
 
@@ -18384,7 +18481,12 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
 
 
 def parse_long_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
+    kwargs = parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
+    if "r" in kwargs:
+        if "id_vars" in kwargs:
+            raise SystemExit("-long: cannot specify both r= and id_vars=")
+        kwargs["id_vars"] = kwargs.pop("r")
+    return kwargs
 
 
 def parse_wide_arg(raw: str | None) -> dict:
@@ -18979,7 +19081,7 @@ class _Pipeline:
             or self._df is not None
             or bool(kwargs)
             or any(":" in token for token in names)
-            or any(token.startswith(("-", "~")) for token in names)
+            or any(token.startswith(("-", "~", "!")) for token in names)
         )
         if not needs_frame:
             self._pending_exact = [_unquote_name(n) for n in names]
@@ -19937,7 +20039,22 @@ def cmd_convert(
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if announce:
-        print(f"Wrote {len(df)} rows to {dest}")
+        import polars as pl
+
+        if isinstance(df, pl.LazyFrame):
+            if dest.suffix in (".parquet", ".pq") and dest.exists():
+                import pyarrow.parquet as pa_parquet
+
+                num_rows = pa_parquet.ParquetFile(dest).metadata.num_rows
+            elif dest.suffix in (".csv", ".tsv", ".txt") and dest.exists():
+                num_rows = pl.scan_csv(dest, separator=sep or ",").select(pl.len()).collect().item()
+            elif dest.suffix in (".jsonl", ".ndjson") and dest.exists():
+                num_rows = pl.scan_ndjson(dest).select(pl.len()).collect().item()
+            else:
+                num_rows = df.select(pl.len()).collect().item()
+        else:
+            num_rows = len(df)
+        print(f"Wrote {num_rows} rows to {dest}")
 
 
 def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
@@ -20605,7 +20722,12 @@ def _process_path(
             if out_dir is not None and not dest.is_absolute():
                 dest = out_dir / dest
 
-        df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
+        import polars as pl
+
+        if args.round_ndigits is None and pipeline._pldf is not None and isinstance(pipeline._pldf, pl.LazyFrame):
+            df_to_write = pipeline._pldf
+        else:
+            df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
         try:
             cmd_convert(
                 df_to_write,
@@ -20961,7 +21083,6 @@ class DataFrame:
     def copy(self, deep: bool = True) -> DataFrame:
         df = DataFrame(self._df.clone(), orig_col_map=self._orig_col_map)
         df._orig_index = list(self._orig_index) if self._orig_index is not None else None
-        df._col_collisions = set(self._col_collisions)
         return df
 
     def clone(self) -> DataFrame:
@@ -21748,7 +21869,6 @@ class DataFrame:
         f_v: Any = None,
         **kwargs: Any,
     ) -> DataFrame:
-        """Compute multi-dimensional cross-tabulations and pivot tables."""
         c_list = [c] if isinstance(c, str) else (list(c) if c else [])
         for col in c_list:
             if str(col) in self._col_collisions:
@@ -21763,8 +21883,13 @@ class DataFrame:
         id_vars: str | Sequence[str] | None = None,
         c: str = "variable",
         v: str = "value",
+        r: str | Sequence[str] | None = None,
     ) -> DataFrame:
         """Reshape DataFrame from wide to long format (unpivot/melt)."""
+        if r is not None:
+            if id_vars is not None:
+                raise ValueError("long() cannot accept both 'r' and 'id_vars'")
+            id_vars = r
         return DataFrame(long_polars(self._df, cols=cols, id_vars=id_vars, c=c, v=v))
 
     def wide(
@@ -24774,7 +24899,7 @@ from pytae._parsing import (
     _extract_arrange_specs,
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
-    _rewrite_fallback_col_refs,
+    _rewrite_col_refs,
     _strip_at_refs,
 )
 from pytae._text import _ColRef
@@ -24798,7 +24923,7 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
     """Convert a pytae filter condition tuple/value into a Polars Expression."""
     if schema is not None and col not in schema and ("." in col or "(" in col):
         cur_cols = set(schema.names())
-        safe_expr, col_map = _rewrite_fallback_col_refs(col, cur_cols)
+        safe_expr, col_map = _rewrite_col_refs(col, cur_cols)
         parsed = ast.parse(safe_expr, mode="eval")
         col_expr = _ast_to_polars_expr(parsed, cur_cols, col_map, schema=schema)
         is_numeric = False
@@ -26304,7 +26429,7 @@ def mutate_polars(
                         raise KeyError(f"local variable '@{var_name}' is not defined{hint}")
 
             cur_cols = set(_df_columns(cur))
-            safe_expr, col_map = _rewrite_fallback_col_refs(expr_str, cur_cols)
+            safe_expr, col_map = _rewrite_col_refs(expr_str, cur_cols)
             try:
                 parsed = ast.parse(safe_expr, mode="eval")
                 expr = _ast_to_polars_expr(parsed, cur_cols, col_map, by=by, schema=_df_schema(cur), params=params)
@@ -26478,11 +26603,16 @@ def long_polars(
     id_vars: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
+    r: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Unpivot a Polars DataFrame from wide to long format."""
     if kwargs:
         raise TypeError(f"long_polars() got unexpected keyword argument(s): {list(kwargs.keys())}")
+    if r is not None:
+        if id_vars is not None:
+            raise ValueError("long(): cannot specify both 'r' and 'id_vars'")
+        id_vars = r
 
     all_cols = _df_columns(df)
 
@@ -26699,14 +26829,20 @@ def agg_polars(
 
             parsed = parse_agg(item)
             if isinstance(parsed, dict):
-                active_kwargs.update(parsed)
+                for k, v in parsed.items():
+                    if k in active_kwargs:
+                        raise ValueError(f"agg(): output column name '{k}' is duplicated in aggregation specification")
+                    active_kwargs[k] = v
             else:
                 remaining_specs.append(item)
         else:
             remaining_specs.append(item)
 
     if kwargs:
-        active_kwargs.update(kwargs)
+        for k, v in kwargs.items():
+            if k in active_kwargs:
+                raise ValueError(f"agg(): output column name '{k}' is duplicated in aggregation specification")
+            active_kwargs[k] = v
 
     if "__dropna__" in active_kwargs:
         dropna = active_kwargs.pop("__dropna__")
@@ -26735,10 +26871,13 @@ def agg_polars(
                 src = _unquote_name(src.strip())
                 fn_list = [f.strip() for f in fn_str.split(",") if f.strip()]
                 if len(fn_list) > 1:
-                    for f in fn_list:
-                        _add_expr(_polars_agg_expr(pl.col(src), f), f"{clean_out}_{f}")
-                else:
-                    _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
+                    example_aliases = ", ".join(f"{clean_out}_{f}='{src}:{f}'" for f in fn_list)
+                    raise ValueError(
+                        f"agg(): multiple aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
+                        "Pytae prohibits creating column names on the fly. "
+                        f"Use Paradigm 2: {example_aliases}"
+                    )
+                _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
             elif isinstance(val, str):
                 fn_call_m = re.match(r"^(\w+)\(([^)]+)\)$", val.strip())
                 if fn_call_m:
@@ -26748,17 +26887,23 @@ def agg_polars(
                 else:
                     fn_list = [f.strip() for f in val.split(",") if f.strip()]
                     if len(fn_list) > 1:
-                        for f in fn_list:
-                            _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
-                    else:
-                        _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                        example_aliases = ", ".join(f"{clean_out}_{f}='{clean_out}:{f}'" for f in fn_list)
+                        raise ValueError(
+                            f"agg(): multiple aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
+                            "Pytae prohibits creating column names on the fly. "
+                            f"Use Paradigm 2: {example_aliases}"
+                        )
+                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             elif isinstance(val, (list, tuple)):
                 fn_list = list(val)
                 if len(fn_list) > 1:
-                    for f in fn_list:
-                        _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
-                else:
-                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                    example_aliases = ", ".join(f"{clean_out}_{f}='{clean_out}:{f}'" for f in fn_list)
+                    raise ValueError(
+                        f"agg(): list of aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
+                        "Pytae prohibits creating column names on the fly. "
+                        f"Use Paradigm 2: {example_aliases}"
+                    )
+                _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             else:
                 raise ValueError(f"agg(): unsupported kwargs specification {clean_out}={val!r}")
     else:
@@ -26807,6 +26952,13 @@ def agg_polars(
         rem_fns = [f for f in unique_fns if f not in ("n", "count", "size")]
         num_cols = [c for c, dt in _df_schema(work_df).items() if dt.is_numeric() and c not in by_cols]
 
+        if len(rem_fns) > 1:
+            raise ValueError(
+                f"agg(): multiple metric functions ({', '.join(repr(f) for f in rem_fns)}) cannot be applied across columns without explicit aliases. "
+                "Pytae prohibits creating column names on the fly (e.g. '{col}_{fn}'). "
+                "Use Paradigm 2 with explicit aliases instead: e.g. .agg(n='count', avg_col='col:mean', sum_col='col:sum')"
+            )
+
         if has_n and "n" in num_cols:
             raise ValueError(
                 "agg(): cannot compute 'n' (row count) because the input already has a numeric column named 'n'"
@@ -26819,8 +26971,7 @@ def agg_polars(
 
         for c in num_cols:
             for fn in rem_fns:
-                col_name = f"{c}_{fn}" if len(rem_fns) > 1 else c
-                _add_expr(_polars_agg_expr(pl.col(c), fn), col_name)
+                _add_expr(_polars_agg_expr(pl.col(c), fn), c)
 
     if not exprs:
         raise ValueError("agg(): no aggregation expressions could be constructed")
@@ -27172,8 +27323,8 @@ class ParquetReader:
         nrows: int | None = None,
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
-        if not progress and nrows is None:
-            df = pd.read_parquet(self.path, columns=columns)
+        if not progress:
+            df = self.to_polars(columns=columns, nrows=nrows).to_pandas()
             if "_pt_by" in df.attrs:
                 del df.attrs["_pt_by"]
             return df
@@ -27293,6 +27444,11 @@ class CsvReader:
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
         if not progress:
+            if self.encoding is None or self.encoding.lower() in ("utf-8", "utf8"):
+                try:
+                    return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+                except Exception:
+                    pass
             return pd.read_csv(
                 self.path,
                 sep=self.sep,
@@ -27428,6 +27584,11 @@ class TxtReader:
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
         if not progress:
+            if self.encoding is None or self.encoding.lower() in ("utf-8", "utf8"):
+                try:
+                    return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+                except Exception:
+                    pass
             return pd.read_csv(
                 self.path,
                 sep=self.sep,
@@ -27906,6 +28067,38 @@ def write_dataframe(
 ) -> None:
     import polars as pl
 
+    if hasattr(df, "_df") and isinstance(df._df, (pl.DataFrame, pl.LazyFrame)):
+        df = df._df
+
+    if isinstance(df, pl.LazyFrame):
+        suffix, compression = _split_path_suffixes(dest)
+        if suffix in (".parquet", ".pq"):
+            try:
+                df.sink_parquet(dest)
+                return
+            except Exception:
+                df = df.collect()
+        elif suffix == ".csv":
+            if compression != "gzip" and (encoding is None or encoding.lower() in ("utf-8", "utf8")):
+                try:
+                    df.sink_csv(dest, separator=sep or ",")
+                    return
+                except Exception:
+                    df = df.collect()
+            else:
+                df = df.collect()
+        elif suffix in (".jsonl", ".ndjson"):
+            if compression is None:
+                try:
+                    df.sink_ndjson(dest)
+                    return
+                except Exception:
+                    df = df.collect()
+            else:
+                df = df.collect()
+        else:
+            df = df.collect()
+
     if isinstance(df, pl.DataFrame):
         suffix, compression = _split_path_suffixes(dest)
         if progress or (encoding is not None and encoding.lower() not in ("utf-8", "utf8")):
@@ -28363,30 +28556,10 @@ def resolve_select_columns(
             raise KeyError(f"Column to exclude not found: '{raw}'{hint}")
 
     if exclude is not None:
-        if isinstance(exclude, str):
-            raw_exclude = exclude.strip()
-            if raw_exclude.startswith("[") and raw_exclude.endswith("]"):
-                raw_exclude = raw_exclude[1:-1].strip()
-            for token in _tokenize(raw_exclude, ",", keep_quotes=True, track_brackets=True):
-                token = _unquote_name(token.strip())
-                if token:
-                    excluded_cols.update(_resolve_negation(token))
-        elif isinstance(exclude, (list, tuple, set)):
-            for item in exclude:
-                if isinstance(item, str):
-                    clean_item = _unquote_name(item.strip())
-                    if clean_item.startswith("[") and clean_item.endswith("]"):
-                        clean_item = clean_item[1:-1].strip()
-                    for sub in _tokenize(clean_item, ",", keep_quotes=True, track_brackets=True):
-                        sub = _unquote_name(sub.strip())
-                        if sub:
-                            excluded_cols.update(_resolve_negation(sub))
-                elif item in all_cols:
-                    excluded_cols.add(item)
-                else:
-                    raise KeyError(f"Column to exclude not found: '{item}'")
-        else:
-            raise TypeError(f"exclude must be a string or sequence of strings, got {type(exclude)}")
+        raise ValueError(
+            "select(): 'exclude=' is retired in favor of '!' negation. "
+            "Use positional negation instead: e.g. select('!col') or select('!col1', '!col2')."
+        )
 
     for arg in args:
         if arg is everything or isinstance(arg, everything):
@@ -28402,7 +28575,7 @@ def resolve_select_columns(
                     selected_cols.add(clean_col)
                     if clean_col not in ordered_cols:
                         ordered_cols.append(clean_col)
-                elif isinstance(col, str) and col.startswith(("-", "~")):
+                elif isinstance(col, str) and col.startswith(("-", "~", "!")):
                     excluded_cols.update(_resolve_negation(col[1:]))
                 else:
                     close = difflib.get_close_matches(str(clean_col), [str(c) for c in all_cols], n=1)
@@ -28418,7 +28591,7 @@ def resolve_select_columns(
                 selected_cols.add(clean_arg)
                 if clean_arg not in ordered_cols:
                     ordered_cols.append(clean_arg)
-            elif arg.startswith(("-", "~")):
+            elif arg.startswith(("-", "~", "!")):
                 excluded_cols.update(_resolve_negation(arg[1:]))
             elif ":" in arg:
                 start_raw, end_raw = arg.split(":", 1)
@@ -28446,7 +28619,7 @@ def resolve_select_columns(
                         selected_cols.add(clean_sub)
                         if clean_sub not in ordered_cols:
                             ordered_cols.append(clean_sub)
-                    elif sub_token.startswith(("-", "~")):
+                    elif sub_token.startswith(("-", "~", "!")):
                         excluded_cols.update(_resolve_negation(sub_token[1:]))
                     elif ":" in sub_token:
                         s_raw, e_raw = sub_token.split(":", 1)
@@ -28968,8 +29141,15 @@ def test_all_agg():
     )
     df["id"] = df["id"].replace("", np.nan)
 
-    # Default dropna=False keeps NA groups
-    result = pt.agg(pt.by(df, "id", "country"), a=["sum", "min", "mean", "min", "max", "n"])
+    # Multi-metric aggregations require explicit Paradigm 2 aliases (zero on-the-fly columns)
+    result = pt.agg(
+        pt.by(df, "id", "country"),
+        n="count",
+        balance_sum="balance:sum",
+        balance_min="balance:min",
+        balance_mean="balance:mean",
+        balance_max="balance:max",
+    )
 
     expected_df = (
         df.groupby(["id", "country"], dropna=False)
@@ -28996,7 +29176,15 @@ def test_all_agg_drop_na():
     )
     df["id"] = df["id"].replace("", np.nan)
 
-    result = pt.agg(pt.by(df, "id", "country"), a=["sum", "min", "mean", "min", "max", "n"], dropna=True)
+    result = pt.agg(
+        pt.by(df, "id", "country"),
+        n="count",
+        balance_sum="balance:sum",
+        balance_min="balance:min",
+        balance_mean="balance:mean",
+        balance_max="balance:max",
+        dropna=True,
+    )
 
     expected_df = (
         df.groupby(["id", "country"], dropna=True)
@@ -29011,6 +29199,16 @@ def test_all_agg_drop_na():
     )
     expected_df = expected_df[["id", "country", "n", "balance_sum", "balance_min", "balance_mean", "balance_max"]]
     pd.testing.assert_frame_equal(result, expected_df)
+
+
+def test_agg_df_multi_metric_without_aliases_raises():
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
+    with pytest.raises(ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"):
+        df.pt.by("g").pt.agg(a=["mean", "sum"])
+    with pytest.raises(ValueError, match="multiple aggregation functions in .* cannot be applied without explicit aliases"):
+        df.pt.by("g").pt.agg(v="mean,sum")
+    with pytest.raises(ValueError, match="list of aggregation functions in .* cannot be applied without explicit aliases"):
+        df.pt.by("g").pt.agg(v=["mean", "sum"])
 
 
 def test_agg_df_raises_when_n_collides_with_real_column():
@@ -29067,12 +29265,26 @@ def test_agg_df_whole_table_summary():
             "units": [10, 20, 30],
         }
     )
-    res = df.pt.agg(a=["sum", "mean", "n"])
+    # Whole-table single metric + count: 1-to-1 column preservation
+    res = df.pt.agg(a=["sum", "n"])
     assert len(res) == 1
-    assert list(res.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
+    assert list(res.columns) == ["n", "sales", "units"]
     assert res["n"].iloc[0] == 3
-    assert res["sales_sum"].iloc[0] == 600.0
-    assert res["sales_mean"].iloc[0] == 200.0
+    assert res["sales"].iloc[0] == 600.0
+    assert res["units"].iloc[0] == 60
+
+    # Whole-table multiple metrics require explicit aliases (Paradigm 2)
+    res_multi = df.pt.agg(
+        n="count",
+        sales_sum="sales:sum",
+        sales_mean="sales:mean",
+        units_sum="units:sum",
+        units_mean="units:mean",
+    )
+    assert len(res_multi) == 1
+    assert list(res_multi.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
+    assert res_multi["sales_sum"].iloc[0] == 600.0
+    assert res_multi["sales_mean"].iloc[0] == 200.0
 
 
 def test_agg_df_string_spec_with_brackets():
@@ -29157,14 +29369,11 @@ def test_agg_df_string_spec_errors():
         df.pt.by("g").pt.agg("mean", a="sum")
 
 
-def test_agg_df_multi_agg_column_flattening_preserves_underscores():
-    # Lib Issue 1: multi-agg flattening preserves leading/trailing underscores
+def test_agg_df_multi_metric_without_aliases_raises_on_the_fly():
+    # Multi-metric without explicit alias is rejected because columns cannot be created on the fly
     df = pd.DataFrame({"g": ["a", "b"], "_x": [1, 2], "y_": [3, 4]})
-    res = df.pt.by("g").pt.agg(["mean", "sum"])
-    assert "_x_mean" in res.columns
-    assert "_x_sum" in res.columns
-    assert "y__mean" in res.columns
-    assert "y__sum" in res.columns
+    with pytest.raises(ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"):
+        df.pt.by("g").pt.agg(["mean", "sum"])
 
 
 def test_agg_df_group_by_n_with_count_n_raises():
@@ -29191,14 +29400,14 @@ def test_agg_df_duplicate_output_cols():
     # Issue 1: duplicate output column name in named_aggs / output_cols
     df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
     with pytest.raises(ValueError, match="is duplicated in aggregation specification"):
-        df.pt.by("Region").pt.agg(Sales_sum="Profit:sum", Sales="Sales:sum,mean")
+        df.pt.by("Region").pt.agg("Sales_sum = Profit:sum, Sales_sum = Sales:sum")
 
 
 def test_agg_df_list_collision_with_group_col():
-    # Issue 2: generated agg column collides with group column in _agg_df_list
+    # Collision check: explicit alias colliding with group column raises
     df = pd.DataFrame({"Sales_sum": ["A", "B"], "Sales": [10, 20]})
     with pytest.raises(ValueError, match="collides with group column 'Sales_sum'"):
-        df.pt.by("Sales_sum").pt.agg(["sum", "mean"])
+        df.pt.by("Sales_sum").pt.agg(Sales_sum="Sales:sum")
 
 
 def test_agg_df_comma_separated_by_string():
@@ -32557,6 +32766,22 @@ def test_cli_pivot_default_f_v_is_null_for_metrics(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "NaN" in out or "null" in out
 
+
+def test_cli_long_r_param(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "id": ["A", "B"],
+            "cat": ["X", "Y"],
+            "val1": [1, 2],
+            "val2": [3, 4],
+        }
+    )
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-long", "r=id,cat,c=metric,v=num", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["id", "cat", "metric", "num"]
+
 ################################################################################
 # FILE: tests/test_cli_sample_datasets.py
 ################################################################################
@@ -32940,13 +33165,18 @@ def test_select_cli_negative_column_syntax(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["species", "val"]
 
 
-def test_select_cli_exclude_kwarg(tmp_path, capsys):
+def test_select_cli_exclude_kwarg_retired(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"species": ["A"], "island": ["B"], "val": [1]}),
     )
 
-    exit_code = cli.main([path, "-select", "exclude=species", "-cols"])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "exclude=species", "-cols"])
+    assert "exclude=' is retired in favor of '!'" in str(exc_info.value)
+
+    # Canonical '!' negation works cleanly
+    exit_code = cli.main([path, "-select", "!species", "-cols"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["island", "val"]
 
@@ -33258,6 +33488,305 @@ def test_cli_sql_works_without_duckdb(tmp_path, capsys, monkeypatch):
     exit_code = cli.main([str(path), "-sql", "select y from data where x >= 20", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
+
+################################################################################
+# FILE: tests/test_cli_subprocess.py
+################################################################################
+"""Subprocess-level tests for pytae CLI.
+
+Verifies true Unix CLI behavior:
+- Subprocess execution via `python -m pytae.cli`
+- Standard input (STDIN) stream piping (`- -fmt csv`)
+- Shell exit codes (0 for success, 2 for CLI argument errors)
+- File format conversions (-o parquet, -o csv)
+- Pipeline chaining (-filter, -mutate, -select, -arrange)
+- Cold-start invocation latency benchmark
+- Special character column names in CLI filter/mutate
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pandas as pd
+import polars as pl
+
+
+def _run_cli(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Execute pytae CLI in a clean subprocess."""
+    cmd = [sys.executable, "-m", "pytae.cli", *args]
+    return subprocess.run(
+        cmd,
+        input=stdin,
+        text=True,
+        capture_output=True,
+    )
+
+
+# =============================================================================
+# 1. Version and Help
+# =============================================================================
+
+
+def test_cli_version():
+    proc = _run_cli("-version")
+    assert proc.returncode == 0
+    assert "pytae" in proc.stdout
+
+
+def test_cli_help():
+    proc = _run_cli("--help")
+    assert proc.returncode == 0
+    assert "usage: pytae" in proc.stdout
+    assert "-filter" in proc.stdout
+    assert "-mutate" in proc.stdout
+    assert "-cheatsheet" in proc.stdout
+
+
+def test_cli_cheatsheet():
+    proc = _run_cli("-cheatsheet")
+    assert proc.returncode == 0
+    assert "PYTAE CLI CHEAT SHEET & COOKBOOK" in proc.stdout
+    assert "-filter" in proc.stdout
+    assert "-mutate" in proc.stdout
+
+
+def test_cli_examples():
+    proc = _run_cli("-examples")
+    assert proc.returncode == 0
+    assert "PYTAE CLI CHEAT SHEET & COOKBOOK" in proc.stdout
+
+
+# =============================================================================
+# 2. STDIN Stream Piping
+# =============================================================================
+
+
+def test_cli_stdin_shape():
+    csv_data = "col1,col2,col3\n1,2,3\n4,5,6\n7,8,9\n"
+    proc = _run_cli("-", "-fmt", "csv", "-shape", stdin=csv_data)
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "(3, 3)"
+
+
+def test_cli_stdin_pipeline_filter_mutate_select():
+    csv_data = (
+        "species,bill_length_mm,body_mass_g\n"
+        "Adelie,39.1,3750\n"
+        "Gentoo,46.1,4500\n"
+        "Gentoo,50.0,5700\n"
+        "Chinstrap,46.5,3800\n"
+    )
+    proc = _run_cli(
+        "-",
+        "-fmt",
+        "csv",
+        "-filter",
+        "species == 'Gentoo'",
+        "-mutate",
+        "mass_kg = body_mass_g / 1000.0",
+        "-select",
+        "species,mass_kg",
+        "-arrange",
+        "mass_kg desc",
+        stdin=csv_data,
+    )
+    assert proc.returncode == 0
+    out = proc.stdout.strip()
+    assert "Gentoo" in out
+    assert "5.7" in out
+    assert "4.5" in out
+    assert "Adelie" not in out
+    assert "Chinstrap" not in out
+
+
+def test_cli_select_negation_exclamation():
+    csv_data = "cola,colb,sex,year\n1,2,F,2020\n3,4,M,2021\n"
+    proc = _run_cli("-", "-fmt", "csv", "-select", "!sex,!year", "-cols", stdin=csv_data)
+    assert proc.returncode == 0
+    assert "cola" in proc.stdout
+    assert "colb" in proc.stdout
+    assert "sex" not in proc.stdout
+    assert "year" not in proc.stdout
+
+
+def test_cli_long_rcva():
+    csv_data = "id,q1,q2\nA,10,20\nB,30,40\n"
+    proc = _run_cli("-", "-fmt", "csv", "-long", "r=id,c=metric,v=val", "-head", stdin=csv_data)
+    assert proc.returncode == 0
+    out = proc.stdout.strip()
+    assert "metric" in out
+    assert "val" in out
+    assert "q1" in out
+    assert "q2" in out
+
+
+# =============================================================================
+# 3. Exit Codes
+# =============================================================================
+
+
+def test_cli_exit_code_invalid_flag():
+    proc = _run_cli("--this-flag-does-not-exist")
+    assert proc.returncode == 2
+    assert "unrecognized arguments" in proc.stderr
+
+
+def test_cli_exit_code_invalid_flag_combination():
+    proc = _run_cli("dummy.csv", "-frac", "0.5")
+    assert proc.returncode == 2
+    assert "-frac requires -sample" in proc.stderr
+
+
+def test_cli_exit_code_nonexistent_file():
+    proc = _run_cli("this_file_does_not_exist_at_all.parquet", "-shape")
+    assert proc.returncode == 2
+
+
+# =============================================================================
+# 4. File Format Conversions
+# =============================================================================
+
+
+def test_cli_convert_csv_to_parquet(tmp_path: Path):
+    csv_file = tmp_path / "input.csv"
+    pq_file = tmp_path / "output.parquet"
+    df = pd.DataFrame({"id": [1, 2, 3], "value": ["a", "b", "c"]})
+    df.to_csv(csv_file, index=False)
+
+    proc = _run_cli(str(csv_file), "-o", str(pq_file))
+    assert proc.returncode == 0
+    assert pq_file.exists()
+
+    # Verify output parquet can be inspected
+    proc_inspect = _run_cli(str(pq_file), "-shape")
+    assert proc_inspect.returncode == 0
+    assert proc_inspect.stdout.strip() == "(3, 2)"
+
+
+def test_cli_convert_parquet_to_csv(tmp_path: Path):
+    pq_file = tmp_path / "data.parquet"
+    csv_file = tmp_path / "data.csv"
+    df = pd.DataFrame({"x": [10.5, 20.5], "y": [1, 2]})
+    df.to_parquet(pq_file)
+
+    proc = _run_cli(str(pq_file), "-o", str(csv_file))
+    assert proc.returncode == 0
+    assert csv_file.exists()
+
+    read_back = pd.read_csv(csv_file)
+    assert len(read_back) == 2
+    assert list(read_back.columns) == ["x", "y"]
+
+
+# =============================================================================
+# 5. Dataset Diff & Drift Detection
+# =============================================================================
+
+
+def test_cli_diff_in_subprocess(tmp_path: Path):
+    f1 = tmp_path / "day1.csv"
+    f2 = tmp_path / "day2.csv"
+    pd.DataFrame({"id": [1, 2], "val": [10.0, 20.0]}).to_csv(f1, index=False)
+    pd.DataFrame({"id": [1, 2], "val": [10.0, 20.0001]}).to_csv(f2, index=False)
+
+    # Without tolerance: should report differences
+    proc_no_tol = _run_cli(str(f1), "-diff", str(f2))
+    assert proc_no_tol.returncode == 0
+    assert "Mismatches" in proc_no_tol.stdout
+
+    # With tolerance: should match
+    proc_tol = _run_cli(str(f1), "-diff", str(f2), "-tol", "1e-3")
+    assert proc_tol.returncode == 0
+    assert "Identical" in proc_tol.stdout or "within tolerance" in proc_tol.stdout
+
+
+# =============================================================================
+# 6. Cold-Start Latency Benchmark
+# =============================================================================
+
+
+def test_cli_cold_start_speed():
+    """Verify that launching pytae has low cold-start latency."""
+    t0 = time.perf_counter()
+    proc = _run_cli("-version")
+    elapsed = time.perf_counter() - t0
+    assert proc.returncode == 0
+    # Process startup + python import should complete comfortably under 2.0 seconds even on cold cache
+    assert elapsed < 2.0, f"Cold start took too long: {elapsed:.2f}s"
+
+
+# =============================================================================
+# 7. Special Character Columns in CLI Pipeline
+# =============================================================================
+
+
+def test_cli_special_columns_filter_and_mutate(tmp_path: Path):
+    csv_file = tmp_path / "risk.csv"
+    df = pd.DataFrame(
+        {
+            "counterparty_class_(irb)": ["Sovereign", None, "Corporate"],
+            "irba_unsecured_lgd_(1g00)": [0.20, 0.45, 0.70],
+        }
+    )
+    df.to_csv(csv_file, index=False)
+
+    # Null check predicate on special column
+    proc_null = _run_cli(
+        str(csv_file),
+        "-filter",
+        "counterparty_class_(irb).notna()",
+        "-shape",
+    )
+    assert proc_null.returncode == 0
+    assert proc_null.stdout.strip() == "(2, 2)"
+
+    # Numeric comparison + arithmetic on special column
+    proc_mutate = _run_cli(
+        str(csv_file),
+        "-filter",
+        "irba_unsecured_lgd_(1g00) > 0.30",
+        "-mutate",
+        "pct = irba_unsecured_lgd_(1g00) * 100",
+        "-select",
+        "pct",
+        "-head",
+        "1",
+    )
+    assert proc_mutate.returncode == 0
+    assert "45.0" in proc_mutate.stdout
+
+
+def test_cli_lazy_streaming_filter_sink(tmp_path: Path):
+    pq_in = tmp_path / "penguins_in.parquet"
+    pq_out = tmp_path / "null_sex.parquet"
+
+    df = pl.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Gentoo", "Gentoo"],
+            "sex": ["Male", None, "Female", None],
+            "body_mass_g": [3800, 3200, 5000, 4700],
+        }
+    )
+    df.write_parquet(pq_in)
+
+    proc = _run_cli(
+        str(pq_in),
+        "-filter",
+        "sex.is_null()",
+        "-o",
+        str(pq_out),
+    )
+    assert proc.returncode == 0
+    assert "Wrote 2 rows to" in proc.stdout
+    assert pq_out.exists()
+
+    res = pl.read_parquet(pq_out)
+    assert len(res) == 2
+    assert res["sex"].to_list() == [None, None]
 
 ################################################################################
 # FILE: tests/test_cli_visualizations.py
@@ -38378,15 +38907,21 @@ def test_select_negative_column_syntax():
     ]
 
 
-def test_select_exclude_kwarg():
+def test_select_exclude_kwarg_retired():
     df = _wide()
-    assert list(pt.select(df, exclude="species").columns) == [
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+        pt.select(df, exclude="species")
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+        pt.select(df, exclude=["species", "island"])
+
+    # Canonical '!' negation works cleanly
+    assert list(pt.select(df, "!species").columns) == [
         "island",
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
-    assert list(pt.select(df, exclude=["species", "island"]).columns) == [
+    assert list(pt.select(df, "!species", "!island").columns) == [
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
@@ -38449,10 +38984,10 @@ def test_select_contains_startswith_endswith_tuples():
     assert list(res_ew.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
 
 
-def test_select_exclude_bracketed_string():
-    # Issue 8: exclude with bracketed names
+def test_select_negation_bracketed_string():
+    # Negation with bracketed names
     df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
-    res = pt.select(df, exclude="[col a, col b]")
+    res = pt.select(df, "![col a]", "![col b]")
     assert list(res.columns) == ["keep"]
 
 ################################################################################

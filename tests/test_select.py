@@ -172,15 +172,21 @@ def test_select_negative_column_syntax():
     ]
 
 
-def test_select_exclude_kwarg():
+def test_select_exclude_kwarg_retired():
     df = _wide()
-    assert list(pt.select(df, exclude="species").columns) == [
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+        pt.select(df, exclude="species")
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+        pt.select(df, exclude=["species", "island"])
+
+    # Canonical '!' negation works cleanly
+    assert list(pt.select(df, "!species").columns) == [
         "island",
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
-    assert list(pt.select(df, exclude=["species", "island"]).columns) == [
+    assert list(pt.select(df, "!species", "!island").columns) == [
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
@@ -243,8 +249,8 @@ def test_select_contains_startswith_endswith_tuples():
     assert list(res_ew.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
 
 
-def test_select_exclude_bracketed_string():
-    # Issue 8: exclude with bracketed names
+def test_select_negation_bracketed_string():
+    # Negation with bracketed names
     df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
-    res = pt.select(df, exclude="[col a, col b]")
+    res = pt.select(df, "![col a]", "![col b]")
     assert list(res.columns) == ["keep"]

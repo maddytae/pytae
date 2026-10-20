@@ -256,13 +256,18 @@ def test_select_cli_negative_column_syntax(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines() == ["species", "val"]
 
 
-def test_select_cli_exclude_kwarg(tmp_path, capsys):
+def test_select_cli_exclude_kwarg_retired(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
         pd.DataFrame({"species": ["A"], "island": ["B"], "val": [1]}),
     )
 
-    exit_code = cli.main([path, "-select", "exclude=species", "-cols"])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([path, "-select", "exclude=species", "-cols"])
+    assert "exclude=' is retired in favor of '!'" in str(exc_info.value)
+
+    # Canonical '!' negation works cleanly
+    exit_code = cli.main([path, "-select", "!species", "-cols"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["island", "val"]
 
