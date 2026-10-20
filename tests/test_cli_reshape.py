@@ -268,3 +268,19 @@ def test_cli_pivot_default_f_v_is_null_for_metrics(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "NaN" in out or "null" in out
+
+
+def test_cli_long_r_param(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "id": ["A", "B"],
+            "cat": ["X", "Y"],
+            "val1": [1, 2],
+            "val2": [3, 4],
+        }
+    )
+    p = _write_csv(tmp_path, df)
+    exit_code = cli.main([p, "-long", "r=id,cat,c=metric,v=num", "-cols"])
+    assert exit_code == 0
+    cols = capsys.readouterr().out.strip().splitlines()
+    assert cols == ["id", "cat", "metric", "num"]

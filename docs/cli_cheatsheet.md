@@ -202,14 +202,14 @@ pytae data.parquet -arrange "species asc, body_mass_g desc"
 Reshape tables without writing complex code:
 
 ```bash
-# Melt wide table into long form (unpivot)
-pytae data.parquet -long "id=species,island; names_to=metric, values_to=value"
+# Melt wide table into long form (unpivot): r (id rows), c (header name), v (values)
+pytae data.parquet -long "r=species,island, c=metric, v=value"
 
-# Pivot long table into wide form
-pytae long.parquet -wide "id=species; names_from=metric, values_from=value"
+# Reshape long table back to wide (1-to-1 un-melt): r, c, v
+pytae long.parquet -wide "r=species, c=metric, v=value"
 
-# 2D Pivot table with aggregation
-pytae data.parquet -pivot "index=species, columns=island, values=body_mass_g, agg=mean"
+# 2D Pivot table with aggregation: r (rows), c (columns), v (values), a (aggregation)
+pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
 ```
 
 ---

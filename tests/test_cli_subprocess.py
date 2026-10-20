@@ -118,6 +118,17 @@ def test_cli_select_negation_exclamation():
     assert "year" not in proc.stdout
 
 
+def test_cli_long_rcva():
+    csv_data = "id,q1,q2\nA,10,20\nB,30,40\n"
+    proc = _run_cli("-", "-fmt", "csv", "-long", "r=id,c=metric,v=val", "-head", stdin=csv_data)
+    assert proc.returncode == 0
+    out = proc.stdout.strip()
+    assert "metric" in out
+    assert "val" in out
+    assert "q1" in out
+    assert "q2" in out
+
+
 # =============================================================================
 # 3. Exit Codes
 # =============================================================================

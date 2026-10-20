@@ -334,7 +334,6 @@ class DataFrame:
     def copy(self, deep: bool = True) -> DataFrame:
         df = DataFrame(self._df.clone(), orig_col_map=self._orig_col_map)
         df._orig_index = list(self._orig_index) if self._orig_index is not None else None
-        df._col_collisions = set(self._col_collisions)
         return df
 
     def clone(self) -> DataFrame:
@@ -1121,7 +1120,6 @@ class DataFrame:
         f_v: Any = None,
         **kwargs: Any,
     ) -> DataFrame:
-        """Compute multi-dimensional cross-tabulations and pivot tables."""
         c_list = [c] if isinstance(c, str) else (list(c) if c else [])
         for col in c_list:
             if str(col) in self._col_collisions:
@@ -1136,8 +1134,13 @@ class DataFrame:
         id_vars: str | Sequence[str] | None = None,
         c: str = "variable",
         v: str = "value",
+        r: str | Sequence[str] | None = None,
     ) -> DataFrame:
         """Reshape DataFrame from wide to long format (unpivot/melt)."""
+        if r is not None:
+            if id_vars is not None:
+                raise ValueError("long() cannot accept both 'r' and 'id_vars'")
+            id_vars = r
         return DataFrame(long_polars(self._df, cols=cols, id_vars=id_vars, c=c, v=v))
 
     def wide(

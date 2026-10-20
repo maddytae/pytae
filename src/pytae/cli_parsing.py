@@ -762,7 +762,7 @@ def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-_LONG_KEYS = ("cols", "id_vars", "c", "v")
+_LONG_KEYS = ("cols", "id_vars", "c", "v", "r")
 _WIDE_KEYS = ("r", "c", "v")
 
 
@@ -821,7 +821,12 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
 
 
 def parse_long_arg(raw: str | None) -> dict:
-    return parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
+    kwargs = parse_reshape_kwargs(raw, keys=_LONG_KEYS, flag="-long")
+    if "r" in kwargs:
+        if "id_vars" in kwargs:
+            raise SystemExit("-long: cannot specify both r= and id_vars=")
+        kwargs["id_vars"] = kwargs.pop("r")
+    return kwargs
 
 
 def parse_wide_arg(raw: str | None) -> dict:

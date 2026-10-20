@@ -85,9 +85,9 @@ CHEATSHEET_TEXT = """\
 
 7. 🔄 RESHAPING & PIVOTING (-long, -wide, -pivot)
 --------------------------------------------------------------------------------
-  pytae data.parquet -long "id=species,island; names_to=metric, values_to=val"
-  pytae long.parquet -wide "id=species; names_from=metric, values_from=val"
-  pytae data.parquet -pivot "index=species, columns=island, values=body_mass_g, agg=mean"
+  pytae data.parquet -long "r=species,island, c=metric, v=val"
+  pytae long.parquet -wide "r=species, c=metric, v=val"
+  pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
 
 8. 🔗 MULTI-FILE RELATIONAL OPERATIONS (-file, -join, -concat, -sql)
 --------------------------------------------------------------------------------

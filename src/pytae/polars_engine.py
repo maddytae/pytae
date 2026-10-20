@@ -1722,11 +1722,16 @@ def long_polars(
     id_vars: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
+    r: str | Sequence[str] | None = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Unpivot a Polars DataFrame from wide to long format."""
     if kwargs:
         raise TypeError(f"long_polars() got unexpected keyword argument(s): {list(kwargs.keys())}")
+    if r is not None:
+        if id_vars is not None:
+            raise ValueError("long(): cannot specify both 'r' and 'id_vars'")
+        id_vars = r
 
     all_cols = _df_columns(df)
 
