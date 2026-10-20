@@ -111,10 +111,10 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 
 ### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
 - Pytae uses strictly complementary, intuitive English opposites:
-  - **`long()`**: Turns wide tables into tall records (`id_vars=`, `cols=`).
+  - **`long()`**: Turns wide tables into tall records using the unified `rcva` grammar (`r=` or `id_vars=`, `c=`, `v=`).
   - **`wide()`**: Pure 1-to-1 structural unmelting without aggregation (`r=`, `c=`, `v=`).
   - **`pivot()`**: 2D cross-tabulation aggregation matrices (`r=`, `c=`, `v=`, `a=`).
-- Both `wide` and `pivot` produce pure, flat 1D column headers with zero MultiIndex traps.
+- All three verbs produce pure, flat 1D column headers with zero MultiIndex traps.
 
 ### 7. `count` for Fast Tallying & Intention-Revealing Aggregations
 - **Why `count`?** Counting occurrences of categories or combinations of factors is the single most common exploratory data analysis operation. In Pandas, users are forced to choose between `.value_counts()` (which returns a 1D Series with index labels, breaking fluent chaining) or `.groupby('col').size().reset_index(name='n')`.

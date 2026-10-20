@@ -448,10 +448,10 @@ Argument Types for *args:
     df.pt.select(lambda c: c.startswith("b"))
 
 Negative Column Selection & Exclusions:
-  - Positional Negation: Pass names prefixed with `-` or `~`:
-    df.pt.select("-species")                      # Drop species, keep the rest
-    df.pt.select("-species", "-island")           # Drop multiple
-    df.pt.select("-bill_length_mm:body_mass_g")   # Drop contiguous slice range
+  - Positional Negation: Pass names prefixed with `!`, `-`, or `~`:
+    df.pt.select("!species")                      # Drop species, keep the rest (recommended)
+    df.pt.select("!species", "!island")           # Drop multiple
+    df.pt.select("!bill_length_mm:body_mass_g")   # Drop contiguous slice range
   - Keyword Exclusion (`exclude=`):
     df.pt.select(exclude="species")
     df.pt.select(exclude=["species", "island"])
@@ -616,12 +616,13 @@ Key Rules & Behaviors:
 --------------------------------------------------------------------------------
 Pure structural reshaping between long and wide formats without aggregation.
 
-pt.long(df, cols=None, id_vars=None, c="variable", v="value"):
+pt.long(df, cols=None, id_vars=None, c="variable", v="value", r=None):
   Melts columns to rows. If cols is None, melts all numeric columns, keeping 
   non-numeric columns as ID variables.
   Parameters:
-    cols: Column(s) to melt to rows. Supports bracketed names `[col name]`.
+    r: Identifier column(s) to keep as rows (rcva grammar alias for id_vars).
     id_vars: Identifier column(s) to keep as rows.
+    cols: Column(s) to melt to rows. Supports bracketed names `[col name]`.
     c: column name for melted metric names (default: "variable")
     v: column name for melted metric values (default: "value")
 

@@ -25,8 +25,8 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 | Capability | Syntax / Flag | Example |
 |---|---|---|
 | Explicit names | `col1,col2` | `-select "species,island,body_mass_g"` |
-| Negative selection | `-col` or `~col` | `-select "-species"` or `-select "~island"` |
-| Negative slices | `-start:end` | `-select "-bill_length_mm:flipper_length_mm"` |
+| Negative selection | `!col` (recommended), `-col`, or `~col` | `-select "!species"` or `-select "!sex,!year"` |
+| Negative slices | `!start:end` or `-start:end` | `-select "!bill_length_mm:flipper_length_mm"` |
 | Keyword exclusion | `exclude=col` | `-select "exclude=species"` |
 | Column slice | `start:end` | `-select "bill_length_mm:body_mass_g"` |
 | Substring / prefix / suffix | `contains=`, `startswith=`, `endswith=` | `-select "contains=bill"` |
@@ -67,16 +67,16 @@ pytae penguins.parquet -select "body_mass_g,species" -head 3
 ---
 
 <a id="negative-selection--exclusion"></a>
-## Negative Selection & Exclusion (`-col`, `~col`, `exclude=`)
+## Negative Selection & Exclusion (`!col`, `exclude=`, `-col`, `~col`)
 
 You can exclude specific columns, combinations, or slices directly within `-select`. Remaining columns preserve their original relative order.
 
-### Negated Column Names (`-col` or `~col`)
+### Negated Column Names (`!col` — Recommended)
 
-Prefix a column name with `-` or `~` to exclude it:
+Prefix a column name with `!` (or `-` / `~`) to exclude it. Using `!` avoids any collision with CLI command flags:
 
 ```bash
-pytae penguins.parquet -select "-species" -head 3
+pytae penguins.parquet -select "!species" -head 3
 ```
 
 **Output:**
@@ -89,7 +89,7 @@ pytae penguins.parquet -select "-species" -head 3
 
 Multiple negated columns can be combined in quotes:
 ```bash
-pytae penguins.parquet -select "-species, -island, -sex" -head 3
+pytae penguins.parquet -select "!species, !island, !sex" -head 3
 ```
 
 **Output:**
@@ -100,11 +100,11 @@ pytae penguins.parquet -select "-species, -island, -sex" -head 3
 |             39.5 |            17.4 |                 186 |          3800 |
 |             40.3 |            18   |                 195 |          3250 |
 
-### Negated Slices (`-start:end`)
+### Negated Slices (`!start:end` or `-start:end`)
 
 Exclude a contiguous range of columns:
 ```bash
-pytae penguins.parquet -select "-bill_length_mm:flipper_length_mm" -head 3
+pytae penguins.parquet -select "!bill_length_mm:flipper_length_mm" -head 3
 ```
 
 **Output:**

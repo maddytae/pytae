@@ -78,14 +78,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Select, reorder, slice, or exclude columns.",
         description=(
             "Restricts and reorders columns at this point in the pipeline.\n"
-            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (-col, ~col),\n"
+            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (!col, -col, ~col),\n"
             "and criteria matchers (contains=, startswith=, endswith=, regex=, dtype=, exclude=)."
         ),
         options=[
             "col1,col2 : Keep specific columns in the exact order requested.",
             "start:end : Contiguous slice range (inclusive of both bounds).",
-            "-col, ~col : Exclude specified columns from the output.",
-            "-start:end : Drop a contiguous range of columns.",
+            "!col, -col, ~col : Exclude specified columns from output (!col recommended to avoid CLI flag collisions).",
+            "!start:end, -start:end : Drop a contiguous range of columns.",
             "contains=substr : Match columns containing substring.",
             "startswith=prefix : Match columns starting with prefix.",
             "endswith=suffix : Match columns ending with suffix.",
@@ -96,7 +96,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             'pytae penguins.parquet -select "species,island,body_mass_g"',
             'pytae penguins.parquet -select "bill_length_mm:body_mass_g"',
-            'pytae penguins.parquet -select "-sex, -year"',
+            'pytae penguins.parquet -select "!sex,!year"',
             'pytae penguins.parquet -select "contains=bill, species"',
             'pytae penguins.parquet -select "dtype=numeric"',
         ],
@@ -232,20 +232,21 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "long": KeywordHelp(
         name="long",
         flag="-long, --long [KEY=VALUE,...]",
-        syntax="pytae <path> -long [c=var,v=val,cols=cols,id_vars=id_cols]",
+        syntax="pytae <path> -long [r=id_cols,c=var,v=val,cols=cols]",
         summary="Melt wide tables to tall format (pure 1-to-1 unpivoting without aggregation).",
         description=(
             "Melts columns into variable/value rows.\n"
             "If cols is omitted, automatically melts all numeric columns, keeping non-numeric as ID variables."
         ),
         options=[
+            "r=cols (or id_vars=) : Identifier column(s) to preserve as rows (unified rcva grammar).",
             "c=name : Header column name for melted variables (default: 'variable').",
             "v=name : Value column name for measurements (default: 'value').",
             "cols=col1,col2 : Explicit columns to melt into rows.",
-            "id_vars=id1,id2 : Identifier columns to preserve as rows.",
         ],
         examples=[
             "pytae penguins.parquet -long",
+            'pytae penguins.parquet -long "r=species,c=metric,v=value"',
             'pytae penguins.parquet -long "c=measurement,v=value"',
             "pytae data.csv -long \"cols='q1,q2,q3,q4',c=quarter,v=revenue\"",
         ],

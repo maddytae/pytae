@@ -24,7 +24,7 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
 
 | Flag | Description | Key Parameters |
 |---|---|---|
-| `-long [SPEC]` | Melt numeric columns into rows | `cols=` (columns to melt), `id_vars=` (fixed rows), `c=` (metric header), `v=` (value header) |
+| `-long [SPEC]` | Melt numeric columns into rows | `r=` or `id_vars=` (fixed rows), `c=` (metric header), `v=` (value header), `cols=` (optional melt subset) |
 | `-wide [SPEC]` | Pure 1-to-1 reshape: spread long rows into headers | `r=` (row index), `c=` (header source), `v=` (values) |
 
 > [!IMPORTANT]
@@ -53,9 +53,9 @@ pytae penguins.parquet \
 | Adelie    | bill_length_mm |    40.3 |
 | Adelie    | bill_length_mm |   nan   |
 
-Customize column names with `c=` and `v=`:
+Using the unified `rcva` grammar with `r=`, `c=`, and `v=`:
 ```bash
-pytae penguins.parquet -long "c=metric,v=measurement" -head 4
+pytae penguins.parquet -long "r=species,c=metric,v=measurement" -head 4
 ```
 
 **Output:**
