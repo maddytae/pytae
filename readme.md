@@ -5,11 +5,11 @@
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
-Fast, ergonomic tabular data manipulation, feature engineering, and visualization powered natively by **Polars** for multithreaded computation and backed by **Pandas & Matplotlib** for plotting across both Python library and CLI.
+Fast, ergonomic tabular data manipulation, feature engineering, and visualization powered natively by **Polars** for multithreaded computation and backed by **Pandas & Matplotlib** for plotting across both command-line and Python library.
 
-`pytae` offers **one and only one obvious way** to perform tabular operations with zero code duplication:
-1. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read_parquet("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame. Once entered, chain verbs naturally without repeatedly calling `.pt` (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
-2. **Unix Pipeline CLI (`pytae`)**: Blazing-fast multithreaded SIMD vector engine sharing the exact same Polars core. Ingests tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filters, transforms, aggregates, reshapes, and executes analytical ANSI SQL queries (`-sql`) with zero boilerplate.
+`pytae` delivers **one and only one obvious way** to work with tabular data:
+1. **Unix Pipeline CLI (`pytae`)**: Blazing-fast multithreaded SIMD vector engine sharing the exact same Polars core. Inspect tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filter, transform, aggregate, reshape, plot directly in the terminal, and execute ANSI SQL queries with zero boilerplate.
+2. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read_parquet("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
 
 👉 **New to Pytae?** Check out the dedicated comparisons: **[vs. Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md)** | **[vs. dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md)** | **[vs. SAS](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)**.
 
@@ -18,15 +18,52 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 ## Installation
 
 ```bash
-pip install pytae              # Polars-native library and CLI
+pip install pytae              # Polars-native CLI and Python library
 pip install "pytae[plot]"       # Includes matplotlib for plotting
 ```
 
 ---
 
-## Quick Start: Python Library (Polars-Powered)
+## Quick Start: Command-Line (CLI)
 
-Read directly with `pt.read_parquet()`, wrap existing data with `pt(df)`, or chain off Pandas via `.pt`:
+Flags execute from left to right as an in-memory pipeline powered natively by Polars SIMD:
+
+```bash
+# 1. Instant zero-cost inspection (reads Parquet headers without loading rows)
+pytae penguins.parquet -shape -head 5
+
+# 2. Filter, engineer features, sort, and export to snappy Parquet
+pytae penguins.parquet \
+  -filter "species = 'Adelie', body_mass_g > 3500" \
+  -mutate "mass_kg = body_mass_g / 1000" \
+  -arrange "mass_kg desc" \
+  -select "species,island,mass_kg" \
+  -o heavy_adelie.parquet
+
+# 3. In-terminal frequency table & ASCII bar visualization
+pytae penguins.parquet -freq species -bar
+
+# 4. Instant format conversion (SAS7BDAT to Parquet or CSV)
+pytae legacy.sas7bdat -o clean.parquet
+
+# 5. Dataset diff & numeric drift detection between pipelines
+pytae yesterday.parquet -diff today.parquet -tol 1e-4
+
+# 6. Stream piping from STDIN
+cat data.csv | pytae - -fmt csv -filter "amount > 100" -shape
+
+# 7. Grouped aggregation & ANSI SQL query
+pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean, total=count"
+pytae sales.parquet -sql "select region, sum(revenue) from data group by 1"
+```
+
+👉 **Full CLI Command Guide**: [docs/detailed_docs/cli/](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/cli)
+
+---
+
+## Quick Start: Python & Jupyter SDK
+
+Need the same expressive verbs in Python scripts, Airflow, or Jupyter? `import pytae as pt` gives you the exact same superpowers:
 
 ```python
 import pytae as pt
@@ -45,39 +82,6 @@ summary = (
 ```
 
 👉 **Full Master Documentation Hub**: [docs/pytae.md](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)
-
----
-
-## Quick Start: CLI (Polars-Powered)
-
-Flags execute from left to right as an in-memory pipeline powered natively by Polars:
-
-```bash
-# 1. Zero-cost inspection (reads Parquet headers without loading rows)
-pytae penguins.parquet -shape -head 5
-
-# 2. Filter, engineer features, sort, and export
-pytae penguins.parquet \
-  -filter "species = 'Adelie', body_mass_g > 3500" \
-  -mutate "mass_kg = body_mass_g / 1000" \
-  -arrange "mass_kg desc" \
-  -select "species,island,mass_kg" \
-  -o heavy_adelie.csv
-
-# 3. Grouped aggregation & reshaping
-pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean, total=count"
-
-# 4. Deduplicate rows across key columns
-pytae penguins.parquet -distinct "species,island"
-
-# 5. Polars SQL Query
-pytae sales.parquet -sql "select region, sum(revenue) from data group by 1"
-
-# 6. Fast dataset comparison
-pytae current.parquet -diff baseline.parquet
-```
-
-👉 **Full CLI & Library Guides**: [docs/pytae.md#detailed-documentation-directory](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#detailed-documentation-directory)
 
 ---
 
