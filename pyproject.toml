@@ -39,6 +39,7 @@ pytae = "pytae.cli:main"
 "Bug Tracker" = "https://github.com/maddytae/pytae/issues"
 "Documentation" = "https://github.com/maddytae/pytae/blob/master/docs/pytae.md"
 "Detailed Docs" = "https://github.com/maddytae/pytae/tree/master/docs/detailed_docs"
+"Cheat Sheet" = "https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md"
 
 [tool.hatch.build.targets.wheel.force-include]
 "reference" = "pytae/reference"

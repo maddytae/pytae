@@ -310,9 +310,10 @@ For exhaustive syntax mappings, feature-by-feature Rosetta stones, and migration
 
 ## Detailed Documentation Directory
 
-All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented under **`docs/detailed_docs/`** in two dedicated folders:
-- **`detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
+All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented under **`docs/`**:
+- **`docs/cli_cheatsheet.md`**: [**The Definitive CLI Cheat Sheet & Cookbook**](cli_cheatsheet.md) — 11 curated sections of one-liner recipes and Unix shell workflows.
 - **`detailed_docs/cli/`**: Comprehensive Command Line Markdown guides (`.md`)
+- **`detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
 
 | Category | Python Library (Notebook) | CLI Guide (Markdown) | Key Capabilities & Verbs |
 |:---|:---|:---|:---|

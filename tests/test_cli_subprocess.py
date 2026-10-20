@@ -48,6 +48,21 @@ def test_cli_help():
     assert "usage: pytae" in proc.stdout
     assert "-filter" in proc.stdout
     assert "-mutate" in proc.stdout
+    assert "-cheatsheet" in proc.stdout
+
+
+def test_cli_cheatsheet():
+    proc = _run_cli("-cheatsheet")
+    assert proc.returncode == 0
+    assert "PYTAE CLI CHEAT SHEET & COOKBOOK" in proc.stdout
+    assert "-filter" in proc.stdout
+    assert "-mutate" in proc.stdout
+
+
+def test_cli_examples():
+    proc = _run_cli("-examples")
+    assert proc.returncode == 0
+    assert "PYTAE CLI CHEAT SHEET & COOKBOOK" in proc.stdout
 
 
 # =============================================================================

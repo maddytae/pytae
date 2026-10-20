@@ -83,6 +83,10 @@ def _is_path_like(token: str) -> bool:
 _CLI_FLAGS = {
     "-version",
     "--version",
+    "-cheatsheet",
+    "--cheatsheet",
+    "-examples",
+    "--examples",
     "-head",
     "--head",
     "-tail",
@@ -274,6 +278,31 @@ def _is_stdin_piped() -> bool:
         return False
 
 
+class _CheatsheetAction(argparse.Action):
+    """Custom action to print terminal cheatsheet and exit."""
+
+    def __init__(
+        self,
+        option_strings: Sequence[str],
+        dest: str = argparse.SUPPRESS,
+        default: Any = argparse.SUPPRESS,
+        help: str | None = None,
+    ) -> None:
+        super().__init__(option_strings=option_strings, dest=dest, default=default, nargs=0, help=help)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
+        from pytae.cheatsheet import CHEATSHEET_TEXT
+
+        sys.stdout.write(CHEATSHEET_TEXT)
+        parser.exit(0)
+
+
 class PytaeParser(argparse.ArgumentParser):
     """Custom parser that normalizes optional-value flags such as -progress and negative -select specs."""
 
@@ -305,6 +334,14 @@ def build_parser() -> argparse.ArgumentParser:
         "omit when piping from stdin or using -file with -join/-concat/-sql",
     )
     parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "-cheatsheet",
+        "--cheatsheet",
+        "-examples",
+        "--examples",
+        action=_CheatsheetAction,
+        help="print CLI quick-reference cheat sheet and cookbook recipes",
+    )
     parser.add_argument(
         "-head",
         "--head",

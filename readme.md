@@ -11,7 +11,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 1. **Unix Pipeline CLI (`pytae`)**: Blazing-fast multithreaded SIMD vector engine sharing the exact same Polars core. Inspect tabular files (`.parquet`, `.csv`, `.tsv`, `.jsonl`, `.sas7bdat`, `.gz`), filter, transform, aggregate, reshape, plot directly in the terminal, and execute ANSI SQL queries with zero boilerplate.
 2. **Python Library (`pt.DataFrame` / `df.pt`)**: High-performance tabular data frame backed directly by Polars vector execution. Enter via `pt(pd_df)`, `pt(pl_df)`, `pt.read_parquet("file.parquet")`, or calling `.pt` off any Pandas or Polars DataFrame (`.by()`, `.mutate()`, `.filter()`, `.arrange()`, `.agg()`, `.pivot()`, `.plot()`).
 
-👉 **New to Pytae?** Check out the dedicated comparisons: **[vs. Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md)** | **[vs. dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md)** | **[vs. SAS](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)**.
+👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | **[vs. Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md)** | **[vs. dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md)** | **[vs. SAS](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)**.
 
 ---
 
@@ -57,7 +57,7 @@ pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean, total=count"
 pytae sales.parquet -sql "select region, sum(revenue) from data group by 1"
 ```
 
-👉 **Full CLI Command Guide**: [docs/detailed_docs/cli/](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/cli)
+👉 **CLI Quick Reference**: [**Cheat Sheet & Cookbook (Markdown)**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) or run `pytae -cheatsheet` in your terminal! | **Full CLI Command Guide**: [docs/detailed_docs/cli/](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/cli)
 
 ---
 
