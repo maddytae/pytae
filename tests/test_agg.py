@@ -32,8 +32,15 @@ def test_all_agg():
     )
     df["id"] = df["id"].replace("", np.nan)
 
-    # Default dropna=False keeps NA groups
-    result = pt.agg(pt.by(df, "id", "country"), a=["sum", "min", "mean", "min", "max", "n"])
+    # Multi-metric aggregations require explicit Paradigm 2 aliases (zero on-the-fly columns)
+    result = pt.agg(
+        pt.by(df, "id", "country"),
+        n="count",
+        balance_sum="balance:sum",
+        balance_min="balance:min",
+        balance_mean="balance:mean",
+        balance_max="balance:max",
+    )
 
     expected_df = (
         df.groupby(["id", "country"], dropna=False)
@@ -60,7 +67,15 @@ def test_all_agg_drop_na():
     )
     df["id"] = df["id"].replace("", np.nan)
 
-    result = pt.agg(pt.by(df, "id", "country"), a=["sum", "min", "mean", "min", "max", "n"], dropna=True)
+    result = pt.agg(
+        pt.by(df, "id", "country"),
+        n="count",
+        balance_sum="balance:sum",
+        balance_min="balance:min",
+        balance_mean="balance:mean",
+        balance_max="balance:max",
+        dropna=True,
+    )
 
     expected_df = (
         df.groupby(["id", "country"], dropna=True)
@@ -75,6 +90,16 @@ def test_all_agg_drop_na():
     )
     expected_df = expected_df[["id", "country", "n", "balance_sum", "balance_min", "balance_mean", "balance_max"]]
     pd.testing.assert_frame_equal(result, expected_df)
+
+
+def test_agg_df_multi_metric_without_aliases_raises():
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
+    with pytest.raises(ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"):
+        df.pt.by("g").pt.agg(a=["mean", "sum"])
+    with pytest.raises(ValueError, match="multiple aggregation functions in .* cannot be applied without explicit aliases"):
+        df.pt.by("g").pt.agg(v="mean,sum")
+    with pytest.raises(ValueError, match="list of aggregation functions in .* cannot be applied without explicit aliases"):
+        df.pt.by("g").pt.agg(v=["mean", "sum"])
 
 
 def test_agg_df_raises_when_n_collides_with_real_column():
@@ -131,12 +156,26 @@ def test_agg_df_whole_table_summary():
             "units": [10, 20, 30],
         }
     )
-    res = df.pt.agg(a=["sum", "mean", "n"])
+    # Whole-table single metric + count: 1-to-1 column preservation
+    res = df.pt.agg(a=["sum", "n"])
     assert len(res) == 1
-    assert list(res.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
+    assert list(res.columns) == ["n", "sales", "units"]
     assert res["n"].iloc[0] == 3
-    assert res["sales_sum"].iloc[0] == 600.0
-    assert res["sales_mean"].iloc[0] == 200.0
+    assert res["sales"].iloc[0] == 600.0
+    assert res["units"].iloc[0] == 60
+
+    # Whole-table multiple metrics require explicit aliases (Paradigm 2)
+    res_multi = df.pt.agg(
+        n="count",
+        sales_sum="sales:sum",
+        sales_mean="sales:mean",
+        units_sum="units:sum",
+        units_mean="units:mean",
+    )
+    assert len(res_multi) == 1
+    assert list(res_multi.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
+    assert res_multi["sales_sum"].iloc[0] == 600.0
+    assert res_multi["sales_mean"].iloc[0] == 200.0
 
 
 def test_agg_df_string_spec_with_brackets():
@@ -221,14 +260,11 @@ def test_agg_df_string_spec_errors():
         df.pt.by("g").pt.agg("mean", a="sum")
 
 
-def test_agg_df_multi_agg_column_flattening_preserves_underscores():
-    # Lib Issue 1: multi-agg flattening preserves leading/trailing underscores
+def test_agg_df_multi_metric_without_aliases_raises_on_the_fly():
+    # Multi-metric without explicit alias is rejected because columns cannot be created on the fly
     df = pd.DataFrame({"g": ["a", "b"], "_x": [1, 2], "y_": [3, 4]})
-    res = df.pt.by("g").pt.agg(["mean", "sum"])
-    assert "_x_mean" in res.columns
-    assert "_x_sum" in res.columns
-    assert "y__mean" in res.columns
-    assert "y__sum" in res.columns
+    with pytest.raises(ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"):
+        df.pt.by("g").pt.agg(["mean", "sum"])
 
 
 def test_agg_df_group_by_n_with_count_n_raises():
@@ -255,14 +291,14 @@ def test_agg_df_duplicate_output_cols():
     # Issue 1: duplicate output column name in named_aggs / output_cols
     df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
     with pytest.raises(ValueError, match="is duplicated in aggregation specification"):
-        df.pt.by("Region").pt.agg(Sales_sum="Profit:sum", Sales="Sales:sum,mean")
+        df.pt.by("Region").pt.agg("Sales_sum = Profit:sum, Sales_sum = Sales:sum")
 
 
 def test_agg_df_list_collision_with_group_col():
-    # Issue 2: generated agg column collides with group column in _agg_df_list
+    # Collision check: explicit alias colliding with group column raises
     df = pd.DataFrame({"Sales_sum": ["A", "B"], "Sales": [10, 20]})
     with pytest.raises(ValueError, match="collides with group column 'Sales_sum'"):
-        df.pt.by("Sales_sum").pt.agg(["sum", "mean"])
+        df.pt.by("Sales_sum").pt.agg(Sales_sum="Sales:sum")
 
 
 def test_agg_df_comma_separated_by_string():

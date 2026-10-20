@@ -717,6 +717,8 @@ def parse_agg(raw: str):
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
             if not key or not value:
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")
+            if key in out:
+                raise ValueError(f"agg(): output column name '{key}' is duplicated in aggregation specification")
             out[key] = value
         if dropna_flag is not None:
             out["__dropna__"] = dropna_flag

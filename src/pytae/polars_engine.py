@@ -1948,14 +1948,20 @@ def agg_polars(
 
             parsed = parse_agg(item)
             if isinstance(parsed, dict):
-                active_kwargs.update(parsed)
+                for k, v in parsed.items():
+                    if k in active_kwargs:
+                        raise ValueError(f"agg(): output column name '{k}' is duplicated in aggregation specification")
+                    active_kwargs[k] = v
             else:
                 remaining_specs.append(item)
         else:
             remaining_specs.append(item)
 
     if kwargs:
-        active_kwargs.update(kwargs)
+        for k, v in kwargs.items():
+            if k in active_kwargs:
+                raise ValueError(f"agg(): output column name '{k}' is duplicated in aggregation specification")
+            active_kwargs[k] = v
 
     if "__dropna__" in active_kwargs:
         dropna = active_kwargs.pop("__dropna__")
@@ -1984,10 +1990,13 @@ def agg_polars(
                 src = _unquote_name(src.strip())
                 fn_list = [f.strip() for f in fn_str.split(",") if f.strip()]
                 if len(fn_list) > 1:
-                    for f in fn_list:
-                        _add_expr(_polars_agg_expr(pl.col(src), f), f"{clean_out}_{f}")
-                else:
-                    _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
+                    example_aliases = ", ".join(f"{clean_out}_{f}='{src}:{f}'" for f in fn_list)
+                    raise ValueError(
+                        f"agg(): multiple aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
+                        "Pytae prohibits creating column names on the fly. "
+                        f"Use Paradigm 2: {example_aliases}"
+                    )
+                _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
             elif isinstance(val, str):
                 fn_call_m = re.match(r"^(\w+)\(([^)]+)\)$", val.strip())
                 if fn_call_m:
@@ -1997,17 +2006,23 @@ def agg_polars(
                 else:
                     fn_list = [f.strip() for f in val.split(",") if f.strip()]
                     if len(fn_list) > 1:
-                        for f in fn_list:
-                            _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
-                    else:
-                        _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                        example_aliases = ", ".join(f"{clean_out}_{f}='{clean_out}:{f}'" for f in fn_list)
+                        raise ValueError(
+                            f"agg(): multiple aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
+                            "Pytae prohibits creating column names on the fly. "
+                            f"Use Paradigm 2: {example_aliases}"
+                        )
+                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             elif isinstance(val, (list, tuple)):
                 fn_list = list(val)
                 if len(fn_list) > 1:
-                    for f in fn_list:
-                        _add_expr(_polars_agg_expr(pl.col(clean_out), f), f"{clean_out}_{f}")
-                else:
-                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                    example_aliases = ", ".join(f"{clean_out}_{f}='{clean_out}:{f}'" for f in fn_list)
+                    raise ValueError(
+                        f"agg(): list of aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
+                        "Pytae prohibits creating column names on the fly. "
+                        f"Use Paradigm 2: {example_aliases}"
+                    )
+                _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             else:
                 raise ValueError(f"agg(): unsupported kwargs specification {clean_out}={val!r}")
     else:
@@ -2056,6 +2071,13 @@ def agg_polars(
         rem_fns = [f for f in unique_fns if f not in ("n", "count", "size")]
         num_cols = [c for c, dt in _df_schema(work_df).items() if dt.is_numeric() and c not in by_cols]
 
+        if len(rem_fns) > 1:
+            raise ValueError(
+                f"agg(): multiple metric functions ({', '.join(repr(f) for f in rem_fns)}) cannot be applied across columns without explicit aliases. "
+                "Pytae prohibits creating column names on the fly (e.g. '{col}_{fn}'). "
+                "Use Paradigm 2 with explicit aliases instead: e.g. .agg(n='count', avg_col='col:mean', sum_col='col:sum')"
+            )
+
         if has_n and "n" in num_cols:
             raise ValueError(
                 "agg(): cannot compute 'n' (row count) because the input already has a numeric column named 'n'"
@@ -2068,8 +2090,7 @@ def agg_polars(
 
         for c in num_cols:
             for fn in rem_fns:
-                col_name = f"{c}_{fn}" if len(rem_fns) > 1 else c
-                _add_expr(_polars_agg_expr(pl.col(c), fn), col_name)
+                _add_expr(_polars_agg_expr(pl.col(c), fn), c)
 
     if not exprs:
         raise ValueError("agg(): no aggregation expressions could be constructed")
