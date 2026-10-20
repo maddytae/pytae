@@ -7,3 +7,4 @@
 - Highlighting for `.mutate()`, `.filter()`, `.select()`, `.arrange()`, `.agg()`, and `.by()` string expressions.
 - Support for tagged strings with `# pytae` comment header.
 - Added 9 productive snippets (`pt-mutate`, `pt-case-when`, `pt-validate`, etc.).
+

@@ -90,3 +90,4 @@ cd extensions/vscode-pytae
 npx @vscode/vsce package
 ```
 This generates `pytae-3.10.2.vsix`.
+
