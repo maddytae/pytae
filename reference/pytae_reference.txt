@@ -11175,7 +11175,7 @@ Output:
 
 ## 5. End-to-End Pipelines: Mixing pandas, pytae, and Multi-Panel Mosaics
 
-Because `pytae` methods return standard pandas DataFrames, you can freely mix standard pandas operations (`.dropna()`, `.rename()`, `.sort_values()`, `.query()`) with `pytae` verbs (`.mutate()`, `.filter()`, `.select()`) in a single chained pipeline that ends directly in a multi-panel mosaic dashboard.
+Because `pytae` methods return standard pandas DataFrames, you can freely mix standard pandas operations (`.dropna()`, `.rename()`, `.sort_values()`) with `pytae` verbs (`.mutate()`, `.filter()`, `.select()`) in a single chained pipeline that ends directly in a multi-panel mosaic dashboard.
 
 ```python
 # 5.1 Continuous Accessor Chain: pandas + pytae + mosaic dashboard
@@ -11221,7 +11221,7 @@ cleaned_diamonds = (
     .rename(columns={"table": "table_pct"})
     .select("cut", "color", "price", "carat")
     .mutate(price_per_carat="price / carat")
-    .query("price_per_carat > 1500")
+    .filter("price_per_carat > 1500")
 )
 
 (
