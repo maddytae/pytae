@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.10.2] - 2026-10-19
+## [3.10.2] - 2026-10-21
 
 ### Added
 - **Unified `rcva` Reshaping Grammar Across `long`, `wide`, and `pivot`**:
@@ -17,6 +17,16 @@ All notable changes to this project are documented in this file.
 - **Lazy Streaming Out-of-Core Sinks**:
   - Implemented streaming file export for `pl.LazyFrame` in `write_dataframe` via native Polars sinks (`sink_parquet`, `sink_csv`, `sink_ndjson`).
   - Pipeline commands like `pytae data.parquet -filter ... -o out.parquet` now execute completely lazily via Polars' streaming engine without materializing intermediate tables into memory.
+
+### Deprecated & Retired (Zero Backward Compatibility Cruft)
+- **Exhaustive Deprecation Cleanup & Single Obvious Way Enforcement**:
+  - Eliminated all lingering residue, documentation references, and legacy methods for previously deprecated features across the engine, CLI, notebooks, and reference manual.
+  - Standardized missing value handling exclusively on `fillna(value, *cols, nans=True/False)` and `dropna(*cols, how='all'|'any', drop_nans=True/False)`. Completely removed legacy aliases (`fill_null`, `fill_nan`, `drop_nulls`, `drop_na`, `-handle_missing`).
+  - Removed pandas-compatibility stub `df.query()` in favor of canonical `df.filter()`.
+  - Updated `slice_max` and `slice_min` redirect errors to point directly to canonical `arrange(...).head(n)` / `arrange(...).tail(n)`.
+  - Cleaned `__all__` in `__init__.py` to remove retired stub functions (`pick`, `read`, `scan`).
+  - Enforced strict clipboard output validation (`-o clip` strictly; `-o clipboard` raises informative redirect error).
+  - Cleaned CLI docs and reference manual to retire `-replace_values`, `-handle_missing`, `-info`, `-value_counts`, and `-pretty`.
 
 ### Optimized & Refactored
 - **Native Polars Rust I/O Delegation**:
