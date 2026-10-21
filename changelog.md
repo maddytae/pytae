@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.10.2] - 2026-10-21
+## [3.10.3] - 2026-10-21
 
 ### Added
 - **Unified `rcva` Reshaping Grammar Across `long`, `wide`, and `pivot`**:

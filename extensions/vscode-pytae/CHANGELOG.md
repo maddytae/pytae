@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.10.2
+## 3.10.3
 
 - Initial release of the Pytae Visual Studio Code extension.
 - Added TextMate grammar injection for Python files (`source.python`).
