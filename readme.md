@@ -30,7 +30,7 @@ Flags execute from left to right as an in-memory pipeline powered natively by Po
 
 ```bash
 # 1. Instant zero-cost inspection (reads Parquet headers without loading rows)
-pytae penguins.parquet -shape -head 5
+pytae penguins.parquet -head 5
 
 # 2. Filter, engineer features, sort, and export to snappy Parquet
 pytae penguins.parquet \
