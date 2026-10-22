@@ -13885,7 +13885,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.10.4"
+version = "3.10.5"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -14007,7 +14007,7 @@ from pytae.validation import (
     validate_pipeline,
 )
 
-__version__ = "3.10.4"
+__version__ = "3.10.5"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -19600,7 +19600,22 @@ class _Pipeline:
 
         lf = self.polars_lazy_frame()
         if isinstance(lf, pl.LazyFrame):
-            self._pldf = lf.collect()
+            try:
+                self._pldf = lf.collect()
+            except pl.exceptions.ComputeError:
+                try:
+                    if hasattr(self._reader, "to_polars"):
+                        self._pldf = self._reader.to_polars(
+                            columns=self._pending_exact, nrows=self._nrows, infer_schema_length=None
+                        )
+                    else:
+                        raise
+                except Exception:
+                    df = self.dataframe()
+                    self._pldf = pl.from_pandas(df)
+            except Exception:
+                df = self.dataframe()
+                self._pldf = pl.from_pandas(df)
         return self._pldf
 
     def apply_select(self, names: list[str], kwargs: dict) -> str | None:
@@ -20582,8 +20597,20 @@ def cmd_convert(
         )
     try:
         write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size, index=index)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
+    except Exception as exc:
+        try:
+            from pytae.readers import get_reader
+
+            fallback_reader = get_reader(source, sep=sep, encoding=encoding, chunk_size=chunk_size)
+            fallback_df = fallback_reader.to_dataframe()
+            if rename:
+                fallback_df = fallback_df.rename(columns=rename)
+            write_dataframe(
+                fallback_df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size, index=index
+            )
+            df = fallback_df
+        except Exception:
+            raise SystemExit(str(exc)) from exc
     if announce:
         import polars as pl
 
@@ -21270,8 +21297,14 @@ def _process_path(
 
         import polars as pl
 
-        if args.round_ndigits is None and pipeline._pldf is not None and isinstance(pipeline._pldf, pl.LazyFrame):
-            df_to_write = pipeline._pldf
+        if (
+            args.round_ndigits is None
+            and pipeline._df is None
+            and not pipeline._progress
+            and pipeline._reader is not None
+            and hasattr(pipeline._reader, "to_polars_lazy")
+        ) or (args.round_ndigits is None and isinstance(pipeline._pldf, pl.LazyFrame)):
+            df_to_write = pipeline.polars_lazy_frame()
         else:
             df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
         try:
@@ -28213,20 +28246,40 @@ class CsvReader:
         print()
         return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=columns or [])
 
-    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+    def to_polars(
+        self,
+        columns: list[str] | None = None,
+        nrows: int | None = None,
+        infer_schema_length: int | None = 10000,
+    ):
         import polars as pl
 
-        return pl.read_csv(
-            self.path,
-            separator=self.sep,
-            columns=columns,
-            n_rows=nrows,
-            encoding=self.encoding or "utf8",
-            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-            truncate_ragged_lines=True,
-        )
+        try:
+            return pl.read_csv(
+                self.path,
+                separator=self.sep,
+                columns=columns,
+                n_rows=nrows,
+                encoding=self.encoding or "utf8",
+                null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                truncate_ragged_lines=True,
+                infer_schema_length=infer_schema_length,
+            )
+        except pl.exceptions.ComputeError:
+            if infer_schema_length is not None:
+                return pl.read_csv(
+                    self.path,
+                    separator=self.sep,
+                    columns=columns,
+                    n_rows=nrows,
+                    encoding=self.encoding or "utf8",
+                    null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                    truncate_ragged_lines=True,
+                    infer_schema_length=None,
+                )
+            raise
 
-    def to_polars_lazy(self, columns: list[str] | None = None):
+    def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
         import polars as pl
 
         lf = pl.scan_csv(
@@ -28235,6 +28288,7 @@ class CsvReader:
             encoding=self.encoding or "utf8",
             null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
             truncate_ragged_lines=True,
+            infer_schema_length=infer_schema_length,
         )
         if columns is not None:
             lf = lf.select(columns)
@@ -28353,20 +28407,40 @@ class TxtReader:
         print()
         return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=columns or [])
 
-    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+    def to_polars(
+        self,
+        columns: list[str] | None = None,
+        nrows: int | None = None,
+        infer_schema_length: int | None = 10000,
+    ):
         import polars as pl
 
-        return pl.read_csv(
-            self.path,
-            separator=self.sep,
-            columns=columns,
-            n_rows=nrows,
-            encoding=self.encoding or "utf8",
-            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-            truncate_ragged_lines=True,
-        )
+        try:
+            return pl.read_csv(
+                self.path,
+                separator=self.sep,
+                columns=columns,
+                n_rows=nrows,
+                encoding=self.encoding or "utf8",
+                null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                truncate_ragged_lines=True,
+                infer_schema_length=infer_schema_length,
+            )
+        except pl.exceptions.ComputeError:
+            if infer_schema_length is not None:
+                return pl.read_csv(
+                    self.path,
+                    separator=self.sep,
+                    columns=columns,
+                    n_rows=nrows,
+                    encoding=self.encoding or "utf8",
+                    null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                    truncate_ragged_lines=True,
+                    infer_schema_length=None,
+                )
+            raise
 
-    def to_polars_lazy(self, columns: list[str] | None = None):
+    def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
         import polars as pl
 
         lf = pl.scan_csv(
@@ -28375,6 +28449,7 @@ class TxtReader:
             encoding=self.encoding or "utf8",
             null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
             truncate_ragged_lines=True,
+            infer_schema_length=infer_schema_length,
         )
         if columns is not None:
             lf = lf.select(columns)
@@ -29033,7 +29108,14 @@ def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pl.read_csv(source, *args, **kwargs))
+    kwargs.setdefault("infer_schema_length", 10000)
+    try:
+        return DataFrame(pl.read_csv(source, *args, **kwargs))
+    except pl.exceptions.ComputeError:
+        if kwargs.get("infer_schema_length") is not None:
+            kwargs["infer_schema_length"] = None
+            return DataFrame(pl.read_csv(source, *args, **kwargs))
+        raise
 
 
 def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
@@ -29101,6 +29183,7 @@ def scan_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
+    kwargs.setdefault("infer_schema_length", 10000)
     return DataFrame(pl.scan_csv(source, *args, **kwargs))
 
 
@@ -35026,6 +35109,29 @@ def test_cli_convert_parquet_to_csv(tmp_path: Path):
     assert list(read_back.columns) == ["x", "y"]
 
 
+def test_cli_convert_csv_late_decimals_batch(tmp_path: Path):
+    import pytest
+
+    csv_file = tmp_path / "uspc_exp_post_collateral_enrichment.csv"
+    lines = ["id,Adjusted_Collateral_Value (Es)"]
+    for i in range(150):
+        lines.append(f"{i},{i}")
+    lines.append("150,2021792.076885")
+    csv_file.write_text("\n".join(lines) + "\n")
+
+    # Test pytae *.csv -o parquet batch format conversion
+    proc = _run_cli(str(csv_file), "-o", "parquet", "-out_dir", str(tmp_path / "out"))
+    assert proc.returncode == 0
+    expected_pq = tmp_path / "out" / "uspc_exp_post_collateral_enrichment.parquet"
+    assert expected_pq.exists()
+
+    # Verify rows and data types
+    df = pl.read_parquet(expected_pq)
+    assert len(df) == 151
+    assert df["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert df["Adjusted_Collateral_Value (Es)"][150] == pytest.approx(2021792.076885)
+
+
 # =============================================================================
 # 5. Dataset Diff & Drift Detection
 # =============================================================================
@@ -40147,6 +40253,34 @@ def test_dedicated_readers_and_scanners(tmp_path):
     lazy_ipc = pt.scan_ipc(ipc_path)
     assert lazy_ipc.is_lazy
     assert lazy_ipc.collect()["x"].to_list() == [1, 2, 3]
+
+
+def test_csv_reader_late_decimals_infer_schema(tmp_path):
+    import polars as pl
+
+    import pytae as pt
+
+    path = tmp_path / "late_decimals.csv"
+    lines = ["id,Adjusted_Collateral_Value (Es)"]
+    for i in range(150):
+        lines.append(f"{i},{i}")
+    lines.append("150,2021792.076885")
+    path.write_text("\n".join(lines) + "\n")
+
+    reader = get_reader(path)
+    # Eager to_polars
+    pldf = reader.to_polars()
+    assert pldf["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert len(pldf) == 151
+
+    # Lazy to_polars_lazy
+    lazy_df = reader.to_polars_lazy().collect()
+    assert lazy_df["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert len(lazy_df) == 151
+
+    # pt.read_csv and pt.scan_csv
+    assert pt.read_csv(path)["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert pt.scan_csv(path).collect()["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
 
 ################################################################################
 # FILE: tests/test_select.py

@@ -522,8 +522,20 @@ def cmd_convert(
         )
     try:
         write_dataframe(df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size, index=index)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
+    except Exception as exc:
+        try:
+            from pytae.readers import get_reader
+
+            fallback_reader = get_reader(source, sep=sep, encoding=encoding, chunk_size=chunk_size)
+            fallback_df = fallback_reader.to_dataframe()
+            if rename:
+                fallback_df = fallback_df.rename(columns=rename)
+            write_dataframe(
+                fallback_df, dest, sep=sep, encoding=encoding, progress=progress, chunk_size=chunk_size, index=index
+            )
+            df = fallback_df
+        except Exception:
+            raise SystemExit(str(exc)) from exc
     if announce:
         import polars as pl
 
@@ -1210,8 +1222,14 @@ def _process_path(
 
         import polars as pl
 
-        if args.round_ndigits is None and pipeline._pldf is not None and isinstance(pipeline._pldf, pl.LazyFrame):
-            df_to_write = pipeline._pldf
+        if (
+            args.round_ndigits is None
+            and pipeline._df is None
+            and not pipeline._progress
+            and pipeline._reader is not None
+            and hasattr(pipeline._reader, "to_polars_lazy")
+        ) or (args.round_ndigits is None and isinstance(pipeline._pldf, pl.LazyFrame)):
+            df_to_write = pipeline.polars_lazy_frame()
         else:
             df_to_write = _apply_round(pipeline.current_frame(), args.round_ndigits)
         try:

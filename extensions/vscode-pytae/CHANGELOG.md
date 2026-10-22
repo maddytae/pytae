@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.10.5
+
+- Enhanced CSV/TXT reader schema inference and resilient format conversion.
+
 ## 3.10.4
 
 - Updated syntax highlighting and snippets for unified method-token standard in `filter` (`is_null()`, `is_not_null()`, `is_nan()`, `is_not_nan()`).

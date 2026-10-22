@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.10.5] - 2026-10-22
+
+### Fixed
+- **Robust CSV & Delimited Text Schema Inference and Conversion**:
+  - Fixed `polars.exceptions.ComputeError` during CSV parsing and format conversion (e.g. `pytae *.csv -o parquet`) caused by Polars' default 100-row schema inference (`infer_schema_length=100`) misclassifying late-appearing floating-point decimal columns as integers (`i64`).
+  - Set default `infer_schema_length=10000` across `CsvReader`, `TxtReader`, `pt.read_csv()`, and `pt.scan_csv()`.
+  - Added resilient two-tier error fallback: if a `ComputeError` occurs during reader evaluation or lazy frame collection, pytae automatically retries with full-scan schema inference (`infer_schema_length=None`) and seamlessly falls back to robust pandas parsing with `low_memory=False` when necessary.
+  - Optimized CLI pipeline format conversion (`-o parquet` / `-o csv`) to stream lazily via `sink_parquet()` while ensuring robust fallback if mixed schema exceptions arise.
+
 ## [3.10.4] - 2026-10-21
 
 ### Added

@@ -102,7 +102,22 @@ class _Pipeline:
 
         lf = self.polars_lazy_frame()
         if isinstance(lf, pl.LazyFrame):
-            self._pldf = lf.collect()
+            try:
+                self._pldf = lf.collect()
+            except pl.exceptions.ComputeError:
+                try:
+                    if hasattr(self._reader, "to_polars"):
+                        self._pldf = self._reader.to_polars(
+                            columns=self._pending_exact, nrows=self._nrows, infer_schema_length=None
+                        )
+                    else:
+                        raise
+                except Exception:
+                    df = self.dataframe()
+                    self._pldf = pl.from_pandas(df)
+            except Exception:
+                df = self.dataframe()
+                self._pldf = pl.from_pandas(df)
         return self._pldf
 
     def apply_select(self, names: list[str], kwargs: dict) -> str | None:

@@ -45,12 +45,12 @@ Rich syntax highlighting, snippets, and editor support for [Pytae](https://githu
 
 Run in your terminal:
 ```bash
-code --install-extension pytae-3.10.4.vsix
+code --install-extension pytae-3.10.5.vsix
 ```
 Or in VS Code:
 1. Open the **Extensions** view (`Cmd+Shift+X` / `Ctrl+Shift+X`).
 2. Click the `...` (Views and More Actions) menu in the top-right.
-3. Select **Install from VSIX...** and choose `pytae-3.10.4.vsix`.
+3. Select **Install from VSIX...** and choose `pytae-3.10.5.vsix`.
 
 ---
 
@@ -92,5 +92,5 @@ To rebuild the `.vsix` package:
 cd extensions/vscode-pytae
 npx @vscode/vsce package
 ```
-This generates `pytae-3.10.4.vsix`.
+This generates `pytae-3.10.5.vsix`.
 

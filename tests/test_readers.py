@@ -346,3 +346,31 @@ def test_dedicated_readers_and_scanners(tmp_path):
     lazy_ipc = pt.scan_ipc(ipc_path)
     assert lazy_ipc.is_lazy
     assert lazy_ipc.collect()["x"].to_list() == [1, 2, 3]
+
+
+def test_csv_reader_late_decimals_infer_schema(tmp_path):
+    import polars as pl
+
+    import pytae as pt
+
+    path = tmp_path / "late_decimals.csv"
+    lines = ["id,Adjusted_Collateral_Value (Es)"]
+    for i in range(150):
+        lines.append(f"{i},{i}")
+    lines.append("150,2021792.076885")
+    path.write_text("\n".join(lines) + "\n")
+
+    reader = get_reader(path)
+    # Eager to_polars
+    pldf = reader.to_polars()
+    assert pldf["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert len(pldf) == 151
+
+    # Lazy to_polars_lazy
+    lazy_df = reader.to_polars_lazy().collect()
+    assert lazy_df["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert len(lazy_df) == 151
+
+    # pt.read_csv and pt.scan_csv
+    assert pt.read_csv(path)["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert pt.scan_csv(path).collect()["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64

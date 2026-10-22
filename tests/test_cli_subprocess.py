@@ -188,6 +188,29 @@ def test_cli_convert_parquet_to_csv(tmp_path: Path):
     assert list(read_back.columns) == ["x", "y"]
 
 
+def test_cli_convert_csv_late_decimals_batch(tmp_path: Path):
+    import pytest
+
+    csv_file = tmp_path / "uspc_exp_post_collateral_enrichment.csv"
+    lines = ["id,Adjusted_Collateral_Value (Es)"]
+    for i in range(150):
+        lines.append(f"{i},{i}")
+    lines.append("150,2021792.076885")
+    csv_file.write_text("\n".join(lines) + "\n")
+
+    # Test pytae *.csv -o parquet batch format conversion
+    proc = _run_cli(str(csv_file), "-o", "parquet", "-out_dir", str(tmp_path / "out"))
+    assert proc.returncode == 0
+    expected_pq = tmp_path / "out" / "uspc_exp_post_collateral_enrichment.parquet"
+    assert expected_pq.exists()
+
+    # Verify rows and data types
+    df = pl.read_parquet(expected_pq)
+    assert len(df) == 151
+    assert df["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert df["Adjusted_Collateral_Value (Es)"][150] == pytest.approx(2021792.076885)
+
+
 # =============================================================================
 # 5. Dataset Diff & Drift Detection
 # =============================================================================
