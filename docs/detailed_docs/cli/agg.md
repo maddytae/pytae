@@ -118,7 +118,7 @@ Columns with spaces can be enclosed in square brackets `[col]` anywhere in `-by`
 
 ```bash
 pytae tips.parquet \
-  -filter "day = ['Sat', 'Sun'], time = 'Dinner', size >= 2, total_bill > 10" \
+  -filter "day in ['Sat', 'Sun'] and time == 'Dinner' and size >= 2 and total_bill > 10" \
   -rename "total_bill:[total bill]" \
   -by smoker \
   -agg "tip = mean, [total bill] = mean, n = count"

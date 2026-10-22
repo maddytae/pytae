@@ -39,7 +39,7 @@ from pytae.validation import (
     validate_pipeline,
 )
 
-__version__ = "3.10.3"
+__version__ = "3.10.4"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -155,8 +155,8 @@ def select(df: Any, *args: Any, **kwargs: Any) -> DataFrame:
     return DataFrame(df).select(*args, **kwargs)
 
 
-def filter(df: Any, *conditions: Any, **kwargs: Any) -> DataFrame:
-    return DataFrame(df).filter(*conditions, **kwargs)
+def filter(df: Any, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+    return DataFrame(df).filter(*conditions, params=params, **kwargs)
 
 
 def mutate(df: Any, *specs: Any, **kwargs: Any) -> DataFrame:

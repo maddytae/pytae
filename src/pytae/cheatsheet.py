@@ -28,17 +28,19 @@ CHEATSHEET_TEXT = """\
 
 2. 🔍 ROW FILTERING & SLICING (-filter)
 --------------------------------------------------------------------------------
-  pytae data.parquet -filter "species = 'Gentoo'"
+  pytae data.parquet -filter "species == 'Gentoo'"
   pytae data.parquet -filter "body_mass_g > 5000"
-  pytae data.parquet -filter "body_mass_g >= 3500, flipper_length_mm < 210"
-  pytae loans.parquet -filter "exposure > col(limit)"             # Column compare
-  pytae loans.parquet -filter "tranche_id == col(deal_id)"        # ID equality
-  pytae data.parquet -filter "body_mass_g = [3000, 3500]"         # Interval [min, max]
-  pytae data.parquet -filter "species = ['Adelie', 'Chinstrap']"  # Set membership
+  pytae data.parquet -filter "body_mass_g >= 3500 and flipper_length_mm < 210"
+  pytae data.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000"
+  pytae loans.parquet -filter "exposure > limit"                  # Column compare
+  pytae loans.parquet -filter "tranche_id == deal_id"             # ID equality
+  pytae data.parquet -filter "{'body_mass_g': ('between', 3000, 3500)}"     # Option 1 range
+  pytae data.parquet -filter "{'body_mass_g': (('>=', 3000), ('<=', 3500))}" # Option 2 range
+  pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']" # Set membership
   pytae data.parquet -filter "species not in ['Gentoo']"
-  pytae data.parquet -filter "sex.notna()"                        # Missing checks
-  pytae data.parquet -filter "sex is not null"
-  pytae data.parquet -filter "counterparty_class_(irb).notna()"   # Special columns
+  pytae data.parquet -filter "sex.is_not_null()"                 # Missing checks (or {'sex': 'is_null()'})
+  pytae data.parquet -filter "score.is_nan()"                    # NaN checks (or {'score': 'is_nan()'})
+  pytae data.parquet -filter "counterparty_class_(irb).is_not_null()" # Special columns
   pytae data.parquet -dropna                                      # Drop 100% null rows
   pytae data.parquet -dropna "body_mass_g,sex"
 

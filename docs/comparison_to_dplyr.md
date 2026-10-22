@@ -147,9 +147,9 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Simple Filter** | `filter(df, sales > 100)` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter("a > 1 & b == 'E'")` | `-filter "a > 1, b == 'E'"` |
-| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
-| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter("a > 1 and b == 'E'")` | `-filter "a > 1 and b == 'E'"` |
+| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
+| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('startswith', 'A'))`| `-filter "name.startswith('A')"` |
 | **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.notna()")` | `-filter "col.notna()"` |

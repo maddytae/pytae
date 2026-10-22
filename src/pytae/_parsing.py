@@ -17,7 +17,6 @@ from typing import Any
 from pytae._text import _ColRef
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
-from pytae.cli_parsing import _split_qry_entries
 
 # -----------------------------------------------------------------------------
 # Arrange Parsing
@@ -103,15 +102,383 @@ def _extract_arrange_specs(
 
 
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Filter Parsing
 # -----------------------------------------------------------------------------
 
 
-def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> list[tuple[str, Any]]:
+class FilterNode:
+    """Base node for boolean filter condition AST."""
+
+    def columns(self) -> list[str]:
+        raise NotImplementedError
+
+
+class BinaryOp(FilterNode):
+    """Binary logical conjunction ('and' or 'or') between two filter nodes."""
+
+    def __init__(self, op: str, left: FilterNode, right: FilterNode):
+        self.op = op.lower()
+        if self.op not in ("and", "or"):
+            raise ValueError(f"BinaryOp only supports 'and' or 'or', got {op!r}")
+        self.left = left
+        self.right = right
+
+    def columns(self) -> list[str]:
+        return self.left.columns() + self.right.columns()
+
+    def __repr__(self) -> str:
+        return f"BinaryOp({self.op!r}, {self.left!r}, {self.right!r})"
+
+
+class Predicate(FilterNode):
+    """Atomic column predicate (e.g. col == val, col in [...], col.notna())."""
+
+    def __init__(self, col: str, cond: Any):
+        self.col = col
+        self.cond = cond
+
+    def columns(self) -> list[str]:
+        base = self.col
+        if ".dt." in base:
+            base = base.split(".dt.")[0]
+        if ".str." in base:
+            base = base.split(".str.")[0]
+        return [base.strip("[]").strip()]
+
+    def __repr__(self) -> str:
+        return f"Predicate({self.col!r}, {self.cond!r})"
+
+
+def _is_enclosed_in_parens(s: str) -> bool:
+    if not (s.startswith("(") and s.endswith(")")):
+        return False
+    depth = 0
+    quote = None
+    for i, ch in enumerate(s):
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and i + 1 < len(s):
+                continue
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0 and i < len(s) - 1:
+                return False
+    return depth == 0
+
+
+def _split_top_level(text: str, operator_words: list[str]) -> list[str]:
+    quote = None
+    paren_depth = 0
+    bracket_depth = 0
+    i = 0
+    n = len(text)
+    splits: list[str] = []
+    last_idx = 0
+
+    while i < n:
+        ch = text[i]
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and i + 1 < n:
+                i += 1
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            i += 1
+            continue
+        if ch == "(":
+            paren_depth += 1
+            i += 1
+            continue
+        if ch == ")":
+            paren_depth -= 1
+            i += 1
+            continue
+        if ch == "[":
+            bracket_depth += 1
+            i += 1
+            continue
+        if ch == "]":
+            bracket_depth -= 1
+            i += 1
+            continue
+        if paren_depth == 0 and bracket_depth == 0:
+            for op in operator_words:
+                op_pattern = f" {op} "
+                k = len(op_pattern)
+                if text[i : i + k].lower() == op_pattern:
+                    splits.append(text[last_idx:i].strip())
+                    last_idx = i + k
+                    i = last_idx - 1
+                    break
+        i += 1
+    splits.append(text[last_idx:].strip())
+    return splits
+
+
+def _parse_predicate(raw_entry: str) -> Predicate:
+    raw = raw_entry.strip()
+    if not raw:
+        raise SystemExit("invalid filter condition: empty expression")
+
+    # 1. Direct comparison first: col > 5, col >= 5, col == 5, col != 5, etc.
+    m_cmp = re.match(r"^([^>=<!:]+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw)
+    if m_cmp:
+        col = _unquote_name(m_cmp.group(1).strip())
+        op = m_cmp.group(2).strip()
+        val_str = m_cmp.group(3).strip()
+        if not col:
+            raise SystemExit(f"invalid filter condition '{raw}': empty column name")
+        if not val_str:
+            raise SystemExit(f"invalid filter condition '{raw}': '{col}' has no value")
+
+        # Disallow interval notation: e.g. [3000, 3200]
+        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_str)
+        if m_int:
+            b1 = m_int.group(2).strip()
+            b2 = m_int.group(3).strip()
+            raise SystemExit(
+                f"invalid filter condition '{raw}': interval notation '[min, max]' is not supported in filter expressions. "
+                f"Use '{col} >= {b1} and {col} <= {b2}' or dict syntax {{'{col}': ('between', {b1}, {b2})}}."
+            )
+
+        if val_str.lower() == "nan" and op in ("!=", "=="):
+            op_nan = "is_not_nan" if op == "!=" else "is_nan"
+            return Predicate(col, (op_nan, None))
+
+        if val_str.lower() in ("none", "null") and op in ("!=", "=="):
+            op_null = "is_not_null" if op == "!=" else "is_null"
+            return Predicate(col, (op_null, None))
+
+        if (val_str.startswith("'") and val_str.endswith("'")) or (val_str.startswith('"') and val_str.endswith('"')):
+            sub_val = val_str[1:-1]
+        elif val_str.startswith("col(") and val_str.endswith(")"):
+            inner = val_str[4:-1].strip().strip("'\"")
+            sub_val = _ColRef(_unquote_name(inner))
+        else:
+            try:
+                sub_val = ast.literal_eval(val_str)
+            except (ValueError, SyntaxError):
+                sub_val = _ColRef(_unquote_name(val_str))
+        return Predicate(col, (op, sub_val))
+
+    # 2. In / not in
+    m_in = re.match(r"^([^>=<!:]+?)\s+(not\s+in|in)\s+(.+)$", raw, flags=re.IGNORECASE)
+    if m_in:
+        col = _unquote_name(m_in.group(1).strip())
+        op = "not in" if "not" in m_in.group(2).lower() else "in"
+        val_str = m_in.group(3).strip()
+        try:
+            sub_val = ast.literal_eval(val_str)
+        except (ValueError, SyntaxError):
+            sub_val = [s.strip().strip("'\"") for s in val_str.strip("[]()").split(",") if s.strip()]
+        return Predicate(col, (op, sub_val))
+
+    # 3. SQL-style null checks (disallowed: guide to pure Polars .is_null() / .is_not_null())
+    m_sql_null = re.match(r"^(.+?)\s+is\s+(not\s+null|null|not\s+na|na)$", raw, flags=re.IGNORECASE)
+    if m_sql_null:
+        col = _unquote_name(m_sql_null.group(1).strip())
+        col_disp = f"[{col}]" if " " in col else col
+        m_name = m_sql_null.group(2).strip().lower()
+        suggested = f"{col_disp}.is_not_null()" if "not" in m_name else f"{col_disp}.is_null()"
+        dict_hint = f" or dict {{{col!r}: None}}" if "not" not in m_name else ""
+        raise SystemExit(
+            f"invalid filter condition '{raw}': use '{suggested}'{dict_hint}. "
+            f"SQL 'is null' syntax is not supported in -filter; use -sql for SQL queries."
+        )
+
+    # 4. Functional null check calls
+    m_fn_null = re.match(r"^(notna|isna|is_not_null|is_null)\((.+)\)$", raw, flags=re.IGNORECASE)
+    if m_fn_null:
+        op_name = m_fn_null.group(1).strip().lower()
+        col = _unquote_name(m_fn_null.group(2).strip())
+        op = "notna" if "not" in op_name else "isna"
+        return Predicate(col, (op, None))
+
+    # 5. String method calls
+    m_str = re.match(r"^(.+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw)
+    if m_str:
+        col = _unquote_name(m_str.group(1).strip())
+        method = m_str.group(2).strip()
+        val = m_str.group(3).strip()
+        if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
+            val = val[1:-1]
+        op = "startswith" if "start" in method else ("endswith" if "end" in method else "contains")
+        return Predicate(col, (op, val))
+
+    # 6. Null and NaN check method calls
+    m_null = re.match(r"^(.+?)\.(is_null|isna|is_not_null|notna|is_nan|isnan|is_not_nan|not_nan)\(\)$", raw)
+    if m_null:
+        col = _unquote_name(m_null.group(1).strip())
+        m_name = m_null.group(2).strip()
+        if "nan" in m_name:
+            op = "is_not_nan" if "not" in m_name else "is_nan"
+        else:
+            op = "notna" if "not" in m_name else "isna"
+        return Predicate(col, (op, None))
+
+    # 7. Single '=' detection (strictly disallow)
+    m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw)
+    if m_eq:
+        col = m_eq.group(1).strip()
+        val = m_eq.group(2).strip()
+        raise SystemExit(
+            f"invalid filter condition '{raw}': use '==' for equality comparisons (e.g. {col} == {val}). "
+            f"Single '=' is for assignment (-mutate), not comparison (-filter)."
+        )
+
+    # 8. Colon ':' detection
+    pieces = _tokenize(raw, ":", keep_quotes=True, track_brackets=True)
+    if len(pieces) >= 2:
+        raise SystemExit(
+            f"invalid filter condition '{raw}': use '==' (e.g. species == 'Adelie'). Colon ':' is not supported."
+        )
+
+    raise SystemExit(f"invalid filter condition: missing comparison operator in '{raw}'")
+
+
+def _parse_filter_node(raw_expr: str) -> FilterNode:
+    s = raw_expr.strip()
+    if not s:
+        raise SystemExit("invalid filter condition: empty expression")
+
+    while _is_enclosed_in_parens(s):
+        s = s[1:-1].strip()
+
+    # Check for forbidden top-level operators at paren_depth == 0 and bracket_depth == 0
+    quote = None
+    paren_depth = 0
+    bracket_depth = 0
+    for i, ch in enumerate(s):
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and i + 1 < len(s):
+                continue
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            continue
+        if ch == "(":
+            paren_depth += 1
+            continue
+        if ch == ")":
+            paren_depth -= 1
+            continue
+        if ch == "[":
+            bracket_depth += 1
+            continue
+        if ch == "]":
+            bracket_depth -= 1
+            continue
+        if paren_depth == 0 and bracket_depth == 0:
+            if ch == ",":
+                raise SystemExit(
+                    f"invalid filter condition '{s}': comma ',' is not supported as a boolean operator. "
+                    f"Use 'and' instead (e.g. {s[:i].strip()} and {s[i+1:].strip()})."
+                )
+            if ch == "&":
+                raise SystemExit(
+                    f"invalid filter condition '{s}': '&' is not supported in filter. Use 'and' instead."
+                )
+            if ch == "|":
+                raise SystemExit(
+                    f"invalid filter condition '{s}': '|' is not supported in filter. Use 'or' instead."
+                )
+
+    # Split OR (lowest precedence)
+    or_parts = _split_top_level(s, ["or"])
+    if len(or_parts) > 1:
+        node = _parse_filter_node(or_parts[0])
+        for part in or_parts[1:]:
+            node = BinaryOp("or", node, _parse_filter_node(part))
+        return node
+
+    # Split AND (higher precedence than OR)
+    and_parts = _split_top_level(s, ["and"])
+    if len(and_parts) > 1:
+        node = _parse_filter_node(and_parts[0])
+        for part in and_parts[1:]:
+            node = BinaryOp("and", node, _parse_filter_node(part))
+        return node
+
+    return _parse_predicate(s)
+
+
+def _eval_dict_node(node: ast.AST) -> Any:
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        lower = node.func.id.lower()
+        if lower in ("is_null", "isna"):
+            return "is_null()"
+        if lower in ("is_not_null", "notna"):
+            return "is_not_null()"
+        if lower in ("is_nan", "isnan"):
+            return "is_nan()"
+        if lower in ("is_not_nan", "not_nan"):
+            return "is_not_nan()"
+    if isinstance(node, ast.Name):
+        lower = node.id.lower()
+        if lower in ("is_null", "is_not_null", "is_nan", "is_not_nan", "isna", "notna", "isnan", "not_nan"):
+            return lower  # Bare word without parens; polars_engine strictly rejects with guidance
+        if lower == "nan":
+            return float("nan")
+        if lower in ("none", "null"):
+            return None
+        if lower == "true":
+            return True
+        if lower == "false":
+            return False
+        return node.id
+    if isinstance(node, ast.Tuple):
+        return tuple(_eval_dict_node(elt) for elt in node.elts)
+    if isinstance(node, ast.List):
+        return list(_eval_dict_node(elt) for elt in node.elts)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        val = _eval_dict_node(node.operand)
+        return -val
+    return ast.literal_eval(node)
+
+
+def _parse_dict_literal(raw: str) -> dict[str, Any] | None:
+    """Parse a dict literal, accepting both quoted keys and unquoted identifier keys, as well as bare NaN/None/null values."""
+    stripped = raw.strip()
+    if not (stripped.startswith("{") and stripped.endswith("}")):
+        return None
+    try:
+        val = ast.literal_eval(stripped)
+        if isinstance(val, dict):
+            return val
+    except (ValueError, SyntaxError):
+        pass
+    try:
+        tree = ast.parse(stripped, mode="eval")
+        if isinstance(tree.body, ast.Dict):
+            d: dict[str, Any] = {}
+            for k, v in zip(tree.body.keys, tree.body.values):
+                if k is None:
+                    return None
+                key = k.id if isinstance(k, ast.Name) else ast.literal_eval(k)
+                val = _eval_dict_node(v)
+                d[str(key)] = val
+            return d
+    except Exception:
+        pass
+    return None
+
+
+def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> FilterNode | dict[str, Any]:
     """Parse filter conditions from a query string."""
     stripped = raw.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        stripped = stripped[1:-1]
     if "@" in stripped:
         _, at_tokens = _strip_at_refs(stripped)
         for var_name in at_tokens:
@@ -125,72 +492,15 @@ def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> list
                 close = difflib.get_close_matches(var_name, all_avail, n=1)
                 hint = f" (did you mean '@{close[0]}'?)" if close else ""
                 raise KeyError(f"local variable '@{var_name}' is not defined{hint}")
+
+    parsed_dict = _parse_dict_literal(stripped)
+    if parsed_dict is not None:
+        return parsed_dict
+
     try:
-        entries = _split_qry_entries(stripped)
+        return _parse_filter_node(stripped)
     except SystemExit as exc:
         raise ValueError(str(exc)) from exc
-    pairs: list[tuple[str, Any]] = []
-    for key_raw, value_raw in entries:
-        key = _unquote_name(key_raw)
-        if not key:
-            raise ValueError("invalid filter conditions: empty column name")
-        if isinstance(value_raw, tuple):
-            pairs.append((key, value_raw))
-            continue
-        if not value_raw:
-            raise ValueError(f"invalid filter conditions: '{key}' has no value")
-        val_strip = value_raw.strip()
-        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
-        if m_int:
-            left, b1, b2, right = m_int.groups()
-            b1_is_quoted = (b1.startswith("'") and b1.endswith("'")) or (b1.startswith('"') and b1.endswith('"'))
-            b2_is_quoted = (b2.startswith("'") and b2.endswith("'")) or (b2.startswith('"') and b2.endswith('"'))
-            if not (b1_is_quoted and b2_is_quoted and left == "[" and right == "]"):
-                pairs.append((key, val_strip))
-                continue
-
-        m_in = re.match(r"^(not\s+in|in)\s*(.+)$", val_strip, flags=re.IGNORECASE)
-        if m_in:
-            op = "not in" if "not" in m_in.group(1).lower() else "in"
-            sub_raw = m_in.group(2).strip()
-            try:
-                sub_val = ast.literal_eval(sub_raw)
-            except (ValueError, SyntaxError):
-                sub_val = [s.strip().strip("'\"") for s in sub_raw.strip("[]()").split(",") if s.strip()]
-            pairs.append((key, (op, sub_val)))
-            continue
-
-        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
-        if op_match:
-            op = op_match.group(1)
-            sub_raw = op_match.group(2).strip()
-            if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
-                sub_val = sub_raw[1:-1]
-            elif sub_raw.startswith("col(") and sub_raw.endswith(")"):
-                inner = sub_raw[4:-1].strip().strip("'\"")
-                sub_val = _ColRef(_unquote_name(inner))
-            else:
-                try:
-                    sub_val = ast.literal_eval(sub_raw)
-                except (ValueError, SyntaxError):
-                    sub_val = _ColRef(_unquote_name(sub_raw))
-            pairs.append((key, (op, sub_val)))
-            continue
-
-        if len(val_strip) >= 2 and val_strip[0] in "'\"" and val_strip[-1] == val_strip[0]:
-            value = val_strip[1:-1]
-        elif val_strip.startswith("col(") and val_strip.endswith(")"):
-            inner = val_strip[4:-1].strip().strip("'\"")
-            value = _ColRef(_unquote_name(inner))
-        else:
-            try:
-                value = ast.literal_eval(val_strip)
-            except (ValueError, SyntaxError):
-                value = _ColRef(_unquote_name(val_strip))
-        pairs.append((key, value))
-    if not pairs:
-        raise ValueError("filter() expects at least one condition")
-    return pairs
 
 
 # -----------------------------------------------------------------------------

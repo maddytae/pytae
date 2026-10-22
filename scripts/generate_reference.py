@@ -150,7 +150,7 @@ Top-Level Functions exported by `pytae`:
   - pt.fillna(df, value, *cols, subset=None, nans=True) -> DataFrame (Fill null/NaN)
   - pt.select(df, *args, dtype=None, exclude_dtype=None, contains=None, startswith=None, endswith=None, regex=None)
   - pt.everything() / pt.everything (sentinel for select)
-  - pt.filter(df, *args, **kwargs)
+  - pt.filter(df, *args, params=None)
   - pt.by(df, *cols)
   - pt.mutate(df, *args, dropna=False, observed=True, params=None, **kwargs)
   - pt.arrange(df, *cols, ascending=None, na_last=True)
@@ -241,68 +241,69 @@ List available dataset names:
 
 4.1. pt.filter() / df.pt.filter() — Row Filtering
 --------------------------------------------------------------------------------
-Filters DataFrame rows based on callables, string expressions, plain dictionaries, 
-or keyword arguments.
+Filters DataFrame rows based on string expressions, plain dictionaries,
+or callables.
 
 Signature:
-  pt.filter(df: pd.DataFrame, *args: Any, **kwargs: Any) -> pd.DataFrame
-  df.pt.filter(*args: Any, **kwargs: Any) -> pd.DataFrame
+  pt.filter(df: DataFrame, *args: Any, params: dict[str, Any] | None = None) -> DataFrame
+  df.filter(*args: Any, params: dict[str, Any] | None = None) -> DataFrame
 
 Calling Styles:
-  1. Callables / Lambdas:
-     df.pt.filter(lambda d: d["body_mass_g"] > 5000)
-  2. Keyword Arguments:
-     df.pt.filter(species="Adelie", body_mass_g="> 5000")
-  3. String Expressions (matches CLI -filter):
-     df.pt.filter("body_mass_g > 5000, species == 'Adelie'")
-     df.pt.filter("bill length mm > 40")   # Handles columns with spaces natively!
-  4. Plain Dictionaries:
-     df.pt.filter({"bill length mm": "> 40", "species": "Adelie"})
-  5. Mixed Calling:
-     df.pt.filter("bill length mm > 40", {"island": "Biscoe"}, species="Gentoo")
-  6. Functional Style:
-     pt.filter(penguins, species="Adelie")
+  1. String Expressions (matches CLI -filter):
+     df.filter("body_mass_g > 5000 and species == 'Gentoo'")
+     df.filter("[bill length mm] > 40")   # Bracketed spaced columns
+     df.filter("exposure > limit")        # Bare column-to-column comparison
+     df.filter("tranche_id == deal_id")
+     df.filter("sex.is_not_null()")       # Pure Polars null checks
+     df.filter("score.is_nan()")          # IEEE 754 float NaN checks
+  2. Plain Dictionaries:
+     df.filter({"species": "Gentoo"})
+     df.filter({"body_mass_g": (">", 5000)})
+     df.filter({"species": ["Adelie", "Chinstrap"]})
+     df.filter({"sex": "is_null()"})                              # Canonical null check
+     df.filter({"score": "is_nan()"})                             # Canonical NaN check
+     df.filter({"body_mass_g": ("between", 3000, 4000)})          # Option 1 range
+     df.filter({"body_mass_g": ((">=", 3000), ("<=", 4000))})    # Option 2 range
+  3. Callables / Lambdas:
+     df.filter(lambda d: d["body_mass_g"] > 5000)
 
 Supported Condition Types & Operators:
   - Equality:
-    species="Adelie"
-    "species = 'Adelie'" or "species == 'Adelie'"  (Note: String values strictly require quotes; unquoted strings/numbers raise TypeError)
-    {"species": "Adelie"}
+    "species == 'Gentoo'"  (Strictly requires '=='; single '=' raises diagnostic error)
+    {"species": "Gentoo"}
   - Membership (in list):
-    species=["Adelie", "Gentoo"]
-    species=("in", ["Adelie", "Gentoo"])
+    "species in ['Adelie', 'Gentoo']"
+    {"species": ["Adelie", "Gentoo"]}
   - Exclusion (not in list):
-    sex=("not in", ["Male"])
+    "species not in ['Gentoo']"
+    {"sex": ("not in", ["Male"])}
   - Comparison Operators:
     Supported operators: '>', '>=', '<', '<=', '==', '!='
-    As string condition: body_mass_g="> 5000"
-    As tuple condition:  body_mass_g=(">", 5000)
-    Note: For numeric columns, values are converted to float automatically.
-  - Interval Notation (range queries on a single column):
-    Open interval:       body_mass_g="(3500,4500)"    -> 3500 < x < 4500
-    Half-open interval:  bill_length_mm="[40,50)"     -> 40 <= x < 50
-    Closed interval:     body_mass_g="[3500,4000]"    -> 3500 <= x <= 4000
-    String interval:     island="(Biscoe,Dream]"      -> Alphabetical range
-  - String Accessor Operations (requires string-dtype column; na=False):
-    Prefix match:        species=("startswith", "Ad")
-    Multi-prefix match:  species=("startswith", ["Ad", "Ge"])  # accepts list/tuple
-    Suffix match:        code=("endswith", "3")
-    Substring match:     species=("contains", "in")    # regex=False, search-anywhere
-    Regex match:         species=("regex", r"^[AB]")   # regex=True, search-anywhere
-  - Null Checks (predicate expressions):
-    Missing values:      "sex.isna()" or "sex is null"
-    Non-missing values:  "sex.notna()" or "sex is not null"
+    As string condition: "body_mass_g > 5000"
+    As tuple condition:  {"body_mass_g": (">", 5000)}
+  - Ranges & Intervals:
+    Option 1 ('between'):       {"body_mass_g": ("between", 3500, 4500)}
+    Option 2 (operator tuples): {"body_mass_g": ((">=", 3500), ("<=", 4500))}
+    String expression:          "body_mass_g >= 3500 and body_mass_g <= 4500"
+  - String Accessor Operations:
+    Prefix match:        {"species": ("startswith", "Ad")}
+    Multi-prefix match:  {"species": ("startswith", ["Ad", "Ge"])}
+    Suffix match:        {"species": ("endswith", "strap")}
+    Substring match:     {"species": ("contains", "adel")}
+    Regex match:         {"species": ("regex", r"^[AB]")}
+  - Null & NaN Checks:
+    String expressions:  "sex.is_null()" or "sex.is_not_null()"
+    Float NaN checks:    "score.is_nan()" or "score.is_not_nan()"
+    Dictionaries:        {"sex": "is_null()"} or {"score": "is_nan()"}
+    (Strict: Parentheses '()' strictly required; bare words without parens like 'is_null' or 'nan' and None/float('nan') raise ValueError)
 
-Multiple Conditions on the Same Column:
-  Python kwargs cannot repeat parameter names. Solve this using:
-  1. Comma-separated string:  df.pt.filter("bill_length_mm > 40, bill_length_mm < 50")
-  2. Multiple string args:    df.pt.filter("bill_length_mm > 40", "bill_length_mm < 50")
-  3. Interval syntax:         df.pt.filter(bill_length_mm="[40,50)")
-  4. Chained calls:           df.pt.filter(bill_length_mm="> 40").pt.filter(bill_length_mm="< 50")
-
-Error Handling:
-  If a column name is misspelled, filter() raises a KeyError with fuzzy match suggestions:
-  KeyError: "unknown column 'speceis' (did you mean 'species'?)"
+Strict Syntax Rules & Error Diagnostics:
+  1. No keyword arguments: df.filter(species="Gentoo") raises TypeError. Use '==' in strings or dicts.
+  2. Single '=' disallowed: df.filter("species = 'Gentoo'") raises an explicit error reminding you that '=' is for mutate.
+  3. No string-mashed ranges: Use clean operator tuples ((">=", 3000), ("<=", 4000)).
+  4. Bare column-to-column comparison: "exposure > limit" works directly without col() wrapper.
+  5. SQL 'is null' disallowed: df.filter("sex is null") raises an explicit error pointing to 'sex.is_null()' or dict {'sex': 'is_null()'}. Use -sql for SQL syntax.
+  6. Typo suggestions: If a column name is misspelled, filter() raises a KeyError with fuzzy match suggestions.
 
 
 4.2. pt.by() / df.pt.by() — Single-Shot Scoped Grouping
@@ -796,7 +797,7 @@ In-Terminal Visualizations:
   -corr [COLS] [OPTS]   Render in-terminal Pearson correlation matrix heatmap
 
 Row Filtering & Slicing Flags:
-  -filter CONDITIONS    pytae filter expressions (e.g. "species='Adelie', body_mass_g > 3500")
+  -filter CONDITIONS    pytae filter expressions (e.g. "species == 'Adelie' and body_mass_g > 3500")
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -fillna [VAL]         Impute missing values (e.g. -fillna 0 or -fillna "col:val")
   -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
@@ -861,10 +862,11 @@ DSL Validation & Linting:
    - `-rename`: "old_col:new_col, col_b:col_beta"
 2. Assignment / Specification uses EQUALS (`=`):
    - `-mutate`: "new_col = expression, mass_kg = body_mass_g / 1000"
-   - `-filter`: "species = 'Adelie', body_mass_g > 3500"
    - `-clean_columns`: "strip=True, fill='_', case='lower'"
    - `-join`: "left=df1, right=df2, on=id, how=left"
    - `-agg`: "tip=mean, total_bill=mean, total=count"
+3. Comparison & Filtering uses EQUALITY (`==`) and Boolean (`and`, `or`):
+   - `-filter`: "species == 'Adelie' and body_mass_g > 3500"
 
 
 5.6. Multi-File Operations (-file, -join, -concat, -sql)

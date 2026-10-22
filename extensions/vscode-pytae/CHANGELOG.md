@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.10.4
+
+- Updated syntax highlighting and snippets for unified method-token standard in `filter` (`is_null()`, `is_not_null()`, `is_nan()`, `is_not_nan()`).
+
 ## 3.10.3
 
 - Initial release of the Pytae Visual Studio Code extension.

@@ -8,6 +8,7 @@ tabular data with multithreaded SIMD vectorization and lazy query pushdown, whil
 from __future__ import annotations
 
 import ast
+import math
 import re
 from collections.abc import Sequence
 from typing import Any, Literal, cast
@@ -15,6 +16,9 @@ from typing import Any, Literal, cast
 import polars as pl
 
 from pytae._parsing import (
+    BinaryOp,
+    FilterNode,
+    Predicate,
     _extract_arrange_specs,
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
@@ -91,6 +95,22 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 pass
         return val
 
+    col_disp = f"[{col}]" if " " in col else col
+
+    if cond is None or (isinstance(cond, str) and cond.strip().lower() in ("none", "null")):
+        raise ValueError(
+            f"filter(): checking for null values in dictionaries via None is not supported. "
+            f"In line with 'one and only one obvious way', use 'is_null()' instead: "
+            f"filter('{col_disp}.is_null()') or filter({{{col!r}: 'is_null()'}})."
+        )
+
+    if isinstance(cond, float) and math.isnan(cond):
+        raise ValueError(
+            f"filter(): checking for NaN values in dictionaries via float('nan') is not supported. "
+            f"In line with 'one and only one obvious way', use 'is_nan()' instead: "
+            f"filter('{col_disp}.is_nan()') or filter({{{col!r}: 'is_nan()'}})."
+        )
+
     if isinstance(cond, list):
         coerced_list = [_coerce_val(v) for v in cond]
         return col_expr.is_in(coerced_list)
@@ -100,14 +120,59 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             raise ValueError(
                 f"filter(): 1-tuple pattern {cond!r} on column {col!r} is not supported. "
                 f"In line with 'one and only one obvious way', use predicate expressions instead, "
-                f"e.g. filter('{col}.notna()') or filter('{col}.isna()')."
+                f"e.g. filter('{col}.is_not_null()') or filter('{col}.is_null()')."
             )
-        elif len(cond) == 2:
-            op, val = cond
-            if op == "isna":
-                return col_expr.is_null()
-            if op == "notna":
-                return col_expr.is_not_null()
+        op_clean = cond[0].strip() if isinstance(cond[0], str) else cond[0]
+        # Option 1: ("between", lo, hi) or ("between", (lo, hi))
+        if op_clean == "between":
+            if len(cond) == 2 and isinstance(cond[1], (tuple, list)) and len(cond[1]) == 2:
+                lo, hi = cond[1]
+            elif len(cond) == 3:
+                _, lo, hi = cond
+            else:
+                raise ValueError(
+                    f"filter(): 'between' expects (lower, upper) bounds, e.g. ('between', 10, 20) or ('between', (10, 20)), got {cond!r}"
+                )
+            return col_expr.is_between(_coerce_val(lo), _coerce_val(hi))
+
+        if len(cond) == 2 and op_clean in (
+            "isna",
+            "notna",
+            "is_null",
+            "is_not_null",
+            "is_nan",
+            "is_not_nan",
+            "in",
+            "not in",
+            "startswith",
+            "endswith",
+            "contains",
+            "regex",
+            "==",
+            "!=",
+            ">",
+            ">=",
+            "<",
+            "<=",
+        ):
+            op = op_clean
+            val = cond[1]
+            if op in ("isna", "is_null", "notna", "is_not_null"):
+                suggested_pred = f"{col_disp}.is_not_null()" if "not" in op else f"{col_disp}.is_null()"
+                suggested_dict = f"{{{col!r}: 'is_not_null()'}}" if "not" in op else f"{{{col!r}: 'is_null()'}}"
+                raise ValueError(
+                    f"filter(): {op} checks in dictionaries via {cond!r} are not supported. "
+                    f"In line with 'one and only one obvious way', use 'is_null()' or 'is_not_null()': "
+                    f"filter({suggested_pred!r}) or filter({suggested_dict})."
+                )
+            if op in ("is_nan", "is_not_nan"):
+                suggested_pred = f"{col_disp}.is_not_nan()" if "not" in op else f"{col_disp}.is_nan()"
+                suggested_dict = f"{{{col!r}: 'is_not_nan()'}}" if "not" in op else f"{{{col!r}: 'is_nan()'}}"
+                raise ValueError(
+                    f"filter(): {op} checks in dictionaries via {cond!r} are not supported. "
+                    f"In line with 'one and only one obvious way', use 'is_nan()' or 'is_not_nan()': "
+                    f"filter({suggested_pred!r}) or filter({suggested_dict})."
+                )
             if op == "in":
                 vals = [_coerce_val(v) for v in val] if isinstance(val, (list, tuple)) else val
                 return col_expr.is_in(vals)
@@ -193,11 +258,35 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             cval = _coerce_val(val)
             if op == "==":
                 if cval is None or str(cval).lower() in ("none", "null"):
-                    return col_expr.is_null()
+                    suggested_pred = f"{col_disp}.is_null()"
+                    suggested_dict = f"{{{col!r}: 'is_null()'}}"
+                    raise ValueError(
+                        f"filter(): null checks in dictionaries via {cond!r} are not supported. "
+                        f"In line with 'one and only one obvious way', use 'is_null()': filter({suggested_pred!r}) or filter({suggested_dict})."
+                    )
+                if isinstance(cval, float) and math.isnan(cval):
+                    suggested_pred = f"{col_disp}.is_nan()"
+                    suggested_dict = f"{{{col!r}: 'is_nan()'}}"
+                    raise ValueError(
+                        f"filter(): NaN checks in dictionaries via {cond!r} are not supported. "
+                        f"In line with 'one and only one obvious way', use 'is_nan()': filter({suggested_pred!r}) or filter({suggested_dict})."
+                    )
                 return col_expr == cval
             if op == "!=":
                 if cval is None or str(cval).lower() in ("none", "null"):
-                    return col_expr.is_not_null()
+                    suggested_pred = f"{col_disp}.is_not_null()"
+                    suggested_dict = f"{{{col!r}: 'is_not_null()'}}"
+                    raise ValueError(
+                        f"filter(): null checks in dictionaries via {cond!r} are not supported. "
+                        f"In line with 'one and only one obvious way', use 'is_not_null()': filter({suggested_pred!r}) or filter({suggested_dict})."
+                    )
+                if isinstance(cval, float) and math.isnan(cval):
+                    suggested_pred = f"{col_disp}.is_not_nan()"
+                    suggested_dict = f"{{{col!r}: 'is_not_nan()'}}"
+                    raise ValueError(
+                        f"filter(): NaN checks in dictionaries via {cond!r} are not supported. "
+                        f"In line with 'one and only one obvious way', use 'is_not_nan()': filter({suggested_pred!r}) or filter({suggested_dict})."
+                    )
                 return col_expr != cval
             if op == ">":
                 return col_expr > cval
@@ -207,32 +296,62 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                 return col_expr < cval
             if op == "<=":
                 return col_expr <= cval
+        else:
+            # Option 2: Multi-condition tuple on the same column: e.g. (">= 10", "<= 20")
+            sub_exprs = [_cond_to_polars_expr(col, sub, schema=schema) for sub in cond]
+            combined = sub_exprs[0]
+            for s in sub_exprs[1:]:
+                combined = combined & s
+            return combined
 
     if isinstance(cond, str):
         cond_clean = cond.strip().lower()
-        if cond_clean in ("notna", "is_not_null", "not_null", "not null"):
-            return col_expr.is_not_null()
-        if cond_clean in ("isna", "is_null", "null"):
+        if cond_clean in ("is_null()", "isna()"):
             return col_expr.is_null()
+        if cond_clean in ("is_not_null()", "notna()"):
+            return col_expr.is_not_null()
+        if cond_clean in ("is_nan()", "isnan()"):
+            return col_expr.is_nan()
+        if cond_clean in ("is_not_nan()", "not_nan()"):
+            return col_expr.is_not_nan()
+
+        # Strict: Bare words without parentheses are strictly rejected to enforce 'is_null()' / 'is_nan()'
+        if cond_clean in ("is_null", "isna", "null", "none"):
+            raise ValueError(
+                f"filter(): checking for null values in dictionaries requires parentheses: 'is_null()'. "
+                f"Use filter({{{col!r}: 'is_null()'}}) or filter('{col_disp}.is_null()')."
+            )
+        if cond_clean in ("is_not_null", "notna", "not_null", "not null"):
+            raise ValueError(
+                f"filter(): checking for non-null values in dictionaries requires parentheses: 'is_not_null()'. "
+                f"Use filter({{{col!r}: 'is_not_null()'}}) or filter('{col_disp}.is_not_null()')."
+            )
+        if cond_clean in ("is_nan", "isnan", "nan"):
+            raise ValueError(
+                f"filter(): checking for NaN values in dictionaries requires parentheses: 'is_nan()'. "
+                f"Use filter({{{col!r}: 'is_nan()'}}) or filter('{col_disp}.is_nan()')."
+            )
+        if cond_clean in ("is_not_nan", "not_nan"):
+            raise ValueError(
+                f"filter(): checking for non-NaN values in dictionaries requires parentheses: 'is_not_nan()'. "
+                f"Use filter({{{col!r}: 'is_not_nan()'}}) or filter('{col_disp}.is_not_nan()')."
+            )
+
+        if cond.strip().startswith("=") and not cond.strip().startswith("=="):
+            val_part = cond.strip().lstrip("= ").strip()
+            raise ValueError(
+                f"filter(): single '=' is not supported for comparison. Use '==' instead (e.g. {col} == {val_part})."
+            )
 
         # interval pattern: [lo, hi], (lo, hi), [lo, hi), (lo, hi]
         m = re.match(r"^([\[(])([^,]+),([^,]+)([\])])$", cond.strip())
         if m:
-            l_br, lo_raw, hi_raw, r_br = m.groups()
-            try:
-                lo = ast.literal_eval(lo_raw.strip())
-            except Exception:
-                lo = lo_raw.strip()
-            try:
-                hi = ast.literal_eval(hi_raw.strip())
-            except Exception:
-                hi = hi_raw.strip()
-
-            lo = _coerce_val(lo)
-            hi = _coerce_val(hi)
-            c1 = col_expr >= lo if l_br == "[" else col_expr > lo
-            c2 = col_expr <= hi if r_br == "]" else col_expr < hi
-            return c1 & c2
+            b1 = m.group(2).strip()
+            b2 = m.group(3).strip()
+            raise ValueError(
+                f"filter(): interval notation '{cond}' is not supported. "
+                f"Use 'and' (e.g. {col} >= {b1} and {col} <= {b2}), or dict syntax '{col}: (\"between\", {b1}, {b2})'."
+            )
 
         op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", cond.strip())
         if op_match:
@@ -267,24 +386,78 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
     return col_expr == _coerce_val(cond)
 
 
-def filter_polars(df: Any, conditions: list[tuple[str, Any]] | dict) -> Any:
+def _eval_filter_node(node: FilterNode, schema: pl.Schema | None = None) -> pl.Expr:
+    """Evaluate a FilterNode AST into a Polars expression."""
+    if isinstance(node, BinaryOp):
+        left_expr = _eval_filter_node(node.left, schema)
+        right_expr = _eval_filter_node(node.right, schema)
+        if node.op == "and":
+            return left_expr & right_expr
+        elif node.op == "or":
+            return left_expr | right_expr
+        raise ValueError(f"Unknown logical operator: {node.op}")
+    elif isinstance(node, Predicate):
+        col_expr = pl.col(node.col)
+        cond = node.cond
+        if isinstance(cond, tuple) and len(cond) == 2:
+            op, _ = cond
+            if isinstance(op, str):
+                op_clean = op.strip().lower()
+                if op_clean in ("isna", "is_null"):
+                    return col_expr.is_null()
+                if op_clean in ("notna", "is_not_null"):
+                    return col_expr.is_not_null()
+                if op_clean in ("is_nan", "isnan"):
+                    return col_expr.is_nan()
+                if op_clean in ("is_not_nan", "not_nan"):
+                    return col_expr.is_not_nan()
+        return _cond_to_polars_expr(node.col, node.cond, schema=schema)
+    raise TypeError(f"Unknown filter node: {type(node)}")
+
+
+def filter_polars(df: Any, conditions: Any) -> Any:
     """Filter a Polars DataFrame or LazyFrame using pytae filter specifications."""
-    cond_items: list[tuple[str, Any]]
+    schema = _df_schema(df)
+    if isinstance(conditions, FilterNode):
+        return df.filter(_eval_filter_node(conditions, schema))
+
+    cond_items: list[Any]
     if isinstance(conditions, dict):
         cond_items = list(conditions.items())
-    else:
+    elif isinstance(conditions, list):
         cond_items = list(conditions)
+    else:
+        cond_items = [conditions]
 
     if not cond_items:
         return df
 
-    schema = _df_schema(df)
     combined_expr: pl.Expr | None = None
-    for col, cond in cond_items:
-        expr = _cond_to_polars_expr(col, cond, schema=schema)
-        combined_expr = expr if combined_expr is None else (combined_expr & expr)
+    for item in cond_items:
+        if isinstance(item, FilterNode):
+            expr = _eval_filter_node(item, schema)
+        elif isinstance(item, dict):
+            sub_expr: pl.Expr | None = None
+            for c, val in item.items():
+                e = _cond_to_polars_expr(c, val, schema=schema)
+                sub_expr = e if sub_expr is None else (sub_expr & e)
+            expr = sub_expr
+        elif isinstance(item, pl.Expr):
+            expr = item
+        elif isinstance(item, tuple) and len(item) == 2:
+            col, cond = item
+            if col == "__expr__" and isinstance(cond, pl.Expr):
+                expr = cond
+            else:
+                expr = _cond_to_polars_expr(col, cond, schema=schema)
+        else:
+            raise TypeError(f"filter(): unsupported condition item {item!r}")
 
-    assert combined_expr is not None
+        if expr is not None:
+            combined_expr = expr if combined_expr is None else (combined_expr & expr)
+
+    if combined_expr is None:
+        return df
     return df.filter(combined_expr)
 
 

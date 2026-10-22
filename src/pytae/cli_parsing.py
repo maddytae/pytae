@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from pytae._text import _ColRef, _is_enclosed_pair
+from pytae._parsing import FilterNode, _parse_dict_literal, _parse_filter_node
+from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
@@ -476,205 +477,31 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
 
 
 def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
-    """Split a -filter body into raw (key, value) text pairs on top-level commas and equals,
-    respecting quotes and nested (), [], {} so tuples/lists/intervals inside a value
-    aren't mistaken for entry or key/value separators. Direct comparisons like
-    'col > 5' or assignments like 'col = > 3500' or 'col = 3500' are accepted."""
-    # Normalize top-level ' and ' or ' & ' into ',' outside quotes and brackets
-    buf: list[str] = []
-    quote: str | None = None
-    depth = 0
-    i = 0
-    n = len(raw)
-    while i < n:
-        ch = raw[i]
-        if quote:
-            if ch == quote:
-                quote = None
-            buf.append(ch)
-            i += 1
-            continue
-        if ch in "'\"":
-            quote = ch
-            buf.append(ch)
-            i += 1
-        elif ch in "([{":
-            depth += 1
-            buf.append(ch)
-            i += 1
-        elif ch in ")]}":
-            depth -= 1
-            buf.append(ch)
-            i += 1
-        elif depth == 0 and ch == "&":
-            buf.append(",")
-            i += 1
-        elif depth == 0 and raw[i : i + 5].lower() == " and ":
-            buf.append(", ")
-            i += 5
-        else:
-            buf.append(ch)
-            i += 1
-    norm_raw = "".join(buf)
+    """Legacy helper for splitting filter conditions into (column, condition) tuples."""
+    node = _parse_filter_node(raw)
+    out: list[tuple[str, str]] = []
 
-    entries: list[tuple[str, str]] = []
-    for raw_entry in _tokenize(norm_raw, ",", keep_quotes=True, track_brackets=True):
-        if not raw_entry:
-            continue
-        # Direct comparison first: col > 5, col >= 5, col <= 5, etc.
-        m_cmp = re.match(r"^([^>=<!:]+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw_entry)
-        if m_cmp:
-            col = m_cmp.group(1).strip()
-            op = m_cmp.group(2).strip()
-            val = m_cmp.group(3).strip()
-            if val.lower() in ("none", "null", "nan") and op in ("!=", "=="):
-                op_null = "notna" if op == "!=" else "isna"
-                entries.append((col, (op_null, None)))
-                continue
-            entries.append((col, f"{op} {val}"))
-            continue
-        # Direct comparison with in / not in: col in ['a', 'b'], col not in ['a', 'b']
-        m_in = re.match(r"^([^>=<!:]+?)\s+(not\s+in|in)\s+(.+)$", raw_entry, flags=re.IGNORECASE)
-        if m_in:
-            col = m_in.group(1).strip()
-            op = "not in" if "not" in m_in.group(2).lower() else "in"
-            val = m_in.group(3).strip()
-            entries.append((col, f"{op} {val}"))
-            continue
-        # SQL-style null checks: col is not null, col is null, col is not na, col is na
-        m_sql_null = re.match(r"^(.+?)\s+is\s+(not\s+null|null|not\s+na|na)$", raw_entry, flags=re.IGNORECASE)
-        if m_sql_null:
-            col = m_sql_null.group(1).strip()
-            m_name = m_sql_null.group(2).strip().lower()
-            op = "notna" if "not" in m_name else "isna"
-            entries.append((col, (op, None)))
-            continue
-        # Functional null check calls: notna(col), is_not_null(col), isna(col), is_null(col)
-        m_fn_null = re.match(r"^(notna|isna|is_not_null|is_null)\((.+)\)$", raw_entry, flags=re.IGNORECASE)
-        if m_fn_null:
-            op_name = m_fn_null.group(1).strip().lower()
-            col = m_fn_null.group(2).strip()
-            op = "notna" if "not" in op_name else "isna"
-            entries.append((col, (op, None)))
-            continue
-        # String method calls: col.str.contains('val'), col.str.starts_with('val'), col.str.endswith('val')
-        m_str = re.match(r"^(.+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw_entry)
-        if m_str:
-            col = m_str.group(1).strip()
-            method = m_str.group(2).strip()
-            val = m_str.group(3).strip()
-            if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
-                val = val[1:-1]
-            op = "startswith" if "start" in method else ("endswith" if "end" in method else "contains")
-            entries.append((col, (op, val)))
-            continue
-        # Null check method calls: col.is_null(), col.is_not_null(), col.isna(), col.notna()
-        m_null = re.match(r"^(.+?)\.(is_null|isna|is_not_null|notna)\(\)$", raw_entry)
-        if m_null:
-            col = m_null.group(1).strip()
-            m_name = m_null.group(2).strip()
-            op = "notna" if "not" in m_name else "isna"
-            entries.append((col, (op, None)))
-            continue
-        # Assignment with '=': col = val, col = > 5, col = ['a', 'b']
-        m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw_entry)
-        if m_eq:
-            col = m_eq.group(1).strip()
-            val = m_eq.group(2).strip()
-            entries.append((col, val))
-            continue
-        # If colon was used, give a helpful error
-        pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
-        if len(pieces) >= 2:
-            raise SystemExit(
-                f"invalid -filter condition '{raw_entry}': use '=' (e.g. -filter 'species = Adelie'). Colon ':' is not supported."
-            )
-        raise SystemExit(f"invalid -filter conditions: missing '=' in entry '{raw_entry}'")
-    return entries
+    def _collect(n: Any):
+        if hasattr(n, "left") and hasattr(n, "right"):
+            _collect(n.left)
+            _collect(n.right)
+        elif hasattr(n, "col") and hasattr(n, "cond"):
+            out.append((n.col, str(n.cond)))
+
+    _collect(node)
+    return out
 
 
-def parse_filter(raw: str) -> list[tuple[str, Any]]:
-    """Parse -filter conditions like "col = ('>', 5), other = ['a','b']"; wrapping {} and
-    quotes around column names are both optional (matching -select), e.g.
-    "sex='Male'" == "'sex'='Male'". Prefix operators (e.g. "col = > 5" or "col > 5") are also accepted."""
+def parse_filter(raw: str) -> FilterNode | dict[str, Any]:
+    """Parse -filter conditions like "col == 5 and other in ['a','b']", or dict literal '{"col": 5}'."""
     stripped = raw.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        stripped = stripped[1:-1]
-    conditions: list[tuple[str, Any]] = []
-    for key_raw, value_raw in _split_qry_entries(stripped):
-        key = _unquote_name(key_raw)
-        if not key:
-            raise SystemExit("invalid --filter conditions: empty column name")
-        if isinstance(value_raw, tuple):
-            conditions.append((key, value_raw))
-            continue
-        val_strip = value_raw.strip()
-        if not val_strip:
-            raise SystemExit(f"invalid --filter conditions: '{key}' has no value")
-
-        # Check interval syntax: e.g. [3000, 4500], (3000, 4500), [a, c), (a, c]
-        m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_strip)
-        if m_int:
-            left, b1, b2, right = m_int.groups()
-            b1_is_quoted = (b1.startswith("'") and b1.endswith("'")) or (b1.startswith('"') and b1.endswith('"'))
-            b2_is_quoted = (b2.startswith("'") and b2.endswith("'")) or (b2.startswith('"') and b2.endswith('"'))
-            if not (b1_is_quoted and b2_is_quoted and left == "[" and right == "]"):
-                conditions.append((key, val_strip))
-                continue
-
-        m_in = re.match(r"^(not\s+in|in)\s*(.+)$", val_strip, flags=re.IGNORECASE)
-        if m_in:
-            op = "not in" if "not" in m_in.group(1).lower() else "in"
-            sub_raw = m_in.group(2).strip()
-            try:
-                sub_val = ast.literal_eval(sub_raw)
-            except (ValueError, SyntaxError):
-                sub_val = [s.strip().strip("'\"") for s in sub_raw.strip("[]()").split(",") if s.strip()]
-            conditions.append((key, (op, sub_val)))
-            continue
-
-        op_match = re.match(r"^(>=|<=|!=|==|>|<)\s*(.+)$", val_strip)
-        if op_match:
-            op = op_match.group(1)
-            sub_raw = op_match.group(2).strip()
-            if len(sub_raw) >= 2 and sub_raw[0] in "'\"" and sub_raw[-1] == sub_raw[0]:
-                sub_val = sub_raw[1:-1]
-            elif sub_raw.startswith("col(") and sub_raw.endswith(")"):
-                inner = sub_raw[4:-1].strip().strip("'\"")
-                sub_val = _ColRef(inner)
-            else:
-                try:
-                    sub_val = ast.literal_eval(sub_raw)
-                except (ValueError, SyntaxError) as exc:
-                    raise SystemExit(
-                        f"invalid --filter conditions: value for '{key}' ('{sub_raw}') must be quoted "
-                        "(e.g. 'Male') or a valid literal (number/tuple/list)"
-                    ) from exc
-            conditions.append((key, (op, sub_val)))
-            continue
-
-        if len(val_strip) >= 2 and val_strip[0] in "'\"" and val_strip[-1] == val_strip[0]:
-            value = val_strip[1:-1]
-        elif val_strip.startswith("col(") and val_strip.endswith(")"):
-            inner = val_strip[4:-1].strip().strip("'\"")
-            value = _ColRef(inner)
-        else:
-            try:
-                value = ast.literal_eval(val_strip)
-            except (ValueError, SyntaxError) as exc:
-                raise SystemExit(
-                    f"invalid --filter conditions: value for '{key}' ('{val_strip}') must be quoted "
-                    "(e.g. 'Male') or a valid literal (number/tuple/list)"
-                ) from exc
-        conditions.append((key, value))
-    if not conditions:
-        raise SystemExit(
-            '-filter expects keyword entries, e.g. "col = (\'>\', 5)" or "col > 5" (quotes around column name optional)'
-        )
-    return conditions
+    parsed_dict = _parse_dict_literal(stripped)
+    if parsed_dict is not None:
+        return parsed_dict
+    return _parse_filter_node(stripped)
 
 
-def parse_qry(raw: str) -> list[tuple[str, Any]]:
+def parse_qry(raw: str) -> FilterNode | dict[str, Any]:
     """Deprecated alias for parse_filter."""
     return parse_filter(raw)
 

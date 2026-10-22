@@ -237,13 +237,19 @@ def test_special_column_names_with_null_predicates():
             "counterparty class (irb)": ["Gov", "Bank", None],
         }
     )
-    assert len(df.filter("counterparty_class_(irb).notna()")) == 2
+    assert len(df.filter("counterparty_class_(irb).is_not_null()")) == 2
     assert len(df.filter("counterparty_class_(irb).is_null()")) == 1
-    assert len(df.filter("counterparty_class_(irb) is not null")) == 2
-    assert len(df.filter("counterparty_class_(irb) is null")) == 1
-    assert len(df.filter("[counterparty class (irb)].notna()")) == 2
-    assert len(df.filter("[counterparty class (irb)] is not null")) == 2
+    assert len(df.filter("[counterparty class (irb)].is_not_null()")) == 2
     assert len(df.filter("[counterparty class (irb)].is_null()")) == 1
+
+    # SQL 'is null' syntax in filter raises explicit guidance
+    with pytest.raises(ValueError) as exc:
+        df.filter("counterparty_class_(irb) is null")
+    assert "use 'counterparty_class_(irb).is_null()'" in str(exc.value)
+
+    with pytest.raises(ValueError) as exc2:
+        df.filter("counterparty_class_(irb) is not null")
+    assert "use 'counterparty_class_(irb).is_not_null()'" in str(exc2.value)
 
 
 def test_map_empty_dict_with_boolean_default():

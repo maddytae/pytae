@@ -52,22 +52,22 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Filter DataFrame rows using expressions, interval bounds, and string checks.",
         description=(
             "Filters rows at this point in the pipeline using pytae filter().\n"
-            "Supports equality ('==', '='), inequality ('>', '<=', '!='), interval notation [a, b],\n"
-            "string matching (startswith, contains, regex), and column names with spaces."
+            "Supports equality ('=='), inequality ('>', '<=', '!='), boolean logic ('and', 'or', '()'),\n"
+            "dict ranges, string matching (startswith, contains, regex), and column names with spaces."
         ),
         options=[
-            "col = 'val' : Exact match (single quotes for string literals).",
+            "col == 'val' : Exact match (single quotes for string literals; '==' strictly enforced).",
             "col > 100 : Numeric comparison.",
             "col in ['A', 'B'] : Set membership.",
-            "col = [3000, 5000] : Interval range (inclusive closed interval 3000 <= col <= 5000).",
-            "col = '(3000, 5000)' : Open interval (3000 < col < 5000).",
+            "{'col': ('between', min, max)} : Option 1 native between range (min <= col <= max).",
+            "{'col': (('>=', min), ('<=', max))} : Option 2 multi-condition tuple range.",
             "[col with spaces] > 50 : Bracket notation for column names containing spaces.",
         ],
         examples=[
-            "pytae penguins.parquet -filter \"species == 'Gentoo', body_mass_g > 5000\"",
-            'pytae penguins.parquet -filter "body_mass_g = [4000, 5000]" -shape',
+            "pytae penguins.parquet -filter \"species == 'Gentoo' and body_mass_g > 5000\"",
+            "pytae penguins.parquet -filter \"{'body_mass_g': ('between', 4000, 5000)}\" -shape",
             "pytae penguins.parquet -filter \"island in ['Biscoe', 'Dream']\"",
-            "pytae data.csv -filter \"[customer name] = 'Acme Corp'\"",
+            "pytae data.csv -filter \"[customer name] == 'Acme Corp'\"",
         ],
         see_also=["-sql", "-select", "-dropna"],
     ),

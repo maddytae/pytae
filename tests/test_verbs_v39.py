@@ -34,17 +34,26 @@ def test_filter_callable_lambda():
     assert len(res2) == 2
 
 
-def test_filter_string_and_kwargs():
+def test_filter_rejects_kwargs():
     df = _sample_df()
-    res = df.pt.filter("mass > 4000", species="Gentoo")
-    assert len(res) == 2
-    assert list(res["species"]) == ["Gentoo", "Gentoo"]
+    with pytest.raises(TypeError, match="filter\\(\\): keyword arguments are not supported"):
+        df.pt.filter("mass > 4000", species="Gentoo")
+
+    # String expression with 'and' and '==' succeeds
+    res_str = df.pt.filter("mass > 4000 and species == 'Gentoo'")
+    assert len(res_str) == 2
+    assert list(res_str["species"]) == ["Gentoo", "Gentoo"]
+
+    # String + dict succeeds
+    res_dict = df.pt.filter("mass > 4000", {"species": "Gentoo"})
+    assert len(res_dict) == 2
+    assert list(res_dict["species"]) == ["Gentoo", "Gentoo"]
 
 
 def test_filter_rejects_mixing_callable():
     df = _sample_df()
     with pytest.raises(TypeError, match="callable/lambda predicates cannot be mixed"):
-        df.pt.filter(lambda d: d["mass"] > 4000, species="Gentoo")
+        df.pt.filter(lambda d: d["mass"] > 4000, "mass > 4000")
 
 
 # ==============================================================================
@@ -260,9 +269,14 @@ def test_filter_notna_spaced_column():
     assert len(df.filter("[bill length mm].notna()")) == 3
     assert len(df.filter("[bill length mm].is_not_null()")) == 3
 
-    # 2. SQL style
-    assert len(df.filter("[bill length mm] is not null")) == 3
-    assert len(df.filter("[bill length mm] is not na")) == 3
+    # 2. SQL style is disallowed in filter()
+    with pytest.raises(ValueError) as exc:
+        df.filter("[bill length mm] is not null")
+    assert "use '[bill length mm].is_not_null()'" in str(exc.value)
+
+    with pytest.raises(ValueError) as exc2:
+        df.filter("[bill length mm] is not na")
+    assert "use '[bill length mm].is_not_null()'" in str(exc2.value)
 
     # 3. Functional call
     assert len(df.filter("notna([bill length mm])")) == 3
@@ -272,8 +286,10 @@ def test_filter_notna_spaced_column():
     assert len(df.filter("[bill length mm] != None")) == 3
     assert len(df.filter("[bill length mm] != null")) == 3
 
-    # 5. Dict syntax
-    assert len(df.filter({"bill length mm": "notna"})) == 3
-    with pytest.raises(ValueError, match=r"1-tuple pattern"):
-        df.filter({"bill length mm": ("notna",)})
+    # 5. Dict syntax with canonical 'is_not_null()' succeeds
+    assert len(df.filter({"bill length mm": "is_not_null()"})) == 3
+
+    # Bare word without parens is strictly rejected
+    with pytest.raises(ValueError, match=r"requires parentheses: 'is_not_null\(\)'"):
+        df.filter({"bill length mm": "notna"})
 

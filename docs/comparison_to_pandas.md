@@ -167,9 +167,9 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Boolean Mask** | `df[df['sales'] > 100]` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter("a > 1 & b == 'E'")` | `-filter "a > 1, b == 'E'"` |
-| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
-| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter("a > 1 and b == 'E'")` | `-filter "a > 1 and b == 'E'"` |
+| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
+| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
 | **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.notna()")` | `-filter "col.notna()"` |

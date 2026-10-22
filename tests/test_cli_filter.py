@@ -2,6 +2,7 @@ import os
 import sys
 
 import pandas as pd
+import polars as pl
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -28,7 +29,7 @@ def test_filter_without_braces_is_equivalent(tmp_path, capsys):
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    exit_code = cli.main([path, "-filter", "'flt' = 'A'", "-shape"])
+    exit_code = cli.main([path, "-filter", "'flt' == 'A'", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 3)"
 
@@ -39,20 +40,21 @@ def test_filter_column_key_quoting_is_optional(tmp_path, capsys):
         pd.DataFrame({"keep": [1, 2, 3], "flt": ["A", "B", "A"], "val": [10, 20, 30]}),
     )
 
-    cli.main([path, "-filter", "flt='A'", "-shape"])
+    cli.main([path, "-filter", "flt=='A'", "-shape"])
     unquoted = capsys.readouterr().out.strip()
 
-    cli.main([path, "-filter", "'flt'='A'", "-shape"])
+    cli.main([path, "-filter", "'flt'=='A'", "-shape"])
     quoted = capsys.readouterr().out.strip()
 
     assert unquoted == quoted == "(2, 3)"
 
 
-def test_filter_unquoted_string_value_errors(tmp_path):
+def test_filter_unquoted_string_value_errors(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"flt": ["A", "B"]}))
 
-    with pytest.raises(SystemExit, match="must be quoted"):
-        cli.main([path, "-filter", "flt=A", "-shape"])
+    with pytest.raises(SystemExit):
+        cli.main([path, "-filter", "flt == A", "-shape"])
+    assert "not found in DataFrame" in capsys.readouterr().err
 
 
 def test_filter_column_not_in_select_still_filters(tmp_path, capsys):
@@ -69,7 +71,7 @@ def test_filter_column_not_in_select_still_filters(tmp_path, capsys):
         [
             path,
             "-filter",
-            "flt = 'A'",
+            "flt == 'A'",
             "-select",
             "'keep','val'",
             "-shape",
@@ -91,7 +93,7 @@ def test_filter_clip_copies_filtered_frame_without_output_op(tmp_path, capsys, m
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    exit_code = cli.main([path, "-filter", "month = 202607", "-o", "clip"])
+    exit_code = cli.main([path, "-filter", "month == 202607", "-o", "clip"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -113,40 +115,110 @@ def test_filter_direct_comparison(tmp_path, capsys):
 def test_filter_colon_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
-    with pytest.raises(SystemExit, match="use '='"):
+    with pytest.raises(SystemExit, match="use '=='"):
         cli.main([path, "-filter", "body_mass_g: > 3500", "-shape"])
 
 
-def test_filter_equals_separator(tmp_path, capsys):
+def test_filter_single_equals_raises_error(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 4000, 5000]}))
 
-    # col= > val
-    exit_code = cli.main([path, "-filter", "body_mass_g= > 3500", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(2, 1)"
+    with pytest.raises(SystemExit, match=r"use '==' for equality comparisons"):
+        cli.main([path, "-filter", "body_mass_g = 4000", "-shape"])
 
-    # col=>val
-    exit_code = cli.main([path, "-filter", "body_mass_g=>3500", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(2, 1)"
-
-    # col = > val
-    exit_code = cli.main([path, "-filter", "body_mass_g = > 3500", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(2, 1)"
-
-    # col = val
-    exit_code = cli.main([path, "-filter", "body_mass_g = 4000", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(1, 1)"
+    with pytest.raises(SystemExit, match=r"use '==' for equality comparisons"):
+        cli.main([path, "-filter", "body_mass_g = > 3500", "-shape"])
 
 
-def test_filter_cli_bracket_interval(tmp_path, capsys):
-    # CLI Issue 3: -qry "body_mass_g = [3000, 3200]" treats as interval
+def test_filter_comma_raises_error(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"species": ["Adelie", "Gentoo"], "mass": [3000, 5000]}))
+
+    with pytest.raises(SystemExit, match=r"comma ',' is not supported as a boolean operator"):
+        cli.main([path, "-filter", "species == 'Gentoo', mass > 4000", "-shape"])
+
+
+def test_filter_bitwise_symbols_raise_error(tmp_path):
+    path = _write_csv(tmp_path, pd.DataFrame({"species": ["Adelie", "Gentoo"], "mass": [3000, 5000]}))
+
+    with pytest.raises(SystemExit, match=r"'&' is not supported"):
+        cli.main([path, "-filter", "species == 'Gentoo' & mass > 4000", "-shape"])
+
+    with pytest.raises(SystemExit, match=r"'\|' is not supported"):
+        cli.main([path, "-filter", "species == 'Gentoo' | mass > 4000", "-shape"])
+
+
+def test_filter_cli_bracket_interval_errors(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"body_mass_g": [3000, 3100, 3200, 4000]}))
-    exit_code = cli.main([path, "-filter", "body_mass_g = [3000, 3200]", "-shape"])
+
+    with pytest.raises(SystemExit, match=r"interval notation.*is not supported"):
+        cli.main([path, "-filter", "body_mass_g == [3000, 3200]", "-shape"])
+
+    with pytest.raises(SystemExit, match=r"use '==' for equality comparisons"):
+        cli.main([path, "-filter", "body_mass_g = [3000, 3200]", "-shape"])
+
+
+def test_filter_logical_and_and_or(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "species": ["Adelie", "Gentoo", "Chinstrap", "Gentoo"],
+                "body_mass_g": [3200, 5100, 3800, 4200],
+                "island": ["Dream", "Biscoe", "Dream", "Torgersen"],
+            }
+        ),
+    )
+
+    # 1. OR condition
+    exit_code = cli.main([path, "-filter", "species == 'Gentoo' or body_mass_g < 3500", "-shape"])
     assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(3, 1)"
+    assert capsys.readouterr().out.strip() == "(3, 3)"
+
+    # 2. AND condition
+    exit_code = cli.main([path, "-filter", "species == 'Gentoo' and body_mass_g > 5000", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 3)"
+
+
+def test_filter_nested_parentheses_precedence(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "species": ["Adelie", "Gentoo", "Chinstrap", "Gentoo"],
+                "body_mass_g": [3200, 5100, 3800, 4200],
+                "island": ["Dream", "Biscoe", "Dream", "Torgersen"],
+            }
+        ),
+    )
+
+    # species == 'Gentoo' and (island == 'Biscoe' or body_mass_g < 4500)
+    exit_code = cli.main(
+        [path, "-filter", "species == 'Gentoo' and (island == 'Biscoe' or body_mass_g < 4500)", "-shape"]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 3)"
+
+
+def test_filter_dict_syntax_in_cli(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "species": ["Adelie", "Gentoo", "Chinstrap", "Gentoo"],
+                "body_mass_g": [3200, 5100, 3800, 4200],
+            }
+        ),
+    )
+
+    # Option 1: ("between", 3500, 5000)
+    exit_code = cli.main([path, "-filter", "{'body_mass_g': ('between', 3500, 5000)}", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 2)"
+
+    # Option 2: (">= 3500", "< 5000")
+    exit_code = cli.main([path, "-filter", "{'body_mass_g': ('>= 3500', '< 5000')}", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 2)"
 
 
 def test_filter_cli_str_methods_and_null_checks(tmp_path, capsys):
@@ -193,10 +265,10 @@ def test_filter_cli_notna_spaced_column(tmp_path, capsys):
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 2)"
 
-    # 2. SQL style [bill length mm] is not null
-    exit_code = cli.main([path, "-filter", "[bill length mm] is not null", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(3, 2)"
+    # 2. SQL style [bill length mm] is not null raises helpful error
+    with pytest.raises(SystemExit) as exc:
+        cli.main([path, "-filter", "[bill length mm] is not null", "-shape"])
+    assert "use '[bill length mm].is_not_null()'" in str(exc.value)
 
     # 3. Functional notna([bill length mm])
     exit_code = cli.main([path, "-filter", "notna([bill length mm])", "-shape"])
@@ -215,12 +287,11 @@ def test_filter_string_column_unquoted_number_fails(tmp_path, capsys):
         pd.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]}),
     )
 
-    # Bare equality with unquoted int
-    with pytest.raises(SystemExit):
+    # Bare single equals raises SystemExit informing about ==
+    with pytest.raises(SystemExit, match="use '=='"):
         cli.main([path, "-filter", "id = 9"])
-    assert "column 'id' has String type" in capsys.readouterr().err
 
-    # Double equality with unquoted int
+    # Double equality with unquoted int raises String type error
     with pytest.raises(SystemExit):
         cli.main([path, "-filter", "id == 9"])
     assert "column 'id' has String type" in capsys.readouterr().err
@@ -237,19 +308,69 @@ def test_filter_string_column_quoted_number_succeeds(tmp_path, capsys):
         pd.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]}),
     )
 
-    exit_code = cli.main([path, "-filter", "id = '9'", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(1, 2)"
-
     exit_code = cli.main([path, "-filter", "id == '9'", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 2)"
 
 
-def test_filter_unquoted_comparison_word_errors(tmp_path):
+def test_filter_unquoted_comparison_word_errors(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"species": ["Adelie", "Gentoo"]}))
 
-    with pytest.raises(SystemExit, match="must be quoted"):
+    with pytest.raises(SystemExit):
         cli.main([path, "-filter", "species == Adelie", "-shape"])
+    assert "not found in DataFrame" in capsys.readouterr().err
 
 
+def test_filter_dict_unquoted_keys_and_whitespace_operator(tmp_path, capsys):
+    path = _write_csv(
+        tmp_path,
+        pd.DataFrame({
+            "species": ["Gentoo", "Gentoo", "Adelie"],
+            "body_mass_g": [5500, 4200, 3500],
+        }),
+    )
+
+    exit_code = cli.main([path, "-filter", "{species : 'Gentoo', body_mass_g : ('> ', 5000)}", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+
+def test_filter_is_nan_and_is_not_nan(tmp_path, capsys):
+    path = tmp_path / "data.parquet"
+    pl.DataFrame({
+        "val": [1.0, float("nan"), 2.0],
+    }).write_parquet(path)
+
+    exit_code = cli.main([str(path), "-filter", "val.is_nan()", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 1)"
+
+    exit_code = cli.main([str(path), "-filter", "val.is_not_nan()", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+    # Dictionaries with canonical method tokens 'is_nan()' and 'is_not_nan()' succeed in CLI
+    exit_code = cli.main([str(path), "-filter", "{val: is_nan()}", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 1)"
+
+    exit_code = cli.main([str(path), "-filter", "{val: is_not_nan()}", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 1)"
+
+    # Bare words without parens (no forgiving) are strictly rejected
+    with pytest.raises(SystemExit):
+        cli.main([str(path), "-filter", "{val: is_nan}", "-shape"])
+    err = capsys.readouterr().err
+    assert "requires parentheses: 'is_nan()'" in err
+
+    # Float 'nan' is strictly rejected
+    with pytest.raises(SystemExit):
+        cli.main([str(path), "-filter", "{val: nan}", "-shape"])
+    err = capsys.readouterr().err
+    assert "checking for NaN values in dictionaries via float('nan') is not supported" in err
+
+    with pytest.raises(SystemExit):
+        cli.main([str(path), "-filter", "{val: ('!=', nan)}", "-shape"])
+    err = capsys.readouterr().err
+    assert "NaN checks in dictionaries via" in err

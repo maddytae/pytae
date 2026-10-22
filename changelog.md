@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.10.4] - 2026-10-21
+
+### Added
+- **Unified Method-Token Standard for Null & NaN Filtering**:
+  - Standardized missing value (`null`) and non-finite float (`NaN`) filtering on canonical Polars predicates across both string expressions and dictionaries in Python and CLI:
+    - Missing data (`null`): `is_null()`, `is_not_null()`
+    - Float non-finites (`NaN`): `is_nan()`, `is_not_nan()`
+  - Supported in string expressions (`"sex.is_null()"`, `"score.is_nan()"`, `"[bill length mm].is_not_null()"`).
+  - Supported in dictionaries (`{"sex": "is_null()"}`, `{"score": "is_nan()"}`, `{"bill length mm": "is_not_null()"}`) and CLI dictionaries (`-filter "{sex: is_null()}"`, `-filter "{score: is_nan()}"`).
+  - Enables clean dynamic programmatic query construction without splitting filters into string and dict parts.
+
+### Changed & Enforced
+- **Strict Method-Token Validation ("No Forgiving")**:
+  - Parentheses `()` are strictly required for method tokens in dictionaries (`"is_null()"`, `"is_nan()"`). Bare words without parentheses (`"is_null"`, `"nan"`) strictly raise `ValueError` with clear guidance.
+  - Passing `None` or `float("nan")` in filter dictionaries strictly raises `ValueError` pointing users directly to `'is_null()'` or `'is_nan()'`.
+  - Disallowed SQL-style `is null` / `is not null` in `-filter`, pointing users to `sex.is_null()` / `sex.is_not_null()` (or `-sql`).
+  - Removed internal sentinel objects and exported sentinels from `__init__.py`, keeping the public API clean and zero-cost.
+
+### Documentation
+- Updated CLI filter guide (`docs/detailed_docs/cli/filter.md`), cheatsheets (`docs/cli_cheatsheet.md`, `src/pytae/cheatsheet.py`), and reference manual (`reference/pytae_reference.txt`).
+- Updated interactive filter notebook (`docs/detailed_docs/library/filter.ipynb`) with dedicated working examples for null and NaN in expressions and dictionaries.
+- Synchronized all 15 documentation notebooks with 100% clean execution.
+
 ## [3.10.3] - 2026-10-21
 
 ### Added

@@ -33,7 +33,7 @@ def sample_dataset_dir(tmp_path_factory):
 
 # Mirrors docs/pytae.md's "Sample datasets" section — keep in sync with those examples.
 _DOC_EXAMPLES = [
-    ("penguins.parquet", ["-filter", "species = 'Adelie'", "-by", "species", "-agg", "mean"]),
+    ("penguins.parquet", ["-filter", "species == 'Adelie'", "-by", "species", "-agg", "mean"]),
     ("penguins.parquet", ["-pivot", "r=species,c=island,v=sex,a=n"]),
     ("tips.parquet", ["-select", "day,total_bill,tip", "-by", "day", "-mutate", "avg_tip = mean(tip)"]),
     ("titanic.parquet", ["-freq", "survived"]),

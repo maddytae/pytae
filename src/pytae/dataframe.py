@@ -714,10 +714,10 @@ class DataFrame:
     # Fluent Transformation Verbs
     # -------------------------------------------------------------------------
 
-    def filter(self, *conditions: Any, **kwargs: Any) -> DataFrame:
-        """Filter rows using conditions (string expressions, callables, or kwargs)."""
+    def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+        """Filter rows using conditions (string expressions or dictionaries)."""
         if any(callable(c) for c in conditions):
-            if kwargs or len(conditions) > 1:
+            if kwargs or params or len(conditions) > 1:
                 raise TypeError("callable/lambda predicates cannot be mixed with other filter arguments")
             cond = conditions[0]
             eager_self = self.collect() if self.is_lazy else self
@@ -745,27 +745,38 @@ class DataFrame:
             frame_vars.update(caller_frame.f_locals)
         del caller_frame
 
-        params = kwargs.pop("_params", None)
-        if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
-            params = kwargs.pop("params")
+        if params is None:
+            params = kwargs.pop("_params", None)
+        if "params" in kwargs:
+            p_val = kwargs.pop("params")
+            if params is None and isinstance(p_val, dict):
+                params = p_val
+
+        if kwargs:
+            first_k = next(iter(kwargs))
+            first_v = kwargs[first_k]
+            example_val = repr(first_v) if isinstance(first_v, (str, int, float)) else "'...'"
+            raise TypeError(
+                f"filter(): keyword arguments are not supported (received {list(kwargs.keys())}). "
+                f"Equality comparisons strictly require '==' to avoid '=' assignment ambiguity. "
+                f"Use a string expression (e.g. df.filter(\"{first_k} == {example_val}\")) "
+                f"or a dictionary (e.g. df.filter({{{repr(first_k)}: {example_val}}}))"
+            )
 
         merged_params = dict(frame_vars)
         if params:
             merged_params.update(params)
 
-        cond_pairs: list[tuple[str, Any]] = []
+        cond_pairs: list[Any] = []
         for cond in conditions:
             if isinstance(cond, str):
-                cond_pairs.extend(_parse_filter_string(cond, params=merged_params))
+                cond_pairs.append(_parse_filter_string(cond, params=merged_params))
             elif isinstance(cond, dict):
-                cond_pairs.extend(cond.items())
+                cond_pairs.append(cond)
             elif isinstance(cond, (list, tuple)) and cond and isinstance(cond[0], tuple):
                 cond_pairs.extend(cond)  # type: ignore[arg-type]
             elif isinstance(cond, tuple) and len(cond) == 2:
                 cond_pairs.append(cond)  # type: ignore[arg-type]
-
-        for k, v in kwargs.items():
-            cond_pairs.append((k, v))
 
         return DataFrame(filter_polars(self._df, cond_pairs))
 

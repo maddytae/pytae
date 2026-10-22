@@ -49,32 +49,38 @@ pytae data.parquet -sample -frac 0.05
 Filter rows cleanly using operator expressions, ranges, set membership, or column comparisons:
 
 ```bash
-# Exact match (string values must be enclosed in quotes)
-pytae data.parquet -filter "species = 'Gentoo'"
+# Exact match (strict '==' enforced; string values must be quoted)
+pytae data.parquet -filter "species == 'Gentoo'"
 
-# Numeric comparison operators (>, <, >=, <=, !=)
+# Numeric comparison operators (>, <, >=, <=, !=) and boolean logic (and, or, parens)
 pytae data.parquet -filter "body_mass_g > 5000"
-pytae data.parquet -filter "body_mass_g >= 3500, flipper_length_mm < 210"
+pytae data.parquet -filter "body_mass_g >= 3500 and flipper_length_mm < 210"
+pytae data.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000"
 
 # Column-to-column comparison (reconcile IDs, detect limit breaches)
-pytae loans.parquet -filter "exposure > col(limit)"
-pytae loans.parquet -filter "tranche_id == col(deal_id)"
+pytae loans.parquet -filter "exposure > limit"
+pytae loans.parquet -filter "tranche_id == deal_id"
 
-# Inclusive interval ranges [min, max]
-pytae data.parquet -filter "body_mass_g = [3000, 3500]"
+# Ranges & Intervals (Option 1 native between or Option 2 multi-condition tuple dicts)
+pytae data.parquet -filter "{'body_mass_g': ('between', 3000, 3500)}"
+pytae data.parquet -filter "{'body_mass_g': (('>=', 3000), ('<=', 3500))}"
+pytae data.parquet -filter "body_mass_g >= 3000 and body_mass_g <= 3500"
 
-# List set membership
-pytae data.parquet -filter "species = ['Adelie', 'Chinstrap']"
+# List set membership (in, not in)
+pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']"
 pytae data.parquet -filter "species not in ['Gentoo']"
 
-# Null checks (methods or SQL syntax)
-pytae data.parquet -filter "sex.notna()"
-pytae data.parquet -filter "sex is not null"
+# Null and NaN checks (universal 'is_null()' / 'is_nan()' in expressions and dicts)
+pytae data.parquet -filter "sex.is_not_null()"
 pytae data.parquet -filter "sex.is_null()"
+pytae data.parquet -filter "{'sex': 'is_null()'}"
+pytae data.parquet -filter "score.is_nan()"
+pytae data.parquet -filter "score.is_not_nan()"
+pytae data.parquet -filter "{score: is_nan()}"
 
 # Columns with parentheses or spaces
 pytae data.parquet -filter "counterparty_class_(irb) == 'Sovereigns'"
-pytae data.parquet -filter "[counterparty class (irb)].notna()"
+pytae data.parquet -filter "[counterparty class (irb)].is_not_null()"
 
 # Drop rows containing missing values
 pytae data.parquet -dropna

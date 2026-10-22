@@ -216,7 +216,7 @@ def test_select_then_filter_on_dropped_column_errors(tmp_path, capsys):
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-select", "keep,val", "-filter", "flt = 'A'", "-shape"])
+        cli.main([path, "-select", "keep,val", "-filter", "flt == 'A'", "-shape"])
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert "-filter" in err
@@ -321,7 +321,7 @@ def test_select_cli_negative_after_filter(tmp_path, capsys):
         pd.DataFrame({"keep": [1, 2], "flt": ["A", "B"], "val": [10, 20]}),
     )
 
-    exit_code = cli.main([path, "-filter", "flt = 'A'", "-select", "-flt", "-cols"])
+    exit_code = cli.main([path, "-filter", "flt == 'A'", "-select", "-flt", "-cols"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["keep", "val"]
 

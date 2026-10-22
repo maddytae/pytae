@@ -2,6 +2,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
+import pytae as pt
 from pytae import cli
 from pytae.polars_engine import (
     arrange_polars,
@@ -70,15 +71,28 @@ def test_filter_polars_operators():
     with pytest.raises(ValueError, match=r"1-tuple pattern"):
         filter_polars(df, [("c", ("notna",))])
 
-    res_null = filter_polars(df, [("c", ("isna", None))])
+    with pytest.raises(ValueError, match=r"isna checks in dictionaries via"):
+        filter_polars(df, [("c", ("isna", None))])
+    with pytest.raises(ValueError, match=r"notna checks in dictionaries via"):
+        filter_polars(df, [("c", ("notna", None))])
+
+    from pytae._parsing import _parse_filter_string
+    res_null = filter_polars(df, _parse_filter_string("c.is_null()"))
     assert len(res_null) == 2
 
-    res_notnull = filter_polars(df, [("c", ("notna", None))])
+    res_notnull = filter_polars(df, _parse_filter_string("c.is_not_null()"))
     assert len(res_notnull) == 3
 
-    # Intervals
-    res_int = filter_polars(df, [("a", "[2, 4]")])
-    assert res_int["a"].to_list() == [2, 3, 4]
+    # Between / ranges (Option 1 and Option 2)
+    res_between = filter_polars(df, [("a", ("between", 2, 4))])
+    assert res_between["a"].to_list() == [2, 3, 4]
+
+    res_range = filter_polars(df, [("a", (">= 2", "<= 4"))])
+    assert res_range["a"].to_list() == [2, 3, 4]
+
+    # Legacy interval string raises ValueError
+    with pytest.raises(ValueError, match=r"interval notation .* is not supported"):
+        filter_polars(df, [("a", "[2, 4]")])
 
 
 def test_select_polars():
@@ -649,31 +663,85 @@ def test_filter_string_column_type_enforcement():
 
     df = pt.DataFrame({"id": ["1", "9", "a"], "val": [10, 20, 30]})
 
-    # Kwarg with unquoted int raises TypeError
-    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
-        df.filter(id=9)
+    # Kwargs raise TypeError explaining they are not supported
+    with pytest.raises(TypeError, match=r"filter\(\): keyword arguments are not supported"):
+        df.filter(id="9")
 
-    # String expression with unquoted int raises TypeError
-    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+    # Single '=' raises ValueError
+    with pytest.raises(ValueError, match=r"use '==' for equality comparisons"):
         df.filter("id = 9")
 
+    # Dict with unquoted int raises TypeError
+    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
+        df.filter({"id": 9})
+
+    # String expression with unquoted int raises TypeError
     with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
         df.filter("id == 9")
 
     with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
         df.filter("id > 9")
 
-    # List of unquoted ints raises TypeError
+    # List of unquoted ints in dict raises TypeError
     with pytest.raises(TypeError, match=r"column 'id' has String type, but received int"):
-        df.filter(id=[1, 9])
+        df.filter({"id": [1, 9]})
 
-    # Quoted string values succeed
-    res_kw = df.filter(id="9")
-    assert res_kw["id"].to_list() == ["9"]
+    # Quoted string values in dict and string succeed
+    res_dict = df.filter({"id": "9"})
+    assert res_dict["id"].to_list() == ["9"]
 
     res_eq = df.filter("id == '9'")
     assert res_eq["id"].to_list() == ["9"]
 
-    res_list = df.filter(id=["1", "9"])
+    res_list = df.filter({"id": ["1", "9"]})
     assert res_list["id"].to_list() == ["1", "9"]
+
+    res_in = df.filter("id in ['1', '9']")
+    assert res_in["id"].to_list() == ["1", "9"]
+
+
+def test_consistent_is_null_and_is_nan_across_dict_and_non_dict():
+    df = pt.DataFrame({
+        "sex": ["M", None, "F", None],
+        "score": [1.0, float("nan"), 3.0, 4.0],
+    })
+
+    # 1. Non-dict strings: The one and only obvious way
+    assert len(df.filter("sex.is_null()")) == 2
+    assert len(df.filter("sex.is_not_null()")) == 2
+    assert len(df.filter("score.is_nan()")) == 1
+    assert len(df.filter("score.is_not_nan()")) == 3
+
+    # 2. Dictionaries with canonical method tokens 'is_null()' and 'is_nan()'
+    assert len(df.filter({"sex": "is_null()"})) == 2
+    assert len(df.filter({"sex": "is_not_null()"})) == 2
+    assert len(df.filter({"score": "is_nan()"})) == 1
+    assert len(df.filter({"score": "is_not_nan()"})) == 3
+
+    # 3. Bare words without parentheses are strictly rejected (no forgiving)
+    with pytest.raises(ValueError, match=r"requires parentheses: 'is_null\(\)'"):
+        df.filter({"sex": "is_null"})
+
+    with pytest.raises(ValueError, match=r"requires parentheses: 'is_not_null\(\)'"):
+        df.filter({"sex": "is_not_null"})
+
+    with pytest.raises(ValueError, match=r"requires parentheses: 'is_nan\(\)'"):
+        df.filter({"score": "is_nan"})
+
+    with pytest.raises(ValueError, match=r"requires parentheses: 'is_not_nan\(\)'"):
+        df.filter({"score": "is_not_nan"})
+
+    # 4. None and float('nan') in dictionaries strictly raise ValueError
+    with pytest.raises(ValueError, match=r"checking for null values in dictionaries via None is not supported"):
+        df.filter({"sex": None})
+
+    with pytest.raises(ValueError, match=r"checking for NaN values in dictionaries via float\('nan'\) is not supported"):
+        df.filter({"score": float("nan")})
+
+    # 5. Operator tuples with None or float('nan') strictly raise ValueError
+    with pytest.raises(ValueError, match=r"null checks in dictionaries via"):
+        df.filter({"sex": ("!=", None)})
+
+    with pytest.raises(ValueError, match=r"NaN checks in dictionaries via"):
+        df.filter({"score": ("!=", float("nan"))})
 

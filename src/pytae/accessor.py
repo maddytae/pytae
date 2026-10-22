@@ -23,8 +23,8 @@ class PolarsPtAccessor:
     def __init__(self, obj: pl.DataFrame | pl.LazyFrame):
         self._obj = obj
 
-    def filter(self, *conditions: Any, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).filter(*conditions, **kwargs)
+    def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).filter(*conditions, params=params, **kwargs)
 
     def select(self, *names: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).select(*names, **kwargs)
@@ -251,8 +251,8 @@ class PandasPtAccessor:
     def __init__(self, obj: pd.DataFrame):
         self._obj = obj
 
-    def filter(self, *conditions: Any, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).filter(*conditions, **kwargs)
+    def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).filter(*conditions, params=params, **kwargs)
 
     def select(self, *names: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).select(*names, **kwargs)

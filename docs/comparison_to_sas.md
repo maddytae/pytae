@@ -226,9 +226,9 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter("a > 1 & b == 'East'")` | `-filter "a > 1, b == 'East'"` |
-| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(x="[10, 20]")` | `-filter "x = [10, 20]"` |
-| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat = ['A', 'B']"` |
+| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter("a > 1 and b == 'East'")` | `-filter "a > 1 and b == 'East'"` |
+| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
+| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
 | **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
@@ -396,7 +396,7 @@ summary.to_parquet("summary.parquet")
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae vsl.sas7bdat \
-  -filter "VISIT == 'Baseline', SYSBP.notna(), DIABP.notna()" \
+  -filter "VISIT == 'Baseline' and SYSBP.notna() and DIABP.notna()" \
   -join "dm.sas7bdat,on=USUBJID,how=inner" \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
   -by TRTP,SEX \

@@ -34,7 +34,7 @@ pytae penguins.parquet -head 5
 
 # 2. Filter, engineer features, sort, and export to snappy Parquet
 pytae penguins.parquet \
-  -filter "species = 'Adelie', body_mass_g > 3500" \
+  -filter "species == 'Adelie' and body_mass_g > 3500" \
   -mutate "mass_kg = body_mass_g / 1000" \
   -arrange "mass_kg desc" \
   -select "species,island,mass_kg" \
@@ -99,7 +99,7 @@ penguins = pt.sample("penguins")
 # 1. Method chaining: compute in Polars, visualize in Pandas
 (
     penguins
-    .filter("body_mass_g.notna()")
+    .filter("body_mass_g.is_not_null()")
     .by("species")
     .agg(avg_mass="body_mass_g:mean")
     .plot(kind="bar", x="species", y="avg_mass", title="Average Penguin Mass (g)")

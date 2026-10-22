@@ -147,17 +147,29 @@ class _Pipeline:
         except Exception as exc:
             return f"-rename: {exc}"
 
-    def apply_filter(self, conditions: list[tuple[str, Any]] | dict, flag_name: str = "-filter") -> str | None:
+    def apply_filter(self, conditions: Any, flag_name: str = "-filter") -> str | None:
         """Apply one -filter (or -qry) spec to the current view. Returns an error message or None."""
         available = self._available_columns()
-        cond_cols = [c for c, _ in (conditions if isinstance(conditions, list) else conditions.items())]
+        if hasattr(conditions, "columns"):
+            cond_cols = conditions.columns()
+        elif isinstance(conditions, dict):
+            cond_cols = list(conditions.keys())
+        elif isinstance(conditions, list):
+            cond_cols = []
+            for item in conditions:
+                if hasattr(item, "columns"):
+                    cond_cols.extend(item.columns())
+                elif isinstance(item, tuple) and len(item) == 2:
+                    cond_cols.append(item[0])
+        else:
+            cond_cols = []
 
         def _get_base_col(c: str) -> str:
             if ".dt." in c:
                 return c.split(".dt.")[0].strip()
             if ".str." in c:
                 return c.split(".str.")[0].strip()
-            return c.strip()
+            return c.strip("[]").strip()
 
         unknown = [_get_base_col(c) for c in cond_cols if _get_base_col(c) not in available]
         if unknown:
