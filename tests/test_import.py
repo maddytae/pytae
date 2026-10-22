@@ -63,7 +63,8 @@ assert callable(__import__("pytae", fromlist=["select"]).select)
 DF = sys.modules["pandas"].DataFrame
 assert hasattr(DF, "pt")
 assert not hasattr(DF.pt, "qry")
-assert not hasattr(DF, "select")
+if hasattr(DF, "select"):
+    assert getattr(DF, "select").__module__ != "pytae.select"
 assert not hasattr(DF, "mutate")
 """
         % _SRC
