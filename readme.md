@@ -55,6 +55,10 @@ cat data.csv | pytae - -fmt csv -filter "amount > 100" -shape
 # 7. Grouped aggregation & ANSI SQL query
 pytae penguins.parquet -by species -agg "avg_mass=body_mass_g:mean, total=count"
 pytae sales.parquet -sql "select region, sum(revenue) from data group by 1"
+
+# 8. Sensitive PII masking, encryption, and pseudonym tokenization
+pytae users.csv -mask "email=hash, ssn=encrypt" -key "SecretKey123" -o secure.parquet
+pytae secure.parquet -unmask "ssn" -key "SecretKey123"
 ```
 
 👉 **CLI Quick Reference**: [**Cheat Sheet & Cookbook (Markdown)**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) or run `pytae -cheatsheet` in your terminal! | **Full CLI Command Guide**: [docs/detailed_docs/cli/](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/cli)
@@ -160,6 +164,7 @@ Comprehensive documentation split into two dedicated folders:
 - **Visualizations & Plotting**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting/plotting.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/cli_plots.md) (`df.plot()`, `-plot`, `-finalize`, mosaic dashboards)
 - **Utilities & Inspection**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/other_utilities.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/inspect.md) (`fillna`, `dropna`, `rename`, `diff`, `glimpse`, `clean`)
 - **In-Pipeline SQL**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/sql.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/sql.md) (`df.sql()`, `pt.sql()`, `-sql` DuckDB/Polars SQL engine)
+- **Data Masking & Privacy**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/other_utilities.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/mask.md) (`mask`, `unmask`, `-mask`, `-unmask`, hash, salt, redact, encrypt, tokenize)
 - **Multi-File Pipelines**: [Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/library/join.ipynb) | [CLI Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/multi_file.md) (`-file`, multi-table pipelines, batch globbing, UNIX pipes)
 
 ---

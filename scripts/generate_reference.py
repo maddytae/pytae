@@ -706,6 +706,11 @@ Examples:
   Arguments are auto-unwrapped and results are rewrapped into pytae.DataFrame so method chains never break.
 - pt.fillna(df, value=None, *cols, subset=None, nans=True, **kwargs) / df.pt.fillna(...):
   Imputes missing values (Arrow null and/or float NaN) across the entire DataFrame or specific columns.
+- pt.mask(df, spec, *, salt="", key=None, vault=None, redact_val="***") / df.pt.mask(...):
+  Masks sensitive columns using SHA-256 hashing ("hash"/"sha256"), character redaction ("redact"),
+  authenticated symmetric encryption ("encrypt" with key="..."), or persistent pseudonym tokenization ("tokenize" with vault="...").
+- pt.unmask(df, cols, *, key=None, vault=None) / df.pt.unmask(...):
+  Reverses authenticated encryption (using key="...") or pseudonym tokenization (using vault="...") back to original values and data types.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
   Systematically sanitizes DataFrame header names.
 - pt.safe_reset_index(df) / df.pt.safe_reset_index():
@@ -822,6 +827,13 @@ SQL & Multi-File Flags:
   -file SPECS           Multi-file mode: "file1.parquet=df1; file2.csv=df2"
   -join SPECS           Join files: "left=df1, right=df2, on=id, how=inner"
   -concat SPECS         Stack files: "frames='df1,df2'"
+
+Data Masking, Encryption & Privacy Flags:
+  -mask SPECS           Mask sensitive columns: e.g. "email=hash, ssn=encrypt, user=tokenize"
+  -unmask COLS          Unmask, decrypt, or de-tokenize columns: e.g. "ssn" or "user"
+  -key KEY              Secret password/key for reversible authenticated stream encryption & decryption
+  -salt SALT            Custom salt string appended prior to SHA-256 hashing
+  -vault PATH           File path to persistent tokenization vault (Parquet, CSV, NDJSON, or JSON)
 
 Output & Formatting Flags:
   -o TARGET             Output destination (file path, format for batch conversion, or 'clip')

@@ -135,6 +135,16 @@ _CLI_FLAGS = {
     "--glimpse",
     "-clean_columns",
     "--clean_columns",
+    "-mask",
+    "--mask",
+    "-unmask",
+    "--unmask",
+    "-key",
+    "--key",
+    "-salt",
+    "--salt",
+    "-vault",
+    "--vault",
     "-long",
     "--long",
     "-wide",
@@ -629,6 +639,48 @@ def build_parser() -> argparse.ArgumentParser:
         '"strip,fill,case=lower" or "fill=\'$\',case=proper,dedupe=true"',
     )
     parser.add_argument(
+        "-mask",
+        "--mask",
+        dest="mask",
+        action=_OrderedStore,
+        metavar="SPEC",
+        help="mask, redact, encrypt, or tokenize sensitive columns; e.g. "
+        "'-mask \"email=hash, ssn=redact, name=encrypt\"' or '-mask \"user=tokenize\" -vault map.parquet'",
+    )
+    parser.add_argument(
+        "-unmask",
+        "--unmask",
+        dest="unmask",
+        action=_OrderedStore,
+        metavar="COLS",
+        help="unmask, decrypt, or de-tokenize sensitive columns; e.g. "
+        '\'-unmask "name, ssn" -key "secret"\' or \'-unmask "user" -vault map.parquet\'',
+    )
+    parser.add_argument(
+        "-key",
+        "--key",
+        dest="key",
+        default=None,
+        metavar="SECRET",
+        help="secret key / passphrase for reversible -mask 'col=encrypt' and -unmask 'col'",
+    )
+    parser.add_argument(
+        "-salt",
+        "--salt",
+        dest="salt",
+        default=None,
+        metavar="SALT",
+        help="optional salt string for one-way cryptographic hashing with -mask 'col=hash'",
+    )
+    parser.add_argument(
+        "-vault",
+        "--vault",
+        dest="vault",
+        default=None,
+        metavar="PATH",
+        help="path to secure tokenization vault mapping file (.parquet, .csv, .json); used with -mask 'col=tokenize' and -unmask",
+    )
+    parser.add_argument(
         "-long",
         "--long",
         dest="long",
@@ -1066,6 +1118,8 @@ def main(argv: list[str] | None = None) -> int:
             args.sql,
             args.rename,
             args.clean_columns is not None,
+            args.mask is not None,
+            args.unmask is not None,
             args.join,
             args.concat,
             args.meta,
@@ -1098,6 +1152,8 @@ def main(argv: list[str] | None = None) -> int:
             args.wide is not None,
             args.pivot is not None,
             args.clean_columns is not None,
+            args.mask is not None,
+            args.unmask is not None,
             args.join,
             args.concat,
             args.plot is not None,
@@ -1123,6 +1179,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("-frac requires -sample")
     if args.tol is not None and args.diff is None:
         parser.error("-tol requires -diff")
+    if args.unmask is not None and not args.key and not args.vault:
+        parser.error("-unmask requires -key/--key (for encryption) and/or -vault/--vault (for tokenization)")
 
     rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]

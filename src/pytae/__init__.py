@@ -39,7 +39,7 @@ from pytae.validation import (
     validate_pipeline,
 )
 
-__version__ = "3.10.5"
+__version__ = "3.11.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -273,6 +273,30 @@ def clean_columns(df: Any, **opts: Any) -> DataFrame:
     return DataFrame(df).clean_columns(**opts)
 
 
+def mask(
+    df: Any,
+    spec: Any = None,
+    *args: Any,
+    key: str | None = None,
+    salt: str | None = None,
+    vault: str | Path | None = None,
+    redact_val: str = "***",
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).mask(spec, *args, key=key, salt=salt, vault=vault, redact_val=redact_val, **kwargs)
+
+
+def unmask(
+    df: Any,
+    cols: Any = None,
+    *args: Any,
+    key: str | None = None,
+    vault: str | Path | None = None,
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).unmask(cols, *args, key=key, vault=vault, **kwargs)
+
+
 def cols(df: Any, ascending: bool | None = True) -> list[str]:
     return DataFrame(df).cols(ascending=ascending)
 
@@ -452,6 +476,8 @@ class _PytaeModule(ModuleType):
     scan = _VerbDescriptor(scan)
     validate_pipeline = _VerbDescriptor(validate_pipeline)
     check_dsl = _VerbDescriptor(check_dsl_string)
+    mask = _VerbDescriptor(mask)
+    unmask = _VerbDescriptor(unmask)
 
 
 sys.modules[__name__].__class__ = _PytaeModule
@@ -518,6 +544,8 @@ __all__ = [
     "scatter",
     "corr",
     "clean_columns",
+    "mask",
+    "unmask",
     "everything",
     "validate_pipeline",
     "PipelineValidationError",

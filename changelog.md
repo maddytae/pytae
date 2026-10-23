@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.11.0] - 2026-10-23
+
+### Added
+- **Sensitive Data Masking, Authenticated Encryption & Tokenization (`mask`, `unmask`, `-mask`, `-unmask`)**:
+  - Implemented end-to-end PII and sensitive data protection supporting both one-way irreversible and two-way reversible workflows across the CLI and Python library (`pt.mask()`, `pt.unmask()`, `df.mask()`, `df.unmask()`, and pandas `.pt` accessors).
+  - **One-Way Irreversible Masking**:
+    - Cryptographic SHA-256 hashing (`col=hash` / `col=sha256`) for non-reversible anonymization.
+    - Custom salt support (`-salt`, `salt=`) to thwart rainbow table and dictionary lookup attacks.
+    - String and value redaction (`col=redact`), replacing non-null cell values with asterisks (`***`) or customizable redaction values.
+  - **Reversible Option 1: Key-Based Authenticated Encryption**:
+    - Zero-dependency authenticated symmetric stream cipher (HMAC-SHA256 CTR) using Python standard library (`hashlib`, `hmac`, `os.urandom`, `base64`).
+    - Random per-cell initialization vectors (IVs) and HMAC integrity validation to prevent tampering and corruption.
+    - Reversible via `-unmask "col" -key "password"` / `df.unmask(cols, key="password")`. Strictly raises clear error on incorrect key.
+  - **Reversible Option 2: Pseudonym Tokenization with Persistent Vault**:
+    - Pseudonym tokenization (`col=tokenize`, `-vault <path>`) generating consistent tokens (e.g. `user_0001`, `user_0002`).
+    - Maintains entity relationships, frequency distributions, and table joinability across runs.
+    - Persistent token vault supporting `.parquet`, `.csv`, `.ndjson`, and `.json`.
+    - Type-aware: vault records native column data types (`Int64`, `Float64`, `String`, etc.), allowing `-unmask` / `df.unmask(..., vault=...)` to automatically cast columns back to their original data types upon restoration.
+  - **CLI Pipeline Integration**:
+    - Added CLI flags: `-mask`, `-unmask`, `-key`, `-salt`, `-vault`.
+    - CLI keyword help documentation and aliases (`pytae -help mask`, `pytae -help unmask`).
+    - Section 12 in cheatsheets (`pytae -cheatsheet`, `docs/cli_cheatsheet.md`).
+    - Dedicated CLI guide: `docs/detailed_docs/cli/mask.md`.
+
 ## [3.10.5] - 2026-10-22
 
 ### Fixed

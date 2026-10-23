@@ -352,6 +352,70 @@ class _Pipeline:
         except Exception as exc:
             return f"-fillna: {exc}"
 
+    def apply_mask(
+        self,
+        spec: Any,
+        *,
+        key: str | None = None,
+        salt: str | None = None,
+        vault: Any = None,
+        redact_val: str = "***",
+    ) -> str | None:
+        """Apply -mask to the current view. Returns an error message or None."""
+        from pytae.mask import mask_polars, parse_mask_spec
+
+        if key is not None:
+            default_m = "encrypt"
+        elif vault is not None:
+            default_m = "tokenize"
+        else:
+            default_m = "hash"
+
+        try:
+            mapping = parse_mask_spec(spec, default_method=default_m)
+        except Exception as exc:
+            return f"-mask: {exc}"
+
+        available = self._available_columns()
+        missing = [c for c in mapping if c not in available]
+        if missing:
+            return unknown_columns_message("-mask", missing, available)
+
+        try:
+            self._pldf = mask_polars(
+                self.polars_lazy_frame(), mapping, key=key, salt=salt, vault=vault, redact_val=redact_val
+            )
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-mask: {exc}"
+
+    def apply_unmask(
+        self,
+        cols: Any,
+        *,
+        key: str | None = None,
+        vault: Any = None,
+    ) -> str | None:
+        """Apply -unmask to the current view. Returns an error message or None."""
+        from pytae.mask import parse_unmask_spec, unmask_polars
+
+        col_list = parse_unmask_spec(cols)
+        if not col_list:
+            return "-unmask: expected at least one column name"
+
+        available = self._available_columns()
+        missing = [c for c in col_list if c not in available]
+        if missing:
+            return unknown_columns_message("-unmask", missing, available)
+
+        try:
+            self._pldf = unmask_polars(self.polars_lazy_frame(), col_list, key=key, vault=vault)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-unmask: {exc}"
+
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered
         as table `data` (the file itself is already named on the command line, so there's no

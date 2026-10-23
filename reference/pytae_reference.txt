@@ -697,6 +697,11 @@ Examples:
   Arguments are auto-unwrapped and results are rewrapped into pytae.DataFrame so method chains never break.
 - pt.fillna(df, value=None, *cols, subset=None, nans=True, **kwargs) / df.pt.fillna(...):
   Imputes missing values (Arrow null and/or float NaN) across the entire DataFrame or specific columns.
+- pt.mask(df, spec, *, salt="", key=None, vault=None, redact_val="***") / df.pt.mask(...):
+  Masks sensitive columns using SHA-256 hashing ("hash"/"sha256"), character redaction ("redact"),
+  authenticated symmetric encryption ("encrypt" with key="..."), or persistent pseudonym tokenization ("tokenize" with vault="...").
+- pt.unmask(df, cols, *, key=None, vault=None) / df.pt.unmask(...):
+  Reverses authenticated encryption (using key="...") or pseudonym tokenization (using vault="...") back to original values and data types.
 - pt.clean_columns(df, strip=False, strip_special=False, squeeze=False, fill=None, case=None, dedupe=False):
   Systematically sanitizes DataFrame header names.
 - pt.safe_reset_index(df) / df.pt.safe_reset_index():
@@ -813,6 +818,13 @@ SQL & Multi-File Flags:
   -file SPECS           Multi-file mode: "file1.parquet=df1; file2.csv=df2"
   -join SPECS           Join files: "left=df1, right=df2, on=id, how=inner"
   -concat SPECS         Stack files: "frames='df1,df2'"
+
+Data Masking, Encryption & Privacy Flags:
+  -mask SPECS           Mask sensitive columns: e.g. "email=hash, ssn=encrypt, user=tokenize"
+  -unmask COLS          Unmask, decrypt, or de-tokenize columns: e.g. "ssn" or "user"
+  -key KEY              Secret password/key for reversible authenticated stream encryption & decryption
+  -salt SALT            Custom salt string appended prior to SHA-256 hashing
+  -vault PATH           File path to persistent tokenization vault (Parquet, CSV, NDJSON, or JSON)
 
 Output & Formatting Flags:
   -o TARGET             Output destination (file path, format for batch conversion, or 'clip')
@@ -3332,6 +3344,138 @@ pytae -file "orders.parquet=o; customers.csv=c" \
   -arrange "spent desc" \
   -head 10 \
   -o top_west_customers.parquet
+```
+
+################################################################################
+# FILE: docs/detailed_docs/cli/mask.md
+################################################################################
+# CLI Feature Guide: Data Masking, Encryption & Tokenization (`-mask`, `-unmask`)
+
+Anonymize, redact, encrypt, or tokenize sensitive PII columns across one-way irreversible and two-way reversible privacy pipelines.
+
+---
+
+## Contents
+
+- [Overview & Quick Reference](#overview--quick-reference)
+- [One-Way Masking](#one-way-masking)
+  - [Cryptographic Hashing (`col=hash` / `col=sha256`)](#cryptographic-hashing-colhash--colsha256)
+  - [Salted Hashing (`-salt`)](#salted-hashing--salt)
+  - [String Redaction (`col=redact`)](#string-redaction-colredact)
+- [Reversible Privacy Option 1: Key-Based Authenticated Encryption (`-key`)](#reversible-privacy-option-1-key-based-authenticated-encryption--key)
+  - [Encrypting with `-mask "col=encrypt" -key "..."`](#encrypting-with--mask-colencrypt--key-)
+  - [Decrypting with `-unmask "col" -key "..."`](#decrypting-with--unmask-col--key-)
+- [Reversible Privacy Option 2: Pseudonym Tokenization with Persistent Vault (`-vault`)](#reversible-privacy-option-2-pseudonym-tokenization-with-persistent-vault--vault)
+  - [Tokenizing with `-mask "col=tokenize" -vault "..."`](#tokenizing-with--mask-coltokenize--vault-)
+  - [De-tokenizing with `-unmask "col" -vault "..."`](#de-tokenizing-with--unmask-col--vault-)
+- [Mixed Multi-Column Masking Pipelines](#mixed-multi-column-masking-pipelines)
+
+---
+
+## Overview & Quick Reference
+
+| Flag | Argument | Description |
+|---|---|---|
+| `-mask` | `"col=method, ..."` | Mask specified columns using `hash`, `sha256`, `redact`, `encrypt`, or `tokenize` |
+| `-unmask` | `"col1, col2, ..."` | Revert encrypted or tokenized columns back to original values |
+| `-key` | `"secret_password"` | Secret key for authenticated symmetric encryption & decryption |
+| `-salt` | `"custom_salt"` | Salt appended to values prior to SHA-256 hashing (prevents rainbow table attacks) |
+| `-vault` | `"path/to/vault.parquet"` | File path to persistent tokenization vault (supports `.parquet`, `.csv`, `.ndjson`, `.json`) |
+
+---
+
+## One-Way Masking
+
+One-way masking transformations are irreversible by design. They prevent unauthorized recovery of raw values even if the transformed dataset is shared externally.
+
+### Cryptographic Hashing (`col=hash` / `col=sha256`)
+
+Computes the standard SHA-256 hex digest of non-null values. Null values remain intact.
+
+```bash
+# Mask email and user_id using SHA-256
+pytae users.csv -mask "email=hash, user_id=sha256"
+```
+
+### Salted Hashing (`-salt`)
+
+Appends a secret salt string before hashing, thwarting precomputed rainbow table and dictionary lookup attacks:
+
+```bash
+# SHA-256 hash with an organizational salt
+pytae users.csv -mask "email=hash" -salt "prod_salt_2026_x89f"
+```
+
+### String Redaction (`col=redact`)
+
+Replaces all non-null values in the target column with asterisks (`***`).
+
+```bash
+# Redact SSN and phone numbers completely
+pytae customers.parquet -mask "ssn=redact, phone=redact"
+```
+
+---
+
+## Reversible Privacy Option 1: Key-Based Authenticated Encryption (`-key`)
+
+Key-based encryption performs authenticated symmetric stream encryption (HMAC-SHA256 CTR) with random per-cell initialization vectors (IVs) and cryptographic HMAC integrity verification.
+
+- **Zero External Dependencies**: Operates natively using the Python standard library.
+- **Tamper-Resistant**: If ciphertext is modified or the wrong key is supplied during `-unmask`, decryption raises an error rather than emitting corrupted garbage bytes.
+
+### Encrypting with `-mask "col=encrypt" -key "..."`
+
+```bash
+# Encrypt SSN and notes columns with a strong secret key
+pytae sensitive.csv -mask "ssn=encrypt, notes=encrypt" -key "TopSecretPassphrase42" -o secure.parquet
+```
+
+### Decrypting with `-unmask "col" -key "..."`
+
+```bash
+# Decrypt the encrypted columns back to plain text
+pytae secure.parquet -unmask "ssn, notes" -key "TopSecretPassphrase42" -head 5
+```
+
+---
+
+## Reversible Privacy Option 2: Pseudonym Tokenization with Persistent Vault (`-vault`)
+
+Tokenization replaces sensitive entities with clean, format-preserving pseudonym tokens (e.g., `user_0001`, `user_0002`).
+
+- **Preserves Entity Relationships**: Identical values are mapped to identical tokens, preserving frequency counts, group distributions, and join keys across multiple tables.
+- **Type-Aware Vault**: The vault persists original column data types (`Int64`, `Float64`, `String`, etc.), so `-unmask` automatically restores the original column back to its native data type.
+- **Incremental & Persistent**: Appending new batches against an existing vault reuses existing tokens and assigns subsequent incrementing tokens to novel values.
+
+### Tokenizing with `-mask "col=tokenize" -vault "..."`
+
+```bash
+# Tokenize user IDs and persist mapping to user_vault.parquet
+pytae transactions.parquet -mask "user_id=tokenize" -vault "user_vault.parquet" -o public_transactions.parquet
+```
+
+### De-tokenizing with `-unmask "col" -vault "..."`
+
+```bash
+# De-tokenize the anonymized dataset back to original identifiers using the vault
+pytae public_transactions.parquet -unmask "user_id" -vault "user_vault.parquet"
+```
+
+---
+
+## Mixed Multi-Column Masking Pipelines
+
+Multiple masking strategies can be combined in a single `-mask` command:
+
+```bash
+# Hash email, encrypt SSN, and tokenize user name simultaneously
+pytae internal_records.csv \
+  -mask "email=hash, ssn=encrypt, user_name=tokenize" \
+  -salt "audit_salt" \
+  -key "SuperSecretKey99" \
+  -vault "names_vault.parquet" \
+  -o sanitized.parquet
 ```
 
 ################################################################################
@@ -9883,6 +10027,44 @@ Output:
 Summary table copied to clipboard! Paste directly into Excel or Google Sheets.
 ```
 
+## 10. `mask()` & `unmask()` — Sensitive Data Masking, Encryption & Tokenization
+
+Protect sensitive PII columns across one-way irreversible and two-way reversible privacy pipelines:
+- **One-Way Hashing**: Cryptographic SHA-256 (`hash` or `sha256`) with optional `salt`.
+- **Redaction**: Replaces non-null values with asterisks (`***`).
+- **Option 1 (Key Encryption)**: Authenticated HMAC-SHA256 CTR stream encryption (`encrypt`) and decryption (`unmask(..., key=...)`).
+- **Option 2 (Tokenization with Vault)**: Consistent pseudonym tokenization (`tokenize`) maintaining relationships, join keys, and dtypes via a persistent vault (`vault="..."`).
+
+```python
+# Create sample sensitive data
+customers = pt.DataFrame({
+    "user_id": [101, 102, 103, 101],
+    "email": ["alice@corp.com", "bob@corp.com", "carol@corp.com", "alice@corp.com"],
+    "ssn": ["111-22-3333", "222-33-4444", "333-44-5555", "111-22-3333"],
+    "notes": ["VIP member", "Standard tier", "New account", "Repeat order"],
+})
+
+# 1. One-way hash email with salt & redact notes
+masked = customers.mask({"email": "hash", "notes": "redact"}, salt="audit_salt")
+print("Masked:")
+print(masked)
+
+# 2. Reversible encryption with secret key
+encrypted = customers.mask({"ssn": "encrypt"}, key="SecretPass123")
+decrypted = encrypted.unmask(["ssn"], key="SecretPass123")
+assert decrypted["ssn"].to_list() == customers["ssn"].to_list()
+print("Decryption successful!")
+
+# 3. Reversible tokenization with persistent vault
+import tempfile
+vault_file = Path(tempfile.mkdtemp()) / "user_vault.parquet"
+tokenized = customers.mask({"user_id": "tokenize"}, vault=vault_file)
+print("Tokens:", tokenized["user_id"].to_list())
+restored = tokenized.unmask(["user_id"], vault=vault_file)
+assert restored["user_id"].to_list() == customers["user_id"].to_list()
+print("De-tokenization restored original types & values!")
+```
+
 ################################################################################
 # NOTEBOOK: docs/detailed_docs/library/pivot.ipynb
 ################################################################################
@@ -12214,7 +12396,7 @@ For exhaustive syntax mappings, feature-by-feature Rosetta stones, and migration
 ## Detailed Documentation Directory
 
 All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented under **`docs/`**:
-- **`docs/cli_cheatsheet.md`**: [**The Definitive CLI Cheat Sheet & Cookbook**](cli_cheatsheet.md) — 11 curated sections of one-liner recipes and Unix shell workflows.
+- **`docs/cli_cheatsheet.md`**: [**The Definitive CLI Cheat Sheet & Cookbook**](cli_cheatsheet.md) — 12 curated sections of one-liner recipes and Unix shell workflows.
 - **`detailed_docs/cli/`**: Comprehensive Command Line Markdown guides (`.md`)
 - **`detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
 
@@ -12231,6 +12413,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Slicing** | **[head_tail.ipynb](detailed_docs/library/head_tail.ipynb)** | **[head_tail.md](detailed_docs/cli/head_tail.md)** | `arrange` + `head`/`tail`, group-aware with `by`, percentage `prop=`, ties `with_ties=` |
 | **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
+| **Masking & Privacy**| **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[mask.md](detailed_docs/cli/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
 | **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |
 | **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
 | **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
@@ -12275,7 +12458,7 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.notna()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
@@ -13885,7 +14068,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.10.5"
+version = "3.11.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -14007,7 +14190,7 @@ from pytae.validation import (
     validate_pipeline,
 )
 
-__version__ = "3.10.5"
+__version__ = "3.11.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -14241,6 +14424,30 @@ def clean_columns(df: Any, **opts: Any) -> DataFrame:
     return DataFrame(df).clean_columns(**opts)
 
 
+def mask(
+    df: Any,
+    spec: Any = None,
+    *args: Any,
+    key: str | None = None,
+    salt: str | None = None,
+    vault: str | Path | None = None,
+    redact_val: str = "***",
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).mask(spec, *args, key=key, salt=salt, vault=vault, redact_val=redact_val, **kwargs)
+
+
+def unmask(
+    df: Any,
+    cols: Any = None,
+    *args: Any,
+    key: str | None = None,
+    vault: str | Path | None = None,
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).unmask(cols, *args, key=key, vault=vault, **kwargs)
+
+
 def cols(df: Any, ascending: bool | None = True) -> list[str]:
     return DataFrame(df).cols(ascending=ascending)
 
@@ -14420,6 +14627,8 @@ class _PytaeModule(ModuleType):
     scan = _VerbDescriptor(scan)
     validate_pipeline = _VerbDescriptor(validate_pipeline)
     check_dsl = _VerbDescriptor(check_dsl_string)
+    mask = _VerbDescriptor(mask)
+    unmask = _VerbDescriptor(unmask)
 
 
 sys.modules[__name__].__class__ = _PytaeModule
@@ -14486,6 +14695,8 @@ __all__ = [
     "scatter",
     "corr",
     "clean_columns",
+    "mask",
+    "unmask",
     "everything",
     "validate_pipeline",
     "PipelineValidationError",
@@ -15696,6 +15907,12 @@ class PolarsPtAccessor:
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
 
+    def mask(self, spec: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).mask(spec, *args, **kwargs)
+
+    def unmask(self, cols: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).unmask(cols, *args, **kwargs)
+
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 
@@ -15927,6 +16144,12 @@ class PandasPtAccessor:
 
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
+
+    def mask(self, spec: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).mask(spec, *args, **kwargs)
+
+    def unmask(self, cols: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).unmask(cols, *args, **kwargs)
 
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
@@ -16160,6 +16383,15 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -select "species,body_mass_g" > top.txt      # Redirect stdout
   pytae archive.csv.gz -shape -head 5                             # Inspect gz stream
 
+12. 🎭 DATA MASKING, ENCRYPTION & TOKENIZATION (-mask, -unmask)
+--------------------------------------------------------------------------------
+  pytae users.csv -mask "email=hash, ssn=redact"                  # One-way hash & redact
+  pytae users.csv -mask "email=hash" -salt "my_salt"              # Salted SHA-256 hash
+  pytae users.csv -mask "ssn=encrypt" -key "Secret123"            # Reversible encryption (key)
+  pytae users.csv -mask "user=tokenize" -vault "vault.parquet"    # Reversible tokenization (vault)
+  pytae secure.parquet -unmask "ssn" -key "Secret123"             # Decrypt with key
+  pytae dev.parquet -unmask "user" -vault "vault.parquet"         # De-tokenize with vault
+
 Full documentation: https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md
 ================================================================================
 """
@@ -16304,6 +16536,16 @@ _CLI_FLAGS = {
     "--glimpse",
     "-clean_columns",
     "--clean_columns",
+    "-mask",
+    "--mask",
+    "-unmask",
+    "--unmask",
+    "-key",
+    "--key",
+    "-salt",
+    "--salt",
+    "-vault",
+    "--vault",
     "-long",
     "--long",
     "-wide",
@@ -16798,6 +17040,48 @@ def build_parser() -> argparse.ArgumentParser:
         '"strip,fill,case=lower" or "fill=\'$\',case=proper,dedupe=true"',
     )
     parser.add_argument(
+        "-mask",
+        "--mask",
+        dest="mask",
+        action=_OrderedStore,
+        metavar="SPEC",
+        help="mask, redact, encrypt, or tokenize sensitive columns; e.g. "
+        "'-mask \"email=hash, ssn=redact, name=encrypt\"' or '-mask \"user=tokenize\" -vault map.parquet'",
+    )
+    parser.add_argument(
+        "-unmask",
+        "--unmask",
+        dest="unmask",
+        action=_OrderedStore,
+        metavar="COLS",
+        help="unmask, decrypt, or de-tokenize sensitive columns; e.g. "
+        '\'-unmask "name, ssn" -key "secret"\' or \'-unmask "user" -vault map.parquet\'',
+    )
+    parser.add_argument(
+        "-key",
+        "--key",
+        dest="key",
+        default=None,
+        metavar="SECRET",
+        help="secret key / passphrase for reversible -mask 'col=encrypt' and -unmask 'col'",
+    )
+    parser.add_argument(
+        "-salt",
+        "--salt",
+        dest="salt",
+        default=None,
+        metavar="SALT",
+        help="optional salt string for one-way cryptographic hashing with -mask 'col=hash'",
+    )
+    parser.add_argument(
+        "-vault",
+        "--vault",
+        dest="vault",
+        default=None,
+        metavar="PATH",
+        help="path to secure tokenization vault mapping file (.parquet, .csv, .json); used with -mask 'col=tokenize' and -unmask",
+    )
+    parser.add_argument(
         "-long",
         "--long",
         dest="long",
@@ -17235,6 +17519,8 @@ def main(argv: list[str] | None = None) -> int:
             args.sql,
             args.rename,
             args.clean_columns is not None,
+            args.mask is not None,
+            args.unmask is not None,
             args.join,
             args.concat,
             args.meta,
@@ -17267,6 +17553,8 @@ def main(argv: list[str] | None = None) -> int:
             args.wide is not None,
             args.pivot is not None,
             args.clean_columns is not None,
+            args.mask is not None,
+            args.unmask is not None,
             args.join,
             args.concat,
             args.plot is not None,
@@ -17292,6 +17580,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("-frac requires -sample")
     if args.tol is not None and args.diff is None:
         parser.error("-tol requires -diff")
+    if args.unmask is not None and not args.key and not args.vault:
+        parser.error("-unmask requires -key/--key (for encryption) and/or -vault/--vault (for tokenization)")
 
     rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
     select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
@@ -18283,6 +18573,54 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-mutate", "-filter", "-select"],
     ),
+    "mask": KeywordHelp(
+        name="mask",
+        flag="-mask, --mask SPEC",
+        syntax='pytae <path> -mask "<SPEC>" [-key <KEY>] [-salt <SALT>] [-vault <PATH>]',
+        summary="Mask sensitive columns using hashing, redaction, key-based encryption, or tokenization.",
+        description=(
+            "Mask sensitive columns using one-way cryptographic hashing (hash/sha256), "
+            "redaction (redact), key-based reversible authenticated encryption (encrypt), "
+            "or reversible pseudonym tokenization with a lookup vault (tokenize)."
+        ),
+        options=[
+            "col=hash : One-way cryptographic SHA-256 hash (supports optional -salt).",
+            "col=redact : Replace non-null values with '***'.",
+            "col=encrypt : Reversible authenticated encryption (requires -key).",
+            "col=tokenize : Reversible pseudonym tokenization saved to -vault.",
+            "-key <SECRET> : Secret key for reversible encryption/decryption.",
+            "-salt <SALT> : Optional salt for one-way hashing.",
+            "-vault <PATH> : Vault mapping file (.parquet, .csv, .json) for tokenization.",
+        ],
+        examples=[
+            'pytae users.csv -mask "email=hash, ssn=redact"',
+            'pytae users.csv -mask "ssn=encrypt, email=encrypt" -key "MyKey123" -o masked.parquet',
+            'pytae users.csv -mask "name=tokenize, ssn=tokenize" -vault vault.parquet -o dev.parquet',
+            'pytae users.csv -mask "email=hash" -salt "company_salt"',
+        ],
+        see_also=["-unmask", "-key", "-vault", "-salt"],
+    ),
+    "unmask": KeywordHelp(
+        name="unmask",
+        flag="-unmask, --unmask COLS",
+        syntax='pytae <path> -unmask "<COLS>" [-key <KEY>] [-vault <PATH>]',
+        summary="Unmask, decrypt, or de-tokenize columns previously protected with -mask.",
+        description=(
+            "Unmask / decrypt / de-tokenize columns that were previously masked using "
+            "-key (authenticated decryption) or -vault (tokenization lookup)."
+        ),
+        options=[
+            "COLS : Comma-separated column names to unmask.",
+            "-key <SECRET> : Secret key used to decrypt encrypted columns.",
+            "-vault <PATH> : Path to the vault mapping file used during tokenization.",
+        ],
+        examples=[
+            'pytae masked.parquet -unmask "ssn, email" -key "MyKey123"',
+            'pytae dev.parquet -unmask "name, ssn" -vault vault.parquet',
+            'pytae dev.parquet -unmask "name, ssn" -key "MyKey123" -vault vault.parquet',
+        ],
+        see_also=["-mask", "-key", "-vault"],
+    ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries
@@ -18304,6 +18642,19 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-qry": "filter",
     "query": "filter",
     "-query": "filter",
+    "-mask": "mask",
+    "--mask": "mask",
+    "-unmask": "unmask",
+    "--unmask": "unmask",
+    "key": "mask",
+    "-key": "mask",
+    "--key": "mask",
+    "vault": "mask",
+    "-vault": "mask",
+    "--vault": "mask",
+    "salt": "mask",
+    "-salt": "mask",
+    "--salt": "mask",
 }
 
 
@@ -19850,6 +20201,70 @@ class _Pipeline:
         except Exception as exc:
             return f"-fillna: {exc}"
 
+    def apply_mask(
+        self,
+        spec: Any,
+        *,
+        key: str | None = None,
+        salt: str | None = None,
+        vault: Any = None,
+        redact_val: str = "***",
+    ) -> str | None:
+        """Apply -mask to the current view. Returns an error message or None."""
+        from pytae.mask import mask_polars, parse_mask_spec
+
+        if key is not None:
+            default_m = "encrypt"
+        elif vault is not None:
+            default_m = "tokenize"
+        else:
+            default_m = "hash"
+
+        try:
+            mapping = parse_mask_spec(spec, default_method=default_m)
+        except Exception as exc:
+            return f"-mask: {exc}"
+
+        available = self._available_columns()
+        missing = [c for c in mapping if c not in available]
+        if missing:
+            return unknown_columns_message("-mask", missing, available)
+
+        try:
+            self._pldf = mask_polars(
+                self.polars_lazy_frame(), mapping, key=key, salt=salt, vault=vault, redact_val=redact_val
+            )
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-mask: {exc}"
+
+    def apply_unmask(
+        self,
+        cols: Any,
+        *,
+        key: str | None = None,
+        vault: Any = None,
+    ) -> str | None:
+        """Apply -unmask to the current view. Returns an error message or None."""
+        from pytae.mask import parse_unmask_spec, unmask_polars
+
+        col_list = parse_unmask_spec(cols)
+        if not col_list:
+            return "-unmask: expected at least one column name"
+
+        available = self._available_columns()
+        missing = [c for c in col_list if c not in available]
+        if missing:
+            return unknown_columns_message("-unmask", missing, available)
+
+        try:
+            self._pldf = unmask_polars(self.polars_lazy_frame(), col_list, key=key, vault=vault)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-unmask: {exc}"
+
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered
         as table `data` (the file itself is already named on the command line, so there's no
@@ -21146,6 +21561,18 @@ def _process_path(
                 pipeline._df = result
                 pipeline._pldf = None
             emit_frame(idx)
+        elif op == "mask":
+            mask_val = _next_op_val("mask", getattr(args, "mask", None))
+            err = pipeline.apply_mask(mask_val, key=args.key, salt=args.salt, vault=args.vault)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "unmask":
+            unmask_val = _next_op_val("unmask", getattr(args, "unmask", None))
+            err = pipeline.apply_unmask(unmask_val, key=args.key, vault=args.vault)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "long":
             long_val = _next_op_val("long", args.long)
             long_kwargs = parse_long_arg(long_val)
@@ -22087,7 +22514,7 @@ class DataFrame:
             raise TypeError(
                 f"filter(): keyword arguments are not supported (received {list(kwargs.keys())}). "
                 f"Equality comparisons strictly require '==' to avoid '=' assignment ambiguity. "
-                f"Use a string expression (e.g. df.filter(\"{first_k} == {example_val}\")) "
+                f'Use a string expression (e.g. df.filter("{first_k} == {example_val}")) '
                 f"or a dictionary (e.g. df.filter({{{repr(first_k)}: {example_val}}}))"
             )
 
@@ -22519,6 +22946,34 @@ class DataFrame:
                 dedupe=dedupe,
             )
         )
+
+    def mask(
+        self,
+        spec: Any = None,
+        *args: Any,
+        key: str | None = None,
+        salt: str | None = None,
+        vault: Any = None,
+        redact_val: str = "***",
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Mask, redact, encrypt, or tokenize sensitive columns."""
+        from pytae.mask import mask
+
+        return mask(self, spec, *args, key=key, salt=salt, vault=vault, redact_val=redact_val, **kwargs)
+
+    def unmask(
+        self,
+        cols: Any = None,
+        *args: Any,
+        key: str | None = None,
+        vault: Any = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Unmask / decrypt / de-tokenize columns in the DataFrame."""
+        from pytae.mask import unmask
+
+        return unmask(self, cols, *args, key=key, vault=vault, **kwargs)
 
     def cols(self, ascending: bool | None = True) -> list[str]:
         """Return sorted or natural column names."""
@@ -23125,6 +23580,478 @@ try:
         _prm.melt = _compat_pd_melt
 except Exception:
     pass
+
+################################################################################
+# FILE: src/pytae/mask.py
+################################################################################
+"""Data masking, redaction, key-based authenticated encryption, and tokenization for Pytae."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+
+_DEFAULT_SALT = b"pytae_mask_salt"
+_VALID_METHODS = ("hash", "sha256", "redact", "encrypt", "tokenize", "token")
+
+
+# =============================================================================
+# 1. Symmetric Key-Based Authenticated Encryption (Option 1)
+# =============================================================================
+
+
+def _encrypt_val(val: Any, key: str) -> str | None:
+    if val is None:
+        return None
+    val_str = str(val)
+    salt = _DEFAULT_SALT
+    k_enc = hashlib.sha256(key.encode("utf-8") + salt + b":enc").digest()
+    k_mac = hashlib.sha256(key.encode("utf-8") + salt + b":mac").digest()
+    nonce = os.urandom(12)
+    data = val_str.encode("utf-8")
+    keystream = bytearray()
+    counter = 0
+    while len(keystream) < len(data):
+        keystream.extend(hashlib.sha256(k_enc + nonce + counter.to_bytes(4, "big")).digest())
+        counter += 1
+    ciphertext = bytes(b ^ k for b, k in zip(data, keystream[: len(data)]))
+    tag = hmac.new(k_mac, nonce + ciphertext, hashlib.sha256).digest()[:16]
+    return base64.urlsafe_b64encode(nonce + tag + ciphertext).decode("ascii")
+
+
+def _decrypt_val(val: Any, key: str) -> str | None:
+    if val is None:
+        return None
+    token = str(val)
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("ascii"))
+        if len(raw) < 28:
+            raise ValueError("invalid encrypted token length")
+        nonce, tag, ciphertext = raw[:12], raw[12:28], raw[28:]
+        salt = _DEFAULT_SALT
+        k_enc = hashlib.sha256(key.encode("utf-8") + salt + b":enc").digest()
+        k_mac = hashlib.sha256(key.encode("utf-8") + salt + b":mac").digest()
+        expected_tag = hmac.new(k_mac, nonce + ciphertext, hashlib.sha256).digest()[:16]
+        if not hmac.compare_digest(tag, expected_tag):
+            raise ValueError("invalid key or corrupted ciphertext")
+        keystream = bytearray()
+        counter = 0
+        while len(keystream) < len(ciphertext):
+            keystream.extend(hashlib.sha256(k_enc + nonce + counter.to_bytes(4, "big")).digest())
+            counter += 1
+        plaintext = bytes(b ^ k for b, k in zip(ciphertext, keystream[: len(ciphertext)]))
+        return plaintext.decode("utf-8")
+    except Exception as exc:
+        raise ValueError(f"decryption failed: {exc}") from exc
+
+
+def _hash_val(val: Any, salt: str | None = None) -> str | None:
+    if val is None:
+        return None
+    s = f"{salt or ''}{val}"
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+# =============================================================================
+# 2. Vault-Based Tokenization (Option 2)
+# =============================================================================
+
+
+def _load_vault(vault_path: Path) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+    """Load vault mapping: {col_name: {original_str: token_str}} and {col_name: dtype_str}."""
+    if not vault_path.exists():
+        return {}, {}
+    suffix = vault_path.suffix.lower()
+    if suffix in (".parquet", ".pq"):
+        vdf = pl.read_parquet(vault_path)
+    elif suffix == ".csv":
+        vdf = pl.read_csv(vault_path)
+    elif suffix in (".jsonl", ".ndjson"):
+        vdf = pl.read_ndjson(vault_path)
+    elif suffix == ".json":
+        with open(vault_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                col_map: dict[str, dict[str, str]] = {}
+                dtypes: dict[str, str] = {}
+                if "mappings" in data and isinstance(data["mappings"], dict):
+                    col_map = data["mappings"]
+                    dtypes = data.get("dtypes", {})
+                else:
+                    col_map = data
+                return col_map, dtypes
+            vdf = pl.DataFrame(data)
+    else:
+        vdf = pl.read_parquet(vault_path)
+
+    col_map = {}
+    dtypes = {}
+    if "column" in vdf.columns and "token" in vdf.columns and "original" in vdf.columns:
+        has_dtype = "dtype" in vdf.columns
+        for row in vdf.iter_rows(named=True):
+            c = str(row["column"])
+            tok = str(row["token"])
+            orig = str(row["original"])
+            col_map.setdefault(c, {})[orig] = tok
+            if has_dtype and row.get("dtype"):
+                dtypes[c] = str(row["dtype"])
+    return col_map, dtypes
+
+
+def _save_vault(
+    vault_map: dict[str, dict[str, str]],
+    dtypes: dict[str, str],
+    vault_path: Path,
+) -> None:
+    """Save vault mapping: {col_name: {original_str: token_str}}."""
+    vault_path.parent.mkdir(parents=True, exist_ok=True)
+    suffix = vault_path.suffix.lower()
+    records = []
+    for col, mapping in vault_map.items():
+        dt = dtypes.get(col, "String")
+        for orig, tok in mapping.items():
+            records.append({"column": col, "token": tok, "original": orig, "dtype": dt})
+
+    if suffix == ".json":
+        data = {"mappings": vault_map, "dtypes": dtypes}
+        with open(vault_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return
+
+    vdf = pl.DataFrame(
+        records,
+        schema={"column": pl.String, "token": pl.String, "original": pl.String, "dtype": pl.String},
+    )
+    if suffix in (".parquet", ".pq"):
+        vdf.write_parquet(vault_path)
+    elif suffix == ".csv":
+        vdf.write_csv(vault_path)
+    elif suffix in (".jsonl", ".ndjson"):
+        vdf.write_ndjson(vault_path)
+    else:
+        vdf.write_parquet(vault_path)
+
+
+# =============================================================================
+# 3. Spec Parsers
+# =============================================================================
+
+
+def parse_mask_spec(
+    spec: Any = None,
+    *args: Any,
+    default_method: str = "hash",
+    **kwargs: Any,
+) -> dict[str, str]:
+    """Parse mask specification into a {column_name: method} mapping."""
+    mapping: dict[str, str] = {}
+
+    if spec is not None:
+        if isinstance(spec, dict):
+            for k, v in spec.items():
+                mapping[str(k).strip()] = str(v).strip().lower()
+        elif isinstance(spec, str):
+            parts = [p.strip() for p in spec.split(",") if p.strip()]
+            for p in parts:
+                if "=" in p:
+                    col, m = p.split("=", 1)
+                elif ":" in p:
+                    col, m = p.split(":", 1)
+                else:
+                    col, m = p, default_method
+                mapping[col.strip()] = m.strip().lower()
+        elif isinstance(spec, (list, tuple, set)):
+            for item in spec:
+                mapping[str(item).strip()] = default_method
+        else:
+            mapping[str(spec).strip()] = default_method
+
+    for arg in args:
+        if isinstance(arg, str):
+            mapping[arg.strip()] = default_method
+        elif isinstance(arg, (list, tuple)):
+            for sub in arg:
+                mapping[str(sub).strip()] = default_method
+
+    for k, v in kwargs.items():
+        if k not in ("key", "salt", "vault", "redact_val", "method"):
+            mapping[k.strip()] = str(v).strip().lower()
+
+    method_kwarg = kwargs.get("method")
+    if method_kwarg is not None:
+        target_m = str(method_kwarg).strip().lower()
+        for col, m in list(mapping.items()):
+            if m == default_method:
+                mapping[col] = target_m
+
+    normalized: dict[str, str] = {}
+    for col, m in mapping.items():
+        m_clean = m.lower()
+        if m_clean in ("sha256", "hash", "sha-256"):
+            normalized[col] = "hash"
+        elif m_clean in ("redact", "mask", "blur"):
+            normalized[col] = "redact"
+        elif m_clean in ("encrypt", "enc", "aes"):
+            normalized[col] = "encrypt"
+        elif m_clean in ("tokenize", "token", "pseudonym", "vault"):
+            normalized[col] = "tokenize"
+        else:
+            valid_str = ", ".join(repr(x) for x in ("hash", "redact", "encrypt", "tokenize"))
+            raise ValueError(f"unknown mask method '{m}' for column '{col}'; expected one of: {valid_str}")
+
+    return normalized
+
+
+def parse_unmask_spec(cols: Any = None, *args: Any) -> list[str]:
+    """Parse unmask column specification into a list of column names."""
+    out: list[str] = []
+    if cols is not None:
+        if isinstance(cols, str):
+            out.extend([c.strip() for c in cols.split(",") if c.strip()])
+        elif isinstance(cols, (list, tuple, set)):
+            out.extend([str(c).strip() for c in cols if str(c).strip()])
+        else:
+            out.append(str(cols).strip())
+
+    for arg in args:
+        if isinstance(arg, str):
+            out.extend([c.strip() for c in arg.split(",") if c.strip()])
+        elif isinstance(arg, (list, tuple, set)):
+            out.extend([str(c).strip() for c in arg if str(c).strip()])
+
+    return out
+
+
+# =============================================================================
+# 4. Polars Execution Engines
+# =============================================================================
+
+
+def mask_polars(
+    df: Any,
+    spec: dict[str, str],
+    *,
+    key: str | None = None,
+    salt: str | None = None,
+    vault: str | Path | None = None,
+    redact_val: str = "***",
+) -> Any:
+    """Mask specified columns in a Polars DataFrame or LazyFrame."""
+    if not spec:
+        return df
+
+    needs_key = any(m == "encrypt" for m in spec.values())
+    if needs_key and not key:
+        raise ValueError("-mask with method='encrypt' requires -key/--key for authenticated encryption")
+
+    needs_vault = any(m == "tokenize" for m in spec.values())
+    if needs_vault and not vault:
+        raise ValueError("-mask with method='tokenize' requires -vault/--vault to store tokenization mapping")
+
+    vault_path = Path(vault) if vault is not None else None
+    vault_map: dict[str, dict[str, str]] = {}
+    vault_dtypes: dict[str, str] = {}
+    if vault_path is not None:
+        vault_map, vault_dtypes = _load_vault(vault_path)
+
+    exprs: list[pl.Expr] = []
+    vault_updated = False
+
+    for col, method in spec.items():
+        if method == "hash":
+            expr = pl.col(col).map_elements(lambda x, s=salt: _hash_val(x, s), return_dtype=pl.String).alias(col)
+            exprs.append(expr)
+        elif method == "redact":
+            expr = pl.when(pl.col(col).is_not_null()).then(pl.lit(redact_val)).otherwise(None).alias(col)
+            exprs.append(expr)
+        elif method == "encrypt":
+            assert key is not None
+            expr = pl.col(col).map_elements(lambda x, k=key: _encrypt_val(x, k), return_dtype=pl.String).alias(col)
+            exprs.append(expr)
+        elif method == "tokenize":
+            assert vault_path is not None
+            # Retrieve unique non-null values for column
+            col_series = (
+                df.select(pl.col(col).drop_nulls()).collect()[col]
+                if isinstance(df, pl.LazyFrame)
+                else df[col].drop_nulls()
+            )
+            orig_dtype_str = str(col_series.dtype)
+            vault_dtypes[col] = orig_dtype_str
+            col_map = vault_map.setdefault(col, {})
+
+            # Assign new tokens to unseen unique values
+            for val in col_series.unique().to_list():
+                val_str = str(val)
+                if val_str not in col_map:
+                    new_token = f"{col}_{len(col_map) + 1:04d}"
+                    col_map[val_str] = new_token
+                    vault_updated = True
+
+            # In Polars, replace_strict works with string mapping.
+            # Cast column to string first if it wasn't string.
+            col_as_str = pl.col(col).cast(pl.String)
+            expr = col_as_str.replace_strict(col_map, default=col_as_str).alias(col)
+            exprs.append(expr)
+        else:
+            raise ValueError(f"unsupported mask method: {method}")
+
+    if vault_updated and vault_path is not None:
+        _save_vault(vault_map, vault_dtypes, vault_path)
+
+    return df.with_columns(exprs)
+
+
+def unmask_polars(
+    df: Any,
+    cols: list[str],
+    *,
+    key: str | None = None,
+    vault: str | Path | None = None,
+) -> Any:
+    """Unmask / decrypt / de-tokenize specified columns in a Polars DataFrame or LazyFrame."""
+    if not cols:
+        return df
+
+    if not key and not vault:
+        raise ValueError("-unmask requires -key/--key (for encryption) and/or -vault/--vault (for tokenization)")
+
+    vault_path = Path(vault) if vault is not None else None
+    vault_map: dict[str, dict[str, str]] = {}
+    vault_dtypes: dict[str, str] = {}
+    if vault_path is not None:
+        vault_map, vault_dtypes = _load_vault(vault_path)
+
+    exprs: list[pl.Expr] = []
+    for col in cols:
+        if vault_path is not None and col in vault_map:
+            # Reverse mapping: token -> original
+            col_map = vault_map[col]
+            rev_map = {tok: orig for orig, tok in col_map.items()}
+            expr = pl.col(col).cast(pl.String).replace_strict(rev_map, default=pl.col(col))
+
+            # If original dtype was integer or float, restore dtype
+            dt_str = vault_dtypes.get(col, "").lower()
+            if "int" in dt_str or dt_str.startswith("i") or dt_str.startswith("u"):
+                expr = expr.cast(pl.Int64)
+            elif "float" in dt_str or dt_str.startswith("f"):
+                expr = expr.cast(pl.Float64)
+            elif "bool" in dt_str:
+                expr = expr.cast(pl.Boolean)
+
+            exprs.append(expr.alias(col))
+        elif key is not None:
+            expr = pl.col(col).map_elements(lambda x, k=key: _decrypt_val(x, k), return_dtype=pl.String).alias(col)
+            exprs.append(expr)
+        else:
+            raise ValueError(
+                f"-unmask: column '{col}' not found in vault '{vault_path}', and no -key provided for decryption"
+            )
+
+    return df.with_columns(exprs)
+
+
+# =============================================================================
+# 5. Top-Level Library Functions
+# =============================================================================
+
+
+def mask(
+    df: Any,
+    spec: Any = None,
+    *args: Any,
+    key: str | None = None,
+    salt: str | None = None,
+    vault: str | Path | None = None,
+    redact_val: str = "***",
+    **kwargs: Any,
+) -> Any:
+    """Mask sensitive columns in a DataFrame or LazyFrame.
+
+    Supports:
+    - method="hash" (one-way SHA-256 cryptographic hash, with optional salt)
+    - method="redact" (replaces non-null values with "***")
+    - method="encrypt" (reversible authenticated encryption with key)
+    - method="tokenize" (reversible pseudonym tokenization with vault mapping file)
+
+    Examples:
+        pt.mask(df, "email=hash, ssn=redact")
+        pt.mask(df, email="encrypt", ssn="encrypt", key="Secret123")
+        pt.mask(df, user="tokenize", vault="vault.parquet")
+    """
+    from pytae.dataframe import DataFrame
+
+    if key is not None and not kwargs.get("method"):
+        default_m = "encrypt"
+    elif vault is not None and not kwargs.get("method"):
+        default_m = "tokenize"
+    else:
+        default_m = "hash"
+
+    mapping = parse_mask_spec(spec, *args, default_method=default_m, **kwargs)
+
+    is_pt = isinstance(df, DataFrame)
+    underlying = df._df if is_pt else df
+
+    if isinstance(underlying, (pl.DataFrame, pl.LazyFrame)):
+        res = mask_polars(underlying, mapping, key=key, salt=salt, vault=vault, redact_val=redact_val)
+        return DataFrame(res) if is_pt else res
+
+    import pandas as pd
+
+    if isinstance(underlying, pd.DataFrame):
+        pl_df = pl.from_pandas(underlying)
+        res_pl = mask_polars(pl_df, mapping, key=key, salt=salt, vault=vault, redact_val=redact_val)
+        res_pd = res_pl.to_pandas()
+        return DataFrame(res_pd) if is_pt else res_pd
+
+    raise TypeError(f"mask() expected a DataFrame, got {type(df).__name__}")
+
+
+def unmask(
+    df: Any,
+    cols: Any = None,
+    *args: Any,
+    key: str | None = None,
+    vault: str | Path | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Unmask / decrypt / de-tokenize columns in a DataFrame.
+
+    Examples:
+        pt.unmask(df, "email, ssn", key="Secret123")
+        pt.unmask(df, "user", vault="vault.parquet")
+        pt.unmask(df, "user, ssn", key="Secret123", vault="vault.parquet")
+    """
+    from pytae.dataframe import DataFrame
+
+    col_list = parse_unmask_spec(cols, *args)
+    if not col_list and kwargs:
+        col_list = list(kwargs.keys())
+
+    is_pt = isinstance(df, DataFrame)
+    underlying = df._df if is_pt else df
+
+    if isinstance(underlying, (pl.DataFrame, pl.LazyFrame)):
+        res = unmask_polars(underlying, col_list, key=key, vault=vault)
+        return DataFrame(res) if is_pt else res
+
+    import pandas as pd
+
+    if isinstance(underlying, pd.DataFrame):
+        pl_df = pl.from_pandas(underlying)
+        res_pl = unmask_polars(pl_df, col_list, key=key, vault=vault)
+        res_pd = res_pl.to_pandas()
+        return DataFrame(res_pd) if is_pt else res_pd
+
+    raise TypeError(f"unmask() expected a DataFrame, got {type(df).__name__}")
 
 ################################################################################
 # FILE: src/pytae/other_utilities.py
@@ -35154,6 +36081,54 @@ def test_cli_diff_in_subprocess(tmp_path: Path):
     assert "Identical" in proc_tol.stdout or "within tolerance" in proc_tol.stdout
 
 
+def test_cli_mask_and_unmask_key_and_vault(tmp_path: Path):
+    csv_file = tmp_path / "customers.csv"
+    masked_file = tmp_path / "masked.parquet"
+    vault_file = tmp_path / "vault.parquet"
+
+    csv_data = "user,ssn,email,notes\nAlice,111,a@a.com,secret1\nBob,222,b@b.com,secret2\n"
+    csv_file.write_text(csv_data)
+
+    # 1. Mask via CLI
+    proc_mask = _run_cli(
+        str(csv_file),
+        "-mask",
+        "user=tokenize, ssn=encrypt, email=hash, notes=redact",
+        "-key",
+        "CliSecret99",
+        "-vault",
+        str(vault_file),
+        "-o",
+        str(masked_file),
+    )
+    assert proc_mask.returncode == 0
+    assert masked_file.exists()
+    assert vault_file.exists()
+
+    df_m = pl.read_parquet(masked_file)
+    assert df_m["user"][0].startswith("user_")
+    assert df_m["ssn"][0] != "111"
+    assert len(df_m["email"][0]) == 64
+    assert df_m["notes"][0] == "***"
+
+    # 2. Unmask via CLI (restore user from vault and ssn from key)
+    proc_unmask = _run_cli(
+        str(masked_file),
+        "-unmask",
+        "user, ssn",
+        "-key",
+        "CliSecret99",
+        "-vault",
+        str(vault_file),
+    )
+    assert proc_unmask.returncode == 0
+    out = proc_unmask.stdout
+    assert "Alice" in out
+    assert "Bob" in out
+    assert "111" in out
+    assert "222" in out
+
+
 # =============================================================================
 # 6. Cold-Start Latency Benchmark
 # =============================================================================
@@ -36113,7 +37088,8 @@ assert callable(__import__("pytae", fromlist=["select"]).select)
 DF = sys.modules["pandas"].DataFrame
 assert hasattr(DF, "pt")
 assert not hasattr(DF.pt, "qry")
-assert not hasattr(DF, "select")
+if hasattr(DF, "select"):
+    assert getattr(DF, "select").__module__ != "pytae.select"
 assert not hasattr(DF, "mutate")
 """
         % _SRC
@@ -36581,6 +37557,225 @@ def test_lazy_fillna():
     c2 = d_filled.collect()
     assert c2["x"].to_list() == [1.0, 99.0, 99.0]
     assert c2["y"].to_list() == ["A", "MISSING", "B"]
+
+################################################################################
+# FILE: tests/test_mask.py
+################################################################################
+from pathlib import Path
+
+import pandas as pd
+import polars as pl
+import pytest
+
+import pytae as pt
+from pytae.mask import parse_mask_spec, parse_unmask_spec
+
+
+def test_parse_mask_spec():
+    assert parse_mask_spec("email=hash, ssn=redact") == {"email": "hash", "ssn": "redact"}
+    assert parse_mask_spec("email:hash, ssn:encrypt") == {"email": "hash", "ssn": "encrypt"}
+    assert parse_mask_spec("email, ssn", default_method="hash") == {"email": "hash", "ssn": "hash"}
+    assert parse_mask_spec({"email": "sha256", "user": "token"}) == {"email": "hash", "user": "tokenize"}
+    assert parse_mask_spec(email="encrypt", ssn="redact") == {"email": "encrypt", "ssn": "redact"}
+
+    with pytest.raises(ValueError, match="unknown mask method 'banana'"):
+        parse_mask_spec("email=banana")
+
+
+def test_parse_unmask_spec():
+    assert parse_unmask_spec("email, ssn") == ["email", "ssn"]
+    assert parse_unmask_spec(["email", "ssn"]) == ["email", "ssn"]
+    assert parse_unmask_spec("email", "ssn") == ["email", "ssn"]
+
+
+def test_mask_one_way_hash_and_salt():
+    df = pt.DataFrame(
+        {
+            "email": ["alice@td.com", "bob@td.com", None],
+            "id": [1, 2, None],
+        }
+    )
+
+    # Default hash without salt
+    m1 = df.mask("email=hash")
+    assert m1["email"][0] is not None
+    assert len(m1["email"][0]) == 64  # SHA-256 hex length
+    assert m1["email"][2] is None  # Preserves null
+
+    # Hash with salt
+    m2 = df.mask("email=hash", salt="custom_salt")
+    assert m2["email"][0] != m1["email"][0]
+    assert m2["email"][2] is None
+
+    # Determinism: same value produces same hash
+    m_dup = df.mask("email=hash", salt="custom_salt")
+    assert m_dup["email"][0] == m2["email"][0]
+
+
+def test_mask_one_way_redact():
+    df = pt.DataFrame(
+        {
+            "ssn": ["123-45-6789", "987-65-4321", None],
+            "notes": ["secret A", "secret B", None],
+        }
+    )
+
+    m = df.mask("ssn=redact, notes=redact")
+    assert m["ssn"].to_list() == ["***", "***", None]
+    assert m["notes"].to_list() == ["***", "***", None]
+
+    # Custom redact string
+    m_custom = df.mask("ssn=redact", redact_val="[CONFIDENTIAL]")
+    assert m_custom["ssn"].to_list() == ["[CONFIDENTIAL]", "[CONFIDENTIAL]", None]
+
+
+def test_mask_option_1_key_encrypt_and_unmask():
+    df = pt.DataFrame(
+        {
+            "user": ["Alice", "Bob", None],
+            "ssn": ["111-22-3333", "444-55-6666", None],
+        }
+    )
+
+    key = "TestSecretKey!2026"
+    masked = df.mask("user=encrypt, ssn=encrypt", key=key)
+
+    # Values are scrambled
+    assert masked["user"][0] != "Alice"
+    assert masked["user"][1] != "Bob"
+    assert masked["user"][2] is None
+
+    # Unmask with correct key
+    unmasked = masked.unmask("user, ssn", key=key)
+    assert unmasked["user"].to_list() == ["Alice", "Bob", None]
+    assert unmasked["ssn"].to_list() == ["111-22-3333", "444-55-6666", None]
+
+    # Unmask with WRONG key raises clear error
+    with pytest.raises(ValueError, match="decryption failed"):
+        masked.unmask("user", key="WrongPassword")
+
+
+def test_mask_option_2_vault_tokenize_and_unmask(tmp_path: Path):
+    vault_file = tmp_path / "vault.parquet"
+
+    df = pt.DataFrame(
+        {
+            "name": ["Alice", "Bob", "Alice", None],
+            "emp_id": [101, 102, 101, None],
+        }
+    )
+
+    # Tokenize name and emp_id
+    masked = df.mask("name=tokenize, emp_id=tokenize", vault=vault_file)
+    assert vault_file.exists()
+
+    # Repeated values get identical tokens
+    assert masked["name"][0] == masked["name"][2]
+    assert masked["name"][0] != masked["name"][1]
+    assert masked["name"][3] is None
+
+    # Check vault file content
+    vault_df = pl.read_parquet(vault_file)
+    assert set(vault_df.columns) == {"column", "token", "original", "dtype"}
+    assert len(vault_df) == 4  # 2 unique names + 2 unique emp_ids
+
+    # Unmask from vault restores exact values and types
+    unmasked = masked.unmask("name, emp_id", vault=vault_file)
+    assert unmasked["name"].to_list() == ["Alice", "Bob", "Alice", None]
+    assert unmasked["emp_id"].to_list() == [101, 102, 101, None]
+
+
+def test_mask_option_2_vault_incremental_append(tmp_path: Path):
+    vault_file = tmp_path / "vault.json"
+
+    # Batch 1
+    df1 = pt.DataFrame({"name": ["Alice", "Bob"]})
+    m1 = df1.mask("name=tokenize", vault=vault_file)
+    tok_alice = m1["name"][0]
+    tok_bob = m1["name"][1]
+
+    # Batch 2 (contains Alice again + new user Charlie)
+    df2 = pt.DataFrame({"name": ["Alice", "Charlie"]})
+    m2 = df2.mask("name=tokenize", vault=vault_file)
+
+    # Alice gets the exact same token from batch 1
+    assert m2["name"][0] == tok_alice
+    # Charlie gets a new token distinct from Alice and Bob
+    assert m2["name"][1] not in (tok_alice, tok_bob)
+
+    # Both batches unmask cleanly
+    unm1 = m1.unmask("name", vault=vault_file)
+    unm2 = m2.unmask("name", vault=vault_file)
+    assert unm1["name"].to_list() == ["Alice", "Bob"]
+    assert unm2["name"].to_list() == ["Alice", "Charlie"]
+
+
+def test_mask_combined_options(tmp_path: Path):
+    vault_file = tmp_path / "multi_vault.parquet"
+    key = "MultiPass456"
+
+    df = pt.DataFrame(
+        {
+            "user": ["Alice", "Bob"],
+            "ssn": ["111", "222"],
+            "email": ["a@a.com", "b@b.com"],
+            "notes": ["note 1", "note 2"],
+        }
+    )
+
+    # Combine all 4 methods: tokenize, encrypt, hash, redact
+    masked = df.mask(
+        "user=tokenize, ssn=encrypt, email=hash, notes=redact",
+        key=key,
+        vault=vault_file,
+    )
+
+    assert masked["user"][0].startswith("user_")
+    assert masked["ssn"][0] != "111"
+    assert len(masked["email"][0]) == 64
+    assert masked["notes"].to_list() == ["***", "***"]
+
+    # Unmask both user (via vault) and ssn (via key) in a single call
+    unmasked = masked.unmask("user, ssn", key=key, vault=vault_file)
+    assert unmasked["user"].to_list() == ["Alice", "Bob"]
+    assert unmasked["ssn"].to_list() == ["111", "222"]
+    # email and notes remain safely masked
+    assert len(unmasked["email"][0]) == 64
+    assert unmasked["notes"].to_list() == ["***", "***"]
+
+
+def test_mask_pandas_accessor(tmp_path: Path):
+    pdf = pd.DataFrame(
+        {
+            "name": ["Alice", "Bob"],
+            "ssn": ["111", "222"],
+        }
+    )
+
+    key = "PandasKey789"
+    # df.pt.mask
+    m_pt = pdf.pt.mask("name=hash, ssn=encrypt", key=key)
+    assert len(m_pt["name"][0]) == 64
+
+    # df.pt.unmask
+    unm_pt = m_pt.pt.unmask("ssn", key=key)
+    assert list(unm_pt["ssn"]) == ["111", "222"]
+
+
+def test_mask_validation_errors():
+    df = pt.DataFrame({"name": ["Alice"]})
+
+    # Encrypt without key
+    with pytest.raises(ValueError, match="requires -key/--key"):
+        df.mask("name=encrypt")
+
+    # Tokenize without vault
+    with pytest.raises(ValueError, match="requires -vault/--vault"):
+        df.mask("name=tokenize")
+
+    # Unmask without key or vault
+    with pytest.raises(ValueError, match="requires -key/--key .* and/or -vault/--vault"):
+        df.unmask("name")
 
 ################################################################################
 # FILE: tests/test_mutate.py

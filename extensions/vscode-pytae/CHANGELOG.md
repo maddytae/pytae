@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.11.0
+
+- Added support and syntax highlighting for sensitive data masking, encryption, and tokenization (`mask`, `unmask`).
+
 ## 3.10.5
 
 - Enhanced CSV/TXT reader schema inference and resilient format conversion.

@@ -844,6 +844,54 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-mutate", "-filter", "-select"],
     ),
+    "mask": KeywordHelp(
+        name="mask",
+        flag="-mask, --mask SPEC",
+        syntax='pytae <path> -mask "<SPEC>" [-key <KEY>] [-salt <SALT>] [-vault <PATH>]',
+        summary="Mask sensitive columns using hashing, redaction, key-based encryption, or tokenization.",
+        description=(
+            "Mask sensitive columns using one-way cryptographic hashing (hash/sha256), "
+            "redaction (redact), key-based reversible authenticated encryption (encrypt), "
+            "or reversible pseudonym tokenization with a lookup vault (tokenize)."
+        ),
+        options=[
+            "col=hash : One-way cryptographic SHA-256 hash (supports optional -salt).",
+            "col=redact : Replace non-null values with '***'.",
+            "col=encrypt : Reversible authenticated encryption (requires -key).",
+            "col=tokenize : Reversible pseudonym tokenization saved to -vault.",
+            "-key <SECRET> : Secret key for reversible encryption/decryption.",
+            "-salt <SALT> : Optional salt for one-way hashing.",
+            "-vault <PATH> : Vault mapping file (.parquet, .csv, .json) for tokenization.",
+        ],
+        examples=[
+            'pytae users.csv -mask "email=hash, ssn=redact"',
+            'pytae users.csv -mask "ssn=encrypt, email=encrypt" -key "MyKey123" -o masked.parquet',
+            'pytae users.csv -mask "name=tokenize, ssn=tokenize" -vault vault.parquet -o dev.parquet',
+            'pytae users.csv -mask "email=hash" -salt "company_salt"',
+        ],
+        see_also=["-unmask", "-key", "-vault", "-salt"],
+    ),
+    "unmask": KeywordHelp(
+        name="unmask",
+        flag="-unmask, --unmask COLS",
+        syntax='pytae <path> -unmask "<COLS>" [-key <KEY>] [-vault <PATH>]',
+        summary="Unmask, decrypt, or de-tokenize columns previously protected with -mask.",
+        description=(
+            "Unmask / decrypt / de-tokenize columns that were previously masked using "
+            "-key (authenticated decryption) or -vault (tokenization lookup)."
+        ),
+        options=[
+            "COLS : Comma-separated column names to unmask.",
+            "-key <SECRET> : Secret key used to decrypt encrypted columns.",
+            "-vault <PATH> : Path to the vault mapping file used during tokenization.",
+        ],
+        examples=[
+            'pytae masked.parquet -unmask "ssn, email" -key "MyKey123"',
+            'pytae dev.parquet -unmask "name, ssn" -vault vault.parquet',
+            'pytae dev.parquet -unmask "name, ssn" -key "MyKey123" -vault vault.parquet',
+        ],
+        see_also=["-mask", "-key", "-vault"],
+    ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries
@@ -865,6 +913,19 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-qry": "filter",
     "query": "filter",
     "-query": "filter",
+    "-mask": "mask",
+    "--mask": "mask",
+    "-unmask": "unmask",
+    "--unmask": "unmask",
+    "key": "mask",
+    "-key": "mask",
+    "--key": "mask",
+    "vault": "mask",
+    "-vault": "mask",
+    "--vault": "mask",
+    "salt": "mask",
+    "-salt": "mask",
+    "--salt": "mask",
 }
 
 

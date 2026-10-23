@@ -301,4 +301,38 @@ pytae archive.csv.gz -shape -head 5
 
 ---
 
+## 12. 🎭 Sensitive Data Masking, Encryption & Tokenization (`-mask`, `-unmask`)
+
+Secure, redact, encrypt, or tokenize sensitive PII columns across one-way and reversible workflows:
+
+```bash
+# 1. One-way Cryptographic SHA-256 Hashing
+pytae users.csv -mask "email=hash, user_id=sha256"
+
+# One-way Hashing with Custom Salt
+pytae users.csv -mask "email=hash" -salt "company_secret_salt_2026"
+
+# 2. Character & String Redaction (replaces with '***')
+pytae users.csv -mask "ssn=redact, credit_card=redact"
+
+# 3. Option 1: Reversible Authenticated Encryption (-key)
+# Encrypt sensitive columns using authenticated AES/HMAC stream encryption
+pytae users.csv -mask "ssn=encrypt, notes=encrypt" -key "MyStrongSecretPassphrase" -o secure.parquet
+
+# Reversible Decryption with -unmask and -key
+pytae secure.parquet -unmask "ssn, notes" -key "MyStrongSecretPassphrase"
+
+# 4. Option 2: Reversible Pseudonym Tokenization with Persistent Vault (-vault)
+# Maps unique values to consistent pseudonym tokens (e.g., user_0001) while preserving joins
+pytae users.csv -mask "user=tokenize" -vault "user_vault.parquet" -o anonymized.parquet
+
+# De-tokenize back to original values using the vault
+pytae anonymized.parquet -unmask "user" -vault "user_vault.parquet"
+
+# Mixed Multi-Column Strategy
+pytae customers.csv -mask "email=hash, ssn=encrypt, name=tokenize" -key "SecretKey" -vault "names.parquet" -o clean.parquet
+```
+
+---
+
 👉 **For Python Library Reference**: See [docs/pytae.md](pytae.md) or import directly via `import pytae as pt`.

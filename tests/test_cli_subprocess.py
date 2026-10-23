@@ -233,6 +233,54 @@ def test_cli_diff_in_subprocess(tmp_path: Path):
     assert "Identical" in proc_tol.stdout or "within tolerance" in proc_tol.stdout
 
 
+def test_cli_mask_and_unmask_key_and_vault(tmp_path: Path):
+    csv_file = tmp_path / "customers.csv"
+    masked_file = tmp_path / "masked.parquet"
+    vault_file = tmp_path / "vault.parquet"
+
+    csv_data = "user,ssn,email,notes\nAlice,111,a@a.com,secret1\nBob,222,b@b.com,secret2\n"
+    csv_file.write_text(csv_data)
+
+    # 1. Mask via CLI
+    proc_mask = _run_cli(
+        str(csv_file),
+        "-mask",
+        "user=tokenize, ssn=encrypt, email=hash, notes=redact",
+        "-key",
+        "CliSecret99",
+        "-vault",
+        str(vault_file),
+        "-o",
+        str(masked_file),
+    )
+    assert proc_mask.returncode == 0
+    assert masked_file.exists()
+    assert vault_file.exists()
+
+    df_m = pl.read_parquet(masked_file)
+    assert df_m["user"][0].startswith("user_")
+    assert df_m["ssn"][0] != "111"
+    assert len(df_m["email"][0]) == 64
+    assert df_m["notes"][0] == "***"
+
+    # 2. Unmask via CLI (restore user from vault and ssn from key)
+    proc_unmask = _run_cli(
+        str(masked_file),
+        "-unmask",
+        "user, ssn",
+        "-key",
+        "CliSecret99",
+        "-vault",
+        str(vault_file),
+    )
+    assert proc_unmask.returncode == 0
+    out = proc_unmask.stdout
+    assert "Alice" in out
+    assert "Bob" in out
+    assert "111" in out
+    assert "222" in out
+
+
 # =============================================================================
 # 6. Cold-Start Latency Benchmark
 # =============================================================================

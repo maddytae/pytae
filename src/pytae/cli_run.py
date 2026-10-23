@@ -1071,6 +1071,18 @@ def _process_path(
                 pipeline._df = result
                 pipeline._pldf = None
             emit_frame(idx)
+        elif op == "mask":
+            mask_val = _next_op_val("mask", getattr(args, "mask", None))
+            err = pipeline.apply_mask(mask_val, key=args.key, salt=args.salt, vault=args.vault)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "unmask":
+            unmask_val = _next_op_val("unmask", getattr(args, "unmask", None))
+            err = pipeline.apply_unmask(unmask_val, key=args.key, vault=args.vault)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "long":
             long_val = _next_op_val("long", args.long)
             long_kwargs = parse_long_arg(long_val)

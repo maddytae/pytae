@@ -141,6 +141,12 @@ class PolarsPtAccessor:
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
 
+    def mask(self, spec: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).mask(spec, *args, **kwargs)
+
+    def unmask(self, cols: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).unmask(cols, *args, **kwargs)
+
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 
@@ -372,6 +378,12 @@ class PandasPtAccessor:
 
     def clean_columns(self, **opts: Any) -> DataFrame:
         return DataFrame(self._obj).clean_columns(**opts)
+
+    def mask(self, spec: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).mask(spec, *args, **kwargs)
+
+    def unmask(self, cols: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).unmask(cols, *args, **kwargs)
 
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)

@@ -120,6 +120,15 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -select "species,body_mass_g" > top.txt      # Redirect stdout
   pytae archive.csv.gz -shape -head 5                             # Inspect gz stream
 
+12. 🎭 DATA MASKING, ENCRYPTION & TOKENIZATION (-mask, -unmask)
+--------------------------------------------------------------------------------
+  pytae users.csv -mask "email=hash, ssn=redact"                  # One-way hash & redact
+  pytae users.csv -mask "email=hash" -salt "my_salt"              # Salted SHA-256 hash
+  pytae users.csv -mask "ssn=encrypt" -key "Secret123"            # Reversible encryption (key)
+  pytae users.csv -mask "user=tokenize" -vault "vault.parquet"    # Reversible tokenization (vault)
+  pytae secure.parquet -unmask "ssn" -key "Secret123"             # Decrypt with key
+  pytae dev.parquet -unmask "user" -vault "vault.parquet"         # De-tokenize with vault
+
 Full documentation: https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md
 ================================================================================
 """

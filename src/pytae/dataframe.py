@@ -759,7 +759,7 @@ class DataFrame:
             raise TypeError(
                 f"filter(): keyword arguments are not supported (received {list(kwargs.keys())}). "
                 f"Equality comparisons strictly require '==' to avoid '=' assignment ambiguity. "
-                f"Use a string expression (e.g. df.filter(\"{first_k} == {example_val}\")) "
+                f'Use a string expression (e.g. df.filter("{first_k} == {example_val}")) '
                 f"or a dictionary (e.g. df.filter({{{repr(first_k)}: {example_val}}}))"
             )
 
@@ -1191,6 +1191,34 @@ class DataFrame:
                 dedupe=dedupe,
             )
         )
+
+    def mask(
+        self,
+        spec: Any = None,
+        *args: Any,
+        key: str | None = None,
+        salt: str | None = None,
+        vault: Any = None,
+        redact_val: str = "***",
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Mask, redact, encrypt, or tokenize sensitive columns."""
+        from pytae.mask import mask
+
+        return mask(self, spec, *args, key=key, salt=salt, vault=vault, redact_val=redact_val, **kwargs)
+
+    def unmask(
+        self,
+        cols: Any = None,
+        *args: Any,
+        key: str | None = None,
+        vault: Any = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Unmask / decrypt / de-tokenize columns in the DataFrame."""
+        from pytae.mask import unmask
+
+        return unmask(self, cols, *args, key=key, vault=vault, **kwargs)
 
     def cols(self, ascending: bool | None = True) -> list[str]:
         """Return sorted or natural column names."""
