@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Changed
+- **Python Support Baseline & Security Hardening**:
+  - Set minimum Python requirement to `requires-python = ">=3.11"`.
+  - Upgraded transitive dependency `pillow` in `uv.lock` from legacy `12.3.0` to `13.0.0`, eliminating 39 Dependabot vulnerabilities (including CVE-2026-112900, CVE-2026-112398, CVE-2026-112403, and OSV-2025-219).
+  - Updated CI test matrix to Python 3.11–3.14.
+
 ## [3.11.0] - 2026-10-23
 
 ### Added

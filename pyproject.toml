@@ -8,7 +8,7 @@ version = "3.11.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.0",
     "pyarrow>=15.0.0",
@@ -16,7 +16,6 @@ dependencies = [
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
