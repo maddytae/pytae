@@ -282,9 +282,9 @@ def test_cli_repl_invocation(sample_parquet, monkeypatch):
 
     monkeypatch.setattr(sys.modules["pytae.repl"], "repl", mock_repl)
 
-    # Test pytae repl <file>
-    cli.main(["repl", str(sample_parquet)])
-    assert invoked
+    # Test legacy pytae repl <file> is cleanly retired
+    with pytest.raises(SystemExit):
+        cli.main(["repl", str(sample_parquet)])
 
     invoked = False
     # Test pytae <file> -i

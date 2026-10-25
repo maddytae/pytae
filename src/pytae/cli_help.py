@@ -894,8 +894,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "repl": KeywordHelp(
         name="repl",
-        flag="-repl, --repl, -i, --interactive",
-        syntax="pytae [<path>] -i  or  pytae repl [<path>]",
+        flag="-i, --interactive, -repl, --repl",
+        syntax="pytae [<path>] -i",
         summary="Launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration.",
         description=(
             "Starts an interactive Read-Eval-Print Loop (REPL) that loads dataset(s) into memory once.\n"
@@ -918,7 +918,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae penguins.parquet -i",
             "pytae -i",
-            "pytae repl sales.parquet",
             'pytae penguins.parquet -filter "species == \'Gentoo\'" -i',
         ],
         see_also=["-filter", "-mutate", "-agg", "-sql", "-cheatsheet"],

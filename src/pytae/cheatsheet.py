@@ -129,11 +129,10 @@ CHEATSHEET_TEXT = """\
   pytae secure.parquet -unmask "ssn" -key "Secret123"             # Decrypt with key
   pytae dev.parquet -unmask "user" -vault "vault.parquet"         # De-tokenize with vault
 
-13. 💬 INTERACTIVE REPL SHELL (-i, -repl, repl)
+13. 💬 INTERACTIVE REPL SHELL (-i)
 --------------------------------------------------------------------------------
   pytae data.parquet -i                                           # Launch REPL with file loaded
-  pytae -i                                                        # Launch empty REPL prompt
-  pytae repl data.parquet                                         # Alternative subcommand syntax
+  pytae -i                                                        # Launch empty REPL workbench
   pytae data.parquet -filter "sales > 100" -i                     # Pre-filter then enter REPL
   # Inside REPL session:
   #   undo / redo             Revert / re-apply last transformation step

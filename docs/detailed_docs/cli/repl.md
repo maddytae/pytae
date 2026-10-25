@@ -1,4 +1,4 @@
-# CLI Feature Guide: Interactive REPL Shell (`-i`, `-repl`, `repl`)
+# CLI Feature Guide: Interactive REPL Shell (`-i`)
 
 Stateful, iterative in-memory data manipulation and exploratory data analysis without repeatedly reloading datasets from disk.
 
@@ -69,7 +69,6 @@ pytae penguins.parquet -i
 
 # 2. Mode 2: Launch an empty REPL workbench (load datasets via df1 = orders.parquet)
 pytae -i
-pytae repl
 
 # 3. Pre-filter a dataset and drop directly into the interactive REPL
 pytae penguins.parquet -filter "body_mass_g > 4000" -i
@@ -196,7 +195,7 @@ Saved Checkpoints:
 
 ## Mode 2: Multi-Table Workbench Deep-Dive (`df -cmd`)
 
-When launched with `pytae -i` (or `pytae repl`), the REPL enters **Multi-Table Workbench Mode**. You can load several datasets into memory simultaneously and manipulate them using clean, stateless **subject-first commands (`df -cmd`)**.
+When launched with `pytae -i`, the REPL enters **Multi-Table Workbench Mode**. You can load several datasets into memory simultaneously and manipulate them using clean, stateless **subject-first commands (`df -cmd`)**.
 
 ### 1. Ingesting Datasets (`<var> = <file>`)
 

@@ -975,13 +975,10 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_cli_check(raw_argv[1:])
 
-    # Check for repl subcommand: `pytae repl [path]` or `pytae -repl [path]`
-    if raw_argv and raw_argv[0] in ("repl", "-repl", "--repl"):
-        from pytae.repl import repl
-
-        repl_path = raw_argv[1] if len(raw_argv) > 1 and not raw_argv[1].startswith("-") else None
-        repl(path=repl_path)
-        return 0
+    # Legacy repl subcommand redirect
+    if raw_argv and raw_argv[0] == "repl":
+        parser = build_parser()
+        parser.error("'pytae repl' has been retired; use 'pytae -i' (or 'pytae <path> -i') instead")
 
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
@@ -1103,7 +1100,7 @@ def main(argv: list[str] | None = None) -> int:
         if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
             parser.error(f"-o {out_target}: in -file/-join mode, an explicit output file path is required")
     elif not raw_paths:
-        if _is_stdin_piped():
+        if _is_stdin_piped() and not getattr(args, "repl", False):
             raw_paths = ["-"]
             args.path = ["-"]
         elif getattr(args, "repl", False):

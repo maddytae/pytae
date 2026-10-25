@@ -335,7 +335,7 @@ pytae customers.csv -mask "email=hash, ssn=encrypt, name=tokenize" -key "SecretK
 
 ---
 
-## 13. 💬 Interactive REPL Shell (`-i`, `-repl`, `repl`)
+## 13. 💬 Interactive REPL Shell (`-i`)
 
 Stateful interactive data manipulation environment with in-memory execution and undo/redo history:
 
@@ -343,9 +343,8 @@ Stateful interactive data manipulation environment with in-memory execution and 
 # Launch interactive REPL with a dataset pre-loaded
 pytae data.parquet -i
 
-# Launch empty REPL prompt
+# Launch empty REPL workbench
 pytae -i
-pytae repl
 
 # Pre-filter dataset and drop directly into interactive REPL
 pytae data.parquet -filter "sales > 100" -i
