@@ -18,11 +18,11 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Assigning Pipeline & SQL Results (`df3 = ...`)](#assigning-pipeline--sql-results-df3--)
 - [In-Memory Pipeline Transformations](#in-memory-pipeline-transformations)
 - [Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)](#non-destructive-inspection-head-shape-cols-etc)
-- [Multi-Table Joins & ANSI SQL](#multi-table-joins--ansi-sql)
-  - [Option 1: Direct Single-Command `join`](#option-1-direct-single-command-join)
-  - [Option 2: Named Datasets + ANSI SQL (`load ... as ...` + `sql`)](#option-2-named-datasets--ansi-sql-load--as---sql)
+- [Multi-Table Joins & ANSI SQL (`-join`, `sql`)](#multi-table-joins--ansi-sql--join-sql)
+  - [Option 1: Standard Pipeline `-join`](#option-1-standard-pipeline--join)
+  - [Option 2: ANSI SQL Across Loaded Datasets (`sql`)](#option-2-ansi-sql-across-loaded-datasets-sql)
   - [Option 3: Fluent Python Joins (`py`)](#option-3-fluent-python-joins-py)
-- [Saving & Exporting (`save`, `-o`)](#saving--exporting-save--o)
+- [Saving & Exporting (`-o`)](#saving--exporting--o)
 - [Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)](#python--jupyter-sdk-integration-ptrepl-dfrepl)
 - [Complete REPL Command Reference](#complete-repl-command-reference)
 
@@ -283,38 +283,38 @@ pytae> describe
 
 ---
 
-## Multi-Table Joins & ANSI SQL
+## Multi-Table Joins & ANSI SQL (`-join`, `sql`)
 
-The REPL provides three seamless ways to read two datasets and join them in memory.
+The REPL provides three seamless ways to join datasets in memory using standard Pytae commands.
 
-### Option 1: Direct Single-Command `join`
+### Option 1: Standard Pipeline `-join`
 
-Join a secondary file from disk directly into your active dataset:
+Join another loaded table or disk file directly into your active dataset using Pytae's standard `-join` command:
 
 ```text
-$ pytae orders.parquet -i
+# With df1 active: left join df2 on customer_id
+pytae [df1: 10,000x4]> -join df2 on=customer_id
 
-# Left join on customer_id
-pytae [orders.parquet: 10,000x4]> join customers.parquet on=customer_id
+# With differing column names (left_col:right_col) and join type
+pytae [df1: 10,000x4]> -join df2 on=cust_id:id how=left
 
-# Different key names (left_col:right_col) and join type
-pytae [orders.parquet: 10,000x4]> join customers.parquet on=cust_id:id how=left
+# Join and export directly in one step with standard -o
+pytae [df1: 10,000x4]> -join df2 on=cust_id -o merged.parquet
 ```
 
 Supported join types: `how=left`, `how=inner`, `how=outer`, `how=semi`, `how=anti`.
 
-### Option 2: Named Datasets + ANSI SQL (`load ... as ...` + `sql`)
+You can also use standard multi-file key-value syntax:
+```text
+pytae> -join "left=df1,right=df2,on=cust_id,how=inner" -o merged.parquet
+```
 
-Load multiple datasets into memory as named tables and query them with full ANSI SQL:
+### Option 2: ANSI SQL Across Loaded Datasets (`sql`)
+
+Every loaded table (`df1`, `df2`, etc.) and saved checkpoint is automatically registered and queryable in `sql`:
 
 ```text
-pytae> load orders.parquet as ord
-Loaded orders.parquet as 'ord' (10,000 rows x 4 cols).
-
-pytae> load customers.parquet as cust
-Loaded customers.parquet as 'cust' (1,500 rows x 3 cols).
-
-pytae> sql SELECT ord.order_id, cust.name, ord.amount FROM ord JOIN cust ON ord.customer_id = cust.id
+pytae> sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id
 shape: (10,000, 3)
 ┌──────────┬─────────────┬────────┐
 │ order_id ┆ name        ┆ amount │
@@ -326,33 +326,32 @@ shape: (10,000, 3)
 └──────────┴─────────────┴────────┘
 ```
 
-> [!NOTE]
-> All tables created with `load <file> as <alias>` and all saved `checkpoint <name>` states are automatically registered and queryable in `sql`!
+You can assign the SQL result to a new named table:
+```text
+pytae> df3 = sql SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id
+```
 
 ### Option 3: Fluent Python Joins (`py`)
 
-Use Pytae's fluent Python API inside the REPL session:
+Use Pytae's fluent Python API directly on your loaded tables:
 
 ```text
-pytae> load orders.parquet as ord
-pytae> load customers.parquet as cust
-
-pytae> py ord.join(cust, on="customer_id", how="left")
+pytae> py df1.join(df2, on="cust_id", how="left")
 ```
 
 ---
 
-## Saving & Exporting (`save`, `-o`)
+## Saving & Exporting (`-o`)
 
-When you are satisfied with your transformations, export the result to file or system clipboard:
+Export your active dataset to disk or the system clipboard using the standard `-o` / `--output` flag:
 
 ```text
-# Save to Parquet, CSV, or NDJSON
-pytae> save clean_penguins.parquet
+# Export to Parquet, CSV, or NDJSON
+pytae> -o clean_penguins.parquet
 pytae> -o output.csv
+pytae> -o output.ndjson
 
 # Copy directly to system clipboard
-pytae> save clip
 pytae> -o clip
 ```
 
@@ -400,11 +399,10 @@ When you type `exit` in the REPL, the final transformed table is returned direct
 | **`tables`** | `tables`, `vars` | List all loaded tables in memory (`*` = active) | No |
 | **`use`** | `use <name>`, `<name>` | Switch active dataset to specified table | **Yes** |
 | **`<name> <cmd>`** | `df1 -head 5`, `df2 shape` | Run command directly on named table | Depends on command |
-| **`load`** | `load <path> [as <alias>]` | Load a new file from disk into the REPL session | **Yes** |
-| **`join`** | `join <target> on=<key> [how=...]` | Join a file or checkpoint into the active dataset | **Yes** (undoable) |
-| **`sql`** | `sql <query>` | Run ANSI SQL against `df` or named tables | **Yes** (undoable) |
+| **`-join`** | `-join <target> on=<key> [how=...] [-o <path>]` | Join table or file into active dataset | **Yes** (undoable) |
+| **`-o`** | `-o <path>`, `-o clip` | Export active dataset to Parquet/CSV or clipboard | No |
+| **`sql`** | `sql <query>` | Run ANSI SQL against active table or named tables | **Yes** (undoable) |
 | **`py`** | `py <expr>` | Evaluate Python expression on `df` / `pldf` | No |
-| **`save`** | `save <path\|clip>`, `-o <path>` | Export active dataset to file or clipboard | No |
 | **`head`** | `head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
 | **`tail`** | `tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
 | **`shape`** | `shape`, `-shape` | Display row and column counts | No |

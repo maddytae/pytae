@@ -32,54 +32,54 @@ REPL_HELP = """\
 ================================================================================
                              PYTAE REPL COMMANDS                                
 ================================================================================
-SESSION & STATE MANAGEMENT:
-  undo                 : Revert the last transformation step
-  redo                 : Re-apply the last undone transformation step
-  reset                : Restore the original dataset as loaded from disk
-  history              : Show numbered history of transformation steps
-  status               : Display active dataset shape, columns, and memory
-  checkpoint <name>    : Save current table state with a name (alias: cp)
-  restore <name>       : Restore table to a saved checkpoint (alias: checkout)
-  checkpoints          : List all saved checkpoints (alias: cps)
-  load <path>          : Load a file into REPL (alias: read, e.g. load data.parquet as df1)
-  save <path>          : Export active table to Parquet/CSV or clipboard (alias: -o)
-  exit / quit / q      : Exit the REPL session
-
-MULTI-TABLE & VARIABLE WORKFLOW:
-  <var> = <file.parquet> : Load file as named table (e.g. df1 = orders.parquet)
+MULTI-DATASET WORKFLOW & VARIABLE ASSIGNMENT:
+  <var> = <file.parquet> : Load file as named table in memory (e.g. df1 = orders.parquet)
   <var> = sql <query>    : Create table from SQL query across loaded datasets
-  <var> = <tbl> -filter  : Create table from pipeline on another table
-  tables / vars          : List all datasets loaded in memory (* indicates active)
-  use <name> / <name>    : Switch active dataset to <name> (e.g. use df1 or df1)
-  <name> <cmd>           : Run command directly on specific table (e.g. df1 -head 5)
-  join <target> on=<key> : Join active table with file or table (how=left|inner|outer)
+  <var> = <tbl> <pipe>   : Create table from pipeline on another table (e.g. df3 = df1 -filter ...)
+  tables / vars          : List all datasets currently loaded in memory (* indicates active)
+  use <name> / <name>    : Switch active dataset to <name> (e.g. use df1 or bare df1)
+  <name> <cmd>           : Run command directly on specific table (e.g. df1 -head 5, df2 -shape)
+
+STANDARD PYTAE PIPELINE TRANSFORMATIONS & EXPORT:
+  -join <tbl> on=<key>   : Join table or file with active dataset (e.g. -join df2 on=cust_id)
+                           Supports how=left|inner|outer|semi|anti, left:right keys, and -o <file>
+  -o <path> / -o clip    : Export active table to Parquet/CSV/NDJSON or clipboard
+  -filter <condition>    : Filter rows, e.g. -filter "species == 'Gentoo'"
+  -mutate <expr>         : Create/modify columns, e.g. -mutate "mass_kg = body_mass_g / 1000"
+  -select <cols>         : Column projection, e.g. -select "species,island,mass_kg"
+  -arrange <specs>       : Sort rows, e.g. -arrange "mass_kg desc"
+  -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=body_mass_g:mean, n=count"
+  -distinct <cols>       : Deduplicate rows
+  -dropna [cols]         : Drop missing values
+  -fillna <specs>        : Impute missing values
+  -mask / -unmask        : Mask, encrypt, or tokenize sensitive columns
+
+SESSION & STATE NAVIGATION:
+  undo                   : Revert the last transformation step
+  redo                   : Re-apply the last undone transformation step
+  reset                  : Restore the original dataset as loaded from disk
+  history                : Show numbered history of transformation steps
+  status                 : Display active dataset shape, columns, and memory
+  checkpoint <name>      : Save current table state with a name (alias: cp)
+  restore <name>         : Restore table to a saved checkpoint (alias: checkout)
+  checkpoints            : List all saved checkpoints (alias: cps)
+  exit / quit / q        : Exit the REPL session
 
 INSPECTION (Non-destructive previews, active dataset is preserved):
-  head [N]             : Preview first N rows (default 5, e.g. head 10)
-  tail [N]             : Preview last N rows (default 5, e.g. tail 10)
-  shape                : Print (rows, columns)
-  cols [asc]           : Print column names (file order or alphabetical)
-  dtype                : Print column data types
-  nulls                : Print missing value counts per column
-  glimpse              : Transposed overview of columns and sample values
-  describe             : Statistical summary of numeric columns
-  freq <col> [-bar]    : Frequency distribution table with optional ASCII bar
-
-PIPELINE TRANSFORMATIONS (Updates active dataset with automatic undo):
-  -filter <condition>  : Filter rows, e.g. -filter "species == 'Gentoo'"
-  -mutate <expr>       : Create/modify columns, e.g. -mutate "mass_kg = body_mass_g / 1000"
-  -select <cols>       : Column projection, e.g. -select "species,island,mass_kg"
-  -arrange <specs>     : Sort rows, e.g. -arrange "mass_kg desc"
-  -by <g> -agg <specs> : Grouped aggregation, e.g. -by species -agg "m=body_mass_g:mean, n=count"
-  -distinct <cols>     : Deduplicate rows
-  -dropna [cols]       : Drop missing values
-  -fillna <specs>      : Impute missing values
-  -mask / -unmask      : Mask, encrypt, or tokenize sensitive columns
+  head [N]               : Preview first N rows (default 5, e.g. head 10)
+  tail [N]               : Preview last N rows (default 5, e.g. tail 10)
+  shape                  : Print (rows, columns)
+  cols [asc]             : Print column names (file order or alphabetical)
+  dtype                  : Print column data types
+  nulls                  : Print missing value counts per column
+  glimpse                : Transposed overview of columns and sample values
+  describe               : Statistical summary of numeric columns
+  freq <col> [-bar]      : Frequency distribution table with optional ASCII bar
 
 QUERY & PYTHON EXPRESSIONS:
-  sql <query>          : Run ANSI SQL on active table (alias: df or data)
-                         e.g. sql SELECT species, AVG(body_mass_g) FROM df GROUP BY 1
-  py <expr>            : Evaluate Python expression with 'df' (pytae) and 'pldf' (polars)
+  sql <query>            : Run ANSI SQL on active table or across named tables
+                           e.g. sql SELECT df1.*, df2.name FROM df1 JOIN df2 ON df1.id = df2.id
+  py <expr>              : Evaluate Python expression with 'df' (pytae) and 'pldf' (polars)
 ================================================================================\
 """
 
@@ -357,14 +357,25 @@ class PytaeRepl:
             self._cmd_load(tokens, output_fn)
             return True
 
-        # Join
-        if first_lower in ("join", "-join"):
+        # Join: -join (and bare join)
+        if first_lower in ("join", "-join", "--join"):
             self._cmd_join(tokens[1:], output_fn)
             return True
 
-        # Save / Export / -o
-        if first_lower in ("save", "export") or (first_lower in ("-o", "--output") and len(tokens) >= 2):
+        # Save / Export: -o / --output (and save / export alias)
+        if first_lower in ("-o", "--output", "save", "export"):
+            if len(tokens) < 2:
+                output_fn("Usage: -o <path.parquet|csv|ndjson|clip>")
+                return True
             target = tokens[1]
+            self._cmd_save(target, output_fn)
+            return True
+        elif first_lower.startswith("-o="):
+            target = first_lower[3:].strip("\"'")
+            self._cmd_save(target, output_fn)
+            return True
+        elif first_lower.startswith("--output="):
+            target = first_lower[9:].strip("\"'")
             self._cmd_save(target, output_fn)
             return True
 
@@ -449,7 +460,7 @@ class PytaeRepl:
 
     def _cmd_status(self, output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
-            output_fn("No dataset loaded. Use 'load <path>' to load a table.")
+            output_fn("No dataset loaded. Use '<var> = <path.parquet>' to load a table.")
             return
         n_rows, n_cols = self.current_df.shape
         mem_mb = self.current_df.estimated_size() / (1024 * 1024)
@@ -531,7 +542,7 @@ class PytaeRepl:
 
     def _cmd_list_tables(self, output_fn: Callable[[str], None]) -> None:
         if not self.checkpoints:
-            output_fn("No tables loaded in memory. Use '<var> = <file.parquet>' or 'load <file>' to load a table.")
+            output_fn("No tables loaded in memory. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table.")
             return
         output_fn("Tables in memory:")
         for name, cp_df in self.checkpoints.items():
@@ -698,74 +709,142 @@ class PytaeRepl:
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
-            output_fn("pytae: no dataset loaded to join into. Use 'load <path>' first.")
+            output_fn("pytae: no dataset loaded to join into. Load a dataset first with '<var> = <file.parquet>'.")
             return
         if not args:
-            output_fn("Usage: join <target> on=<key> [how=left|inner|outer|semi|anti]")
+            output_fn("Usage: -join <target> on=<key> [how=left|inner|outer|semi|anti] [-o <file>]")
             return
 
-        target = args[0]
+        # 1. Extract any output destination: `-o <dest>` or `--output <dest>`
+        output_file: str | None = None
+        filtered_args: list[str] = []
+        i = 0
+        while i < len(args):
+            tok = args[i]
+            if tok in ("-o", "--output"):
+                if i + 1 < len(args):
+                    output_file = args[i + 1]
+                    i += 2
+                    continue
+            elif tok.startswith("-o="):
+                output_file = tok[3:].strip("\"'")
+                i += 1
+                continue
+            elif tok.startswith("--output="):
+                output_file = tok[9:].strip("\"'")
+                i += 1
+                continue
+            filtered_args.append(tok)
+            i += 1
+
+        # 2. Flatten any comma-separated argument string (e.g. `left=df1,right=df2,on=id`)
+        parts: list[str] = []
+        for arg in filtered_args:
+            if "," in arg and "=" in arg:
+                parts.extend([p.strip() for p in arg.split(",") if p.strip()])
+            else:
+                parts.append(arg)
+
+        left_name: str | None = None
+        right_name: str | None = None
         on_key: str | None = None
         how = "left"
 
-        for arg in args[1:]:
-            if arg.startswith("on="):
-                on_key = arg[3:].strip("\"'")
-            elif arg.startswith("how="):
-                how = arg[4:].strip("\"'").lower()
+        for part in parts:
+            part_clean = part.strip("\"'")
+            if part_clean.startswith("left="):
+                left_name = part_clean[5:].strip("\"'")
+            elif part_clean.startswith("right="):
+                right_name = part_clean[6:].strip("\"'")
+            elif part_clean.startswith("on="):
+                on_key = part_clean[3:].strip("\"'")
+            elif part_clean.startswith("how="):
+                how = part_clean[4:].strip("\"'").lower()
+            elif right_name is None and not part_clean.startswith("-") and "=" not in part_clean:
+                right_name = part_clean
+            elif on_key is None and not part_clean.startswith("-") and "=" not in part_clean and right_name is not None:
+                on_key = part_clean
 
-        if on_key is None:
-            output_fn("pytae: join requires 'on=<key>' (e.g. join customers.parquet on=customer_id)")
+        if right_name is None:
+            output_fn("pytae: -join requires a target table or file (e.g. -join df2 on=customer_id)")
             return
 
-        right_df = None
-        if target in self.checkpoints:
-            right_df = self.checkpoints[target]
-        else:
-            p = Path(target)
-            if p.exists():
+        if on_key is None:
+            output_fn("pytae: -join requires 'on=<key>' (e.g. -join df2 on=customer_id or on=cust_id:id)")
+            return
+
+        # 3. Resolve left table
+        if left_name is not None:
+            if left_name in self.checkpoints:
+                left_df = self.checkpoints[left_name]
+            elif Path(left_name).expanduser().exists():
                 try:
-                    right_df = get_reader(p).to_polars()
+                    left_df = get_reader(Path(left_name).expanduser()).to_polars()
                 except Exception as exc:
-                    output_fn(f"pytae: failed to read '{target}': {exc}")
+                    output_fn(f"pytae: failed to read left table '{left_name}': {exc}")
                     return
             else:
                 avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
-                output_fn(
-                    f"pytae: join target '{target}' not found. Must be an existing file or saved checkpoint (available: {avail})"
-                )
+                output_fn(f"pytae: left table '{left_name}' not found. Available: {avail}")
                 return
+        else:
+            left_df = self.current_df
+            left_name = self.path_str or "active"
 
+        # 4. Resolve right table
+        if right_name in self.checkpoints:
+            right_df = self.checkpoints[right_name]
+        elif Path(right_name).expanduser().exists():
+            try:
+                right_df = get_reader(Path(right_name).expanduser()).to_polars()
+            except Exception as exc:
+                output_fn(f"pytae: failed to read right table '{right_name}': {exc}")
+                return
+        else:
+            avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+            output_fn(
+                f"pytae: join target '{right_name}' not found. Must be a loaded table or existing file (available: {avail})"
+            )
+            return
+
+        # 5. Column matching
         left_col = on_key
         right_col = on_key
         if ":" in on_key:
             left_col, right_col = on_key.split(":", 1)
 
-        if left_col not in self.current_df.columns:
+        if left_col not in left_df.columns:
             output_fn(
-                f"pytae: join key '{left_col}' not found in active dataset. Available: {', '.join(self.current_df.columns)}"
+                f"pytae: join key '{left_col}' not found in '{left_name}'. Available: {', '.join(left_df.columns)}"
             )
             return
         if right_col not in right_df.columns:
             output_fn(
-                f"pytae: join key '{right_col}' not found in '{target}'. Available: {', '.join(right_df.columns)}"
+                f"pytae: join key '{right_col}' not found in '{right_name}'. Available: {', '.join(right_df.columns)}"
             )
             return
 
+        # 6. Execute join
         try:
             how_polars = "full" if how in ("outer", "full") else how
-            joined = self.current_df.join(
+            joined = left_df.join(
                 right_df,
                 left_on=left_col,
                 right_on=right_col,
                 how=how_polars,  # type: ignore[arg-type]
             )
             output_fn(_format_table(joined))
-            self.undo_stack.append((f"join {target} on={on_key} (how={how})", self.current_df.clone()))
+            self.undo_stack.append((f"-join {right_name} on={on_key} (how={how})", self.current_df.clone()))
             self.current_df = joined
+            if self.path_str and self.path_str in self.checkpoints:
+                self.checkpoints[self.path_str] = joined
             self.redo_stack.clear()
-            self.history.append(f"join {target} on={on_key} how={how}")
-            output_fn(f"Joined with '{target}' on '{on_key}' (how={how}). Active shape: ({joined.shape[0]:,}, {joined.shape[1]})")
+            self.history.append(f"-join {right_name} on={on_key} how={how}")
+            output_fn(f"Joined '{left_name}' with '{right_name}' on '{on_key}' (how={how}). Active shape: ({joined.shape[0]:,}, {joined.shape[1]})")
+
+            # 7. If -o was passed, export immediately
+            if output_file is not None:
+                self._cmd_save(output_file, output_fn)
         except Exception as exc:
             output_fn(f"pytae join error: {exc}")
 
@@ -835,7 +914,7 @@ class PytaeRepl:
 
     def _cmd_pipeline(self, line: str, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
-            output_fn("pytae: no dataset loaded. Use 'load <path>' to load a file first.")
+            output_fn("pytae: no dataset loaded. Load a dataset first with '<var> = <path.parquet>'.")
             return
 
         # Auto-prefix bare verbs with hyphens if user omitted them (e.g. `filter "..."` -> `-filter "..."`)
@@ -985,7 +1064,7 @@ class PytaeRepl:
         if self.current_df is not None:
             output_fn(f"Loaded: {self.path_str or '<dataframe>'} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)")
         else:
-            output_fn("No initial dataset loaded. Use 'load <path>' to load a table.")
+            output_fn("No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table.")
         output_fn("")
 
         def _get_input(prompt_text: str) -> str:

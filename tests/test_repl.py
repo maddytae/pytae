@@ -363,3 +363,48 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     assert r.checkpoints["df4"].shape == (2, 3)
     assert set(r.checkpoints["df4"].columns) == {"order_id", "name", "amount"}
 
+
+def test_repl_standard_cli_join_and_output(tmp_path):
+    f_orders = tmp_path / "orders.parquet"
+    f_customers = tmp_path / "customers.parquet"
+    f_merged = tmp_path / "merged.parquet"
+    f_final = tmp_path / "final.csv"
+
+    pl.DataFrame({
+        "order_id": [1, 2, 3],
+        "cust_id": [10, 20, 10],
+        "amount": [100.0, 250.0, 50.0],
+    }).write_parquet(f_orders)
+
+    pl.DataFrame({
+        "cust_id": [10, 20],
+        "name": ["Alice", "Bob"],
+    }).write_parquet(f_customers)
+
+    outputs = []
+    r = PytaeRepl()
+
+    # Load datasets using standard assignment
+    r.execute_line(f"df1 = {f_orders}", output_fn=outputs.append)
+    r.execute_line(f"df2 = {f_customers}", output_fn=outputs.append)
+
+    # 1. Standard -join with -o destination
+    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line(f"-join df2 on=cust_id -o {f_merged}", output_fn=outputs.append)
+    assert f_merged.exists()
+    saved = pl.read_parquet(f_merged)
+    assert saved.shape == (3, 4)
+    assert "name" in saved.columns
+
+    # 2. Key-value standard CLI join syntax: left=df1,right=df2,on=cust_id
+    r.execute_line("undo", output_fn=outputs.append)
+    assert r.current_df.shape == (3, 3)
+    r.execute_line("-join left=df1,right=df2,on=cust_id,how=inner", output_fn=outputs.append)
+    assert r.current_df.shape == (3, 4)
+
+    # 3. Standard -o flag
+    r.execute_line(f"-o {f_final}", output_fn=outputs.append)
+    assert f_final.exists()
+    assert len(f_final.read_text().splitlines()) == 4  # header + 3 rows
+
+
