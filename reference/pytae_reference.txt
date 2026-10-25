@@ -21642,14 +21642,23 @@ def _process_path(
                 progress=args.progress,
                 chunk_size=chunk_size,
             )
-        elif str(path).startswith("sample:"):
+        elif str(path).startswith("sample:") or (path is not None and not path.exists()):
+            import difflib
+
             from pytae import _DATASET_NAMES, DATA_PATH
 
-            sample_name = str(path)[7:].strip().removesuffix(".parquet")
-            sample_file = DATA_PATH / f"{sample_name}.parquet"
-            if not sample_file.exists():
-                available = ", ".join(_DATASET_NAMES)
-                return _fail(parser, batch, f"unknown sample dataset '{sample_name}'. Available: {available}")
+            candidate = Path(str(path).removeprefix("sample:")).stem.lower()
+            sample_file = None
+            if candidate in _DATASET_NAMES:
+                sample_file = DATA_PATH / f"{candidate}.parquet"
+            else:
+                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
+                if matches:
+                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
+
+            if sample_file is None or not sample_file.exists():
+                return _fail(parser, batch, f"file not found: {path}")
+
             try:
                 reader = get_reader(sample_file, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
             except (ValueError, ImportError) as exc:
@@ -30918,12 +30927,23 @@ class PytaeRepl:
         self.current_df = df
 
     def _load_file(self, path: Path | str) -> None:
-        p = Path(path)
-        if str(p).startswith("sample:"):
-            from pytae import DATA_PATH
+        p = Path(path).expanduser()
+        if not p.exists():
+            import difflib
 
-            sample_name = str(p)[7:].strip().removesuffix(".parquet")
-            p = DATA_PATH / f"{sample_name}.parquet"
+            from pytae import _DATASET_NAMES, DATA_PATH
+
+            candidate = Path(str(p).removeprefix("sample:")).stem.lower()
+            if candidate in _DATASET_NAMES:
+                sample_file = DATA_PATH / f"{candidate}.parquet"
+                if sample_file.exists():
+                    p = sample_file
+            else:
+                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
+                if matches:
+                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
+                    if sample_file.exists():
+                        p = sample_file
         if not p.exists():
             raise FileNotFoundError(f"File not found: {p}")
         reader = get_reader(p)
@@ -31295,16 +31315,25 @@ class PytaeRepl:
                 output_fn(f"pytae SQL Error: {exc}")
                 return
 
-        # 2. File path assignment: `df1 = orders.parquet` or `df1 = sample:penguins`
+        # 2. File path assignment: `df1 = orders.parquet` or `df1 = penguins.csv` or `df1 = sample:penguins`
         clean_path = right_expr.removeprefix("load ").strip("\"' ")
         p = Path(clean_path).expanduser()
-        if str(p).startswith("sample:") or (not p.exists() and clean_path in ("penguins", "tips", "titanic", "diamonds", "mpg", "flights", "iris", "penguins.parquet", "tips.parquet")):
-            from pytae import DATA_PATH
+        if not p.exists():
+            import difflib
 
-            sample_name = clean_path.removeprefix("sample:").removesuffix(".parquet")
-            sample_file = DATA_PATH / f"{sample_name}.parquet"
-            if sample_file.exists():
-                p = sample_file
+            from pytae import _DATASET_NAMES, DATA_PATH
+
+            candidate = Path(clean_path.removeprefix("sample:")).stem.lower()
+            if candidate in _DATASET_NAMES:
+                sample_file = DATA_PATH / f"{candidate}.parquet"
+                if sample_file.exists():
+                    p = sample_file
+            else:
+                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
+                if matches:
+                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
+                    if sample_file.exists():
+                        p = sample_file
         if p.exists():
             try:
                 reader = get_reader(p)
@@ -43591,6 +43620,11 @@ def test_repl_bundled_sample_dataset():
     r.execute_line("df2 = tips", output_fn=outputs.append)
     assert "df2" in r.checkpoints
     assert r.checkpoints["df2"].shape == (244, 7)
+
+    # Load via df=panguins.csv (with extension and minor typo)
+    r.execute_line("df3=panguins.csv", output_fn=outputs.append)
+    assert "df3" in r.checkpoints
+    assert r.checkpoints["df3"].shape == (344, 7)
 
 ################################################################################
 # FILE: tests/test_select.py

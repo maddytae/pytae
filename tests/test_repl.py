@@ -422,5 +422,11 @@ def test_repl_bundled_sample_dataset():
     assert "df2" in r.checkpoints
     assert r.checkpoints["df2"].shape == (244, 7)
 
+    # Load via df=panguins.csv (with extension and minor typo)
+    r.execute_line("df3=panguins.csv", output_fn=outputs.append)
+    assert "df3" in r.checkpoints
+    assert r.checkpoints["df3"].shape == (344, 7)
+
+
 
 

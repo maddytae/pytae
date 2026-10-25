@@ -210,12 +210,23 @@ class PytaeRepl:
         self.current_df = df
 
     def _load_file(self, path: Path | str) -> None:
-        p = Path(path)
-        if str(p).startswith("sample:"):
-            from pytae import DATA_PATH
+        p = Path(path).expanduser()
+        if not p.exists():
+            import difflib
 
-            sample_name = str(p)[7:].strip().removesuffix(".parquet")
-            p = DATA_PATH / f"{sample_name}.parquet"
+            from pytae import _DATASET_NAMES, DATA_PATH
+
+            candidate = Path(str(p).removeprefix("sample:")).stem.lower()
+            if candidate in _DATASET_NAMES:
+                sample_file = DATA_PATH / f"{candidate}.parquet"
+                if sample_file.exists():
+                    p = sample_file
+            else:
+                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
+                if matches:
+                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
+                    if sample_file.exists():
+                        p = sample_file
         if not p.exists():
             raise FileNotFoundError(f"File not found: {p}")
         reader = get_reader(p)
@@ -587,16 +598,25 @@ class PytaeRepl:
                 output_fn(f"pytae SQL Error: {exc}")
                 return
 
-        # 2. File path assignment: `df1 = orders.parquet` or `df1 = sample:penguins`
+        # 2. File path assignment: `df1 = orders.parquet` or `df1 = penguins.csv` or `df1 = sample:penguins`
         clean_path = right_expr.removeprefix("load ").strip("\"' ")
         p = Path(clean_path).expanduser()
-        if str(p).startswith("sample:") or (not p.exists() and clean_path in ("penguins", "tips", "titanic", "diamonds", "mpg", "flights", "iris", "penguins.parquet", "tips.parquet")):
-            from pytae import DATA_PATH
+        if not p.exists():
+            import difflib
 
-            sample_name = clean_path.removeprefix("sample:").removesuffix(".parquet")
-            sample_file = DATA_PATH / f"{sample_name}.parquet"
-            if sample_file.exists():
-                p = sample_file
+            from pytae import _DATASET_NAMES, DATA_PATH
+
+            candidate = Path(clean_path.removeprefix("sample:")).stem.lower()
+            if candidate in _DATASET_NAMES:
+                sample_file = DATA_PATH / f"{candidate}.parquet"
+                if sample_file.exists():
+                    p = sample_file
+            else:
+                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
+                if matches:
+                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
+                    if sample_file.exists():
+                        p = sample_file
         if p.exists():
             try:
                 reader = get_reader(p)
