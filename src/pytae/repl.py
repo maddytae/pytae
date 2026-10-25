@@ -69,11 +69,10 @@ STATE NAVIGATION (Undoable):
   checkpoints            : List saved checkpoints
   exit / quit / q        : Exit REPL
 
-QUERY, PYTHON & SHELL:
+QUERY & PYTHON EXPRESSIONS:
   sql <query>            : Run ANSI SQL on active table or across named tables
                            e.g. sql SELECT df1.*, df2.name FROM df1 JOIN df2 ON df1.id = df2.id
   py <expr>              : Evaluate Python expression with 'df' (pytae) and 'pldf' (polars)
-  !<command>             : Execute shell command without leaving REPL (e.g. !ls -lh, !dir)
 ================================================================================\
 """
 
