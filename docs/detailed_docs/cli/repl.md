@@ -25,7 +25,6 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [ANSI SQL Across Loaded Tables (`sql`)](#ansi-sql-across-loaded-tables-sql)
   - [Fluent Python Queries (`py`)](#fluent-python-queries-py)
 - [Saving & Exporting (`-o`)](#saving--exporting--o)
-- [Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)](#python--jupyter-sdk-integration-ptrepl-dfrepl)
 - [Complete REPL Command Reference](#complete-repl-command-reference)
 
 ---
@@ -347,31 +346,6 @@ pytae> -o output.ndjson
 # Copy directly to system clipboard
 pytae> -o clip
 ```
-
----
-
-## Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)
-
-You can launch the Pytae REPL directly from Python scripts, IPython, or Jupyter:
-
-```python
-import pytae as pt
-import pandas as pd
-
-df = pt.read_parquet("sales.parquet")
-
-# 1. Launch REPL off any Pytae DataFrame
-cleaned_df = df.repl()
-
-# 2. Or call via pandas .pt accessor
-raw_df = pd.read_csv("raw.csv")
-cleaned_df = raw_df.pt.repl()
-
-# 3. Direct function call
-pt.repl(df)
-```
-
-When you type `exit` in the REPL, the final transformed table is returned directly into your Python variable.
 
 ---
 
