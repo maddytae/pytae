@@ -338,7 +338,7 @@ pytae> -o clip
 
 | Command | Syntax | Description | Mutates Active Table? |
 |---|---|---|---|
-| **`help`** | `help`, `?` | Display formatted help manual | No |
+| **`help`** | `help` | Display formatted help manual | No |
 | **`status`** | `status` | Show active dataset name, shape, memory, undo stack depth | No |
 | **`reset`** | `reset` | Revert active table to original dataset from disk | **Yes** (undoable) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
@@ -363,5 +363,5 @@ pytae> -o clip
 | **`nulls`** | `nulls`, `-nulls` | Display missing value counts | No |
 | **`glimpse`** | `glimpse`, `-glimpse` | Display transposed schema and sample values | No |
 | **`describe`** | `describe`, `-describe` | Display statistical summary of numeric columns | No |
-| **`exit`** | `exit`, `quit`, `q` | Exit the REPL session | — |
+| **`exit`** | `exit` | Exit the REPL session | — |
 

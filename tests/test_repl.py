@@ -533,3 +533,36 @@ def test_repl_model2_display_no_table_dumps(tmp_path):
     r.execute_line("tail 1", output_fn=outputs.append)
     assert any("order_id" in o for o in outputs)
     assert any("75" in o for o in outputs)
+
+
+def test_repl_help_and_exit_strictly_enforced():
+    outputs = []
+    r = PytaeRepl()
+
+    # 1. 'help' works
+    cont = r.execute_line("help", output_fn=outputs.append)
+    assert cont is True
+    assert any("PYTAE REPL COMMANDS" in o for o in outputs)
+
+    # 2. '?' is rejected and guides to 'help'
+    outputs.clear()
+    cont = r.execute_line("?", output_fn=outputs.append)
+    assert cont is True
+    assert "use 'help'" in outputs[-1]
+
+    # 3. 'q' and 'quit' are rejected and guide to 'exit'
+    outputs.clear()
+    cont = r.execute_line("q", output_fn=outputs.append)
+    assert cont is True
+    assert "use 'exit'" in outputs[-1]
+
+    outputs.clear()
+    cont = r.execute_line("quit", output_fn=outputs.append)
+    assert cont is True
+    assert "use 'exit'" in outputs[-1]
+
+    # 4. 'exit' terminates REPL
+    outputs.clear()
+    cont = r.execute_line("exit", output_fn=outputs.append)
+    assert cont is False
+    assert "Exiting pytae REPL." in outputs[-1]

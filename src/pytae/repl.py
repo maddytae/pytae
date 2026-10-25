@@ -67,7 +67,7 @@ STATE NAVIGATION (Undoable):
   checkpoint <name>      : Save current table state (cp)
   restore <name>         : Restore table to saved checkpoint (checkout)
   checkpoints            : List saved checkpoints
-  exit / quit / q        : Exit REPL
+  exit                   : Exit REPL
 
 QUERY & PYTHON EXPRESSIONS:
   sql <query>            : Run ANSI SQL on active table or across named tables
@@ -274,14 +274,20 @@ class PytaeRepl:
         if not line or line.startswith("#"):
             return True
 
-        # Check for exit
-        if line.lower() in ("exit", "quit", "q", ":q"):
+        # Check for exit (strictly 'exit', not 'quit' or 'q')
+        if line.lower() == "exit":
             output_fn("Exiting pytae REPL.")
             return False
+        if line.lower() in ("quit", "q", ":q"):
+            output_fn("pytae: use 'exit' to quit the REPL.")
+            return True
 
-        # Help
-        if line.lower() in ("help", "?", "-help", "--help"):
+        # Help (strictly 'help', not '?')
+        if line.lower() in ("help", "-help", "--help"):
             output_fn(REPL_HELP)
+            return True
+        if line.strip() == "?":
+            output_fn("pytae: '?' is not recognized; use 'help'.")
             return True
 
         # Shell command execution: !<command> (e.g. !ls, !dir)
