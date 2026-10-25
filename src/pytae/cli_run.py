@@ -655,6 +655,25 @@ def _process_path(
                 progress=args.progress,
                 chunk_size=chunk_size,
             )
+        elif str(path).startswith("sample:"):
+            from pytae import _DATASET_NAMES, DATA_PATH
+
+            sample_name = str(path)[7:].strip().removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if not sample_file.exists():
+                available = ", ".join(_DATASET_NAMES)
+                return _fail(parser, batch, f"unknown sample dataset '{sample_name}'. Available: {available}")
+            try:
+                reader = get_reader(sample_file, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+            except (ValueError, ImportError) as exc:
+                return _fail(parser, batch, str(exc))
+
+            pipeline = _Pipeline(
+                reader,
+                nrows=args.nrows,
+                progress=args.progress,
+                chunk_size=chunk_size,
+            )
         elif path is None or not path.exists():
             return _fail(parser, batch, f"file not found: {path}")
         else:

@@ -408,3 +408,19 @@ def test_repl_standard_cli_join_and_output(tmp_path):
     assert len(f_final.read_text().splitlines()) == 4  # header + 3 rows
 
 
+def test_repl_bundled_sample_dataset():
+    outputs = []
+    r = PytaeRepl()
+
+    # Load via sample:penguins
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    assert "df1" in r.checkpoints
+    assert r.checkpoints["df1"].shape == (344, 7)
+
+    # Load via penguins shortcut
+    r.execute_line("df2 = tips", output_fn=outputs.append)
+    assert "df2" in r.checkpoints
+    assert r.checkpoints["df2"].shape == (244, 7)
+
+
+

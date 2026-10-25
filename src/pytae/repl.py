@@ -211,6 +211,11 @@ class PytaeRepl:
 
     def _load_file(self, path: Path | str) -> None:
         p = Path(path)
+        if str(p).startswith("sample:"):
+            from pytae import DATA_PATH
+
+            sample_name = str(p)[7:].strip().removesuffix(".parquet")
+            p = DATA_PATH / f"{sample_name}.parquet"
         if not p.exists():
             raise FileNotFoundError(f"File not found: {p}")
         reader = get_reader(p)
@@ -582,9 +587,16 @@ class PytaeRepl:
                 output_fn(f"pytae SQL Error: {exc}")
                 return
 
-        # 2. File path assignment: `df1 = orders.parquet` or `df1 = load "orders.parquet"`
+        # 2. File path assignment: `df1 = orders.parquet` or `df1 = sample:penguins`
         clean_path = right_expr.removeprefix("load ").strip("\"' ")
         p = Path(clean_path).expanduser()
+        if str(p).startswith("sample:") or (not p.exists() and clean_path in ("penguins", "tips", "titanic", "diamonds", "mpg", "flights", "iris", "penguins.parquet", "tips.parquet")):
+            from pytae import DATA_PATH
+
+            sample_name = clean_path.removeprefix("sample:").removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if sample_file.exists():
+                p = sample_file
         if p.exists():
             try:
                 reader = get_reader(p)

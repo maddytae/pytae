@@ -21642,6 +21642,25 @@ def _process_path(
                 progress=args.progress,
                 chunk_size=chunk_size,
             )
+        elif str(path).startswith("sample:"):
+            from pytae import _DATASET_NAMES, DATA_PATH
+
+            sample_name = str(path)[7:].strip().removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if not sample_file.exists():
+                available = ", ".join(_DATASET_NAMES)
+                return _fail(parser, batch, f"unknown sample dataset '{sample_name}'. Available: {available}")
+            try:
+                reader = get_reader(sample_file, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+            except (ValueError, ImportError) as exc:
+                return _fail(parser, batch, str(exc))
+
+            pipeline = _Pipeline(
+                reader,
+                nrows=args.nrows,
+                progress=args.progress,
+                chunk_size=chunk_size,
+            )
         elif path is None or not path.exists():
             return _fail(parser, batch, f"file not found: {path}")
         else:
@@ -30900,6 +30919,11 @@ class PytaeRepl:
 
     def _load_file(self, path: Path | str) -> None:
         p = Path(path)
+        if str(p).startswith("sample:"):
+            from pytae import DATA_PATH
+
+            sample_name = str(p)[7:].strip().removesuffix(".parquet")
+            p = DATA_PATH / f"{sample_name}.parquet"
         if not p.exists():
             raise FileNotFoundError(f"File not found: {p}")
         reader = get_reader(p)
@@ -31271,9 +31295,16 @@ class PytaeRepl:
                 output_fn(f"pytae SQL Error: {exc}")
                 return
 
-        # 2. File path assignment: `df1 = orders.parquet` or `df1 = load "orders.parquet"`
+        # 2. File path assignment: `df1 = orders.parquet` or `df1 = sample:penguins`
         clean_path = right_expr.removeprefix("load ").strip("\"' ")
         p = Path(clean_path).expanduser()
+        if str(p).startswith("sample:") or (not p.exists() and clean_path in ("penguins", "tips", "titanic", "diamonds", "mpg", "flights", "iris", "penguins.parquet", "tips.parquet")):
+            from pytae import DATA_PATH
+
+            sample_name = clean_path.removeprefix("sample:").removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if sample_file.exists():
+                p = sample_file
         if p.exists():
             try:
                 reader = get_reader(p)
@@ -43545,6 +43576,21 @@ def test_repl_standard_cli_join_and_output(tmp_path):
     r.execute_line(f"-o {f_final}", output_fn=outputs.append)
     assert f_final.exists()
     assert len(f_final.read_text().splitlines()) == 4  # header + 3 rows
+
+
+def test_repl_bundled_sample_dataset():
+    outputs = []
+    r = PytaeRepl()
+
+    # Load via sample:penguins
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    assert "df1" in r.checkpoints
+    assert r.checkpoints["df1"].shape == (344, 7)
+
+    # Load via penguins shortcut
+    r.execute_line("df2 = tips", output_fn=outputs.append)
+    assert "df2" in r.checkpoints
+    assert r.checkpoints["df2"].shape == (244, 7)
 
 ################################################################################
 # FILE: tests/test_select.py
