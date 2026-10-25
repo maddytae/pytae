@@ -1,0 +1,325 @@
+# CLI Feature Guide: Interactive REPL Shell (`-i`, `-repl`, `repl`)
+
+Stateful, iterative in-memory data manipulation and exploratory data analysis without repeatedly reloading datasets from disk.
+
+---
+
+## Contents
+
+- [Overview & Why Use REPL](#overview--why-use-repl)
+- [Launching the REPL](#launching-the-repl)
+- [Session State & Rollback (`reset`, `undo`, `redo`)](#session-state--rollback-reset-undo-redo)
+- [Checkpoints & Snapshots (`checkpoint`, `restore`)](#checkpoints--snapshots-checkpoint-restore)
+- [In-Memory Pipeline Transformations](#in-memory-pipeline-transformations)
+- [Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)](#non-destructive-inspection-head-shape-cols-etc)
+- [Multi-Table Joins & ANSI SQL](#multi-table-joins--ansi-sql)
+  - [Option 1: Direct Single-Command `join`](#option-1-direct-single-command-join)
+  - [Option 2: Named Datasets + ANSI SQL (`load ... as ...` + `sql`)](#option-2-named-datasets--ansi-sql-load--as---sql)
+  - [Option 3: Fluent Python Joins (`py`)](#option-3-fluent-python-joins-py)
+- [Saving & Exporting (`save`, `-o`)](#saving--exporting-save--o)
+- [Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)](#python--jupyter-sdk-integration-ptrepl-dfrepl)
+- [Complete REPL Command Reference](#complete-repl-command-reference)
+
+---
+
+## Overview & Why Use REPL
+
+In standard one-shot CLI usage, executing multiple queries on a 1 GB file requires re-reading and re-parsing the file from disk on every single command:
+
+```bash
+# Standard CLI: reads and parses sales.parquet 3 separate times
+pytae sales.parquet -shape
+pytae sales.parquet -filter "amount > 100" -head 5
+pytae sales.parquet -by region -agg "total=amount:sum"
+```
+
+The **Pytae REPL** loads your dataset into memory **once**. All subsequent filters, aggregations, feature mutations, and SQL queries execute in RAM at multithreaded Polars speed. Because Polars tables are immutable Arrow buffers under the hood, rolling back a mistake with `undo` or `reset` is an instantaneous $O(1)$ pointer reassignment.
+
+---
+
+## Launching the REPL
+
+You can launch the REPL from the command line in three ways:
+
+```bash
+# 1. Pre-load a dataset into the interactive shell
+pytae penguins.parquet -i
+
+# 2. Launch an empty REPL prompt (load data later via 'load <file>')
+pytae -i
+pytae repl
+
+# 3. Pre-filter a dataset and drop directly into the interactive REPL
+pytae penguins.parquet -filter "body_mass_g > 4000" -i
+```
+
+Upon launching, the interactive prompt displays the current file name and live table shape:
+```text
+pytae [penguins.parquet: 344x7]> 
+```
+
+---
+
+## Session State & Rollback (`reset`, `undo`, `redo`)
+
+### 1. `reset`: Revert to Original Dataset
+If you perform multiple transformations and realize you want to discard your changes, `reset` instantly rolls the table back to the original dataset as loaded from disk:
+
+```text
+pytae [penguins.parquet: 344x7]> -filter "species == 'Gentoo'"
+shape: (124, 7)
+...
+
+pytae [penguins.parquet: 124x7]> reset
+Restored original dataset. Active shape: (344, 7)
+
+pytae [penguins.parquet: 344x7]> 
+```
+
+### 2. `undo` & `redo`: Step-by-Step History Navigation
+Like `Ctrl+Z` in an editor, `undo` steps backward through your transformation stack, while `redo` re-applies undone steps:
+
+```text
+pytae [penguins.parquet: 344x7]> -filter "body_mass_g > 4000"
+shape: (168, 7)
+
+pytae [penguins.parquet: 168x7]> -mutate "mass_kg = body_mass_g / 1000.0"
+shape: (168, 8)
+
+pytae [penguins.parquet: 168x8]> undo
+Undid: -mutate "mass_kg = body_mass_g / 1000.0". Active shape: (168, 7)
+
+pytae [penguins.parquet: 168x7]> redo
+Redid: -mutate "mass_kg = body_mass_g / 1000.0". Active shape: (168, 8)
+```
+
+### 3. `history`: Inspect Applied Pipeline Steps
+```text
+pytae [penguins.parquet: 168x8]> history
+Pipeline History:
+   1: -filter "body_mass_g > 4000"
+   2: -mutate "mass_kg = body_mass_g / 1000.0"
+```
+
+---
+
+## Checkpoints & Snapshots (`checkpoint`, `restore`)
+
+You can save named state checkpoints at key milestones before experimenting with exploratory transformations:
+
+```text
+# Save a named checkpoint
+pytae [penguins.parquet: 344x7]> checkpoint baseline
+Saved checkpoint 'baseline' (344 rows x 7 cols).
+
+# Experiment with aggressive filtering
+pytae [penguins.parquet: 344x7]> -filter "island == 'Dream' and sex == 'female'"
+shape: (61, 7)
+
+# Restore back to your saved checkpoint
+pytae [penguins.parquet: 61x7]> restore baseline
+Restored checkpoint 'baseline'. Active shape: (344, 7)
+
+# List all saved checkpoints
+pytae [penguins.parquet: 344x7]> checkpoints
+Saved Checkpoints:
+  - baseline       : 344 rows x 7 cols
+```
+
+*(Aliases: `cp` for `checkpoint`, `checkout` for `restore`, `cps` for `checkpoints`)*.
+
+---
+
+## In-Memory Pipeline Transformations
+
+Any standard Pytae CLI flag sequence can be typed directly into the prompt. Transformations execute on the in-memory Arrow table, print the resulting table, and update the active dataset:
+
+```text
+# Filter rows
+pytae> -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+
+# Feature engineering
+pytae> -mutate "mass_kg = body_mass_g / 1000, is_heavy = mass_kg > 4.5"
+
+# Column selection & drop
+pytae> -select "species,island,mass_kg"
+pytae> -select "!sex"
+
+# Sort rows
+pytae> -arrange "mass_kg desc"
+
+# Grouped aggregation
+pytae> -by species -agg "avg_mass=body_mass_g:mean, count=count"
+
+# Sensitive data masking and encryption
+pytae> -mask "email=hash, ssn=encrypt" -key "SecretKey123"
+```
+
+> [!TIP]
+> **Bare-Verb Convenience**: Leading hyphens are optional for primary verbs. `filter "species == 'Gentoo'"` works identically to `-filter "species == 'Gentoo'"`.
+
+---
+
+## Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)
+
+Inspection commands display metadata or previews **without** truncating or mutating your active table:
+
+```text
+# Non-destructive head/tail previews (does NOT truncate active rows)
+pytae> head 10
+pytae> tail 5
+
+# Dimensions & columns
+pytae> shape
+(344, 7)
+
+pytae> cols
+species
+island
+bill_length_mm
+bill_depth_mm
+flipper_length_mm
+body_mass_g
+sex
+
+pytae> dtype
+species               object
+island                object
+bill_length_mm       float64
+...
+
+# Missing values & statistical summary
+pytae> nulls
+pytae> glimpse
+pytae> describe
+```
+
+---
+
+## Multi-Table Joins & ANSI SQL
+
+The REPL provides three seamless ways to read two datasets and join them in memory.
+
+### Option 1: Direct Single-Command `join`
+
+Join a secondary file from disk directly into your active dataset:
+
+```text
+$ pytae orders.parquet -i
+
+# Left join on customer_id
+pytae [orders.parquet: 10,000x4]> join customers.parquet on=customer_id
+
+# Different key names (left_col:right_col) and join type
+pytae [orders.parquet: 10,000x4]> join customers.parquet on=cust_id:id how=left
+```
+
+Supported join types: `how=left`, `how=inner`, `how=outer`, `how=semi`, `how=anti`.
+
+### Option 2: Named Datasets + ANSI SQL (`load ... as ...` + `sql`)
+
+Load multiple datasets into memory as named tables and query them with full ANSI SQL:
+
+```text
+pytae> load orders.parquet as ord
+Loaded orders.parquet as 'ord' (10,000 rows x 4 cols).
+
+pytae> load customers.parquet as cust
+Loaded customers.parquet as 'cust' (1,500 rows x 3 cols).
+
+pytae> sql SELECT ord.order_id, cust.name, ord.amount FROM ord JOIN cust ON ord.customer_id = cust.id
+shape: (10,000, 3)
+┌──────────┬─────────────┬────────┐
+│ order_id ┆ name        ┆ amount │
+│ ---      ┆ ---         ┆ ---    │
+│ i64      ┆ str         ┆ f64    │
+╞══════════╪═════════════╪════════╡
+│ 1001     ┆ Alice Smith ┆ 149.50 │
+│ 1002     ┆ Bob Jones   ┆ 89.00  │
+└──────────┴─────────────┴────────┘
+```
+
+> [!NOTE]
+> All tables created with `load <file> as <alias>` and all saved `checkpoint <name>` states are automatically registered and queryable in `sql`!
+
+### Option 3: Fluent Python Joins (`py`)
+
+Use Pytae's fluent Python API inside the REPL session:
+
+```text
+pytae> load orders.parquet as ord
+pytae> load customers.parquet as cust
+
+pytae> py ord.join(cust, on="customer_id", how="left")
+```
+
+---
+
+## Saving & Exporting (`save`, `-o`)
+
+When you are satisfied with your transformations, export the result to file or system clipboard:
+
+```text
+# Save to Parquet, CSV, or NDJSON
+pytae> save clean_penguins.parquet
+pytae> -o output.csv
+
+# Copy directly to system clipboard
+pytae> save clip
+pytae> -o clip
+```
+
+---
+
+## Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)
+
+You can launch the Pytae REPL directly from Python scripts, IPython, or Jupyter:
+
+```python
+import pytae as pt
+import pandas as pd
+
+df = pt.read_parquet("sales.parquet")
+
+# 1. Launch REPL off any Pytae DataFrame
+cleaned_df = df.repl()
+
+# 2. Or call via pandas .pt accessor
+raw_df = pd.read_csv("raw.csv")
+cleaned_df = raw_df.pt.repl()
+
+# 3. Direct function call
+pt.repl(df)
+```
+
+When you type `exit` in the REPL, the final transformed table is returned directly into your Python variable.
+
+---
+
+## Complete REPL Command Reference
+
+| Command | Syntax | Description | Mutates Active Table? |
+|---|---|---|---|
+| **`help`** | `help`, `?` | Display formatted help manual | No |
+| **`status`** | `status` | Show active dataset name, shape, memory, undo stack depth | No |
+| **`reset`** | `reset` | Revert active table to original dataset from disk | **Yes** (undoable) |
+| **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
+| **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
+| **`history`** | `history` | List numbered history of applied transformation steps | No |
+| **`checkpoint`** | `checkpoint <name>`, `cp <name>` | Save current table state with a name | No |
+| **`restore`** | `restore <name>`, `checkout <name>` | Restore active table to a named checkpoint | **Yes** (undoable) |
+| **`checkpoints`**| `checkpoints`, `cps` | List all saved checkpoint names and shapes | No |
+| **`load`** | `load <path> [as <alias>]` | Load a new file from disk into the REPL session | **Yes** |
+| **`join`** | `join <target> on=<key> [how=...]` | Join a file or checkpoint into the active dataset | **Yes** (undoable) |
+| **`sql`** | `sql <query>` | Run ANSI SQL against `df` or named tables | **Yes** (undoable) |
+| **`py`** | `py <expr>` | Evaluate Python expression on `df` / `pldf` | No |
+| **`save`** | `save <path\|clip>`, `-o <path>` | Export active dataset to file or clipboard | No |
+| **`head`** | `head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
+| **`tail`** | `tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
+| **`shape`** | `shape`, `-shape` | Display row and column counts | No |
+| **`cols`** | `cols [asc]`, `-cols` | Display column names | No |
+| **`dtype`** | `dtype`, `-dtype` | Display column data types | No |
+| **`nulls`** | `nulls`, `-nulls` | Display missing value counts | No |
+| **`glimpse`** | `glimpse`, `-glimpse` | Display transposed schema and sample values | No |
+| **`describe`** | `describe`, `-describe` | Display statistical summary of numeric columns | No |
+| **`exit`** | `exit`, `quit`, `q` | Exit the REPL session | — |
