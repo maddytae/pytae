@@ -210,14 +210,19 @@ $ pytae -i
 Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
 No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table.
 
+# 1. Load an existing file from disk (strict path check, no fuzzy fallback)
 pytae> df1 = orders.parquet
 Loaded orders.parquet as 'df1' (10,000 rows x 4 cols).
 
-pytae [df1: 10,000x4]> df2 = customers.parquet
-Loaded customers.parquet as 'df2' (1,500 rows x 3 cols).
+# 2. Or explicitly load a bundled sample dataset via sample:<name>
+pytae [df1: 10,000x4]> df2 = sample:penguins
+Loaded penguins.parquet as 'df2' (344 rows x 7 cols).
 
 pytae [df1, df2]>
 ```
+
+> [!NOTE]
+> File assignments are strict and predictable: `df = filename.parquet` requires an actual file on disk. Bundled sample datasets are only loaded when explicitly prefixed with `sample:<name>` (e.g. `df = sample:penguins`). There is no fuzzy matching or automatic fallback for non-existent files.
 
 Notice how the prompt dynamically updates to show all datasets currently in memory: `pytae [df1, df2]> `.
 

@@ -655,22 +655,14 @@ def _process_path(
                 progress=args.progress,
                 chunk_size=chunk_size,
             )
-        elif str(path).startswith("sample:") or (path is not None and not path.exists()):
-            import difflib
-
+        elif str(path).startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
 
-            candidate = Path(str(path).removeprefix("sample:")).stem.lower()
-            sample_file = None
-            if candidate in _DATASET_NAMES:
-                sample_file = DATA_PATH / f"{candidate}.parquet"
-            else:
-                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
-                if matches:
-                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
-
-            if sample_file is None or not sample_file.exists():
-                return _fail(parser, batch, f"file not found: {path}")
+            sample_name = str(path)[7:].strip().removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if not sample_file.exists():
+                available = ", ".join(_DATASET_NAMES)
+                return _fail(parser, batch, f"unknown sample dataset '{sample_name}'. Available: {available}")
 
             try:
                 reader = get_reader(sample_file, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)

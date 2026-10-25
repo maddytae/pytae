@@ -412,20 +412,25 @@ def test_repl_bundled_sample_dataset():
     outputs = []
     r = PytaeRepl()
 
-    # Load via sample:penguins
+    # 1. Strict explicit sample URI: df1 = sample:penguins
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     assert "df1" in r.checkpoints
     assert r.checkpoints["df1"].shape == (344, 7)
 
-    # Load via penguins shortcut
-    r.execute_line("df2 = tips", output_fn=outputs.append)
+    # 2. Strict explicit sample URI: df2 = sample:tips
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
     assert "df2" in r.checkpoints
     assert r.checkpoints["df2"].shape == (244, 7)
 
-    # Load via df=panguins.csv (with extension and minor typo)
-    r.execute_line("df3=panguins.csv", output_fn=outputs.append)
-    assert "df3" in r.checkpoints
-    assert r.checkpoints["df3"].shape == (344, 7)
+    # 3. Strict: Non-existent file df=panguins.csv or df=penguins.csv fails (no fuzzy, no fallback)
+    r.execute_line("df3 = panguins.csv", output_fn=outputs.append)
+    assert "df3" not in r.checkpoints
+    assert any("not an existing file or table" in o for o in outputs)
+
+    # 4. Strict: Non-existent sample URI fails cleanly
+    r.execute_line("df4 = sample:unknown_name", output_fn=outputs.append)
+    assert "df4" not in r.checkpoints
+    assert any("unknown sample dataset" in o for o in outputs)
 
 
 

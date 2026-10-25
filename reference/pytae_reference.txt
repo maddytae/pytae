@@ -5164,14 +5164,19 @@ $ pytae -i
 Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
 No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table.
 
+# 1. Load an existing file from disk (strict path check, no fuzzy fallback)
 pytae> df1 = orders.parquet
 Loaded orders.parquet as 'df1' (10,000 rows x 4 cols).
 
-pytae [df1: 10,000x4]> df2 = customers.parquet
-Loaded customers.parquet as 'df2' (1,500 rows x 3 cols).
+# 2. Or explicitly load a bundled sample dataset via sample:<name>
+pytae [df1: 10,000x4]> df2 = sample:penguins
+Loaded penguins.parquet as 'df2' (344 rows x 7 cols).
 
 pytae [df1, df2]>
 ```
+
+> [!NOTE]
+> File assignments are strict and predictable: `df = filename.parquet` requires an actual file on disk. Bundled sample datasets are only loaded when explicitly prefixed with `sample:<name>` (e.g. `df = sample:penguins`). There is no fuzzy matching or automatic fallback for non-existent files.
 
 Notice how the prompt dynamically updates to show all datasets currently in memory: `pytae [df1, df2]> `.
 
@@ -21642,22 +21647,14 @@ def _process_path(
                 progress=args.progress,
                 chunk_size=chunk_size,
             )
-        elif str(path).startswith("sample:") or (path is not None and not path.exists()):
-            import difflib
-
+        elif str(path).startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
 
-            candidate = Path(str(path).removeprefix("sample:")).stem.lower()
-            sample_file = None
-            if candidate in _DATASET_NAMES:
-                sample_file = DATA_PATH / f"{candidate}.parquet"
-            else:
-                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
-                if matches:
-                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
-
-            if sample_file is None or not sample_file.exists():
-                return _fail(parser, batch, f"file not found: {path}")
+            sample_name = str(path)[7:].strip().removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if not sample_file.exists():
+                available = ", ".join(_DATASET_NAMES)
+                return _fail(parser, batch, f"unknown sample dataset '{sample_name}'. Available: {available}")
 
             try:
                 reader = get_reader(sample_file, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
@@ -30928,23 +30925,16 @@ class PytaeRepl:
 
     def _load_file(self, path: Path | str) -> None:
         p = Path(path).expanduser()
-        if not p.exists():
-            import difflib
-
+        if str(p).startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
 
-            candidate = Path(str(p).removeprefix("sample:")).stem.lower()
-            if candidate in _DATASET_NAMES:
-                sample_file = DATA_PATH / f"{candidate}.parquet"
-                if sample_file.exists():
-                    p = sample_file
-            else:
-                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
-                if matches:
-                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
-                    if sample_file.exists():
-                        p = sample_file
-        if not p.exists():
+            sample_name = str(p)[7:].strip().removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if not sample_file.exists():
+                available = ", ".join(_DATASET_NAMES)
+                raise FileNotFoundError(f"Unknown sample dataset '{sample_name}'. Available: {available}")
+            p = sample_file
+        elif not p.exists():
             raise FileNotFoundError(f"File not found: {p}")
         reader = get_reader(p)
         df = reader.to_polars()
@@ -31315,25 +31305,20 @@ class PytaeRepl:
                 output_fn(f"pytae SQL Error: {exc}")
                 return
 
-        # 2. File path assignment: `df1 = orders.parquet` or `df1 = penguins.csv` or `df1 = sample:penguins`
+        # 2. File path assignment: `df1 = orders.parquet` or explicit sample URI: `df1 = sample:penguins`
         clean_path = right_expr.removeprefix("load ").strip("\"' ")
         p = Path(clean_path).expanduser()
-        if not p.exists():
-            import difflib
-
+        if clean_path.startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
 
-            candidate = Path(clean_path.removeprefix("sample:")).stem.lower()
-            if candidate in _DATASET_NAMES:
-                sample_file = DATA_PATH / f"{candidate}.parquet"
-                if sample_file.exists():
-                    p = sample_file
-            else:
-                matches = difflib.get_close_matches(candidate, _DATASET_NAMES, n=1, cutoff=0.7)
-                if matches:
-                    sample_file = DATA_PATH / f"{matches[0]}.parquet"
-                    if sample_file.exists():
-                        p = sample_file
+            sample_name = clean_path[7:].strip().removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if not sample_file.exists():
+                available = ", ".join(_DATASET_NAMES)
+                output_fn(f"pytae: unknown sample dataset '{sample_name}'. Available: {available}")
+                return
+            p = sample_file
+
         if p.exists():
             try:
                 reader = get_reader(p)
@@ -31435,14 +31420,14 @@ class PytaeRepl:
             alias = tokens[3]
 
         p = Path(path_str).expanduser()
-        if not p.exists():
+        if not path_str.startswith("sample:") and not p.exists():
             output_fn(f"pytae: file not found: {p}")
             return
         try:
-            self._load_file(p)
+            self._load_file(path_str if path_str.startswith("sample:") else p)
             self.undo_stack.clear()
             self.redo_stack.clear()
-            target_alias = alias or p.stem or p.name
+            target_alias = alias or self.path_str or p.stem or p.name
             self.checkpoints[target_alias] = self.current_df.clone()
             self.table_sources[target_alias] = p.name
             self.path_str = target_alias
@@ -43611,20 +43596,25 @@ def test_repl_bundled_sample_dataset():
     outputs = []
     r = PytaeRepl()
 
-    # Load via sample:penguins
+    # 1. Strict explicit sample URI: df1 = sample:penguins
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     assert "df1" in r.checkpoints
     assert r.checkpoints["df1"].shape == (344, 7)
 
-    # Load via penguins shortcut
-    r.execute_line("df2 = tips", output_fn=outputs.append)
+    # 2. Strict explicit sample URI: df2 = sample:tips
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
     assert "df2" in r.checkpoints
     assert r.checkpoints["df2"].shape == (244, 7)
 
-    # Load via df=panguins.csv (with extension and minor typo)
-    r.execute_line("df3=panguins.csv", output_fn=outputs.append)
-    assert "df3" in r.checkpoints
-    assert r.checkpoints["df3"].shape == (344, 7)
+    # 3. Strict: Non-existent file df=panguins.csv or df=penguins.csv fails (no fuzzy, no fallback)
+    r.execute_line("df3 = panguins.csv", output_fn=outputs.append)
+    assert "df3" not in r.checkpoints
+    assert any("not an existing file or table" in o for o in outputs)
+
+    # 4. Strict: Non-existent sample URI fails cleanly
+    r.execute_line("df4 = sample:unknown_name", output_fn=outputs.append)
+    assert "df4" not in r.checkpoints
+    assert any("unknown sample dataset" in o for o in outputs)
 
 ################################################################################
 # FILE: tests/test_select.py
