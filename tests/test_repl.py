@@ -433,5 +433,20 @@ def test_repl_bundled_sample_dataset():
     assert any("unknown sample dataset" in o for o in outputs)
 
 
+def test_repl_shell_command_escape():
+    outputs = []
+    r = PytaeRepl()
+
+    # Empty bang prints usage
+    r.execute_line("!", output_fn=outputs.append)
+    assert any("Usage: !<command>" in o for o in outputs)
+
+    # Shell execution captures stdout
+    outputs.clear()
+    r.execute_line("!echo shell_test_ok", output_fn=outputs.append)
+    assert any("shell_test_ok" in o for o in outputs)
+
+
+
 
 

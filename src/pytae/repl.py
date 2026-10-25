@@ -69,10 +69,11 @@ STATE NAVIGATION (Undoable):
   checkpoints            : List saved checkpoints
   exit / quit / q        : Exit REPL
 
-QUERY & PYTHON EXPRESSIONS:
+QUERY, PYTHON & SHELL:
   sql <query>            : Run ANSI SQL on active table or across named tables
                            e.g. sql SELECT df1.*, df2.name FROM df1 JOIN df2 ON df1.id = df2.id
   py <expr>              : Evaluate Python expression with 'df' (pytae) and 'pldf' (polars)
+  !<command>             : Execute shell command without leaving REPL (e.g. !ls -lh, !dir)
 ================================================================================\
 """
 
@@ -257,6 +258,24 @@ class PytaeRepl:
         # Help
         if line.lower() in ("help", "?", "-help", "--help"):
             output_fn(REPL_HELP)
+            return True
+
+        # Shell command execution: !<command> (e.g. !ls, !dir)
+        if line.startswith("!"):
+            shell_cmd = line[1:].strip()
+            if not shell_cmd:
+                output_fn("Usage: !<command> (e.g. !ls or !dir)")
+                return True
+            import subprocess
+
+            try:
+                res = subprocess.run(shell_cmd, shell=True, text=True, capture_output=True)
+                if res.stdout:
+                    output_fn(res.stdout.rstrip())
+                if res.stderr:
+                    output_fn(res.stderr.rstrip())
+            except Exception as e:
+                output_fn(f"Shell error: {e}")
             return True
 
         # Status

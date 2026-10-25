@@ -317,6 +317,21 @@ Evaluate Python expressions directly against your loaded tables:
 pytae [df1, df2]> py df1.join(df2, on="cust_id", how="left")
 ```
 
+### 8. System Shell Passthrough (`!<cmd>`)
+
+Execute shell commands directly without exiting your REPL session:
+
+```text
+# On macOS / Linux:
+pytae> !ls -lh *.parquet
+pytae> !head -n 5 raw.csv
+pytae> !git status
+
+# On Windows (cmd.exe / PowerShell):
+pytae> !dir *.parquet
+pytae> !type sample.csv
+```
+
 ---
 
 ## Saving & Exporting (`-o`)
@@ -381,6 +396,7 @@ When you type `exit` in the REPL, the final transformed table is returned direct
 | **`-o`** | `-o <path>`, `-o clip` | Export active dataset to Parquet/CSV or clipboard | No |
 | **`sql`** | `sql <query>` | Run ANSI SQL against active table or named tables | **Yes** (undoable) |
 | **`py`** | `py <expr>` | Evaluate Python expression on `df` / `pldf` | No |
+| **`!<cmd>`** | `!<command>` | Execute shell command (e.g. `!ls`, `!dir`) | No |
 | **`head`** | `head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
 | **`tail`** | `tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
 | **`shape`** | `shape`, `-shape` | Display row and column counts | No |
