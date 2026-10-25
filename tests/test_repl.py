@@ -222,6 +222,54 @@ def test_dataframe_method_repl(sample_df):
     assert res.shape == (3, 3)
 
 
+def test_repl_join_direct_file(tmp_path):
+    f1 = tmp_path / "orders.parquet"
+    f2 = tmp_path / "customers.parquet"
+    pl.DataFrame({"order_id": [101, 102, 103], "cust_id": [1, 2, 1], "amount": [50.0, 75.0, 20.0]}).write_parquet(f1)
+    pl.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).write_parquet(f2)
+
+    outputs = []
+    r = PytaeRepl(path=f1)
+    assert r.current_df.shape == (3, 3)
+
+    r.execute_line(f"join {f2} on=cust_id:id how=left", output_fn=outputs.append)
+    assert r.current_df.shape == (3, 4)
+    assert "name" in r.current_df.columns
+    assert "Alice" in r.current_df["name"].to_list()
+
+    # Undo join
+    r.execute_line("undo", output_fn=outputs.append)
+    assert r.current_df.shape == (3, 3)
+    assert "name" not in r.current_df.columns
+
+
+def test_repl_join_checkpoints_and_sql(tmp_path):
+    f1 = tmp_path / "orders.parquet"
+    f2 = tmp_path / "customers.parquet"
+    pl.DataFrame({"order_id": [101, 102], "cust_id": [1, 2]}).write_parquet(f1)
+    pl.DataFrame({"cust_id": [1, 2], "name": ["Alice", "Bob"]}).write_parquet(f2)
+
+    outputs = []
+    r = PytaeRepl()
+
+    r.execute_line(f"load {f1} as ord", output_fn=outputs.append)
+    assert "ord" in r.checkpoints
+
+    r.execute_line(f"load {f2} as cust", output_fn=outputs.append)
+    assert "cust" in r.checkpoints
+
+    # Direct join between checkpoints
+    r.execute_line("restore ord", output_fn=outputs.append)
+    r.execute_line("join cust on=cust_id", output_fn=outputs.append)
+    assert r.current_df.shape == (2, 3)
+    assert "name" in r.current_df.columns
+
+    # SQL join between checkpoints
+    r.execute_line("sql SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id", output_fn=outputs.append)
+    assert r.current_df.shape == (2, 2)
+    assert set(r.current_df.columns) == {"order_id", "name"}
+
+
 def test_cli_repl_invocation(sample_parquet, monkeypatch):
     import sys
 

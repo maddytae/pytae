@@ -30585,9 +30585,14 @@ class PytaeRepl:
         # Load / Read
         if first_lower in ("load", "read", "open"):
             if len(tokens) < 2:
-                output_fn("Usage: load <path> (e.g. load penguins.parquet)")
+                output_fn("Usage: load <path> [as <alias>] (e.g. load penguins.parquet as peng)")
                 return True
-            self._cmd_load(tokens[1], output_fn)
+            self._cmd_load(tokens, output_fn)
+            return True
+
+        # Join
+        if first_lower in ("join", "-join"):
+            self._cmd_join(tokens[1:], output_fn)
             return True
 
         # Save / Export / -o
@@ -30752,7 +30757,12 @@ class PytaeRepl:
         for name, cp_df in self.checkpoints.items():
             output_fn(f"  - {name:<15}: {cp_df.shape[0]:,} rows x {cp_df.shape[1]} cols")
 
-    def _cmd_load(self, path_str: str, output_fn: Callable[[str], None]) -> None:
+    def _cmd_load(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
+        path_str = tokens[1]
+        alias: str | None = None
+        if len(tokens) >= 4 and tokens[2].lower() == "as":
+            alias = tokens[3]
+
         p = Path(path_str)
         if not p.exists():
             output_fn(f"pytae: file not found: {p}")
@@ -30761,12 +30771,91 @@ class PytaeRepl:
             self._load_file(p)
             self.undo_stack.clear()
             self.redo_stack.clear()
-            self.checkpoints.clear()
             self.history.clear()
-            self.history.append(f"load {p.name}")
-            output_fn(f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
+            if alias:
+                assert self.current_df is not None
+                self.checkpoints[alias] = self.current_df.clone()
+                self.history.append(f"load {p.name} as {alias}")
+                output_fn(f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
+            else:
+                self.checkpoints.clear()
+                self.history.append(f"load {p.name}")
+                output_fn(f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
         except Exception as exc:
             output_fn(f"pytae: failed to load {p}: {exc}")
+
+    def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
+        if self.current_df is None:
+            output_fn("pytae: no dataset loaded to join into. Use 'load <path>' first.")
+            return
+        if not args:
+            output_fn("Usage: join <target> on=<key> [how=left|inner|outer|semi|anti]")
+            return
+
+        target = args[0]
+        on_key: str | None = None
+        how = "left"
+
+        for arg in args[1:]:
+            if arg.startswith("on="):
+                on_key = arg[3:].strip("\"'")
+            elif arg.startswith("how="):
+                how = arg[4:].strip("\"'").lower()
+
+        if on_key is None:
+            output_fn("pytae: join requires 'on=<key>' (e.g. join customers.parquet on=customer_id)")
+            return
+
+        right_df = None
+        if target in self.checkpoints:
+            right_df = self.checkpoints[target]
+        else:
+            p = Path(target)
+            if p.exists():
+                try:
+                    right_df = get_reader(p).to_polars()
+                except Exception as exc:
+                    output_fn(f"pytae: failed to read '{target}': {exc}")
+                    return
+            else:
+                avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+                output_fn(
+                    f"pytae: join target '{target}' not found. Must be an existing file or saved checkpoint (available: {avail})"
+                )
+                return
+
+        left_col = on_key
+        right_col = on_key
+        if ":" in on_key:
+            left_col, right_col = on_key.split(":", 1)
+
+        if left_col not in self.current_df.columns:
+            output_fn(
+                f"pytae: join key '{left_col}' not found in active dataset. Available: {', '.join(self.current_df.columns)}"
+            )
+            return
+        if right_col not in right_df.columns:
+            output_fn(
+                f"pytae: join key '{right_col}' not found in '{target}'. Available: {', '.join(right_df.columns)}"
+            )
+            return
+
+        try:
+            how_polars = "full" if how in ("outer", "full") else how
+            joined = self.current_df.join(
+                right_df,
+                left_on=left_col,
+                right_on=right_col,
+                how=how_polars,  # type: ignore[arg-type]
+            )
+            output_fn(_format_table(joined))
+            self.undo_stack.append((f"join {target} on={on_key} (how={how})", self.current_df.clone()))
+            self.current_df = joined
+            self.redo_stack.clear()
+            self.history.append(f"join {target} on={on_key} how={how}")
+            output_fn(f"Joined with '{target}' on '{on_key}' (how={how}). Active shape: ({joined.shape[0]:,}, {joined.shape[1]})")
+        except Exception as exc:
+            output_fn(f"pytae join error: {exc}")
 
     def _cmd_save(self, target: str, output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
@@ -30798,6 +30887,8 @@ class PytaeRepl:
             ctx.register("data", self.current_df)
             if self.path and self.path.stem:
                 ctx.register(self.path.stem, self.current_df)
+            for cp_name, cp_df in self.checkpoints.items():
+                ctx.register(cp_name, cp_df)
             res = ctx.execute(query).collect()
             output_fn(_format_table(res))
             # Update state with SQL query result
@@ -30820,6 +30911,8 @@ class PytaeRepl:
                 "pldf": self.current_df,
                 "pl": pl,
             }
+            for cp_name, cp_df in self.checkpoints.items():
+                local_scope[cp_name] = PytaeDataFrame(cp_df)
             res = eval(expr, {}, local_scope)
             if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
                 output_fn(_format_table(res))
@@ -42585,6 +42678,54 @@ def test_dataframe_method_repl(sample_df):
     r = PytaeRepl(df=pt_df)
     res = r.run(input_fn=iter(lines).__next__, output_fn=lambda _: None)
     assert res.shape == (3, 3)
+
+
+def test_repl_join_direct_file(tmp_path):
+    f1 = tmp_path / "orders.parquet"
+    f2 = tmp_path / "customers.parquet"
+    pl.DataFrame({"order_id": [101, 102, 103], "cust_id": [1, 2, 1], "amount": [50.0, 75.0, 20.0]}).write_parquet(f1)
+    pl.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).write_parquet(f2)
+
+    outputs = []
+    r = PytaeRepl(path=f1)
+    assert r.current_df.shape == (3, 3)
+
+    r.execute_line(f"join {f2} on=cust_id:id how=left", output_fn=outputs.append)
+    assert r.current_df.shape == (3, 4)
+    assert "name" in r.current_df.columns
+    assert "Alice" in r.current_df["name"].to_list()
+
+    # Undo join
+    r.execute_line("undo", output_fn=outputs.append)
+    assert r.current_df.shape == (3, 3)
+    assert "name" not in r.current_df.columns
+
+
+def test_repl_join_checkpoints_and_sql(tmp_path):
+    f1 = tmp_path / "orders.parquet"
+    f2 = tmp_path / "customers.parquet"
+    pl.DataFrame({"order_id": [101, 102], "cust_id": [1, 2]}).write_parquet(f1)
+    pl.DataFrame({"cust_id": [1, 2], "name": ["Alice", "Bob"]}).write_parquet(f2)
+
+    outputs = []
+    r = PytaeRepl()
+
+    r.execute_line(f"load {f1} as ord", output_fn=outputs.append)
+    assert "ord" in r.checkpoints
+
+    r.execute_line(f"load {f2} as cust", output_fn=outputs.append)
+    assert "cust" in r.checkpoints
+
+    # Direct join between checkpoints
+    r.execute_line("restore ord", output_fn=outputs.append)
+    r.execute_line("join cust on=cust_id", output_fn=outputs.append)
+    assert r.current_df.shape == (2, 3)
+    assert "name" in r.current_df.columns
+
+    # SQL join between checkpoints
+    r.execute_line("sql SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id", output_fn=outputs.append)
+    assert r.current_df.shape == (2, 2)
+    assert set(r.current_df.columns) == {"order_id", "name"}
 
 
 def test_cli_repl_invocation(sample_parquet, monkeypatch):

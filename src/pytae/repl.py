@@ -289,9 +289,14 @@ class PytaeRepl:
         # Load / Read
         if first_lower in ("load", "read", "open"):
             if len(tokens) < 2:
-                output_fn("Usage: load <path> (e.g. load penguins.parquet)")
+                output_fn("Usage: load <path> [as <alias>] (e.g. load penguins.parquet as peng)")
                 return True
-            self._cmd_load(tokens[1], output_fn)
+            self._cmd_load(tokens, output_fn)
+            return True
+
+        # Join
+        if first_lower in ("join", "-join"):
+            self._cmd_join(tokens[1:], output_fn)
             return True
 
         # Save / Export / -o
@@ -456,7 +461,12 @@ class PytaeRepl:
         for name, cp_df in self.checkpoints.items():
             output_fn(f"  - {name:<15}: {cp_df.shape[0]:,} rows x {cp_df.shape[1]} cols")
 
-    def _cmd_load(self, path_str: str, output_fn: Callable[[str], None]) -> None:
+    def _cmd_load(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
+        path_str = tokens[1]
+        alias: str | None = None
+        if len(tokens) >= 4 and tokens[2].lower() == "as":
+            alias = tokens[3]
+
         p = Path(path_str)
         if not p.exists():
             output_fn(f"pytae: file not found: {p}")
@@ -465,12 +475,91 @@ class PytaeRepl:
             self._load_file(p)
             self.undo_stack.clear()
             self.redo_stack.clear()
-            self.checkpoints.clear()
             self.history.clear()
-            self.history.append(f"load {p.name}")
-            output_fn(f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
+            if alias:
+                assert self.current_df is not None
+                self.checkpoints[alias] = self.current_df.clone()
+                self.history.append(f"load {p.name} as {alias}")
+                output_fn(f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
+            else:
+                self.checkpoints.clear()
+                self.history.append(f"load {p.name}")
+                output_fn(f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
         except Exception as exc:
             output_fn(f"pytae: failed to load {p}: {exc}")
+
+    def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
+        if self.current_df is None:
+            output_fn("pytae: no dataset loaded to join into. Use 'load <path>' first.")
+            return
+        if not args:
+            output_fn("Usage: join <target> on=<key> [how=left|inner|outer|semi|anti]")
+            return
+
+        target = args[0]
+        on_key: str | None = None
+        how = "left"
+
+        for arg in args[1:]:
+            if arg.startswith("on="):
+                on_key = arg[3:].strip("\"'")
+            elif arg.startswith("how="):
+                how = arg[4:].strip("\"'").lower()
+
+        if on_key is None:
+            output_fn("pytae: join requires 'on=<key>' (e.g. join customers.parquet on=customer_id)")
+            return
+
+        right_df = None
+        if target in self.checkpoints:
+            right_df = self.checkpoints[target]
+        else:
+            p = Path(target)
+            if p.exists():
+                try:
+                    right_df = get_reader(p).to_polars()
+                except Exception as exc:
+                    output_fn(f"pytae: failed to read '{target}': {exc}")
+                    return
+            else:
+                avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+                output_fn(
+                    f"pytae: join target '{target}' not found. Must be an existing file or saved checkpoint (available: {avail})"
+                )
+                return
+
+        left_col = on_key
+        right_col = on_key
+        if ":" in on_key:
+            left_col, right_col = on_key.split(":", 1)
+
+        if left_col not in self.current_df.columns:
+            output_fn(
+                f"pytae: join key '{left_col}' not found in active dataset. Available: {', '.join(self.current_df.columns)}"
+            )
+            return
+        if right_col not in right_df.columns:
+            output_fn(
+                f"pytae: join key '{right_col}' not found in '{target}'. Available: {', '.join(right_df.columns)}"
+            )
+            return
+
+        try:
+            how_polars = "full" if how in ("outer", "full") else how
+            joined = self.current_df.join(
+                right_df,
+                left_on=left_col,
+                right_on=right_col,
+                how=how_polars,  # type: ignore[arg-type]
+            )
+            output_fn(_format_table(joined))
+            self.undo_stack.append((f"join {target} on={on_key} (how={how})", self.current_df.clone()))
+            self.current_df = joined
+            self.redo_stack.clear()
+            self.history.append(f"join {target} on={on_key} how={how}")
+            output_fn(f"Joined with '{target}' on '{on_key}' (how={how}). Active shape: ({joined.shape[0]:,}, {joined.shape[1]})")
+        except Exception as exc:
+            output_fn(f"pytae join error: {exc}")
 
     def _cmd_save(self, target: str, output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
@@ -502,6 +591,8 @@ class PytaeRepl:
             ctx.register("data", self.current_df)
             if self.path and self.path.stem:
                 ctx.register(self.path.stem, self.current_df)
+            for cp_name, cp_df in self.checkpoints.items():
+                ctx.register(cp_name, cp_df)
             res = ctx.execute(query).collect()
             output_fn(_format_table(res))
             # Update state with SQL query result
@@ -524,6 +615,8 @@ class PytaeRepl:
                 "pldf": self.current_df,
                 "pl": pl,
             }
+            for cp_name, cp_df in self.checkpoints.items():
+                local_scope[cp_name] = PytaeDataFrame(cp_df)
             res = eval(expr, {}, local_scope)
             if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
                 output_fn(_format_table(res))
