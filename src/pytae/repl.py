@@ -464,7 +464,7 @@ class PytaeRepl:
         if first_lower == "head":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
             if self.current_df is not None:
-                output_fn(_format_table(self.current_df.head(n)))
+                output_fn(_format_table(self.current_df.head(n), tbl_rows=max(n, 10)))
             else:
                 output_fn("No dataset loaded.")
             return True
@@ -472,7 +472,7 @@ class PytaeRepl:
         if first_lower == "tail":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
             if self.current_df is not None:
-                output_fn(_format_table(self.current_df.tail(n)))
+                output_fn(_format_table(self.current_df.tail(n), tbl_rows=max(n, 10)))
             else:
                 output_fn("No dataset loaded.")
             return True
@@ -700,10 +700,10 @@ class PytaeRepl:
             output_fn(_format_table(target_df.describe()))
         elif first_sub in ("head", "-head", "--head"):
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
-            output_fn(_format_table(target_df.head(n)))
+            output_fn(_format_table(target_df.head(n), tbl_rows=max(n, 10)))
         elif first_sub in ("tail", "-tail", "--tail"):
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
-            output_fn(_format_table(target_df.tail(n)))
+            output_fn(_format_table(target_df.tail(n), tbl_rows=max(n, 10)))
         elif first_sub in ("-o", "--output"):
             dest = sub_tokens[1] if len(sub_tokens) > 1 else "output.parquet"
             self._cmd_save(dest, output_fn)
