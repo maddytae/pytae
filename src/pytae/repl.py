@@ -32,49 +32,42 @@ REPL_HELP = """\
 ================================================================================
                              PYTAE REPL COMMANDS                                
 ================================================================================
-MULTI-DATASET WORKFLOW & VARIABLE ASSIGNMENT:
-  <var> = <file.parquet> : Load file as named table in memory (e.g. df1 = orders.parquet)
-  <var> = sql <query>    : Create table from SQL query across loaded datasets
-  <var> = <tbl> <pipe>   : Create table from pipeline on another table (e.g. df3 = df1 -filter ...)
-  tables / vars          : List all datasets currently loaded in memory (* indicates active)
-  use <name> / <name>    : Switch active dataset to <name> (e.g. use df1 or bare df1)
-  <name> <cmd>           : Run command directly on specific table (e.g. df1 -head 5, df2 -shape)
-
-STANDARD PYTAE PIPELINE TRANSFORMATIONS & EXPORT:
-  -join <tbl> on=<key>   : Join table or file with active dataset (e.g. -join df2 on=cust_id)
-                           Supports how=left|inner|outer|semi|anti, left:right keys, and -o <file>
-  -o <path> / -o clip    : Export active table to Parquet/CSV/NDJSON or clipboard
+MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
+  Commands apply directly to the loaded table without any prefix:
   -filter <condition>    : Filter rows, e.g. -filter "species == 'Gentoo'"
-  -mutate <expr>         : Create/modify columns, e.g. -mutate "mass_kg = body_mass_g / 1000"
+  -mutate <expr>         : Add/modify columns, e.g. -mutate "mass_kg = body_mass_g / 1000"
   -select <cols>         : Column projection, e.g. -select "species,island,mass_kg"
   -arrange <specs>       : Sort rows, e.g. -arrange "mass_kg desc"
-  -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=body_mass_g:mean, n=count"
+  -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=mass:mean, n=count"
   -distinct <cols>       : Deduplicate rows
   -dropna [cols]         : Drop missing values
   -fillna <specs>        : Impute missing values
-  -mask / -unmask        : Mask, encrypt, or tokenize sensitive columns
+  -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
+  head [N] / tail [N]    : Non-destructive preview of top/bottom N rows (e.g. head 10)
+  shape / cols / dtype   : Non-destructive metadata inspection
 
-SESSION & STATE NAVIGATION:
+MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
+  Load multiple datasets and operate with subject-first syntax (<tbl> <cmd>):
+  <var> = <path.parquet> : Ingest dataset into a named variable (e.g. df1 = orders.parquet)
+  <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
+  <tbl> shape / cols     : Inspect table metadata (e.g. df1 shape, df2 cols)
+  <tbl> <pipeline>       : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
+  <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
+  <tbl> -o <path>        : Export specific table (e.g. df1 -o clean_orders.parquet)
+  <var> = <tbl> <pipe>   : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
+  <var> = <t1> -join <t2>: Assign join result (e.g. df3 = df1 -join df2 on=cust_id)
+  <var> = sql <query>    : Create table from ANSI SQL across loaded tables
+  tables / vars          : List all loaded datasets in memory
+
+STATE NAVIGATION (Undoable):
   undo                   : Revert the last transformation step
   redo                   : Re-apply the last undone transformation step
-  reset                  : Restore the original dataset as loaded from disk
-  history                : Show numbered history of transformation steps
-  status                 : Display active dataset shape, columns, and memory
-  checkpoint <name>      : Save current table state with a name (alias: cp)
-  restore <name>         : Restore table to a saved checkpoint (alias: checkout)
-  checkpoints            : List all saved checkpoints (alias: cps)
-  exit / quit / q        : Exit the REPL session
-
-INSPECTION (Non-destructive previews, active dataset is preserved):
-  head [N]               : Preview first N rows (default 5, e.g. head 10)
-  tail [N]               : Preview last N rows (default 5, e.g. tail 10)
-  shape                  : Print (rows, columns)
-  cols [asc]             : Print column names (file order or alphabetical)
-  dtype                  : Print column data types
-  nulls                  : Print missing value counts per column
-  glimpse                : Transposed overview of columns and sample values
-  describe               : Statistical summary of numeric columns
-  freq <col> [-bar]      : Frequency distribution table with optional ASCII bar
+  reset                  : Restore original dataset state
+  history                : Show numbered transformation log
+  checkpoint <name>      : Save current table state (cp)
+  restore <name>         : Restore table to saved checkpoint (checkout)
+  checkpoints            : List saved checkpoints
+  exit / quit / q        : Exit REPL
 
 QUERY & PYTHON EXPRESSIONS:
   sql <query>            : Run ANSI SQL on active table or across named tables
@@ -233,7 +226,10 @@ class PytaeRepl:
         return f"{self.current_df.shape[0]:,}x{self.current_df.shape[1]}"
 
     def _build_prompt(self) -> str:
-        if self.current_df is not None:
+        if len(self.checkpoints) > 1:
+            table_names = ", ".join(self.checkpoints.keys())
+            return f"{self.prompt} [{table_names}]> "
+        elif self.current_df is not None:
             name = self.path_str or "<dataframe>"
             return f"{self.prompt} [{name}: {self._get_shape_str()}]> "
         return f"{self.prompt}> "
@@ -649,28 +645,31 @@ class PytaeRepl:
         sub_tokens = shlex.split(sub_line)
         first_sub = sub_tokens[0].lower() if sub_tokens else ""
 
-        if first_sub == "shape":
+        if first_sub in ("shape", "-shape", "--shape"):
             output_fn(f"({target_df.shape[0]}, {target_df.shape[1]})")
-        elif first_sub in ("cols", "columns"):
+        elif first_sub in ("cols", "columns", "-cols", "--cols"):
             output_fn("\n".join(target_df.columns))
-        elif first_sub in ("dtype", "dtypes"):
+        elif first_sub in ("dtype", "dtypes", "-dtype", "--dtype"):
             reader = DataFrameReader(target_df)
             output_fn(reader.dtypes().to_string())
-        elif first_sub == "nulls":
+        elif first_sub in ("nulls", "-nulls", "--nulls"):
             output_fn(target_df.null_count().to_pandas().iloc[0].to_string())
-        elif first_sub == "glimpse":
+        elif first_sub in ("glimpse", "-glimpse", "--glimpse"):
             from pytae.dataframe import DataFrame as PytaeDataFrame
 
             output_fn(PytaeDataFrame(target_df).glimpse())
-        elif first_sub == "describe":
+        elif first_sub in ("describe", "-describe", "--describe"):
             output_fn(_format_table(target_df.describe()))
-        elif first_sub == "head":
+        elif first_sub in ("head", "-head", "--head"):
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
             output_fn(_format_table(target_df.head(n)))
-        elif first_sub == "tail":
+        elif first_sub in ("tail", "-tail", "--tail"):
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
             output_fn(_format_table(target_df.tail(n)))
-        elif first_sub in ("join", "-join"):
+        elif first_sub in ("-o", "--output"):
+            dest = sub_tokens[1] if len(sub_tokens) > 1 else "output.parquet"
+            self._cmd_save(dest, output_fn)
+        elif first_sub in ("join", "-join", "--join"):
             self._cmd_join(sub_tokens[1:], output_fn)
             self.checkpoints[table_name] = self.current_df
         else:

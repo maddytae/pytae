@@ -7,21 +7,23 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
 ## Contents
 
 - [Overview & Why Use REPL](#overview--why-use-repl)
+- [Two Core Operation Modes](#two-core-operation-modes)
+  - [Mode 1: Single-Table Exploration (`pytae <file> -i`)](#mode-1-single-table-exploration-pytae-file--i)
+  - [Mode 2: Multi-Table Workbench (`pytae -i` with `df -cmd`)](#mode-2-multi-table-workbench-pytae--i-with-df--cmd)
 - [Launching the REPL](#launching-the-repl)
-- [Session State & Rollback (`reset`, `undo`, `redo`)](#session-state--rollback-reset-undo-redo)
-- [Checkpoints & Snapshots (`checkpoint`, `restore`)](#checkpoints--snapshots-checkpoint-restore)
-- [Multi-Table Workflow & Variable Assignment (`<var> = <file>`)](#multi-table-workflow--variable-assignment-var--file)
+- [Mode 1: Single-Table Exploration Deep-Dive](#mode-1-single-table-exploration-deep-dive)
+  - [Direct Pipeline Transformations](#direct-pipeline-transformations)
+  - [Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)](#non-destructive-inspection-head-shape-cols-etc)
+  - [Session State & Rollback (`reset`, `undo`, `redo`)](#session-state--rollback-reset-undo-redo)
+  - [Checkpoints & Snapshots (`checkpoint`, `restore`)](#checkpoints--snapshots-checkpoint-restore)
+- [Mode 2: Multi-Table Workbench Deep-Dive (`df -cmd`)](#mode-2-multi-table-workbench-deep-dive-df--cmd)
   - [Assigning Datasets (`df1 = orders.parquet`)](#assigning-datasets-df1--ordersparquet)
   - [Listing Loaded Tables (`tables`, `vars`)](#listing-loaded-tables-tables-vars)
-  - [Switching the Active Table (`use df1`, bare `df2`)](#switching-the-active-table-use-df1-bare-df2)
-  - [Targeted Commands on Specific Tables (`df1 -head 5`, `df2 shape`)](#targeted-commands-on-specific-tables-df1--head-5-df2-shape)
-  - [Assigning Pipeline & SQL Results (`df3 = ...`)](#assigning-pipeline--sql-results-df3--)
-- [In-Memory Pipeline Transformations](#in-memory-pipeline-transformations)
-- [Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)](#non-destructive-inspection-head-shape-cols-etc)
-- [Multi-Table Joins & ANSI SQL (`-join`, `sql`)](#multi-table-joins--ansi-sql--join-sql)
-  - [Option 1: Standard Pipeline `-join`](#option-1-standard-pipeline--join)
-  - [Option 2: ANSI SQL Across Loaded Datasets (`sql`)](#option-2-ansi-sql-across-loaded-datasets-sql)
-  - [Option 3: Fluent Python Joins (`py`)](#option-3-fluent-python-joins-py)
+  - [Subject-First Execution (`df1 -head 5`, `df2 -shape`)](#subject-first-execution-df1--head-5-df2--shape)
+  - [Multi-Table Joins (`-join`)](#multi-table-joins--join)
+  - [Assigning Pipeline & Join Results (`df3 = ...`)](#assigning-pipeline--join-results-df3--)
+  - [ANSI SQL Across Loaded Tables (`sql`)](#ansi-sql-across-loaded-tables-sql)
+  - [Fluent Python Queries (`py`)](#fluent-python-queries-py)
 - [Saving & Exporting (`-o`)](#saving--exporting--o)
 - [Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)](#python--jupyter-sdk-integration-ptrepl-dfrepl)
 - [Complete REPL Command Reference](#complete-repl-command-reference)
@@ -43,15 +45,29 @@ The **Pytae REPL** loads your dataset into memory **once**. All subsequent filte
 
 ---
 
+## Two Core Operation Modes
+
+The Pytae REPL is engineered around two distinct data analysis scenarios with zero syntax bloat:
+
+| Feature | Mode 1: Single-Table Exploration | Mode 2: Multi-Table Workbench |
+|---|---|---|
+| **Invocation** | `pytae penguins.parquet -i` | `pytae -i` |
+| **Primary Workflow** | Rapid, iterative analysis of a single file | Multi-table joins, comparative analysis, SQL |
+| **Command Syntax** | `-filter "..."`, `head 5`, `-o clean.parquet` | `df1 -filter "..."`, `df2 -head 5`, `df1 -join df2` |
+| **Dataset Prefix** | Omitted (unambiguous, only 1 table exists) | Explicit subject-first (`df1`, `df2`, `df3`) |
+| **State Cursor** | Bound to the loaded file | Stateless workbench (subject specifies the table) |
+
+---
+
 ## Launching the REPL
 
 You can launch the REPL from the command line in three ways:
 
 ```bash
-# 1. Pre-load a dataset into the interactive shell
+# 1. Mode 1: Pre-load a single dataset into the interactive shell
 pytae penguins.parquet -i
 
-# 2. Launch an empty REPL prompt (load data later via 'load <file>')
+# 2. Mode 2: Launch an empty REPL workbench (load datasets via df1 = orders.parquet)
 pytae -i
 pytae repl
 
@@ -66,193 +82,48 @@ pytae [penguins.parquet: 344x7]>
 
 ---
 
-## Session State & Rollback (`reset`, `undo`, `redo`)
+## Mode 1: Single-Table Exploration Deep-Dive
 
-### 1. `reset`: Revert to Original Dataset
-If you perform multiple transformations and realize you want to discard your changes, `reset` instantly rolls the table back to the original dataset as loaded from disk:
+When launched with a single input file (`pytae penguins.parquet -i`), the REPL enters **Single-Table Exploration Mode**. Because only one dataset exists in memory, all operations execute directly on the active table without needing any table prefix.
+
+### 1. In-Memory Pipeline Transformations
+
+Any standard Pytae CLI flag sequence can be typed directly into the prompt. Transformations execute on the in-memory Arrow table, print the resulting table, and update the table state:
 
 ```text
-pytae [penguins.parquet: 344x7]> -filter "species == 'Gentoo'"
-shape: (124, 7)
+pytae [penguins.parquet: 344x7]> -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+shape: (188, 7)
 ...
 
-pytae [penguins.parquet: 124x7]> reset
-Restored original dataset. Active shape: (344, 7)
-
-pytae [penguins.parquet: 344x7]> 
-```
-
-### 2. `undo` & `redo`: Step-by-Step History Navigation
-Like `Ctrl+Z` in an editor, `undo` steps backward through your transformation stack, while `redo` re-applies undone steps:
-
-```text
-pytae [penguins.parquet: 344x7]> -filter "body_mass_g > 4000"
-shape: (168, 7)
-
-pytae [penguins.parquet: 168x7]> -mutate "mass_kg = body_mass_g / 1000.0"
-shape: (168, 8)
-
-pytae [penguins.parquet: 168x8]> undo
-Undid: -mutate "mass_kg = body_mass_g / 1000.0". Active shape: (168, 7)
-
-pytae [penguins.parquet: 168x7]> redo
-Redid: -mutate "mass_kg = body_mass_g / 1000.0". Active shape: (168, 8)
-```
-
-### 3. `history`: Inspect Applied Pipeline Steps
-```text
-pytae [penguins.parquet: 168x8]> history
-Pipeline History:
-   1: -filter "body_mass_g > 4000"
-   2: -mutate "mass_kg = body_mass_g / 1000.0"
-```
-
----
-
-## Checkpoints & Snapshots (`checkpoint`, `restore`)
-
-You can save named state checkpoints at key milestones before experimenting with exploratory transformations:
-
-```text
-# Save a named checkpoint
-pytae [penguins.parquet: 344x7]> checkpoint baseline
-Saved checkpoint 'baseline' (344 rows x 7 cols).
-
-# Experiment with aggressive filtering
-pytae [penguins.parquet: 344x7]> -filter "island == 'Dream' and sex == 'female'"
-shape: (61, 7)
-
-# Restore back to your saved checkpoint
-pytae [penguins.parquet: 61x7]> restore baseline
-Restored checkpoint 'baseline'. Active shape: (344, 7)
-
-# List all saved checkpoints
-pytae [penguins.parquet: 344x7]> checkpoints
-Saved Checkpoints:
-  - baseline       : 344 rows x 7 cols
-```
-
-*(Aliases: `cp` for `checkpoint`, `checkout` for `restore`, `cps` for `checkpoints`)*.
-
----
-
-## Multi-Table Workflow & Variable Assignment (`<var> = <file>`)
-
-You can launch a clean REPL without any initial dataset via `pytae -i`, load multiple tables into named variables, and analyze or join them simultaneously.
-
-### Assigning Datasets (`df1 = orders.parquet`)
-
-```text
-$ pytae -i
-================================================================================
-                         PYTAE INTERACTIVE REPL                                 
-================================================================================
-Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
-No initial dataset loaded. Use 'load <path>' to load a table.
-
-pytae> df1 = orders.parquet
-Loaded orders.parquet as 'df1' (10,000 rows x 4 cols).
-
-pytae [df1: 10,000x4]> df2 = customers.parquet
-Loaded customers.parquet as 'df2' (1,500 rows x 3 cols).
-
-pytae [df2: 1,500x3]>
-```
-
-### Listing Loaded Tables (`tables`, `vars`)
-
-Use `tables` or `vars` to inspect every dataset currently held in memory. The active table is designated with an asterisk `*`:
-
-```text
-pytae [df2: 1,500x3]> tables
-Tables in memory:
-   df1         : 10,000 rows x 4 cols (orders.parquet)
- * df2         : 1,500 rows x 3 cols (customers.parquet) [active]
-```
-
-### Switching the Active Table (`use df1`, bare `df2`)
-
-Switch your active working dataset with `use <name>` or by simply typing the table name:
-
-```text
-pytae [df2: 1,500x3]> use df1
-Switched active dataset to 'df1'. Active shape: (10,000, 4)
-
-pytae [df1: 10,000x4]> df2
-Switched active dataset to 'df2'. Active shape: (1,500, 3)
-shape: (5, 3)
+pytae [penguins.parquet: 188x7]> -mutate "mass_kg = body_mass_g / 1000, is_heavy = mass_kg > 4.5"
+shape: (188, 9)
 ...
-```
 
-### Targeted Commands on Specific Tables (`df1 -head 5`, `df2 shape`)
+pytae [penguins.parquet: 188x9]> -select "species,island,mass_kg"
+shape: (188, 3)
+...
 
-Execute inspections or transformations directly on a specific table without switching your active context:
-
-```text
-# Non-destructive inspection of df1 while df2 remains active
-pytae [df2: 1,500x3]> df1 -head 3
-pytae [df2: 1,500x3]> df1 shape
-(10,000, 4)
-
-# Apply a transformation directly to df1
-pytae [df2: 1,500x3]> df1 -filter "amount > 100"
-pytae [df2: 1,500x3]> df1 shape
-(3,450, 4)
-```
-
-### Assigning Pipeline & SQL Results (`df3 = ...`)
-
-Create new named tables from transformations, joins, or ANSI SQL queries:
-
-```text
-# 1. Pipeline assignment from another table
-pytae> df_filtered = df1 -filter "amount > 150"
-
-# 2. Join assignment
-pytae> df3 = df1 join df2 on=customer_id
-
-# 3. ANSI SQL assignment across loaded datasets
-pytae> df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.customer_id = df2.id
-```
-
----
-
-## In-Memory Pipeline Transformations
-
-Any standard Pytae CLI flag sequence can be typed directly into the prompt. Transformations execute on the in-memory Arrow table, print the resulting table, and update the active dataset:
-
-```text
-# Filter rows
-pytae> -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
-
-# Feature engineering
-pytae> -mutate "mass_kg = body_mass_g / 1000, is_heavy = mass_kg > 4.5"
-
-# Column selection & drop
-pytae> -select "species,island,mass_kg"
-pytae> -select "!sex"
-
-# Sort rows
-pytae> -arrange "mass_kg desc"
-
-# Grouped aggregation
-pytae> -by species -agg "avg_mass=body_mass_g:mean, count=count"
-
-# Sensitive data masking and encryption
-pytae> -mask "email=hash, ssn=encrypt" -key "SecretKey123"
+pytae [penguins.parquet: 188x3]> -by species -agg "avg_mass=mass_kg:mean, count=count"
+shape: (2, 3)
+┌──────────┬──────────┬───────┐
+│ species  ┆ avg_mass ┆ count │
+│ ---      ┆ ---      ┆ ---   │
+│ str      ┆ f64      ┆ u32   │
+╞══════════╪══════════╪═══════╡
+│ Adelie   ┆ 3.82     ┆ 64    │
+│ Gentoo   ┆ 5.07     ┆ 124   │
+└──────────┴──────────┴───────┘
 ```
 
 > [!TIP]
 > **Bare-Verb Convenience**: Leading hyphens are optional for primary verbs. `filter "species == 'Gentoo'"` works identically to `-filter "species == 'Gentoo'"`.
 
----
+### 2. Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)
 
-## Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)
-
-Inspection commands display metadata or previews **without** truncating or mutating your active table:
+Inspection commands display metadata or previews **without** truncating or mutating your dataset:
 
 ```text
-# Non-destructive head/tail previews (does NOT truncate active rows)
+# Non-destructive previews (does NOT truncate active rows)
 pytae> head 10
 pytae> tail 5
 
@@ -264,57 +135,165 @@ pytae> cols
 species
 island
 bill_length_mm
-bill_depth_mm
-flipper_length_mm
-body_mass_g
-sex
-
-pytae> dtype
-species               object
-island                object
-bill_length_mm       float64
 ...
 
-# Missing values & statistical summary
+# Column types & missing values
+pytae> dtype
 pytae> nulls
 pytae> glimpse
 pytae> describe
 ```
 
----
+### 3. Session State & Rollback (`reset`, `undo`, `redo`)
 
-## Multi-Table Joins & ANSI SQL (`-join`, `sql`)
+* **`reset`**: Reverts the table back to the original dataset as loaded from disk:
+  ```text
+  pytae [penguins.parquet: 64x3]> reset
+  Restored original dataset. Active shape: (344, 7)
+  ```
+* **`undo` & `redo`**: Step backward and forward through your transformation stack:
+  ```text
+  pytae> undo
+  Undid: -filter "body_mass_g > 4000". Active shape: (344, 7)
 
-The REPL provides three seamless ways to join datasets in memory using standard Pytae commands.
+  pytae> redo
+  Redid: -filter "body_mass_g > 4000". Active shape: (168, 7)
+  ```
+* **`history`**: View the full log of applied pipeline steps:
+  ```text
+  pytae> history
+  Pipeline History:
+     1: -filter "body_mass_g > 4000"
+     2: -mutate "mass_kg = body_mass_g / 1000.0"
+  ```
 
-### Option 1: Standard Pipeline `-join`
+### 4. Checkpoints & Snapshots (`checkpoint`, `restore`)
 
-Join another loaded table or disk file directly into your active dataset using Pytae's standard `-join` command:
+Save named checkpoints at key milestones before experimenting with exploratory transformations:
 
 ```text
-# With df1 active: left join df2 on customer_id
-pytae [df1: 10,000x4]> -join df2 on=customer_id
+# Save a named checkpoint
+pytae> checkpoint baseline
+Saved checkpoint 'baseline' (344 rows x 7 cols).
 
-# With differing column names (left_col:right_col) and join type
-pytae [df1: 10,000x4]> -join df2 on=cust_id:id how=left
+# Experiment with aggressive filtering
+pytae> -filter "island == 'Dream' and sex == 'female'"
+shape: (61, 7)
 
-# Join and export directly in one step with standard -o
-pytae [df1: 10,000x4]> -join df2 on=cust_id -o merged.parquet
+# Restore back to your saved checkpoint
+pytae> restore baseline
+Restored checkpoint 'baseline'. Active shape: (344, 7)
+
+# List all saved checkpoints
+pytae> checkpoints
+Saved Checkpoints:
+  - baseline       : 344 rows x 7 cols
+```
+
+*(Aliases: `cp` for `checkpoint`, `checkout` for `restore`, `cps` for `checkpoints`)*.
+
+---
+
+## Mode 2: Multi-Table Workbench Deep-Dive (`df -cmd`)
+
+When launched with `pytae -i` (or `pytae repl`), the REPL enters **Multi-Table Workbench Mode**. You can load several datasets into memory simultaneously and manipulate them using clean, stateless **subject-first commands (`df -cmd`)**.
+
+### 1. Ingesting Datasets (`<var> = <file>`)
+
+Load files into named variables using standard assignment syntax:
+
+```text
+$ pytae -i
+================================================================================
+                         PYTAE INTERACTIVE REPL                                 
+================================================================================
+Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
+No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table.
+
+pytae> df1 = orders.parquet
+Loaded orders.parquet as 'df1' (10,000 rows x 4 cols).
+
+pytae [df1: 10,000x4]> df2 = customers.parquet
+Loaded customers.parquet as 'df2' (1,500 rows x 3 cols).
+
+pytae [df1, df2]>
+```
+
+Notice how the prompt dynamically updates to show all datasets currently in memory: `pytae [df1, df2]> `.
+
+### 2. Listing Loaded Tables (`tables`, `vars`)
+
+Inspect all loaded tables and their dimensions anytime:
+
+```text
+pytae [df1, df2]> tables
+Tables in memory:
+   df1         : 10,000 rows x 4 cols (orders.parquet)
+   df2         : 1,500 rows x 3 cols (customers.parquet)
+```
+
+### 3. Subject-First Execution (`df1 -head 5`, `df2 -shape`)
+
+Instead of modal "switching" between tables, **every operation explicitly states its target dataset**. This eliminates ambiguity and mirrors the Pytae CLI 1:1:
+
+```text
+# Non-destructive inspection of specific tables
+pytae [df1, df2]> df1 -head 3
+pytae [df1, df2]> df2 -head 3
+pytae [df1, df2]> df1 shape
+(10,000, 4)
+pytae [df1, df2]> df2 cols
+
+# Apply in-place transformations to a specific table
+pytae [df1, df2]> df1 -filter "amount > 100"
+pytae [df1, df2]> df1 shape
+(3,450, 4)
+
+# Export a specific table directly
+pytae [df1, df2]> df1 -o clean_orders.parquet
+```
+
+> [!TIP]
+> **Quick Preview**: Typing a bare table name (e.g. `df1`) simply displays `df1.head(5)` as an inspection shortcut, without modifying any state.
+
+### 4. Multi-Table Joins (`-join`)
+
+Join datasets using standard Pytae `-join` syntax directly in the REPL:
+
+```text
+# Join df2 into df1 on a shared customer_id key
+pytae [df1, df2]> df1 -join df2 on=customer_id
+
+# Differing column names and explicit join type
+pytae [df1, df2]> df1 -join df2 on=cust_id:id how=left
+
+# Join and export directly in one step
+pytae [df1, df2]> df1 -join df2 on=cust_id -o merged.parquet
 ```
 
 Supported join types: `how=left`, `how=inner`, `how=outer`, `how=semi`, `how=anti`.
 
-You can also use standard multi-file key-value syntax:
+### 5. Assigning Pipeline & Join Results (`df3 = ...`)
+
+Create new named tables from transformations, joins, or ANSI SQL queries:
+
 ```text
-pytae> -join "left=df1,right=df2,on=cust_id,how=inner" -o merged.parquet
+# 1. Pipeline assignment from another table (df1 remains untouched)
+pytae [df1, df2]> df_filtered = df1 -filter "amount > 150"
+
+# 2. Join assignment
+pytae [df1, df2]> df3 = df1 -join df2 on=cust_id
+
+# 3. ANSI SQL assignment across loaded tables
+pytae [df1, df2, df3]> df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id
 ```
 
-### Option 2: ANSI SQL Across Loaded Datasets (`sql`)
+### 6. ANSI SQL Across Loaded Tables (`sql`)
 
-Every loaded table (`df1`, `df2`, etc.) and saved checkpoint is automatically registered and queryable in `sql`:
+Every loaded table (`df1`, `df2`, `df3`, etc.) and saved checkpoint is automatically registered in Polars SQLContext:
 
 ```text
-pytae> sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id
+pytae [df1, df2]> sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id
 shape: (10,000, 3)
 ┌──────────┬─────────────┬────────┐
 │ order_id ┆ name        ┆ amount │
@@ -326,17 +305,12 @@ shape: (10,000, 3)
 └──────────┴─────────────┴────────┘
 ```
 
-You can assign the SQL result to a new named table:
-```text
-pytae> df3 = sql SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id
-```
+### 7. Fluent Python Queries (`py`)
 
-### Option 3: Fluent Python Joins (`py`)
-
-Use Pytae's fluent Python API directly on your loaded tables:
+Evaluate Python expressions directly against your loaded tables:
 
 ```text
-pytae> py df1.join(df2, on="cust_id", how="left")
+pytae [df1, df2]> py df1.join(df2, on="cust_id", how="left")
 ```
 
 ---
@@ -396,9 +370,9 @@ When you type `exit` in the REPL, the final transformed table is returned direct
 | **`restore`** | `restore <name>`, `checkout <name>` | Restore active table to a named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints`, `cps` | List all saved checkpoint names and shapes | No |
 | **`<var> = <file>`** | `df1 = orders.parquet` | Load file as named table in memory | **Yes** |
-| **`tables`** | `tables`, `vars` | List all loaded tables in memory (`*` = active) | No |
-| **`use`** | `use <name>`, `<name>` | Switch active dataset to specified table | **Yes** |
-| **`<name> <cmd>`** | `df1 -head 5`, `df2 shape` | Run command directly on named table | Depends on command |
+| **`tables`** | `tables`, `vars` | List all loaded tables in memory | No |
+| **`<name> <cmd>`** | `df1 -head 5`, `df2 -shape` | Run command directly on named table (subject-first) | Depends on command |
+| **`<name>`** | `df1` | Non-destructive quick preview of table (head 5) | No |
 | **`-join`** | `-join <target> on=<key> [how=...] [-o <path>]` | Join table or file into active dataset | **Yes** (undoable) |
 | **`-o`** | `-o <path>`, `-o clip` | Export active dataset to Parquet/CSV or clipboard | No |
 | **`sql`** | `sql <query>` | Run ANSI SQL against active table or named tables | **Yes** (undoable) |
