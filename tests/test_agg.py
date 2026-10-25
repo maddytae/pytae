@@ -94,11 +94,17 @@ def test_all_agg_drop_na():
 
 def test_agg_df_multi_metric_without_aliases_raises():
     df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
-    with pytest.raises(ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"):
+    with pytest.raises(
+        ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"
+    ):
         df.pt.by("g").pt.agg(a=["mean", "sum"])
-    with pytest.raises(ValueError, match="multiple aggregation functions in .* cannot be applied without explicit aliases"):
+    with pytest.raises(
+        ValueError, match="multiple aggregation functions in .* cannot be applied without explicit aliases"
+    ):
         df.pt.by("g").pt.agg(v="mean,sum")
-    with pytest.raises(ValueError, match="list of aggregation functions in .* cannot be applied without explicit aliases"):
+    with pytest.raises(
+        ValueError, match="list of aggregation functions in .* cannot be applied without explicit aliases"
+    ):
         df.pt.by("g").pt.agg(v=["mean", "sum"])
 
 
@@ -263,7 +269,9 @@ def test_agg_df_string_spec_errors():
 def test_agg_df_multi_metric_without_aliases_raises_on_the_fly():
     # Multi-metric without explicit alias is rejected because columns cannot be created on the fly
     df = pd.DataFrame({"g": ["a", "b"], "_x": [1, 2], "y_": [3, 4]})
-    with pytest.raises(ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"):
+    with pytest.raises(
+        ValueError, match="multiple metric functions .* cannot be applied across columns without explicit aliases"
+    ):
         df.pt.by("g").pt.agg(["mean", "sum"])
 
 

@@ -162,13 +162,7 @@ def test_pt_accessor_by_auto_ungroups(tmp_path):
         k.by()
 
     # 3. .by() scopes the immediate next mutate, which automatically returns an ungrouped DataFrame
-    k_res = (
-        k.by("species")
-        .mutate(group_mean="mean(mass)")
-        .mutate(overall_mean="mean(mass)")
-    )
+    k_res = k.by("species").mutate(group_mean="mean(mass)").mutate(overall_mean="mean(mass)")
     assert isinstance(k_res, pt.DataFrame)
     assert k_res["group_mean"].to_list() == [15.0, 15.0, 150.0, 150.0]
     assert k_res["overall_mean"].to_list() == [82.5, 82.5, 82.5, 82.5]
-
-

@@ -44,12 +44,21 @@ def test_cli_version():
 
 
 def test_cli_help():
-    proc = _run_cli("--help")
+    proc = _run_cli("-help")
     assert proc.returncode == 0
     assert "usage: pytae" in proc.stdout
     assert "-filter" in proc.stdout
     assert "-mutate" in proc.stdout
     assert "-cheatsheet" in proc.stdout
+
+    proc_short = _run_cli("-h")
+    assert proc_short.returncode == 0
+    assert "usage: pytae" in proc_short.stdout
+
+    # Double dash is rejected with single-hyphen guidance
+    proc_double = _run_cli("--help")
+    assert proc_double.returncode == 2
+    assert "uses double hyphens; pytae uses '-help' or '-h'" in proc_double.stderr
 
 
 def test_cli_cheatsheet():
@@ -60,10 +69,10 @@ def test_cli_cheatsheet():
     assert "-mutate" in proc.stdout
 
 
-def test_cli_examples():
+def test_cli_examples_retired_redirect():
     proc = _run_cli("-examples")
-    assert proc.returncode == 0
-    assert "PYTAE CLI CHEAT SHEET & COOKBOOK" in proc.stdout
+    assert proc.returncode == 2
+    assert "'-examples' is not recognized; use '-cheatsheet' instead" in proc.stderr
 
 
 # =============================================================================
@@ -136,9 +145,13 @@ def test_cli_long_rcva():
 
 
 def test_cli_exit_code_invalid_flag():
-    proc = _run_cli("--this-flag-does-not-exist")
+    proc = _run_cli("-this-flag-does-not-exist")
     assert proc.returncode == 2
     assert "unrecognized arguments" in proc.stderr
+
+    proc_double = _run_cli("--this-flag-does-not-exist")
+    assert proc_double.returncode == 2
+    assert "is not recognized; pytae flags use single hyphen" in proc_double.stderr
 
 
 def test_cli_exit_code_invalid_flag_combination():

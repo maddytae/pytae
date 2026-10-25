@@ -108,27 +108,27 @@ def test_repl_non_destructive_inspection(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
-    # shape
-    r.execute_line("shape", output_fn=outputs.append)
+    # -shape
+    r.execute_line("-shape", output_fn=outputs.append)
     assert "(5, 3)" in outputs[-1]
     assert len(r.undo_stack) == 0
 
-    # cols
-    r.execute_line("cols", output_fn=outputs.append)
+    # -cols
+    r.execute_line("-cols", output_fn=outputs.append)
     assert "species" in outputs[-1]
 
-    # dtype
-    r.execute_line("dtype", output_fn=outputs.append)
+    # -dtype
+    r.execute_line("-dtype", output_fn=outputs.append)
 
-    # nulls
-    r.execute_line("nulls", output_fn=outputs.append)
+    # -nulls
+    r.execute_line("-nulls", output_fn=outputs.append)
 
-    # glimpse
-    r.execute_line("glimpse", output_fn=outputs.append)
+    # -glimpse
+    r.execute_line("-glimpse", output_fn=outputs.append)
 
-    # head / tail
-    r.execute_line("head 2", output_fn=outputs.append)
-    r.execute_line("tail 2", output_fn=outputs.append)
+    # -head / -tail
+    r.execute_line("-head 2", output_fn=outputs.append)
+    r.execute_line("-tail 2", output_fn=outputs.append)
 
     # None of these should mutate or push to undo stack!
     assert r.current_df.shape == (5, 3)
@@ -359,9 +359,9 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     assert any("df2" in o for o in outputs)
 
     # 4. Targeted inspections
-    r.execute_line("df1 shape", output_fn=outputs.append)
+    r.execute_line("df1 -shape", output_fn=outputs.append)
     assert "(3, 3)" in outputs[-1]
-    r.execute_line("df2 shape", output_fn=outputs.append)
+    r.execute_line("df2 -shape", output_fn=outputs.append)
     assert "(2, 3)" in outputs[-1]
 
     # 5. Targeted transformation: filter df1 in place
@@ -497,10 +497,20 @@ def test_repl_bare_verb_rejection(sample_df):
     r.execute_line("select species", output_fn=outputs.append)
     assert "bare 'select' is not recognized; use '-select'" in outputs[-1]
 
+    # Bare inspection verbs rejected
+    for verb in ("shape", "cols", "dtype", "nulls", "glimpse", "describe", "head", "tail"):
+        outputs.clear()
+        r.execute_line(verb, output_fn=outputs.append)
+        assert f"bare '{verb}' is not recognized; use '-{verb}'" in outputs[-1]
+
     # Targeted bare verb rejected
     r.tables["df1"] = sample_df
     r.execute_line("df1 filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert "bare 'filter' is not recognized; use '-filter'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("df1 shape", output_fn=outputs.append)
+    assert "bare 'shape' is not recognized; use '-shape'" in outputs[-1]
 
 
 def test_repl_model2_display_no_table_dumps(tmp_path):
@@ -531,15 +541,15 @@ def test_repl_model2_display_no_table_dumps(tmp_path):
     assert "-> df1: 2 rows x 3 cols" in outputs[0]
     assert "order_id" not in outputs[0]
 
-    # 3. Explicit inspection 'head' renders table with columns and values
+    # 3. Explicit inspection '-head' renders table with columns and values
     outputs.clear()
-    r.execute_line("head 2", output_fn=outputs.append)
+    r.execute_line("-head 2", output_fn=outputs.append)
     assert any("order_id" in o for o in outputs)
     assert any("150" in o for o in outputs)
 
-    # 4. Explicit inspection 'tail' renders table with columns and values
+    # 4. Explicit inspection '-tail' renders table with columns and values
     outputs.clear()
-    r.execute_line("tail 1", output_fn=outputs.append)
+    r.execute_line("-tail 1", output_fn=outputs.append)
     assert any("order_id" in o for o in outputs)
     assert any("75" in o for o in outputs)
 
@@ -622,35 +632,57 @@ def test_repl_disallowed_aliases_and_hyphenated_commands():
 
     test_cases = [
         ("cp", "checkpoint"),
+        ("-cp", "checkpoint"),
+        ("--cp", "checkpoint"),
         ("cps", "checkpoints"),
+        ("-cps", "checkpoints"),
+        ("--cps", "checkpoints"),
         ("vars", "tables"),
         ("datasets", "tables"),
         ("switch", "use"),
-        ("checkout", "restore"),
-        ("columns", "cols"),
-        ("dtypes", "dtype"),
-        ("-dtype", "dtype"),
-        ("--dtype", "dtype"),
-        ("-cols", "cols"),
-        ("--cols", "cols"),
-        ("-shape", "shape"),
-        ("--shape", "shape"),
-        ("-head", "head"),
-        ("--head", "head"),
-        ("-tail", "tail"),
-        ("--tail", "tail"),
-        ("-nulls", "nulls"),
-        ("-glimpse", "glimpse"),
-        ("-describe", "describe"),
-        ("-reset", "reset"),
-        ("-undo", "undo"),
-        ("-redo", "redo"),
-        ("-history", "history"),
-        ("-tables", "tables"),
-        ("-checkpoint", "checkpoint"),
-        ("-checkpoints", "checkpoints"),
-        ("-restore", "restore"),
         ("-use", "use"),
+        ("--use", "use"),
+        ("checkout", "restore"),
+        ("-restore", "restore"),
+        ("--restore", "restore"),
+        ("-checkpoint", "checkpoint"),
+        ("--checkpoint", "checkpoint"),
+        ("-checkpoints", "checkpoints"),
+        ("--checkpoints", "checkpoints"),
+        ("-reset", "reset"),
+        ("--reset", "reset"),
+        ("-undo", "undo"),
+        ("--undo", "undo"),
+        ("-redo", "redo"),
+        ("--redo", "redo"),
+        ("-history", "history"),
+        ("--history", "history"),
+        ("-tables", "tables"),
+        ("--tables", "tables"),
+        ("-status", "status"),
+        ("--status", "status"),
+        ("columns", "-cols"),
+        ("-columns", "-cols"),
+        ("--columns", "-cols"),
+        ("dtypes", "-dtype"),
+        ("-dtypes", "-dtype"),
+        ("--dtypes", "-dtype"),
+        ("--shape", "-shape"),
+        ("--cols", "-cols"),
+        ("--dtype", "-dtype"),
+        ("--nulls", "-nulls"),
+        ("--glimpse", "-glimpse"),
+        ("--describe", "-describe"),
+        ("--head", "-head"),
+        ("--tail", "-tail"),
+        ("-output", "-o <path>"),
+        ("--output", "-o <path>"),
+        ("-interactive", "-i"),
+        ("--interactive", "-i"),
+        ("-repl", "-i"),
+        ("--repl", "-i"),
+        ("-examples", "-cheatsheet"),
+        ("--examples", "-cheatsheet"),
     ]
 
     for alias, canonical in test_cases:
@@ -659,11 +691,17 @@ def test_repl_disallowed_aliases_and_hyphenated_commands():
         expected = f"pytae: '{alias}' is not recognized; use '{canonical}'."
         assert outputs[-1] == expected, f"Failed for alias {alias}: got {outputs[-1]!r}"
 
-    # Also test targeted aliases: `df1 -dtype`, `df1 columns`
+    # Valid targeted inspection works
     outputs.clear()
     r.execute_line("df1 -dtype", output_fn=outputs.append)
-    assert outputs[-1] == "pytae: '-dtype' is not recognized; use 'dtype'."
+    assert any("species" in o for o in outputs)
 
+    # Bare targeted inspection rejected
+    outputs.clear()
+    r.execute_line("df1 dtype", output_fn=outputs.append)
+    assert outputs[-1] == "pytae: bare 'dtype' is not recognized; use '-dtype' (matching CLI syntax)."
+
+    # Disallowed alias rejected in targeted context
     outputs.clear()
     r.execute_line("df1 columns", output_fn=outputs.append)
-    assert outputs[-1] == "pytae: 'columns' is not recognized; use 'cols'."
+    assert outputs[-1] == "pytae: 'columns' is not recognized; use '-cols'."

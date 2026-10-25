@@ -261,4 +261,3 @@ def test_map_empty_dict_with_boolean_default():
     res_true = df.mutate("flag = map(post_crm_brr, {}, True)")
     assert res_true["flag"].dtype == pl.Boolean
     assert list(res_true["flag"]) == [True, True, True]
-

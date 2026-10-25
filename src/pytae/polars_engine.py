@@ -508,9 +508,7 @@ def count_polars(
         for c in col_list:
             if c not in schema:
                 raise KeyError(f"count(): unknown column '{c}'")
-        counted = df.group_by(col_list, maintain_order=True).agg(
-            pl.len().cast(pl.Int64).alias(name)
-        )
+        counted = df.group_by(col_list, maintain_order=True).agg(pl.len().cast(pl.Int64).alias(name))
         if sort:
             counted = counted.sort(name, descending=True)
         return counted
@@ -1886,7 +1884,9 @@ def _slice_bound_polars(
 
 
 def pick_polars(*args: Any, **kwargs: Any) -> Any:
-    raise AttributeError("pick() has been removed; use arrange().head(n) instead (or by().arrange().head(n) for grouped slicing).")
+    raise AttributeError(
+        "pick() has been removed; use arrange().head(n) instead (or by().arrange().head(n) for grouped slicing)."
+    )
 
 
 def long_polars(

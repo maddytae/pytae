@@ -82,135 +82,66 @@ def _is_path_like(token: str) -> bool:
 
 _CLI_FLAGS = {
     "-version",
-    "--version",
     "-cheatsheet",
-    "--cheatsheet",
-    "-examples",
-    "--examples",
     "-head",
-    "--head",
     "-tail",
-    "--tail",
     "-shape",
-    "--shape",
     "-cols",
-    "--cols",
     "-dtype",
-    "--dtype",
     "-nulls",
-    "--nulls",
     "-describe",
-    "--describe",
     "-meta",
-    "--meta",
     "-diff",
-    "--diff",
     "-distinct",
-    "--distinct",
     "-count",
-    "--count",
     "-sample",
-    "--sample",
     "-seed",
-    "--seed",
     "-frac",
-    "--frac",
     "-arrange",
-    "--arrange",
     "-by",
-    "--by",
     "-nrows",
-    "--nrows",
-    "-limit",
-    "--limit",
     "-select",
-    "--select",
     "-agg",
-    "--agg",
     "-fillna",
-    "--fillna",
     "-dropna",
-    "--dropna",
     "-glimpse",
-    "--glimpse",
     "-clean_columns",
-    "--clean_columns",
     "-mask",
-    "--mask",
     "-unmask",
-    "--unmask",
     "-key",
-    "--key",
     "-salt",
-    "--salt",
     "-vault",
-    "--vault",
     "-long",
-    "--long",
     "-wide",
-    "--wide",
     "-pivot",
-    "--pivot",
     "-o",
-    "--output",
     "-out_dir",
-    "--out_dir",
-    "-od",
-    "--out-dir",
     "-dlim",
-    "--dlim",
     "-encoding",
-    "--encoding",
     "-rename",
-    "--rename",
     "-file",
-    "--file",
     "-filter",
-    "--filter",
     "-mutate",
-    "--mutate",
     "-sql",
-    "--sql",
     "-join",
-    "--join",
     "-concat",
-    "--concat",
     "-progress",
-    "--progress",
     "-time",
-    "--time",
     "-pretty",
-    "--pretty",
     "-pager",
-    "--pager",
     "-round",
-    "--round",
     "-tol",
-    "--tol",
-    "-tolerance",
-    "--tolerance",
     "-h",
-    "--help",
+    "-help",
     "-fmt",
-    "--fmt",
     "-freq",
-    "--freq",
     "-hist",
-    "--hist",
     "-bar",
-    "--bar",
     "-scatter",
-    "--scatter",
     "-corr",
-    "--corr",
     "-plot",
-    "--plot",
     "-finalize",
-    "--finalize",
     "-i",
-    "--interactive",
-    "-repl",
-    "--repl",
 }
 
 
@@ -219,7 +150,7 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("-progress", "--progress"):
+        if arg == "-progress":
             if i + 1 < len(argv):
                 nxt = argv[i + 1]
                 try:
@@ -229,14 +160,14 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
                     i += 2
                     continue
                 except ValueError:
-                    out.append("--progress=200000")
+                    out.append("-progress=200000")
                     i += 1
                     continue
             else:
-                out.append("--progress=200000")
+                out.append("-progress=200000")
                 i += 1
                 continue
-        elif arg in ("-time", "--time"):
+        elif arg == "-time":
             if i + 1 < len(argv):
                 nxt = argv[i + 1]
                 try:
@@ -247,7 +178,7 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
                     continue
                 except ValueError:
                     if nxt.startswith("-") or _is_path_like(nxt) or nxt == "clip":
-                        out.append("--time=1")
+                        out.append("-time=1")
                         i += 1
                         continue
                     out.append(arg)
@@ -255,14 +186,14 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
                     i += 2
                     continue
             else:
-                out.append("--time=1")
+                out.append("-time=1")
                 i += 1
                 continue
-        elif arg in ("-select", "--select") and "=" not in arg:
+        elif arg == "-select" and "=" not in arg:
             if i + 1 < len(argv):
                 nxt = argv[i + 1]
                 if nxt.startswith("-") and nxt not in _CLI_FLAGS:
-                    out.append(f"--select={nxt}")
+                    out.append(f"-select={nxt}")
                     i += 2
                     continue
         out.append(arg)
@@ -327,7 +258,18 @@ class PytaeParser(argparse.ArgumentParser):
     ) -> tuple[argparse.Namespace, list[str]]:
         if args is None:
             args = sys.argv[1:]
-        normalized = _normalize_cli_args(list(args))
+        args_list = list(args)
+        for arg in args_list:
+            if arg.startswith("--"):
+                base = arg.split("=")[0]
+                single_name = "-" + base.lstrip("-")
+                if base in ("--help", "--h"):
+                    self.error(f"'{arg}' uses double hyphens; pytae uses '-help' or '-h'.")
+                elif single_name in _CLI_FLAGS:
+                    self.error(f"'{arg}' uses double hyphens; pytae uses single hyphen '{single_name}'.")
+                else:
+                    self.error(f"'{arg}' is not recognized; pytae flags use single hyphen (e.g. '{single_name}').")
+        normalized = _normalize_cli_args(args_list)
         return super().parse_known_args(normalized, namespace)
 
 
@@ -337,6 +279,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
         exit_on_error=exit_on_error,
+        add_help=False,
     )
     parser.add_argument(
         "path",
@@ -348,18 +291,15 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         "or glob patterns/multiple files for batch operations; "
         "omit when piping from stdin or using -file with -join/-concat/-sql",
     )
-    parser.add_argument("-version", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-h", "-help", action="help", help="show this help message and exit")
+    parser.add_argument("-version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "-cheatsheet",
-        "--cheatsheet",
-        "-examples",
-        "--examples",
         action=_CheatsheetAction,
         help="print CLI quick-reference cheat sheet and cookbook recipes",
     )
     parser.add_argument(
         "-head",
-        "--head",
         nargs="?",
         const=5,
         type=parse_head_limit,
@@ -370,7 +310,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-tail",
-        "--tail",
         nargs="?",
         const=5,
         type=parse_head_limit,
@@ -379,10 +318,9 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         action=_OrderedValue,
         help="print the last N rows or proportion, group-aware with -by (default 5)",
     )
-    parser.add_argument("-shape", "--shape", action=_OrderedFlag, help="print (rows, cols)")
+    parser.add_argument("-shape", action=_OrderedFlag, help="print (rows, cols)")
     parser.add_argument(
         "-cols",
-        "--cols",
         nargs="?",
         const="file",
         default=None,
@@ -393,7 +331,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-dtype",
-        "--dtype",
         nargs="?",
         const="file",
         default=None,
@@ -404,7 +341,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-nulls",
-        "--nulls",
         nargs="?",
         const="file",
         default=None,
@@ -415,28 +351,24 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-describe",
-        "--describe",
         dest="describe",
         action=_OrderedFlag,
         help="print pandas describe() summary (count/mean/std/min/quartiles/max)",
     )
     parser.add_argument(
         "-glimpse",
-        "--glimpse",
         dest="glimpse",
         action=_OrderedFlag,
         help="print a transposed overview of DataFrame columns, dtypes, and sample values",
     )
     parser.add_argument(
         "-meta",
-        "--meta",
         dest="meta",
         action=_OrderedFlag,
         help="display Parquet metadata (row groups, column statistics, compression, schema) without loading data",
     )
     parser.add_argument(
         "-diff",
-        "--diff",
         dest="diff",
         default=None,
         metavar="PATH",
@@ -445,7 +377,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-freq",
-        "--freq",
         dest="freq",
         action=_OrderedStore,
         default=None,
@@ -454,7 +385,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-hist",
-        "--hist",
         dest="hist",
         action=_OrderedStore,
         default=None,
@@ -463,7 +393,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-bar",
-        "--bar",
         dest="bar",
         nargs="?",
         const="",
@@ -475,7 +404,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-scatter",
-        "--scatter",
         dest="scatter",
         nargs="?",
         const="",
@@ -487,7 +415,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-corr",
-        "--corr",
         dest="corr",
         nargs="?",
         const="",
@@ -499,7 +426,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-distinct",
-        "--distinct",
         dest="distinct",
         nargs="?",
         const="",
@@ -510,7 +436,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-count",
-        "--count",
         dest="count",
         nargs="?",
         const="",
@@ -522,7 +447,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-sample",
-        "--sample",
         nargs="?",
         const=5,
         type=parse_positive_int,
@@ -533,7 +457,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-seed",
-        "--seed",
         dest="seed",
         type=int,
         default=None,
@@ -542,7 +465,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-frac",
-        "--frac",
         dest="frac",
         type=parse_fraction,
         default=None,
@@ -552,7 +474,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-arrange",
-        "--arrange",
         dest="arrange",
         default=None,
         metavar="SPEC",
@@ -561,7 +482,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-by",
-        "--by",
         dest="by",
         default=None,
         metavar="COLUMNS",
@@ -570,9 +490,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-nrows",
-        "--nrows",
-        "-limit",
-        "--limit",
         dest="nrows",
         type=parse_positive_int,
         default=None,
@@ -580,7 +497,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="cap the number of rows loaded (default: no cap)",
     )
     parser.add_argument(
-        "--select",
         "-select",
         dest="select",
         action=_OrderedAppend,
@@ -593,7 +509,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-agg",
-        "--agg",
         dest="agg",
         nargs="?",
         const="sum",
@@ -607,7 +522,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-fillna",
-        "--fillna",
         dest="fillna",
         nargs="?",
         const=".",
@@ -619,7 +533,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-dropna",
-        "--dropna",
         dest="dropna",
         nargs="?",
         const="",
@@ -632,7 +545,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-clean_columns",
-        "--clean_columns",
         dest="clean_columns",
         action=_OrderedStore,
         metavar="KEY=VALUE,...",
@@ -645,7 +557,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-mask",
-        "--mask",
         dest="mask",
         action=_OrderedStore,
         metavar="SPEC",
@@ -654,7 +565,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-unmask",
-        "--unmask",
         dest="unmask",
         action=_OrderedStore,
         metavar="COLS",
@@ -663,7 +573,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-key",
-        "--key",
         dest="key",
         default=None,
         metavar="SECRET",
@@ -671,7 +580,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-salt",
-        "--salt",
         dest="salt",
         default=None,
         metavar="SALT",
@@ -679,7 +587,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-vault",
-        "--vault",
         dest="vault",
         default=None,
         metavar="PATH",
@@ -687,7 +594,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-long",
-        "--long",
         dest="long",
         nargs="?",
         const="",
@@ -698,7 +604,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-wide",
-        "--wide",
         dest="wide",
         nargs="?",
         const="",
@@ -710,7 +615,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-pivot",
-        "--pivot",
         dest="pivot",
         nargs="?",
         const="",
@@ -723,7 +627,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-o",
-        "--output",
         dest="output",
         default=None,
         metavar="TARGET",
@@ -733,9 +636,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-out_dir",
-        "--out_dir",
-        "-od",
-        "--out-dir",
         dest="out_dir",
         type=Path,
         default=None,
@@ -744,7 +644,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-fmt",
-        "--fmt",
         dest="fmt",
         default=None,
         metavar="FORMAT",
@@ -752,7 +651,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-dlim",
-        "--dlim",
         dest="dlim",
         default=None,
         metavar="CHAR",
@@ -761,7 +659,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-encoding",
-        "--encoding",
         dest="encoding",
         default=None,
         metavar="ENC",
@@ -771,7 +668,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-rename",
-        "--rename",
         dest="rename",
         action=_OrderedAppend,
         default=None,
@@ -780,7 +676,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-file",
-        "--file",
         dest="file",
         default=None,
         metavar="PATH=ALIAS;...",
@@ -793,7 +688,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-filter",
-        "--filter",
         dest="filter",
         action=_OrderedAppend,
         default=None,
@@ -802,7 +696,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-mutate",
-        "--mutate",
         dest="mutate",
         action=_OrderedAppend,
         default=None,
@@ -814,7 +707,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-sql",
-        "--sql",
         dest="sql",
         action=_OrderedAppend,
         default=None,
@@ -831,7 +723,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-join",
-        "--join",
         dest="join",
         action=_OrderedAppend,
         default=None,
@@ -847,7 +738,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-concat",
-        "--concat",
         dest="concat",
         action=_OrderedAppend,
         default=None,
@@ -860,7 +750,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-plot",
-        "--plot",
         dest="plot",
         action=_OrderedStore,
         default=None,
@@ -869,7 +758,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-finalize",
-        "--finalize",
         dest="finalize",
         default=None,
         metavar="SPEC",
@@ -877,7 +765,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-progress",
-        "--progress",
         nargs="?",
         const=200_000,
         type=parse_positive_int,
@@ -887,7 +774,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-time",
-        "--time",
         dest="time",
         nargs="?",
         const=1,
@@ -898,19 +784,16 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-pretty",
-        "--pretty",
         action="store_true",
         help="[deprecated] table formatting is now automatically detected (boxed table for terminal, bare unbordered for pipes)",
     )
     parser.add_argument(
         "-pager",
-        "--pager",
         action="store_true",
         help="pipe long table or inspect outputs through system pager ($PAGER or less)",
     )
     parser.add_argument(
         "-round",
-        "--round",
         dest="round_ndigits",
         type=int,
         default=None,
@@ -920,9 +803,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-tol",
-        "--tol",
-        "-tolerance",
-        "--tolerance",
         dest="tol",
         type=float,
         default=None,
@@ -932,9 +812,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-i",
-        "--interactive",
-        "-repl",
-        "--repl",
         dest="repl",
         action="store_true",
         help="launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration",
@@ -992,32 +869,42 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
 
     retired_redirects = [
-        (("-query", "--query", "-qry", "--qry"), "'-qry' has been removed; use '-filter' instead"),
-        (("-unique", "--unique"), "'-unique' has been removed; use '-distinct' instead"),
-        (("-dedupe", "--dedupe"), "'-dedupe' has been removed; use '-distinct' instead"),
-        (("-sort_by", "--sort_by", "-sort", "--sort"), "'-sort_by' has been deprecated; use '-arrange' instead"),
-        (("-agg_df", "--agg_df"), "'-agg_df' has been removed; use '-agg' instead"),
-        (("-to_clip", "--to_clip"), "'-to_clip' has been removed; use '-o clip' instead"),
-        (("-convert", "--convert"), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
-        (("-slice_max", "--slice_max"), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
+        (("-output",), "'-output' is not recognized; use '-o <target>' instead"),
+        (("-od",), "'-od' is not recognized; use '-out_dir <dir>' instead"),
+        (("-out-dir",), "'-out-dir' is not recognized; use '-out_dir <dir>' instead"),
+        (("-examples",), "'-examples' is not recognized; use '-cheatsheet' instead"),
+        (("-limit",), "'-limit' is not recognized; use '-nrows <N>' instead"),
+        (("-tolerance",), "'-tolerance' is not recognized; use '-tol <threshold>' instead"),
+        (("-repl",), "'-repl' is not recognized; use '-i' instead"),
+        (("-interactive",), "'-interactive' is not recognized; use '-i' instead"),
+        (("-query",), "'-query' has been removed; use '-filter' instead"),
+        (("-qry",), "'-qry' has been removed; use '-filter' instead"),
+        (("-unique",), "'-unique' has been removed; use '-distinct' instead"),
+        (("-dedupe",), "'-dedupe' has been removed; use '-distinct' instead"),
+        (("-sort_by", "-sort"), "'-sort_by' has been deprecated; use '-arrange' instead"),
+        (("-agg_df",), "'-agg_df' has been removed; use '-agg' instead"),
+        (("-to_clip",), "'-to_clip' has been removed; use '-o clip' instead"),
+        (("-convert",), "'-convert' has been removed; use '-o <filename>' or '-o <format>' instead"),
+        (("-slice_max",), "'-slice_max' has been removed; use '-arrange ... -head N' instead"),
         (
-            ("-slice_min", "--slice_min"),
+            ("-slice_min",),
             "'-slice_min' has been removed; use '-arrange ... -tail N' (or '-arrange ... desc -head N') instead",
         ),
         (
-            ("-pick", "--pick"),
+            ("-pick",),
             "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead",
         ),
-        (("-group_by", "--group_by", "-groupby", "--groupby"), "'-group_by' has been removed; use '-by' instead"),
-        (("-handle_missing", "--handle_missing"), "'-handle_missing' has been removed; use '-fillna' instead"),
-        (("-fill_null", "--fill_null"), "'-fill_null' has been removed; use '-fillna' instead"),
-        (("-fill_nan", "--fill_nan"), "'-fill_nan' has been removed; use '-fillna' instead"),
-        (("-drop_nulls", "--drop_nulls"), "'-drop_nulls' has been removed; use '-dropna' instead"),
-        (("-drop_na", "--drop_na"), "'-drop_na' has been removed; use '-dropna' instead"),
-        (("-value_counts", "--value_counts"), "'-value_counts' has been removed; use '-freq' instead"),
-        (("-info", "--info"), "'-info' has been removed; use '-glimpse' instead"),
+        (("-group_by",), "'-group_by' has been removed; use '-by' instead"),
+        (("-groupby",), "'-groupby' has been removed; use '-by' instead"),
+        (("-handle_missing",), "'-handle_missing' has been removed; use '-fillna' instead"),
+        (("-fill_null",), "'-fill_null' has been removed; use '-fillna' instead"),
+        (("-fill_nan",), "'-fill_nan' has been removed; use '-fillna' instead"),
+        (("-drop_nulls",), "'-drop_nulls' has been removed; use '-dropna' instead"),
+        (("-drop_na",), "'-drop_na' has been removed; use '-dropna' instead"),
+        (("-value_counts",), "'-value_counts' has been removed; use '-freq' instead"),
+        (("-info",), "'-info' has been removed; use '-glimpse' instead"),
         (
-            ("-replace_values", "--replace_values"),
+            ("-replace_values",),
             "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead",
         ),
     ]

@@ -39,13 +39,18 @@ def test_cli_diff_with_tol_flag(tmp_path, capsys):
     assert "Tolerance: threshold/atol=0.001" in out
     assert "Identical: all cell values match within tolerance" in out
 
-    # -tolerance alias with scientific notation
-    exit_code2 = cli.main([str(f1), "-diff", str(f2), "-tolerance", "1e-4"])
+    # -tol flag with scientific notation
+    exit_code2 = cli.main([str(f1), "-diff", str(f2), "-tol", "1e-4"])
     assert exit_code2 == 0
     out2 = capsys.readouterr().out
     assert "Tolerance: threshold/atol=0.0001" in out2
     assert "Mismatches found in 2 cells exceeding tolerance" in out2
     assert "metric: 2 cell(s) differ (max diff: 0.0005)" in out2
+
+    # Retired -tolerance is rejected with guidance
+    with pytest.raises(SystemExit):
+        cli.main([str(f1), "-diff", str(f2), "-tolerance", "1e-4"])
+    assert "'-tolerance' is not recognized; use '-tol <threshold>' instead" in capsys.readouterr().err
 
 
 def test_cli_diff_tol_requires_diff(tmp_path, capsys):

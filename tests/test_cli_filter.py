@@ -324,10 +324,12 @@ def test_filter_unquoted_comparison_word_errors(tmp_path, capsys):
 def test_filter_dict_unquoted_keys_and_whitespace_operator(tmp_path, capsys):
     path = _write_csv(
         tmp_path,
-        pd.DataFrame({
-            "species": ["Gentoo", "Gentoo", "Adelie"],
-            "body_mass_g": [5500, 4200, 3500],
-        }),
+        pd.DataFrame(
+            {
+                "species": ["Gentoo", "Gentoo", "Adelie"],
+                "body_mass_g": [5500, 4200, 3500],
+            }
+        ),
     )
 
     exit_code = cli.main([path, "-filter", "{species : 'Gentoo', body_mass_g : ('> ', 5000)}", "-shape"])
@@ -337,9 +339,11 @@ def test_filter_dict_unquoted_keys_and_whitespace_operator(tmp_path, capsys):
 
 def test_filter_is_nan_and_is_not_nan(tmp_path, capsys):
     path = tmp_path / "data.parquet"
-    pl.DataFrame({
-        "val": [1.0, float("nan"), 2.0],
-    }).write_parquet(path)
+    pl.DataFrame(
+        {
+            "val": [1.0, float("nan"), 2.0],
+        }
+    ).write_parquet(path)
 
     exit_code = cli.main([str(path), "-filter", "val.is_nan()", "-shape"])
     assert exit_code == 0

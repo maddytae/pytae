@@ -13,13 +13,13 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
 - [Launching the REPL](#launching-the-repl)
 - [Mode 1: Single-Table Exploration Deep-Dive](#mode-1-single-table-exploration-deep-dive)
   - [Direct Pipeline Transformations](#direct-pipeline-transformations)
-  - [Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)](#non-destructive-inspection-head-shape-cols-etc)
+  - [Non-Destructive Inspection (`-head`, `-shape`, `-cols`, etc.)](#non-destructive-inspection--head--shape--cols-etc)
   - [Session State & Rollback (`reset`, `undo`, `redo`)](#session-state--rollback-reset-undo-redo)
   - [Checkpoints & Snapshots (`checkpoint`, `restore`)](#checkpoints--snapshots-checkpoint-restore)
 - [Mode 2: Multi-Table Workbench Deep-Dive (`df -cmd`)](#mode-2-multi-table-workbench-deep-dive-df--cmd)
   - [Assigning Datasets (`df1 = orders.parquet`)](#assigning-datasets-df1--ordersparquet)
   - [Listing Loaded Tables (`tables`)](#listing-loaded-tables-tables)
-  - [Subject-First Execution (`df1 head 5`, `df2 shape`)](#subject-first-execution-df1-head-5-df2-shape)
+  - [Subject-First Execution (`df1 -head 5`, `df2 -shape`)](#subject-first-execution-df1--head-5-df2--shape)
   - [Multi-Table Joins (`-join`)](#multi-table-joins--join)
   - [Assigning Pipeline & Join Results (`df3 = ...`)](#assigning-pipeline--join-results-df3--)
   - [ANSI SQL Across Loaded Tables (`sql`)](#ansi-sql-across-loaded-tables-sql)
@@ -52,7 +52,7 @@ The Pytae REPL is engineered around two distinct data analysis scenarios with ze
 |---|---|---|
 | **Invocation** | `pytae penguins.parquet -i` | `pytae -i` |
 | **Primary Workflow** | Rapid, iterative analysis of a single file | Multi-table joins, comparative analysis, SQL |
-| **Command Syntax** | `-filter "..."`, `head 5`, `-o clean.parquet` | `df1 -filter "..."`, `df2 head 5`, `df1 -join df2` |
+| **Command Syntax** | `-filter "..."`, `-head 5`, `-o clean.parquet` | `df1 -filter "..."`, `df2 -head 5`, `df1 -join df2` |
 | **Dataset Prefix** | Omitted (unambiguous, only 1 table exists) | Explicit subject-first (`df1`, `df2`, `df3`) |
 | **State Cursor** | Bound to the loaded file | Stateless workbench (subject specifies the table) |
 
@@ -98,7 +98,7 @@ pytae [penguins.parquet: 188x7]> -mutate "mass_kg = body_mass_g / 1000, is_heavy
 pytae [penguins.parquet: 188x9]> -select "species,island,mass_kg"
 -> penguins.parquet: 188 rows x 3 cols
 
-pytae [penguins.parquet: 188x3]> head 3
+pytae [penguins.parquet: 188x3]> -head 3
 ┌─────────┬───────────┬─────────┐
 │ species ┆ island    ┆ mass_kg │
 │ ---     ┆ ---       ┆ ---     │
@@ -111,35 +111,35 @@ pytae [penguins.parquet: 188x3]> head 3
 ```
 
 > [!NOTE]
-> **1:1 CLI Syntax Parity**: Pipeline verbs always start with a leading hyphen (e.g. `-filter`, `-mutate`, `-select`, `-arrange`, `-join`), maintaining exact parity with standard CLI usage. If a bare verb is entered (e.g. `filter "..."`), Pytae catches it and provides a helpful reminder.
+> **1:1 CLI Syntax Parity**: Pipeline verbs and inspection flags always start with a leading hyphen (e.g. `-filter`, `-mutate`, `-select`, `-arrange`, `-join`, `-head`, `-shape`, `-cols`), maintaining exact parity with standard CLI usage. If a bare verb is entered (e.g. `filter "..."` or `shape`), Pytae catches it and provides a helpful reminder.
 
 > [!TIP]
-> **Clean Terminal (Model 2)**: Pipeline transformations and table switching output concise shape confirmations (e.g. `-> penguins.parquet: 188 rows x 7 cols` or `df1: 344 rows x 7 cols`) without dumping full tables. To view rows, explicitly run `head` or `tail`.
+> **Clean Terminal (Model 2)**: Pipeline transformations and table switching output concise shape confirmations (e.g. `-> penguins.parquet: 188 rows x 7 cols` or `df1: 344 rows x 7 cols`) without dumping full tables. To view rows, explicitly run `-head` or `-tail`.
 
-### 2. Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)
+### 2. Non-Destructive Inspection (`-head`, `-shape`, `-cols`, etc.)
 
 Inspection commands display metadata or previews **without** truncating or mutating your dataset:
 
 ```text
 # Non-destructive previews (does NOT truncate active rows)
-pytae> head 10
-pytae> tail 5
+pytae> -head 10
+pytae> -tail 5
 
 # Dimensions & columns
-pytae> shape
+pytae> -shape
 (344, 7)
 
-pytae> cols
+pytae> -cols
 species
 island
 bill_length_mm
 ...
 
 # Column types & missing values
-pytae> dtype
-pytae> nulls
-pytae> glimpse
-pytae> describe
+pytae> -dtype
+pytae> -nulls
+pytae> -glimpse
+pytae> -describe
 ```
 
 ### 3. Session State & Rollback (`reset`, `undo`, `redo`)
@@ -233,21 +233,21 @@ Tables in memory:
    df2         : 1,500 rows x 3 cols (customers.parquet)
 ```
 
-### 3. Subject-First Execution (`df1 head 5`, `df2 shape`)
+### 3. Subject-First Execution (`df1 -head 5`, `df2 -shape`)
 
 Instead of modal "switching" between tables, **every operation explicitly states its target dataset**. This eliminates ambiguity and mirrors the Pytae CLI 1:1:
 
 ```text
 # Non-destructive inspection of specific tables
-pytae [df1, df2]> df1 head 3
-pytae [df1, df2]> df2 head 3
-pytae [df1, df2]> df1 shape
+pytae [df1, df2]> df1 -head 3
+pytae [df1, df2]> df2 -head 3
+pytae [df1, df2]> df1 -shape
 (10,000, 4)
-pytae [df1, df2]> df2 cols
+pytae [df1, df2]> df2 -cols
 
 # Apply in-place transformations to a specific table
 pytae [df1, df2]> df1 -filter "amount > 100"
-pytae [df1, df2]> df1 shape
+pytae [df1, df2]> df1 -shape
 (3,450, 4)
 
 # Export a specific table directly
@@ -255,7 +255,7 @@ pytae [df1, df2]> df1 -o clean_orders.parquet
 ```
 
 > [!TIP]
-> **Quick Dimensions**: Typing a bare table name (e.g. `df1`) switches to it and prints its dimensions (`df1: 10,000 rows x 4 cols`) without dumping any table rows. To inspect rows, run `df1 head 5` or `head 5`.
+> **Quick Dimensions**: Typing a bare table name (e.g. `df1`) switches to it and prints its dimensions (`df1: 10,000 rows x 4 cols`) without dumping any table rows. To inspect rows, run `df1 -head 5` or `-head 5`.
 
 ### 4. Multi-Table Joins (`-join`)
 
@@ -318,7 +318,7 @@ pytae [df1, df2]> py df1.join(df2, on="cust_id", how="left")
 
 ## Saving & Exporting (`-o`)
 
-Export your active dataset to disk or the system clipboard using the standard `-o` / `--output` flag:
+Export your active dataset to disk or the system clipboard using the standard `-o` flag:
 
 ```text
 # Export to Parquet, CSV, or NDJSON
@@ -347,19 +347,19 @@ pytae> -o clip
 | **`checkpoints`**| `checkpoints` | List all saved checkpoint names and shapes | No |
 | **`<var> = <file>`** | `df1 = orders.parquet` | Load file as named table in memory | **Yes** |
 | **`tables`** | `tables` | List all loaded tables in memory | No |
-| **`<name> <cmd>`** | `df1 head 5`, `df2 shape` | Run command directly on named table (subject-first) | Depends on command |
+| **`<name> -<cmd>`** | `df1 -head 5`, `df2 -shape` | Run command directly on named table (subject-first) | Depends on command |
 | **`<name>`** | `df1` | Switch to table and display dimensions (`rows x cols`) | **Yes** (switches active) |
 | **`-join`** | `-join <target> on=<key> [how=...] [-o <path>]` | Join table or file into active dataset | **Yes** (undoable) |
 | **`-o`** | `-o <path>`, `-o clip` | Export active dataset to Parquet/CSV or clipboard | No |
 | **`sql`** | `sql <query>` | Run ANSI SQL against active table or named tables | **Yes** (undoable) |
 | **`py`** | `py <expr>` | Evaluate Python expression on `df` / `pldf` | No |
-| **`head`** | `head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
-| **`tail`** | `tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
-| **`shape`** | `shape` | Display row and column counts | No |
-| **`cols`** | `cols` | Display column names | No |
-| **`dtype`** | `dtype` | Display column data types | No |
-| **`nulls`** | `nulls` | Display missing value counts | No |
-| **`glimpse`** | `glimpse` | Display transposed schema and sample values | No |
-| **`describe`** | `describe` | Display statistical summary of numeric columns | No |
+| **`-head`** | `-head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
+| **`-tail`** | `-tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
+| **`-shape`** | `-shape` | Display row and column counts | No |
+| **`-cols`** | `-cols` | Display column names | No |
+| **`-dtype`** | `-dtype` | Display column data types | No |
+| **`-nulls`** | `-nulls` | Display missing value counts | No |
+| **`-glimpse`** | `-glimpse` | Display transposed schema and sample values | No |
+| **`-describe`**| `-describe` | Display statistical summary of numeric columns | No |
 | **`exit`** | `exit` | Exit the REPL session | — |
 

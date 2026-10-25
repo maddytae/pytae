@@ -681,11 +681,16 @@ def test_cli_out_dir_single_and_batch(tmp_path):
     assert exit_code == 0
     assert (out_directory / "file1.parquet").exists()
 
-    # Batch files with -od alias
-    exit_code2 = cli.main([str(f1), str(f2), "-o", "parquet", "-od", str(out_directory)])
+    # Batch files with canonical -out_dir
+    exit_code2 = cli.main([str(f1), str(f2), "-o", "parquet", "-out_dir", str(out_directory)])
     assert exit_code2 == 0
     assert (out_directory / "file1.parquet").exists()
     assert (out_directory / "file2.parquet").exists()
+
+    # Retired -od alias is rejected with guidance
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(f1), str(f2), "-o", "parquet", "-od", str(out_directory)])
+    assert exc_info.value.code == 2
 
 
 def test_cli_out_dir_validations(tmp_path, capsys):

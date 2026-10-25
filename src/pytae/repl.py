@@ -42,19 +42,19 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
   -distinct <cols>       : Deduplicate rows
   -dropna [cols]         : Drop missing values
   -fillna <specs>        : Impute missing values
+  -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
+  -shape / -cols /-dtype : Non-destructive metadata inspection
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
-  head [N] / tail [N]    : Non-destructive preview of top/bottom N rows (e.g. head 10)
-  shape / cols / dtype   : Non-destructive metadata inspection
 
 MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
-  Load multiple datasets and operate with subject-first syntax (<tbl> <cmd>):
+  Load multiple datasets and operate with subject-first syntax (<tbl> -<cmd>):
   <var> = <path.parquet> : Ingest dataset into a named variable (e.g. df1 = orders.parquet)
-  <tbl> head [N]         : Preview specific table (e.g. df1 head 5, df2 head 3)
-  <tbl> shape / cols     : Inspect table metadata (e.g. df1 shape, df2 cols)
-  <tbl> <pipeline>       : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
+  <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
+  <tbl> -shape / -cols   : Inspect table metadata (e.g. df1 -shape, df2 -cols)
+  <tbl> -<pipeline>      : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
   <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
   <tbl> -o <path>        : Export specific table (e.g. df1 -o clean_orders.parquet)
-  <var> = <tbl> <pipe>   : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
+  <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
   <var> = <t1> -join <t2>: Assign join result (e.g. df3 = df1 -join df2 on=cust_id)
   <var> = sql <query>    : Create table from ANSI SQL across loaded tables
   tables                 : List all loaded datasets in memory
@@ -78,7 +78,7 @@ QUERY & PYTHON EXPRESSIONS:
 """
 
 _DISALLOWED_ALIASES: dict[str, str] = {
-    # Session / inspection hyphenated forms
+    # Session controls hyphenated forms (must be bare words)
     "-help": "help",
     "--help": "help",
     "-exit": "exit",
@@ -105,32 +105,76 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--use": "use",
     "-load": "load",
     "--load": "load",
-    "-shape": "shape",
-    "--shape": "shape",
-    "-cols": "cols",
-    "--cols": "cols",
-    "-dtype": "dtype",
-    "--dtype": "dtype",
-    "-nulls": "nulls",
-    "--nulls": "nulls",
-    "-glimpse": "glimpse",
-    "--glimpse": "glimpse",
-    "-describe": "describe",
-    "--describe": "describe",
-    "-head": "head",
-    "--head": "head",
-    "-tail": "tail",
-    "--tail": "tail",
+    # Double-hyphen data inspection forms
+    "--shape": "-shape",
+    "--cols": "-cols",
+    "--dtype": "-dtype",
+    "--nulls": "-nulls",
+    "--glimpse": "-glimpse",
+    "--describe": "-describe",
+    "--head": "-head",
+    "--tail": "-tail",
+    # Double-hyphen pipeline flags
+    "--filter": "-filter",
+    "--mutate": "-mutate",
+    "--select": "-select",
+    "--arrange": "-arrange",
+    "--by": "-by",
+    "--agg": "-agg",
+    "--distinct": "-distinct",
+    "--count": "-count",
+    "--sample": "-sample",
+    "--seed": "-seed",
+    "--frac": "-frac",
+    "--fillna": "-fillna",
+    "--dropna": "-dropna",
+    "--clean_columns": "-clean_columns",
+    "--mask": "-mask",
+    "--unmask": "-unmask",
+    "--long": "-long",
+    "--wide": "-wide",
+    "--pivot": "-pivot",
+    "--rename": "-rename",
+    "--join": "-join",
+    "--concat": "-concat",
+    "--sql": "-sql",
+    "--output": "-o <path>",
+    "-output": "-o <path>",
+    "--out_dir": "-out_dir",
+    "-out-dir": "-out_dir",
+    "--out-dir": "-out_dir",
+    "-od": "-out_dir",
+    "--od": "-out_dir",
+    "-limit": "-nrows",
+    "--limit": "-nrows",
+    "--nrows": "-nrows",
+    "-tolerance": "-tol",
+    "--tolerance": "-tol",
+    "--tol": "-tol",
     # Synonym / legacy aliases
-    "columns": "cols",
-    "dtypes": "dtype",
+    "columns": "-cols",
+    "-columns": "-cols",
+    "--columns": "-cols",
+    "dtypes": "-dtype",
+    "-dtypes": "-dtype",
+    "--dtypes": "-dtype",
     "vars": "tables",
     "datasets": "tables",
     "cp": "checkpoint",
+    "-cp": "checkpoint",
+    "--cp": "checkpoint",
     "cps": "checkpoints",
+    "-cps": "checkpoints",
+    "--cps": "checkpoints",
     "tag": "checkpoint",
     "tags": "checkpoints",
     "switch": "use",
+    "-interactive": "-i",
+    "--interactive": "-i",
+    "-repl": "-i",
+    "--repl": "-i",
+    "-examples": "-cheatsheet",
+    "--examples": "-cheatsheet",
     "checkout": "restore",
     "read": "load",
     "open": "load",
@@ -164,48 +208,15 @@ _BARE_PIPELINE_VERBS = frozenset(
         "sample",
         "join",
         "concat",
+        "shape",
+        "cols",
+        "dtype",
+        "nulls",
+        "glimpse",
+        "describe",
+        "head",
+        "tail",
     )
-)
-
-_TRANSFORMATION_PREFIXES = (
-    "-filter",
-    "--filter",
-    "-mutate",
-    "--mutate",
-    "-select",
-    "--select",
-    "-rename",
-    "--rename",
-    "-arrange",
-    "--arrange",
-    "-by",
-    "--by",
-    "-agg",
-    "--agg",
-    "-distinct",
-    "--distinct",
-    "-count",
-    "--count",
-    "-dropna",
-    "--dropna",
-    "-fillna",
-    "--fillna",
-    "-clean_columns",
-    "--clean_columns",
-    "-mask",
-    "--mask",
-    "-unmask",
-    "--unmask",
-    "-long",
-    "--long",
-    "-wide",
-    "--wide",
-    "-pivot",
-    "--pivot",
-    "-sample",
-    "--sample",
-    "-sql",
-    "--sql",
 )
 
 
@@ -455,12 +466,12 @@ class PytaeRepl:
             return True
 
         # Join: -join (bare join is caught by _BARE_PIPELINE_VERBS above)
-        if first_lower in ("-join", "--join"):
+        if first_lower == "-join":
             self._cmd_join(tokens[1:], output_fn)
             return True
 
-        # Save / Export: -o / --output
-        if first_lower in ("-o", "--output"):
+        # Save / Export: -o (reject -output / --output)
+        if first_lower == "-o":
             if len(tokens) < 2:
                 output_fn("Usage: -o <path.parquet|csv|ndjson|clip>")
                 return True
@@ -471,9 +482,8 @@ class PytaeRepl:
             target = first_lower[3:].strip("\"'")
             self._cmd_save(target, output_fn)
             return True
-        elif first_lower.startswith("--output="):
-            target = first_lower[9:].strip("\"'")
-            self._cmd_save(target, output_fn)
+        elif first_lower.startswith(("-output", "--output")):
+            output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
             return True
 
         # SQL Query
@@ -488,22 +498,22 @@ class PytaeRepl:
             self._cmd_py(expr, output_fn)
             return True
 
-        # Convenience shortcuts for non-destructive inspection without hyphens
-        if first_lower == "shape":
+        # Non-destructive dataset inspection (-shape, -cols, -dtype, etc.)
+        if first_lower == "-shape":
             if self.current_df is not None:
                 output_fn(f"({self.current_df.shape[0]}, {self.current_df.shape[1]})")
             else:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "cols":
+        if first_lower == "-cols":
             if self.current_df is not None:
                 output_fn("\n".join(self.current_df.columns))
             else:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "dtype":
+        if first_lower == "-dtype":
             if self.current_df is not None:
                 reader = DataFrameReader(self.current_df)
                 output_fn(reader.dtypes().to_string())
@@ -511,7 +521,7 @@ class PytaeRepl:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "nulls":
+        if first_lower == "-nulls":
             if self.current_df is not None:
                 nulls_s = self.current_df.null_count().to_pandas().iloc[0]
                 output_fn(nulls_s.to_string())
@@ -519,7 +529,7 @@ class PytaeRepl:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "glimpse":
+        if first_lower == "-glimpse":
             if self.current_df is not None:
                 from pytae.dataframe import DataFrame as PytaeDataFrame
 
@@ -528,14 +538,14 @@ class PytaeRepl:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "describe":
+        if first_lower == "-describe":
             if self.current_df is not None:
                 output_fn(_format_table(self.current_df.describe()))
             else:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "head":
+        if first_lower == "-head":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
             if self.current_df is not None:
                 output_fn(_format_table(self.current_df.head(n), tbl_rows=max(n, 10)))
@@ -543,7 +553,7 @@ class PytaeRepl:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "tail":
+        if first_lower == "-tail":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
             if self.current_df is not None:
                 output_fn(_format_table(self.current_df.tail(n), tbl_rows=max(n, 10)))
@@ -758,7 +768,7 @@ class PytaeRepl:
                     return
                 # Run pipeline or join on source_df
                 self.current_df = source_df.clone()
-                if first_pipe in ("-join", "--join"):
+                if first_pipe == "-join":
                     self._cmd_join(pipe_tokens[1:], output_fn)
                 else:
                     self._cmd_pipeline(pipe_line, pipe_tokens, output_fn)
@@ -792,31 +802,33 @@ class PytaeRepl:
 
         if first_sub in _BARE_PIPELINE_VERBS:
             output_fn(f"pytae: bare '{first_sub}' is not recognized; use '-{first_sub}' (matching CLI syntax).")
-        elif first_sub == "shape":
+        elif first_sub == "-shape":
             output_fn(f"({target_df.shape[0]}, {target_df.shape[1]})")
-        elif first_sub == "cols":
+        elif first_sub == "-cols":
             output_fn("\n".join(target_df.columns))
-        elif first_sub == "dtype":
+        elif first_sub == "-dtype":
             reader = DataFrameReader(target_df)
             output_fn(reader.dtypes().to_string())
-        elif first_sub == "nulls":
+        elif first_sub == "-nulls":
             output_fn(target_df.null_count().to_pandas().iloc[0].to_string())
-        elif first_sub == "glimpse":
+        elif first_sub == "-glimpse":
             from pytae.dataframe import DataFrame as PytaeDataFrame
 
             output_fn(PytaeDataFrame(target_df).glimpse())
-        elif first_sub == "describe":
+        elif first_sub == "-describe":
             output_fn(_format_table(target_df.describe()))
-        elif first_sub == "head":
+        elif first_sub == "-head":
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
             output_fn(_format_table(target_df.head(n), tbl_rows=max(n, 10)))
-        elif first_sub == "tail":
+        elif first_sub == "-tail":
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
             output_fn(_format_table(target_df.tail(n), tbl_rows=max(n, 10)))
-        elif first_sub in ("-o", "--output"):
+        elif first_sub == "-o":
             dest = sub_tokens[1] if len(sub_tokens) > 1 else "output.parquet"
             self._cmd_save(dest, output_fn)
-        elif first_sub in ("-join", "--join"):
+        elif first_sub.startswith(("-output", "--output")):
+            output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
+        elif first_sub == "-join":
             self._cmd_join(sub_tokens[1:], output_fn)
             self.tables[table_name] = self.current_df
         else:
@@ -863,23 +875,22 @@ class PytaeRepl:
             output_fn("Usage: -join <target> on=<key> [how=left|inner|outer|semi|anti] [-o <file>]")
             return
 
-        # 1. Extract any output destination: `-o <dest>` or `--output <dest>`
+        # 1. Extract any output destination: `-o <dest>` (reject -output / --output)
         output_file: str | None = None
         filtered_args: list[str] = []
         i = 0
         while i < len(args):
             tok = args[i]
-            if tok in ("-o", "--output"):
+            if tok in ("--output", "-output") or tok.startswith(("--output=", "-output=")):
+                output_fn(f"pytae: '{tok}' is not recognized; use '-o <path>'.")
+                return
+            if tok == "-o":
                 if i + 1 < len(args):
                     output_file = args[i + 1]
                     i += 2
                     continue
             elif tok.startswith("-o="):
                 output_file = tok[3:].strip("\"'")
-                i += 1
-                continue
-            elif tok.startswith("--output="):
-                output_file = tok[9:].strip("\"'")
                 i += 1
                 continue
             filtered_args.append(tok)

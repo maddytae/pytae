@@ -918,7 +918,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae penguins.parquet -i",
             "pytae -i",
-            'pytae penguins.parquet -filter "species == \'Gentoo\'" -i',
+            "pytae penguins.parquet -filter \"species == 'Gentoo'\" -i",
         ],
         see_also=["-filter", "-mutate", "-agg", "-sql", "-cheatsheet"],
     ),

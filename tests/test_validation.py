@@ -1,4 +1,3 @@
-
 import polars as pl
 import pytest
 
@@ -17,11 +16,7 @@ def test_validate_pipeline_dict_schema():
     schema = {"weight": float, "height": float, "species": str}
 
     def pipeline(df):
-        return (
-            df.filter("species == 'Adelie'")
-            .mutate("bmi = weight / (height ** 2)")
-            .select("species", "bmi")
-        )
+        return df.filter("species == 'Adelie'").mutate("bmi = weight / (height ** 2)").select("species", "bmi")
 
     res = validate_pipeline(pipeline, schema)
     assert res.columns == ["species", "bmi"]

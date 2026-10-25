@@ -12,11 +12,13 @@ from pytae import cli
 
 @pytest.fixture
 def df():
-    return pt.DataFrame({
-        "species": ["Adelie", "Adelie", "Chinstrap", "Adelie", "Gentoo", "Gentoo"],
-        "island": ["Torgersen", "Biscoe", "Dream", "Torgersen", "Biscoe", "Biscoe"],
-        "mass": [3750.0, 3800.0, 3250.0, 3450.0, 4850.0, 5000.0],
-    })
+    return pt.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Chinstrap", "Adelie", "Gentoo", "Gentoo"],
+            "island": ["Torgersen", "Biscoe", "Dream", "Torgersen", "Biscoe", "Biscoe"],
+            "mass": [3750.0, 3800.0, 3250.0, 3450.0, 4850.0, 5000.0],
+        }
+    )
 
 
 def test_count_single_column(df):

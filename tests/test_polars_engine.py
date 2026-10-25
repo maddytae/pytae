@@ -66,6 +66,7 @@ def test_filter_polars_operators():
 
     # Null checks: 1-tuples raise ValueError, string predicates succeed
     import pytest
+
     with pytest.raises(ValueError, match=r"1-tuple pattern"):
         filter_polars(df, [("c", ("isna",))])
     with pytest.raises(ValueError, match=r"1-tuple pattern"):
@@ -77,6 +78,7 @@ def test_filter_polars_operators():
         filter_polars(df, [("c", ("notna", None))])
 
     from pytae._parsing import _parse_filter_string
+
     res_null = filter_polars(df, _parse_filter_string("c.is_null()"))
     assert len(res_null) == 2
 
@@ -701,10 +703,12 @@ def test_filter_string_column_type_enforcement():
 
 
 def test_consistent_is_null_and_is_nan_across_dict_and_non_dict():
-    df = pt.DataFrame({
-        "sex": ["M", None, "F", None],
-        "score": [1.0, float("nan"), 3.0, 4.0],
-    })
+    df = pt.DataFrame(
+        {
+            "sex": ["M", None, "F", None],
+            "score": [1.0, float("nan"), 3.0, 4.0],
+        }
+    )
 
     # 1. Non-dict strings: The one and only obvious way
     assert len(df.filter("sex.is_null()")) == 2
@@ -735,7 +739,9 @@ def test_consistent_is_null_and_is_nan_across_dict_and_non_dict():
     with pytest.raises(ValueError, match=r"checking for null values in dictionaries via None is not supported"):
         df.filter({"sex": None})
 
-    with pytest.raises(ValueError, match=r"checking for NaN values in dictionaries via float\('nan'\) is not supported"):
+    with pytest.raises(
+        ValueError, match=r"checking for NaN values in dictionaries via float\('nan'\) is not supported"
+    ):
         df.filter({"score": float("nan")})
 
     # 5. Operator tuples with None or float('nan') strictly raise ValueError
@@ -744,4 +750,3 @@ def test_consistent_is_null_and_is_nan_across_dict_and_non_dict():
 
     with pytest.raises(ValueError, match=r"NaN checks in dictionaries via"):
         df.filter({"score": ("!=", float("nan"))})
-

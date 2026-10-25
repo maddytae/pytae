@@ -250,4 +250,3 @@ def test_mutate_cli_first_last_window(tmp_path, capsys):
     assert "base" in out and "dev" in out and "ending" in out
     assert "15.0" in out or "15" in out  # 25.0 - 10.0 = 15.0
     assert "40.0" in out or "40" in out  # 140.0 - 100.0 = 40.0
-

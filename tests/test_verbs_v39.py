@@ -226,8 +226,7 @@ def test_pytae_dataframe_direct_operations_no_pt():
     pt_df = pt.sample("penguins")
     # All fluent operations work directly without needing .pt
     res = (
-        pt_df
-        .filter("body_mass_g > 3000")
+        pt_df.filter("body_mass_g > 3000")
         .mutate(mass_kg="body_mass_g / 1000")
         .select("species", "island", "mass_kg")
         .arrange("mass_kg desc")
@@ -260,10 +259,12 @@ def test_pytae_dataframe_direct_operations_no_pt():
 
 
 def test_filter_notna_spaced_column():
-    df = pt.DataFrame({
-        "bill length mm": [39.1, None, 40.5, None, 45.2],
-        "body mass g": [3750, 3800, None, 4000, 4200],
-    })
+    df = pt.DataFrame(
+        {
+            "bill length mm": [39.1, None, 40.5, None, 45.2],
+            "body mass g": [3750, 3800, None, 4000, 4200],
+        }
+    )
 
     # 1. Bracket notation
     assert len(df.filter("[bill length mm].notna()")) == 3
@@ -292,4 +293,3 @@ def test_filter_notna_spaced_column():
     # Bare word without parens is strictly rejected
     with pytest.raises(ValueError, match=r"requires parentheses: 'is_not_null\(\)'"):
         df.filter({"bill length mm": "notna"})
-

@@ -189,4 +189,3 @@ def test_cli_bar_display_full_rows_up_to_250(tmp_path, capsys):
     assert "item_12" in out
     assert "item_24" in out
     assert "…" not in out
-

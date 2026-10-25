@@ -149,10 +149,12 @@ def test_mutate_local_var_reference_in_if_else():
 
 
 def test_mutate_local_var_select_columns_in_if_else():
-    df = pt.DataFrame({
-        "cola": [10, 20, 30],
-        "colb": [100, 200, 300],
-    })
+    df = pt.DataFrame(
+        {
+            "cola": [10, 20, 30],
+            "colb": [100, 200, 300],
+        }
+    )
     var = "yes"
     res1 = df.mutate('colx = if_else(@var == "yes", cola, colb)')
     assert list(res1["colx"]) == [10, 20, 30]
@@ -921,8 +923,5 @@ def test_mutate_direct_polars_expr():
     import polars as pl
 
     df = pt.DataFrame({"x": [10, 20, 30]})
-    res = df.mutate(
-        tier=pl.when(pl.col("x") > 25).then(pl.lit("High")).otherwise(pl.lit("Low"))
-    )
+    res = df.mutate(tier=pl.when(pl.col("x") > 25).then(pl.lit("High")).otherwise(pl.lit("Low")))
     assert res["tier"].to_list() == ["Low", "Low", "High"]
-

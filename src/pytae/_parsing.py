@@ -385,16 +385,12 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
             if ch == ",":
                 raise SystemExit(
                     f"invalid filter condition '{s}': comma ',' is not supported as a boolean operator. "
-                    f"Use 'and' instead (e.g. {s[:i].strip()} and {s[i+1:].strip()})."
+                    f"Use 'and' instead (e.g. {s[:i].strip()} and {s[i + 1 :].strip()})."
                 )
             if ch == "&":
-                raise SystemExit(
-                    f"invalid filter condition '{s}': '&' is not supported in filter. Use 'and' instead."
-                )
+                raise SystemExit(f"invalid filter condition '{s}': '&' is not supported in filter. Use 'and' instead.")
             if ch == "|":
-                raise SystemExit(
-                    f"invalid filter condition '{s}': '|' is not supported in filter. Use 'or' instead."
-                )
+                raise SystemExit(f"invalid filter condition '{s}': '|' is not supported in filter. Use 'or' instead.")
 
     # Split OR (lowest precedence)
     or_parts = _split_top_level(s, ["or"])
@@ -644,7 +640,9 @@ def _rewrite_col_refs(expr: str, columns: set[str]) -> tuple[str, dict[str, str]
                 if expr[i : i + k] == col_cand:
                     prev_char = expr[i - 1] if i > 0 else ""
                     next_char = expr[i + k] if i + k < n else ""
-                    if (not prev_char.isalnum() and prev_char != "_") and (not next_char.isalnum() and next_char != "_"):
+                    if (not prev_char.isalnum() and prev_char != "_") and (
+                        not next_char.isalnum() and next_char != "_"
+                    ):
                         alias = f"__col_safe_{col_idx}__"
                         col_idx += 1
                         mapping[alias] = col_cand
