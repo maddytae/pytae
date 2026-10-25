@@ -18,8 +18,8 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Checkpoints & Snapshots (`checkpoint`, `restore`)](#checkpoints--snapshots-checkpoint-restore)
 - [Mode 2: Multi-Table Workbench Deep-Dive (`df -cmd`)](#mode-2-multi-table-workbench-deep-dive-df--cmd)
   - [Assigning Datasets (`df1 = orders.parquet`)](#assigning-datasets-df1--ordersparquet)
-  - [Listing Loaded Tables (`tables`, `vars`)](#listing-loaded-tables-tables-vars)
-  - [Subject-First Execution (`df1 -head 5`, `df2 -shape`)](#subject-first-execution-df1--head-5-df2--shape)
+  - [Listing Loaded Tables (`tables`)](#listing-loaded-tables-tables)
+  - [Subject-First Execution (`df1 head 5`, `df2 shape`)](#subject-first-execution-df1-head-5-df2-shape)
   - [Multi-Table Joins (`-join`)](#multi-table-joins--join)
   - [Assigning Pipeline & Join Results (`df3 = ...`)](#assigning-pipeline--join-results-df3--)
   - [ANSI SQL Across Loaded Tables (`sql`)](#ansi-sql-across-loaded-tables-sql)
@@ -52,7 +52,7 @@ The Pytae REPL is engineered around two distinct data analysis scenarios with ze
 |---|---|---|
 | **Invocation** | `pytae penguins.parquet -i` | `pytae -i` |
 | **Primary Workflow** | Rapid, iterative analysis of a single file | Multi-table joins, comparative analysis, SQL |
-| **Command Syntax** | `-filter "..."`, `head 5`, `-o clean.parquet` | `df1 -filter "..."`, `df2 -head 5`, `df1 -join df2` |
+| **Command Syntax** | `-filter "..."`, `head 5`, `-o clean.parquet` | `df1 -filter "..."`, `df2 head 5`, `df1 -join df2` |
 | **Dataset Prefix** | Omitted (unambiguous, only 1 table exists) | Explicit subject-first (`df1`, `df2`, `df3`) |
 | **State Cursor** | Bound to the loaded file | Stateless workbench (subject specifies the table) |
 
@@ -188,8 +188,6 @@ Saved Checkpoints:
   - baseline       : 344 rows x 7 cols
 ```
 
-*(Aliases: `cp` for `checkpoint`, `checkout` for `restore`, `cps` for `checkpoints`)*.
-
 ---
 
 ## Mode 2: Multi-Table Workbench Deep-Dive (`df -cmd`)
@@ -224,7 +222,7 @@ pytae [df1, df2]>
 
 Notice how the prompt dynamically updates to show all datasets currently in memory: `pytae [df1, df2]> `.
 
-### 2. Listing Loaded Tables (`tables`, `vars`)
+### 2. Listing Loaded Tables (`tables`)
 
 Inspect all loaded tables and their dimensions anytime:
 
@@ -235,14 +233,14 @@ Tables in memory:
    df2         : 1,500 rows x 3 cols (customers.parquet)
 ```
 
-### 3. Subject-First Execution (`df1 -head 5`, `df2 -shape`)
+### 3. Subject-First Execution (`df1 head 5`, `df2 shape`)
 
 Instead of modal "switching" between tables, **every operation explicitly states its target dataset**. This eliminates ambiguity and mirrors the Pytae CLI 1:1:
 
 ```text
 # Non-destructive inspection of specific tables
-pytae [df1, df2]> df1 -head 3
-pytae [df1, df2]> df2 -head 3
+pytae [df1, df2]> df1 head 3
+pytae [df1, df2]> df2 head 3
 pytae [df1, df2]> df1 shape
 (10,000, 4)
 pytae [df1, df2]> df2 cols
@@ -257,7 +255,7 @@ pytae [df1, df2]> df1 -o clean_orders.parquet
 ```
 
 > [!TIP]
-> **Quick Dimensions**: Typing a bare table name (e.g. `df1`) switches to it and prints its dimensions (`df1: 10,000 rows x 4 cols`) without dumping any table rows. To inspect rows, run `df1 -head 5` or `head 5`.
+> **Quick Dimensions**: Typing a bare table name (e.g. `df1`) switches to it and prints its dimensions (`df1: 10,000 rows x 4 cols`) without dumping any table rows. To inspect rows, run `df1 head 5` or `head 5`.
 
 ### 4. Multi-Table Joins (`-join`)
 
@@ -344,12 +342,12 @@ pytae> -o clip
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
 | **`history`** | `history` | List numbered history of applied transformation steps | No |
-| **`checkpoint`** | `checkpoint <name>`, `cp <name>` | Save current table state with a name | No |
-| **`restore`** | `restore <name>`, `checkout <name>` | Restore active table to a named checkpoint | **Yes** (undoable) |
-| **`checkpoints`**| `checkpoints`, `cps` | List all saved checkpoint names and shapes | No |
+| **`checkpoint`** | `checkpoint <name>` | Save current table state with a name | No |
+| **`restore`** | `restore <name>` | Restore active table to a named checkpoint | **Yes** (undoable) |
+| **`checkpoints`**| `checkpoints` | List all saved checkpoint names and shapes | No |
 | **`<var> = <file>`** | `df1 = orders.parquet` | Load file as named table in memory | **Yes** |
-| **`tables`** | `tables`, `vars` | List all loaded tables in memory | No |
-| **`<name> <cmd>`** | `df1 -head 5`, `df2 -shape` | Run command directly on named table (subject-first) | Depends on command |
+| **`tables`** | `tables` | List all loaded tables in memory | No |
+| **`<name> <cmd>`** | `df1 head 5`, `df2 shape` | Run command directly on named table (subject-first) | Depends on command |
 | **`<name>`** | `df1` | Switch to table and display dimensions (`rows x cols`) | **Yes** (switches active) |
 | **`-join`** | `-join <target> on=<key> [how=...] [-o <path>]` | Join table or file into active dataset | **Yes** (undoable) |
 | **`-o`** | `-o <path>`, `-o clip` | Export active dataset to Parquet/CSV or clipboard | No |
@@ -357,11 +355,11 @@ pytae> -o clip
 | **`py`** | `py <expr>` | Evaluate Python expression on `df` / `pldf` | No |
 | **`head`** | `head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
 | **`tail`** | `tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
-| **`shape`** | `shape`, `-shape` | Display row and column counts | No |
-| **`cols`** | `cols [asc]`, `-cols` | Display column names | No |
-| **`dtype`** | `dtype`, `-dtype` | Display column data types | No |
-| **`nulls`** | `nulls`, `-nulls` | Display missing value counts | No |
-| **`glimpse`** | `glimpse`, `-glimpse` | Display transposed schema and sample values | No |
-| **`describe`** | `describe`, `-describe` | Display statistical summary of numeric columns | No |
+| **`shape`** | `shape` | Display row and column counts | No |
+| **`cols`** | `cols` | Display column names | No |
+| **`dtype`** | `dtype` | Display column data types | No |
+| **`nulls`** | `nulls` | Display missing value counts | No |
+| **`glimpse`** | `glimpse` | Display transposed schema and sample values | No |
+| **`describe`** | `describe` | Display statistical summary of numeric columns | No |
 | **`exit`** | `exit` | Exit the REPL session | — |
 

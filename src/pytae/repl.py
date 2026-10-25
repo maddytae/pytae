@@ -49,7 +49,7 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
 MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   Load multiple datasets and operate with subject-first syntax (<tbl> <cmd>):
   <var> = <path.parquet> : Ingest dataset into a named variable (e.g. df1 = orders.parquet)
-  <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
+  <tbl> head [N]         : Preview specific table (e.g. df1 head 5, df2 head 3)
   <tbl> shape / cols     : Inspect table metadata (e.g. df1 shape, df2 cols)
   <tbl> <pipeline>       : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
   <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
@@ -57,15 +57,16 @@ MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   <var> = <tbl> <pipe>   : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
   <var> = <t1> -join <t2>: Assign join result (e.g. df3 = df1 -join df2 on=cust_id)
   <var> = sql <query>    : Create table from ANSI SQL across loaded tables
-  tables / vars          : List all loaded datasets in memory
+  tables                 : List all loaded datasets in memory
+  use <name>             : Switch active dataset (or type bare table name e.g. df1)
 
 STATE NAVIGATION (Undoable):
   undo                   : Revert the last transformation step
   redo                   : Re-apply the last undone transformation step
   reset                  : Restore original dataset state
   history                : Show numbered transformation log
-  checkpoint <name>      : Save current table state (cp)
-  restore <name>         : Restore table to saved checkpoint (checkout)
+  checkpoint <name>      : Save snapshot of current table state
+  restore <name>         : Restore table to saved checkpoint
   checkpoints            : List saved checkpoints
   exit                   : Exit REPL
 
@@ -76,51 +77,70 @@ QUERY & PYTHON EXPRESSIONS:
 ================================================================================\
 """
 
-_INSPECTION_OPS = frozenset(
-    (
-        "shape",
-        "-shape",
-        "--shape",
-        "cols",
-        "-cols",
-        "--cols",
-        "dtype",
-        "-dtype",
-        "--dtype",
-        "nulls",
-        "-nulls",
-        "--nulls",
-        "describe",
-        "-describe",
-        "--describe",
-        "glimpse",
-        "-glimpse",
-        "--glimpse",
-        "meta",
-        "-meta",
-        "--meta",
-        "freq",
-        "-freq",
-        "--freq",
-        "hist",
-        "-hist",
-        "--hist",
-        "bar",
-        "-bar",
-        "--bar",
-        "scatter",
-        "-scatter",
-        "--scatter",
-        "corr",
-        "-corr",
-        "--corr",
-        "plot",
-        "-plot",
-        "--plot",
-    )
-)
-
-_PREVIEW_OPS = frozenset(("head", "-head", "--head", "tail", "-tail", "--tail"))
+_DISALLOWED_ALIASES: dict[str, str] = {
+    # Session / inspection hyphenated forms
+    "-help": "help",
+    "--help": "help",
+    "-exit": "exit",
+    "--exit": "exit",
+    "-status": "status",
+    "--status": "status",
+    "-reset": "reset",
+    "--reset": "reset",
+    "-undo": "undo",
+    "--undo": "undo",
+    "-redo": "redo",
+    "--redo": "redo",
+    "-history": "history",
+    "--history": "history",
+    "-tables": "tables",
+    "--tables": "tables",
+    "-checkpoint": "checkpoint",
+    "--checkpoint": "checkpoint",
+    "-checkpoints": "checkpoints",
+    "--checkpoints": "checkpoints",
+    "-restore": "restore",
+    "--restore": "restore",
+    "-use": "use",
+    "--use": "use",
+    "-load": "load",
+    "--load": "load",
+    "-shape": "shape",
+    "--shape": "shape",
+    "-cols": "cols",
+    "--cols": "cols",
+    "-dtype": "dtype",
+    "--dtype": "dtype",
+    "-nulls": "nulls",
+    "--nulls": "nulls",
+    "-glimpse": "glimpse",
+    "--glimpse": "glimpse",
+    "-describe": "describe",
+    "--describe": "describe",
+    "-head": "head",
+    "--head": "head",
+    "-tail": "tail",
+    "--tail": "tail",
+    # Synonym / legacy aliases
+    "columns": "cols",
+    "dtypes": "dtype",
+    "vars": "tables",
+    "datasets": "tables",
+    "cp": "checkpoint",
+    "cps": "checkpoints",
+    "tag": "checkpoint",
+    "tags": "checkpoints",
+    "switch": "use",
+    "checkout": "restore",
+    "read": "load",
+    "open": "load",
+    "save": "-o <path>",
+    "export": "-o <path>",
+    "quit": "exit",
+    "q": "exit",
+    ":q": "exit",
+    "?": "help",
+}
 
 _BARE_PIPELINE_VERBS = frozenset(
     (
@@ -212,13 +232,14 @@ class PytaeRepl:
 
         self.undo_stack: list[tuple[str, pl.DataFrame]] = []
         self.redo_stack: list[tuple[str, pl.DataFrame]] = []
+        self.tables: dict[str, pl.DataFrame] = {}
         self.checkpoints: dict[str, pl.DataFrame] = {}
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
 
         if self.current_df is not None:
             initial_name = self.path_str or "df"
-            self.checkpoints[initial_name] = self.current_df
+            self.tables[initial_name] = self.current_df
             self.table_sources[initial_name] = str(self.path) if self.path else "<memory>"
 
     def _set_initial_df(self, df: Any) -> None:
@@ -260,8 +281,8 @@ class PytaeRepl:
         return f"{self.current_df.shape[0]:,}x{self.current_df.shape[1]}"
 
     def _build_prompt(self) -> str:
-        if len(self.checkpoints) > 1:
-            table_names = ", ".join(self.checkpoints.keys())
+        if len(self.tables) > 1:
+            table_names = ", ".join(self.tables.keys())
             return f"{self.prompt} [{table_names}]> "
         elif self.current_df is not None:
             name = self.path_str or "<dataframe>"
@@ -278,16 +299,10 @@ class PytaeRepl:
         if line.lower() == "exit":
             output_fn("Exiting pytae REPL.")
             return False
-        if line.lower() in ("quit", "q", ":q"):
-            output_fn("pytae: use 'exit' to quit the REPL.")
-            return True
 
         # Help (strictly 'help', not '?')
-        if line.lower() in ("help", "-help", "--help"):
+        if line.lower() == "help":
             output_fn(REPL_HELP)
-            return True
-        if line.strip() == "?":
-            output_fn("pytae: '?' is not recognized; use 'help'.")
             return True
 
         # Shell command execution: !<command> (e.g. !ls, !dir)
@@ -314,42 +329,52 @@ class PytaeRepl:
             return True
 
         # Reset
-        if line.lower() in ("reset", "-reset", "--reset"):
+        if line.lower() == "reset":
             self._cmd_reset(output_fn)
             return True
 
         # Undo
-        if line.lower() in ("undo", "-undo", "--undo"):
+        if line.lower() == "undo":
             self._cmd_undo(output_fn)
             return True
 
         # Redo
-        if line.lower() in ("redo", "-redo", "--redo"):
+        if line.lower() == "redo":
             self._cmd_redo(output_fn)
             return True
 
         # History
-        if line.lower() in ("history", "-history", "--history"):
+        if line.lower() == "history":
             self._cmd_history(output_fn)
             return True
 
-        # Checkpoint / Restore
+        # Tokenize line
         tokens = shlex.split(line)
         first_lower = tokens[0].lower()
+
+        # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands
+        if first_lower in _DISALLOWED_ALIASES:
+            canonical = _DISALLOWED_ALIASES[first_lower]
+            output_fn(f"pytae: '{first_lower}' is not recognized; use '{canonical}'.")
+            return True
 
         # Reject bare pipeline verbs and suggest hyphenated CLI flag
         if first_lower in _BARE_PIPELINE_VERBS:
             output_fn(f"pytae: bare '{first_lower}' is not recognized; use '-{first_lower}' (matching CLI syntax).")
             return True
 
-        # Tables / Datasets / Vars list
-        if first_lower in ("tables", "vars", "datasets"):
+        # Tables list
+        if first_lower == "tables":
             self._cmd_list_tables(output_fn)
             return True
 
         # Switch active dataset (`use <name>`)
-        if first_lower in ("use", "switch") and len(tokens) >= 2:
-            self._cmd_use(tokens[1], output_fn)
+        if first_lower == "use":
+            if len(tokens) >= 2:
+                self._cmd_use(tokens[1], output_fn)
+            else:
+                avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                output_fn(f"Usage: use <table_name> (available: {avail})")
             return True
 
         # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = sql SELECT ...`
@@ -384,38 +409,45 @@ class PytaeRepl:
                 return True
 
         # Bare table name switches active dataset and shows shape only (Model 2: no table dump)
-        if first_lower in self.checkpoints and len(tokens) == 1:
-            self.current_df = self.checkpoints[first_lower]
+        if first_lower in self.tables and len(tokens) == 1:
+            self.current_df = self.tables[first_lower]
             self.path_str = first_lower
             n_rows, n_cols = self.current_df.shape
             output_fn(f"{first_lower}: {n_rows:,} rows x {n_cols} cols")
             return True
 
-        # Targeted table command (e.g. `df1 -filter ...` or `df2 -head 5`)
-        if first_lower in self.checkpoints and len(tokens) > 1:
+        # Targeted table command (e.g. `df1 -filter ...` or `df2 head 5`)
+        if first_lower in self.tables and len(tokens) > 1:
             self._cmd_targeted_pipeline(first_lower, line[len(tokens[0]) :].strip(), output_fn)
             return True
 
-        if first_lower in ("checkpoint", "cp", "tag"):
+        # Bare checkpoint name hint
+        if first_lower in self.checkpoints and len(tokens) == 1:
+            output_fn(
+                f"pytae: '{first_lower}' is a saved checkpoint. Use 'restore {first_lower}' to activate it, or 'checkpoints' to list all."
+            )
+            return True
+
+        if first_lower == "checkpoint":
             if len(tokens) < 2:
                 output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline)")
                 return True
             self._cmd_checkpoint(tokens[1], output_fn)
             return True
 
-        if first_lower in ("restore", "checkout"):
+        if first_lower == "restore":
             if len(tokens) < 2:
                 output_fn("Usage: restore <name> (e.g. restore baseline)")
                 return True
             self._cmd_restore(tokens[1], output_fn)
             return True
 
-        if first_lower in ("checkpoints", "cps", "tags"):
+        if first_lower == "checkpoints":
             self._cmd_list_checkpoints(output_fn)
             return True
 
-        # Load / Read
-        if first_lower in ("load", "read", "open"):
+        # Load file as table
+        if first_lower == "load":
             if len(tokens) < 2:
                 output_fn("Usage: load <path> [as <alias>] (e.g. load penguins.parquet as peng)")
                 return True
@@ -427,8 +459,8 @@ class PytaeRepl:
             self._cmd_join(tokens[1:], output_fn)
             return True
 
-        # Save / Export: -o / --output (and save / export alias)
-        if first_lower in ("-o", "--output", "save", "export"):
+        # Save / Export: -o / --output
+        if first_lower in ("-o", "--output"):
             if len(tokens) < 2:
                 output_fn("Usage: -o <path.parquet|csv|ndjson|clip>")
                 return True
@@ -464,14 +496,14 @@ class PytaeRepl:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower in ("cols", "columns"):
+        if first_lower == "cols":
             if self.current_df is not None:
                 output_fn("\n".join(self.current_df.columns))
             else:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower in ("dtype", "dtypes"):
+        if first_lower == "dtype":
             if self.current_df is not None:
                 reader = DataFrameReader(self.current_df)
                 output_fn(reader.dtypes().to_string())
@@ -542,6 +574,8 @@ class PytaeRepl:
             return
         self.undo_stack.append(("before reset", self.current_df.clone()))
         self.current_df = self.orig_df.clone()
+        if self.path_str and self.path_str in self.tables:
+            self.tables[self.path_str] = self.current_df
         self.redo_stack.clear()
         self.history.append("reset")
         output_fn(
@@ -555,8 +589,8 @@ class PytaeRepl:
         desc, prev_df = self.undo_stack.pop()
         self.redo_stack.append((desc, self.current_df.clone()))
         self.current_df = prev_df
-        if self.path_str and self.path_str in self.checkpoints:
-            self.checkpoints[self.path_str] = prev_df
+        if self.path_str and self.path_str in self.tables:
+            self.tables[self.path_str] = prev_df
         self.history.append(f"undo [{desc}]")
         output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
 
@@ -567,8 +601,8 @@ class PytaeRepl:
         desc, next_df = self.redo_stack.pop()
         self.undo_stack.append((desc, self.current_df.clone()))
         self.current_df = next_df
-        if self.path_str and self.path_str in self.checkpoints:
-            self.checkpoints[self.path_str] = next_df
+        if self.path_str and self.path_str in self.tables:
+            self.tables[self.path_str] = next_df
         self.history.append(f"redo [{desc}]")
         output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
 
@@ -585,7 +619,6 @@ class PytaeRepl:
             output_fn("pytae: no dataset loaded to checkpoint.")
             return
         self.checkpoints[name] = self.current_df.clone()
-        self.table_sources[name] = f"checkpoint of {self.path_str or '<memory>'}"
         output_fn(f"Saved checkpoint '{name}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
 
     def _cmd_restore(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -595,6 +628,8 @@ class PytaeRepl:
             return
         self.undo_stack.append((f"before restore {name}", self.current_df.clone()))
         self.current_df = self.checkpoints[name].clone()
+        if self.path_str and self.path_str in self.tables:
+            self.tables[self.path_str] = self.current_df
         self.redo_stack.clear()
         self.history.append(f"restore {name}")
         output_fn(
@@ -610,26 +645,26 @@ class PytaeRepl:
             output_fn(f"  - {name:<15}: {cp_df.shape[0]:,} rows x {cp_df.shape[1]} cols")
 
     def _cmd_list_tables(self, output_fn: Callable[[str], None]) -> None:
-        if not self.checkpoints:
+        if not self.tables:
             output_fn(
                 "No tables loaded in memory. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
             )
             return
         output_fn("Tables in memory:")
-        for name, cp_df in self.checkpoints.items():
+        for name, tbl_df in self.tables.items():
             source = self.table_sources.get(name, "")
             source_info = f" ({source})" if source else ""
-            is_active = self.path_str == name or (self.current_df is not None and self.current_df is cp_df)
+            is_active = self.path_str == name or (self.current_df is not None and self.current_df is tbl_df)
             marker = " *" if is_active else "  "
             status = " [active]" if is_active else ""
-            output_fn(f"{marker} {name:<12}: {cp_df.shape[0]:,} rows x {cp_df.shape[1]} cols{source_info}{status}")
+            output_fn(f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols{source_info}{status}")
 
     def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
-        if name not in self.checkpoints:
-            avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+        if name not in self.tables:
+            avail = ", ".join(self.tables.keys()) if self.tables else "none"
             output_fn(f"pytae: table '{name}' not found. Available tables: {avail}")
             return
-        self.current_df = self.checkpoints[name]
+        self.current_df = self.tables[name]
         self.path_str = name
         output_fn(
             f"Switched active dataset to '{name}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
@@ -644,11 +679,13 @@ class PytaeRepl:
                 if self.current_df is not None:
                     ctx.register("df", self.current_df)
                     ctx.register("data", self.current_df)
+                for tbl_name, tbl_df in self.tables.items():
+                    ctx.register(tbl_name, tbl_df)
                 for cp_name, cp_df in self.checkpoints.items():
-                    ctx.register(cp_name, cp_df)
+                    if cp_name not in self.tables:
+                        ctx.register(cp_name, cp_df)
                 res = ctx.execute(query).collect()
-                output_fn(_format_table(res))
-                self.checkpoints[var_name] = res
+                self.tables[var_name] = res
                 self.table_sources[var_name] = f"sql: {query[:30]}"
                 self.current_df = res
                 self.path_str = var_name
@@ -677,7 +714,7 @@ class PytaeRepl:
             try:
                 reader = get_reader(p)
                 df = reader.to_polars()
-                self.checkpoints[var_name] = df
+                self.tables[var_name] = df
                 self.table_sources[var_name] = p.name
                 self.current_df = df
                 if self.orig_df is None:
@@ -690,26 +727,30 @@ class PytaeRepl:
                 output_fn(f"pytae: failed to load {p}: {exc}")
                 return
 
-        # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = df1 join df2 ...` or `df3 = df1`
+        # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = df1 -join df2 ...` or `df3 = df1`
         right_tokens = shlex.split(right_expr)
         if right_tokens:
             first_tok = right_tokens[0]
-            if first_tok in self.checkpoints:
-                source_df = self.checkpoints[first_tok]
+            if first_tok in self.tables or first_tok in self.checkpoints:
+                source_df = self.tables[first_tok] if first_tok in self.tables else self.checkpoints[first_tok]
                 pipe_tokens = right_tokens[1:]
                 pipe_line = right_expr[len(first_tok) :].strip()
                 if not pipe_tokens:
                     # Simple copy: `df3 = df1`
-                    self.checkpoints[var_name] = source_df.clone()
+                    self.tables[var_name] = source_df.clone()
                     self.table_sources[var_name] = f"copy of {first_tok}"
-                    self.current_df = self.checkpoints[var_name]
+                    self.current_df = self.tables[var_name]
                     self.path_str = var_name
                     output_fn(
                         f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols)."
                     )
                     return
-                # Check for bare verb in pipeline
+                # Check for disallowed alias or bare verb in pipeline
                 first_pipe = pipe_tokens[0].lower()
+                if first_pipe in _DISALLOWED_ALIASES:
+                    canonical = _DISALLOWED_ALIASES[first_pipe]
+                    output_fn(f"pytae: '{first_pipe}' is not recognized; use '{canonical}'.")
+                    return
                 if first_pipe in _BARE_PIPELINE_VERBS:
                     output_fn(
                         f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
@@ -722,7 +763,7 @@ class PytaeRepl:
                 else:
                     self._cmd_pipeline(pipe_line, pipe_tokens, output_fn)
                 res_df = self.current_df
-                self.checkpoints[var_name] = res_df
+                self.tables[var_name] = res_df
                 self.table_sources[var_name] = f"{first_tok} {pipe_line[:20]}"
                 self.current_df = res_df
                 self.path_str = var_name
@@ -733,7 +774,7 @@ class PytaeRepl:
         output_fn(f"pytae: could not assign '{var_name}'. '{clean_path}' is not an existing file or table.")
 
     def _cmd_targeted_pipeline(self, table_name: str, sub_line: str, output_fn: Callable[[str], None]) -> None:
-        target_df = self.checkpoints[table_name]
+        target_df = self.tables[table_name]
         old_active = self.current_df
         old_path = self.path_str
         self.current_df = target_df
@@ -742,27 +783,34 @@ class PytaeRepl:
         sub_tokens = shlex.split(sub_line)
         first_sub = sub_tokens[0].lower() if sub_tokens else ""
 
+        if first_sub in _DISALLOWED_ALIASES:
+            canonical = _DISALLOWED_ALIASES[first_sub]
+            output_fn(f"pytae: '{first_sub}' is not recognized; use '{canonical}'.")
+            self.current_df = old_active
+            self.path_str = old_path
+            return
+
         if first_sub in _BARE_PIPELINE_VERBS:
             output_fn(f"pytae: bare '{first_sub}' is not recognized; use '-{first_sub}' (matching CLI syntax).")
-        elif first_sub in ("shape", "-shape", "--shape"):
+        elif first_sub == "shape":
             output_fn(f"({target_df.shape[0]}, {target_df.shape[1]})")
-        elif first_sub in ("cols", "columns", "-cols", "--cols"):
+        elif first_sub == "cols":
             output_fn("\n".join(target_df.columns))
-        elif first_sub in ("dtype", "dtypes", "-dtype", "--dtype"):
+        elif first_sub == "dtype":
             reader = DataFrameReader(target_df)
             output_fn(reader.dtypes().to_string())
-        elif first_sub in ("nulls", "-nulls", "--nulls"):
+        elif first_sub == "nulls":
             output_fn(target_df.null_count().to_pandas().iloc[0].to_string())
-        elif first_sub in ("glimpse", "-glimpse", "--glimpse"):
+        elif first_sub == "glimpse":
             from pytae.dataframe import DataFrame as PytaeDataFrame
 
             output_fn(PytaeDataFrame(target_df).glimpse())
-        elif first_sub in ("describe", "-describe", "--describe"):
+        elif first_sub == "describe":
             output_fn(_format_table(target_df.describe()))
-        elif first_sub in ("head", "-head", "--head"):
+        elif first_sub == "head":
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
             output_fn(_format_table(target_df.head(n), tbl_rows=max(n, 10)))
-        elif first_sub in ("tail", "-tail", "--tail"):
+        elif first_sub == "tail":
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
             output_fn(_format_table(target_df.tail(n), tbl_rows=max(n, 10)))
         elif first_sub in ("-o", "--output"):
@@ -770,10 +818,10 @@ class PytaeRepl:
             self._cmd_save(dest, output_fn)
         elif first_sub in ("-join", "--join"):
             self._cmd_join(sub_tokens[1:], output_fn)
-            self.checkpoints[table_name] = self.current_df
+            self.tables[table_name] = self.current_df
         else:
             self._cmd_pipeline(sub_line, sub_tokens, output_fn)
-            self.checkpoints[table_name] = self.current_df
+            self.tables[table_name] = self.current_df
 
         self.current_df = old_active
         self.path_str = old_path
@@ -793,7 +841,7 @@ class PytaeRepl:
             self.undo_stack.clear()
             self.redo_stack.clear()
             target_alias = alias or self.path_str or p.stem or p.name
-            self.checkpoints[target_alias] = self.current_df.clone()
+            self.tables[target_alias] = self.current_df.clone()
             self.table_sources[target_alias] = p.name
             self.path_str = target_alias
             if alias:
@@ -875,7 +923,9 @@ class PytaeRepl:
 
         # 3. Resolve left table
         if left_name is not None:
-            if left_name in self.checkpoints:
+            if left_name in self.tables:
+                left_df = self.tables[left_name]
+            elif left_name in self.checkpoints:
                 left_df = self.checkpoints[left_name]
             elif Path(left_name).expanduser().exists():
                 try:
@@ -884,7 +934,7 @@ class PytaeRepl:
                     output_fn(f"pytae: failed to read left table '{left_name}': {exc}")
                     return
             else:
-                avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+                avail = ", ".join(self.tables.keys()) if self.tables else "none"
                 output_fn(f"pytae: left table '{left_name}' not found. Available: {avail}")
                 return
         else:
@@ -892,7 +942,9 @@ class PytaeRepl:
             left_name = self.path_str or "active"
 
         # 4. Resolve right table
-        if right_name in self.checkpoints:
+        if right_name in self.tables:
+            right_df = self.tables[right_name]
+        elif right_name in self.checkpoints:
             right_df = self.checkpoints[right_name]
         elif Path(right_name).expanduser().exists():
             try:
@@ -901,7 +953,7 @@ class PytaeRepl:
                 output_fn(f"pytae: failed to read right table '{right_name}': {exc}")
                 return
         else:
-            avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+            avail = ", ".join(self.tables.keys()) if self.tables else "none"
             output_fn(
                 f"pytae: join target '{right_name}' not found. Must be a loaded table or existing file (available: {avail})"
             )
@@ -935,8 +987,8 @@ class PytaeRepl:
             )
             self.undo_stack.append((f"-join {right_name} on={on_key} (how={how})", self.current_df.clone()))
             self.current_df = joined
-            if self.path_str and self.path_str in self.checkpoints:
-                self.checkpoints[self.path_str] = joined
+            if self.path_str and self.path_str in self.tables:
+                self.tables[self.path_str] = joined
             self.redo_stack.clear()
             self.history.append(f"-join {right_name} on={on_key} how={how}")
             output_fn(
@@ -979,15 +1031,18 @@ class PytaeRepl:
             ctx.register("data", self.current_df)
             if self.path and self.path.stem:
                 ctx.register(self.path.stem, self.current_df)
+            for tbl_name, tbl_df in self.tables.items():
+                ctx.register(tbl_name, tbl_df)
             for cp_name, cp_df in self.checkpoints.items():
-                ctx.register(cp_name, cp_df)
+                if cp_name not in self.tables:
+                    ctx.register(cp_name, cp_df)
             res = ctx.execute(query).collect()
             output_fn(f"-> {self.path_str or 'df'}: {res.shape[0]:,} rows x {res.shape[1]} cols")
             # Update state with SQL query result
             self.undo_stack.append((f"sql {query[:40]}...", self.current_df.clone()))
             self.current_df = res
-            if self.path_str and self.path_str in self.checkpoints:
-                self.checkpoints[self.path_str] = res
+            if self.path_str and self.path_str in self.tables:
+                self.tables[self.path_str] = res
             self.redo_stack.clear()
             self.history.append(f"sql {query}")
         except Exception as exc:
@@ -1005,8 +1060,11 @@ class PytaeRepl:
                 "pldf": self.current_df,
                 "pl": pl,
             }
+            for tbl_name, tbl_df in self.tables.items():
+                local_scope[tbl_name] = PytaeDataFrame(tbl_df)
             for cp_name, cp_df in self.checkpoints.items():
-                local_scope[cp_name] = PytaeDataFrame(cp_df)
+                if cp_name not in local_scope:
+                    local_scope[cp_name] = PytaeDataFrame(cp_df)
             res = eval(expr, {}, local_scope)
             if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
                 output_fn(_format_table(res))
@@ -1124,8 +1182,8 @@ class PytaeRepl:
                     elif not isinstance(res_frame, pl.DataFrame):
                         res_frame = pl.from_pandas(res_frame)
                     self.current_df = res_frame
-                    if self.path_str and self.path_str in self.checkpoints:
-                        self.checkpoints[self.path_str] = res_frame
+                    if self.path_str and self.path_str in self.tables:
+                        self.tables[self.path_str] = res_frame
                     self.redo_stack.clear()
                     self.history.append(line)
                     explicit_inspect = any(

@@ -163,7 +163,12 @@ def test_repl_save_export(sample_df, tmp_path):
     r = PytaeRepl(df=sample_df)
     out_file = tmp_path / "exported.parquet"
 
+    # Bare save is rejected with guidance
     r.execute_line(f"save {out_file}", output_fn=outputs.append)
+    assert "pytae: 'save' is not recognized; use '-o <path>'." in outputs[-1]
+
+    # Standard -o succeeds
+    r.execute_line(f"-o {out_file}", output_fn=outputs.append)
     assert out_file.exists()
     assert pl.read_parquet(out_file).shape == (5, 3)
 
@@ -253,7 +258,7 @@ def test_repl_join_direct_file(tmp_path):
     assert "name" not in r.current_df.columns
 
 
-def test_repl_join_checkpoints_and_sql(tmp_path):
+def test_repl_join_tables_and_sql(tmp_path):
     f1 = tmp_path / "orders.parquet"
     f2 = tmp_path / "customers.parquet"
     pl.DataFrame({"order_id": [101, 102], "cust_id": [1, 2]}).write_parquet(f1)
@@ -263,12 +268,12 @@ def test_repl_join_checkpoints_and_sql(tmp_path):
     r = PytaeRepl()
 
     r.execute_line(f"load {f1} as ord", output_fn=outputs.append)
-    assert "ord" in r.checkpoints
+    assert "ord" in r.tables
 
     r.execute_line(f"load {f2} as cust", output_fn=outputs.append)
-    assert "cust" in r.checkpoints
+    assert "cust" in r.tables
 
-    # Direct join between checkpoints: bare join rejected, -join succeeds
+    # Direct join between tables: bare join rejected, -join succeeds
     r.execute_line("join cust on=cust_id", output_fn=outputs.append)
     assert "bare 'join' is not recognized; use '-join'" in outputs[-1]
 
@@ -276,7 +281,7 @@ def test_repl_join_checkpoints_and_sql(tmp_path):
     assert r.current_df.shape == (2, 3)
     assert "name" in r.current_df.columns
 
-    # SQL join between checkpoints
+    # SQL join between tables
     r.execute_line(
         "sql SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id", output_fn=outputs.append
     )
@@ -338,13 +343,15 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
 
     # 1. Assign df1 = orders.parquet
     r.execute_line(f"df1 = {f_orders}", output_fn=outputs.append)
-    assert "df1" in r.checkpoints
-    assert r.checkpoints["df1"].shape == (3, 3)
+    assert "df1" in r.tables
+    assert r.tables["df1"].shape == (3, 3)
+    assert "df1" not in r.checkpoints
 
     # 2. Assign df2 = customers.parquet
     r.execute_line(f"df2 = {f_customers}", output_fn=outputs.append)
-    assert "df2" in r.checkpoints
-    assert r.checkpoints["df2"].shape == (2, 3)
+    assert "df2" in r.tables
+    assert r.tables["df2"].shape == (2, 3)
+    assert "df2" not in r.checkpoints
 
     # 3. List tables
     r.execute_line("tables", output_fn=outputs.append)
@@ -359,7 +366,7 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
 
     # 5. Targeted transformation: filter df1 in place
     r.execute_line('df1 -filter "amount > 50"', output_fn=outputs.append)
-    assert r.checkpoints["df1"].shape == (2, 3)
+    assert r.tables["df1"].shape == (2, 3)
 
     # 6. Switch active table with bare name or `use`
     r.execute_line("use df2", output_fn=outputs.append)
@@ -371,18 +378,18 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     assert "bare 'join' is not recognized; use '-join'" in outputs[-1]
 
     r.execute_line("df3 = df1 -join df2 on=cust_id", output_fn=outputs.append)
-    assert "df3" in r.checkpoints
-    assert r.checkpoints["df3"].shape == (2, 5)
-    assert "name" in r.checkpoints["df3"].columns
+    assert "df3" in r.tables
+    assert r.tables["df3"].shape == (2, 5)
+    assert "name" in r.tables["df3"].columns
 
     # 8. Assignment from SQL query
     r.execute_line(
         "df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.cust_id",
         output_fn=outputs.append,
     )
-    assert "df4" in r.checkpoints
-    assert r.checkpoints["df4"].shape == (2, 3)
-    assert set(r.checkpoints["df4"].columns) == {"order_id", "name", "amount"}
+    assert "df4" in r.tables
+    assert r.tables["df4"].shape == (2, 3)
+    assert set(r.tables["df4"].columns) == {"order_id", "name", "amount"}
 
 
 def test_repl_standard_cli_join_and_output(tmp_path):
@@ -439,22 +446,24 @@ def test_repl_bundled_sample_dataset():
 
     # 1. Strict explicit sample URI: df1 = sample:penguins
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-    assert "df1" in r.checkpoints
-    assert r.checkpoints["df1"].shape == (344, 7)
+    assert "df1" in r.tables
+    assert r.tables["df1"].shape == (344, 7)
+    assert "df1" not in r.checkpoints
 
     # 2. Strict explicit sample URI: df2 = sample:tips
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
-    assert "df2" in r.checkpoints
-    assert r.checkpoints["df2"].shape == (244, 7)
+    assert "df2" in r.tables
+    assert r.tables["df2"].shape == (244, 7)
+    assert "df2" not in r.checkpoints
 
     # 3. Strict: Non-existent file df=panguins.csv or df=penguins.csv fails (no fuzzy, no fallback)
     r.execute_line("df3 = panguins.csv", output_fn=outputs.append)
-    assert "df3" not in r.checkpoints
+    assert "df3" not in r.tables
     assert any("not an existing file or table" in o for o in outputs)
 
     # 4. Strict: Non-existent sample URI fails cleanly
     r.execute_line("df4 = sample:unknown_name", output_fn=outputs.append)
-    assert "df4" not in r.checkpoints
+    assert "df4" not in r.tables
     assert any("unknown sample dataset" in o for o in outputs)
 
 
@@ -489,7 +498,7 @@ def test_repl_bare_verb_rejection(sample_df):
     assert "bare 'select' is not recognized; use '-select'" in outputs[-1]
 
     # Targeted bare verb rejected
-    r.checkpoints["df1"] = sample_df
+    r.tables["df1"] = sample_df
     r.execute_line("df1 filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert "bare 'filter' is not recognized; use '-filter'" in outputs[-1]
 
@@ -566,3 +575,95 @@ def test_repl_help_and_exit_strictly_enforced():
     cont = r.execute_line("exit", output_fn=outputs.append)
     assert cont is False
     assert "Exiting pytae REPL." in outputs[-1]
+
+
+def test_repl_strict_checkpoints_vs_tables_separation():
+    outputs = []
+    r = PytaeRepl()
+
+    # Load two workbench datasets
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+
+    # Prompt only displays loaded workbench tables
+    assert r._build_prompt() == "pytae [df1, df2]> "
+
+    # Save checkpoint 'maddy'
+    outputs.clear()
+    r.execute_line("checkpoint maddy", output_fn=outputs.append)
+    assert "Saved checkpoint 'maddy'" in outputs[-1]
+    assert "maddy" in r.checkpoints
+    assert "maddy" not in r.tables
+
+    # Prompt MUST remain [df1, df2], never polluting with 'maddy'
+    assert r._build_prompt() == "pytae [df1, df2]> "
+
+    # 'checkpoints' command lists ONLY saved checkpoints, NOT loaded tables
+    outputs.clear()
+    r.execute_line("checkpoints", output_fn=outputs.append)
+    cp_text = "\n".join(outputs)
+    assert "maddy" in cp_text
+    assert "df1" not in cp_text
+    assert "df2" not in cp_text
+
+    # 'tables' command lists ONLY loaded workbench tables, NOT saved checkpoints
+    outputs.clear()
+    r.execute_line("tables", output_fn=outputs.append)
+    tbl_text = "\n".join(outputs)
+    assert "df1" in tbl_text
+    assert "df2" in tbl_text
+    assert "maddy" not in tbl_text
+
+
+def test_repl_disallowed_aliases_and_hyphenated_commands():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+
+    test_cases = [
+        ("cp", "checkpoint"),
+        ("cps", "checkpoints"),
+        ("vars", "tables"),
+        ("datasets", "tables"),
+        ("switch", "use"),
+        ("checkout", "restore"),
+        ("columns", "cols"),
+        ("dtypes", "dtype"),
+        ("-dtype", "dtype"),
+        ("--dtype", "dtype"),
+        ("-cols", "cols"),
+        ("--cols", "cols"),
+        ("-shape", "shape"),
+        ("--shape", "shape"),
+        ("-head", "head"),
+        ("--head", "head"),
+        ("-tail", "tail"),
+        ("--tail", "tail"),
+        ("-nulls", "nulls"),
+        ("-glimpse", "glimpse"),
+        ("-describe", "describe"),
+        ("-reset", "reset"),
+        ("-undo", "undo"),
+        ("-redo", "redo"),
+        ("-history", "history"),
+        ("-tables", "tables"),
+        ("-checkpoint", "checkpoint"),
+        ("-checkpoints", "checkpoints"),
+        ("-restore", "restore"),
+        ("-use", "use"),
+    ]
+
+    for alias, canonical in test_cases:
+        outputs.clear()
+        r.execute_line(alias, output_fn=outputs.append)
+        expected = f"pytae: '{alias}' is not recognized; use '{canonical}'."
+        assert outputs[-1] == expected, f"Failed for alias {alias}: got {outputs[-1]!r}"
+
+    # Also test targeted aliases: `df1 -dtype`, `df1 columns`
+    outputs.clear()
+    r.execute_line("df1 -dtype", output_fn=outputs.append)
+    assert outputs[-1] == "pytae: '-dtype' is not recognized; use 'dtype'."
+
+    outputs.clear()
+    r.execute_line("df1 columns", output_fn=outputs.append)
+    assert outputs[-1] == "pytae: 'columns' is not recognized; use 'cols'."
