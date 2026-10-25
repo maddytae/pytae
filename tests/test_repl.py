@@ -1,6 +1,5 @@
 """Unit tests for pytae interactive REPL (PytaeRepl, pt.repl(), df.repl(), and CLI flags)."""
 
-
 import pandas as pd
 import polars as pl
 import pytest
@@ -91,7 +90,7 @@ def test_repl_checkpoint_and_restore(sample_df):
     assert "v1" in r.checkpoints
 
     # Mutate data
-    r.execute_line("-mutate \"mass_kg = body_mass_g / 1000.0\"", output_fn=outputs.append)
+    r.execute_line('-mutate "mass_kg = body_mass_g / 1000.0"', output_fn=outputs.append)
     assert "mass_kg" in r.current_df.columns
     assert r.current_df.shape == (5, 4)
 
@@ -140,7 +139,9 @@ def test_repl_sql_query(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
-    r.execute_line("sql SELECT species, COUNT(*) as cnt FROM df GROUP BY species ORDER BY cnt DESC", output_fn=outputs.append)
+    r.execute_line(
+        "sql SELECT species, COUNT(*) as cnt FROM df GROUP BY species ORDER BY cnt DESC", output_fn=outputs.append
+    )
     assert r.current_df.shape == (3, 2)
     assert "cnt" in r.current_df.columns
 
@@ -186,7 +187,7 @@ def test_repl_error_handling(sample_df):
     r = PytaeRepl(df=sample_df)
 
     # Invalid column name in filter
-    r.execute_line("-filter \"non_existent > 10\"", output_fn=outputs.append)
+    r.execute_line('-filter "non_existent > 10"', output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)  # Intact!
     assert len(r.undo_stack) == 0
     assert any("error" in o.lower() or "not found" in o.lower() for o in outputs)
@@ -196,7 +197,7 @@ def test_repl_headless_run(sample_df):
     lines = [
         "-filter \"species == 'Gentoo'\"",
         "checkpoint g_only",
-        "-mutate \"mass_kg = body_mass_g / 1000.0\"",
+        '-mutate "mass_kg = body_mass_g / 1000.0"',
         "undo",
         "exit",
     ]
@@ -210,13 +211,17 @@ def test_repl_headless_run(sample_df):
 
 def test_repl_convenience_function(sample_df):
     lines = ["head 2", "exit"]
-    res = repl(df=sample_df) if False else PytaeRepl(df=sample_df).run(input_fn=iter(lines).__next__, output_fn=lambda _: None)
+    res = (
+        repl(df=sample_df)
+        if False
+        else PytaeRepl(df=sample_df).run(input_fn=iter(lines).__next__, output_fn=lambda _: None)
+    )
     assert res.shape == (5, 3)
 
 
 def test_dataframe_method_repl(sample_df):
     pt_df = DataFrame(sample_df)
-    lines = ["-filter \"body_mass_g > 4000\"", "exit"]
+    lines = ['-filter "body_mass_g > 4000"', "exit"]
     r = PytaeRepl(df=pt_df)
     res = r.run(input_fn=iter(lines).__next__, output_fn=lambda _: None)
     assert res.shape == (3, 3)
@@ -232,7 +237,12 @@ def test_repl_join_direct_file(tmp_path):
     r = PytaeRepl(path=f1)
     assert r.current_df.shape == (3, 3)
 
+    # Bare join is rejected with guidance
     r.execute_line(f"join {f2} on=cust_id:id how=left", output_fn=outputs.append)
+    assert "bare 'join' is not recognized; use '-join'" in outputs[-1]
+
+    # Standard -join succeeds
+    r.execute_line(f"-join {f2} on=cust_id:id how=left", output_fn=outputs.append)
     assert r.current_df.shape == (3, 4)
     assert "name" in r.current_df.columns
     assert "Alice" in r.current_df["name"].to_list()
@@ -258,14 +268,18 @@ def test_repl_join_checkpoints_and_sql(tmp_path):
     r.execute_line(f"load {f2} as cust", output_fn=outputs.append)
     assert "cust" in r.checkpoints
 
-    # Direct join between checkpoints
-    r.execute_line("restore ord", output_fn=outputs.append)
+    # Direct join between checkpoints: bare join rejected, -join succeeds
     r.execute_line("join cust on=cust_id", output_fn=outputs.append)
+    assert "bare 'join' is not recognized; use '-join'" in outputs[-1]
+
+    r.execute_line("-join cust on=cust_id", output_fn=outputs.append)
     assert r.current_df.shape == (2, 3)
     assert "name" in r.current_df.columns
 
     # SQL join between checkpoints
-    r.execute_line("sql SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id", output_fn=outputs.append)
+    r.execute_line(
+        "sql SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id", output_fn=outputs.append
+    )
     assert r.current_df.shape == (2, 2)
     assert set(r.current_df.columns) == {"order_id", "name"}
 
@@ -301,17 +315,21 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     f_orders = tmp_path / "orders.parquet"
     f_customers = tmp_path / "customers.parquet"
 
-    pl.DataFrame({
-        "order_id": [101, 102, 103],
-        "cust_id": [1, 2, 1],
-        "amount": [150.0, 75.0, 20.0],
-    }).write_parquet(f_orders)
+    pl.DataFrame(
+        {
+            "order_id": [101, 102, 103],
+            "cust_id": [1, 2, 1],
+            "amount": [150.0, 75.0, 20.0],
+        }
+    ).write_parquet(f_orders)
 
-    pl.DataFrame({
-        "cust_id": [1, 2],
-        "name": ["Alice", "Bob"],
-        "tier": ["Gold", "Silver"],
-    }).write_parquet(f_customers)
+    pl.DataFrame(
+        {
+            "cust_id": [1, 2],
+            "name": ["Alice", "Bob"],
+            "tier": ["Gold", "Silver"],
+        }
+    ).write_parquet(f_customers)
 
     outputs = []
     # Start empty REPL (like `pytae -i`)
@@ -340,7 +358,7 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     assert "(2, 3)" in outputs[-1]
 
     # 5. Targeted transformation: filter df1 in place
-    r.execute_line("df1 -filter \"amount > 50\"", output_fn=outputs.append)
+    r.execute_line('df1 -filter "amount > 50"', output_fn=outputs.append)
     assert r.checkpoints["df1"].shape == (2, 3)
 
     # 6. Switch active table with bare name or `use`
@@ -348,8 +366,11 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     assert r.path_str == "df2"
     assert r.current_df.shape == (2, 3)
 
-    # 7. Assignment from join: df3 = df1 join df2 on=cust_id
+    # 7. Assignment from join: bare join rejected, -join succeeds
     r.execute_line("df3 = df1 join df2 on=cust_id", output_fn=outputs.append)
+    assert "bare 'join' is not recognized; use '-join'" in outputs[-1]
+
+    r.execute_line("df3 = df1 -join df2 on=cust_id", output_fn=outputs.append)
     assert "df3" in r.checkpoints
     assert r.checkpoints["df3"].shape == (2, 5)
     assert "name" in r.checkpoints["df3"].columns
@@ -370,16 +391,20 @@ def test_repl_standard_cli_join_and_output(tmp_path):
     f_merged = tmp_path / "merged.parquet"
     f_final = tmp_path / "final.csv"
 
-    pl.DataFrame({
-        "order_id": [1, 2, 3],
-        "cust_id": [10, 20, 10],
-        "amount": [100.0, 250.0, 50.0],
-    }).write_parquet(f_orders)
+    pl.DataFrame(
+        {
+            "order_id": [1, 2, 3],
+            "cust_id": [10, 20, 10],
+            "amount": [100.0, 250.0, 50.0],
+        }
+    ).write_parquet(f_orders)
 
-    pl.DataFrame({
-        "cust_id": [10, 20],
-        "name": ["Alice", "Bob"],
-    }).write_parquet(f_customers)
+    pl.DataFrame(
+        {
+            "cust_id": [10, 20],
+            "name": ["Alice", "Bob"],
+        }
+    ).write_parquet(f_customers)
 
     outputs = []
     r = PytaeRepl()
@@ -447,6 +472,64 @@ def test_repl_shell_command_escape():
     assert any("shell_test_ok" in o for o in outputs)
 
 
+def test_repl_bare_verb_rejection(sample_df):
+    outputs = []
+    r = PytaeRepl(df=sample_df)
+
+    # Bare filter rejected
+    r.execute_line("filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    assert "bare 'filter' is not recognized; use '-filter'" in outputs[-1]
+
+    # Bare mutate rejected
+    r.execute_line('mutate "x = 1"', output_fn=outputs.append)
+    assert "bare 'mutate' is not recognized; use '-mutate'" in outputs[-1]
+
+    # Bare select rejected
+    r.execute_line("select species", output_fn=outputs.append)
+    assert "bare 'select' is not recognized; use '-select'" in outputs[-1]
+
+    # Targeted bare verb rejected
+    r.checkpoints["df1"] = sample_df
+    r.execute_line("df1 filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    assert "bare 'filter' is not recognized; use '-filter'" in outputs[-1]
 
 
+def test_repl_model2_display_no_table_dumps(tmp_path):
+    f_orders = tmp_path / "orders.parquet"
+    pl.DataFrame(
+        {
+            "order_id": [101, 102, 103],
+            "cust_id": [1, 2, 1],
+            "amount": [150.0, 75.0, 20.0],
+        }
+    ).write_parquet(f_orders)
 
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line(f"df1 = {f_orders}", output_fn=outputs.append)
+
+    # 1. Bare table name df1 prints shape only, never a table
+    outputs.clear()
+    r.execute_line("df1", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "df1: 3 rows x 3 cols" in outputs[0]
+    assert "order_id" not in outputs[0]
+
+    # 2. Pipeline transformation outputs concise confirmation, no table dump
+    outputs.clear()
+    r.execute_line('-filter "amount > 50"', output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "-> df1: 2 rows x 3 cols" in outputs[0]
+    assert "order_id" not in outputs[0]
+
+    # 3. Explicit inspection 'head' renders table with columns and values
+    outputs.clear()
+    r.execute_line("head 2", output_fn=outputs.append)
+    assert any("order_id" in o for o in outputs)
+    assert any("150" in o for o in outputs)
+
+    # 4. Explicit inspection 'tail' renders table with columns and values
+    outputs.clear()
+    r.execute_line("tail 1", output_fn=outputs.append)
+    assert any("order_id" in o for o in outputs)
+    assert any("75" in o for o in outputs)

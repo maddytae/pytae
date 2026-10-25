@@ -240,6 +240,10 @@ def _copy_to_clipboard(text: str) -> None:
 
 def _output_text(text: str, args: argparse.Namespace) -> None:
     """Output text to stdout, piping through pydoc.pager if -pager is requested."""
+    output_fn = getattr(args, "output_fn", None)
+    if output_fn is not None:
+        output_fn(text)
+        return
     if getattr(args, "pager", False):
         import pydoc
 
@@ -705,7 +709,7 @@ def _process_path(
     if show_all:
         frame = pipeline.current_frame()
         rounded = _apply_round(frame, args.round_ndigits)
-        if emit_stdout:
+        if emit_stdout and not getattr(args, "in_repl", False):
             _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
             df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
@@ -743,7 +747,8 @@ def _process_path(
         frame = pipeline.current_frame()
         rounded = _apply_round(frame, args.round_ndigits)
         if should_print(idx):
-            _output_text(_format_table(rounded, pretty=args.pretty), args)
+            if not getattr(args, "in_repl", False):
+                _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
             df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
             clip_action = lambda d=df: d.to_clipboard(index=False)
@@ -954,7 +959,9 @@ def _process_path(
             pipeline._pldf = result._df if hasattr(result, "_df") else result
             pipeline._df = None
             if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty, tbl_rows=250), args)
+                _output_text(
+                    _format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty, tbl_rows=250), args
+                )
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "bar":
@@ -964,7 +971,9 @@ def _process_path(
             pipeline._pldf = result._df if hasattr(result, "_df") else result
             pipeline._df = None
             if should_print(idx):
-                _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty, tbl_rows=250), args)
+                _output_text(
+                    _format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty, tbl_rows=250), args
+                )
             if is_clip:
                 clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
         elif op == "scatter":
@@ -1012,7 +1021,12 @@ def _process_path(
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
-                _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty, tbl_rows=max(len(frame), 10)), args)
+                _output_text(
+                    _format_table(
+                        _apply_round(frame, args.round_ndigits), pretty=args.pretty, tbl_rows=max(len(frame), 10)
+                    ),
+                    args,
+                )
             if is_clip:
                 df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
@@ -1031,7 +1045,12 @@ def _process_path(
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
-                _output_text(_format_table(_apply_round(frame, args.round_ndigits), pretty=args.pretty, tbl_rows=max(len(frame), 10)), args)
+                _output_text(
+                    _format_table(
+                        _apply_round(frame, args.round_ndigits), pretty=args.pretty, tbl_rows=max(len(frame), 10)
+                    ),
+                    args,
+                )
             if is_clip:
                 df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
@@ -1042,7 +1061,9 @@ def _process_path(
             n = len(sampled)
             if should_print(idx):
                 _output_text(
-                    _format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty, tbl_rows=max(n, 10)) if n else "(no rows)",
+                    _format_table(_apply_round(sampled, args.round_ndigits), pretty=args.pretty, tbl_rows=max(n, 10))
+                    if n
+                    else "(no rows)",
                     args,
                 )
             if is_clip and n:

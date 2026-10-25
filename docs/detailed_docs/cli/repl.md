@@ -86,35 +86,35 @@ When launched with a single input file (`pytae penguins.parquet -i`), the REPL e
 
 ### 1. In-Memory Pipeline Transformations
 
-Any standard Pytae CLI flag sequence can be typed directly into the prompt. Transformations execute on the in-memory Arrow table, print the resulting table, and update the table state:
+Any standard Pytae CLI flag sequence can be typed directly into the prompt. Transformations execute on the in-memory Arrow table, output a concise status confirmation, and update the table state:
 
 ```text
 pytae [penguins.parquet: 344x7]> -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
-shape: (188, 7)
-...
+-> penguins.parquet: 188 rows x 7 cols
 
 pytae [penguins.parquet: 188x7]> -mutate "mass_kg = body_mass_g / 1000, is_heavy = mass_kg > 4.5"
-shape: (188, 9)
-...
+-> penguins.parquet: 188 rows x 9 cols
 
 pytae [penguins.parquet: 188x9]> -select "species,island,mass_kg"
-shape: (188, 3)
-...
+-> penguins.parquet: 188 rows x 3 cols
 
-pytae [penguins.parquet: 188x3]> -by species -agg "avg_mass=mass_kg:mean, count=count"
-shape: (2, 3)
-┌──────────┬──────────┬───────┐
-│ species  ┆ avg_mass ┆ count │
-│ ---      ┆ ---      ┆ ---   │
-│ str      ┆ f64      ┆ u32   │
-╞══════════╪══════════╪═══════╡
-│ Adelie   ┆ 3.82     ┆ 64    │
-│ Gentoo   ┆ 5.07     ┆ 124   │
-└──────────┴──────────┴───────┘
+pytae [penguins.parquet: 188x3]> head 3
+┌─────────┬───────────┬─────────┐
+│ species ┆ island    ┆ mass_kg │
+│ ---     ┆ ---       ┆ ---     │
+│ str     ┆ str       ┆ f64     │
+╞═════════╪═══════════╪═════════╡
+│ Adelie  ┆ Torgersen ┆ 3.75    │
+│ Adelie  ┆ Biscoe    ┆ 3.8     │
+│ Adelie  ┆ Dream     ┆ 3.9     │
+└─────────┴───────────┴─────────┘
 ```
 
+> [!NOTE]
+> **1:1 CLI Syntax Parity**: Pipeline verbs always start with a leading hyphen (e.g. `-filter`, `-mutate`, `-select`, `-arrange`, `-join`), maintaining exact parity with standard CLI usage. If a bare verb is entered (e.g. `filter "..."`), Pytae catches it and provides a helpful reminder.
+
 > [!TIP]
-> **Bare-Verb Convenience**: Leading hyphens are optional for primary verbs. `filter "species == 'Gentoo'"` works identically to `-filter "species == 'Gentoo'"`.
+> **Clean Terminal (Model 2)**: Pipeline transformations and table switching output concise shape confirmations (e.g. `-> penguins.parquet: 188 rows x 7 cols` or `df1: 344 rows x 7 cols`) without dumping full tables. To view rows, explicitly run `head` or `tail`.
 
 ### 2. Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)
 
@@ -257,7 +257,7 @@ pytae [df1, df2]> df1 -o clean_orders.parquet
 ```
 
 > [!TIP]
-> **Quick Preview**: Typing a bare table name (e.g. `df1`) simply displays `df1.head(5)` as an inspection shortcut, without modifying any state.
+> **Quick Dimensions**: Typing a bare table name (e.g. `df1`) switches to it and prints its dimensions (`df1: 10,000 rows x 4 cols`) without dumping any table rows. To inspect rows, run `df1 -head 5` or `head 5`.
 
 ### 4. Multi-Table Joins (`-join`)
 
@@ -350,7 +350,7 @@ pytae> -o clip
 | **`<var> = <file>`** | `df1 = orders.parquet` | Load file as named table in memory | **Yes** |
 | **`tables`** | `tables`, `vars` | List all loaded tables in memory | No |
 | **`<name> <cmd>`** | `df1 -head 5`, `df2 -shape` | Run command directly on named table (subject-first) | Depends on command |
-| **`<name>`** | `df1` | Non-destructive quick preview of table (head 5) | No |
+| **`<name>`** | `df1` | Switch to table and display dimensions (`rows x cols`) | **Yes** (switches active) |
 | **`-join`** | `-join <target> on=<key> [how=...] [-o <path>]` | Join table or file into active dataset | **Yes** (undoable) |
 | **`-o`** | `-o <path>`, `-o clip` | Export active dataset to Parquet/CSV or clipboard | No |
 | **`sql`** | `sql <query>` | Run ANSI SQL against active table or named tables | **Yes** (undoable) |
