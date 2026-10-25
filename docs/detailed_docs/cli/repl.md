@@ -10,6 +10,12 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
 - [Launching the REPL](#launching-the-repl)
 - [Session State & Rollback (`reset`, `undo`, `redo`)](#session-state--rollback-reset-undo-redo)
 - [Checkpoints & Snapshots (`checkpoint`, `restore`)](#checkpoints--snapshots-checkpoint-restore)
+- [Multi-Table Workflow & Variable Assignment (`<var> = <file>`)](#multi-table-workflow--variable-assignment-var--file)
+  - [Assigning Datasets (`df1 = orders.parquet`)](#assigning-datasets-df1--ordersparquet)
+  - [Listing Loaded Tables (`tables`, `vars`)](#listing-loaded-tables-tables-vars)
+  - [Switching the Active Table (`use df1`, bare `df2`)](#switching-the-active-table-use-df1-bare-df2)
+  - [Targeted Commands on Specific Tables (`df1 -head 5`, `df2 shape`)](#targeted-commands-on-specific-tables-df1--head-5-df2-shape)
+  - [Assigning Pipeline & SQL Results (`df3 = ...`)](#assigning-pipeline--sql-results-df3--)
 - [In-Memory Pipeline Transformations](#in-memory-pipeline-transformations)
 - [Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)](#non-destructive-inspection-head-shape-cols-etc)
 - [Multi-Table Joins & ANSI SQL](#multi-table-joins--ansi-sql)
@@ -127,6 +133,87 @@ Saved Checkpoints:
 ```
 
 *(Aliases: `cp` for `checkpoint`, `checkout` for `restore`, `cps` for `checkpoints`)*.
+
+---
+
+## Multi-Table Workflow & Variable Assignment (`<var> = <file>`)
+
+You can launch a clean REPL without any initial dataset via `pytae -i`, load multiple tables into named variables, and analyze or join them simultaneously.
+
+### Assigning Datasets (`df1 = orders.parquet`)
+
+```text
+$ pytae -i
+================================================================================
+                         PYTAE INTERACTIVE REPL                                 
+================================================================================
+Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
+No initial dataset loaded. Use 'load <path>' to load a table.
+
+pytae> df1 = orders.parquet
+Loaded orders.parquet as 'df1' (10,000 rows x 4 cols).
+
+pytae [df1: 10,000x4]> df2 = customers.parquet
+Loaded customers.parquet as 'df2' (1,500 rows x 3 cols).
+
+pytae [df2: 1,500x3]>
+```
+
+### Listing Loaded Tables (`tables`, `vars`)
+
+Use `tables` or `vars` to inspect every dataset currently held in memory. The active table is designated with an asterisk `*`:
+
+```text
+pytae [df2: 1,500x3]> tables
+Tables in memory:
+   df1         : 10,000 rows x 4 cols (orders.parquet)
+ * df2         : 1,500 rows x 3 cols (customers.parquet) [active]
+```
+
+### Switching the Active Table (`use df1`, bare `df2`)
+
+Switch your active working dataset with `use <name>` or by simply typing the table name:
+
+```text
+pytae [df2: 1,500x3]> use df1
+Switched active dataset to 'df1'. Active shape: (10,000, 4)
+
+pytae [df1: 10,000x4]> df2
+Switched active dataset to 'df2'. Active shape: (1,500, 3)
+shape: (5, 3)
+...
+```
+
+### Targeted Commands on Specific Tables (`df1 -head 5`, `df2 shape`)
+
+Execute inspections or transformations directly on a specific table without switching your active context:
+
+```text
+# Non-destructive inspection of df1 while df2 remains active
+pytae [df2: 1,500x3]> df1 -head 3
+pytae [df2: 1,500x3]> df1 shape
+(10,000, 4)
+
+# Apply a transformation directly to df1
+pytae [df2: 1,500x3]> df1 -filter "amount > 100"
+pytae [df2: 1,500x3]> df1 shape
+(3,450, 4)
+```
+
+### Assigning Pipeline & SQL Results (`df3 = ...`)
+
+Create new named tables from transformations, joins, or ANSI SQL queries:
+
+```text
+# 1. Pipeline assignment from another table
+pytae> df_filtered = df1 -filter "amount > 150"
+
+# 2. Join assignment
+pytae> df3 = df1 join df2 on=customer_id
+
+# 3. ANSI SQL assignment across loaded datasets
+pytae> df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.customer_id = df2.id
+```
 
 ---
 
@@ -309,6 +396,10 @@ When you type `exit` in the REPL, the final transformed table is returned direct
 | **`checkpoint`** | `checkpoint <name>`, `cp <name>` | Save current table state with a name | No |
 | **`restore`** | `restore <name>`, `checkout <name>` | Restore active table to a named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints`, `cps` | List all saved checkpoint names and shapes | No |
+| **`<var> = <file>`** | `df1 = orders.parquet` | Load file as named table in memory | **Yes** |
+| **`tables`** | `tables`, `vars` | List all loaded tables in memory (`*` = active) | No |
+| **`use`** | `use <name>`, `<name>` | Switch active dataset to specified table | **Yes** |
+| **`<name> <cmd>`** | `df1 -head 5`, `df2 shape` | Run command directly on named table | Depends on command |
 | **`load`** | `load <path> [as <alias>]` | Load a new file from disk into the REPL session | **Yes** |
 | **`join`** | `join <target> on=<key> [how=...]` | Join a file or checkpoint into the active dataset | **Yes** (undoable) |
 | **`sql`** | `sql <query>` | Run ANSI SQL against `df` or named tables | **Yes** (undoable) |
@@ -323,3 +414,4 @@ When you type `exit` in the REPL, the final transformed table is returned direct
 | **`glimpse`** | `glimpse`, `-glimpse` | Display transposed schema and sample values | No |
 | **`describe`** | `describe`, `-describe` | Display statistical summary of numeric columns | No |
 | **`exit`** | `exit`, `quit`, `q` | Exit the REPL session | — |
+

@@ -4950,6 +4950,426 @@ Wrote 150000 rows to exports/file2.csv.gz
 ```
 
 ################################################################################
+# FILE: docs/detailed_docs/cli/repl.md
+################################################################################
+# CLI Feature Guide: Interactive REPL Shell (`-i`, `-repl`, `repl`)
+
+Stateful, iterative in-memory data manipulation and exploratory data analysis without repeatedly reloading datasets from disk.
+
+---
+
+## Contents
+
+- [Overview & Why Use REPL](#overview--why-use-repl)
+- [Launching the REPL](#launching-the-repl)
+- [Session State & Rollback (`reset`, `undo`, `redo`)](#session-state--rollback-reset-undo-redo)
+- [Checkpoints & Snapshots (`checkpoint`, `restore`)](#checkpoints--snapshots-checkpoint-restore)
+- [Multi-Table Workflow & Variable Assignment (`<var> = <file>`)](#multi-table-workflow--variable-assignment-var--file)
+  - [Assigning Datasets (`df1 = orders.parquet`)](#assigning-datasets-df1--ordersparquet)
+  - [Listing Loaded Tables (`tables`, `vars`)](#listing-loaded-tables-tables-vars)
+  - [Switching the Active Table (`use df1`, bare `df2`)](#switching-the-active-table-use-df1-bare-df2)
+  - [Targeted Commands on Specific Tables (`df1 -head 5`, `df2 shape`)](#targeted-commands-on-specific-tables-df1--head-5-df2-shape)
+  - [Assigning Pipeline & SQL Results (`df3 = ...`)](#assigning-pipeline--sql-results-df3--)
+- [In-Memory Pipeline Transformations](#in-memory-pipeline-transformations)
+- [Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)](#non-destructive-inspection-head-shape-cols-etc)
+- [Multi-Table Joins & ANSI SQL](#multi-table-joins--ansi-sql)
+  - [Option 1: Direct Single-Command `join`](#option-1-direct-single-command-join)
+  - [Option 2: Named Datasets + ANSI SQL (`load ... as ...` + `sql`)](#option-2-named-datasets--ansi-sql-load--as---sql)
+  - [Option 3: Fluent Python Joins (`py`)](#option-3-fluent-python-joins-py)
+- [Saving & Exporting (`save`, `-o`)](#saving--exporting-save--o)
+- [Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)](#python--jupyter-sdk-integration-ptrepl-dfrepl)
+- [Complete REPL Command Reference](#complete-repl-command-reference)
+
+---
+
+## Overview & Why Use REPL
+
+In standard one-shot CLI usage, executing multiple queries on a 1 GB file requires re-reading and re-parsing the file from disk on every single command:
+
+```bash
+# Standard CLI: reads and parses sales.parquet 3 separate times
+pytae sales.parquet -shape
+pytae sales.parquet -filter "amount > 100" -head 5
+pytae sales.parquet -by region -agg "total=amount:sum"
+```
+
+The **Pytae REPL** loads your dataset into memory **once**. All subsequent filters, aggregations, feature mutations, and SQL queries execute in RAM at multithreaded Polars speed. Because Polars tables are immutable Arrow buffers under the hood, rolling back a mistake with `undo` or `reset` is an instantaneous $O(1)$ pointer reassignment.
+
+---
+
+## Launching the REPL
+
+You can launch the REPL from the command line in three ways:
+
+```bash
+# 1. Pre-load a dataset into the interactive shell
+pytae penguins.parquet -i
+
+# 2. Launch an empty REPL prompt (load data later via 'load <file>')
+pytae -i
+pytae repl
+
+# 3. Pre-filter a dataset and drop directly into the interactive REPL
+pytae penguins.parquet -filter "body_mass_g > 4000" -i
+```
+
+Upon launching, the interactive prompt displays the current file name and live table shape:
+```text
+pytae [penguins.parquet: 344x7]> 
+```
+
+---
+
+## Session State & Rollback (`reset`, `undo`, `redo`)
+
+### 1. `reset`: Revert to Original Dataset
+If you perform multiple transformations and realize you want to discard your changes, `reset` instantly rolls the table back to the original dataset as loaded from disk:
+
+```text
+pytae [penguins.parquet: 344x7]> -filter "species == 'Gentoo'"
+shape: (124, 7)
+...
+
+pytae [penguins.parquet: 124x7]> reset
+Restored original dataset. Active shape: (344, 7)
+
+pytae [penguins.parquet: 344x7]> 
+```
+
+### 2. `undo` & `redo`: Step-by-Step History Navigation
+Like `Ctrl+Z` in an editor, `undo` steps backward through your transformation stack, while `redo` re-applies undone steps:
+
+```text
+pytae [penguins.parquet: 344x7]> -filter "body_mass_g > 4000"
+shape: (168, 7)
+
+pytae [penguins.parquet: 168x7]> -mutate "mass_kg = body_mass_g / 1000.0"
+shape: (168, 8)
+
+pytae [penguins.parquet: 168x8]> undo
+Undid: -mutate "mass_kg = body_mass_g / 1000.0". Active shape: (168, 7)
+
+pytae [penguins.parquet: 168x7]> redo
+Redid: -mutate "mass_kg = body_mass_g / 1000.0". Active shape: (168, 8)
+```
+
+### 3. `history`: Inspect Applied Pipeline Steps
+```text
+pytae [penguins.parquet: 168x8]> history
+Pipeline History:
+   1: -filter "body_mass_g > 4000"
+   2: -mutate "mass_kg = body_mass_g / 1000.0"
+```
+
+---
+
+## Checkpoints & Snapshots (`checkpoint`, `restore`)
+
+You can save named state checkpoints at key milestones before experimenting with exploratory transformations:
+
+```text
+# Save a named checkpoint
+pytae [penguins.parquet: 344x7]> checkpoint baseline
+Saved checkpoint 'baseline' (344 rows x 7 cols).
+
+# Experiment with aggressive filtering
+pytae [penguins.parquet: 344x7]> -filter "island == 'Dream' and sex == 'female'"
+shape: (61, 7)
+
+# Restore back to your saved checkpoint
+pytae [penguins.parquet: 61x7]> restore baseline
+Restored checkpoint 'baseline'. Active shape: (344, 7)
+
+# List all saved checkpoints
+pytae [penguins.parquet: 344x7]> checkpoints
+Saved Checkpoints:
+  - baseline       : 344 rows x 7 cols
+```
+
+*(Aliases: `cp` for `checkpoint`, `checkout` for `restore`, `cps` for `checkpoints`)*.
+
+---
+
+## Multi-Table Workflow & Variable Assignment (`<var> = <file>`)
+
+You can launch a clean REPL without any initial dataset via `pytae -i`, load multiple tables into named variables, and analyze or join them simultaneously.
+
+### Assigning Datasets (`df1 = orders.parquet`)
+
+```text
+$ pytae -i
+================================================================================
+                         PYTAE INTERACTIVE REPL                                 
+================================================================================
+Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
+No initial dataset loaded. Use 'load <path>' to load a table.
+
+pytae> df1 = orders.parquet
+Loaded orders.parquet as 'df1' (10,000 rows x 4 cols).
+
+pytae [df1: 10,000x4]> df2 = customers.parquet
+Loaded customers.parquet as 'df2' (1,500 rows x 3 cols).
+
+pytae [df2: 1,500x3]>
+```
+
+### Listing Loaded Tables (`tables`, `vars`)
+
+Use `tables` or `vars` to inspect every dataset currently held in memory. The active table is designated with an asterisk `*`:
+
+```text
+pytae [df2: 1,500x3]> tables
+Tables in memory:
+   df1         : 10,000 rows x 4 cols (orders.parquet)
+ * df2         : 1,500 rows x 3 cols (customers.parquet) [active]
+```
+
+### Switching the Active Table (`use df1`, bare `df2`)
+
+Switch your active working dataset with `use <name>` or by simply typing the table name:
+
+```text
+pytae [df2: 1,500x3]> use df1
+Switched active dataset to 'df1'. Active shape: (10,000, 4)
+
+pytae [df1: 10,000x4]> df2
+Switched active dataset to 'df2'. Active shape: (1,500, 3)
+shape: (5, 3)
+...
+```
+
+### Targeted Commands on Specific Tables (`df1 -head 5`, `df2 shape`)
+
+Execute inspections or transformations directly on a specific table without switching your active context:
+
+```text
+# Non-destructive inspection of df1 while df2 remains active
+pytae [df2: 1,500x3]> df1 -head 3
+pytae [df2: 1,500x3]> df1 shape
+(10,000, 4)
+
+# Apply a transformation directly to df1
+pytae [df2: 1,500x3]> df1 -filter "amount > 100"
+pytae [df2: 1,500x3]> df1 shape
+(3,450, 4)
+```
+
+### Assigning Pipeline & SQL Results (`df3 = ...`)
+
+Create new named tables from transformations, joins, or ANSI SQL queries:
+
+```text
+# 1. Pipeline assignment from another table
+pytae> df_filtered = df1 -filter "amount > 150"
+
+# 2. Join assignment
+pytae> df3 = df1 join df2 on=customer_id
+
+# 3. ANSI SQL assignment across loaded datasets
+pytae> df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.customer_id = df2.id
+```
+
+---
+
+## In-Memory Pipeline Transformations
+
+Any standard Pytae CLI flag sequence can be typed directly into the prompt. Transformations execute on the in-memory Arrow table, print the resulting table, and update the active dataset:
+
+```text
+# Filter rows
+pytae> -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+
+# Feature engineering
+pytae> -mutate "mass_kg = body_mass_g / 1000, is_heavy = mass_kg > 4.5"
+
+# Column selection & drop
+pytae> -select "species,island,mass_kg"
+pytae> -select "!sex"
+
+# Sort rows
+pytae> -arrange "mass_kg desc"
+
+# Grouped aggregation
+pytae> -by species -agg "avg_mass=body_mass_g:mean, count=count"
+
+# Sensitive data masking and encryption
+pytae> -mask "email=hash, ssn=encrypt" -key "SecretKey123"
+```
+
+> [!TIP]
+> **Bare-Verb Convenience**: Leading hyphens are optional for primary verbs. `filter "species == 'Gentoo'"` works identically to `-filter "species == 'Gentoo'"`.
+
+---
+
+## Non-Destructive Inspection (`head`, `shape`, `cols`, etc.)
+
+Inspection commands display metadata or previews **without** truncating or mutating your active table:
+
+```text
+# Non-destructive head/tail previews (does NOT truncate active rows)
+pytae> head 10
+pytae> tail 5
+
+# Dimensions & columns
+pytae> shape
+(344, 7)
+
+pytae> cols
+species
+island
+bill_length_mm
+bill_depth_mm
+flipper_length_mm
+body_mass_g
+sex
+
+pytae> dtype
+species               object
+island                object
+bill_length_mm       float64
+...
+
+# Missing values & statistical summary
+pytae> nulls
+pytae> glimpse
+pytae> describe
+```
+
+---
+
+## Multi-Table Joins & ANSI SQL
+
+The REPL provides three seamless ways to read two datasets and join them in memory.
+
+### Option 1: Direct Single-Command `join`
+
+Join a secondary file from disk directly into your active dataset:
+
+```text
+$ pytae orders.parquet -i
+
+# Left join on customer_id
+pytae [orders.parquet: 10,000x4]> join customers.parquet on=customer_id
+
+# Different key names (left_col:right_col) and join type
+pytae [orders.parquet: 10,000x4]> join customers.parquet on=cust_id:id how=left
+```
+
+Supported join types: `how=left`, `how=inner`, `how=outer`, `how=semi`, `how=anti`.
+
+### Option 2: Named Datasets + ANSI SQL (`load ... as ...` + `sql`)
+
+Load multiple datasets into memory as named tables and query them with full ANSI SQL:
+
+```text
+pytae> load orders.parquet as ord
+Loaded orders.parquet as 'ord' (10,000 rows x 4 cols).
+
+pytae> load customers.parquet as cust
+Loaded customers.parquet as 'cust' (1,500 rows x 3 cols).
+
+pytae> sql SELECT ord.order_id, cust.name, ord.amount FROM ord JOIN cust ON ord.customer_id = cust.id
+shape: (10,000, 3)
+┌──────────┬─────────────┬────────┐
+│ order_id ┆ name        ┆ amount │
+│ ---      ┆ ---         ┆ ---    │
+│ i64      ┆ str         ┆ f64    │
+╞══════════╪═════════════╪════════╡
+│ 1001     ┆ Alice Smith ┆ 149.50 │
+│ 1002     ┆ Bob Jones   ┆ 89.00  │
+└──────────┴─────────────┴────────┘
+```
+
+> [!NOTE]
+> All tables created with `load <file> as <alias>` and all saved `checkpoint <name>` states are automatically registered and queryable in `sql`!
+
+### Option 3: Fluent Python Joins (`py`)
+
+Use Pytae's fluent Python API inside the REPL session:
+
+```text
+pytae> load orders.parquet as ord
+pytae> load customers.parquet as cust
+
+pytae> py ord.join(cust, on="customer_id", how="left")
+```
+
+---
+
+## Saving & Exporting (`save`, `-o`)
+
+When you are satisfied with your transformations, export the result to file or system clipboard:
+
+```text
+# Save to Parquet, CSV, or NDJSON
+pytae> save clean_penguins.parquet
+pytae> -o output.csv
+
+# Copy directly to system clipboard
+pytae> save clip
+pytae> -o clip
+```
+
+---
+
+## Python & Jupyter SDK Integration (`pt.repl()`, `df.repl()`)
+
+You can launch the Pytae REPL directly from Python scripts, IPython, or Jupyter:
+
+```python
+import pytae as pt
+import pandas as pd
+
+df = pt.read_parquet("sales.parquet")
+
+# 1. Launch REPL off any Pytae DataFrame
+cleaned_df = df.repl()
+
+# 2. Or call via pandas .pt accessor
+raw_df = pd.read_csv("raw.csv")
+cleaned_df = raw_df.pt.repl()
+
+# 3. Direct function call
+pt.repl(df)
+```
+
+When you type `exit` in the REPL, the final transformed table is returned directly into your Python variable.
+
+---
+
+## Complete REPL Command Reference
+
+| Command | Syntax | Description | Mutates Active Table? |
+|---|---|---|---|
+| **`help`** | `help`, `?` | Display formatted help manual | No |
+| **`status`** | `status` | Show active dataset name, shape, memory, undo stack depth | No |
+| **`reset`** | `reset` | Revert active table to original dataset from disk | **Yes** (undoable) |
+| **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
+| **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
+| **`history`** | `history` | List numbered history of applied transformation steps | No |
+| **`checkpoint`** | `checkpoint <name>`, `cp <name>` | Save current table state with a name | No |
+| **`restore`** | `restore <name>`, `checkout <name>` | Restore active table to a named checkpoint | **Yes** (undoable) |
+| **`checkpoints`**| `checkpoints`, `cps` | List all saved checkpoint names and shapes | No |
+| **`<var> = <file>`** | `df1 = orders.parquet` | Load file as named table in memory | **Yes** |
+| **`tables`** | `tables`, `vars` | List all loaded tables in memory (`*` = active) | No |
+| **`use`** | `use <name>`, `<name>` | Switch active dataset to specified table | **Yes** |
+| **`<name> <cmd>`** | `df1 -head 5`, `df2 shape` | Run command directly on named table | Depends on command |
+| **`load`** | `load <path> [as <alias>]` | Load a new file from disk into the REPL session | **Yes** |
+| **`join`** | `join <target> on=<key> [how=...]` | Join a file or checkpoint into the active dataset | **Yes** (undoable) |
+| **`sql`** | `sql <query>` | Run ANSI SQL against `df` or named tables | **Yes** (undoable) |
+| **`py`** | `py <expr>` | Evaluate Python expression on `df` / `pldf` | No |
+| **`save`** | `save <path\|clip>`, `-o <path>` | Export active dataset to file or clipboard | No |
+| **`head`** | `head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
+| **`tail`** | `tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
+| **`shape`** | `shape`, `-shape` | Display row and column counts | No |
+| **`cols`** | `cols [asc]`, `-cols` | Display column names | No |
+| **`dtype`** | `dtype`, `-dtype` | Display column data types | No |
+| **`nulls`** | `nulls`, `-nulls` | Display missing value counts | No |
+| **`glimpse`** | `glimpse`, `-glimpse` | Display transposed schema and sample values | No |
+| **`describe`** | `describe`, `-describe` | Display statistical summary of numeric columns | No |
+| **`exit`** | `exit`, `quit`, `q` | Exit the REPL session | — |
+
+################################################################################
 # FILE: docs/detailed_docs/cli/reshape.md
 ################################################################################
 # CLI Feature Guide: Reshaping (Pure 1-to-1: `-long` & `-wide`)
@@ -12415,6 +12835,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Masking & Privacy**| **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[mask.md](detailed_docs/cli/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
+| **Interactive REPL**| — | **[repl.md](detailed_docs/cli/repl.md)** | `-i`, `-repl`, `repl`, `pt.repl()`, `df.repl()`, state history, `undo`, `redo`, `reset`, `checkpoint`, `restore` |
 | **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |
 | **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
 | **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
@@ -30337,9 +30758,18 @@ SESSION & STATE MANAGEMENT:
   checkpoint <name>    : Save current table state with a name (alias: cp)
   restore <name>       : Restore table to a saved checkpoint (alias: checkout)
   checkpoints          : List all saved checkpoints (alias: cps)
-  load <path>          : Load a new file from disk into the REPL (alias: read)
+  load <path>          : Load a file into REPL (alias: read, e.g. load data.parquet as df1)
   save <path>          : Export active table to Parquet/CSV or clipboard (alias: -o)
   exit / quit / q      : Exit the REPL session
+
+MULTI-TABLE & VARIABLE WORKFLOW:
+  <var> = <file.parquet> : Load file as named table (e.g. df1 = orders.parquet)
+  <var> = sql <query>    : Create table from SQL query across loaded datasets
+  <var> = <tbl> -filter  : Create table from pipeline on another table
+  tables / vars          : List all datasets loaded in memory (* indicates active)
+  use <name> / <name>    : Switch active dataset to <name> (e.g. use df1 or df1)
+  <name> <cmd>           : Run command directly on specific table (e.g. df1 -head 5)
+  join <target> on=<key> : Join active table with file or table (how=left|inner|outer)
 
 INSPECTION (Non-destructive previews, active dataset is preserved):
   head [N]             : Preview first N rows (default 5, e.g. head 10)
@@ -30482,7 +30912,13 @@ class PytaeRepl:
         self.undo_stack: list[tuple[str, pl.DataFrame]] = []
         self.redo_stack: list[tuple[str, pl.DataFrame]] = []
         self.checkpoints: dict[str, pl.DataFrame] = {}
+        self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
+
+        if self.current_df is not None:
+            initial_name = self.path_str or "df"
+            self.checkpoints[initial_name] = self.current_df
+            self.table_sources[initial_name] = str(self.path) if self.path else "<memory>"
 
     def _set_initial_df(self, df: Any) -> None:
         from pytae.dataframe import DataFrame as PytaeDataFrame
@@ -30563,6 +30999,54 @@ class PytaeRepl:
         # Checkpoint / Restore
         tokens = shlex.split(line)
         first_lower = tokens[0].lower()
+
+        # Tables / Datasets / Vars list
+        if first_lower in ("tables", "vars", "datasets"):
+            self._cmd_list_tables(output_fn)
+            return True
+
+        # Switch active dataset (`use <name>`)
+        if first_lower in ("use", "switch") and len(tokens) >= 2:
+            self._cmd_use(tokens[1], output_fn)
+            return True
+
+        # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = sql SELECT ...`
+        if "=" in line and not line.startswith("-") and not any(
+            line.strip().startswith(p)
+            for p in (
+                "filter",
+                "-filter",
+                "mutate",
+                "-mutate",
+                "select",
+                "-select",
+                "arrange",
+                "-arrange",
+                "by",
+                "-by",
+                "agg",
+                "-agg",
+                "sql",
+                "join",
+                "-join",
+            )
+        ):
+            left_part, right_part = line.split("=", 1)
+            var_name = left_part.strip()
+            if var_name.isidentifier():
+                self._cmd_assign(var_name, right_part.strip(), output_fn)
+                return True
+
+        # Bare table name switches active dataset and shows preview
+        if first_lower in self.checkpoints and len(tokens) == 1:
+            self._cmd_use(first_lower, output_fn)
+            output_fn(_format_table(self.checkpoints[first_lower].head(5)))
+            return True
+
+        # Targeted table command (e.g. `df1 -filter ...` or `df2 -head 5`)
+        if first_lower in self.checkpoints and len(tokens) > 1:
+            self._cmd_targeted_pipeline(first_lower, line[len(tokens[0]) :].strip(), output_fn)
+            return True
 
         if first_lower in ("checkpoint", "cp", "tag"):
             if len(tokens) < 2:
@@ -30710,6 +31194,8 @@ class PytaeRepl:
         desc, prev_df = self.undo_stack.pop()
         self.redo_stack.append((desc, self.current_df.clone()))
         self.current_df = prev_df
+        if self.path_str and self.path_str in self.checkpoints:
+            self.checkpoints[self.path_str] = prev_df
         self.history.append(f"undo [{desc}]")
         output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
 
@@ -30720,6 +31206,8 @@ class PytaeRepl:
         desc, next_df = self.redo_stack.pop()
         self.undo_stack.append((desc, self.current_df.clone()))
         self.current_df = next_df
+        if self.path_str and self.path_str in self.checkpoints:
+            self.checkpoints[self.path_str] = next_df
         self.history.append(f"redo [{desc}]")
         output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
 
@@ -30736,6 +31224,7 @@ class PytaeRepl:
             output_fn("pytae: no dataset loaded to checkpoint.")
             return
         self.checkpoints[name] = self.current_df.clone()
+        self.table_sources[name] = f"checkpoint of {self.path_str or '<memory>'}"
         output_fn(f"Saved checkpoint '{name}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
 
     def _cmd_restore(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -30757,13 +31246,153 @@ class PytaeRepl:
         for name, cp_df in self.checkpoints.items():
             output_fn(f"  - {name:<15}: {cp_df.shape[0]:,} rows x {cp_df.shape[1]} cols")
 
+    def _cmd_list_tables(self, output_fn: Callable[[str], None]) -> None:
+        if not self.checkpoints:
+            output_fn("No tables loaded in memory. Use '<var> = <file.parquet>' or 'load <file>' to load a table.")
+            return
+        output_fn("Tables in memory:")
+        for name, cp_df in self.checkpoints.items():
+            source = self.table_sources.get(name, "")
+            source_info = f" ({source})" if source else ""
+            is_active = self.path_str == name or (self.current_df is not None and self.current_df is cp_df)
+            marker = " *" if is_active else "  "
+            status = " [active]" if is_active else ""
+            output_fn(f"{marker} {name:<12}: {cp_df.shape[0]:,} rows x {cp_df.shape[1]} cols{source_info}{status}")
+
+    def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
+        if name not in self.checkpoints:
+            avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+            output_fn(f"pytae: table '{name}' not found. Available tables: {avail}")
+            return
+        self.current_df = self.checkpoints[name]
+        self.path_str = name
+        output_fn(f"Switched active dataset to '{name}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
+
+    def _cmd_assign(self, var_name: str, right_expr: str, output_fn: Callable[[str], None]) -> None:
+        # 1. SQL query assignment: `df3 = sql SELECT ...`
+        if right_expr.lower().startswith("sql "):
+            query = right_expr[4:].strip()
+            try:
+                ctx = pl.SQLContext()
+                if self.current_df is not None:
+                    ctx.register("df", self.current_df)
+                    ctx.register("data", self.current_df)
+                for cp_name, cp_df in self.checkpoints.items():
+                    ctx.register(cp_name, cp_df)
+                res = ctx.execute(query).collect()
+                output_fn(_format_table(res))
+                self.checkpoints[var_name] = res
+                self.table_sources[var_name] = f"sql: {query[:30]}"
+                self.current_df = res
+                self.path_str = var_name
+                self.history.append(f"{var_name} = sql {query}")
+                output_fn(f"Created '{var_name}' from SQL query ({res.shape[0]:,} rows x {res.shape[1]} cols).")
+                return
+            except Exception as exc:
+                output_fn(f"pytae SQL Error: {exc}")
+                return
+
+        # 2. File path assignment: `df1 = orders.parquet` or `df1 = load "orders.parquet"`
+        clean_path = right_expr.removeprefix("load ").strip("\"' ")
+        p = Path(clean_path).expanduser()
+        if p.exists():
+            try:
+                reader = get_reader(p)
+                df = reader.to_polars()
+                self.checkpoints[var_name] = df
+                self.table_sources[var_name] = p.name
+                self.current_df = df
+                if self.orig_df is None:
+                    self.orig_df = df.clone()
+                self.path_str = var_name
+                self.history.append(f"{var_name} = {clean_path}")
+                output_fn(f"Loaded {p.name} as '{var_name}' ({df.shape[0]:,} rows x {df.shape[1]} cols).")
+                return
+            except Exception as exc:
+                output_fn(f"pytae: failed to load {p}: {exc}")
+                return
+
+        # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = df1 join df2 ...` or `df3 = df1`
+        right_tokens = shlex.split(right_expr)
+        if right_tokens:
+            first_tok = right_tokens[0]
+            if first_tok in self.checkpoints:
+                source_df = self.checkpoints[first_tok]
+                pipe_tokens = right_tokens[1:]
+                pipe_line = right_expr[len(first_tok) :].strip()
+                if not pipe_tokens:
+                    # Simple copy: `df3 = df1`
+                    self.checkpoints[var_name] = source_df.clone()
+                    self.table_sources[var_name] = f"copy of {first_tok}"
+                    self.current_df = self.checkpoints[var_name]
+                    self.path_str = var_name
+                    output_fn(f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols).")
+                    return
+                # Run pipeline or join on source_df
+                self.current_df = source_df.clone()
+                if pipe_tokens[0].lower() in ("join", "-join"):
+                    self._cmd_join(pipe_tokens[1:], output_fn)
+                else:
+                    self._cmd_pipeline(pipe_line, pipe_tokens, output_fn)
+                res_df = self.current_df
+                self.checkpoints[var_name] = res_df
+                self.table_sources[var_name] = f"{first_tok} {pipe_line[:20]}"
+                self.current_df = res_df
+                self.path_str = var_name
+                self.history.append(f"{var_name} = {right_expr}")
+                output_fn(f"Created '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
+                return
+
+        output_fn(f"pytae: could not assign '{var_name}'. '{clean_path}' is not an existing file or table.")
+
+    def _cmd_targeted_pipeline(self, table_name: str, sub_line: str, output_fn: Callable[[str], None]) -> None:
+        target_df = self.checkpoints[table_name]
+        old_active = self.current_df
+        old_path = self.path_str
+        self.current_df = target_df
+        self.path_str = table_name
+
+        sub_tokens = shlex.split(sub_line)
+        first_sub = sub_tokens[0].lower() if sub_tokens else ""
+
+        if first_sub == "shape":
+            output_fn(f"({target_df.shape[0]}, {target_df.shape[1]})")
+        elif first_sub in ("cols", "columns"):
+            output_fn("\n".join(target_df.columns))
+        elif first_sub in ("dtype", "dtypes"):
+            reader = DataFrameReader(target_df)
+            output_fn(reader.dtypes().to_string())
+        elif first_sub == "nulls":
+            output_fn(target_df.null_count().to_pandas().iloc[0].to_string())
+        elif first_sub == "glimpse":
+            from pytae.dataframe import DataFrame as PytaeDataFrame
+
+            output_fn(PytaeDataFrame(target_df).glimpse())
+        elif first_sub == "describe":
+            output_fn(_format_table(target_df.describe()))
+        elif first_sub == "head":
+            n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
+            output_fn(_format_table(target_df.head(n)))
+        elif first_sub == "tail":
+            n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
+            output_fn(_format_table(target_df.tail(n)))
+        elif first_sub in ("join", "-join"):
+            self._cmd_join(sub_tokens[1:], output_fn)
+            self.checkpoints[table_name] = self.current_df
+        else:
+            self._cmd_pipeline(sub_line, sub_tokens, output_fn)
+            self.checkpoints[table_name] = self.current_df
+
+        self.current_df = old_active
+        self.path_str = old_path
+
     def _cmd_load(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
-        path_str = tokens[1]
+        path_str = tokens[1].strip("\"' ")
         alias: str | None = None
         if len(tokens) >= 4 and tokens[2].lower() == "as":
             alias = tokens[3]
 
-        p = Path(path_str)
+        p = Path(path_str).expanduser()
         if not p.exists():
             output_fn(f"pytae: file not found: {p}")
             return
@@ -30771,14 +31400,14 @@ class PytaeRepl:
             self._load_file(p)
             self.undo_stack.clear()
             self.redo_stack.clear()
-            self.history.clear()
+            target_alias = alias or p.stem or p.name
+            self.checkpoints[target_alias] = self.current_df.clone()
+            self.table_sources[target_alias] = p.name
+            self.path_str = target_alias
             if alias:
-                assert self.current_df is not None
-                self.checkpoints[alias] = self.current_df.clone()
                 self.history.append(f"load {p.name} as {alias}")
                 output_fn(f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
             else:
-                self.checkpoints.clear()
                 self.history.append(f"load {p.name}")
                 output_fn(f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
         except Exception as exc:
@@ -31056,6 +31685,8 @@ class PytaeRepl:
                     elif not isinstance(res_frame, pl.DataFrame):
                         res_frame = pl.from_pandas(res_frame)
                     self.current_df = res_frame
+                    if self.path_str and self.path_str in self.checkpoints:
+                        self.checkpoints[self.path_str] = res_frame
                     self.redo_stack.clear()
                     self.history.append(line)
         except Exception as exc:
@@ -42753,6 +43384,73 @@ def test_cli_repl_invocation(sample_parquet, monkeypatch):
     # Test pytae -i
     cli.main(["-i"])
     assert invoked
+
+
+def test_repl_variable_assignment_and_multi_tables(tmp_path):
+    f_orders = tmp_path / "orders.parquet"
+    f_customers = tmp_path / "customers.parquet"
+
+    pl.DataFrame({
+        "order_id": [101, 102, 103],
+        "cust_id": [1, 2, 1],
+        "amount": [150.0, 75.0, 20.0],
+    }).write_parquet(f_orders)
+
+    pl.DataFrame({
+        "cust_id": [1, 2],
+        "name": ["Alice", "Bob"],
+        "tier": ["Gold", "Silver"],
+    }).write_parquet(f_customers)
+
+    outputs = []
+    # Start empty REPL (like `pytae -i`)
+    r = PytaeRepl()
+    assert r.current_df is None
+
+    # 1. Assign df1 = orders.parquet
+    r.execute_line(f"df1 = {f_orders}", output_fn=outputs.append)
+    assert "df1" in r.checkpoints
+    assert r.checkpoints["df1"].shape == (3, 3)
+
+    # 2. Assign df2 = customers.parquet
+    r.execute_line(f"df2 = {f_customers}", output_fn=outputs.append)
+    assert "df2" in r.checkpoints
+    assert r.checkpoints["df2"].shape == (2, 3)
+
+    # 3. List tables
+    r.execute_line("tables", output_fn=outputs.append)
+    assert any("df1" in o for o in outputs)
+    assert any("df2" in o for o in outputs)
+
+    # 4. Targeted inspections
+    r.execute_line("df1 shape", output_fn=outputs.append)
+    assert "(3, 3)" in outputs[-1]
+    r.execute_line("df2 shape", output_fn=outputs.append)
+    assert "(2, 3)" in outputs[-1]
+
+    # 5. Targeted transformation: filter df1 in place
+    r.execute_line("df1 -filter \"amount > 50\"", output_fn=outputs.append)
+    assert r.checkpoints["df1"].shape == (2, 3)
+
+    # 6. Switch active table with bare name or `use`
+    r.execute_line("use df2", output_fn=outputs.append)
+    assert r.path_str == "df2"
+    assert r.current_df.shape == (2, 3)
+
+    # 7. Assignment from join: df3 = df1 join df2 on=cust_id
+    r.execute_line("df3 = df1 join df2 on=cust_id", output_fn=outputs.append)
+    assert "df3" in r.checkpoints
+    assert r.checkpoints["df3"].shape == (2, 5)
+    assert "name" in r.checkpoints["df3"].columns
+
+    # 8. Assignment from SQL query
+    r.execute_line(
+        "df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.cust_id",
+        output_fn=outputs.append,
+    )
+    assert "df4" in r.checkpoints
+    assert r.checkpoints["df4"].shape == (2, 3)
+    assert set(r.checkpoints["df4"].columns) == {"order_id", "name", "amount"}
 
 ################################################################################
 # FILE: tests/test_select.py

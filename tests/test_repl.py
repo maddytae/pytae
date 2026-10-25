@@ -295,3 +295,71 @@ def test_cli_repl_invocation(sample_parquet, monkeypatch):
     # Test pytae -i
     cli.main(["-i"])
     assert invoked
+
+
+def test_repl_variable_assignment_and_multi_tables(tmp_path):
+    f_orders = tmp_path / "orders.parquet"
+    f_customers = tmp_path / "customers.parquet"
+
+    pl.DataFrame({
+        "order_id": [101, 102, 103],
+        "cust_id": [1, 2, 1],
+        "amount": [150.0, 75.0, 20.0],
+    }).write_parquet(f_orders)
+
+    pl.DataFrame({
+        "cust_id": [1, 2],
+        "name": ["Alice", "Bob"],
+        "tier": ["Gold", "Silver"],
+    }).write_parquet(f_customers)
+
+    outputs = []
+    # Start empty REPL (like `pytae -i`)
+    r = PytaeRepl()
+    assert r.current_df is None
+
+    # 1. Assign df1 = orders.parquet
+    r.execute_line(f"df1 = {f_orders}", output_fn=outputs.append)
+    assert "df1" in r.checkpoints
+    assert r.checkpoints["df1"].shape == (3, 3)
+
+    # 2. Assign df2 = customers.parquet
+    r.execute_line(f"df2 = {f_customers}", output_fn=outputs.append)
+    assert "df2" in r.checkpoints
+    assert r.checkpoints["df2"].shape == (2, 3)
+
+    # 3. List tables
+    r.execute_line("tables", output_fn=outputs.append)
+    assert any("df1" in o for o in outputs)
+    assert any("df2" in o for o in outputs)
+
+    # 4. Targeted inspections
+    r.execute_line("df1 shape", output_fn=outputs.append)
+    assert "(3, 3)" in outputs[-1]
+    r.execute_line("df2 shape", output_fn=outputs.append)
+    assert "(2, 3)" in outputs[-1]
+
+    # 5. Targeted transformation: filter df1 in place
+    r.execute_line("df1 -filter \"amount > 50\"", output_fn=outputs.append)
+    assert r.checkpoints["df1"].shape == (2, 3)
+
+    # 6. Switch active table with bare name or `use`
+    r.execute_line("use df2", output_fn=outputs.append)
+    assert r.path_str == "df2"
+    assert r.current_df.shape == (2, 3)
+
+    # 7. Assignment from join: df3 = df1 join df2 on=cust_id
+    r.execute_line("df3 = df1 join df2 on=cust_id", output_fn=outputs.append)
+    assert "df3" in r.checkpoints
+    assert r.checkpoints["df3"].shape == (2, 5)
+    assert "name" in r.checkpoints["df3"].columns
+
+    # 8. Assignment from SQL query
+    r.execute_line(
+        "df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.cust_id",
+        output_fn=outputs.append,
+    )
+    assert "df4" in r.checkpoints
+    assert r.checkpoints["df4"].shape == (2, 3)
+    assert set(r.checkpoints["df4"].columns) == {"order_id", "name", "amount"}
+
