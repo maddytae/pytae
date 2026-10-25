@@ -452,9 +452,10 @@ class _Pipeline:
 
     def dataframe(self) -> pd.DataFrame:
         if self._pandas_df is None:
-            if self._pldf is not None:
-                pldf = self.polars_frame()
-                self._pandas_df = pldf.to_pandas()
+            import polars as pl
+
+            if isinstance(self._pldf, pl.DataFrame):
+                self._pandas_df = self._pldf.to_pandas()
             else:
                 df = self._reader.to_dataframe(
                     columns=self._pending_exact,

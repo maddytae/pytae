@@ -129,6 +129,21 @@ CHEATSHEET_TEXT = """\
   pytae secure.parquet -unmask "ssn" -key "Secret123"             # Decrypt with key
   pytae dev.parquet -unmask "user" -vault "vault.parquet"         # De-tokenize with vault
 
+13. 💬 INTERACTIVE REPL SHELL (-i, -repl, repl)
+--------------------------------------------------------------------------------
+  pytae data.parquet -i                                           # Launch REPL with file loaded
+  pytae -i                                                        # Launch empty REPL prompt
+  pytae repl data.parquet                                         # Alternative subcommand syntax
+  pytae data.parquet -filter "sales > 100" -i                     # Pre-filter then enter REPL
+  # Inside REPL session:
+  #   undo / redo             Revert / re-apply last transformation step
+  #   reset                   Restore original dataset from disk (instant O(1))
+  #   checkpoint <name>       Save named state snapshot (alias: cp)
+  #   restore <name>          Restore to named snapshot (alias: checkout)
+  #   sql <query>             Run ANSI SQL against active table (table: df)
+  #   save <file|clip>        Export active dataset to file or clipboard
+  #   -filter, -mutate, etc.  Standard pytae pipeline flags executed in RAM!
+
 Full documentation: https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md
 ================================================================================
 """

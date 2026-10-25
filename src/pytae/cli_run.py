@@ -646,6 +646,15 @@ def _process_path(
                 progress=args.progress,
                 chunk_size=chunk_size,
             )
+        elif str(path) == "<memory>":
+            mem_df = getattr(args, "_memory_df", None)
+            reader = DataFrameReader(mem_df, path="<memory>")
+            pipeline = _Pipeline(
+                reader,
+                nrows=args.nrows,
+                progress=args.progress,
+                chunk_size=chunk_size,
+            )
         elif path is None or not path.exists():
             return _fail(parser, batch, f"file not found: {path}")
         else:
@@ -1258,4 +1267,7 @@ def _process_path(
         except SystemExit as exc:
             return _fail(parser, batch, str(exc))
 
+    if getattr(args, "repl", False) or str(path) == "<memory>":
+        setattr(args, "_result_frame", pipeline.current_frame())
+    setattr(args, "_result_pipeline", pipeline)
     return False

@@ -1239,6 +1239,16 @@ class DataFrame:
         print(format_glimpse(self, width=width))
         return self
 
+    def repl(self, prompt: str = "pytae") -> Any:
+        """Launch an interactive REPL shell pre-loaded with this DataFrame.
+
+        Returns the modified DataFrame upon exiting the REPL session.
+        """
+        from pytae.repl import repl
+
+        res = repl(df=self, prompt=prompt)
+        return DataFrame(res) if res is not None else self
+
     def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
         """Calculate frequency distribution of unique column values."""
         from pytae.other_utilities import freq as _freq

@@ -156,6 +156,11 @@ class PolarsPtAccessor:
         print(format_glimpse(self._obj, width=width))
         return self._obj
 
+    def repl(self, prompt: str = "pytae") -> Any:
+        from pytae.repl import repl
+
+        return repl(df=self._obj, prompt=prompt)
+
     def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
         return DataFrame(self._obj).freq(col=col, dropna=dropna, width=width)
 
@@ -393,6 +398,11 @@ class PandasPtAccessor:
 
         print(format_glimpse(self._obj, width=width))
         return self._obj
+
+    def repl(self, prompt: str = "pytae") -> Any:
+        from pytae.repl import repl
+
+        return repl(df=self._obj, prompt=prompt)
 
     def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
         return DataFrame(self._obj).freq(col=col, dropna=dropna, width=width)

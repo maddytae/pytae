@@ -335,4 +335,45 @@ pytae customers.csv -mask "email=hash, ssn=encrypt, name=tokenize" -key "SecretK
 
 ---
 
+## 13. 💬 Interactive REPL Shell (`-i`, `-repl`, `repl`)
+
+Stateful interactive data manipulation environment with in-memory execution and undo/redo history:
+
+```bash
+# Launch interactive REPL with a dataset pre-loaded
+pytae data.parquet -i
+
+# Launch empty REPL prompt
+pytae -i
+pytae repl
+
+# Pre-filter dataset and drop directly into interactive REPL
+pytae data.parquet -filter "sales > 100" -i
+
+# Inside the REPL prompt:
+# 1. State Management & Undo
+undo                 # Revert last transformation
+redo                 # Re-apply last undone transformation
+reset                # Restore original dataset from disk (instant O(1))
+history              # Show history of applied pipeline steps
+checkpoint v1        # Save named state snapshot (alias: cp)
+restore v1           # Restore to named snapshot (alias: checkout)
+status               # Show active dataset shape, columns, and memory
+
+# 2. Pipeline Execution (RAM-speed with zero file re-reads)
+pytae> -filter "species == 'Gentoo'"
+pytae> -mutate "mass_kg = body_mass_g / 1000.0"
+pytae> -by species -agg "mean_kg=mass_kg:mean, n=count"
+pytae> -select "species,island,mass_kg"
+pytae> -arrange "mass_kg desc"
+
+# 3. Direct Query Engines & Export
+pytae> sql SELECT species, AVG(body_mass_g) FROM df GROUP BY 1
+pytae> py df.shape
+pytae> save clean.parquet
+pytae> save clip     # Copy active table to system clipboard
+```
+
+---
+
 👉 **For Python Library Reference**: See [docs/pytae.md](pytae.md) or import directly via `import pytae as pt`.

@@ -892,10 +892,47 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-mask", "-key", "-vault"],
     ),
+    "repl": KeywordHelp(
+        name="repl",
+        flag="-repl, --repl, -i, --interactive",
+        syntax="pytae [<path>] -i  or  pytae repl [<path>]",
+        summary="Launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration.",
+        description=(
+            "Starts an interactive Read-Eval-Print Loop (REPL) that loads dataset(s) into memory once.\n"
+            "Supports continuous pipeline iteration, undo/redo state history, named checkpoints, and instant reset\n"
+            "without repeatedly re-reading large files from disk."
+        ),
+        options=[
+            "undo : Revert the last applied transformation step.",
+            "redo : Re-apply the last undone transformation step.",
+            "reset : Restore the original dataset as loaded from disk.",
+            "history : Show numbered history of transformation steps in this session.",
+            "status : Show active table shape, columns, and memory usage.",
+            "checkpoint <name> : Freeze and save current state with a name (alias: cp).",
+            "restore <name> : Restore table to a saved checkpoint (alias: checkout).",
+            "load <path> : Load a new dataset from disk into the REPL (alias: read).",
+            "save <path> : Save active table to Parquet/CSV or clipboard (-o clip).",
+            "sql <query> : Run ANSI SQL queries against in-memory table `df`.",
+            "py <expr> : Evaluate arbitrary Python expressions on `df` / `pldf`.",
+        ],
+        examples=[
+            "pytae penguins.parquet -i",
+            "pytae -i",
+            "pytae repl sales.parquet",
+            'pytae penguins.parquet -filter "species == \'Gentoo\'" -i',
+        ],
+        see_also=["-filter", "-mutate", "-agg", "-sql", "-cheatsheet"],
+    ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries
 KEYWORD_ALIASES: dict[str, str] = {
+    "i": "repl",
+    "-i": "repl",
+    "--interactive": "repl",
+    "interactive": "repl",
+    "-repl": "repl",
+    "--repl": "repl",
     "o": "output",
     "-o": "output",
     "--output": "output",

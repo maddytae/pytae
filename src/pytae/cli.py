@@ -207,6 +207,10 @@ _CLI_FLAGS = {
     "--plot",
     "-finalize",
     "--finalize",
+    "-i",
+    "--interactive",
+    "-repl",
+    "--repl",
 }
 
 
@@ -327,11 +331,12 @@ class PytaeParser(argparse.ArgumentParser):
         return super().parse_known_args(normalized, namespace)
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser = PytaeParser(
         prog="pytae",
         description="Inspect and convert parquet/csv/txt/dat/sas7bdat files (glob patterns convert multiple files at once), or read a Databricks table / remote SSH file via a .yaml connection config.",
         allow_abbrev=False,
+        exit_on_error=exit_on_error,
     )
     parser.add_argument(
         "path",
@@ -925,6 +930,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="numeric difference tolerance / threshold for dataset comparison (-diff); "
         "e.g. -tol 0.001 or -tolerance 1e-4",
     )
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        "-repl",
+        "--repl",
+        dest="repl",
+        action="store_true",
+        help="launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration",
+    )
     return parser
 
 
@@ -960,6 +974,14 @@ def main(argv: list[str] | None = None) -> int:
         from pytae.validation import run_cli_check
 
         return run_cli_check(raw_argv[1:])
+
+    # Check for repl subcommand: `pytae repl [path]` or `pytae -repl [path]`
+    if raw_argv and raw_argv[0] in ("repl", "-repl", "--repl"):
+        from pytae.repl import repl
+
+        repl_path = raw_argv[1] if len(raw_argv) > 1 and not raw_argv[1].startswith("-") else None
+        repl(path=repl_path)
+        return 0
 
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
@@ -1084,6 +1106,11 @@ def main(argv: list[str] | None = None) -> int:
         if _is_stdin_piped():
             raw_paths = ["-"]
             args.path = ["-"]
+        elif getattr(args, "repl", False):
+            from pytae.repl import repl
+
+            repl()
+            return 0
         else:
             parser.error("the following arguments are required: path")
 
@@ -1294,6 +1321,18 @@ def main(argv: list[str] | None = None) -> int:
             if failed:
                 code = 1
         return code
+
+    if getattr(args, "repl", False):
+        from pytae.repl import repl
+
+        if show_all:
+            repl(path=paths[0] if paths else None)
+            return 0
+        else:
+            _execute_once()
+            result_df = getattr(args, "_result_frame", None)
+            repl(df=result_df, path=paths[0] if paths else None)
+            return 0
 
     if args.time is None:
         return _execute_once()

@@ -737,7 +737,11 @@ class StdinReader:
 class DataFrameReader:
     """Reader wrapping an in-memory DataFrame (e.g. from clipboard or memory)."""
 
-    def __init__(self, df: pd.DataFrame, path: Path | str = "<dataframe>") -> None:
+    def __init__(self, df: Any, path: Path | str = "<dataframe>") -> None:
+        from pytae.dataframe import DataFrame as PytaeDataFrame
+
+        if isinstance(df, PytaeDataFrame):
+            df = df._df
         self._df = df
         self.path = Path(str(path))
 
@@ -748,12 +752,16 @@ class DataFrameReader:
         return list(self._df.columns)
 
     def dtypes(self) -> pd.Series:
+        import polars as pl
+
+        if isinstance(self._df, pl.DataFrame):
+            return self._df.head(0).to_pandas().dtypes
         return self._df.dtypes
 
-    def head(self, n: int) -> pd.DataFrame:
+    def head(self, n: int) -> Any:
         return self._df.head(n)
 
-    def tail(self, n: int) -> pd.DataFrame:
+    def tail(self, n: int) -> Any:
         return self._df.tail(n)
 
     def to_dataframe(
@@ -763,6 +771,15 @@ class DataFrameReader:
         nrows: int | None = None,
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
+        import polars as pl
+
+        if isinstance(self._df, pl.DataFrame):
+            out_pl = self._df
+            if columns is not None:
+                out_pl = out_pl.select(columns)
+            if nrows is not None:
+                out_pl = out_pl.head(nrows)
+            return out_pl.to_pandas()
         out = self._df
         if columns is not None:
             out = out[columns]
@@ -773,7 +790,7 @@ class DataFrameReader:
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
 
-        df = pl.from_pandas(self._df)
+        df = self._df if isinstance(self._df, pl.DataFrame) else pl.from_pandas(self._df)
         if nrows is not None:
             df = df.head(nrows)
         if columns is not None:

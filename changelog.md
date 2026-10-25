@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Stateful Interactive REPL Shell (`pytae -i`, `pytae -repl`, `pt.repl()`, `df.repl()`)**:
+  - Implemented an interactive Read-Eval-Print Loop (REPL) for iterative data exploration and pipeline prototyping without repeatedly reloading datasets from disk.
+  - **Zero-Cost State Management & History**:
+    - `reset`: Instantly restore the original dataset as loaded from disk ($O(1)$ memory reference switch, zero disk re-reads).
+    - `undo`: Revert the last applied transformation step across the session history.
+    - `redo`: Re-apply the last undone transformation step.
+    - `checkpoint <name>` / `restore <name>`: Freeze and restore named table states (aliases: `cp`, `checkout`).
+    - `history`: Display numbered sequence of applied transformations in the active session.
+    - `status`: Display active dataset shape, columns, and estimated memory footprint.
+  - **In-Memory Pipeline Execution**:
+    - Executes any standard pytae CLI flag sequence (`-filter`, `-mutate`, `-select`, `-arrange`, `-by ... -agg`, `-distinct`, `-dropna`, `-fillna`, `-mask`, `-unmask`, etc.) directly on in-memory Arrow tables.
+    - Auto-prefixes bare verbs (e.g. `filter ...` $\to$ `-filter ...`) for frictionless typing.
+    - Non-destructive inspection shortcuts (`shape`, `cols`, `dtype`, `nulls`, `glimpse`, `describe`, `head`, `tail`) preview data without mutating the active dataset.
+  - **Integrated Query Engines**:
+    - `sql <query>`: Execute vectorized ANSI SQL queries directly against the in-memory dataset via Polars' `SQLContext`.
+    - `py <expr>`: Evaluate arbitrary Python expressions with `df` (pytae) and `pldf` (polars) in the local scope.
+  - **Multi-Interface Support**:
+    - CLI: `pytae <file> -i`, `pytae -i`, `pytae repl [<file>]`, or pre-seeding `pytae <file> -filter ... -i`.
+    - Python SDK: `pt.repl(df)`, `df.repl()`, and pandas `.pt` accessor `df.pt.repl()`, returning the final transformed DataFrame on exit.
+
 ### Changed
 - **Python Support Baseline & Security Hardening**:
   - Set minimum Python requirement to `requires-python = ">=3.11"`.
