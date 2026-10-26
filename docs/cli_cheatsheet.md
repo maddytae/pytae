@@ -359,6 +359,7 @@ checkpoint v1        # Save snapshot of all tables in session
 rm checkpoint v1     # Delete a saved checkpoint
 restore v1           # Restore entire workbench to named snapshot
 rm df                # Remove active table from memory (or rm df1 / rm -all, undoable)
+cls                  # Clear the terminal screen (or 'clear')
 status               # Show active dataset shape, columns, and memory
 
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)

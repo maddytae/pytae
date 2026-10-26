@@ -1249,5 +1249,46 @@ def test_repl_and_cli_identical_schema_inference_and_fallback(tmp_path, monkeypa
     assert r.tables["df1"]["val"].to_list()[-1] == "Montréal"
 
 
+def test_repl_cls_and_clear(monkeypatch):
+    import pytae as pt
+
+    r = PytaeRepl()
+
+    # 1. Direct r.cls() and r.clear() methods with capture
+    out1 = []
+    r.cls(output_fn=out1.append)
+    assert "\033[H\033[2J" in out1
+
+    out2 = []
+    r.clear(output_fn=out2.append)
+    assert "\033[H\033[2J" in out2
+
+    # 2. Line command execution: cls and clear
+    out3 = []
+    assert r.execute_line("cls", output_fn=out3.append) is True
+    assert "\033[H\033[2J" in out3
+
+    out4 = []
+    assert r.execute_line("clear", output_fn=out4.append) is True
+    assert "\033[H\033[2J" in out4
+
+    # 3. Disallowed hyphenated aliases
+    out5 = []
+    r.execute_line("-cls", output_fn=out5.append)
+    assert "'-cls' is not recognized; use 'cls'" in out5[-1]
+
+    out6 = []
+    r.execute_line("-clear", output_fn=out6.append)
+    assert "'-clear' is not recognized; use 'cls'" in out6[-1]
+
+    # 4. Top-level pt.cls() function
+    system_cmds = []
+    monkeypatch.setattr("os.system", lambda cmd: system_cmds.append(cmd))
+    pt.cls()
+    assert len(system_cmds) == 1
+    assert system_cmds[0] in ("cls", "clear")
+
+
+
 
 

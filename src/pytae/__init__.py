@@ -500,6 +500,17 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def cls() -> None:
+    """Clear the terminal screen."""
+    import os
+
+    try:
+        os.system("cls" if os.name == "nt" else "clear")
+    except Exception:
+        sys.stdout.write("\033[H\033[2J")
+        sys.stdout.flush()
+
+
 __all__ = [
     "DataFrame",
     "GroupedDataFrame",
@@ -548,6 +559,7 @@ __all__ = [
     "mask",
     "unmask",
     "repl",
+    "cls",
     "everything",
     "validate_pipeline",
     "PipelineValidationError",

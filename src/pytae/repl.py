@@ -344,6 +344,7 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoints -all')
+  cls / clear            : Clear the terminal screen
   exit                   : Exit REPL
 
 QUERY & PYTHON EXPRESSIONS:
@@ -359,6 +360,10 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--help": "help",
     "-exit": "exit",
     "--exit": "exit",
+    "-cls": "cls",
+    "--cls": "cls",
+    "-clear": "cls",
+    "--clear": "cls",
     "-status": "status",
     "--status": "status",
     "-reset": "reset",
@@ -824,6 +829,11 @@ class PytaeRepl:
                 output_fn(f"Shell error: {e}")
             return True
 
+        # Clear screen (cls or clear)
+        if line.lower() in ("cls", "clear"):
+            self._cmd_cls(output_fn)
+            return True
+
         # Status
         if line.lower() == "status":
             self._cmd_status(output_fn)
@@ -1224,6 +1234,27 @@ class PytaeRepl:
         # Otherwise, process as a pytae pipeline command
         self._cmd_pipeline(line, tokens, output_fn)
         return True
+
+    def cls(self, output_fn: Callable[[str], None] = print) -> None:
+        """Clear the terminal screen."""
+        self._cmd_cls(output_fn)
+
+    def clear(self, output_fn: Callable[[str], None] = print) -> None:
+        """Clear the terminal screen."""
+        self._cmd_cls(output_fn)
+
+    def _cmd_cls(self, output_fn: Callable[[str], None] = print) -> None:
+        """Clear the terminal screen."""
+        import os
+
+        if output_fn is print:
+            try:
+                os.system("cls" if os.name == "nt" else "clear")
+            except Exception:
+                sys.stdout.write("\033[H\033[2J")
+                sys.stdout.flush()
+        else:
+            output_fn("\033[H\033[2J")
 
     def _cmd_status(self, output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
