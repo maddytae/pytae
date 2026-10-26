@@ -1240,10 +1240,6 @@ class PytaeRepl:
         """Clear the terminal screen."""
         self._cmd_clear(output_fn)
 
-    def cls(self, output_fn: Callable[[str], None] = print) -> None:
-        """Clear the terminal screen (alias for clear)."""
-        self._cmd_clear(output_fn)
-
     def _cmd_clear(self, output_fn: Callable[[str], None] = print) -> None:
         """Clear the terminal screen."""
         import os

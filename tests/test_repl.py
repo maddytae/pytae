@@ -1285,6 +1285,10 @@ def test_repl_strict_clear(monkeypatch):
     assert len(system_cmds) == 1
     assert system_cmds[0] in ("cls", "clear")
 
+    # 6. Strict check: cls does not exist as a method on PytaeRepl or function in pytae
+    assert not hasattr(r, "cls")
+    assert not hasattr(pt, "cls")
+
 
 
 

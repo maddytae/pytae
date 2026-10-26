@@ -511,9 +511,6 @@ def clear() -> None:
         sys.stdout.flush()
 
 
-cls = clear
-
-
 __all__ = [
     "DataFrame",
     "GroupedDataFrame",
@@ -563,7 +560,6 @@ __all__ = [
     "unmask",
     "repl",
     "clear",
-    "cls",
     "everything",
     "validate_pipeline",
     "PipelineValidationError",
