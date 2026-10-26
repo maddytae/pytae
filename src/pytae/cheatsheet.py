@@ -139,7 +139,7 @@ CHEATSHEET_TEXT = """\
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables
   #   rm checkpoint <name>    Delete a saved checkpoint
-  #   rm <table_name>         Remove in-memory table (undoable)
+  #   rm <tbl> / rm df        Remove table or active dataset from memory (undoable)
   #   restore <name>          Restore entire workbench to named snapshot
   #   -cols [asc|desc]        List column names (file order or sorted)
   #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)

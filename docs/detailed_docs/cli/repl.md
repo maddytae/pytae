@@ -270,19 +270,28 @@ Tables in memory:
    df2         : 1,500 rows x 3 cols (customers.parquet)
 ```
 
-### Removing In-Memory Tables (`rm <table_name>`)
+### Removing In-Memory Tables (`rm <table_name>` / `rm df`)
 
-Remove datasets from memory when they are no longer needed. If the removed table was the active dataset, Pytae automatically switches the active cursor to the next available table:
+Remove datasets from memory when they are no longer needed. Pytae flexibly resolves table targets by explicit variable name, filename stem, or the universal alias `df` (which targets the currently active dataset):
 
 ```text
-pytae [df1, df2]> rm df1
-Removed table 'df1'. Switched active dataset to 'df2'.
-pytae [df2]> 
+# Remove by universal alias (targets active dataset):
+pytae [penguins.parquet: 344x8]> rm df
+Removed table 'penguins.parquet'. No tables remain loaded.
+pytae>
 
-# Undo immediately restores the removed table to session memory:
-pytae [df2]> undo
-Undid: rm df1. Active shape: (10,000, 4)
-pytae [df1, df2]> 
+# Remove by filename stem:
+pytae [orders.parquet, customers.parquet]> rm orders
+Removed table 'orders.parquet'. Switched active dataset to 'customers.parquet'.
+
+# Remove all loaded tables at once:
+pytae [df1, df2]> rm -all
+Removed all 2 loaded tables. No tables remain loaded.
+
+# Undo immediately restores the removed tables to session memory:
+pytae> undo
+Undid: rm -all. Active shape: (10,000, 4)
+pytae [df1, df2]>
 ```
 
 ### Subject-First Execution
@@ -399,7 +408,8 @@ pytae [penguins.parquet: 344x7]> -head 50 | wc -l
 
 The REPL automatically preserves command history across sessions:
 - **`~/.pytae_history`**: History is persistently saved to your home directory (up to 1,000 commands).
-- **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Both macOS `libedit` and GNU `readline` are supported.
+- **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Supported on Unix/macOS (`libedit`, GNU `readline`), Windows Terminal, and PowerShell.
+- **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered log of pipeline transformation steps applied during the current session.
 
 ---
@@ -434,7 +444,7 @@ pytae> -o clip
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoints -all` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
-| **`rm`** | `rm <table_name>` | Remove table from memory (auto-switches active cursor) | **Yes** (undoable) |
+| **`rm`** | `rm <table_name>`, `rm df`, `rm -all` | Remove table or active dataset from memory (auto-switches cursor) | **Yes** (undoable) |
 | **`<var> = <file>`** | `df1 = orders.parquet [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Ingest dataset into a named table with reader options | **Yes** |
 | **`load`** | `load <file> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Load dataset with alias and reader options | **Yes** |
 | **`tables`** | `tables` | List all loaded tables in memory | No |

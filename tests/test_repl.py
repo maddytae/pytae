@@ -988,4 +988,193 @@ def test_repl_raw_history_persistence(tmp_path, monkeypatch):
     assert loaded == ["cmd1", "cmd2", "cmd3"]
 
 
+def test_repl_rm_df_with_loaded_file(sample_parquet):
+    outputs = []
+    r = PytaeRepl(path=sample_parquet)
+    assert r.current_df is not None
+    assert "penguins_sample.parquet" in r.tables
+
+    # 'rm df' should resolve 'df' alias to active table 'penguins_sample.parquet'
+    r.execute_line("rm df", output_fn=outputs.append)
+    assert "Removed table 'penguins_sample.parquet'" in outputs[-1]
+    assert "No tables remain loaded" in outputs[-1]
+    assert r.current_df is None
+    assert r.path_str is None
+    assert "penguins_sample.parquet" not in r.tables
+
+    # Undo restores the table
+    r.execute_line("undo", output_fn=outputs.append)
+    assert r.current_df is not None
+    assert "penguins_sample.parquet" in r.tables
+    assert r.path_str == "penguins_sample.parquet"
+
+
+def test_repl_rm_df_in_memory(sample_df):
+    outputs = []
+    r = PytaeRepl(df=sample_df)
+    assert r.current_df is not None
+    assert "<memory>" in r.tables
+
+    r.execute_line("rm df", output_fn=outputs.append)
+    assert "Removed table '<memory>'" in outputs[-1]
+    assert r.current_df is None
+    assert not r.tables
+
+    # Undo restores
+    r.execute_line("undo", output_fn=outputs.append)
+    assert r.current_df is not None
+    assert "<memory>" in r.tables
+
+
+def test_repl_rm_stem_matching(sample_parquet):
+    outputs = []
+    r = PytaeRepl(path=sample_parquet)
+
+    # Stem match: 'penguins_sample' matches 'penguins_sample.parquet'
+    r.execute_line("rm penguins_sample", output_fn=outputs.append)
+    assert "Removed table 'penguins_sample.parquet'" in outputs[-1]
+    assert not r.tables
+
+
+def test_repl_rm_multiple_tables_switches_active(sample_df, tmp_path):
+    p1 = tmp_path / "t1.parquet"
+    p2 = tmp_path / "t2.parquet"
+    sample_df.write_parquet(p1)
+    sample_df.write_parquet(p2)
+
+    r = PytaeRepl(paths=[p1, p2])
+    assert len(r.tables) == 2
+    outputs = []
+
+    # Active table is 't2'
+    assert r.path_str == "t2"
+    r.execute_line("rm df", output_fn=outputs.append)
+    assert "Removed table 't2'" in outputs[-1]
+    assert "Switched active dataset to 't1'" in outputs[-1]
+    assert r.path_str == "t1"
+    assert "t1" in r.tables
+    assert "t2" not in r.tables
+
+
+def test_repl_rm_all_tables(sample_df, tmp_path):
+    p1 = tmp_path / "t1.parquet"
+    p2 = tmp_path / "t2.parquet"
+    sample_df.write_parquet(p1)
+    sample_df.write_parquet(p2)
+
+    r = PytaeRepl(paths=[p1, p2])
+    outputs = []
+    r.execute_line("rm -all", output_fn=outputs.append)
+    assert "Removed all 2 loaded tables" in outputs[-1]
+    assert not r.tables
+    assert r.current_df is None
+
+    # Undo restores both tables
+    r.execute_line("undo", output_fn=outputs.append)
+    assert len(r.tables) == 2
+
+
+def test_repl_table_resolution_targeted_and_use(sample_parquet):
+    r = PytaeRepl(path=sample_parquet)
+    outputs = []
+
+    # 'df -cols' targeted command
+    r.execute_line("df -cols", output_fn=outputs.append)
+    assert "id" in outputs[-1]
+    assert "species" in outputs[-1]
+
+    # 'penguins_sample -cols' stem targeted command
+    outputs.clear()
+    r.execute_line("penguins_sample -cols", output_fn=outputs.append)
+    assert "body_mass_g" in outputs[-1]
+
+    # 'use df' alias
+    outputs.clear()
+    r.execute_line("use df", output_fn=outputs.append)
+    assert "Switched active dataset to 'penguins_sample.parquet'" in outputs[-1]
+
+    # 'use penguins_sample' stem
+    outputs.clear()
+    r.execute_line("use penguins_sample", output_fn=outputs.append)
+    assert "Switched active dataset to 'penguins_sample.parquet'" in outputs[-1]
+
+
+def test_win_console_input_git_bash_ansi_arrow_keys(monkeypatch):
+    import sys
+    import types
+    from pytae.repl import _win_console_input
+
+    # Simulate Git Bash sending ANSI Up Arrow: \x1b + [ + A, then Enter (\r)
+    keystrokes = ["\x1b", "[", "A", "\r"]
+
+    class MockMsvcrt:
+        @staticmethod
+        def kbhit():
+            return len(keystrokes) > 0 and keystrokes[0] != "\r"
+
+        @staticmethod
+        def getwch():
+            if keystrokes:
+                return keystrokes.pop(0)
+            return "\r"
+
+    fake_msvcrt = types.ModuleType("msvcrt")
+    fake_msvcrt.getwch = MockMsvcrt.getwch
+    fake_msvcrt.kbhit = MockMsvcrt.kbhit
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    history = ["-cols", "-head 5"]
+    res = _win_console_input("pytae> ", history)
+    assert res == "-head 5"
+
+
+def test_win_console_input_git_bash_application_cursor(monkeypatch):
+    import sys
+    import types
+    from pytae.repl import _win_console_input
+
+    # Simulate Git Bash application cursor Up Arrow: \x1b + O + A, then Enter (\r)
+    keystrokes = ["\x1b", "O", "A", "\r"]
+
+    class MockMsvcrt:
+        @staticmethod
+        def kbhit():
+            return len(keystrokes) > 0 and keystrokes[0] != "\r"
+
+        @staticmethod
+        def getwch():
+            if keystrokes:
+                return keystrokes.pop(0)
+            return "\r"
+
+    fake_msvcrt = types.ModuleType("msvcrt")
+    fake_msvcrt.getwch = MockMsvcrt.getwch
+    fake_msvcrt.kbhit = MockMsvcrt.kbhit
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    history = ["-cols", "-filter 'species == Gentoo'"]
+    res = _win_console_input("pytae> ", history)
+    assert res == "-filter 'species == Gentoo'"
+
+
+def test_git_bash_pipe_ansi_arrow_history_recall(sample_df):
+    outputs = []
+    r = PytaeRepl(df=sample_df)
+
+    # Run two commands to populate history
+    r.execute_line("-cols", output_fn=outputs.append)
+    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+
+    # In Git Bash without winpty, pressing Up Arrow + Enter sends "\x1b[A"
+    outputs.clear()
+    r.execute_line("\x1b[A", output_fn=outputs.append)
+    assert any("recalled from history: -filter \"species == 'Gentoo'\"" in o for o in outputs)
+    assert r.current_df.shape == (2, 3)
+
+    # Pressing Up Arrow twice + Enter sends "\x1b[A\x1b[A" -> recalls 2 steps back ("-cols")
+    outputs.clear()
+    r.execute_line("\x1b[A\x1b[A", output_fn=outputs.append)
+    assert any("recalled from history: -cols" in o for o in outputs)
+
+
 

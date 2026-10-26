@@ -87,11 +87,69 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
         except Exception:
             return "".join(line_chars)
 
+        code: str | None = None
         if ch in ("\x00", "\xe0"):
             try:
                 code = msvcrt.getwch()
             except Exception:
                 continue
+        elif ch == "\x1b":
+            # ANSI escape sequence from terminal emulators (e.g. Git Bash, Windows Terminal)
+            seq = ""
+            try:
+                import time
+
+                kbhit_fn = getattr(msvcrt, "kbhit", None)
+                if kbhit_fn is not None:
+                    for _ in range(8):
+                        if kbhit_fn():
+                            seq += msvcrt.getwch()
+                            if seq in (
+                                "[A", "OA", "[B", "OB", "[C", "OC", "[D", "OD",
+                                "[H", "OH", "[F", "OF", "[3~", "[1~", "[4~", "[7~", "[8~",
+                            ):
+                                break
+                        else:
+                            time.sleep(0.002)
+                            if kbhit_fn():
+                                seq += msvcrt.getwch()
+                            else:
+                                break
+                else:
+                    for _ in range(4):
+                        try:
+                            seq += msvcrt.getwch()
+                            if seq in (
+                                "[A", "OA", "[B", "OB", "[C", "OC", "[D", "OD",
+                                "[H", "OH", "[F", "OF", "[3~", "[1~", "[4~", "[7~", "[8~",
+                            ):
+                                break
+                        except Exception:
+                            break
+            except Exception:
+                pass
+
+            ansi_map = {
+                "[A": "H", "OA": "H",  # Up arrow
+                "[B": "P", "OB": "P",  # Down arrow
+                "[D": "K", "OD": "K",  # Left arrow
+                "[C": "M", "OC": "M",  # Right arrow
+                "[H": "G", "OH": "G", "[1~": "G", "[7~": "G",  # Home
+                "[F": "O", "OF": "O", "[4~": "O", "[8~": "O",  # End
+                "[3~": "S",            # Delete
+            }
+            if seq in ansi_map:
+                code = ansi_map[seq]
+            elif not seq:
+                # Bare Escape key pressed: clear current line
+                line_chars.clear()
+                cursor_pos = 0
+                render()
+                continue
+            else:
+                continue
+
+        if code is not None:
             if code == "H":  # Up arrow
                 if history:
                     if hist_idx == len(history):
@@ -166,12 +224,22 @@ def _init_readline() -> None:
             readline.parse_and_bind("bind -e")
             readline.parse_and_bind(r"bind '\e[A' ed-prev-history")
             readline.parse_and_bind(r"bind '\e[B' ed-next-history")
+            readline.parse_and_bind(r"bind '\eOA' ed-prev-history")
+            readline.parse_and_bind(r"bind '\eOB' ed-next-history")
         except Exception:
             pass
     else:
         try:
-            readline.parse_and_bind(r'"\e[A": history-search-backward')
-            readline.parse_and_bind(r'"\e[B": history-search-forward')
+            readline.parse_and_bind(r'"\e[A": previous-history')
+            readline.parse_and_bind(r'"\e[B": next-history')
+            readline.parse_and_bind(r'"\eOA": previous-history')
+            readline.parse_and_bind(r'"\eOB": next-history')
+            readline.parse_and_bind(r'"\e[C": forward-char')
+            readline.parse_and_bind(r'"\e[D": backward-char')
+            readline.parse_and_bind(r'"\eOC": forward-char')
+            readline.parse_and_bind(r'"\eOD": backward-char')
+            readline.parse_and_bind(r'"\e[H": beginning-of-line')
+            readline.parse_and_bind(r'"\e[F": end-of-line')
         except Exception:
             pass
     if _HIST_FILE.exists():
@@ -483,6 +551,7 @@ class PytaeRepl:
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
         self._raw_history: list[str] = _load_history_from_file()
+        self._history_cursor: int | None = None
 
         self.path: Path | None = None
         self.path_str: str | None = None
@@ -582,6 +651,35 @@ class PytaeRepl:
             return "no dataset"
         return f"{self.current_df.shape[0]:,}x{self.current_df.shape[1]}"
 
+    def _resolve_table_name(self, target: str) -> str | None:
+        """Resolve a table identifier to the canonical key in self.tables.
+
+        Supports:
+        1. Exact match (e.g. 'penguins.parquet', 'df1')
+        2. Case-insensitive match (e.g. 'PENGUINS.PARQUET')
+        3. Path stem match (e.g. 'penguins' matches 'penguins.parquet' or 'data/penguins.parquet')
+        4. Universal alias 'df', 'data', 'self', 'active': resolves to current active table
+           (self.path_str) if set and in self.tables, or the sole loaded table if only one exists.
+        """
+        if not self.tables:
+            return None
+        if target in self.tables:
+            return target
+        target_lower = target.lower()
+        for k in self.tables:
+            if k.lower() == target_lower:
+                return k
+        for k in self.tables:
+            stem = Path(k).stem.lower()
+            if stem == target_lower:
+                return k
+        if target_lower in ("df", "data", "self", "active"):
+            if self.path_str and self.path_str in self.tables:
+                return self.path_str
+            if len(self.tables) == 1:
+                return next(iter(self.tables.keys()))
+        return None
+
     def _build_prompt(self) -> str:
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
@@ -597,8 +695,52 @@ class PytaeRepl:
         if not line or line.startswith("#"):
             return True
 
+        # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
+        ansi_up_count = (
+            line.count("\x1b[A")
+            + line.count("\x1bOA")
+            + line.count("^[[A")
+            + line.count("^[OA")
+        )
+        ansi_down_count = (
+            line.count("\x1b[B")
+            + line.count("\x1bOB")
+            + line.count("^[[B")
+            + line.count("^[OB")
+        )
+        cleaned_ansi = (
+            line.replace("\x1b[A", "")
+            .replace("\x1bOA", "")
+            .replace("^[[A", "")
+            .replace("^[OA", "")
+            .replace("\x1b[B", "")
+            .replace("\x1bOB", "")
+            .replace("^[[B", "")
+            .replace("^[OB", "")
+            .strip()
+        )
+        if (ansi_up_count > 0 or ansi_down_count > 0) and not cleaned_ansi:
+            if not self._raw_history:
+                output_fn("pytae: no previous commands in history.")
+                return True
+            if self._history_cursor is None:
+                self._history_cursor = len(self._raw_history)
+            delta = ansi_up_count - ansi_down_count
+            self._history_cursor = max(0, min(len(self._raw_history) - 1, self._history_cursor - delta))
+            recalled = self._raw_history[self._history_cursor]
+            output_fn(f"(recalled from history: {recalled})")
+            return self.execute_line(recalled, output_fn=output_fn)
+
+        self._history_cursor = None
+
         if not self._raw_history or self._raw_history[-1] != line:
             self._raw_history.append(line)
+
+        if readline is not None:
+            try:
+                readline.add_history(line)
+            except Exception:
+                pass
 
         # Check for top-level shell pipe: <repl_command> | <shell_command>
         pipe_parts = _split_repl_pipe(line)
@@ -740,25 +882,41 @@ class PytaeRepl:
                 output_fn(f"pytae: checkpoint '{cp_name}' not found. Available: {avail}")
                 return True
 
-            if target in self.tables:
+            if target in ("-all", "all", "*"):
+                if not self.tables:
+                    output_fn("No tables loaded to remove.")
+                    return True
                 self.undo_stack.append((line, self._capture_session_state()))
-                del self.tables[target]
-                if target in self.orig_tables:
-                    del self.orig_tables[target]
-                if target in self.table_sources:
-                    del self.table_sources[target]
-                if self.path_str == target:
+                count = len(self.tables)
+                self.tables.clear()
+                self.orig_tables.clear()
+                self.table_sources.clear()
+                self.current_df = None
+                self.path_str = None
+                output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
+                self.history.append(f"rm {target}")
+                return True
+
+            resolved = self._resolve_table_name(target)
+            if resolved is not None:
+                self.undo_stack.append((line, self._capture_session_state()))
+                del self.tables[resolved]
+                if resolved in self.orig_tables:
+                    del self.orig_tables[resolved]
+                if resolved in self.table_sources:
+                    del self.table_sources[resolved]
+                if self.path_str == resolved:
                     if self.tables:
                         next_tbl = next(iter(self.tables.keys()))
                         self.current_df = self.tables[next_tbl]
                         self.path_str = next_tbl
-                        output_fn(f"Removed table '{target}'. Switched active dataset to '{next_tbl}'.")
+                        output_fn(f"Removed table '{resolved}'. Switched active dataset to '{next_tbl}'.")
                     else:
                         self.current_df = None
                         self.path_str = None
-                        output_fn(f"Removed table '{target}'. No tables remain loaded.")
+                        output_fn(f"Removed table '{resolved}'. No tables remain loaded.")
                 else:
-                    output_fn(f"Removed table '{target}'.")
+                    output_fn(f"Removed table '{resolved}'.")
                 self.history.append(f"rm {target}")
                 return True
 
@@ -802,16 +960,64 @@ class PytaeRepl:
                 return True
 
         # Bare table name switches active dataset and shows shape only (Model 2: no table dump)
-        if first_lower in self.tables and len(tokens) == 1:
-            self.current_df = self.tables[first_lower]
-            self.path_str = first_lower
+        resolved_table = self._resolve_table_name(tokens[0])
+        if (
+            resolved_table
+            and len(tokens) == 1
+            and first_lower
+            not in (
+                "help",
+                "exit",
+                "quit",
+                "tables",
+                "undo",
+                "redo",
+                "history",
+                "stats",
+                "diff",
+                "head",
+                "tail",
+                "glimpse",
+                "schema",
+                "view",
+                "save",
+                "write",
+                "pipe",
+                "use",
+                "rm",
+                "checkpoint",
+                "restore",
+                "checkpoints",
+                "load",
+                "py",
+                "status",
+                "reset",
+            )
+        ):
+            self.current_df = self.tables[resolved_table]
+            self.path_str = resolved_table
             n_rows, n_cols = self.current_df.shape
-            output_fn(f"{first_lower}: {n_rows:,} rows x {n_cols} cols")
+            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols")
             return True
 
-        # Targeted table command (e.g. `df1 -filter ...` or `df2 head 5`)
-        if first_lower in self.tables and len(tokens) > 1:
-            self._cmd_targeted_pipeline(first_lower, line[len(tokens[0]) :].strip(), output_fn)
+        # Targeted table command (e.g. `df1 -filter ...` or `df -cols` or `penguins head 5`)
+        if (
+            resolved_table
+            and len(tokens) > 1
+            and first_lower
+            not in (
+                "use",
+                "rm",
+                "checkpoint",
+                "restore",
+                "save",
+                "write",
+                "pipe",
+                "load",
+                "py",
+            )
+        ):
+            self._cmd_targeted_pipeline(resolved_table, line[len(tokens[0]) :].strip(), output_fn)
             return True
 
         # Bare checkpoint name hint
@@ -1167,14 +1373,15 @@ class PytaeRepl:
             output_fn(f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols{source_info}{status}")
 
     def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
-        if name not in self.tables:
+        resolved = self._resolve_table_name(name)
+        if resolved is None:
             avail = ", ".join(self.tables.keys()) if self.tables else "none"
             output_fn(f"pytae: table '{name}' not found. Available tables: {avail}")
             return
-        self.current_df = self.tables[name]
-        self.path_str = name
+        self.current_df = self.tables[resolved]
+        self.path_str = resolved
         output_fn(
-            f"Switched active dataset to '{name}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
+            f"Switched active dataset to '{resolved}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
         )
 
     def _cmd_assign(self, var_name: str, right_expr: str, output_fn: Callable[[str], None]) -> None:
@@ -1260,9 +1467,10 @@ class PytaeRepl:
         # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = df1 -join df2 ...` or `df3 = df1`
         if right_tokens:
             first_tok = right_tokens[0]
-            if first_tok in self.tables or first_tok in self.checkpoints:
-                if first_tok in self.tables:
-                    source_df = self.tables[first_tok]
+            resolved_src = self._resolve_table_name(first_tok)
+            if resolved_src is not None or first_tok in self.checkpoints:
+                if resolved_src is not None:
+                    source_df = self.tables[resolved_src]
                 else:
                     snap = self.checkpoints[first_tok]
                     if isinstance(snap, pl.DataFrame):
@@ -1536,8 +1744,10 @@ class PytaeRepl:
 
         # 3. Resolve left table
         if left_name is not None:
-            if left_name in self.tables:
-                left_df = self.tables[left_name]
+            left_res = self._resolve_table_name(left_name)
+            if left_res is not None:
+                left_df = self.tables[left_res]
+                left_name = left_res
             elif left_name in self.checkpoints:
                 left_df = self.checkpoints[left_name]
             else:
@@ -1565,8 +1775,10 @@ class PytaeRepl:
             left_name = self.path_str or "active"
 
         # 4. Resolve right table
-        if right_name in self.tables:
-            right_df = self.tables[right_name]
+        right_res = self._resolve_table_name(right_name)
+        if right_res is not None:
+            right_df = self.tables[right_res]
+            right_name = right_res
         elif right_name in self.checkpoints:
             right_df = self.checkpoints[right_name]
         else:
@@ -1863,6 +2075,8 @@ class PytaeRepl:
             output_fn(
                 "No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
             )
+        if sys.platform == "win32" and not sys.stdin.isatty():
+            output_fn("  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)")
         output_fn("")
 
         def _get_input(prompt_text: str) -> str:
@@ -1871,10 +2085,18 @@ class PytaeRepl:
                     return input_fn(prompt_text)
                 except TypeError:
                     return input_fn()  # type: ignore[call-arg]
-            import sys
 
-            if sys.platform == "win32" and readline is None and sys.stdin.isatty():
-                return _win_console_input(prompt_text, self._raw_history)
+            if sys.platform == "win32":
+                if readline is not None:
+                    try:
+                        return input(prompt_text)
+                    except Exception:
+                        pass
+                if sys.stdin.isatty():
+                    try:
+                        return _win_console_input(prompt_text, self._raw_history)
+                    except Exception:
+                        pass
             return input(prompt_text)
 
         while True:
