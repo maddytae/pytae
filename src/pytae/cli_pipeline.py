@@ -452,11 +452,10 @@ class _Pipeline:
 
     def dataframe(self) -> pd.DataFrame:
         if self._pandas_df is None:
-            import polars as pl
-
-            if isinstance(self._pldf, pl.DataFrame):
-                self._pandas_df = self._pldf.to_pandas()
-            else:
+            if self._pldf is not None:
+                pldf = self.polars_frame()
+                self._pandas_df = pldf.to_pandas() if hasattr(pldf, "to_pandas") else pldf
+            elif self._reader is not None:
                 df = self._reader.to_dataframe(
                     columns=self._pending_exact,
                     nrows=self._nrows,
@@ -464,6 +463,8 @@ class _Pipeline:
                     chunk_size=self._chunk_size,
                 )
                 self._pandas_df = df
+            else:
+                self._pandas_df = pd.DataFrame()
         return self._pandas_df
 
     def columns(self) -> list[str]:

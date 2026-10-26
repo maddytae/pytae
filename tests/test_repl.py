@@ -1331,6 +1331,21 @@ def test_repl_strict_clear(monkeypatch):
     assert not hasattr(pt, "cls")
 
 
+def test_repl_plot_preserves_filter(sample_parquet, monkeypatch):
+    from pytae.plotting import Plotter
+
+    captured = []
+    monkeypatch.setattr(Plotter, "show", lambda self: captured.append(self.df.copy()))
+
+    r = PytaeRepl(path=sample_parquet)
+    # sample_parquet has 5 rows: 2 Adelie, 2 Gentoo, 1 Chinstrap
+    r.execute_line('-filter "species == \'Gentoo\'" -plot "kind=scatter, x=body_mass_g, y=id"')
+    assert len(captured) == 1
+    assert len(captured[0]) == 2
+    assert set(captured[0]["species"]) == {"Gentoo"}
+
+
+
 
 
 

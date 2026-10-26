@@ -189,3 +189,35 @@ def test_cli_bar_display_full_rows_up_to_250(tmp_path, capsys):
     assert "item_12" in out
     assert "item_24" in out
     assert "…" not in out
+
+
+def test_cli_plot_preserves_filter(sample_file, tmp_path, monkeypatch):
+    from pytae.plotting import Plotter
+
+    captured = []
+    orig_save = Plotter.save
+
+    def mock_save(self, path):
+        captured.append(self.df.copy())
+        return orig_save(self, path)
+
+    monkeypatch.setattr(Plotter, "save", mock_save)
+
+    out_png = tmp_path / "filtered_plot.png"
+    code = main(
+        [
+            str(sample_file),
+            "-filter",
+            "species == 'Gentoo'",
+            "-plot",
+            "kind=scatter, x=bill_len, y=bill_depth",
+            "-o",
+            str(out_png),
+        ]
+    )
+    assert code == 0
+    assert len(captured) == 1
+    # Sample file has 4 rows, only 1 Gentoo
+    assert len(captured[0]) == 1
+    assert captured[0]["species"].iloc[0] == "Gentoo"
+
