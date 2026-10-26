@@ -1216,4 +1216,38 @@ def test_cli_repl_missing_encoding_reports_clean_error(tmp_path):
     assert exc_info.value.code == 2
 
 
+def test_repl_and_cli_identical_schema_inference_and_fallback(tmp_path, monkeypatch, capsys):
+    p = tmp_path / "schema_test.csv"
+    # 50 rows of integers, then a row with latin-1 text
+    content = "id|val\n" + "".join(f"{i}|{i*10}\n" for i in range(50)) + "51|Montr\xe9al\n"
+    p.write_bytes(content.encode("latin-1"))
+
+    # 1. CLI reading via pipeline
+    code = cli.main([str(p), "-dlim", "|", "-encoding", "latin-1", "-shape"])
+    assert code == 0
+    assert "(51, 2)" in capsys.readouterr().out
+
+    # 2. REPL initial launch via CLI (-i)
+    captured_repl_df = []
+
+    def mock_run(self, *args, **kwargs):
+        captured_repl_df.append(self.current_df)
+        return self.current_df
+
+    monkeypatch.setattr(PytaeRepl, "run", mock_run)
+    cli.main([str(p), "-dlim", "|", "-encoding", "latin-1", "-i"])
+    assert len(captured_repl_df) == 1
+    assert captured_repl_df[0].shape == (51, 2)
+    assert captured_repl_df[0]["val"].to_list()[-1] == "Montréal"
+
+    # 3. REPL interactive command loading
+    r = PytaeRepl()
+    outputs = []
+    r.execute_line(f'df1 = {p} -dlim "|" -encoding "latin-1"', output_fn=outputs.append)
+    assert "df1" in r.tables
+    assert r.tables["df1"].shape == (51, 2)
+    assert r.tables["df1"]["val"].to_list()[-1] == "Montréal"
+
+
+
 

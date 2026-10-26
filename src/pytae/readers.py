@@ -276,17 +276,30 @@ class CsvReader:
             )
         except pl.exceptions.ComputeError:
             if infer_schema_length is not None:
-                return pl.read_csv(
-                    self.path,
-                    separator=self.sep,
-                    columns=columns,
-                    n_rows=nrows,
-                    encoding=self.encoding or "utf8",
-                    null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-                    truncate_ragged_lines=True,
-                    infer_schema_length=None,
-                )
-            raise
+                try:
+                    return pl.read_csv(
+                        self.path,
+                        separator=self.sep,
+                        columns=columns,
+                        n_rows=nrows,
+                        encoding=self.encoding or "utf8",
+                        null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                        truncate_ragged_lines=True,
+                        infer_schema_length=None,
+                    )
+                except Exception:
+                    pass
+            try:
+                df = self.to_dataframe(columns=columns, nrows=nrows)
+                return pl.from_pandas(df)
+            except Exception:
+                raise
+        except Exception:
+            try:
+                df = self.to_dataframe(columns=columns, nrows=nrows)
+                return pl.from_pandas(df)
+            except Exception:
+                raise
 
     def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
         import polars as pl
@@ -437,17 +450,30 @@ class TxtReader:
             )
         except pl.exceptions.ComputeError:
             if infer_schema_length is not None:
-                return pl.read_csv(
-                    self.path,
-                    separator=self.sep,
-                    columns=columns,
-                    n_rows=nrows,
-                    encoding=self.encoding or "utf8",
-                    null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-                    truncate_ragged_lines=True,
-                    infer_schema_length=None,
-                )
-            raise
+                try:
+                    return pl.read_csv(
+                        self.path,
+                        separator=self.sep,
+                        columns=columns,
+                        n_rows=nrows,
+                        encoding=self.encoding or "utf8",
+                        null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                        truncate_ragged_lines=True,
+                        infer_schema_length=None,
+                    )
+                except Exception:
+                    pass
+            try:
+                df = self.to_dataframe(columns=columns, nrows=nrows)
+                return pl.from_pandas(df)
+            except Exception:
+                raise
+        except Exception:
+            try:
+                df = self.to_dataframe(columns=columns, nrows=nrows)
+                return pl.from_pandas(df)
+            except Exception:
+                raise
 
     def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
         import polars as pl

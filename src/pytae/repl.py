@@ -588,31 +588,16 @@ class PytaeRepl:
                 else:
                     path_val = raw_item
                     var_name = Path(path_val).stem
-                p = Path(path_val).expanduser()
-                if not p.exists():
-                    from pytae import DATA_PATH
-
-                    candidate = DATA_PATH / p.name
-                    if not candidate.exists():
-                        candidate = DATA_PATH / f"{p.stem}.parquet"
-                    if candidate.exists():
-                        p = candidate
-                if p.exists():
-                    try:
-                        sep_val = self.reader_kwargs.get("sep") or self.reader_kwargs.get("delimiter")
-                        enc_val = self.reader_kwargs.get("encoding")
-                        chunk_val = self.reader_kwargs.get("chunk_size", 200_000)
-                        reader = get_reader(p, sep=sep_val, encoding=enc_val, chunk_size=chunk_val)
-                        nrows_val = self.reader_kwargs.get("nrows")
-                        t_df = reader.to_polars(nrows=nrows_val)
-                        self.tables[var_name] = t_df
-                        self.orig_tables[var_name] = t_df.clone()
-                        self.table_sources[var_name] = p.name
-                        self.current_df = t_df
-                        self.orig_df = t_df.clone()
-                        self.path_str = var_name
-                    except Exception:
-                        pass
+                try:
+                    p, t_df = self._read_file_to_df(path_val)
+                    self.tables[var_name] = t_df
+                    self.orig_tables[var_name] = t_df.clone()
+                    self.table_sources[var_name] = p.name
+                    self.current_df = t_df
+                    self.orig_df = t_df.clone()
+                    self.path_str = var_name
+                except Exception:
+                    pass
         elif df is not None:
             self._set_initial_df(df)
             self.path = Path(path) if path else None
@@ -642,7 +627,8 @@ class PytaeRepl:
         self.orig_df = df
         self.current_df = df
 
-    def _load_file(self, path: Path | str, **reader_opts: Any) -> None:
+    def _read_file_to_df(self, path: Path | str, **reader_opts: Any) -> tuple[Path, pl.DataFrame]:
+        """Resolve a dataset path and load it into a Polars DataFrame using reader kwargs with schema fallback."""
         p = Path(path).expanduser()
         if str(p).startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
@@ -651,7 +637,7 @@ class PytaeRepl:
             sample_file = DATA_PATH / f"{sample_name}.parquet"
             if not sample_file.exists():
                 available = ", ".join(_DATASET_NAMES)
-                raise FileNotFoundError(f"Unknown sample dataset '{sample_name}'. Available: {available}")
+                raise FileNotFoundError(f"unknown sample dataset '{sample_name}'. Available: {available}")
             p = sample_file
         elif not p.exists():
             from pytae import DATA_PATH
@@ -671,6 +657,10 @@ class PytaeRepl:
         nrows_val = opts.get("nrows")
         reader = get_reader(p, sep=sep_val, encoding=enc_val, chunk_size=chunk_val)
         df = reader.to_polars(nrows=nrows_val)
+        return p, df
+
+    def _load_file(self, path: Path | str, **reader_opts: Any) -> None:
+        p, df = self._read_file_to_df(path, **reader_opts)
         self.path = p
         self.path_str = p.name
         self.orig_df = df
@@ -1449,50 +1439,43 @@ class PytaeRepl:
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(right_tokens)
         if cleaned_tokens:
             clean_path = cleaned_tokens[0].removeprefix("load ").strip("\"' ")
-            p = Path(clean_path).expanduser()
-            if clean_path.startswith("sample:"):
-                from pytae import _DATASET_NAMES, DATA_PATH
-
-                sample_name = clean_path[7:].strip().removesuffix(".parquet")
-                sample_file = DATA_PATH / f"{sample_name}.parquet"
-                if not sample_file.exists():
-                    available = ", ".join(_DATASET_NAMES)
-                    output_fn(f"pytae: unknown sample dataset '{sample_name}'. Available: {available}")
-                    return
-                p = sample_file
-            elif not p.exists():
+            is_known_table = self._resolve_table_name(clean_path) is not None or clean_path in self.checkpoints
+            if not is_known_table:
+                p = Path(clean_path).expanduser()
+                is_sample = clean_path.startswith("sample:")
                 from pytae import DATA_PATH
 
-                candidate = DATA_PATH / p.name
-                if not candidate.exists():
-                    candidate = DATA_PATH / f"{p.stem}.parquet"
-                if candidate.exists():
-                    p = candidate
-
-            if p.exists() and not p.is_dir():
-                try:
-                    reader = get_reader(p, **reader_kwargs)
-                    df = reader.to_polars(nrows=nrows_val)
-                    self.tables[var_name] = df
-                    self.orig_tables[var_name] = df.clone()
-                    self.table_sources[var_name] = p.name
-                    self.current_df = df
-                    self.orig_df = df.clone()
-                    self.path_str = var_name
-                    self.history.append(f"{var_name} = {right_expr}")
-                    opts_desc = ""
-                    if reader_kwargs or nrows_val is not None:
-                        opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
+                is_file = p.exists() and not p.is_dir()
+                is_data_cand = (DATA_PATH / p.name).exists() or (DATA_PATH / f"{p.stem}.parquet").exists()
+                if is_sample or is_file or is_data_cand:
+                    try:
+                        load_opts = dict(reader_kwargs)
                         if nrows_val is not None:
-                            opts_items.append(f"nrows={nrows_val}")
-                        opts_desc = f" [{', '.join(opts_items)}]"
-                    output_fn(
-                        f"Loaded {p.name} as '{var_name}' ({df.shape[0]:,} rows x {df.shape[1]} cols){opts_desc}."
-                    )
-                    return
-                except Exception as exc:
-                    output_fn(f"pytae: failed to load {p}: {exc}")
-                    return
+                            load_opts["nrows"] = nrows_val
+                        p, df = self._read_file_to_df(clean_path, **load_opts)
+                        self.tables[var_name] = df
+                        self.orig_tables[var_name] = df.clone()
+                        self.table_sources[var_name] = p.name
+                        self.current_df = df
+                        self.orig_df = df.clone()
+                        self.path_str = var_name
+                        self.history.append(f"{var_name} = {right_expr}")
+                        opts_desc = ""
+                        if reader_kwargs or nrows_val is not None:
+                            opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
+                            if nrows_val is not None:
+                                opts_items.append(f"nrows={nrows_val}")
+                            opts_desc = f" [{', '.join(opts_items)}]"
+                        output_fn(
+                            f"Loaded {p.name} as '{var_name}' ({df.shape[0]:,} rows x {df.shape[1]} cols){opts_desc}."
+                        )
+                        return
+                    except FileNotFoundError as exc:
+                        output_fn(f"pytae: {exc}")
+                        return
+                    except Exception as exc:
+                        output_fn(f"pytae: failed to load {clean_path}: {exc}")
+                        return
 
         # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = df1 -join df2 ...` or `df3 = df1`
         if right_tokens:
@@ -1781,22 +1764,9 @@ class PytaeRepl:
             elif left_name in self.checkpoints:
                 left_df = self.checkpoints[left_name]
             else:
-                lp = Path(left_name).expanduser()
-                if not lp.exists():
-                    from pytae import DATA_PATH
-
-                    candidate = DATA_PATH / lp.name
-                    if not candidate.exists():
-                        candidate = DATA_PATH / f"{lp.stem}.parquet"
-                    if candidate.exists():
-                        lp = candidate
-                if lp.exists():
-                    try:
-                        left_df = get_reader(lp).to_polars()
-                    except Exception as exc:
-                        output_fn(f"pytae: failed to read left table '{left_name}': {exc}")
-                        return
-                else:
+                try:
+                    lp, left_df = self._read_file_to_df(left_name)
+                except Exception:
                     avail = ", ".join(self.tables.keys()) if self.tables else "none"
                     output_fn(f"pytae: left table '{left_name}' not found. Available: {avail}")
                     return
@@ -1812,22 +1782,9 @@ class PytaeRepl:
         elif right_name in self.checkpoints:
             right_df = self.checkpoints[right_name]
         else:
-            rp = Path(right_name).expanduser()
-            if not rp.exists():
-                from pytae import DATA_PATH
-
-                candidate = DATA_PATH / rp.name
-                if not candidate.exists():
-                    candidate = DATA_PATH / f"{rp.stem}.parquet"
-                if candidate.exists():
-                    rp = candidate
-            if rp.exists():
-                try:
-                    right_df = get_reader(rp).to_polars()
-                except Exception as exc:
-                    output_fn(f"pytae: failed to read right table '{right_name}': {exc}")
-                    return
-            else:
+            try:
+                rp, right_df = self._read_file_to_df(right_name)
+            except Exception:
                 avail = ", ".join(self.tables.keys()) if self.tables else "none"
                 output_fn(
                     f"pytae: join target '{right_name}' not found. Must be a loaded table or existing file (available: {avail})"
