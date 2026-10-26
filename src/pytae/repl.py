@@ -895,7 +895,16 @@ class PytaeRepl:
                 output_fn("Usage: rm <table_name> (e.g. rm df1), rm df, or rm *")
                 return True
             target = tokens[1]
-            if target.lower() in ("checkpoint", "checkpoints"):
+            if target.lower() == "checkpoints":
+                if len(tokens) > 2 and tokens[2] in ("-all", "--all", "all", "-*"):
+                    output_fn("pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint *'.")
+                elif len(tokens) > 2:
+                    output_fn(f"pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint {tokens[2]}'.")
+                else:
+                    output_fn("pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint'.")
+                return True
+
+            if target.lower() == "checkpoint":
                 if len(tokens) < 3:
                     output_fn("Usage: rm checkpoint <name> or rm checkpoint *")
                     return True
@@ -906,7 +915,7 @@ class PytaeRepl:
                     output_fn(f"Cleared all {count} saved checkpoints.")
                     return True
                 if cp_name in ("-all", "--all", "all", "-*"):
-                    output_fn(f"pytae: 'rm {target} {cp_name}' is not recognized; use 'rm checkpoint *'.")
+                    output_fn(f"pytae: 'rm checkpoint {cp_name}' is not recognized; use 'rm checkpoint *'.")
                     return True
                 if cp_name in self.checkpoints:
                     del self.checkpoints[cp_name]

@@ -899,14 +899,27 @@ def test_repl_rm_checkpoint(sample_df):
     assert "cp2" not in r.checkpoints
     assert "Removed checkpoint 'cp2'." in outputs[-1]
 
-    # rm checkpoint * and rejection of -all/all
+    # rm checkpoint * and rejection of rm checkpoints / -all / all
     r.execute_line("checkpoint a", output_fn=outputs.append)
     r.execute_line("checkpoint b", output_fn=outputs.append)
     assert len(r.checkpoints) == 2
 
+    # Verify rm checkpoints variants are rejected and redirect to rm checkpoint
+    outputs.clear()
+    r.execute_line("rm checkpoints", output_fn=outputs.append)
+    assert "pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint'." in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("rm checkpoints *", output_fn=outputs.append)
+    assert "pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint *'." in outputs[-1]
+
     outputs.clear()
     r.execute_line("rm checkpoints -all", output_fn=outputs.append)
     assert "use 'rm checkpoint *'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("rm checkpoints a", output_fn=outputs.append)
+    assert "pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint a'." in outputs[-1]
     assert len(r.checkpoints) == 2
 
     outputs.clear()
