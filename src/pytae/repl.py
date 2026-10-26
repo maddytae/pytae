@@ -344,7 +344,7 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoints -all')
-  cls / clear            : Clear the terminal screen
+  clear                  : Clear the terminal screen
   exit                   : Exit REPL
 
 QUERY & PYTHON EXPRESSIONS:
@@ -360,10 +360,11 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--help": "help",
     "-exit": "exit",
     "--exit": "exit",
-    "-cls": "cls",
-    "--cls": "cls",
-    "-clear": "cls",
-    "--clear": "cls",
+    "cls": "clear",
+    "-cls": "clear",
+    "--cls": "clear",
+    "-clear": "clear",
+    "--clear": "clear",
     "-status": "status",
     "--status": "status",
     "-reset": "reset",
@@ -829,9 +830,9 @@ class PytaeRepl:
                 output_fn(f"Shell error: {e}")
             return True
 
-        # Clear screen (cls or clear)
-        if line.lower() in ("cls", "clear"):
-            self._cmd_cls(output_fn)
+        # Clear screen (strictly 'clear', not 'cls')
+        if line.lower() == "clear":
+            self._cmd_clear(output_fn)
             return True
 
         # Status
@@ -1235,15 +1236,15 @@ class PytaeRepl:
         self._cmd_pipeline(line, tokens, output_fn)
         return True
 
-    def cls(self, output_fn: Callable[[str], None] = print) -> None:
-        """Clear the terminal screen."""
-        self._cmd_cls(output_fn)
-
     def clear(self, output_fn: Callable[[str], None] = print) -> None:
         """Clear the terminal screen."""
-        self._cmd_cls(output_fn)
+        self._cmd_clear(output_fn)
 
-    def _cmd_cls(self, output_fn: Callable[[str], None] = print) -> None:
+    def cls(self, output_fn: Callable[[str], None] = print) -> None:
+        """Clear the terminal screen (alias for clear)."""
+        self._cmd_clear(output_fn)
+
+    def _cmd_clear(self, output_fn: Callable[[str], None] = print) -> None:
         """Clear the terminal screen."""
         import os
 

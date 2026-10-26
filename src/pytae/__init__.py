@@ -500,7 +500,7 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def cls() -> None:
+def clear() -> None:
     """Clear the terminal screen."""
     import os
 
@@ -509,6 +509,9 @@ def cls() -> None:
     except Exception:
         sys.stdout.write("\033[H\033[2J")
         sys.stdout.flush()
+
+
+cls = clear
 
 
 __all__ = [
@@ -559,6 +562,7 @@ __all__ = [
     "mask",
     "unmask",
     "repl",
+    "clear",
     "cls",
     "everything",
     "validate_pipeline",

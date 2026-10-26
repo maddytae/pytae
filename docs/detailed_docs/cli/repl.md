@@ -435,7 +435,7 @@ pytae> -o clip
 | Command | Syntax | Description | Mutates Active Table? |
 |---|---|---|---|
 | **`help`** | `help` | Display formatted help manual | No |
-| **`cls` / `clear`** | `cls`, `clear` | Clear the terminal screen | No |
+| **`clear`** | `clear` | Clear the terminal screen | No |
 | **`status`** | `status` | Show active dataset name, shape, memory, undo stack depth | No |
 | **`reset`** | `reset` | Revert active table to original dataset from disk | **Yes** (undoable) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
