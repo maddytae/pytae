@@ -192,7 +192,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Select Columns** | `df[['a', 'b']]` | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select("-c", "-d")` | `-select "-c,-d"` |
+| **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select("!c", "!d")` | `-select "!c,!d"` |
 | **Pattern Match** | `df.filter(like='bill')` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `df[[c for c in df if c.startswith('b')]]`| `df.select(starts_with="b")` | `-select "starts_with=b"` |
 | **Inline Rename** | `df[['a']].rename(columns={'a': 'b'})` | `df.select("a:b")` | `-select "a:b"` |

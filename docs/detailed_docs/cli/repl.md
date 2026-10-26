@@ -11,17 +11,20 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
 - [Launching the REPL](#launching-the-repl)
 - [Mode 1: Single-Table Exploration Deep-Dive](#mode-1-single-table-exploration-deep-dive)
   - [In-Memory Pipeline Transformations](#in-memory-pipeline-transformations)
-  - [Non-Destructive Inspection](#non-destructive-inspection)
+  - [Non-Destructive Inspection & Column Sorting](#non-destructive-inspection--column-sorting)
   - [Session State and Rollback](#session-state-and-rollback)
   - [Checkpoints and Snapshots](#checkpoints-and-snapshots)
 - [Mode 2: Multi-Table Workbench Deep-Dive](#mode-2-multi-table-workbench-deep-dive)
   - [Ingesting Datasets](#ingesting-datasets)
   - [Listing Loaded Tables](#listing-loaded-tables)
+  - [Removing Tables (`rm <table_name>`)](#removing-in-memory-tables-rm-table_name)
   - [Subject-First Execution](#subject-first-execution)
   - [Multi-Table Joins](#multi-table-joins)
   - [Assigning Pipeline and Join Results](#assigning-pipeline-and-join-results)
   - [ANSI SQL Across Loaded Tables](#ansi-sql-across-loaded-tables)
   - [Fluent Python Queries](#fluent-python-queries)
+- [Piping Output to Shell Tools (`|`)](#piping-output-to-shell-tools-)
+- [Command History & Arrow Key Navigation](#command-history--arrow-key-navigation)
 - [Saving and Exporting](#saving-and-exporting)
 - [Complete REPL Command Reference](#complete-repl-command-reference)
 
@@ -114,7 +117,7 @@ pytae [penguins.parquet: 188x3]> -head 3
 > [!TIP]
 > **Clean Terminal (Model 2)**: Pipeline transformations and table switching output concise shape confirmations (e.g. `-> penguins.parquet: 188 rows x 7 cols` or `df1: 344 rows x 7 cols`) without dumping full tables. To view rows, explicitly run `-head` or `-tail`.
 
-### Non-Destructive Inspection
+### Non-Destructive Inspection & Column Sorting
 
 Inspection commands display metadata or previews **without** truncating or mutating your dataset:
 
@@ -123,18 +126,34 @@ Inspection commands display metadata or previews **without** truncating or mutat
 pytae> -head 10
 pytae> -tail 5
 
-# Dimensions & columns
+# Dimensions
 pytae> -shape
 (344, 7)
 
+# Column names in file order
 pytae> -cols
 species
 island
 bill_length_mm
 ...
 
-# Column types & missing values
+# Column names sorted alphabetically (asc) or descending (desc)
+pytae> -cols asc
+bill_depth_mm
+bill_length_mm
+body_mass_g
+flipper_length_mm
+island
+sex
+species
+
+# Column name pattern filtering
+pytae> -cols mass
+body_mass_g
+
+# Column types & missing values (also supports asc / desc sorting)
 pytae> -dtype
+pytae> -dtype asc
 pytae> -nulls
 pytae> -glimpse
 pytae> -describe
@@ -180,6 +199,17 @@ pytae [df1, df2, df3]> df2 -filter "status == 'active'"
 pytae [df1, df2, df3]> checkpoints
 Saved Checkpoints:
   - maddy          : df1 (344x7), df2 (244x7) [active: df2]
+
+# Delete a single saved checkpoint
+pytae [df1, df2, df3]> rm checkpoint maddy
+Removed checkpoint 'maddy'.
+
+# Or alternatively
+pytae [df1, df2, df3]> checkpoint rm maddy
+
+# Clear all saved checkpoints
+pytae [df1, df2, df3]> rm checkpoints -all
+Cleared all saved checkpoints.
 
 # Restore the entire workbench back to the checkpoint
 pytae [df1, df2, df3]> restore maddy
@@ -238,6 +268,21 @@ pytae [df1, df2]> tables
 Tables in memory:
    df1         : 10,000 rows x 4 cols (orders.parquet)
    df2         : 1,500 rows x 3 cols (customers.parquet)
+```
+
+### Removing In-Memory Tables (`rm <table_name>`)
+
+Remove datasets from memory when they are no longer needed. If the removed table was the active dataset, Pytae automatically switches the active cursor to the next available table:
+
+```text
+pytae [df1, df2]> rm df1
+Removed table 'df1'. Switched active dataset to 'df2'.
+pytae [df2]> 
+
+# Undo immediately restores the removed table to session memory:
+pytae [df2]> undo
+Undid: rm df1. Active shape: (10,000, 4)
+pytae [df1, df2]> 
 ```
 
 ### Subject-First Execution
@@ -326,6 +371,39 @@ pytae [df1, df2]> py df1.join(df2, on="cust_id", how="left")
 
 ---
 
+## Piping Output to Shell Tools (`|`)
+
+You can pipe any REPL command output directly to standard Unix shell utilities (such as `grep`, `awk`, `head`, `wc`, or `less`) using the pipe operator `|`:
+
+```text
+# Search column names with grep
+pytae [penguins.parquet: 344x7]> -cols | grep mass
+body_mass_g
+
+# Search sorted columns on a targeted table
+pytae [df1, df2]> df1 -cols asc | grep bill
+bill_depth_mm
+bill_length_mm
+
+# Count preview rows with wc
+pytae [penguins.parquet: 344x7]> -head 50 | wc -l
+54
+```
+
+> [!NOTE]
+> Pipe symbols inside quotes or brackets (such as `-select "regex=bill|body"` or python expressions) are safely evaluated as expression logic rather than shell pipes.
+
+---
+
+## Command History & Arrow Key Navigation
+
+The REPL automatically preserves command history across sessions:
+- **`~/.pytae_history`**: History is persistently saved to your home directory (up to 1,000 commands).
+- **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Both macOS `libedit` and GNU `readline` are supported.
+- **`history`**: Displays a numbered log of pipeline transformation steps applied during the current session.
+
+---
+
 ## Saving and Exporting
 
 Export your active dataset to disk or the system clipboard using the standard `-o` flag:
@@ -353,23 +431,26 @@ pytae> -o clip
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
 | **`history`** | `history` | List numbered history of applied transformation steps | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
+| **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoints -all` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
-| **`checkpoints`**| `checkpoints` | List all saved checkpoints and their tables | No |
+| **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
+| **`rm`** | `rm <table_name>` | Remove table from memory (auto-switches active cursor) | **Yes** (undoable) |
 | **`<var> = <file>`** | `df1 = orders.parquet [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Ingest dataset into a named table with reader options | **Yes** |
 | **`load`** | `load <file> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Load dataset with alias and reader options | **Yes** |
 | **`tables`** | `tables` | List all loaded tables in memory | No |
-| **`<name> -<cmd>`** | `df1 -head 5`, `df2 -shape` | Run command directly on named table (subject-first) | Depends on command |
+| **`<name> -<cmd>`** | `df1 -head 5`, `df2 -shape`, `df1 -cols asc` | Run command directly on named table (subject-first) | Depends on command |
 | **`<name>`** | `df1` | Switch to table and display dimensions (`rows x cols`) | **Yes** (switches active) |
 | **`-join`** | `-join <target> on=<key> [how=...] [-o <path>]` | Join table or file into active dataset | **Yes** (undoable) |
 | **`-o`** | `-o <path>`, `-o clip` | Export active dataset to Parquet/CSV or clipboard | No |
 | **`-sql`** | `-sql "<query>"` | Run ANSI SQL against active table or named tables | **Yes** (undoable) |
 | **`py`** | `py <expr>` | Evaluate Python expression on `df` / `pldf` | No |
+| **`<cmd> \| <sh>`** | `-cols \| grep bill`, `-head 50 \| wc -l` | Pipe command output to external shell tool | No |
 | **`-head`** | `-head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
 | **`-tail`** | `-tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
 | **`-shape`** | `-shape` | Display row and column counts | No |
-| **`-cols`** | `-cols` | Display column names | No |
-| **`-dtype`** | `-dtype` | Display column data types | No |
-| **`-nulls`** | `-nulls` | Display missing value counts | No |
+| **`-cols`** | `-cols [asc\|desc\|pattern]` | List column names (file order, or asc/desc sorted, or filtered) | No |
+| **`-dtype`** | `-dtype [asc\|desc]` | Display column data types (optional alphabetical sort) | No |
+| **`-nulls`** | `-nulls [asc\|desc]` | Display missing value counts (optional alphabetical sort) | No |
 | **`-glimpse`** | `-glimpse` | Display transposed schema and sample values | No |
 | **`-describe`**| `-describe` | Display statistical summary of numeric columns | No |
 | **`exit`** | `exit` | Exit the REPL session | — |

@@ -249,7 +249,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select("-c", "-d")` | `-select "-c,-d"` |
+| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select("!c", "!d")` | `-select "!c,!d"` |
 | **Rename Variables** | `RENAME old=new;` | `df.rename("old:new")` | `-rename "old:new"` |
 | **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select("a:b")` | `-select "a:b"` |
 

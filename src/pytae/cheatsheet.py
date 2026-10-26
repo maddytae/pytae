@@ -137,10 +137,15 @@ CHEATSHEET_TEXT = """\
   # Inside REPL session:
   #   undo / redo             Revert / re-apply last transformation step
   #   reset                   Restore original dataset from disk (instant O(1))
-  #   checkpoint <name>       Save named state snapshot (alias: cp)
-  #   restore <name>          Restore to named snapshot (alias: checkout)
-  #   sql <query>             Run ANSI SQL against active table (table: df)
-  #   save <file|clip>        Export active dataset to file or clipboard
+  #   checkpoint <name>       Save named snapshot across all session tables
+  #   rm checkpoint <name>    Delete a saved checkpoint
+  #   rm <table_name>         Remove in-memory table (undoable)
+  #   restore <name>          Restore entire workbench to named snapshot
+  #   -cols [asc|desc]        List column names (file order or sorted)
+  #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)
+  #   -sql "<query>"          Run ANSI SQL across loaded tables
+  #   -o <path|clip>          Export active dataset to file or clipboard
+  #   Up / Down arrow keys    Recall persistent command history (~/.pytae_history)
   #   -filter, -mutate, etc.  Standard pytae pipeline flags executed in RAM!
 
 Full documentation: https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md

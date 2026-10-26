@@ -72,7 +72,7 @@ You can exclude specific columns, combinations, or slices directly within `-sele
 
 ### Negated Column Names (`!col`)
 
-Prefix a column name with `!` (or `-` / `~`) to exclude it. Using `!` avoids any collision with CLI command flags:
+Prefix a column name with `!` to exclude it. Using `!` avoids any collision with CLI command flags and cleanly reserves `-col` exclusively for descending sort in `-arrange`:
 
 ```bash
 pytae penguins.parquet -select "!species" -head 3

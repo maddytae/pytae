@@ -356,21 +356,26 @@ redo                 # Re-apply last undone transformation
 reset                # Restore original dataset from disk (instant O(1))
 history              # Show history of applied pipeline steps
 checkpoint v1        # Save snapshot of all tables in session
+rm checkpoint v1     # Delete a saved checkpoint
 restore v1           # Restore entire workbench to named snapshot
+rm df1               # Remove in-memory table (undoable)
 status               # Show active dataset shape, columns, and memory
 
-# 2. Pipeline Execution (RAM-speed with zero file re-reads)
+# 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
 pytae> -filter "species == 'Gentoo'"
 pytae> -mutate "mass_kg = body_mass_g / 1000.0"
 pytae> -by species -agg "mean_kg=mass_kg:mean, n=count"
 pytae> -select "species,island,mass_kg"
 pytae> -arrange "mass_kg desc"
+pytae> -cols asc                                             # Column names sorted alphabetically
+pytae> -cols | grep mass                                     # Pipe command output to shell utility
 
 # 3. Direct Query Engines & Export
 pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1"
 pytae> py df.shape
 pytae> -o clean.parquet
-pytae> save clip     # Copy active table to system clipboard
+pytae> -o clip                                               # Copy active table to system clipboard
+# Up / Down arrow keys recall persistent command history (~/.pytae_history)
 ```
 
 ---
