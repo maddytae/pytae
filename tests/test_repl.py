@@ -718,3 +718,44 @@ def test_repl_disallowed_aliases_and_hyphenated_commands():
     outputs.clear()
     r.execute_line("df1 columns", output_fn=outputs.append)
     assert outputs[-1] == "pytae: 'columns' is not recognized; use '-cols'."
+
+
+def test_repl_multi_table_session_and_checkpoints():
+    outputs = []
+    repl = PytaeRepl()
+
+    assert repl._build_prompt() == "pytae> "
+
+    # 1. Load df1
+    repl.execute_line("df1=penguins.parquet", output_fn=outputs.append)
+    assert "Loaded penguins.parquet as 'df1' (344 rows x 7 cols)." in outputs[-1]
+    assert repl._build_prompt() == "pytae [df1: 344x7]> "
+
+    # 2. Load df2
+    outputs.clear()
+    repl.execute_line("df2=tips.parquet", output_fn=outputs.append)
+    assert "Loaded tips.parquet as 'df2' (244 rows x 7 cols)." in outputs[-1]
+    assert repl._build_prompt() == "pytae [df1, df2]> "
+
+    # 3. List tables
+    outputs.clear()
+    repl.execute_line("tables", output_fn=outputs.append)
+    tables_out = "\n".join(outputs)
+    assert "Tables in memory:" in tables_out
+    assert "df1" in tables_out and "(penguins.parquet)" in tables_out
+    assert "* df2" in tables_out and "(tips.parquet) [active]" in tables_out
+
+    # 4. Save checkpoint maddy on active df2
+    outputs.clear()
+    repl.execute_line("checkpoint maddy", output_fn=outputs.append)
+    assert "Saved checkpoint 'maddy' (244 rows x 7 cols)." in outputs[-1]
+    # Checkpoint should not change table prompt
+    assert repl._build_prompt() == "pytae [df1, df2]> "
+
+    # 5. List checkpoints
+    outputs.clear()
+    repl.execute_line("checkpoints", output_fn=outputs.append)
+    cps_out = "\n".join(outputs)
+    assert "Saved Checkpoints:" in cps_out
+    assert "maddy" in cps_out and "244 rows x 7 cols" in cps_out
+    assert repl._build_prompt() == "pytae [df1, df2]> "

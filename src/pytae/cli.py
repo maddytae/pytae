@@ -1142,7 +1142,15 @@ def main(argv: list[str] | None = None) -> int:
             for entry in parse_file_arg(args.file):
                 entry_path = Path(entry["path"])
                 if not entry_path.exists():
-                    parser.error(f"-file: file not found: {entry_path}")
+                    from pytae import DATA_PATH
+
+                    candidate = DATA_PATH / entry_path.name
+                    if not candidate.exists():
+                        candidate = DATA_PATH / f"{entry_path.stem}.parquet"
+                    if candidate.exists():
+                        entry_path = candidate
+                    else:
+                        parser.error(f"-file: file not found: {entry_path}")
                 try:
                     reader = get_reader(
                         entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000
@@ -1210,7 +1218,7 @@ def main(argv: list[str] | None = None) -> int:
         from pytae.repl import repl
 
         if show_all:
-            repl(path=paths[0] if paths else None)
+            repl(path=paths[0] if paths else None, paths=paths if len(paths) > 1 else None)
             return 0
         else:
             _execute_once()

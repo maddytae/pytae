@@ -682,7 +682,25 @@ def _process_path(
                 chunk_size=chunk_size,
             )
         elif path is None or not path.exists():
-            return _fail(parser, batch, f"file not found: {path}")
+            from pytae import DATA_PATH
+
+            candidate = DATA_PATH / path.name if path is not None else None
+            if candidate is None or not candidate.exists():
+                candidate = DATA_PATH / f"{path.stem}.parquet" if path is not None else None
+            if candidate is not None and candidate.exists():
+                try:
+                    reader = get_reader(candidate, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+                except (ValueError, ImportError) as exc:
+                    return _fail(parser, batch, str(exc))
+
+                pipeline = _Pipeline(
+                    reader,
+                    nrows=args.nrows,
+                    progress=args.progress,
+                    chunk_size=chunk_size,
+                )
+            else:
+                return _fail(parser, batch, f"file not found: {path}")
         else:
             try:
                 reader = get_reader(path, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
