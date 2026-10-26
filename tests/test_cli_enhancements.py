@@ -208,3 +208,16 @@ def test_library_freq_and_hist():
         df.pt.hist("missing_col:5")
     with pytest.raises(ValueError, match="positive integer"):
         df.pt.hist("body_mass_g:0")
+
+
+def test_cli_plot_headless_backend_notice(tmp_path, capsys):
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    path = _write_csv(tmp_path, df)
+
+    # Invoking -plot without -o under headless Agg prints helpful notice to stderr
+    code = cli.main([path, "-plot", "kind=scatter, x=x, y=y"])
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "headless 'Agg' backend" in err
+    assert "sudo apt install python3-tk" in err
+

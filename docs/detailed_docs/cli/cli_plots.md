@@ -292,3 +292,15 @@ If `-o` is omitted and the output is not redirected, `pytae` invokes `plt.show()
 ```bash
 pytae penguins.parquet -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=species"
 ```
+
+### Linux Interactive Window Notes
+
+On Windows and macOS, Matplotlib includes native GUI window backends out of the box (`TkAgg` on Windows, `MacOSX` on macOS). On Linux, Python does not bundle a GUI toolkit by default. If no GUI toolkit is detected, Matplotlib silently falls back to the headless `Agg` backend and cannot open a window.
+
+To enable interactive plot windows on Linux:
+- **Ubuntu / Debian / Mint**: `sudo apt install python3-tk`
+- **Fedora / RHEL / CentOS**: `sudo dnf install python3-tkinter`
+- **Arch Linux**: `sudo pacman -S tk`
+- **Pure pip / Virtualenv (no sudo)**: `pip install PyQt6` (or `pip install PySide6`)
+- **Remote / Headless / SSH**: If connecting over SSH or headless servers without an X11/Wayland display server (`$DISPLAY`), export to an image file directly with `-o plot.png` or use SSH X11 forwarding (`ssh -X`).
+

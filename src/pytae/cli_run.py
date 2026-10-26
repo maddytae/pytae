@@ -1264,6 +1264,16 @@ def _process_path(
                 p.save(dest_path)
                 print(f"Saved plot to {dest_path}")
             elif should_print(idx):
+                bk = matplotlib.get_backend().lower()
+                if bk in ("agg", "template"):
+                    print(
+                        "Note: Matplotlib is using the headless 'Agg' backend, so no interactive GUI window can be shown.\n"
+                        "To display interactive plot windows on Linux:\n"
+                        "  - Install Tkinter: sudo apt install python3-tk (or sudo dnf install python3-tkinter)\n"
+                        "  - Or install PyQt: pip install PyQt6\n"
+                        "  - Or save the plot directly to an image: -o plot.png",
+                        file=sys.stderr,
+                    )
                 p.show()
 
     if is_clip and clip_action is not None:
