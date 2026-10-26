@@ -7,8 +7,29 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
+def get_version() -> str:
+    """Read the latest package version from pyproject.toml or src/pytae/__init__.py."""
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    if pyproject_path.exists():
+        import re
+
+        m = re.search(r'version\s*=\s*"([^"]+)"', pyproject_path.read_text(encoding="utf-8"))
+        if m:
+            return m.group(1)
+    init_path = REPO_ROOT / "src" / "pytae" / "__init__.py"
+    if init_path.exists():
+        import re
+
+        m = re.search(r'__version__\s*=\s*"([^"]+)"', init_path.read_text(encoding="utf-8"))
+        if m:
+            return m.group(1)
+    return "3.12.4"
+
+
 MANUAL_TEXT = """================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
+RELEASE VERSION: __PYTAE_VERSION__
 ================================================================================
 
 TABLE OF CONTENTS
@@ -94,6 +115,8 @@ TABLE OF CONTENTS
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
+Package: pytae (Current Release Version: __PYTAE_VERSION__)
+
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
 seamless Pandas interoperability, PyArrow, and Matplotlib.
@@ -132,8 +155,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/):
-  pip install pytae
+Installation (PyPI: https://pypi.org/project/pytae/__PYTAE_VERSION__/):
+  pip install pytae==__PYTAE_VERSION__
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -1505,15 +1528,17 @@ def _format_notebook(nb_path: Path) -> str:
 
 def generate_reference() -> None:
     parts: list[str] = []
+    version = get_version()
+    rendered_manual = MANUAL_TEXT.replace("__PYTAE_VERSION__", version)
 
-    # MANUAL_TEXT contains sections 1 to 7 and section 11 (directory tree)
-    # Split MANUAL_TEXT so sections 8, 9, 10 sit before the directory tree
+    # rendered_manual contains sections 1 to 7 and section 11 (directory tree)
+    # Split rendered_manual so sections 8, 9, 10 sit before the directory tree
     tree_marker = "================================================================================\n11. REPOSITORY DIRECTORY TREE"
-    if tree_marker in MANUAL_TEXT:
-        manual_pre, manual_tree = MANUAL_TEXT.split(tree_marker, 1)
+    if tree_marker in rendered_manual:
+        manual_pre, manual_tree = rendered_manual.split(tree_marker, 1)
         parts.append(manual_pre.strip())
     else:
-        manual_pre = MANUAL_TEXT
+        manual_pre = rendered_manual
         manual_tree = ""
         parts.append(manual_pre.strip())
 

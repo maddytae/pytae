@@ -1,5 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
+RELEASE VERSION: 3.12.4
 ================================================================================
 
 TABLE OF CONTENTS
@@ -85,6 +86,8 @@ TABLE OF CONTENTS
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
+Package: pytae (Current Release Version: 3.12.4)
+
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
 seamless Pandas interoperability, PyArrow, and Matplotlib.
@@ -123,8 +126,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/):
-  pip install pytae
+Installation (PyPI: https://pypi.org/project/pytae/3.12.4/):
+  pip install pytae==3.12.4
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
