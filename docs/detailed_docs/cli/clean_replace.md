@@ -7,11 +7,11 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 ## Contents
 
 - [Overview & Quick Reference](#overview--quick-reference)
-- [Header Standardization (`-clean` / `-clean_columns`)](#header-standardization--clean--clean_columns)
+- [Header Standardization](#header-standardization)
   - [Supported Pipeline Steps](#supported-pipeline-steps)
   - [Cleaning Examples](#cleaning-examples)
 - [Missing Value Imputation (`-fillna`)](#missing-value-imputation--fillna)
-- [Dropping Missing Rows (`-dropna`)](#dropping-missing-rows--dropna)
+- [Dropping Missing Values](#dropping-missing-values)
 - [Column Renaming (`-rename`)](#column-renaming--rename)
 - [Recoding Categorical Values (`-mutate "map(...)"`)](#recoding-categorical-values--mutate-map)
 
@@ -29,7 +29,7 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 
 ---
 
-## Header Standardization (`-clean` / `-clean_columns`)
+## Header Standardization
 
 ### Supported Pipeline Steps
 
@@ -83,7 +83,7 @@ pytae dataset.parquet -fillna "val=0, nans=false" -head 5
 
 ---
 
-## Dropping Missing Values (`-dropna`)
+## Dropping Missing Values
 
 Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values (Arrow `null`s and IEEE-754 float `NaN`s).
 

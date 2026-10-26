@@ -16,7 +16,7 @@
 - [Terminal Metric Value Bars (`-bar`)](#terminal-metric-value-bars--bar)
 - [Terminal 2D Braille Scatter Plot (`-scatter`)](#terminal-2d-braille-scatter-plot--scatter)
 - [Terminal Correlation Matrix & Pairs (`-corr`)](#terminal-correlation-matrix--pairs--corr)
-- [Headless Figure Plotting (`-plot` & `-finalize`)](#headless-figure-plotting--plot--finalize)
+- [Headless Figure Plotting](#headless-figure-plotting)
   - [1. Single Plots with Explicit Pipeline Aggregation](#1-single-plots-with-explicit-pipeline-aggregation)
   - [2. Multi-Dimensional Categorical Grouping (`by=`)](#2-multi-dimensional-categorical-grouping-by)
   - [3. Distribution Plots (`box`, `kde`, `hist`)](#3-distribution-plots-box-kde-hist)
@@ -212,7 +212,7 @@ pytae penguins.parquet -corr "target=body_mass_g"
 
 ---
 
-## Headless Figure Plotting (`-plot` & `-finalize`)
+## Headless Figure Plotting
 
 `-plot` renders publication-grade charts directly from the command-line pipeline. Any pipeline can end with a plot and route directly to disk or interactive screen.
 
@@ -280,7 +280,7 @@ When `-o` specifies an image extension (`.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`)
 pytae data.parquet -plot "kind=bar,x=cat,y=val" -o chart.png
 
 # Save to dedicated output directory (created automatically if missing)
-pytae data.parquet -plot "kind=bar,x=cat,y=val" -o chart.png -od ./reports/figures
+pytae data.parquet -plot "kind=bar,x=cat,y=val" -o chart.png -out_dir ./reports/figures
 ```
 
 ---

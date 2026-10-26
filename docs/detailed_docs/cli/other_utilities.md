@@ -25,7 +25,7 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
   - [Multi-File Joins (`-join`)](#multi-file-joins--join)
   - [Row Stacking (`-concat`)](#row-stacking--concat)
 - [Input / Output & Pipeline Modifiers](#input--output--pipeline-modifiers)
-  - [Reading Row Caps (`-nrows`, `-limit`)](#reading-row-caps--nrows--limit)
+  - [Reading Row Caps (`-nrows`)](#reading-row-caps--nrows)
   - [Delimiters & Encodings (`-dlim`, `-encoding`)](#delimiters--encodings--dlim--encoding)
   - [Exporting & Directory Routing (`-o`, `-out_dir`, `-fmt`)](#exporting--directory-routing--o--out_dir--fmt)
   - [Clipboard Export (`-o clip`)](#clipboard-export--o-clip)
@@ -63,17 +63,17 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 | `-file SPEC` | Multi-File | `path=alias;...` | Loads multiple input files into named aliases |
 | `-join SPEC` | Multi-File | `left=a,right=b,on=k,...` | Joins datasets on keys with join validation |
 | `-concat SPEC` | Multi-File | `a,b` or `how=outer` | Stacks multiple datasets row-wise |
-| `-nrows N` / `-limit N`| Input I/O | Integer | Caps rows loaded from disk during read |
+| `-nrows N` | Input I/O | Integer | Caps rows loaded from disk during read |
 | `-dlim STR` | Input I/O | Character (`","`, `"\t"`, `"|"`) | Delimiter for CSV / text files |
 | `-encoding ENC` | Input I/O | Encoding name (`utf-8`, `latin1`) | Character encoding for text files |
 | `-fmt FORMAT` | Input I/O | `csv`, `parquet`, `jsonl`, `txt` | Format override when reading STDIN or extensionless files |
 | `-o TARGET` | Output I/O | File path, format, or `clip` | Exports result or copies to clipboard |
-| `-out_dir DIR` / `-od` | Output I/O | Directory path | Destination directory for exported files |
+| `-out_dir DIR` | Output I/O | Directory path | Destination directory for exported files |
 | `-progress [N]` | Diagnostics | Optional row frequency | Streaming row count progress during read/write |
 | `-round N` | Formatting | Integer decimals | Rounds floating-point numbers to N places |
 | `-pager` | Output | Flag | Pipes terminal output through interactive system pager (`less`) |
 | `-version` | Meta | Flag | Displays pytae version information and exits |
-| `-h` / `--help` | Meta | Flag | Displays usage help |
+| `-h` / `-help` | Meta | Flag | Displays usage help |
 
 ---
 
@@ -200,7 +200,7 @@ pytae -file "q1.parquet=a; q2.parquet=b; q3.parquet=c" -concat "a,b,c" -shape
 
 ## Input / Output & Pipeline Modifiers
 
-### Reading Row Caps (`-nrows`, `-limit`)
+### Reading Row Caps (`-nrows`)
 Stops reading at disk level after N rows (saving RAM and CPU on huge files):
 ```bash
 pytae huge_log.csv -nrows 1000 -shape

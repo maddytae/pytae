@@ -9,9 +9,9 @@ Extract first, last, or extreme rows with full group awareness via `-by`, propor
 ## Contents
 
 - [Overview & Quick Reference](#overview--quick-reference)
-- [Basic Slicing (`-head` & `-tail`)](#basic-slicing--head--tail)
+- [Basic Slicing](#basic-slicing)
 - [Proportion Slicing (`10%` / `0.1`)](#proportion-slicing-10--01)
-- [Extreme Value Slicing (`-arrange` + `-head` / `-tail`)](#extreme-value-slicing--arrange--head--tail)
+- [Extreme Value Slicing](#extreme-value-slicing)
 - [Group-Aware Slicing (`-by`)](#group-aware-slicing--by)
 - [Boundary Ties (`ties=true`)](#boundary-ties-tiestrue)
 - [Retirement of Legacy `-pick`](#retirement-of-legacy--pick)
@@ -30,7 +30,7 @@ When `-head` or `-tail` is passed without an explicit limit, it defaults to 5 ro
 
 ---
 
-## Basic Slicing (`-head` & `-tail`)
+## Basic Slicing
 
 Extract the first or last $N$ rows of the table:
 
@@ -72,7 +72,7 @@ Both percentages (`-head 10%`) and floating-point fractions (`-head 0.1`) are ac
 
 ---
 
-## Extreme Value Slicing (`-arrange` + `-head` / `-tail`)
+## Extreme Value Slicing
 
 In accordance with Pytae's *"One and Only One Obvious Way"*, extreme row selection (top/bottom $N$ by column) is achieved by composing `-arrange` with `-head` or `-tail`:
 

@@ -40,7 +40,7 @@ from pytae.validation import (
     validate_pipeline,
 )
 
-__version__ = "3.11.0"
+__version__ = "3.12.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))

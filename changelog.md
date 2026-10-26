@@ -2,33 +2,53 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [3.12.0] - 2026-10-25
 
 ### Added
-- **Stateful Interactive REPL Shell (`pytae -i`, `pytae -repl`, `pt.repl()`, `df.repl()`)**:
-  - Implemented an interactive Read-Eval-Print Loop (REPL) for iterative data exploration and pipeline prototyping without repeatedly reloading datasets from disk.
+- **Interactive REPL Shell (`pytae -i`, `pt.repl()`, `df.repl()`)**:
+  - Implemented an interactive Read-Eval-Print Loop (REPL) for stateful data exploration, interactive debugging, and pipeline prototyping without repeatedly reloading datasets from disk.
+  - **Two Dedicated Operation Modes**:
+    - **Mode 1: Single-Table Exploration**: Focused session on a single active table with full rollback and checkpoint support (`pytae [df]>`).
+    - **Mode 2: Multi-Table Workbench**: Ingest, manage, join, and query multiple tables simultaneously (`pytae [df1, df2]>`).
   - **Zero-Cost State Management & History**:
     - `reset`: Instantly restore the original dataset as loaded from disk ($O(1)$ memory reference switch, zero disk re-reads).
-    - `undo`: Revert the last applied transformation step across the session history.
+    - `undo`: Revert the last applied transformation step across session history.
     - `redo`: Re-apply the last undone transformation step.
-    - `checkpoint <name>` / `restore <name>`: Freeze and restore named table states (aliases: `cp`, `checkout`).
+    - `checkpoint <name>` / `restore <name>`: Freeze and restore named table states.
+    - `checkpoints`: List all saved checkpoints with shapes and dimensions.
     - `history`: Display numbered sequence of applied transformations in the active session.
-    - `status`: Display active dataset shape, columns, and estimated memory footprint.
-  - **In-Memory Pipeline Execution**:
-    - Executes any standard pytae CLI flag sequence (`-filter`, `-mutate`, `-select`, `-arrange`, `-by ... -agg`, `-distinct`, `-dropna`, `-fillna`, `-mask`, `-unmask`, etc.) directly on in-memory Arrow tables.
-    - Auto-prefixes bare verbs (e.g. `filter ...` $\to$ `-filter ...`) for frictionless typing.
-    - Non-destructive inspection shortcuts (`shape`, `cols`, `dtype`, `nulls`, `glimpse`, `describe`, `head`, `tail`) preview data without mutating the active dataset.
-  - **Integrated Query Engines**:
-    - `sql <query>`: Execute vectorized ANSI SQL queries directly against the in-memory dataset via Polars' `SQLContext`.
-    - `py <expr>`: Evaluate arbitrary Python expressions with `df` (pytae) and `pldf` (polars) in the local scope.
+    - `tables`: List all loaded tables in Multi-Table Workbench mode with row counts, column counts, and memory footprints.
+  - **Model 2 Clean Terminal Workflow**:
+    - State mutations confirm with concise, clean shape confirmations (`-> df: 10,000 rows x 3 cols`) without spewing wide tables across the terminal.
+    - Dedicated inspection flags (`-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-dtype`, `-nulls`, `-glimpse`, `-describe`) provide non-destructive previews on demand.
+  - **1:1 Parity with CLI Syntax**:
+    - REPL commands accept the exact single-dash CLI flag syntax (`-filter`, `-mutate`, `-select`, `-arrange`, `-by ... -agg`, `-distinct`, `-dropna`, `-fillna`, `-mask`, `-unmask`, `-sql`).
+    - Bare pipeline verbs (e.g. `filter`, `mutate`, `select`) and bare inspections (e.g. `head`, `shape`) are cleanly rejected with clear, helpful guidance directing users to single-dash CLI flags (`-filter`, `-head`).
+  - **Integrated Multi-Table SQL & Python Expressions**:
+    - `-sql "<query>"`: Execute vectorized ANSI SQL queries directly against loaded in-memory tables via Polars `SQLContext`.
+    - `py <expr>`: Evaluate arbitrary Python expressions with `df` (pytae) and `pldf` (polars) in scope.
   - **Multi-Interface Support**:
-    - CLI: `pytae <file> -i`, `pytae -i`, `pytae repl [<file>]`, or pre-seeding `pytae <file> -filter ... -i`.
+    - CLI: `pytae <file> -i`, `pytae -i`, `pytae <file1> <file2> -i`, or pre-seeding pipelines `pytae <file> -filter ... -i`.
     - Python SDK: `pt.repl(df)`, `df.repl()`, and pandas `.pt` accessor `df.pt.repl()`, returning the final transformed DataFrame on exit.
 
 ### Changed
+- **CLI Flag Single-Dash Standardization & Parity**:
+  - Standardized all command-line interface flags to single hyphens (`-flag`) for consistent readability and cross-platform compatibility.
+  - Double-dash flags (e.g. `--filter`, `--help`) raise clear, actionable diagnostic errors guiding users to the canonical single-dash syntax.
+  - Retired confusing redundant aliases in favor of "One and Only One Obvious Way":
+    - `-output` $\to$ `-o <target>`
+    - `-od`, `-out-dir` $\to$ `-out_dir <dir>`
+    - `-limit` $\to$ `-nrows <N>`
+    - `-tolerance` $\to$ `-tol <threshold>`
+    - `-repl`, `-interactive` $\to$ `-i`
+    - `-examples` $\to$ `-cheatsheet`
+- **Documentation Overhaul & Link Validation**:
+  - `README.md` streamlined and modernized with interactive REPL highlighted as a core pillar alongside the Python Library and CLI.
+  - Added structured Documentation Directory Table mapping every feature to its interactive Jupyter Notebook and CLI Markdown guide.
+  - Audited and verified 100% of internal file links (148) and anchor links (221) across all documentation and guides.
 - **Python Support Baseline & Security Hardening**:
   - Set minimum Python requirement to `requires-python = ">=3.11"`.
-  - Upgraded transitive dependency `pillow` in `uv.lock` from legacy `12.3.0` to `13.0.0`, eliminating 39 Dependabot vulnerabilities (including CVE-2026-112900, CVE-2026-112398, CVE-2026-112403, and OSV-2025-219).
+  - Upgraded transitive dependency `pillow` in `uv.lock` from legacy `12.3.0` to `13.0.0`, eliminating 39 Dependabot vulnerabilities.
   - Updated CI test matrix to Python 3.11–3.14.
 
 ## [3.11.0] - 2026-10-23

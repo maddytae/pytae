@@ -10,9 +10,9 @@ Join multiple datasets or append rows across tables directly from the command li
 - [Multi-File Declaration (`-file`)](#multi-file-declaration--file)
 - [Relational Joins (`-join`)](#relational-joins--join)
   - [Join Strategies (`how=`)](#join-strategies-how)
-  - [Differing Key Names (`left_col:right_col`)](#differing-key-names)
+  - [Differing Key Names](#differing-key-names)
   - [Multi-Column Join Keys](#multi-column-join-keys)
-  - [Cardinality Validation (`validate=`)](#cardinality-validation)
+  - [Cardinality Validation](#cardinality-validation)
   - [Chaining Multiple Joins with `data`](#chaining-multiple-joins-with-data)
 - [Row-Wise Stacking (`-concat`)](#row-wise-stacking--concat)
 - [Downstream Verbs After Joins](#downstream-verbs-after-joins)
@@ -81,7 +81,7 @@ pytae -file "customers.csv=c; orders.parquet=o" \
 
 ---
 
-### Differing Key Names (`left_col:right_col`)
+### Differing Key Names
 
 When join keys have different names across datasets, use the colon syntax `on="left_key:right_key"`:
 
@@ -106,7 +106,7 @@ pytae -file "sales.parquet=s; inventory.parquet=i" \
 
 ---
 
-### Cardinality Validation (`validate=`)
+### Cardinality Validation
 
 Catch accidental row multiplication or duplicate keys before they corrupt aggregations using `validate=`:
 - `validate=1:1`: Checks that keys are unique in both left and right datasets.

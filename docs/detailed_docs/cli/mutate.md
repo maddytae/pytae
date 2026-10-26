@@ -11,7 +11,7 @@ Compute new columns or overwrite existing columns with mathematical formulas, ra
 - [Overview & Rules](#overview--rules)
 - [Basic Arithmetic & Unit Conversion](#basic-arithmetic--unit-conversion)
 - [Defining Multiple Columns](#defining-multiple-columns)
-- [Multi-Column Transforms (`(col1, col2) = _ * 2`)](#multi-column-transforms-col1-col2---2)
+- [Multi-Column Transforms](#multi-column-transforms)
 - [Boolean Indicators & Flags](#boolean-indicators--flags)
 - [Conditional Logic with `if_else`](#conditional-logic-with-if_else)
 - [Multi-Tiered Branching with `case_when`](#multi-tiered-branching-with-case_when)
@@ -87,7 +87,7 @@ pytae penguins.parquet \
 
 ---
 
-## Multi-Column Transforms (`(col1, col2) = _ * 2`)
+## Multi-Column Transforms
 
 Apply the same formula across multiple columns simultaneously using parentheses `(...)` on the left-hand side and `_` as the placeholder for each matched column (the `pytae` equivalent of R `dplyr::across()`):
 

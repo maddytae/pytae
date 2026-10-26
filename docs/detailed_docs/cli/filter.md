@@ -19,7 +19,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Filtering Null & NaN Values (`is_null`, `is_not_null`, `is_nan`, `is_not_nan`) & Columns with Spaces](#filtering-null--nan-values-and-columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
   - [Strict Syntax Enforcement & Diagnostic Errors](#strict-syntax-enforcement)
-- [Slicing Extreme Rows (`-arrange` + `-head` / `-tail`)](#slicing-extreme-rows--arrange--head--tail)
+- [Slicing Extreme Rows](#slicing-extreme-rows)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
@@ -257,7 +257,7 @@ pytae penguins.parquet \
 
 ---
 
-## Slicing Extreme Rows (`-arrange` + `-head` / `-tail`)
+## Slicing Extreme Rows
 
 Extract top or bottom rows ordered by a specific column by composing `-arrange` with group-aware `-head` or `-tail`. For complete details and syntax, see the [Row Slicing Guide](head_tail.md).
 

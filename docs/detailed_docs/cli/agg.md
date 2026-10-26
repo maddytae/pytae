@@ -16,7 +16,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
   - [Named Outputs (`total = col:aggfunc`)](#named-outputs-total--colaggfunc)
 - [Whole-Table Summaries (Grand Totals)](#whole-table-summaries-grand-totals)
 - [Grouped Transforms (`-by` + `-mutate`)](#grouped-transforms--by--mutate)
-- [Handling Missing Group Keys (`-dropna`)](#handling-missing-group-keys--dropna)
+- [Handling Missing Group Keys](#handling-missing-group-keys)
 
 ---
 
@@ -196,7 +196,7 @@ For more examples including group counts (`count()`), multi-column grouping, and
 
 ---
 
-## Handling Missing Group Keys (`dropna`)
+## Handling Missing Group Keys
 
 By default, missing values (`NaN`) in group columns form their own group (`dropna=false`) to prevent silent data loss:
 

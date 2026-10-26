@@ -90,15 +90,15 @@ When row counts match, pytae compares cell values across all common columns:
 - If all values match: `Identical: all cell values match exactly.`
 - If discrepancies are found: Reports the total count of mismatched cells.
 
-### 6. Numeric Tolerance Threshold (`-tol` / `-tolerance`)
+### 6. Numeric Tolerance Threshold (`-tol`)
 When comparing floating-point numbers subject to rounding or precision differences, specify an absolute tolerance threshold with `-tol`:
 
 ```bash
 # Ignore floating point differences smaller than 0.01:
 pytae v1.parquet -diff v2.parquet -tol 0.01
 
-# Full flag name also supported
-pytae v1.parquet -diff v2.parquet -tolerance 1e-4
+# Fine-grained threshold:
+pytae v1.parquet -diff v2.parquet -tol 1e-4
 ```
 Differences within the tolerance window are treated as matching cells.
 

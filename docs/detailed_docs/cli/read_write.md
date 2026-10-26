@@ -10,13 +10,13 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Supported Formats Matrix](#supported-formats-matrix)
-- [Reading from STDIN & Pipes (`-`, `-fmt`)](#reading-from-stdin--pipes---fmt)
+- [Reading from STDIN and Pipes](#reading-from-stdin-and-pipes)
 - [Export Destinations (`-o`)](#export-destinations--o)
   - [Explicit File Path](#explicit-file-path)
   - [In-Place Format Shorthands](#in-place-format-shorthands)
   - [System Clipboard (`clip`)](#system-clipboard-clip)
-- [Target Output Directory (`-out_dir` / `-od`)](#target-output-directory--out_dir---od)
-  - [Benefits of `-od` over Explicit Paths](#benefits-of--od-over-explicit-paths)
+- [Target Output Directory (`-out_dir`)](#target-output-directory--out_dir)
+  - [Benefits of `-out_dir` over Explicit Paths](#benefits-of--out_dir-over-explicit-paths)
 - [Transparent Compression (`.gz`)](#transparent-compression-gz)
 - [JSON Lines Format (`.jsonl`, `.ndjson`)](#json-lines-format-jsonl-ndjson)
 - [Delimiters & Encodings (`-dlim`, `-encoding`)](#delimiters--encodings--dlim--encoding)
@@ -31,7 +31,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 | Flag | Description | Example |
 |---|---|---|
 | `-o TARGET` | Output destination (file path, format shorthand, or `clip`) | `-o clean.parquet`, `-o csv`, `-o clip` |
-| `-out_dir DIR` / `-od DIR` | Target directory for exported files (requires `-o`) | `-o parquet -out_dir exports/` |
+| `-out_dir DIR` | Target directory for exported files (requires `-o`) | `-o parquet -out_dir exports/` |
 | `-fmt FORMAT` | Input format override when reading from STDIN (`-`) or extensionless files | `-fmt jsonl`, `-fmt csv` |
 | `-progress [N]` | Display streaming row progress (default: 200,000 rows/chunk) | `-progress`, `-progress 50000` |
 | `-dlim CHAR` | Text field delimiter (`.csv`, `.txt`, `.dat`) | `-dlim "\|"`, `-dlim "\t"` |
@@ -53,7 +53,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 
 ---
 
-## Reading from STDIN & Pipes (`-`, `-fmt`)
+## Reading from STDIN and Pipes
 
 `pytae` can read tabular streams directly from standard input (STDIN). With **auto-pipe detection**, you can pipe directly into `pytae` without typing an explicit `-`:
 
@@ -127,7 +127,7 @@ pytae clip -filter "sales > 100" -by region -agg "total = sales:sum"
 
 ---
 
-## Target Output Directory (`-out_dir` / `-od`)
+## Target Output Directory (`-out_dir`)
 
 Direct converted files into a specific folder. Pytae automatically creates the target folder if it does not exist:
 
@@ -135,8 +135,8 @@ Direct converted files into a specific folder. Pytae automatically creates the t
 # Export single file to target folder
 pytae penguins.parquet -o csv -out_dir processed/
 
-# Using -od alias
-pytae raw_data.csv -o parquet -od parquet_lake/
+# Batch conversion with output directory
+pytae raw_data.csv -o parquet -out_dir parquet_lake/
 ```
 
 **Output:**
@@ -147,40 +147,40 @@ Wrote 344 rows to processed/penguins.csv
 > [!NOTE]
 > When running batch exports into `-out_dir`, pytae validates and prevents destination filename collisions across different source folders.
 
-### Benefits of `-od` over Explicit Paths
+### Benefits of `-out_dir` over Explicit Paths
 
-While providing a full target path directly in `-o` (e.g., `pytae raw.csv -o parquet_lake/raw.parquet`) works well for single files, pairing a format shorthand with `-od` (e.g., `pytae raw.csv -o parquet -od parquet_lake/`) provides substantial advantages:
+While providing a full target path directly in `-o` (e.g., `pytae raw.csv -o parquet_lake/raw.parquet`) works well for single files, pairing a format shorthand with `-out_dir` (e.g., `pytae raw.csv -o parquet -out_dir parquet_lake/`) provides substantial advantages:
 
 1. **Mandatory for Batch Conversions & Globs**:
-   When converting multiple files at once, specifying an explicit filename in `-o` fails because all incoming datasets would attempt to overwrite the exact same destination file. Using `-od` automatically preserves each file's stem name across the batch:
+   When converting multiple files at once, specifying an explicit filename in `-o` fails because all incoming datasets would attempt to overwrite the exact same destination file. Using `-out_dir` automatically preserves each file's stem name across the batch:
    ```bash
    # Converts raw/jan.csv -> parquet_lake/jan.parquet, raw/feb.csv -> parquet_lake/feb.parquet, etc.
-   pytae "raw/*.csv" -o parquet -od parquet_lake/
+   pytae "raw/*.csv" -o parquet -out_dir parquet_lake/
    ```
 
 2. **Eliminates Shell Boilerplate in Pipelines**:
    In automated scripts or CI/CD pipelines where input filenames are dynamic variables (`$INPUT_FILE`), you do not need shell manipulation (`basename`, parameter expansion `${f%.*}`) to compute the new path:
    ```bash
-   # Without -od: verbose and fragile shell manipulation
+   # Without -out_dir: verbose and fragile shell manipulation
    pytae "$INPUT_FILE" -o "parquet_lake/$(basename "${INPUT_FILE%.*}").parquet"
 
-   # With -od: clean and declarative
-   pytae "$INPUT_FILE" -o parquet -od parquet_lake/
+   # With -out_dir: clean and declarative
+   pytae "$INPUT_FILE" -o parquet -out_dir parquet_lake/
    ```
 
 3. **Compound Extension & Compression Awareness**:
-   Pytae understands multi-part extensions like `.csv.gz` or `.jsonl.gz`. Using `-o parquet -od parquet_lake/` cleanly strips both the `.gz` and `.csv` extensions, generating `parquet_lake/data.parquet` rather than `parquet_lake/data.csv.parquet`.
+   Pytae understands multi-part extensions like `.csv.gz` or `.jsonl.gz`. Using `-o parquet -out_dir parquet_lake/` cleanly strips both the `.gz` and `.csv` extensions, generating `parquet_lake/data.parquet` rather than `parquet_lake/data.csv.parquet`.
 
 4. **Automatic Directory Creation & Collision Guarding**:
-   Target directories specified in `-od` are automatically created (`mkdir -p`) if they do not already exist. Pytae also verifies that batch inputs from different source directories sharing the same filename do not silently overwrite one another.
+   Target directories specified in `-out_dir` are automatically created (`mkdir -p`) if they do not already exist. Pytae also verifies that batch inputs from different source directories sharing the same filename do not silently overwrite one another.
 
 #### Summary Comparison
 
-| Capability | Explicit Path (`-o path/name.ext`) | Directory Routing (`-o <format> -od <dir>`) |
+| Capability | Explicit Path (`-o path/name.ext`) | Directory Routing (`-o <format> -out_dir <dir>`) |
 |---|---|---|
-| **Single known destination** | `pytae raw.csv -o lake/clean.parquet` | `pytae raw.csv -o parquet -od lake/` |
-| **Batch / Glob conversions** | ❌ Fails (destination collision error) | `pytae "raw/*.csv" -o parquet -od lake/` |
-| **Shell scripts & variables** | Requires `basename` / `${f%.*}` manipulation | Declarative: `pytae "$FILE" -o parquet -od lake/` |
+| **Single known destination** | `pytae raw.csv -o lake/clean.parquet` | `pytae raw.csv -o parquet -out_dir lake/` |
+| **Batch / Glob conversions** | ❌ Fails (destination collision error) | `pytae "raw/*.csv" -o parquet -out_dir lake/` |
+| **Shell scripts & variables** | Requires `basename` / `${f%.*}` manipulation | Declarative: `pytae "$FILE" -o parquet -out_dir lake/` |
 | **Compressed source (`.csv.gz`)** | Manual stem cleanup required | Auto-strips compound extension to `.parquet` |
 | **Destination directory** | Auto-creates parent folder | Auto-creates directory tree (`mkdir -p`) |
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.0
+
+- Added syntax support and snippets for Interactive REPL Shell (`pt.repl()`, `df.repl()`) and single-dash CLI flag standardization.
+
 ## 3.11.0
 
 - Added support and syntax highlighting for sensitive data masking, encryption, and tokenization (`mask`, `unmask`).
