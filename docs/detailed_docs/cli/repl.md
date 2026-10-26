@@ -208,7 +208,7 @@ Removed checkpoint 'maddy'.
 pytae [df1, df2, df3]> checkpoint rm maddy
 
 # Clear all saved checkpoints
-pytae [df1, df2, df3]> rm checkpoints -all
+pytae [df1, df2, df3]> rm checkpoint *
 Cleared all saved checkpoints.
 
 # Restore the entire workbench back to the checkpoint
@@ -285,12 +285,12 @@ pytae [orders.parquet, customers.parquet]> rm orders
 Removed table 'orders.parquet'. Switched active dataset to 'customers.parquet'.
 
 # Remove all loaded tables at once:
-pytae [df1, df2]> rm -all
+pytae [df1, df2]> rm *
 Removed all 2 loaded tables. No tables remain loaded.
 
 # Undo immediately restores the removed tables to session memory:
 pytae> undo
-Undid: rm -all. Active shape: (10,000, 4)
+Undid: rm *. Active shape: (10,000, 4)
 pytae [df1, df2]>
 ```
 
@@ -442,10 +442,10 @@ pytae> -o clip
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
 | **`history`** | `history` | List numbered history of applied transformation steps | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
-| **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoints -all` | Delete a saved checkpoint (or all checkpoints) | No |
+| **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
-| **`rm`** | `rm <table_name>`, `rm df`, `rm -all` | Remove table or active dataset from memory (auto-switches cursor) | **Yes** (undoable) |
+| **`rm`** | `rm <table_name>`, `rm df`, `rm *` | Remove table or active dataset from memory (auto-switches cursor) | **Yes** (undoable) |
 | **`<var> = <file>`** | `df1 = orders.parquet [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Ingest dataset into a named table with reader options | **Yes** |
 | **`load`** | `load <file> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Load dataset with alias and reader options | **Yes** |
 | **`tables`** | `tables` | List all loaded tables in memory | No |

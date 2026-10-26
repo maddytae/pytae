@@ -331,7 +331,7 @@ MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
   <var> = <t1> -join <t2>: Assign join result (e.g. df3 = df1 -join df2 on=cust_id)
   <var> = -sql "<query>" : Create table from ANSI SQL across loaded tables
-  rm <table_name>        : Remove in-memory table (e.g. rm df1)
+  rm <table_name>        : Remove in-memory table (e.g. rm df1, rm df, or rm *)
   tables                 : List all loaded datasets in memory
   use <name>             : Switch active dataset (or type bare table name e.g. df1)
 
@@ -343,7 +343,7 @@ STATE NAVIGATION (Undoable):
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
-  rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoints -all')
+  rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   clear                  : Clear the terminal screen
   exit                   : Exit REPL
 
@@ -892,18 +892,21 @@ class PytaeRepl:
         # Remove table or checkpoint: `rm <table_name>` or `rm checkpoint <name>`
         if first_lower == "rm":
             if len(tokens) < 2:
-                output_fn("Usage: rm <table_name> (e.g. rm df1) or rm checkpoint <name>")
+                output_fn("Usage: rm <table_name> (e.g. rm df1), rm df, or rm *")
                 return True
             target = tokens[1]
             if target.lower() in ("checkpoint", "checkpoints"):
                 if len(tokens) < 3:
-                    output_fn("Usage: rm checkpoint <name> or rm checkpoints -all")
+                    output_fn("Usage: rm checkpoint <name> or rm checkpoint *")
                     return True
                 cp_name = tokens[2]
-                if cp_name == "-all" or (target.lower() == "checkpoints" and cp_name == "all"):
+                if cp_name == "*":
                     count = len(self.checkpoints)
                     self.checkpoints.clear()
                     output_fn(f"Cleared all {count} saved checkpoints.")
+                    return True
+                if cp_name in ("-all", "--all", "all", "-*"):
+                    output_fn(f"pytae: 'rm {target} {cp_name}' is not recognized; use 'rm checkpoint *'.")
                     return True
                 if cp_name in self.checkpoints:
                     del self.checkpoints[cp_name]
@@ -913,7 +916,7 @@ class PytaeRepl:
                 output_fn(f"pytae: checkpoint '{cp_name}' not found. Available: {avail}")
                 return True
 
-            if target in ("-all", "all", "*"):
+            if target == "*":
                 if not self.tables:
                     output_fn("No tables loaded to remove.")
                     return True
@@ -925,7 +928,11 @@ class PytaeRepl:
                 self.current_df = None
                 self.path_str = None
                 output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
-                self.history.append(f"rm {target}")
+                self.history.append("rm *")
+                return True
+
+            if target in ("-all", "--all", "all", "-*"):
+                output_fn(f"pytae: 'rm {target}' is not recognized; use 'rm *'.")
                 return True
 
             resolved = self._resolve_table_name(target)
@@ -1060,17 +1067,20 @@ class PytaeRepl:
 
         if first_lower == "checkpoint":
             if len(tokens) < 2:
-                output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline) or checkpoint rm <name>")
+                output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline), checkpoint rm <name>, or checkpoint rm *")
                 return True
             if tokens[1].lower() == "rm":
                 if len(tokens) < 3:
-                    output_fn("Usage: checkpoint rm <name> or checkpoint rm -all")
+                    output_fn("Usage: checkpoint rm <name> or checkpoint rm *")
                     return True
                 cp_name = tokens[2]
-                if cp_name == "-all":
+                if cp_name == "*":
                     count = len(self.checkpoints)
                     self.checkpoints.clear()
                     output_fn(f"Cleared all {count} saved checkpoints.")
+                    return True
+                if cp_name in ("-all", "--all", "all", "-*"):
+                    output_fn(f"pytae: 'checkpoint rm {cp_name}' is not recognized; use 'checkpoint rm *'.")
                     return True
                 if cp_name in self.checkpoints:
                     del self.checkpoints[cp_name]

@@ -899,11 +899,28 @@ def test_repl_rm_checkpoint(sample_df):
     assert "cp2" not in r.checkpoints
     assert "Removed checkpoint 'cp2'." in outputs[-1]
 
-    # rm checkpoints -all
+    # rm checkpoint * and rejection of -all/all
     r.execute_line("checkpoint a", output_fn=outputs.append)
     r.execute_line("checkpoint b", output_fn=outputs.append)
     assert len(r.checkpoints) == 2
+
+    outputs.clear()
     r.execute_line("rm checkpoints -all", output_fn=outputs.append)
+    assert "use 'rm checkpoint *'" in outputs[-1]
+    assert len(r.checkpoints) == 2
+
+    outputs.clear()
+    r.execute_line("checkpoint rm -all", output_fn=outputs.append)
+    assert "use 'checkpoint rm *'" in outputs[-1]
+    assert len(r.checkpoints) == 2
+
+    r.execute_line("rm checkpoint *", output_fn=outputs.append)
+    assert len(r.checkpoints) == 0
+
+    # Also verify checkpoint rm * works
+    r.execute_line("checkpoint c", output_fn=outputs.append)
+    assert len(r.checkpoints) == 1
+    r.execute_line("checkpoint rm *", output_fn=outputs.append)
     assert len(r.checkpoints) == 0
 
 
@@ -1064,7 +1081,18 @@ def test_repl_rm_all_tables(sample_df, tmp_path):
 
     r = PytaeRepl(paths=[p1, p2])
     outputs = []
+
+    # Rejection of rm -all / rm all in favor of strict rm *
     r.execute_line("rm -all", output_fn=outputs.append)
+    assert "use 'rm *'" in outputs[-1]
+    assert len(r.tables) == 2
+
+    r.execute_line("rm all", output_fn=outputs.append)
+    assert "use 'rm *'" in outputs[-1]
+    assert len(r.tables) == 2
+
+    # Canonical rm *
+    r.execute_line("rm *", output_fn=outputs.append)
     assert "Removed all 2 loaded tables" in outputs[-1]
     assert not r.tables
     assert r.current_df is None
