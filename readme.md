@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/pytae.svg)](https://pypi.org/project/pytae/)
 [![Python](https://img.shields.io/pypi/pyversions/pytae.svg)](https://pypi.org/project/pytae/)
 [![CI](https://github.com/maddytae/pytae/actions/workflows/ci.yml/badge.svg)](https://github.com/maddytae/pytae/actions/workflows/ci.yml)
-[![License](https://img.shields.io/pypi/l/pytae.svg)](LICENSE)
+[![License](https://img.shields.io/pypi/l/pytae.svg)](https://github.com/maddytae/pytae/blob/master/LICENSE)
 
 Fast, ergonomic tabular data manipulation, feature engineering, and visualization powered natively by **Polars** for multithreaded SIMD vector computation and backed by **Pandas & Matplotlib** for plotting across command-line, interactive shell, and Python library.
 
@@ -13,7 +13,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 2. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with $O(1)$ pointer-reassignment undo/redo, multi-table joins, and ANSI SQL.
 3. **Python & Jupyter SDK (`pt.DataFrame` / `df.pt`)**: High-performance Polars-native DataFrame library with `.pt` accessor for pandas/polars DataFrames.
 
-👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](docs/detailed_docs/cli/repl.md) | [**Master Reference & Architecture Hub**](docs/pytae.md) | [**vs. Pandas**](docs/comparison_to_pandas.md) | [**vs. dplyr**](docs/comparison_to_dplyr.md) | [**vs. SAS**](docs/comparison_to_sas.md)
+👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/repl.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
 
 ---
 
@@ -78,7 +78,7 @@ pytae [df1, df2, df3, df4]> df3 -o merged_orders.parquet
 > [!TIP]
 > **Clean Terminal (Model 2)**: Operations output concise shape confirmations (e.g. `-> df1: 10,000 rows x 3 cols` or `df1: 344 rows x 7 cols`) without dumping full tables. To inspect rows, explicitly run `-head [N]`.
 
-👉 **Read the Full REPL Manual**: [docs/detailed_docs/cli/repl.md](docs/detailed_docs/cli/repl.md)
+👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/repl.md)
 
 ---
 
@@ -110,7 +110,7 @@ pytae yesterday.parquet -diff today.parquet -tol 1e-4
 pytae users.csv -mask "email=hash, ssn=encrypt" -key "SecretKey123" -o secure.parquet
 ```
 
-👉 **CLI Quick Reference**: [**Cheat Sheet & Cookbook**](docs/cli_cheatsheet.md) or run `pytae -cheatsheet` in your terminal! | **Full CLI Manuals**: [docs/detailed_docs/cli/](docs/detailed_docs/cli/)
+👉 **CLI Quick Reference**: [**Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) or run `pytae -cheatsheet` in your terminal! | **Full CLI Manuals**: [docs/detailed_docs/cli/](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/cli/)
 
 ---
 
@@ -165,19 +165,19 @@ plotter.add("C", penguins, kind="box", y="body_mass_g", by="species")
 plotter.finalize(title="Penguin Morphology Dashboard", save="dashboard.png")
 ```
 
-👉 **Plotting Guide**: [docs/detailed_docs/plotting/plotting.ipynb](docs/detailed_docs/plotting/plotting.ipynb) | [CLI Plotting Guide](docs/detailed_docs/cli/cli_plots.md)
+👉 **Plotting Guide**: [Plotting Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting/plotting.ipynb) | [CLI Plotting Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/cli_plots.md)
 
 ---
 
 ## Documentation Directory
 
 ### Architecture & Comparisons
-- **Master Reference & Architecture Hub**: [docs/pytae.md](docs/pytae.md)
-- **Ecosystem Comparisons**: [vs. Pandas](docs/comparison_to_pandas.md) | [vs. dplyr](docs/comparison_to_dplyr.md) | [vs. SAS](docs/comparison_to_sas.md)
-- **Interactive Shell Manual**: [Interactive REPL Guide](docs/detailed_docs/cli/repl.md)
-- **Command-Line Quick Reference**: [CLI Cheat Sheet & Cookbook](docs/cli_cheatsheet.md)
+- **Master Reference & Architecture Hub**: [docs/pytae.md](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)
+- **Ecosystem Comparisons**: [vs. Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [vs. dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [vs. SAS](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
+- **Interactive Shell Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/repl.md)
+- **Command-Line Quick Reference**: [CLI Cheat Sheet & Cookbook](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md)
 
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](https://github.com/maddytae/pytae/blob/master/LICENSE) for details.

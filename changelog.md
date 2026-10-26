@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.3] - 2026-10-25
+
+### Fixed
+- **PyPI Documentation Links**:
+  - Replaced all relative document and directory links in `readme.md` with absolute GitHub repository URLs (`https://github.com/maddytae/pytae/blob/master/...` and `/tree/master/...`).
+  - Resolves PyPI 404 navigation errors when users click documentation links directly on [pypi.org/project/pytae/](https://pypi.org/project/pytae/).
+  - Added dedicated `Changelog` link to project URLs in package metadata.
+
 ## [3.12.2] - 2026-10-25
 
 ### Added

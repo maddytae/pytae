@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.12.2"
+version = "3.12.3"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -39,6 +39,7 @@ pytae = "pytae.cli:main"
 "Documentation" = "https://github.com/maddytae/pytae/blob/master/docs/pytae.md"
 "Detailed Docs" = "https://github.com/maddytae/pytae/tree/master/docs/detailed_docs"
 "Cheat Sheet" = "https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md"
+"Changelog" = "https://github.com/maddytae/pytae/blob/master/changelog.md"
 
 [tool.hatch.build.targets.wheel.force-include]
 "reference" = "pytae/reference"

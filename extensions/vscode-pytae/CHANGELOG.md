@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.3
+
+- Standardized README documentation links to absolute repository URLs for seamless navigation on PyPI.
+
 ## 3.12.2
 
 - Session-wide REPL checkpoints preserving entire multi-table workbench state and inline reader options (`-encoding`, `-dlim`, `-nrows`).
