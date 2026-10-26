@@ -6,8 +6,13 @@ Provides stateful, iterative data manipulation without repeatedly reloading data
 from __future__ import annotations
 
 import argparse
+import atexit
+import gc
+import json
 import shlex
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,6 +20,13 @@ import polars as pl
 
 from pytae.cli_run import _format_table, _process_path
 from pytae.readers import DataFrameReader, get_reader
+
+
+def _safe_ipc_filename(name: str) -> str:
+    """Generate a filesystem-safe filename for an IPC table file across all OS platforms."""
+    safe = "".join(c if (c.isalnum() or c in ("_", "-")) else f"_{ord(c):02x}_" for c in name)
+    return f"{safe}.ipc"
+
 
 try:
     import readline  # Standard Unix / macOS readline
@@ -573,7 +585,8 @@ class PytaeRepl:
         self.redo_stack: list[tuple[str, pl.DataFrame]] = []
         self.tables: dict[str, pl.DataFrame] = {}
         self.orig_tables: dict[str, pl.DataFrame] = {}
-        self.checkpoints: dict[str, pl.DataFrame] = {}
+        self.checkpoints: dict[str, Any] = {}
+        self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
         self._raw_history: list[str] = _load_history_from_file()
@@ -632,6 +645,100 @@ class PytaeRepl:
                 pass
         self.orig_df = df
         self.current_df = df
+
+    def _get_cp_dir(self) -> Path:
+        """Return the temporary session directory for disk-backed checkpoints, creating lazily if needed."""
+        if self._cp_temp_dir is None:
+            self._cp_temp_dir = tempfile.TemporaryDirectory(prefix="pytae_cp_")
+            atexit.register(self._cleanup_cp_dir)
+        return Path(self._cp_temp_dir.name)
+
+    def _cleanup_cp_dir(self) -> None:
+        """Clean up the temporary session checkpoint directory from disk."""
+        if self._cp_temp_dir is not None:
+            try:
+                self._cp_temp_dir.cleanup()
+            except Exception:
+                pass
+            self._cp_temp_dir = None
+
+    def _delete_checkpoint(self, name: str) -> bool:
+        """Delete a saved checkpoint and remove its files from disk."""
+        if name not in self.checkpoints:
+            return False
+        snap = self.checkpoints.pop(name)
+        if isinstance(snap, dict) and "dir" in snap:
+            shutil.rmtree(snap["dir"], ignore_errors=True)
+        return True
+
+    def _clear_all_checkpoints(self) -> int:
+        """Delete all saved checkpoints and wipe their directory trees from disk."""
+        count = len(self.checkpoints)
+        for name in list(self.checkpoints.keys()):
+            self._delete_checkpoint(name)
+        return count
+
+    def _get_checkpoint_df(self, name: str) -> pl.DataFrame | None:
+        """Retrieve a DataFrame from a checkpoint (loads on-demand from disk IPC or memory)."""
+        if name not in self.checkpoints:
+            return None
+        snap = self.checkpoints[name]
+        if isinstance(snap, pl.DataFrame):
+            return snap
+        if isinstance(snap, dict):
+            if "dir" in snap:
+                cp_dir = Path(snap["dir"])
+                meta_file = cp_dir / "meta.json"
+                meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else snap
+                tbl_meta = meta.get("tables", {})
+                if not tbl_meta:
+                    return None
+                act = meta.get("active_table")
+                if act and act in tbl_meta:
+                    f_name = tbl_meta[act].get("file", _safe_ipc_filename(act)) if isinstance(tbl_meta[act], dict) else _safe_ipc_filename(act)
+                    ipc_p = cp_dir / f_name
+                    if ipc_p.exists():
+                        return pl.read_ipc(ipc_p)
+                if len(tbl_meta) == 1:
+                    first_k, first_v = next(iter(tbl_meta.items()))
+                    f_name = first_v.get("file", _safe_ipc_filename(first_k)) if isinstance(first_v, dict) else _safe_ipc_filename(first_k)
+                    ipc_p = cp_dir / f_name
+                    if ipc_p.exists():
+                        return pl.read_ipc(ipc_p)
+                if "_current_df" in tbl_meta:
+                    f_name = tbl_meta["_current_df"].get("file", "_current_df.ipc") if isinstance(tbl_meta["_current_df"], dict) else "_current_df.ipc"
+                    ipc_p = cp_dir / f_name
+                    if ipc_p.exists():
+                        return pl.read_ipc(ipc_p)
+                for k, v in tbl_meta.items():
+                    f_name = v.get("file", _safe_ipc_filename(k)) if isinstance(v, dict) else _safe_ipc_filename(k)
+                    ipc_p = cp_dir / f_name
+                    if ipc_p.exists():
+                        return pl.read_ipc(ipc_p)
+                return None
+            tbls = snap.get("tables", {})
+            if snap.get("active_table") and snap["active_table"] in tbls:
+                return tbls[snap["active_table"]]
+            if len(tbls) == 1:
+                return next(iter(tbls.values()))
+            if snap.get("current_df") is not None:
+                return snap["current_df"]
+        return None
+
+    def close(self) -> None:
+        """Clean up temporary checkpoint disk storage and release all in-memory tables."""
+        self._clear_all_checkpoints()
+        self._cleanup_cp_dir()
+        self.tables.clear()
+        self.orig_tables.clear()
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        self.current_df = None
+        self.orig_df = None
+        gc.collect()
+
+    def __del__(self) -> None:
+        self._cleanup_cp_dir()
 
     def _read_file_to_df(self, path: Path | str, **reader_opts: Any) -> tuple[Path, pl.DataFrame]:
         """Resolve a dataset path and load it into a Polars DataFrame using reader kwargs with schema fallback."""
@@ -910,15 +1017,14 @@ class PytaeRepl:
                     return True
                 cp_name = tokens[2]
                 if cp_name == "*":
-                    count = len(self.checkpoints)
-                    self.checkpoints.clear()
+                    count = self._clear_all_checkpoints()
                     output_fn(f"Cleared all {count} saved checkpoints.")
                     return True
                 if cp_name in ("-all", "--all", "all", "-*"):
                     output_fn(f"pytae: 'rm checkpoint {cp_name}' is not recognized; use 'rm checkpoint *'.")
                     return True
                 if cp_name in self.checkpoints:
-                    del self.checkpoints[cp_name]
+                    self._delete_checkpoint(cp_name)
                     output_fn(f"Removed checkpoint '{cp_name}'.")
                     return True
                 avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
@@ -935,9 +1041,11 @@ class PytaeRepl:
                 self.orig_tables.clear()
                 self.table_sources.clear()
                 self.current_df = None
+                self.orig_df = None
                 self.path_str = None
-                output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
                 self.history.append("rm *")
+                gc.collect()
+                output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
                 return True
 
             if target in ("-all", "--all", "all", "-*"):
@@ -960,11 +1068,13 @@ class PytaeRepl:
                         output_fn(f"Removed table '{resolved}'. Switched active dataset to '{next_tbl}'.")
                     else:
                         self.current_df = None
+                        self.orig_df = None
                         self.path_str = None
                         output_fn(f"Removed table '{resolved}'. No tables remain loaded.")
                 else:
                     output_fn(f"Removed table '{resolved}'.")
                 self.history.append(f"rm {target}")
+                gc.collect()
                 return True
 
             if target in self.checkpoints:
@@ -1084,15 +1194,14 @@ class PytaeRepl:
                     return True
                 cp_name = tokens[2]
                 if cp_name == "*":
-                    count = len(self.checkpoints)
-                    self.checkpoints.clear()
+                    count = self._clear_all_checkpoints()
                     output_fn(f"Cleared all {count} saved checkpoints.")
                     return True
                 if cp_name in ("-all", "--all", "all", "-*"):
                     output_fn(f"pytae: 'checkpoint rm {cp_name}' is not recognized; use 'checkpoint rm *'.")
                     return True
                 if cp_name in self.checkpoints:
-                    del self.checkpoints[cp_name]
+                    self._delete_checkpoint(cp_name)
                     output_fn(f"Removed checkpoint '{cp_name}'.")
                     return True
                 avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
@@ -1368,7 +1477,46 @@ class PytaeRepl:
         if not self.tables and self.current_df is None:
             output_fn("pytae: no dataset loaded to checkpoint.")
             return
-        self.checkpoints[name] = self._capture_session_state()
+
+        # Prepare checkpoint directory on disk
+        cp_path = self._get_cp_dir() / name
+        if cp_path.exists():
+            shutil.rmtree(cp_path, ignore_errors=True)
+        cp_path.mkdir(parents=True, exist_ok=True)
+
+        saved_tables: dict[str, Any] = {}
+        if self.tables:
+            for tbl_name, tbl_df in self.tables.items():
+                ipc_file = _safe_ipc_filename(tbl_name)
+                tbl_df.write_ipc(cp_path / ipc_file)
+                saved_tables[tbl_name] = {
+                    "file": ipc_file,
+                    "shape": list(tbl_df.shape),
+                }
+        elif self.current_df is not None:
+            ipc_file = "_current_df.ipc"
+            self.current_df.write_ipc(cp_path / ipc_file)
+            saved_tables["_current_df"] = {
+                "file": ipc_file,
+                "shape": list(self.current_df.shape),
+            }
+
+        meta = {
+            "dir": str(cp_path),
+            "tables": saved_tables,
+            "table_sources": dict(self.table_sources),
+            "active_table": self.path_str,
+            "has_current_df": self.current_df is not None,
+            "current_df_shape": list(self.current_df.shape) if self.current_df is not None else None,
+        }
+        (cp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        self.checkpoints[name] = meta
+
+        # Reset undo and redo stacks upon creating a checkpoint to establish new baseline and free intermediate memory
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        gc.collect()
+
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
             output_fn(f"Saved checkpoint '{name}' ({len(self.tables)} tables: {table_names}).")
@@ -1384,11 +1532,58 @@ class PytaeRepl:
             avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
             output_fn(f"pytae: checkpoint '{name}' not found. Available checkpoints: {avail}")
             return
-        self.undo_stack.append((f"before restore {name}", self._capture_session_state()))
+
         snap = self.checkpoints[name]
-        self._apply_session_state(snap)
+
+        # Purge active session completely to guarantee RAM strictly reflects checkpoint
+        self.tables.clear()
+        self.orig_tables.clear()
+        self.table_sources.clear()
+        self.current_df = None
+        self.orig_df = None
+        self.path_str = None
+
+        if isinstance(snap, dict) and "dir" in snap:
+            cp_dir = Path(snap["dir"])
+            meta_file = cp_dir / "meta.json"
+            meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else snap
+
+            self.table_sources = dict(meta.get("table_sources", {}))
+            self.path_str = meta.get("active_table")
+
+            tbl_meta = meta.get("tables", {})
+            for tbl_name, tbl_info in tbl_meta.items():
+                if tbl_name == "_current_df":
+                    ipc_path = cp_dir / tbl_info.get("file", "_current_df.ipc")
+                    if ipc_path.exists():
+                        self.current_df = pl.read_ipc(ipc_path)
+                        self.orig_df = self.current_df.clone()
+                    continue
+                ipc_path = cp_dir / tbl_info.get("file", _safe_ipc_filename(tbl_name))
+                if ipc_path.exists():
+                    df = pl.read_ipc(ipc_path)
+                    self.tables[tbl_name] = df
+                    self.orig_tables[tbl_name] = df.clone()
+
+            if self.path_str and self.path_str in self.tables:
+                self.current_df = self.tables[self.path_str]
+                self.orig_df = self.orig_tables[self.path_str]
+            elif self.tables:
+                first_tbl = next(iter(self.tables.keys()))
+                self.path_str = first_tbl
+                self.current_df = self.tables[first_tbl]
+                self.orig_df = self.orig_tables[first_tbl]
+        else:
+            self._apply_session_state(snap)
+
+        # Reset undo and redo stacks upon restore to anchor session strictly at the restored milestone
+        self.undo_stack.clear()
         self.redo_stack.clear()
         self.history.append(f"restore {name}")
+
+        # Explicitly release any memory held by pre-restore intermediate tables
+        gc.collect()
+
         if len(self.tables) > 1:
             active_info = f"; active: {self.path_str}" if self.path_str else ""
             output_fn(
@@ -1407,20 +1602,37 @@ class PytaeRepl:
             return
         output_fn("Saved Checkpoints:")
         for name, snap in self.checkpoints.items():
-            if isinstance(snap, dict) and "tables" in snap:
-                tbls = snap["tables"]
-                if len(tbls) > 1:
-                    summary = ", ".join(f"{t} ({df.shape[0]:,}x{df.shape[1]})" for t, df in tbls.items())
-                    active_suffix = f" [active: {snap['active_table']}]" if snap.get("active_table") else ""
-                    output_fn(f"  - {name:<15}: {summary}{active_suffix}")
-                elif tbls:
-                    t_name, df = next(iter(tbls.items()))
-                    output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols")
-                elif snap.get("current_df") is not None:
-                    df = snap["current_df"]
-                    output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols")
-                else:
-                    output_fn(f"  - {name:<15}: (empty session)")
+            if isinstance(snap, dict):
+                tbls = snap.get("tables", {})
+                if isinstance(tbls, dict):
+                    if len(tbls) > 1:
+                        parts = []
+                        for t, val in tbls.items():
+                            if isinstance(val, dict) and "shape" in val:
+                                s = val["shape"]
+                                parts.append(f"{t} ({s[0]:,}x{s[1]})")
+                            elif isinstance(val, pl.DataFrame):
+                                parts.append(f"{t} ({val.shape[0]:,}x{val.shape[1]})")
+                            else:
+                                parts.append(str(t))
+                        summary = ", ".join(parts)
+                        active_suffix = f" [active: {snap['active_table']}]" if snap.get("active_table") else ""
+                        output_fn(f"  - {name:<15}: {summary}{active_suffix}")
+                    elif tbls:
+                        t_name, val = next(iter(tbls.items()))
+                        shape = val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
+                        if shape:
+                            output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols")
+                        else:
+                            output_fn(f"  - {name:<15}: 1 table ({t_name})")
+                    elif snap.get("current_df_shape") is not None:
+                        s = snap["current_df_shape"]
+                        output_fn(f"  - {name:<15}: {s[0]:,} rows x {s[1]} cols")
+                    elif snap.get("current_df") is not None:
+                        df = snap["current_df"]
+                        output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols")
+                    else:
+                        output_fn(f"  - {name:<15}: (empty session)")
             elif isinstance(snap, pl.DataFrame):
                 output_fn(f"  - {name:<15}: {snap.shape[0]:,} rows x {snap.shape[1]} cols")
 
@@ -1462,9 +1674,11 @@ class PytaeRepl:
                     ctx.register("data", self.current_df)
                 for tbl_name, tbl_df in self.tables.items():
                     ctx.register(tbl_name, tbl_df)
-                for cp_name, cp_df in self.checkpoints.items():
+                for cp_name in self.checkpoints:
                     if cp_name not in self.tables:
-                        ctx.register(cp_name, cp_df)
+                        cp_df = self._get_checkpoint_df(cp_name)
+                        if cp_df is not None:
+                            ctx.register(cp_name, cp_df)
                 res = ctx.execute(query).collect()
                 self.tables[var_name] = res
                 self.table_sources[var_name] = f"sql: {query[:30]}"
@@ -1532,22 +1746,12 @@ class PytaeRepl:
                 if resolved_src is not None:
                     source_df = self.tables[resolved_src]
                 else:
-                    snap = self.checkpoints[first_tok]
-                    if isinstance(snap, pl.DataFrame):
-                        source_df = snap
-                    elif isinstance(snap, dict):
-                        tbls = snap.get("tables", {})
-                        if len(tbls) == 1:
-                            source_df = next(iter(tbls.values()))
-                        elif snap.get("active_table") and snap["active_table"] in tbls:
-                            source_df = tbls[snap["active_table"]]
-                        elif snap.get("current_df") is not None:
-                            source_df = snap["current_df"]
-                        else:
-                            output_fn(
-                                f"pytae: checkpoint '{first_tok}' contains multiple tables ({', '.join(tbls.keys())}). Use 'restore {first_tok}' to restore entire workbench."
-                            )
-                            return
+                    source_df = self._get_checkpoint_df(first_tok)
+                    if source_df is None:
+                        output_fn(
+                            f"pytae: checkpoint '{first_tok}' contains multiple tables. Use 'restore {first_tok}' to restore entire workbench."
+                        )
+                        return
                 pipe_tokens = right_tokens[1:]
                 pipe_line = right_expr[len(first_tok) :].strip()
                 if not pipe_tokens:
@@ -1809,7 +2013,11 @@ class PytaeRepl:
                 left_df = self.tables[left_res]
                 left_name = left_res
             elif left_name in self.checkpoints:
-                left_df = self.checkpoints[left_name]
+                left_df = self._get_checkpoint_df(left_name)
+                if left_df is None:
+                    avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                    output_fn(f"pytae: could not load left table from checkpoint '{left_name}'. Available: {avail}")
+                    return
             else:
                 try:
                     lp, left_df = self._read_file_to_df(left_name)
@@ -1827,7 +2035,13 @@ class PytaeRepl:
             right_df = self.tables[right_res]
             right_name = right_res
         elif right_name in self.checkpoints:
-            right_df = self.checkpoints[right_name]
+            right_df = self._get_checkpoint_df(right_name)
+            if right_df is None:
+                avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                output_fn(
+                    f"pytae: could not load right table from checkpoint '{right_name}'. Available: {avail}"
+                )
+                return
         else:
             try:
                 rp, right_df = self._read_file_to_df(right_name)
@@ -1912,9 +2126,11 @@ class PytaeRepl:
                 ctx.register(self.path.stem, self.current_df)
             for tbl_name, tbl_df in self.tables.items():
                 ctx.register(tbl_name, tbl_df)
-            for cp_name, cp_df in self.checkpoints.items():
+            for cp_name in self.checkpoints:
                 if cp_name not in self.tables:
-                    ctx.register(cp_name, cp_df)
+                    cp_df = self._get_checkpoint_df(cp_name)
+                    if cp_df is not None:
+                        ctx.register(cp_name, cp_df)
             res = ctx.execute(query).collect()
             output_fn(f"-> {self.path_str or 'df'}: {res.shape[0]:,} rows x {res.shape[1]} cols")
             # Update state with SQL query result
@@ -1941,9 +2157,11 @@ class PytaeRepl:
             }
             for tbl_name, tbl_df in self.tables.items():
                 local_scope[tbl_name] = PytaeDataFrame(tbl_df)
-            for cp_name, cp_df in self.checkpoints.items():
+            for cp_name in self.checkpoints:
                 if cp_name not in local_scope:
-                    local_scope[cp_name] = PytaeDataFrame(cp_df)
+                    cp_df = self._get_checkpoint_df(cp_name)
+                    if cp_df is not None:
+                        local_scope[cp_name] = PytaeDataFrame(cp_df)
             res = eval(expr, {}, local_scope)
             if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
                 output_fn(_format_table(res))
@@ -2133,23 +2351,25 @@ class PytaeRepl:
                         pass
             return input(prompt_text)
 
-        while True:
-            prompt = self._build_prompt()
-            try:
-                line = _get_input(prompt)
-            except KeyboardInterrupt:
-                output_fn("\n(KeyboardInterrupt - command cancelled)")
-                continue
-            except EOFError:
-                output_fn("\nExiting pytae REPL.")
-                break
+        try:
+            while True:
+                prompt = self._build_prompt()
+                try:
+                    line = _get_input(prompt)
+                except KeyboardInterrupt:
+                    output_fn("\n(KeyboardInterrupt - command cancelled)")
+                    continue
+                except EOFError:
+                    output_fn("\nExiting pytae REPL.")
+                    break
 
-            should_continue = self.execute_line(line, output_fn=output_fn)
-            if not should_continue:
-                break
-
-        _save_readline_history()
-        _save_raw_history(self._raw_history)
+                should_continue = self.execute_line(line, output_fn=output_fn)
+                if not should_continue:
+                    break
+        finally:
+            _save_readline_history()
+            _save_raw_history(self._raw_history)
+            self._cleanup_cp_dir()
         return self.current_df
 
 

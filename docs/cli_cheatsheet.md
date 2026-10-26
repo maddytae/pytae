@@ -355,10 +355,10 @@ undo                 # Revert last transformation
 redo                 # Re-apply last undone transformation
 reset                # Restore original dataset from disk (instant O(1))
 history              # Show history of applied pipeline steps
-checkpoint v1        # Save snapshot of all tables in session
-rm checkpoint v1     # Delete a saved checkpoint (or rm checkpoint *)
-restore v1           # Restore entire workbench to named snapshot
-rm df                # Remove active table from memory (or rm df1 / rm *, undoable)
+checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
+rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
+restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
+rm df                # Remove active table from memory and free RAM (or rm df1 / rm *)
 clear                # Clear the terminal screen
 status               # Show active dataset shape, columns, and memory
 

@@ -182,12 +182,18 @@ pytae> -describe
      2: -mutate "mass_kg = body_mass_g / 1000.0"
   ```
 
-### Checkpoints and Snapshots
+### Checkpoints and Snapshots (Disk-Backed & Memory-Isolated)
 
-Checkpoints in Pytae are **session-wide and independent of the active dataset**. When you run `checkpoint <name>`, Pytae freezes the exact state of all tables currently loaded in your workbench along with the active table pointer. When you run `restore <name>`, the entire workbench session is restored cleanly and non-destructively:
+Checkpoints in Pytae are **session-wide, persisted to disk (Arrow IPC), and consume 0 MB of active RAM**.
+
+Key Architectural Guarantees:
+1. **Disk Storage (Arrow IPC)**: Tables are serialized to session temporary storage via Polars Arrow IPC (`.ipc`). Saved checkpoints do not duplicate memory or pin RAM.
+2. **Undo Baseline Reset**: Creating a checkpoint (`checkpoint <name>`) establishes a clean milestone. The undo/redo stacks are cleared, immediately releasing intermediate transformation memory from RAM via garbage collection. Any *subsequent* transformations push to a fresh undo stack, so you can freely experiment and `undo` back to your checkpoint milestone.
+3. **Strict Memory Isolation on `restore`**: Running `restore <name>` completely purges any post-checkpoint tables (e.g. `df3`, temporary joins) from memory, resets the undo stack, triggers `gc.collect()`, and loads strictly the checkpoint tables. Active RAM is guaranteed to match the checkpoint state only.
+4. **Decoupled `rm`**: Running `rm <table_name>` reclaims RAM immediately. Checkpoints on disk remain completely safe and independent.
 
 ```text
-# Save a named checkpoint across the entire workbench session
+# Save a named checkpoint across the entire workbench session (persisted to disk, undo reset)
 pytae [df1, df2]> checkpoint maddy
 Saved checkpoint 'maddy' (2 tables: df1, df2).
 
@@ -200,7 +206,7 @@ pytae [df1, df2, df3]> checkpoints
 Saved Checkpoints:
   - maddy          : df1 (344x7), df2 (244x7) [active: df2]
 
-# Delete a single saved checkpoint
+# Delete a single saved checkpoint (frees disk files)
 pytae [df1, df2, df3]> rm checkpoint maddy
 Removed checkpoint 'maddy'.
 
@@ -211,7 +217,7 @@ pytae [df1, df2, df3]> checkpoint rm maddy
 pytae [df1, df2, df3]> rm checkpoint *
 Cleared all saved checkpoints.
 
-# Restore the entire workbench back to the checkpoint
+# Restore the entire workbench back to the checkpoint (RAM strictly isolated, post-checkpoint tables dropped)
 pytae [df1, df2, df3]> restore maddy
 Restored checkpoint 'maddy' (2 tables: df1, df2; active: df2).
 pytae [df1, df2]> 

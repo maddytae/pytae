@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.5] - 2026-10-26
+
+### Added
+- **Disk-Backed Session Checkpoints (Arrow IPC)**:
+  - Checkpoints are now serialized to session temporary storage via high-performance, zero-copy Polars Arrow IPC (`.ipc`), consuming **0 MB of active RAM**.
+  - On-demand streaming/querying from checkpoints (`-sql`, `py`, `-join`, and assignments) loads tables on-the-fly without keeping redundant copies pinned in RAM.
+  - Cross-platform sanitized filenames ensure robust operation across Windows, macOS, and Linux without illegal character collision.
+
+### Changed
+- **Milestone Undo Baseline Reset on `checkpoint`**:
+  - Running `checkpoint <name>` establishes an explicit milestone and immediately clears `self.undo_stack` and `self.redo_stack`.
+  - All accumulated intermediate DataFrame clones from prior exploration are instantly dereferenced and reclaimed via `gc.collect()`.
+  - Transformations performed *after* the checkpoint push to a fresh undo stack, allowing users to experiment and undo back to their milestone cleanly.
+- **Strict RAM Isolation on `restore`**:
+  - Running `restore <name>` completely purges all post-checkpoint tables, derived temporary tables, and undo history from memory.
+  - Automatically reloads strictly the tables recorded in the checkpoint and triggers `gc.collect()`, guaranteeing that active RAM reflects the restored milestone only.
+- **Immediate Memory Reclamation on `rm`**:
+  - `rm <table_name>` and `rm *` delete in-memory table references and invoke `gc.collect()` to reclaim RAM immediately.
+  - Checkpoints saved on disk remain completely independent and can restore removed tables at any time.
+- **Disk File Deletion on Checkpoint Removal**:
+  - `rm checkpoint <name>`, `checkpoint rm <name>`, `rm checkpoint *`, and `checkpoint rm *` safely remove the saved checkpoint files and directory trees from disk.
+  - REPL exit and session close (`r.close()`) automatically clean up all temporary session checkpoint storage.
+
 ## [3.12.4] - 2026-10-26
 
 ### Fixed

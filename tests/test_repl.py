@@ -1,5 +1,7 @@
 """Unit tests for pytae interactive REPL (PytaeRepl, pt.repl(), df.repl(), and CLI flags)."""
 
+from pathlib import Path
+
 import pandas as pd
 import polars as pl
 import pytest
@@ -1349,7 +1351,98 @@ def test_repl_plot_preserves_filter(sample_parquet, monkeypatch):
     assert set(captured[0]["species"]) == {"Gentoo"}
 
 
+def test_repl_checkpoint_disk_storage_and_undo_reset(sample_df):
+    outputs = []
+    r = PytaeRepl(df=sample_df)
+
+    # 1. Do a transformation to create an undo step
+    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    assert len(r.undo_stack) == 1
+
+    # 2. Creating a checkpoint MUST reset undo and save tables to disk IPC
+    outputs.clear()
+    r.execute_line("checkpoint v1", output_fn=outputs.append)
+    assert "Saved checkpoint 'v1'" in outputs[-1]
+    assert len(r.undo_stack) == 0
+    assert len(r.redo_stack) == 0
+
+    # Verify disk persistence
+    cp_info = r.checkpoints["v1"]
+    assert "dir" in cp_info
+    cp_dir = Path(cp_info["dir"])
+    assert cp_dir.exists() and cp_dir.is_dir()
+    assert (cp_dir / "meta.json").exists()
+    # No in-memory polars DataFrame stored in checkpoint dict
+    assert not any(isinstance(v, pl.DataFrame) for v in cp_info.values())
+
+    # 3. New mutation after checkpoint can be undone back to checkpoint baseline
+    r.execute_line('-mutate "weight_lb = body_mass_g * 0.00220462"', output_fn=outputs.append)
+    assert "weight_lb" in r.current_df.columns
+    assert len(r.undo_stack) == 1
+
+    r.execute_line("undo", output_fn=outputs.append)
+    assert "weight_lb" not in r.current_df.columns
+    assert r.current_df.shape == (2, 3)
+
+    r.close()
+    # Verify cleanup on close
+    assert not cp_dir.exists()
 
 
+def test_repl_restore_strictly_isolates_ram_from_post_checkpoint_tables():
+    outputs = []
+    r = PytaeRepl()
+
+    # Load baseline table
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("checkpoint baseline", output_fn=outputs.append)
+    assert len(r.undo_stack) == 0
+
+    # Load multiple post-checkpoint tables and mutate
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    r.execute_line("df3 = df1", output_fn=outputs.append)
+    r.execute_line('df1 -mutate "flag = 1"', output_fn=outputs.append)
+    assert "df1" in r.tables and "df2" in r.tables and "df3" in r.tables
+    assert len(r.tables) == 3
+
+    # Restore baseline: df2 and df3 MUST be purged, RAM strictly from baseline, undo reset
+    outputs.clear()
+    r.execute_line("restore baseline", output_fn=outputs.append)
+    assert "Restored checkpoint 'baseline'" in outputs[-1]
+    assert "df1" in r.tables
+    assert "df2" not in r.tables
+    assert "df3" not in r.tables
+    assert len(r.tables) == 1
+    assert "flag" not in r.tables["df1"].columns
+    assert len(r.undo_stack) == 0
+    assert len(r.redo_stack) == 0
+
+    r.close()
 
 
+def test_repl_rm_frees_table_without_affecting_disk_checkpoint():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("checkpoint v1", output_fn=outputs.append)
+
+    # rm df1 drops from memory
+    r.execute_line("rm df1", output_fn=outputs.append)
+    assert "df1" not in r.tables
+    assert r.current_df is None
+
+    # Checkpoint v1 on disk is untouched and can restore df1
+    outputs.clear()
+    r.execute_line("restore v1", output_fn=outputs.append)
+    assert "Restored checkpoint 'v1'" in outputs[-1]
+    assert "df1" in r.tables
+    assert r.tables["df1"].shape == (344, 7)
+
+    # rm checkpoint removes disk files
+    cp_dir = Path(r.checkpoints["v1"]["dir"])
+    assert cp_dir.exists()
+    r.execute_line("rm checkpoint v1", output_fn=outputs.append)
+    assert "v1" not in r.checkpoints
+    assert not cp_dir.exists()
+
+    r.close()

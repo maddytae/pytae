@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.12.5
+
+- Disk-backed session checkpoints (Arrow IPC, 0 RAM overhead).
+- Automatic milestone undo baseline reset on `checkpoint <name>` freeing intermediate RAM.
+- Strict RAM isolation and post-checkpoint table purging on `restore <name>`.
+- Immediate memory reclamation on `rm` with decoupled disk checkpoints.
+
 ## 3.12.4
 
 - Fixed lazy pipeline preservation in `-plot`, `-describe`, and `-diff` when combined with `-filter`, `-mutate`, or `-select`.
