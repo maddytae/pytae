@@ -541,8 +541,28 @@ class PytaeRepl:
         path: Path | str | None = None,
         paths: list[Path | str] | None = None,
         prompt: str = "pytae",
+        encoding: str | None = None,
+        sep: str | None = None,
+        delimiter: str | None = None,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+        reader_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> None:
         self.prompt = prompt
+        self.reader_kwargs: dict[str, Any] = dict(reader_kwargs or {})
+        if encoding:
+            self.reader_kwargs["encoding"] = encoding
+        if sep or delimiter:
+            self.reader_kwargs["sep"] = sep or delimiter
+        if nrows is not None:
+            self.reader_kwargs["nrows"] = nrows
+        if chunk_size is not None:
+            self.reader_kwargs["chunk_size"] = chunk_size
+        for k, v in kwargs.items():
+            if k not in self.reader_kwargs:
+                self.reader_kwargs[k] = v
+
         self.undo_stack: list[tuple[str, pl.DataFrame]] = []
         self.redo_stack: list[tuple[str, pl.DataFrame]] = []
         self.tables: dict[str, pl.DataFrame] = {}
@@ -579,8 +599,12 @@ class PytaeRepl:
                         p = candidate
                 if p.exists():
                     try:
-                        reader = get_reader(p)
-                        t_df = reader.to_polars()
+                        sep_val = self.reader_kwargs.get("sep") or self.reader_kwargs.get("delimiter")
+                        enc_val = self.reader_kwargs.get("encoding")
+                        chunk_val = self.reader_kwargs.get("chunk_size", 200_000)
+                        reader = get_reader(p, sep=sep_val, encoding=enc_val, chunk_size=chunk_val)
+                        nrows_val = self.reader_kwargs.get("nrows")
+                        t_df = reader.to_polars(nrows=nrows_val)
                         self.tables[var_name] = t_df
                         self.orig_tables[var_name] = t_df.clone()
                         self.table_sources[var_name] = p.name
@@ -618,7 +642,7 @@ class PytaeRepl:
         self.orig_df = df
         self.current_df = df
 
-    def _load_file(self, path: Path | str) -> None:
+    def _load_file(self, path: Path | str, **reader_opts: Any) -> None:
         p = Path(path).expanduser()
         if str(p).startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
@@ -639,8 +663,14 @@ class PytaeRepl:
                 p = candidate
             else:
                 raise FileNotFoundError(f"File not found: {p}")
-        reader = get_reader(p)
-        df = reader.to_polars()
+        opts = dict(self.reader_kwargs)
+        opts.update(reader_opts)
+        sep_val = opts.get("sep") or opts.get("delimiter")
+        enc_val = opts.get("encoding")
+        chunk_val = opts.get("chunk_size", 200_000)
+        nrows_val = opts.get("nrows")
+        reader = get_reader(p, sep=sep_val, encoding=enc_val, chunk_size=chunk_val)
+        df = reader.to_polars(nrows=nrows_val)
         self.path = p
         self.path_str = p.name
         self.orig_df = df
@@ -2124,6 +2154,13 @@ def repl(
     path: Path | str | None = None,
     paths: list[Path | str] | None = None,
     prompt: str = "pytae",
+    encoding: str | None = None,
+    sep: str | None = None,
+    delimiter: str | None = None,
+    nrows: int | None = None,
+    chunk_size: int | None = None,
+    reader_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> Any:
     """Launch the interactive Pytae REPL.
 
@@ -2137,11 +2174,33 @@ def repl(
         Multiple dataset paths to pre-load into the Multi-Table Workbench.
     prompt : str, default 'pytae'
         Prompt prefix for the REPL prompt.
+    encoding : str, optional
+        Text encoding for file reading (e.g. 'latin-1', 'cp1252', 'utf-8').
+    sep, delimiter : str, optional
+        Column delimiter for delimited text files (e.g. '|', ';', '\t').
+    nrows : int, optional
+        Maximum number of rows to load initially.
+    chunk_size : int, optional
+        Chunk size in rows for streaming ingestion.
+    reader_kwargs : dict, optional
+        Additional keyword arguments to pass to dataset reader.
 
     Returns
     -------
     DataFrame | None
         The active DataFrame upon exiting the REPL.
     """
-    runner = PytaeRepl(df=df, path=path, paths=paths, prompt=prompt)
+    runner = PytaeRepl(
+        df=df,
+        path=path,
+        paths=paths,
+        prompt=prompt,
+        encoding=encoding,
+        sep=sep,
+        delimiter=delimiter,
+        nrows=nrows,
+        chunk_size=chunk_size,
+        reader_kwargs=reader_kwargs,
+        **kwargs,
+    )
     return runner.run()

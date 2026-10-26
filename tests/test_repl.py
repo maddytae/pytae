@@ -1177,4 +1177,43 @@ def test_git_bash_pipe_ansi_arrow_history_recall(sample_df):
     assert any("recalled from history: -cols" in o for o in outputs)
 
 
+def test_repl_init_with_dlim_and_encoding(tmp_path):
+    p = tmp_path / "latin1_pipe.csv"
+    p.write_bytes("id|city\n1|Montr\xe9al\n2|Z\xfcrich\n".encode("latin-1"))
+
+    # Initializing PytaeRepl with sep and encoding
+    r = PytaeRepl(path=p, sep="|", encoding="latin-1")
+    assert r.current_df is not None
+    assert r.current_df.shape == (2, 2)
+    assert r.current_df["city"].to_list() == ["Montréal", "Zürich"]
+
+
+def test_cli_repl_launch_with_dlim_and_encoding(tmp_path, monkeypatch):
+    p = tmp_path / "latin1_sample.csv"
+    p.write_bytes("col1|col2\n1|Caf\xe9\n2|Na\xefve\n".encode("latin-1"))
+
+    captured_df = []
+
+    def mock_run(self, *args, **kwargs):
+        captured_df.append(self.current_df)
+        return self.current_df
+
+    monkeypatch.setattr(PytaeRepl, "run", mock_run)
+
+    cli.main([str(p), "-dlim", "|", "-encoding", "latin-1", "-i"])
+    assert len(captured_df) == 1
+    assert captured_df[0] is not None
+    assert captured_df[0].shape == (2, 2)
+    assert captured_df[0]["col2"].to_list() == ["Café", "Naïve"]
+
+
+def test_cli_repl_missing_encoding_reports_clean_error(tmp_path):
+    p = tmp_path / "latin1_fail.csv"
+    p.write_bytes("col1|col2\n1|Caf\xe9\n".encode("latin-1"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([str(p), "-dlim", "|", "-i"])
+    assert exc_info.value.code == 2
+
+
 
