@@ -125,6 +125,17 @@ def test_describe_prints_pandas_summary(tmp_path, capsys):
     assert "count" in out and "mean" in out
 
 
+def test_describe_preserves_filter(tmp_path, capsys):
+    df = pd.DataFrame({"species": ["A", "A", "B"], "val": [10.0, 20.0, 100.0]})
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main([path, "-filter", "species == 'A'", "-describe"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "2.0" in out
+    assert "15.0" in out
+
+
 def test_stats_flag_removed(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
 
