@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.12.4
+
+- Fixed lazy pipeline preservation in `-plot`, `-describe`, and `-diff` when combined with `-filter`, `-mutate`, or `-select`.
+- Enforced strict canonical `clear` and wildcard deletion (`rm *`, `rm checkpoint *`).
+- Preserved CLI reader options (`-encoding`, `-dlim`, `-nrows`) when launching REPL with `-i`.
+
 ## 3.12.3
 
 - Standardized README documentation links to absolute repository URLs for seamless navigation on PyPI.

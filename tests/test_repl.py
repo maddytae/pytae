@@ -961,6 +961,7 @@ def test_repl_shell_pipe(sample_df):
 def test_win_console_input_history_navigation(monkeypatch):
     import sys
     import types
+
     from pytae.repl import _win_console_input
 
     # Simulate pressing Up arrow (\xe0 + H), then Enter (\r)
@@ -985,6 +986,7 @@ def test_win_console_input_history_navigation(monkeypatch):
 def test_win_console_input_line_editing(monkeypatch):
     import sys
     import types
+
     from pytae.repl import _win_console_input
 
     # Simulate typing 'df', backspacing 'f', typing '1', then Enter
@@ -1143,6 +1145,7 @@ def test_repl_table_resolution_targeted_and_use(sample_parquet):
 def test_win_console_input_git_bash_ansi_arrow_keys(monkeypatch):
     import sys
     import types
+
     from pytae.repl import _win_console_input
 
     # Simulate Git Bash sending ANSI Up Arrow: \x1b + [ + A, then Enter (\r)
@@ -1172,6 +1175,7 @@ def test_win_console_input_git_bash_ansi_arrow_keys(monkeypatch):
 def test_win_console_input_git_bash_application_cursor(monkeypatch):
     import sys
     import types
+
     from pytae.repl import _win_console_input
 
     # Simulate Git Bash application cursor Up Arrow: \x1b + O + A, then Enter (\r)

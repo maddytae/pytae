@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.4] - 2026-10-26
+
+### Fixed
+- **Lazy Pipeline Preservation in `-plot`, `-describe`, and `-diff`**:
+  - Fixed a critical issue in `_Pipeline.dataframe()` where `self._pldf` was only converted to pandas if it was an instance of `pl.DataFrame`. When operations such as `-filter`, `-mutate`, `-select`, or `-distinct` produced a `pl.LazyFrame`, `_Pipeline.dataframe()` silently fell back to re-reading the original file from disk, losing all prior pipeline transformations.
+  - Updated `_Pipeline.dataframe()` to properly collect `self._pldf` via `self.polars_frame()` whenever present, guaranteeing that downstream operations (`-plot`, `-describe`, `-diff`) receive the fully filtered and transformed data.
+- **CLI Reader Options Forwarded to REPL on `-i`**:
+  - Reader CLI options (`-encoding`, `-dlim`, `-nrows`) are now preserved and forwarded when launching an interactive REPL session with `pytae <file> [options] -i`.
+- **Unified Reader Schema Inference & Fallbacks**:
+  - Synchronized CSV and text parsing fallback logic between CLI and REPL, ensuring identical schema inference, encoding handling (`latin1`, `cp1252`, etc.), and delayed type conversion.
+- **Cross-Platform REPL Arrow Key & History Navigation**:
+  - Added Windows terminal history and up/down arrow key navigation via `pyreadline3`.
+  - Added Git Bash / MinTTY terminal support by parsing standard ANSI escape sequences (`\x1b[A`, `\x1b[B`).
+
+### Changed
+- **Strict Terminal Clearing (`clear`)**:
+  - Standardized on the canonical `clear` command across the REPL shell and public Python API (`pt.clear()`, `r.clear()`).
+  - Completely removed the `cls` alias from `pytae.__all__` and the public API.
+  - REPL commands `cls`, `-cls`, `--cls`, `-clear`, or `--clear` are cleanly rejected with an immediate redirection message to `clear`.
+- **Strict Wildcard Syntax for `rm`**:
+  - Standardized memory table and checkpoint removal on `*` wildcard syntax: `rm *` (removes all in-memory tables) and `rm checkpoint *` (deletes all saved snapshots).
+  - Legacy flag `-all` and bare argument `all` are cleanly rejected with clear guidance directing the user to `*`.
+- **Strict Singular `rm checkpoint`**:
+  - Enforced singular `rm checkpoint` strictly; plural `rm checkpoints` is rejected with immediate redirection to `rm checkpoint`.
+
+### Added
+- **Proactive Headless Linux Plotting Guidance**:
+  - When `-plot` is run on Linux without `-o` and Matplotlib falls back to the headless `Agg` backend (unable to open a GUI window), `pytae` outputs actionable diagnostic guidance on `stderr` explaining how to install GUI libraries (`python3-tk`, `PyQt6`) or save to a file using `-o <file.png>`.
+
 ## [3.12.3] - 2026-10-25
 
 ### Fixed
