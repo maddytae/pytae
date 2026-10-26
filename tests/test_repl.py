@@ -139,8 +139,15 @@ def test_repl_sql_query(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
+    # Bare sql rejected
+    r.execute_line("sql SELECT species FROM df", output_fn=outputs.append)
+    assert "bare 'sql' is not recognized; use '-sql'" in outputs[-1]
+
+    # -sql query succeeds
+    outputs.clear()
     r.execute_line(
-        "sql SELECT species, COUNT(*) as cnt FROM df GROUP BY species ORDER BY cnt DESC", output_fn=outputs.append
+        '-sql "SELECT species, COUNT(*) as cnt FROM df GROUP BY species ORDER BY cnt DESC"',
+        output_fn=outputs.append,
     )
     assert r.current_df.shape == (3, 2)
     assert "cnt" in r.current_df.columns
@@ -283,7 +290,8 @@ def test_repl_join_tables_and_sql(tmp_path):
 
     # SQL join between tables
     r.execute_line(
-        "sql SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id", output_fn=outputs.append
+        '-sql "SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id"',
+        output_fn=outputs.append,
     )
     assert r.current_df.shape == (2, 2)
     assert set(r.current_df.columns) == {"order_id", "name"}
@@ -384,12 +392,17 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
 
     # 8. Assignment from SQL query
     r.execute_line(
-        "df4 = sql SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.cust_id",
+        'df4 = -sql "SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.cust_id"',
         output_fn=outputs.append,
     )
     assert "df4" in r.tables
     assert r.tables["df4"].shape == (2, 3)
     assert set(r.tables["df4"].columns) == {"order_id", "name", "amount"}
+
+    # Bare sql assignment rejected
+    outputs.clear()
+    r.execute_line("df5 = sql SELECT * FROM df1", output_fn=outputs.append)
+    assert "bare 'sql' is not recognized; use '-sql" in outputs[-1]
 
 
 def test_repl_standard_cli_join_and_output(tmp_path):
@@ -497,8 +510,8 @@ def test_repl_bare_verb_rejection(sample_df):
     r.execute_line("select species", output_fn=outputs.append)
     assert "bare 'select' is not recognized; use '-select'" in outputs[-1]
 
-    # Bare inspection verbs rejected
-    for verb in ("shape", "cols", "dtype", "nulls", "glimpse", "describe", "head", "tail"):
+    # Bare inspection & query verbs rejected
+    for verb in ("shape", "cols", "dtype", "nulls", "glimpse", "describe", "head", "tail", "sql"):
         outputs.clear()
         r.execute_line(verb, output_fn=outputs.append)
         assert f"bare '{verb}' is not recognized; use '-{verb}'" in outputs[-1]

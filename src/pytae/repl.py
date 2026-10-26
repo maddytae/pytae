@@ -56,7 +56,7 @@ MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   <tbl> -o <path>        : Export specific table (e.g. df1 -o clean_orders.parquet)
   <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
   <var> = <t1> -join <t2>: Assign join result (e.g. df3 = df1 -join df2 on=cust_id)
-  <var> = sql <query>    : Create table from ANSI SQL across loaded tables
+  <var> = -sql "<query>" : Create table from ANSI SQL across loaded tables
   tables                 : List all loaded datasets in memory
   use <name>             : Switch active dataset (or type bare table name e.g. df1)
 
@@ -71,8 +71,8 @@ STATE NAVIGATION (Undoable):
   exit                   : Exit REPL
 
 QUERY & PYTHON EXPRESSIONS:
-  sql <query>            : Run ANSI SQL on active table or across named tables
-                           e.g. sql SELECT df1.*, df2.name FROM df1 JOIN df2 ON df1.id = df2.id
+  -sql "<query>"         : Run ANSI SQL on active table or across named tables
+                           e.g. -sql "SELECT df1.*, df2.name FROM df1 JOIN df2 ON df1.id = df2.id"
   py <expr>              : Evaluate Python expression with 'df' (pytae) and 'pldf' (polars)
 ================================================================================\
 """
@@ -216,6 +216,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "describe",
         "head",
         "tail",
+        "sql",
     )
 )
 
@@ -486,9 +487,13 @@ class PytaeRepl:
             output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
             return True
 
-        # SQL Query
-        if first_lower == "sql":
-            query = line[3:].strip()
+        # SQL Query: -sql "<query>"
+        if first_lower in ("-sql", "--sql"):
+            if first_lower == "--sql":
+                output_fn("pytae: '--sql' uses double hyphens; pytae uses single hyphen '-sql'.")
+                return True
+            raw_query = line[4:].strip()
+            query = raw_query.strip("\"'")
             self._cmd_sql(query, output_fn)
             return True
 
@@ -681,9 +686,9 @@ class PytaeRepl:
         )
 
     def _cmd_assign(self, var_name: str, right_expr: str, output_fn: Callable[[str], None]) -> None:
-        # 1. SQL query assignment: `df3 = sql SELECT ...`
-        if right_expr.lower().startswith("sql "):
-            query = right_expr[4:].strip()
+        # 1. SQL query assignment: `df3 = -sql "<query>"`
+        if right_expr.startswith(("-sql ", "-sql=")):
+            query = right_expr[4:].lstrip(" =").strip().strip("\"'")
             try:
                 ctx = pl.SQLContext()
                 if self.current_df is not None:
@@ -699,12 +704,16 @@ class PytaeRepl:
                 self.table_sources[var_name] = f"sql: {query[:30]}"
                 self.current_df = res
                 self.path_str = var_name
-                self.history.append(f"{var_name} = sql {query}")
+                self.history.append(f'{var_name} = -sql "{query}"')
                 output_fn(f"Created '{var_name}' from SQL query ({res.shape[0]:,} rows x {res.shape[1]} cols).")
                 return
             except Exception as exc:
                 output_fn(f"pytae SQL Error: {exc}")
                 return
+
+        if right_expr.lower().startswith("sql "):
+            output_fn("pytae: bare 'sql' is not recognized; use '-sql \"<query>\"' (matching CLI syntax).")
+            return
 
         # 2. File path assignment: `df1 = orders.parquet` or explicit sample URI: `df1 = sample:penguins`
         clean_path = right_expr.removeprefix("load ").strip("\"' ")
@@ -830,6 +839,11 @@ class PytaeRepl:
             output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
         elif first_sub == "-join":
             self._cmd_join(sub_tokens[1:], output_fn)
+            self.tables[table_name] = self.current_df
+        elif first_sub == "-sql":
+            raw_query = sub_line[4:].strip()
+            query = raw_query.strip("\"'")
+            self._cmd_sql(query, output_fn)
             self.tables[table_name] = self.current_df
         else:
             self._cmd_pipeline(sub_line, sub_tokens, output_fn)
@@ -1034,7 +1048,7 @@ class PytaeRepl:
             output_fn("pytae: no dataset loaded for SQL query.")
             return
         if not query:
-            output_fn("Usage: sql <query> (e.g. sql SELECT species, COUNT(*) FROM df GROUP BY 1)")
+            output_fn('Usage: -sql "<query>" (e.g. -sql "SELECT species, COUNT(*) FROM df GROUP BY 1")')
             return
         try:
             ctx = pl.SQLContext()
@@ -1050,12 +1064,12 @@ class PytaeRepl:
             res = ctx.execute(query).collect()
             output_fn(f"-> {self.path_str or 'df'}: {res.shape[0]:,} rows x {res.shape[1]} cols")
             # Update state with SQL query result
-            self.undo_stack.append((f"sql {query[:40]}...", self.current_df.clone()))
+            self.undo_stack.append((f'-sql "{query[:40]}..."', self.current_df.clone()))
             self.current_df = res
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = res
             self.redo_stack.clear()
-            self.history.append(f"sql {query}")
+            self.history.append(f'-sql "{query}"')
         except Exception as exc:
             output_fn(f"pytae SQL Error: {exc}")
 
