@@ -355,8 +355,8 @@ undo                 # Revert last transformation
 redo                 # Re-apply last undone transformation
 reset                # Restore original dataset from disk (instant O(1))
 history              # Show history of applied pipeline steps
-checkpoint v1        # Save named state snapshot (alias: cp)
-restore v1           # Restore to named snapshot (alias: checkout)
+checkpoint v1        # Save snapshot of all tables in session
+restore v1           # Restore entire workbench to named snapshot
 status               # Show active dataset shape, columns, and memory
 
 # 2. Pipeline Execution (RAM-speed with zero file re-reads)
@@ -367,9 +367,9 @@ pytae> -select "species,island,mass_kg"
 pytae> -arrange "mass_kg desc"
 
 # 3. Direct Query Engines & Export
-pytae> sql SELECT species, AVG(body_mass_g) FROM df GROUP BY 1
+pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1"
 pytae> py df.shape
-pytae> save clean.parquet
+pytae> -o clean.parquet
 pytae> save clip     # Copy active table to system clipboard
 ```
 

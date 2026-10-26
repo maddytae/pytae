@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.2] - 2026-10-25
+
+### Added
+- **Session-Wide Checkpoint Architecture**:
+  - `checkpoint <name>` freezes the state of the entire workbench session (all loaded DataFrames in memory, their file sources, and the active dataset pointer) completely independent of the active table.
+  - `restore <name>` non-destructively restores the complete multi-table workbench to the checkpoint snapshot, removing intermediate tables created after the checkpoint and restoring the previous active dataset.
+  - `checkpoints` displays a comprehensive breakdown of all tables frozen within each named snapshot (e.g., `maddy: df1 (344x7), df2 (244x7) [active: df2]`).
+- **Inline Reader Options on REPL Assignment & Load**:
+  - Both `<var> = <path>` and `load <path> as <alias>` now support inline reader flags directly from the prompt:
+    - `-encoding <enc>`: Custom character encoding (e.g., `-encoding latin1`).
+    - `-dlim <char>`: Custom column delimiter (e.g., `-dlim ";"`, `-dlim "\t"`).
+    - `-nrows <N>`: Read row limit for exploratory sampling (e.g., `-nrows 1000`).
+  - Examples: `df1 = raw_data.csv -encoding latin1 -dlim ";"` and `load sales.csv as df2 -nrows 500`.
+
 ## [3.12.1] - 2026-10-25
 
 ### Added

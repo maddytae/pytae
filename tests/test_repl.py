@@ -621,15 +621,13 @@ def test_repl_strict_checkpoints_vs_tables_separation():
     # Prompt MUST remain [df1, df2], never polluting with 'maddy'
     assert r._build_prompt() == "pytae [df1, df2]> "
 
-    # 'checkpoints' command lists ONLY saved checkpoints, NOT loaded tables
+    # 'checkpoints' command lists ONLY saved checkpoints ('maddy'), not separate checkpoint entries for df1 or df2
     outputs.clear()
     r.execute_line("checkpoints", output_fn=outputs.append)
     cp_text = "\n".join(outputs)
     assert "maddy" in cp_text
-    assert "df1" not in cp_text
-    assert "df2" not in cp_text
-
-    # 'tables' command lists ONLY loaded workbench tables, NOT saved checkpoints
+    assert "df1 (344x7)" in cp_text  # Shows the table summary inside checkpoint 'maddy'
+    # And 'maddy' is not a table in 'tables' command
     outputs.clear()
     r.execute_line("tables", output_fn=outputs.append)
     tbl_text = "\n".join(outputs)
@@ -745,10 +743,10 @@ def test_repl_multi_table_session_and_checkpoints():
     assert "df1" in tables_out and "(penguins.parquet)" in tables_out
     assert "* df2" in tables_out and "(tips.parquet) [active]" in tables_out
 
-    # 4. Save checkpoint maddy on active df2
+    # 4. Save checkpoint maddy (captures all tables in workbench)
     outputs.clear()
     repl.execute_line("checkpoint maddy", output_fn=outputs.append)
-    assert "Saved checkpoint 'maddy' (244 rows x 7 cols)." in outputs[-1]
+    assert "Saved checkpoint 'maddy' (2 tables: df1, df2)." in outputs[-1]
     # Checkpoint should not change table prompt
     assert repl._build_prompt() == "pytae [df1, df2]> "
 
@@ -757,5 +755,45 @@ def test_repl_multi_table_session_and_checkpoints():
     repl.execute_line("checkpoints", output_fn=outputs.append)
     cps_out = "\n".join(outputs)
     assert "Saved Checkpoints:" in cps_out
-    assert "maddy" in cps_out and "244 rows x 7 cols" in cps_out
+    assert "maddy" in cps_out and "df1 (344x7), df2 (244x7)" in cps_out
     assert repl._build_prompt() == "pytae [df1, df2]> "
+
+    # 6. Mutate and add a 3rd table df3
+    repl.execute_line("df3 = df1", output_fn=outputs.append)
+    assert "df3" in repl.tables
+    assert repl._build_prompt() == "pytae [df1, df2, df3]> "
+
+    # 7. Restore maddy restores original workbench state (df3 removed, df1 & df2 intact)
+    outputs.clear()
+    repl.execute_line("restore maddy", output_fn=outputs.append)
+    assert "Restored checkpoint 'maddy'" in outputs[-1]
+    assert "df3" not in repl.tables
+    assert "df1" in repl.tables and "df2" in repl.tables
+    assert repl._build_prompt() == "pytae [df1, df2]> "
+
+
+def test_repl_reader_options_on_assignment_and_load(tmp_path):
+    csv_file = tmp_path / "custom.csv"
+    csv_file.write_text("col_a;col_b\nval1;10\nval2;20\nval3;30\n", encoding="latin-1")
+
+    outputs = []
+    r = PytaeRepl()
+
+    # 1. Assignment with -dlim and -encoding
+    r.execute_line(f'df1 = {csv_file} -dlim ";" -encoding latin1', output_fn=outputs.append)
+    assert "df1" in r.tables
+    assert r.tables["df1"].shape == (3, 2)
+    assert r.tables["df1"].columns == ["col_a", "col_b"]
+    assert "sep=;" in outputs[-1] or "encoding=latin1" in outputs[-1]
+
+    # 2. Assignment with -nrows
+    outputs.clear()
+    r.execute_line(f'df2 = {csv_file} -dlim ";" -nrows 2', output_fn=outputs.append)
+    assert "df2" in r.tables
+    assert r.tables["df2"].shape == (2, 2)
+
+    # 3. load command with options
+    outputs.clear()
+    r.execute_line(f'load {csv_file} as df3 -dlim ";" -nrows 1', output_fn=outputs.append)
+    assert "df3" in r.tables
+    assert r.tables["df3"].shape == (1, 2)

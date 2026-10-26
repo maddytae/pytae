@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.2
+
+- Session-wide REPL checkpoints preserving entire multi-table workbench state and inline reader options (`-encoding`, `-dlim`, `-nrows`).
+
 ## 3.12.1
 
 - Automatic sample dataset resolution for bundled datasets and refined REPL prompt state indicators.

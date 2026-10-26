@@ -165,25 +165,26 @@ pytae> -describe
 
 ### Checkpoints and Snapshots
 
-Save named checkpoints at key milestones before experimenting with exploratory transformations:
+Checkpoints in Pytae are **session-wide and independent of the active dataset**. When you run `checkpoint <name>`, Pytae freezes the exact state of all tables currently loaded in your workbench along with the active table pointer. When you run `restore <name>`, the entire workbench session is restored cleanly and non-destructively:
 
 ```text
-# Save a named checkpoint
-pytae> checkpoint baseline
-Saved checkpoint 'baseline' (344 rows x 7 cols).
+# Save a named checkpoint across the entire workbench session
+pytae [df1, df2]> checkpoint maddy
+Saved checkpoint 'maddy' (2 tables: df1, df2).
 
-# Experiment with aggressive filtering
-pytae> -filter "island == 'Dream' and sex == 'female'"
-shape: (61, 7)
+# Create experimental tables or run mutations
+pytae [df1, df2]> df3 = df1 -filter "amount > 100"
+pytae [df1, df2, df3]> df2 -filter "status == 'active'"
 
-# Restore back to your saved checkpoint
-pytae> restore baseline
-Restored checkpoint 'baseline'. Active shape: (344, 7)
-
-# List all saved checkpoints
-pytae> checkpoints
+# List all saved checkpoints and their constituent tables
+pytae [df1, df2, df3]> checkpoints
 Saved Checkpoints:
-  - baseline       : 344 rows x 7 cols
+  - maddy          : df1 (344x7), df2 (244x7) [active: df2]
+
+# Restore the entire workbench back to the checkpoint
+pytae [df1, df2, df3]> restore maddy
+Restored checkpoint 'maddy' (2 tables: df1, df2; active: df2).
+pytae [df1, df2]> 
 ```
 
 ---
@@ -194,7 +195,7 @@ When launched with `pytae -i`, the REPL enters **Multi-Table Workbench Mode**. Y
 
 ### Ingesting Datasets
 
-Load files into named variables using standard assignment syntax:
+Load files into named variables using standard assignment syntax or the `load` command. In addition to file paths, you can pass inline reader options matching the CLI (`-encoding`, `-dlim`, `-nrows`):
 
 ```text
 $ pytae -i
@@ -204,15 +205,23 @@ $ pytae -i
 Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
 No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table.
 
-# 1. Load an existing file from disk (strict path check, no fuzzy fallback)
+# 1. Load an existing file from disk
 pytae> df1 = orders.parquet
 Loaded orders.parquet as 'df1' (10,000 rows x 4 cols).
 
-# 2. Or explicitly load a bundled sample dataset via sample:<name>
-pytae [df1: 10,000x4]> df2 = sample:penguins
-Loaded penguins.parquet as 'df2' (344 rows x 7 cols).
+# 2. Ingest CSV with specific encoding, custom delimiter, and row limit
+pytae [df1: 10,000x4]> df2 = raw_data.csv -encoding latin1 -dlim ";" -nrows 5000
+Loaded raw_data.csv as 'df2' (5,000 rows x 8 cols) [encoding=latin1, sep=;, nrows=5000].
 
-pytae [df1, df2]>
+# 3. Or load using the load command with alias and options
+pytae [df1, df2]> load sales.csv as df3 -dlim "\t"
+Loaded sales.csv as 'df3' (1,200 rows x 6 cols) [sep=	].
+
+# 4. Or explicitly load a bundled sample dataset via sample:<name>
+pytae [df1, df2, df3]> df4 = sample:penguins
+Loaded penguins.parquet as 'df4' (344 rows x 7 cols).
+
+pytae [df1, df2, df3, df4]>
 ```
 
 > [!NOTE]
@@ -343,10 +352,11 @@ pytae> -o clip
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
 | **`history`** | `history` | List numbered history of applied transformation steps | No |
-| **`checkpoint`** | `checkpoint <name>` | Save current table state with a name | No |
-| **`restore`** | `restore <name>` | Restore active table to a named checkpoint | **Yes** (undoable) |
-| **`checkpoints`**| `checkpoints` | List all saved checkpoint names and shapes | No |
-| **`<var> = <file>`** | `df1 = orders.parquet` | Load file as named table in memory | **Yes** |
+| **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
+| **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
+| **`checkpoints`**| `checkpoints` | List all saved checkpoints and their tables | No |
+| **`<var> = <file>`** | `df1 = orders.parquet [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Ingest dataset into a named table with reader options | **Yes** |
+| **`load`** | `load <file> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Load dataset with alias and reader options | **Yes** |
 | **`tables`** | `tables` | List all loaded tables in memory | No |
 | **`<name> -<cmd>`** | `df1 -head 5`, `df2 -shape` | Run command directly on named table (subject-first) | Depends on command |
 | **`<name>`** | `df1` | Switch to table and display dimensions (`rows x cols`) | **Yes** (switches active) |

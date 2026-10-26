@@ -48,7 +48,8 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
 
 MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   Load multiple datasets and operate with subject-first syntax (<tbl> -<cmd>):
-  <var> = <path.parquet> : Ingest dataset into a named variable (e.g. df1 = orders.parquet)
+  <var> = <path> [options]: Ingest dataset (e.g. df1 = data.csv -encoding latin1 -dlim ";")
+  load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
   <tbl> -shape / -cols   : Inspect table metadata (e.g. df1 -shape, df2 -cols)
   <tbl> -<pipeline>      : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
@@ -65,9 +66,9 @@ STATE NAVIGATION (Undoable):
   redo                   : Re-apply the last undone transformation step
   reset                  : Restore original dataset state
   history                : Show numbered transformation log
-  checkpoint <name>      : Save snapshot of current table state
-  restore <name>         : Restore table to saved checkpoint
-  checkpoints            : List saved checkpoints
+  checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
+  restore <name>         : Restore entire workbench to saved checkpoint
+  checkpoints            : List saved checkpoints and their tables
   exit                   : Exit REPL
 
 QUERY & PYTHON EXPRESSIONS:
@@ -219,6 +220,39 @@ _BARE_PIPELINE_VERBS = frozenset(
         "sql",
     )
 )
+
+
+def _parse_reader_options(tokens: list[str]) -> tuple[list[str], dict[str, Any], int | None]:
+    """Parse inline reader flags (-encoding, -dlim, -nrows) from a token list.
+
+    Returns (cleaned_tokens, reader_kwargs, nrows_val).
+    """
+    cleaned: list[str] = []
+    reader_kwargs: dict[str, Any] = {}
+    nrows_val: int | None = None
+
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in ("-encoding", "--encoding") and i + 1 < len(tokens):
+            reader_kwargs["encoding"] = tokens[i + 1]
+            i += 2
+        elif tok in ("-dlim", "--dlim") and i + 1 < len(tokens):
+            reader_kwargs["sep"] = tokens[i + 1]
+            i += 2
+        elif tok in ("-nrows", "--nrows", "-limit", "--limit") and i + 1 < len(tokens):
+            try:
+                nrows_val = int(tokens[i + 1])
+            except ValueError:
+                pass
+            i += 2
+        elif tok in ("-fmt", "--fmt") and i + 1 < len(tokens):
+            i += 2
+        else:
+            cleaned.append(tok)
+            i += 1
+
+    return cleaned, reader_kwargs, nrows_val
 
 
 class PytaeRepl:
@@ -651,25 +685,27 @@ class PytaeRepl:
         if not self.undo_stack:
             output_fn("Nothing to undo.")
             return
-        desc, prev_df = self.undo_stack.pop()
-        self.redo_stack.append((desc, self.current_df.clone()))
-        self.current_df = prev_df
-        if self.path_str and self.path_str in self.tables:
-            self.tables[self.path_str] = prev_df
+        desc, prev_state = self.undo_stack.pop()
+        self.redo_stack.append((desc, self._capture_session_state()))
+        self._apply_session_state(prev_state)
         self.history.append(f"undo [{desc}]")
-        output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
+        if self.current_df is not None:
+            output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
+        else:
+            output_fn(f"Undid: {desc}.")
 
     def _cmd_redo(self, output_fn: Callable[[str], None]) -> None:
         if not self.redo_stack:
             output_fn("Nothing to redo.")
             return
-        desc, next_df = self.redo_stack.pop()
-        self.undo_stack.append((desc, self.current_df.clone()))
-        self.current_df = next_df
-        if self.path_str and self.path_str in self.tables:
-            self.tables[self.path_str] = next_df
+        desc, next_state = self.redo_stack.pop()
+        self.undo_stack.append((desc, self._capture_session_state()))
+        self._apply_session_state(next_state)
         self.history.append(f"redo [{desc}]")
-        output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
+        if self.current_df is not None:
+            output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
+        else:
+            output_fn(f"Redid: {desc}.")
 
     def _cmd_history(self, output_fn: Callable[[str], None]) -> None:
         if not self.history:
@@ -679,35 +715,92 @@ class PytaeRepl:
         for idx, entry in enumerate(self.history, start=1):
             output_fn(f"  {idx:2d}: {entry}")
 
+    def _capture_session_state(self) -> dict[str, Any]:
+        return {
+            "tables": {k: v.clone() for k, v in self.tables.items()},
+            "orig_tables": {k: v.clone() for k, v in self.orig_tables.items()},
+            "table_sources": dict(self.table_sources),
+            "active_table": self.path_str,
+            "current_df": self.current_df.clone() if self.current_df is not None else None,
+        }
+
+    def _apply_session_state(self, state: Any) -> None:
+        if isinstance(state, pl.DataFrame):
+            self.current_df = state
+            if self.path_str and self.path_str in self.tables:
+                self.tables[self.path_str] = state
+            return
+        if isinstance(state, dict):
+            self.tables = {k: v.clone() for k, v in state.get("tables", {}).items()}
+            self.orig_tables = {k: v.clone() for k, v in state.get("orig_tables", {}).items()}
+            self.table_sources = dict(state.get("table_sources", {}))
+            self.path_str = state.get("active_table")
+            if self.path_str and self.path_str in self.tables:
+                self.current_df = self.tables[self.path_str]
+            elif state.get("current_df") is not None:
+                self.current_df = state["current_df"].clone()
+            else:
+                self.current_df = None
+
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
-        if self.current_df is None:
+        if not self.tables and self.current_df is None:
             output_fn("pytae: no dataset loaded to checkpoint.")
             return
-        self.checkpoints[name] = self.current_df.clone()
-        output_fn(f"Saved checkpoint '{name}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
+        self.checkpoints[name] = self._capture_session_state()
+        if len(self.tables) > 1:
+            table_names = ", ".join(self.tables.keys())
+            output_fn(f"Saved checkpoint '{name}' ({len(self.tables)} tables: {table_names}).")
+        elif self.current_df is not None:
+            output_fn(
+                f"Saved checkpoint '{name}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)."
+            )
+        else:
+            output_fn(f"Saved checkpoint '{name}'.")
 
     def _cmd_restore(self, name: str, output_fn: Callable[[str], None]) -> None:
         if name not in self.checkpoints:
             avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
             output_fn(f"pytae: checkpoint '{name}' not found. Available checkpoints: {avail}")
             return
-        self.undo_stack.append((f"before restore {name}", self.current_df.clone()))
-        self.current_df = self.checkpoints[name].clone()
-        if self.path_str and self.path_str in self.tables:
-            self.tables[self.path_str] = self.current_df
+        self.undo_stack.append((f"before restore {name}", self._capture_session_state()))
+        snap = self.checkpoints[name]
+        self._apply_session_state(snap)
         self.redo_stack.clear()
         self.history.append(f"restore {name}")
-        output_fn(
-            f"Restored checkpoint '{name}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
-        )
+        if len(self.tables) > 1:
+            active_info = f"; active: {self.path_str}" if self.path_str else ""
+            output_fn(
+                f"Restored checkpoint '{name}' ({len(self.tables)} tables: {', '.join(self.tables.keys())}{active_info})."
+            )
+        elif self.current_df is not None:
+            output_fn(
+                f"Restored checkpoint '{name}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
+            )
+        else:
+            output_fn(f"Restored checkpoint '{name}'.")
 
     def _cmd_list_checkpoints(self, output_fn: Callable[[str], None]) -> None:
         if not self.checkpoints:
             output_fn("No checkpoints saved. Use 'checkpoint <name>' to save one.")
             return
         output_fn("Saved Checkpoints:")
-        for name, cp_df in self.checkpoints.items():
-            output_fn(f"  - {name:<15}: {cp_df.shape[0]:,} rows x {cp_df.shape[1]} cols")
+        for name, snap in self.checkpoints.items():
+            if isinstance(snap, dict) and "tables" in snap:
+                tbls = snap["tables"]
+                if len(tbls) > 1:
+                    summary = ", ".join(f"{t} ({df.shape[0]:,}x{df.shape[1]})" for t, df in tbls.items())
+                    active_suffix = f" [active: {snap['active_table']}]" if snap.get("active_table") else ""
+                    output_fn(f"  - {name:<15}: {summary}{active_suffix}")
+                elif tbls:
+                    t_name, df = next(iter(tbls.items()))
+                    output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols")
+                elif snap.get("current_df") is not None:
+                    df = snap["current_df"]
+                    output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols")
+                else:
+                    output_fn(f"  - {name:<15}: (empty session)")
+            elif isinstance(snap, pl.DataFrame):
+                output_fn(f"  - {name:<15}: {snap.shape[0]:,} rows x {snap.shape[1]} cols")
 
     def _cmd_list_tables(self, output_fn: Callable[[str], None]) -> None:
         if not self.tables:
@@ -765,51 +858,79 @@ class PytaeRepl:
             output_fn("pytae: bare 'sql' is not recognized; use '-sql \"<query>\"' (matching CLI syntax).")
             return
 
-        # 2. File path assignment: `df1 = orders.parquet` or explicit sample URI: `df1 = sample:penguins`
-        clean_path = right_expr.removeprefix("load ").strip("\"' ")
-        p = Path(clean_path).expanduser()
-        if clean_path.startswith("sample:"):
-            from pytae import _DATASET_NAMES, DATA_PATH
+        # 2. File path assignment: `df1 = orders.parquet` or `df1 = data.csv -encoding latin1 -dlim ";"`
+        right_tokens = shlex.split(right_expr)
+        cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(right_tokens)
+        if cleaned_tokens:
+            clean_path = cleaned_tokens[0].removeprefix("load ").strip("\"' ")
+            p = Path(clean_path).expanduser()
+            if clean_path.startswith("sample:"):
+                from pytae import _DATASET_NAMES, DATA_PATH
 
-            sample_name = clean_path[7:].strip().removesuffix(".parquet")
-            sample_file = DATA_PATH / f"{sample_name}.parquet"
-            if not sample_file.exists():
-                available = ", ".join(_DATASET_NAMES)
-                output_fn(f"pytae: unknown sample dataset '{sample_name}'. Available: {available}")
-                return
-            p = sample_file
-        elif not p.exists():
-            from pytae import DATA_PATH
+                sample_name = clean_path[7:].strip().removesuffix(".parquet")
+                sample_file = DATA_PATH / f"{sample_name}.parquet"
+                if not sample_file.exists():
+                    available = ", ".join(_DATASET_NAMES)
+                    output_fn(f"pytae: unknown sample dataset '{sample_name}'. Available: {available}")
+                    return
+                p = sample_file
+            elif not p.exists():
+                from pytae import DATA_PATH
 
-            candidate = DATA_PATH / p.name
-            if not candidate.exists():
-                candidate = DATA_PATH / f"{p.stem}.parquet"
-            if candidate.exists():
-                p = candidate
+                candidate = DATA_PATH / p.name
+                if not candidate.exists():
+                    candidate = DATA_PATH / f"{p.stem}.parquet"
+                if candidate.exists():
+                    p = candidate
 
-        if p.exists():
-            try:
-                reader = get_reader(p)
-                df = reader.to_polars()
-                self.tables[var_name] = df
-                self.orig_tables[var_name] = df.clone()
-                self.table_sources[var_name] = p.name
-                self.current_df = df
-                self.orig_df = df.clone()
-                self.path_str = var_name
-                self.history.append(f"{var_name} = {clean_path}")
-                output_fn(f"Loaded {p.name} as '{var_name}' ({df.shape[0]:,} rows x {df.shape[1]} cols).")
-                return
-            except Exception as exc:
-                output_fn(f"pytae: failed to load {p}: {exc}")
-                return
+            if p.exists() and not p.is_dir():
+                try:
+                    reader = get_reader(p, **reader_kwargs)
+                    df = reader.to_polars(nrows=nrows_val)
+                    self.tables[var_name] = df
+                    self.orig_tables[var_name] = df.clone()
+                    self.table_sources[var_name] = p.name
+                    self.current_df = df
+                    self.orig_df = df.clone()
+                    self.path_str = var_name
+                    self.history.append(f"{var_name} = {right_expr}")
+                    opts_desc = ""
+                    if reader_kwargs or nrows_val is not None:
+                        opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
+                        if nrows_val is not None:
+                            opts_items.append(f"nrows={nrows_val}")
+                        opts_desc = f" [{', '.join(opts_items)}]"
+                    output_fn(
+                        f"Loaded {p.name} as '{var_name}' ({df.shape[0]:,} rows x {df.shape[1]} cols){opts_desc}."
+                    )
+                    return
+                except Exception as exc:
+                    output_fn(f"pytae: failed to load {p}: {exc}")
+                    return
 
         # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = df1 -join df2 ...` or `df3 = df1`
-        right_tokens = shlex.split(right_expr)
         if right_tokens:
             first_tok = right_tokens[0]
             if first_tok in self.tables or first_tok in self.checkpoints:
-                source_df = self.tables[first_tok] if first_tok in self.tables else self.checkpoints[first_tok]
+                if first_tok in self.tables:
+                    source_df = self.tables[first_tok]
+                else:
+                    snap = self.checkpoints[first_tok]
+                    if isinstance(snap, pl.DataFrame):
+                        source_df = snap
+                    elif isinstance(snap, dict):
+                        tbls = snap.get("tables", {})
+                        if len(tbls) == 1:
+                            source_df = next(iter(tbls.values()))
+                        elif snap.get("active_table") and snap["active_table"] in tbls:
+                            source_df = tbls[snap["active_table"]]
+                        elif snap.get("current_df") is not None:
+                            source_df = snap["current_df"]
+                        else:
+                            output_fn(
+                                f"pytae: checkpoint '{first_tok}' contains multiple tables ({', '.join(tbls.keys())}). Use 'restore {first_tok}' to restore entire workbench."
+                            )
+                            return
                 pipe_tokens = right_tokens[1:]
                 pipe_line = right_expr[len(first_tok) :].strip()
                 if not pipe_tokens:
@@ -911,10 +1032,14 @@ class PytaeRepl:
         self.path_str = old_path
 
     def _cmd_load(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
-        path_str = tokens[1].strip("\"' ")
+        cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(tokens)
+        if len(cleaned_tokens) < 2:
+            output_fn("Usage: load <path> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]")
+            return
+        path_str = cleaned_tokens[1].strip("\"' ")
         alias: str | None = None
-        if len(tokens) >= 4 and tokens[2].lower() == "as":
-            alias = tokens[3]
+        if len(cleaned_tokens) >= 4 and cleaned_tokens[2].lower() == "as":
+            alias = cleaned_tokens[3]
 
         p = Path(path_str).expanduser()
         if not path_str.startswith("sample:") and not p.exists():
@@ -929,23 +1054,34 @@ class PytaeRepl:
                 output_fn(f"pytae: file not found: {p}")
                 return
         try:
-            self._load_file(path_str if path_str.startswith("sample:") else p)
+            reader = get_reader(p, **reader_kwargs)
+            loaded_df = reader.to_polars(nrows=nrows_val)
             self.undo_stack.clear()
             self.redo_stack.clear()
             target_alias = alias or self.path_str or p.stem or p.name
-            self.tables[target_alias] = self.current_df.clone()
-            self.orig_tables[target_alias] = self.current_df.clone()
+            self.tables[target_alias] = loaded_df.clone()
+            self.orig_tables[target_alias] = loaded_df.clone()
             self.table_sources[target_alias] = p.name
+            self.current_df = loaded_df
             self.path_str = target_alias
+            opts_desc = ""
+            if reader_kwargs or nrows_val is not None:
+                opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
+                if nrows_val is not None:
+                    opts_items.append(f"nrows={nrows_val}")
+                opts_desc = f" [{', '.join(opts_items)}]"
             if alias:
                 self.history.append(f"load {p.name} as {alias}")
                 output_fn(
-                    f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)."
+                    f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
             else:
                 self.history.append(f"load {p.name}")
-                output_fn(f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols).")
+                output_fn(
+                    f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
+                )
         except Exception as exc:
+            output_fn(f"pytae: failed to load {p}: {exc}")
             output_fn(f"pytae: failed to load {p}: {exc}")
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
