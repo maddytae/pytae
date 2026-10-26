@@ -41,10 +41,13 @@ TABLE OF CONTENTS
           - pt.concat() / df.pt.concat() / df.concat() (Stacking Engine)
           - Transparent Polars Verb Delegation (__getattr__)
           - pt.fillna() / df.pt.fillna()
+          - pt.mask() / df.pt.mask() / pt.unmask() / df.pt.unmask() (Sensitive Data Masking)
           - pt.clean_columns() / df.pt.clean_columns()
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
     4.13. Plotter — Visualization & Dashboarding (Plotting API)
+    4.14. pt.repl() / df.pt.repl() / df.repl() — Interactive REPL Shell
+    4.15. pt.clear() / r.clear() — Terminal Screen Clearing
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -53,6 +56,7 @@ TABLE OF CONTENTS
     5.5.  Quoting & Delimiter Standards (: vs =)
     5.6.  Multi-File Operations (-file, -join, -concat, -sql)
     5.7.  Batch Processing, Conversions & Clipboard (-o)
+    5.8.  Interactive REPL Shell (pytae -i, pytae <file> -i)
 6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
     6.1.  When should I use `-select` before `-agg`?
     6.2.  Why is `by` strictly standalone across all verbs?
@@ -68,6 +72,7 @@ TABLE OF CONTENTS
     6.12. How do I inspect metadata without reading data into RAM?
     6.13. How do I assign literal constants in `mutate()`? (Use quoted strings e.g. status="'active'")
     6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
+    6.15. How does terminal clearing and table removal work in the REPL? (clear, rm *, rm checkpoint *)
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -76,6 +81,7 @@ TABLE OF CONTENTS
     Recipe 5: Multi-File Join, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
+    Recipe 8: Interactive REPL Multi-Table Exploration & Snapshots
 8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
@@ -737,6 +743,30 @@ Key Concepts:
     pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="bill_depth_mm").finalize()
 
 
+4.14. pt.repl() / df.pt.repl() / df.repl() — Interactive REPL Shell
+--------------------------------------------------------------------------------
+Launch an interactive Read-Eval-Print Loop (REPL) directly from Python:
+  pt.repl(df)
+  df.pt.repl()
+  df.repl()
+
+Features:
+  - Drops into a stateful, interactive terminal session pre-loaded with the DataFrame.
+  - Returns the final transformed DataFrame on exit (Ctrl-D or 'exit' / 'quit').
+  - Full access to pipeline transformations, inspections, undo/redo, snapshots, and SQL.
+
+
+4.15. pt.clear() / r.clear() — Terminal Screen Clearing
+--------------------------------------------------------------------------------
+Clear the terminal screen cleanly across all platforms:
+  pt.clear()
+  r.clear()  # Inside REPL / session object
+
+Features:
+  - Canonical clear command across POSIX (clear) and Windows (cls) terminals.
+  - Legacy 'cls' aliases are removed from pytae public namespace to enforce "One and Only One Obvious Way".
+
+
 5. CLI REFERENCE (COMMAND LINE INTERFACE)
 --------------------------------------------------------------------------------
 
@@ -897,6 +927,52 @@ pytae penguins.parquet -filter "body_mass_g > 4000" -o heavy_penguins.parquet
 pytae penguins.parquet -head -o clip
 
 
+5.8. Interactive REPL Shell (pytae -i, pytae <file> -i)
+--------------------------------------------------------------------------------
+Launch the stateful interactive REPL shell from the command line:
+  pytae -i                              # Launch empty multi-table workbench
+  pytae penguins.parquet -i             # Focused exploration on a single table
+  pytae data.csv -encoding latin1 -i    # Preserves CLI reader options into REPL
+
+Two Dedicated Operation Modes:
+1. Mode 1: Single-Table Exploration (pytae [df: 344x7]>)
+   - Focused on manipulating, filtering, and mutating a single active table.
+   - Operations output concise confirmation headers (e.g. `-> df: 344 rows x 3 cols`).
+   - Use `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-describe`, `-glimpse` for previews.
+
+2. Mode 2: Multi-Table Workbench (pytae [df1, df2]>)
+   - Load multiple datasets: `df1 = orders.parquet`, `df2 = customers.csv -dlim ";"`.
+   - Subject-first operations: `df1 -filter "amount > 100"`, `df2 -head 5`.
+   - Relational joins & assignments: `df3 = df1 -join df2 on=cust_id`.
+   - Polars ANSI SQL engine: `df4 = -sql "SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id"`.
+
+State Management & Rollback Commands:
+  - `undo`                    : Revert the last applied transformation.
+  - `redo`                    : Re-apply the last undone transformation.
+  - `reset`                   : Instant O(1) rollback to the original dataset as loaded from disk.
+  - `history`                 : Display numbered list of applied session operations.
+
+Session-Wide Checkpoints:
+  - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).
+  - `checkpoints`             : List all saved checkpoints and their constituent tables.
+  - `restore <name>`          : Restore entire workbench state back to named snapshot.
+
+Strict Deletion Syntax (Wildcard):
+  - `rm <table_name>` / `rm df`: Remove specific table or active dataset from memory (undoable).
+  - `rm *`                    : Remove all in-memory tables from memory (undoable).
+  - `rm checkpoint <name>`    : Delete a named checkpoint snapshot.
+  - `rm checkpoint *`         : Delete all saved checkpoint snapshots.
+  * Note: Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm checkpoints' is rejected; use singular 'rm checkpoint'.
+
+Terminal Control & Utilities:
+  - `clear`                   : Clear the terminal screen.
+  - `status`                  : Display active dataset name, dimensions, memory usage, undo depth.
+  - `tables`                  : List all loaded tables in memory with shapes and memory footprints.
+  - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
+  - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
+  - `exit` / `quit` / Ctrl-D  : Exit REPL.
+
+
 6. FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
 --------------------------------------------------------------------------------
 
@@ -988,6 +1064,20 @@ Use parenthesized target syntax `[prefix](target_cols)[suffix] = expr` with `_` 
 - In-place: `df.pt.mutate("(rev, cost, tax) = _ * 1.08")`
 - New columns (suffix/prefix): `df.pt.mutate("(rev, cost)_usd = _ * 1.08")` or `df.pt.mutate("norm_(rev, cost) = _ / max(_)")`
 - Selectors & grouped: `df.pt.by("species").pt.mutate("z_(dtype=numeric) = (_ - mean(_)) / std(_)")`
+
+6.15. How does terminal clearing and table removal work in the REPL?
+--------------------------------------------------------------------------------
+1. Canonical `clear`:
+   To maintain "One and Only One Obvious Way", Pytae standardizes strictly on `clear`
+   across the REPL prompt, CLI, and Python API (`pt.clear()`, `r.clear()`).
+   Passing `cls`, `-cls`, `--cls`, `-clear`, or `--clear` produces an immediate clear error
+   directing the user to `clear`.
+
+2. Wildcard Deletion `rm *` and `rm checkpoint *`:
+   Pytae standardizes on standard wildcard `*` syntax rather than ad-hoc flags (`-all`, `all`):
+   - `rm *` removes all loaded tables from memory (fully undoable via `undo`).
+   - `rm checkpoint *` deletes all saved checkpoint snapshots.
+   - Singular `rm checkpoint <name>` is enforced strictly; plural `rm checkpoints` is redirected.
 
 
 7. END-TO-END RECIPES & EXAMPLES
@@ -1189,6 +1279,38 @@ k.save("dashboard.png", dpi=300)
 pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="bill_depth_mm").finalize()
 ```
 
+Recipe 8: Interactive REPL Multi-Table Exploration & Snapshots
+--------------------------------------------------------------------------------
+```bash
+# Launch interactive workbench with reader options
+pytae -i
+
+# Load multiple datasets with custom delimiters and encodings
+pytae> df1 = orders.csv -encoding latin1 -dlim ";"
+pytae> df2 = customers.parquet
+
+# Subject-first manipulation
+pytae [df1, df2]> df1 -filter "amount > 100"
+pytae [df1, df2]> df1 -mutate "tax = amount * 0.08"
+
+# Save named snapshot of all tables in session
+pytae [df1, df2]> checkpoint baseline
+
+# Perform join and SQL exploration
+pytae [df1, df2]> df3 = df1 -join df2 on=cust_id
+pytae [df1, df2, df3]> -sql "SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id"
+
+# Revert to snapshot
+pytae [df1, df2, df3]> restore baseline
+Restored checkpoint 'baseline' (2 tables: df1, df2; active: df2).
+
+# Clean removal using wildcard syntax
+pytae [df1, df2]> rm checkpoint *
+Cleared all saved checkpoints.
+pytae [df1, df2]> rm *
+Removed all tables from memory.
+```
+
 ================================================================================
 11. REPOSITORY DIRECTORY TREE
 ================================================================================
@@ -1198,6 +1320,12 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 ├── changelog.md
 ├── contributing.md
 ├── docs
+│   ├── benchmarks
+│   │   ├── README.md
+│   │   ├── benchmark_summary.png
+│   │   ├── benchmarks.ipynb
+│   │   └── run_benchmarks.py
+│   ├── cli_cheatsheet.md
 │   ├── comparison_to_dplyr.md
 │   ├── comparison_to_pandas.md
 │   ├── comparison_to_sas.md
@@ -1213,11 +1341,13 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   │   │   ├── head_tail.md
 │   │   │   ├── inspect.md
 │   │   │   ├── join.md
+│   │   │   ├── mask.md
 │   │   │   ├── multi_file.md
 │   │   │   ├── mutate.md
 │   │   │   ├── other_utilities.md
 │   │   │   ├── pivot.md
 │   │   │   ├── read_write.md
+│   │   │   ├── repl.md
 │   │   │   ├── reshape.md
 │   │   │   ├── select.md
 │   │   │   └── sql.md
@@ -1244,7 +1374,8 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │   └── pytae_reference.txt
 ├── scripts
 │   ├── generate_reference.py
-│   └── run_notebooks.py
+│   ├── run_notebooks.py
+│   └── update_doc_outputs.py
 ├── src
 │   └── pytae
 │       ├── __init__.py
@@ -1252,6 +1383,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │       ├── _parsing.py
 │       ├── _text.py
 │       ├── accessor.py
+│       ├── cheatsheet.py
 │       ├── cli.py
 │       ├── cli_help.py
 │       ├── cli_parsing.py
@@ -1281,13 +1413,15 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
 │       │   ├── taxis.parquet
 │       │   ├── tips.parquet
 │       │   └── titanic.parquet
-│       ├── mutate.py
+│       ├── mask.py
 │       ├── other_utilities.py
 │       ├── plotting.py
 │       ├── polars_engine.py
 │       ├── py.typed
 │       ├── readers.py
-│       └── select.py
+│       ├── repl.py
+│       ├── select.py
+│       └── validation.py
 └── tests
     ├── __init__.py
     ├── cli_helpers.py
@@ -1297,6 +1431,7 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
     ├── test_arrange_slice.py
     ├── test_cli_agg.py
     ├── test_cli_clean.py
+    ├── test_cli_diff_tol.py
     ├── test_cli_enhancements.py
     ├── test_cli_filter.py
     ├── test_cli_inspect.py
@@ -1308,17 +1443,25 @@ pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="
     ├── test_cli_sample_datasets.py
     ├── test_cli_select.py
     ├── test_cli_sql.py
+    ├── test_cli_subprocess.py
+    ├── test_cli_visualizations.py
+    ├── test_count.py
+    ├── test_critique_fixes.py
+    ├── test_fillna.py
     ├── test_import.py
     ├── test_join_concat.py
     ├── test_lazy.py
+    ├── test_mask.py
     ├── test_mutate.py
     ├── test_pivot.py
     ├── test_plotter.py
     ├── test_polars_engine.py
     ├── test_readers.py
+    ├── test_repl.py
     ├── test_select.py
     ├── test_shape.py
     ├── test_utilities.py
+    ├── test_validation.py
     └── test_verbs_v39.py
 """
 
@@ -1405,6 +1548,16 @@ def generate_reference() -> None:
         parts.append(f"# FILE: {pytae_md.relative_to(REPO_ROOT)}")
         parts.append("################################################################################")
         parts.append(pytae_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    cheatsheet_md = REPO_ROOT / "docs" / "cli_cheatsheet.md"
+    if cheatsheet_md.exists():
+        parts.append("================================================================================")
+        parts.append("CLI CHEATSHEET & COOKBOOK (docs/cli_cheatsheet.md)")
+        parts.append("================================================================================\n")
+        parts.append("################################################################################")
+        parts.append(f"# FILE: {cheatsheet_md.relative_to(REPO_ROOT)}")
+        parts.append("################################################################################")
+        parts.append(cheatsheet_md.read_text(encoding="utf-8").rstrip() + "\n")
 
     # Section 10: Ecosystem Comparisons & Migration Guides (Pandas, dplyr, SAS)
     parts.append("================================================================================")
