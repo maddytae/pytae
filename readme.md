@@ -177,29 +177,6 @@ plotter.finalize(title="Penguin Morphology Dashboard", save="dashboard.png")
 - **Interactive Shell Manual**: [Interactive REPL Guide](docs/detailed_docs/cli/repl.md)
 - **Command-Line Quick Reference**: [CLI Cheat Sheet & Cookbook](docs/cli_cheatsheet.md)
 
-### Detailed Topic Guides (`docs/detailed_docs/`)
-
-| Topic | Jupyter Notebook (`docs/detailed_docs/library/`) | CLI Guide (`docs/detailed_docs/cli/`) | Key Features / Verbs |
-|---|---|---|---|
-| **Interactive REPL** | — | [CLI Guide](docs/detailed_docs/cli/repl.md) | `pytae -i`, `df1 = file`, `-head`, `undo`, `checkpoint`, `-sql` |
-| **Data Ingestion & Sinks** | [Notebook](docs/detailed_docs/library/read_write.ipynb) | [CLI Guide](docs/detailed_docs/cli/read_write.md) | `pt.read_*`, `pt.scan_*`, `-o`, `-out_dir`, `-dlim`, `-encoding` |
-| **Row Filtering** | [Notebook](docs/detailed_docs/library/filter.ipynb) | [CLI Guide](docs/detailed_docs/cli/filter.md) | `filter`, `-filter`, intervals, set membership, `and`/`or` |
-| **Feature Engineering** | [Notebook](docs/detailed_docs/library/mutate.ipynb) | [CLI Guide](docs/detailed_docs/cli/mutate.md) | `mutate`, `-mutate`, formulas, sequential assignments, `map`, `if_else` |
-| **Column Selection** | [Notebook](docs/detailed_docs/library/select.ipynb) | [CLI Guide](docs/detailed_docs/cli/select.md) | `select`, `-select`, negative drops `!col`, regex, pattern matches |
-| **Row Sorting** | [Notebook](docs/detailed_docs/library/arrange.ipynb) | [CLI Guide](docs/detailed_docs/cli/arrange.md) | `arrange`, `-arrange`, `desc`, bracketed spaced columns |
-| **Row Slicing** | [Notebook](docs/detailed_docs/library/head_tail.ipynb) | [CLI Guide](docs/detailed_docs/cli/head_tail.md) | `head`, `tail`, `-head`, `-tail`, top/bottom N or % per group |
-| **Distinct Rows** | [Notebook](docs/detailed_docs/library/distinct.ipynb) | [CLI Guide](docs/detailed_docs/cli/distinct.md) | `distinct`, `-distinct`, deduplication across column subsets |
-| **Aggregations & Grouping** | [Notebook](docs/detailed_docs/library/agg.ipynb) | [CLI Guide](docs/detailed_docs/cli/agg.md) | `by`, `agg`, `-by`, `-agg`, zero data loss retention |
-| **Relational Joins & Stacking**| [Notebook](docs/detailed_docs/library/join.ipynb) | [CLI Guide](docs/detailed_docs/cli/join.md) | `join`, `concat`, `-join`, `-concat`, colon keys `on=k1:k2`, `how` |
-| **Table Reshaping** | [Notebook](docs/detailed_docs/library/reshape.ipynb) | [CLI Guide](docs/detailed_docs/cli/reshape.md) | `long`, `wide`, `-long`, `-wide`, 1-to-1 unmelting, `rcva` grammar |
-| **2D Pivot Tables** | [Notebook](docs/detailed_docs/library/pivot.ipynb) | [CLI Guide](docs/detailed_docs/cli/pivot.md) | `pivot`, `-pivot`, `r, c, v, a` matrices, flat 1D headers |
-| **Visualizations & Plotting** | [Notebook](docs/detailed_docs/plotting/plotting.ipynb) | [CLI Guide](docs/detailed_docs/cli/cli_plots.md) | `df.plot()`, `-plot`, `-finalize`, mosaic dashboards, `-freq`, `-hist`, `-bar` |
-| **ANSI SQL Engine** | [Notebook](docs/detailed_docs/library/sql.ipynb) | [CLI Guide](docs/detailed_docs/cli/sql.md) | `df.sql()`, `pt.sql()`, `-sql` Polars SQL engine across tables |
-| **Data Masking & Privacy** | [Notebook](docs/detailed_docs/library/other_utilities.ipynb) | [CLI Guide](docs/detailed_docs/cli/mask.md) | `mask`, `unmask`, `-mask`, `-unmask`, hash, salt, encrypt, redact |
-| **Dataset Inspection & Diff** | [Notebook](docs/detailed_docs/library/other_utilities.ipynb) | [CLI Guide](docs/detailed_docs/cli/inspect.md) | `fillna`, `dropna`, `diff`, `-diff`, `-tol`, `-shape`, `-cols`, `-dtype` |
-| **Multi-File & Batch Pipelines**| [Notebook](docs/detailed_docs/library/join.ipynb) | [CLI Guide](docs/detailed_docs/cli/multi_file.md) | `-file`, multi-table pipelines, batch globbing, UNIX pipes |
-
----
 
 ## License
 
