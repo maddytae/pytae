@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import shlex
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,11 +17,143 @@ from pytae.cli_run import _format_table, _process_path
 from pytae.readers import DataFrameReader, get_reader
 
 try:
-    import readline  # Enable arrow keys, line editing, and history in terminal
+    import readline  # Standard Unix / macOS readline
 except ImportError:
-    readline = None
+    try:
+        import pyreadline3 as readline  # Windows pyreadline3 package
+    except ImportError:
+        try:
+            import pyreadline as readline  # Windows legacy pyreadline
+        except ImportError:
+            try:
+                from _pyrepl import readline  # Python 3.13+ standard library
+            except ImportError:
+                readline = None
 
 _HIST_FILE = Path.home() / ".pytae_history"
+
+
+def _load_history_from_file() -> list[str]:
+    """Read saved command history lines from disk."""
+    if _HIST_FILE.exists():
+        try:
+            return [line.strip() for line in _HIST_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
+        except Exception:
+            return []
+    return []
+
+
+def _save_raw_history(history: list[str]) -> None:
+    """Save raw command history list to disk (used when readline is unavailable)."""
+    try:
+        lines = history[-1000:]
+        _HIST_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _win_console_input(prompt_text: str, history: list[str]) -> str:
+    """Read console input on Windows with arrow key history navigation and line editing."""
+    try:
+        import msvcrt
+    except ImportError:
+        return input(prompt_text)
+
+    sys.stdout.write(prompt_text)
+    sys.stdout.flush()
+
+    line_chars: list[str] = []
+    cursor_pos = 0
+    hist_idx = len(history)
+    draft = ""
+    last_rendered_len = 0
+
+    def render() -> None:
+        nonlocal last_rendered_len
+        text = "".join(line_chars)
+        pad = max(0, last_rendered_len - len(text))
+        sys.stdout.write("\r" + prompt_text + text + (" " * pad))
+        backtrack = pad + (len(text) - cursor_pos)
+        if backtrack > 0:
+            sys.stdout.write("\b" * backtrack)
+        sys.stdout.flush()
+        last_rendered_len = len(text)
+
+    while True:
+        try:
+            ch = msvcrt.getwch()
+        except (KeyboardInterrupt, EOFError):
+            raise
+        except Exception:
+            return "".join(line_chars)
+
+        if ch in ("\x00", "\xe0"):
+            try:
+                code = msvcrt.getwch()
+            except Exception:
+                continue
+            if code == "H":  # Up arrow
+                if history:
+                    if hist_idx == len(history):
+                        draft = "".join(line_chars)
+                    if hist_idx > 0:
+                        hist_idx -= 1
+                        line_chars = list(history[hist_idx])
+                        cursor_pos = len(line_chars)
+                        render()
+            elif code == "P":  # Down arrow
+                if history and hist_idx < len(history):
+                    hist_idx += 1
+                    if hist_idx == len(history):
+                        line_chars = list(draft)
+                    else:
+                        line_chars = list(history[hist_idx])
+                    cursor_pos = len(line_chars)
+                    render()
+            elif code == "K":  # Left arrow
+                if cursor_pos > 0:
+                    cursor_pos -= 1
+                    sys.stdout.write("\b")
+                    sys.stdout.flush()
+            elif code == "M":  # Right arrow
+                if cursor_pos < len(line_chars):
+                    sys.stdout.write(line_chars[cursor_pos])
+                    cursor_pos += 1
+                    sys.stdout.flush()
+            elif code == "G":  # Home
+                if cursor_pos > 0:
+                    cursor_pos = 0
+                    render()
+            elif code == "O":  # End
+                if cursor_pos < len(line_chars):
+                    cursor_pos = len(line_chars)
+                    render()
+            elif code == "S":  # Delete
+                if cursor_pos < len(line_chars):
+                    line_chars.pop(cursor_pos)
+                    render()
+        elif ch in ("\r", "\n"):
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            return "".join(line_chars)
+        elif ch == "\x08":  # Backspace
+            if cursor_pos > 0:
+                cursor_pos -= 1
+                line_chars.pop(cursor_pos)
+                render()
+        elif ch == "\x03":  # Ctrl+C
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            raise KeyboardInterrupt
+        elif ch in ("\x04", "\x1a"):  # Ctrl+D or Ctrl+Z
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            if not line_chars:
+                raise EOFError
+        elif ch >= " ":  # Printable character
+            line_chars.insert(cursor_pos, ch)
+            cursor_pos += 1
+            render()
 
 
 def _init_readline() -> None:
@@ -29,12 +162,18 @@ def _init_readline() -> None:
         return
     doc = getattr(readline, "__doc__", "") or ""
     if "libedit" in doc:
-        readline.parse_and_bind("bind -e")
-        readline.parse_and_bind(r"bind '\e[A' ed-prev-history")
-        readline.parse_and_bind(r"bind '\e[B' ed-next-history")
+        try:
+            readline.parse_and_bind("bind -e")
+            readline.parse_and_bind(r"bind '\e[A' ed-prev-history")
+            readline.parse_and_bind(r"bind '\e[B' ed-next-history")
+        except Exception:
+            pass
     else:
-        readline.parse_and_bind(r'"\e[A": history-search-backward')
-        readline.parse_and_bind(r'"\e[B": history-search-forward')
+        try:
+            readline.parse_and_bind(r'"\e[A": history-search-backward')
+            readline.parse_and_bind(r'"\e[B": history-search-forward')
+        except Exception:
+            pass
     if _HIST_FILE.exists():
         try:
             readline.read_history_file(str(_HIST_FILE))
@@ -343,6 +482,7 @@ class PytaeRepl:
         self.checkpoints: dict[str, pl.DataFrame] = {}
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
+        self._raw_history: list[str] = _load_history_from_file()
 
         self.path: Path | None = None
         self.path_str: str | None = None
@@ -456,6 +596,9 @@ class PytaeRepl:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             return True
+
+        if not self._raw_history or self._raw_history[-1] != line:
+            self._raw_history.append(line)
 
         # Check for top-level shell pipe: <repl_command> | <shell_command>
         pipe_parts = _split_repl_pipe(line)
@@ -1728,6 +1871,10 @@ class PytaeRepl:
                     return input_fn(prompt_text)
                 except TypeError:
                     return input_fn()  # type: ignore[call-arg]
+            import sys
+
+            if sys.platform == "win32" and readline is None and sys.stdin.isatty():
+                return _win_console_input(prompt_text, self._raw_history)
             return input(prompt_text)
 
         while True:
@@ -1746,6 +1893,7 @@ class PytaeRepl:
                 break
 
         _save_readline_history()
+        _save_raw_history(self._raw_history)
         return self.current_df
 
 

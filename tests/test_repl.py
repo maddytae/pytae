@@ -928,3 +928,64 @@ def test_repl_shell_pipe(sample_df):
     assert r.current_df.columns == ["species", "body_mass_g"]
 
 
+def test_win_console_input_history_navigation(monkeypatch):
+    import sys
+    import types
+    from pytae.repl import _win_console_input
+
+    # Simulate pressing Up arrow (\xe0 + H), then Enter (\r)
+    keystrokes = ["\xe0", "H", "\r"]
+
+    class MockMsvcrt:
+        @staticmethod
+        def getwch():
+            if keystrokes:
+                return keystrokes.pop(0)
+            return "\r"
+
+    fake_msvcrt = types.ModuleType("msvcrt")
+    fake_msvcrt.getwch = MockMsvcrt.getwch
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    history = ["-cols", "-head 5"]
+    res = _win_console_input("pytae> ", history)
+    assert res == "-head 5"
+
+
+def test_win_console_input_line_editing(monkeypatch):
+    import sys
+    import types
+    from pytae.repl import _win_console_input
+
+    # Simulate typing 'df', backspacing 'f', typing '1', then Enter
+    keystrokes = ["d", "f", "\x08", "1", "\r"]
+
+    class MockMsvcrt:
+        @staticmethod
+        def getwch():
+            if keystrokes:
+                return keystrokes.pop(0)
+            return "\r"
+
+    fake_msvcrt = types.ModuleType("msvcrt")
+    fake_msvcrt.getwch = MockMsvcrt.getwch
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    res = _win_console_input("pytae> ", [])
+    assert res == "d1"
+
+
+def test_repl_raw_history_persistence(tmp_path, monkeypatch):
+    import sys
+
+    repl_mod = sys.modules["pytae.repl"]
+
+    fake_hist_file = tmp_path / ".pytae_test_history"
+    monkeypatch.setattr(repl_mod, "_HIST_FILE", fake_hist_file)
+
+    repl_mod._save_raw_history(["cmd1", "cmd2", "cmd3"])
+    loaded = repl_mod._load_history_from_file()
+    assert loaded == ["cmd1", "cmd2", "cmd3"]
+
+
+

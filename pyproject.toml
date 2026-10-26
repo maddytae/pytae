@@ -13,6 +13,7 @@ dependencies = [
     "pandas>=2.0",
     "pyarrow>=15.0.0",
     "polars>=1.0.0",
+    "pyreadline3>=3.4.0; sys_platform == 'win32'",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
