@@ -388,7 +388,12 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
         clean = _unquote_name(token)
         if clean in available:
             continue
-        if token.startswith(("-", "~", "!")):
+        if token.startswith(("-", "~")):
+            raise SystemExit(
+                f"-select: '{token[0]}col' negation is retired in favor of '!col'. "
+                f"Use -select '!{token[1:]}' instead."
+            )
+        if token.startswith("!"):
             raw = _unquote_name(token[1:].strip())
             if raw in available:
                 continue

@@ -111,7 +111,7 @@ def test_select_polars():
     res_slice = select_polars(df, ["x:z"], {})
     assert res_slice.columns == ["x", "y", "z"]
 
-    res_neg = select_polars(df, ["-y"], {})
+    res_neg = select_polars(df, ["!y"], {})
     assert res_neg.columns == ["x", "z"]
 
 

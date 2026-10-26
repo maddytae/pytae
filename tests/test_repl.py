@@ -797,3 +797,134 @@ def test_repl_reader_options_on_assignment_and_load(tmp_path):
     r.execute_line(f'load {csv_file} as df3 -dlim ";" -nrows 1', output_fn=outputs.append)
     assert "df3" in r.tables
     assert r.tables["df3"].shape == (1, 2)
+
+
+def test_repl_cols_sorting_and_filtering(sample_df):
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # Default file order
+    r.execute_line("-cols", output_fn=outputs.append)
+    assert outputs[-1] == "id\nspecies\nbody_mass_g"
+
+    # asc order
+    outputs.clear()
+    r.execute_line("-cols asc", output_fn=outputs.append)
+    assert outputs[-1] == "body_mass_g\nid\nspecies"
+
+    # desc order
+    outputs.clear()
+    r.execute_line("-cols desc", output_fn=outputs.append)
+    assert outputs[-1] == "species\nid\nbody_mass_g"
+
+    # substring pattern filter
+    outputs.clear()
+    r.execute_line("-cols mass", output_fn=outputs.append)
+    assert outputs[-1] == "body_mass_g"
+
+    # targeted table -cols asc
+    outputs.clear()
+    r.execute_line("peng -cols asc", output_fn=outputs.append)
+    # peng is alias for sample_df
+    assert outputs[-1] == "body_mass_g\nid\nspecies"
+
+    # targeted table -cols desc
+    outputs.clear()
+    r.execute_line("peng -cols desc", output_fn=outputs.append)
+    assert outputs[-1] == "species\nid\nbody_mass_g"
+
+
+def test_repl_targeted_pipeline_active_sync(sample_df):
+    outputs = []
+    r = PytaeRepl(df=sample_df)
+    tbl_name = r.path_str or "df"
+
+    # Target the active table with -select "!species"
+    r.execute_line(f'{tbl_name} -select "!species"', output_fn=outputs.append)
+    assert "species" not in r.tables[tbl_name].columns
+    assert "species" not in r.current_df.columns
+    assert r.current_df.columns == ["id", "body_mass_g"]
+
+    # Standalone -cols should immediately reflect the mutation without desync
+    outputs.clear()
+    r.execute_line("-cols", output_fn=outputs.append)
+    assert outputs[-1] == "id\nbody_mass_g"
+
+
+def test_repl_rm_table(sample_df):
+    outputs = []
+    r = PytaeRepl()
+    r.tables["df1"] = sample_df.clone()
+    r.tables["df2"] = sample_df.clone()
+    r.path_str = "df1"
+    r.current_df = r.tables["df1"]
+
+    # Remove active table df1 -> switches to df2
+    r.execute_line("rm df1", output_fn=outputs.append)
+    assert "df1" not in r.tables
+    assert "df2" in r.tables
+    assert r.path_str == "df2"
+    assert "Removed table 'df1'. Switched active dataset to 'df2'." in outputs[-1]
+
+    # Undo restores df1
+    outputs.clear()
+    r.execute_line("undo", output_fn=outputs.append)
+    assert "df1" in r.tables
+    assert "Undid:" in outputs[-1]
+
+    # Remove last table
+    r.execute_line("rm df1", output_fn=outputs.append)
+    r.execute_line("rm df2", output_fn=outputs.append)
+    assert len(r.tables) == 0
+    assert r.current_df is None
+    assert r.path_str is None
+
+
+def test_repl_rm_checkpoint(sample_df):
+    outputs = []
+    r = PytaeRepl(df=sample_df)
+    r.execute_line("checkpoint cp1", output_fn=outputs.append)
+    r.execute_line("checkpoint cp2", output_fn=outputs.append)
+    assert "cp1" in r.checkpoints and "cp2" in r.checkpoints
+
+    # rm checkpoint cp1
+    r.execute_line("rm checkpoint cp1", output_fn=outputs.append)
+    assert "cp1" not in r.checkpoints
+    assert "cp2" in r.checkpoints
+    assert "Removed checkpoint 'cp1'." in outputs[-1]
+
+    # checkpoint rm cp2
+    outputs.clear()
+    r.execute_line("checkpoint rm cp2", output_fn=outputs.append)
+    assert "cp2" not in r.checkpoints
+    assert "Removed checkpoint 'cp2'." in outputs[-1]
+
+    # rm checkpoints -all
+    r.execute_line("checkpoint a", output_fn=outputs.append)
+    r.execute_line("checkpoint b", output_fn=outputs.append)
+    assert len(r.checkpoints) == 2
+    r.execute_line("rm checkpoints -all", output_fn=outputs.append)
+    assert len(r.checkpoints) == 0
+
+
+def test_repl_shell_pipe(sample_df):
+    outputs = []
+    r = PytaeRepl(df=sample_df)
+
+    # Shell pipe: -cols | grep mass
+    r.execute_line("-cols | grep mass", output_fn=outputs.append)
+    assert any("body_mass_g" in o for o in outputs)
+    assert not any("species" in o for o in outputs)
+
+    # Targeted table with shell pipe: peng -cols | grep id
+    outputs.clear()
+    r.execute_line("peng -cols | grep id", output_fn=outputs.append)
+    assert any("id" in o for o in outputs)
+    assert not any("body_mass_g" in o for o in outputs)
+
+    # Pipe '|' inside quoted arguments (e.g. select regex) is NOT split as a shell pipe
+    outputs.clear()
+    r.execute_line('-select "regex=species|body"', output_fn=outputs.append)
+    assert r.current_df.columns == ["species", "body_mass_g"]
+
+

@@ -342,7 +342,7 @@ def test_cols_rejects_invalid_order(tmp_path):
 def test_repeated_select_negative_subtracts_sequentially(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]}))
 
-    exit_code = cli.main([path, "-select", "-b", "-select", "-d", "-cols"])
+    exit_code = cli.main([path, "-select", "!b", "-select", "!d", "-cols"])
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().splitlines() == ["a", "c"]

@@ -170,7 +170,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Select Columns** | `select(df, a, b)` | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `select(df, -c, -d)` | `df.select("-c", "-d")` | `-select "-c,-d"` |
+| **Drop Columns** | `select(df, -c, -d)` | `df.select("!c", "!d")` | `-select "!c,!d"` |
 | **Pattern Match** | `select(df, contains("bill"))` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `select(df, starts_with("b"))` | `df.select(starts_with="b")` | `-select "starts_with=b"` |
 | **Inline Rename** | `select(df, new_b = a)` | `df.select("a:new_b")` | `-select "a:new_b"` |

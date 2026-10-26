@@ -20,6 +20,69 @@ try:
 except ImportError:
     readline = None
 
+_HIST_FILE = Path.home() / ".pytae_history"
+
+
+def _init_readline() -> None:
+    """Initialize readline history file and arrow key navigation."""
+    if readline is None:
+        return
+    doc = getattr(readline, "__doc__", "") or ""
+    if "libedit" in doc:
+        readline.parse_and_bind("bind -e")
+        readline.parse_and_bind(r"bind '\e[A' ed-prev-history")
+        readline.parse_and_bind(r"bind '\e[B' ed-next-history")
+    else:
+        readline.parse_and_bind(r'"\e[A": history-search-backward')
+        readline.parse_and_bind(r'"\e[B": history-search-forward')
+    if _HIST_FILE.exists():
+        try:
+            readline.read_history_file(str(_HIST_FILE))
+        except Exception:
+            pass
+    import atexit
+
+    atexit.register(_save_readline_history)
+
+
+def _save_readline_history() -> None:
+    """Persist readline history to disk."""
+    if readline is not None:
+        try:
+            readline.set_history_length(1000)
+            readline.write_history_file(str(_HIST_FILE))
+        except Exception:
+            pass
+
+
+def _split_repl_pipe(raw: str) -> tuple[str, str] | None:
+    """Split line on top-level '|' outside quotes and brackets for shell piping."""
+    in_single = False
+    in_double = False
+    bracket_depth = 0
+    escape = False
+    for idx, ch in enumerate(raw):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "[" and not in_single and not in_double:
+            bracket_depth += 1
+        elif ch == "]" and not in_single and not in_double and bracket_depth > 0:
+            bracket_depth -= 1
+        elif ch == "|" and not in_single and not in_double and bracket_depth == 0:
+            left = raw[:idx].strip()
+            right = raw[idx + 1 :].strip()
+            if left and right:
+                return left, right
+    return None
+
 
 REPL_BANNER = """\
 ================================================================================
@@ -36,28 +99,32 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
   Commands apply directly to the loaded table without any prefix:
   -filter <condition>    : Filter rows, e.g. -filter "species == 'Gentoo'"
   -mutate <expr>         : Add/modify columns, e.g. -mutate "mass_kg = body_mass_g / 1000"
-  -select <cols>         : Column projection, e.g. -select "species,island,mass_kg"
+  -select <cols>         : Column projection, e.g. -select "species,island,!mass_kg"
   -arrange <specs>       : Sort rows, e.g. -arrange "mass_kg desc"
   -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=mass:mean, n=count"
   -distinct <cols>       : Deduplicate rows
   -dropna [cols]         : Drop missing values
   -fillna <specs>        : Impute missing values
   -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
-  -shape / -cols /-dtype : Non-destructive metadata inspection
+  -shape                 : Display row and column counts
+  -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
+  -dtype / -nulls        : Inspect schema dtypes and missing value counts
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
+  <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
 
 MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   Load multiple datasets and operate with subject-first syntax (<tbl> -<cmd>):
   <var> = <path> [options]: Ingest dataset (e.g. df1 = data.csv -encoding latin1 -dlim ";")
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
-  <tbl> -shape / -cols   : Inspect table metadata (e.g. df1 -shape, df2 -cols)
+  <tbl> -shape / -cols   : Inspect table metadata (e.g. df1 -shape, df2 -cols asc)
   <tbl> -<pipeline>      : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
   <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
   <tbl> -o <path>        : Export specific table (e.g. df1 -o clean_orders.parquet)
   <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
   <var> = <t1> -join <t2>: Assign join result (e.g. df3 = df1 -join df2 on=cust_id)
   <var> = -sql "<query>" : Create table from ANSI SQL across loaded tables
+  rm <table_name>        : Remove in-memory table (e.g. rm df1)
   tables                 : List all loaded datasets in memory
   use <name>             : Switch active dataset (or type bare table name e.g. df1)
 
@@ -69,6 +136,7 @@ STATE NAVIGATION (Undoable):
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
+  rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoints -all')
   exit                   : Exit REPL
 
 QUERY & PYTHON EXPRESSIONS:
@@ -96,6 +164,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--history": "history",
     "-tables": "tables",
     "--tables": "tables",
+    "-rm": "rm",
+    "--rm": "rm",
     "-checkpoint": "checkpoint",
     "--checkpoint": "checkpoint",
     "-checkpoints": "checkpoints",
@@ -387,6 +457,40 @@ class PytaeRepl:
         if not line or line.startswith("#"):
             return True
 
+        # Check for top-level shell pipe: <repl_command> | <shell_command>
+        pipe_parts = _split_repl_pipe(line)
+        if pipe_parts is not None:
+            left_cmd, shell_cmd = pipe_parts
+            buffer: list[str] = []
+            cont = self.execute_line(left_cmd, output_fn=buffer.append)
+            if buffer:
+                combined_output = "\n".join(buffer)
+                if not combined_output.endswith("\n"):
+                    combined_output += "\n"
+                import subprocess
+
+                try:
+                    capture = output_fn is not print
+                    proc = subprocess.Popen(
+                        shell_cmd,
+                        shell=True,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE if capture else None,
+                        stderr=subprocess.PIPE if capture else None,
+                        text=True,
+                    )
+                    stdout_data, stderr_data = proc.communicate(input=combined_output)
+                    if capture:
+                        if stdout_data:
+                            output_fn(stdout_data.rstrip("\r\n"))
+                        if stderr_data:
+                            output_fn(stderr_data.rstrip("\r\n"))
+                except BrokenPipeError:
+                    pass
+                except Exception as exc:
+                    output_fn(f"Pipe error: {exc}")
+            return cont
+
         # Check for exit (strictly 'exit', not 'quit' or 'q')
         if line.lower() == "exit":
             output_fn("Exiting pytae REPL.")
@@ -469,6 +573,60 @@ class PytaeRepl:
                 output_fn(f"Usage: use <table_name> (available: {avail})")
             return True
 
+        # Remove table or checkpoint: `rm <table_name>` or `rm checkpoint <name>`
+        if first_lower == "rm":
+            if len(tokens) < 2:
+                output_fn("Usage: rm <table_name> (e.g. rm df1) or rm checkpoint <name>")
+                return True
+            target = tokens[1]
+            if target.lower() in ("checkpoint", "checkpoints"):
+                if len(tokens) < 3:
+                    output_fn("Usage: rm checkpoint <name> or rm checkpoints -all")
+                    return True
+                cp_name = tokens[2]
+                if cp_name == "-all" or (target.lower() == "checkpoints" and cp_name == "all"):
+                    count = len(self.checkpoints)
+                    self.checkpoints.clear()
+                    output_fn(f"Cleared all {count} saved checkpoints.")
+                    return True
+                if cp_name in self.checkpoints:
+                    del self.checkpoints[cp_name]
+                    output_fn(f"Removed checkpoint '{cp_name}'.")
+                    return True
+                avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+                output_fn(f"pytae: checkpoint '{cp_name}' not found. Available: {avail}")
+                return True
+
+            if target in self.tables:
+                self.undo_stack.append((line, self._capture_session_state()))
+                del self.tables[target]
+                if target in self.orig_tables:
+                    del self.orig_tables[target]
+                if target in self.table_sources:
+                    del self.table_sources[target]
+                if self.path_str == target:
+                    if self.tables:
+                        next_tbl = next(iter(self.tables.keys()))
+                        self.current_df = self.tables[next_tbl]
+                        self.path_str = next_tbl
+                        output_fn(f"Removed table '{target}'. Switched active dataset to '{next_tbl}'.")
+                    else:
+                        self.current_df = None
+                        self.path_str = None
+                        output_fn(f"Removed table '{target}'. No tables remain loaded.")
+                else:
+                    output_fn(f"Removed table '{target}'.")
+                self.history.append(f"rm {target}")
+                return True
+
+            if target in self.checkpoints:
+                output_fn(f"pytae: '{target}' is a checkpoint, not a table. Use 'rm checkpoint {target}' to remove it.")
+                return True
+
+            avail = ", ".join(self.tables.keys()) if self.tables else "none"
+            output_fn(f"pytae: table '{target}' not found. Available: {avail}")
+            return True
+
         # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = sql SELECT ...`
         if (
             "=" in line
@@ -522,7 +680,24 @@ class PytaeRepl:
 
         if first_lower == "checkpoint":
             if len(tokens) < 2:
-                output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline)")
+                output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline) or checkpoint rm <name>")
+                return True
+            if tokens[1].lower() == "rm":
+                if len(tokens) < 3:
+                    output_fn("Usage: checkpoint rm <name> or checkpoint rm -all")
+                    return True
+                cp_name = tokens[2]
+                if cp_name == "-all":
+                    count = len(self.checkpoints)
+                    self.checkpoints.clear()
+                    output_fn(f"Cleared all {count} saved checkpoints.")
+                    return True
+                if cp_name in self.checkpoints:
+                    del self.checkpoints[cp_name]
+                    output_fn(f"Removed checkpoint '{cp_name}'.")
+                    return True
+                avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+                output_fn(f"pytae: checkpoint '{cp_name}' not found. Available: {avail}")
                 return True
             self._cmd_checkpoint(tokens[1], output_fn)
             return True
@@ -591,24 +766,55 @@ class PytaeRepl:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "-cols":
+        if first_lower == "-cols" or first_lower.startswith("-cols="):
             if self.current_df is not None:
-                output_fn("\n".join(self.current_df.columns))
+                order = "file"
+                if "=" in first_lower:
+                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
+                elif len(tokens) > 1:
+                    order = tokens[1].lower()
+                cols = list(self.current_df.columns)
+                if order == "asc":
+                    cols = sorted(cols, key=lambda s: (s.lower(), s))
+                elif order == "desc":
+                    cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
+                elif order != "file":
+                    cols = [c for c in cols if order in c.lower()]
+                output_fn("\n".join(cols))
             else:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "-dtype":
+        if first_lower == "-dtype" or first_lower.startswith("-dtype="):
             if self.current_df is not None:
+                order = "file"
+                if "=" in first_lower:
+                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
+                elif len(tokens) > 1:
+                    order = tokens[1].lower()
                 reader = DataFrameReader(self.current_df)
-                output_fn(reader.dtypes().to_string())
+                dtypes = reader.dtypes()
+                if order == "asc":
+                    dtypes = dtypes.sort_index(ascending=True)
+                elif order == "desc":
+                    dtypes = dtypes.sort_index(ascending=False)
+                output_fn(dtypes.to_string())
             else:
                 output_fn("No dataset loaded.")
             return True
 
-        if first_lower == "-nulls":
+        if first_lower == "-nulls" or first_lower.startswith("-nulls="):
             if self.current_df is not None:
+                order = "file"
+                if "=" in first_lower:
+                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
+                elif len(tokens) > 1:
+                    order = tokens[1].lower()
                 nulls_s = self.current_df.null_count().to_pandas().iloc[0]
+                if order == "asc":
+                    nulls_s = nulls_s.sort_index(ascending=True)
+                elif order == "desc":
+                    nulls_s = nulls_s.sort_index(ascending=False)
                 output_fn(nulls_s.to_string())
             else:
                 output_fn("No dataset loaded.")
@@ -992,13 +1198,45 @@ class PytaeRepl:
             output_fn(f"pytae: bare '{first_sub}' is not recognized; use '-{first_sub}' (matching CLI syntax).")
         elif first_sub == "-shape":
             output_fn(f"({target_df.shape[0]}, {target_df.shape[1]})")
-        elif first_sub == "-cols":
-            output_fn("\n".join(target_df.columns))
-        elif first_sub == "-dtype":
+        elif first_sub == "-cols" or first_sub.startswith("-cols="):
+            order = "file"
+            if "=" in first_sub:
+                order = first_sub.split("=", 1)[1].strip("\"'").lower()
+            elif len(sub_tokens) > 1:
+                order = sub_tokens[1].lower()
+            cols = list(target_df.columns)
+            if order == "asc":
+                cols = sorted(cols, key=lambda s: (s.lower(), s))
+            elif order == "desc":
+                cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
+            elif order != "file":
+                cols = [c for c in cols if order in c.lower()]
+            output_fn("\n".join(cols))
+        elif first_sub == "-dtype" or first_sub.startswith("-dtype="):
+            order = "file"
+            if "=" in first_sub:
+                order = first_sub.split("=", 1)[1].strip("\"'").lower()
+            elif len(sub_tokens) > 1:
+                order = sub_tokens[1].lower()
             reader = DataFrameReader(target_df)
-            output_fn(reader.dtypes().to_string())
-        elif first_sub == "-nulls":
-            output_fn(target_df.null_count().to_pandas().iloc[0].to_string())
+            dtypes = reader.dtypes()
+            if order == "asc":
+                dtypes = dtypes.sort_index(ascending=True)
+            elif order == "desc":
+                dtypes = dtypes.sort_index(ascending=False)
+            output_fn(dtypes.to_string())
+        elif first_sub == "-nulls" or first_sub.startswith("-nulls="):
+            order = "file"
+            if "=" in first_sub:
+                order = first_sub.split("=", 1)[1].strip("\"'").lower()
+            elif len(sub_tokens) > 1:
+                order = sub_tokens[1].lower()
+            nulls_s = target_df.null_count().to_pandas().iloc[0]
+            if order == "asc":
+                nulls_s = nulls_s.sort_index(ascending=True)
+            elif order == "desc":
+                nulls_s = nulls_s.sort_index(ascending=False)
+            output_fn(nulls_s.to_string())
         elif first_sub == "-glimpse":
             from pytae.dataframe import DataFrame as PytaeDataFrame
 
@@ -1028,8 +1266,12 @@ class PytaeRepl:
             self._cmd_pipeline(sub_line, sub_tokens, output_fn)
             self.tables[table_name] = self.current_df
 
-        self.current_df = old_active
-        self.path_str = old_path
+        if old_path == table_name:
+            self.current_df = self.tables[table_name]
+            self.path_str = table_name
+        else:
+            self.current_df = old_active
+            self.path_str = old_path
 
     def _cmd_load(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(tokens)
@@ -1468,6 +1710,7 @@ class PytaeRepl:
         output_fn: Callable[[str], None] = print,
     ) -> Any:
         """Run the REPL interactive loop until user exits. Returns final active DataFrame."""
+        _init_readline()
         output_fn(REPL_BANNER)
         if self.current_df is not None:
             output_fn(
@@ -1502,6 +1745,7 @@ class PytaeRepl:
             if not should_continue:
                 break
 
+        _save_readline_history()
         return self.current_df
 
 

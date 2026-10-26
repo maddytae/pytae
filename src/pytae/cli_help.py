@@ -78,14 +78,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Select, reorder, slice, or exclude columns.",
         description=(
             "Restricts and reorders columns at this point in the pipeline.\n"
-            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (!col, -col, ~col),\n"
+            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (!col),\n"
             "and criteria matchers (contains=, startswith=, endswith=, regex=, dtype=)."
         ),
         options=[
             "col1,col2 : Keep specific columns in the exact order requested.",
             "start:end : Contiguous slice range (inclusive of both bounds).",
-            "!col, -col, ~col : Exclude specified columns from output (!col recommended to avoid CLI flag collisions).",
-            "!start:end, -start:end : Drop a contiguous range of columns.",
+            "!col : Exclude specified columns from output.",
+            "!start:end : Drop a contiguous range of columns.",
             "contains=substr : Match columns containing substring.",
             "startswith=prefix : Match columns starting with prefix.",
             "endswith=suffix : Match columns ending with suffix.",

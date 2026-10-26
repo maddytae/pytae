@@ -146,27 +146,20 @@ def test_select_everything():
 def test_select_negative_column_syntax():
     df = _wide()
     # Single negative column
-    assert list(pt.select(df, "-species").columns) == [
+    assert list(pt.select(df, "!species").columns) == [
         "island",
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
-    # Tilde syntax
-    assert list(pt.select(df, "~island").columns) == [
-        "species",
-        "bill_length_mm",
-        "bill_depth_mm",
-        "body_mass_g",
-    ]
     # Multiple negative columns
-    assert list(pt.select(df, "-species", "-island").columns) == [
+    assert list(pt.select(df, "!species", "!island").columns) == [
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
     # Negative column slice
-    assert list(pt.select(df, "-bill_length_mm:body_mass_g").columns) == [
+    assert list(pt.select(df, "!bill_length_mm:body_mass_g").columns) == [
         "species",
         "island",
     ]
@@ -196,7 +189,7 @@ def test_select_exclude_kwarg_retired():
 def test_select_positive_and_negative_combination():
     df = _wide()
     # Positive slice minus one column
-    res = pt.select(df, "species:body_mass_g", "-island")
+    res = pt.select(df, "species:body_mass_g", "!island")
     assert list(res.columns) == [
         "species",
         "bill_length_mm",
@@ -208,7 +201,15 @@ def test_select_positive_and_negative_combination():
 def test_select_negative_typo_raises_hint():
     df = _wide()
     with pytest.raises(KeyError, match=r"Column to exclude not found: 'speceis' \(did you mean 'species'\?\)"):
-        pt.select(df, "-speceis")
+        pt.select(df, "!speceis")
+
+
+def test_select_legacy_hyphen_tilde_negation_retired():
+    df = _wide()
+    with pytest.raises(ValueError, match=r"select\(\): '-col' negation is retired in favor of '!col'"):
+        pt.select(df, "-island")
+    with pytest.raises(ValueError, match=r"select\(\): '~col' negation is retired in favor of '!col'"):
+        pt.select(df, "~island")
 
 
 def test_select_bracketed_names_and_slices():
@@ -233,7 +234,7 @@ def test_select_bracketed_names_and_slices():
         "body mass g",
     ]
     # Bracketed negation
-    assert list(pt.select(df, "-[island name]").columns) == ["species", "bill length mm", "body mass g"]
+    assert list(pt.select(df, "![island name]").columns) == ["species", "bill length mm", "body mass g"]
 
 
 def test_select_contains_startswith_endswith_tuples():
