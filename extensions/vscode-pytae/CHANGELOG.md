@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.1
+
+- Automatic sample dataset resolution for bundled datasets and refined REPL prompt state indicators.
+
 ## 3.12.0
 
 - Added syntax support and snippets for Interactive REPL Shell (`pt.repl()`, `df.repl()`) and single-dash CLI flag standardization.

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.1] - 2026-10-25
+
+### Added
+- **Automatic Bundled Sample Dataset Resolution**:
+  - The CLI and REPL now automatically resolve bundled sample datasets (`penguins.parquet`, `tips.parquet`, `titanic.parquet`, etc.) without requiring an explicit path or `sample:` prefix.
+  - Commands such as `df1=penguins.parquet`, `pytae penguins.parquet -shape`, or `load tips.parquet as df2` work directly out-of-the-box in any directory.
+
+### Changed
+- **REPL Multi-Table & Checkpoint State Separation**:
+  - Cleanly distinguished in-memory tables from saved checkpoints. Checkpoints are kept in dedicated snapshot storage (`checkpoints`) and do not pollute the table prompt (`[df1, df2]`).
+  - Single-table REPL prompt displays table name and dimensions (`pytae [df1: 344x7]>`), while multi-table REPL displays concise loaded tables (`pytae [df1, df2]>`).
+  - `tables` displays source filenames and highlights the active table with an asterisk marker and `[active]` flag.
+
 ## [3.12.0] - 2026-10-25
 
 ### Added
