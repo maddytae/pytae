@@ -26,13 +26,23 @@ Download the pre-compiled binary for your operating system from the [Releases](h
 
 | OS | Architecture | Binary File |
 |---|---|---|
-| **Windows** | x86_64 (64-bit) | `pytae-windows-x64.exe` (or rename to `pytae.exe`) |
+| **Windows (Fast Folder Bundle - Recommended)** | x86_64 | `pytae-windows-x64.zip` (Instant ~150ms startup, zero temp extraction) |
+| **Windows (Single Portable File)** | x86_64 | `pytae-windows-x64.exe` (Standalone single file) |
 | **macOS** | Apple Silicon (M1/M2/M3/M4) | `pytae-macos-arm64` |
 | **macOS** | Intel x86_64 | `pytae-macos-x86_64` |
 | **Linux** | x86_64 (64-bit) | `pytae-linux-x86_64` |
 
 ### Running on Windows
-Open PowerShell or Command Prompt:
+
+#### Option A: Fast Folder Bundle (Recommended for daily CLI use)
+1. Download and extract `pytae-windows-x64.zip` into `C:\Users\<username>\tools\pytae\`.
+2. Add `C:\Users\<username>\tools\pytae` to your user `PATH`.
+3. Commands boot **instantly (~150ms)** without any temporary directory extraction or repeated antivirus scans:
+```powershell
+pytae sales.parquet -filter "revenue > 1000" -shape
+```
+
+#### Option B: Standalone Single Executable
 ```powershell
 # Quick query on a dataset
 .\pytae-windows-x64.exe sales.parquet -filter "revenue > 1000" -shape

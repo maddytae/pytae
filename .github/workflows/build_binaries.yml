@@ -56,9 +56,16 @@ jobs:
           pip install ".[plot]"
           pip install pyinstaller
 
-      - name: Build standalone binary
+      - name: Build standalone binary (Unix)
+        if: "!matrix.is_windows"
         run: |
           python scripts/build_binary.py --release-name
+
+      - name: Build standalone binary and fast zip bundle (Windows)
+        if: matrix.is_windows
+        run: |
+          python scripts/build_binary.py --release-name
+          python scripts/build_binary.py --release-name --onedir --zip
 
       - name: Smoke test binary (Unix)
         if: "!matrix.is_windows"
@@ -75,12 +82,25 @@ jobs:
           dist\${{ matrix.binary_name }} -h
           dist\${{ matrix.binary_name }} sample:penguins -shape
           dist\${{ matrix.binary_name }} sample:penguins -filter "species == 'Gentoo'" -shape
+          dist\pytae-windows-x64\pytae-windows-x64.exe -h
+          dist\pytae-windows-x64\pytae-windows-x64.exe sample:penguins -shape
 
-      - name: Upload binary artifact
+      - name: Upload binary artifact (Unix)
+        if: "!matrix.is_windows"
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.binary_name }}
           path: dist/${{ matrix.binary_name }}
+          if-no-files-found: error
+
+      - name: Upload binary artifacts (Windows)
+        if: matrix.is_windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytae-windows-x64
+          path: |
+            dist/${{ matrix.binary_name }}
+            dist/pytae-windows-x64.zip
           if-no-files-found: error
 
   release:

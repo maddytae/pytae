@@ -43,7 +43,13 @@ def get_platform_tag() -> str:
     return f"{os_tag}-{arch_tag}"
 
 
-def build(output_name: str | None = None, is_release: bool = False, strip: bool = True) -> Path:
+def build(
+    output_name: str | None = None,
+    is_release: bool = False,
+    strip: bool = True,
+    onedir: bool = False,
+    create_zip: bool = False,
+) -> Path:
     repo_root = Path(__file__).resolve().parent.parent
     src_dir = repo_root / "src"
     datasets_dir = src_dir / "pytae" / "datasets"
@@ -57,21 +63,26 @@ def build(output_name: str | None = None, is_release: bool = False, strip: bool 
     exe_suffix = ".exe" if is_windows else ""
 
     if output_name:
-        final_name = output_name if output_name.endswith(exe_suffix) else f"{output_name}{exe_suffix}"
+        final_stem = Path(output_name).stem
+        final_name = f"{final_stem}{exe_suffix}"
     elif is_release:
-        final_name = f"pytae-{tag}{exe_suffix}"
+        final_stem = f"pytae-{tag}"
+        final_name = f"{final_stem}{exe_suffix}"
     else:
+        final_stem = "pytae"
         final_name = f"pytae{exe_suffix}"
 
     # Separator for PyInstaller --add-data: ';' on Windows, ':' on Unix
     sep = os.pathsep
     add_data_arg = f"{datasets_dir}{sep}pytae/datasets"
 
+    mode_arg = "--onedir" if onedir else "--onefile"
+
     pyinstaller_args = [
         str(cli_entry),
         "--name",
-        Path(final_name).stem,
-        "--onefile",
+        final_stem,
+        mode_arg,
         "--clean",
         "--noconfirm",
         "--add-data",
@@ -109,8 +120,11 @@ def build(output_name: str | None = None, is_release: bool = False, strip: bool 
     if strip and not is_windows:
         pyinstaller_args.append("--strip")
 
-    print(f"Building standalone pytae binary for [{tag}]...")
-    print(f"Output target: dist/{final_name}")
+    print(f"Building standalone pytae ({mode_arg}) for [{tag}]...")
+    if onedir:
+        print(f"Output target folder: dist/{final_stem}/")
+    else:
+        print(f"Output target file: dist/{final_name}")
 
     try:
         import PyInstaller.__main__  # noqa: F401
@@ -123,23 +137,51 @@ def build(output_name: str | None = None, is_release: bool = False, strip: bool 
 
     PyInstaller.__main__.run(pyinstaller_args)
 
-    built_file = repo_root / "dist" / final_name
-    default_built_file = repo_root / "dist" / (Path(final_name).stem + exe_suffix)
+    if onedir:
+        built_dir = repo_root / "dist" / final_stem
+        exe_inside = built_dir / final_name
+        if not built_dir.exists() or not exe_inside.exists():
+            print(f"ERROR: Expected directory bundle not found at {built_dir}")
+            sys.exit(1)
 
-    if not built_file.exists() and default_built_file.exists():
-        shutil.move(str(default_built_file), str(built_file))
+        total_bytes = sum(f.stat().st_size for f in built_dir.rglob("*") if f.is_file())
+        size_mb = total_bytes / (1024 * 1024)
 
-    if built_file.exists():
-        size_mb = built_file.stat().st_size / (1024 * 1024)
         print("\n" + "=" * 60)
-        print("BUILD SUCCESSFUL!")
-        print(f"Binary path: {built_file}")
-        print(f"Binary size: {size_mb:.1f} MB")
+        print("BUILD SUCCESSFUL (ONEDIR BUNDLE)!")
+        print(f"Directory: {built_dir}")
+        print(f"Executable: {exe_inside}")
+        print(f"Total bundle size: {size_mb:.1f} MB")
+
+        if create_zip:
+            zip_base = repo_root / "dist" / final_stem
+            print(f"Creating zip archive: {zip_base}.zip ...")
+            zip_path = shutil.make_archive(str(zip_base), "zip", root_dir=str(repo_root / "dist"), base_dir=final_stem)
+            zip_mb = Path(zip_path).stat().st_size / (1024 * 1024)
+            print(f"Zip created: {zip_path} ({zip_mb:.1f} MB)")
+            print("=" * 60)
+            return Path(zip_path)
+
         print("=" * 60)
-        return built_file
+        return built_dir
     else:
-        print(f"ERROR: Expected binary not found at {built_file}")
-        sys.exit(1)
+        built_file = repo_root / "dist" / final_name
+        default_built_file = repo_root / "dist" / (final_stem + exe_suffix)
+
+        if not built_file.exists() and default_built_file.exists():
+            shutil.move(str(default_built_file), str(built_file))
+
+        if built_file.exists():
+            size_mb = built_file.stat().st_size / (1024 * 1024)
+            print("\n" + "=" * 60)
+            print("BUILD SUCCESSFUL!")
+            print(f"Binary path: {built_file}")
+            print(f"Binary size: {size_mb:.1f} MB")
+            print("=" * 60)
+            return built_file
+        else:
+            print(f"ERROR: Expected binary not found at {built_file}")
+            sys.exit(1)
 
 
 def main() -> None:
@@ -150,10 +192,26 @@ def main() -> None:
         action="store_true",
         help="Use platform-tagged release name (e.g., pytae-macos-arm64, pytae-windows-x64.exe)",
     )
+    parser.add_argument(
+        "--onedir",
+        action="store_true",
+        help="Build as a pre-extracted folder bundle for instant startup on Windows",
+    )
+    parser.add_argument(
+        "--zip",
+        action="store_true",
+        help="Archive the onedir folder into a .zip file (used with --onedir)",
+    )
     parser.add_argument("--no-strip", action="store_true", help="Do not strip binary symbols")
     args = parser.parse_args()
 
-    build(output_name=args.output_name, is_release=args.release_name, strip=not args.no_strip)
+    build(
+        output_name=args.output_name,
+        is_release=args.release_name,
+        strip=not args.no_strip,
+        onedir=args.onedir,
+        create_zip=args.zip,
+    )
 
 
 if __name__ == "__main__":
