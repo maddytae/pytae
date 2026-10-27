@@ -956,7 +956,7 @@ Launch the stateful interactive REPL shell from the command line:
   pytae -i                              # Launch empty multi-table workbench
   pytae penguins.parquet -i             # Focused exploration on a single table
   pytae data.csv -encoding latin1 -i    # Preserves CLI reader options into REPL
-  pytae -session analysis               # Launch or resume named persistent session (-s alias)
+  pytae -session analysis               # Launch or resume named persistent session
   pytae -sessions                       # List all saved persistent sessions on disk
 
 Two Dedicated Operation Modes:

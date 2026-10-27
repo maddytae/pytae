@@ -350,7 +350,7 @@ pytae -i
 pytae data.parquet -filter "sales > 100" -i
 
 # Resume or launch a named persistent session (stored in ~/.pytae/sessions/)
-pytae -session analysis      # or short alias: pytae -s analysis
+pytae -session analysis
 
 # List all saved persistent sessions on disk
 pytae -sessions

@@ -1785,3 +1785,57 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
 
     r.close()
 
+
+def test_repl_sample_does_not_modify_original_df():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    orig_shape = r.tables["df1"].shape
+    assert orig_shape == (344, 7)
+
+    # 1. Active table -sample (like -head) must preview rows without modifying df1
+    outputs.clear()
+    r.execute_line("-sample 5", output_fn=outputs.append)
+    assert r.tables["df1"].shape == orig_shape
+    assert r.current_df.shape == orig_shape
+    assert not any("-> df1:" in o for o in outputs)
+    assert any("Adelie" in o or "Gentoo" in o or "Chinstrap" in o for o in outputs)
+
+    # 2. Targeted df1 -sample 10 must preview rows without modifying df1
+    outputs.clear()
+    r.execute_line("df1 -sample 10", output_fn=outputs.append)
+    assert r.tables["df1"].shape == orig_shape
+    assert r.current_df.shape == orig_shape
+
+    # 3. Targeted df1 -sample with float fraction
+    outputs.clear()
+    r.execute_line("df1 -sample 0.1", output_fn=outputs.append)
+    assert r.tables["df1"].shape == orig_shape
+
+    # 4. Bare sample warning
+    outputs.clear()
+    r.execute_line("sample 5", output_fn=outputs.append)
+    assert "bare 'sample' is not recognized; use '-sample'" in outputs[-1]
+    assert r.tables["df1"].shape == orig_shape
+
+    r.close()
+
+
+def test_cli_rejects_dash_s_and_accepts_session(tmp_path, monkeypatch, capsys):
+    sess_dir = tmp_path / "sessions"
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+
+    # Test pytae -s is rejected
+    with pytest.raises(SystemExit):
+        cli.main(["-s", "analysis"])
+    captured_err = capsys.readouterr()
+    assert "'-s' is not recognized; use '-session <name>' instead" in captured_err.err
+
+    # Test pytae -session is recognized and accepted
+    # Using -h alongside -session exits cleanly before entering REPL loop
+    with pytest.raises(SystemExit):
+        cli.main(["-session", "analysis", "-h"])
+    captured_out = capsys.readouterr()
+    assert "persistent REPL session name" in captured_out.out
+
+

@@ -149,7 +149,6 @@ _CLI_FLAGS = {
     "-plot",
     "-finalize",
     "-i",
-    "-s",
     "-session",
     "-sessions",
 }
@@ -199,10 +198,6 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
                 out.append("-time=1")
                 i += 1
                 continue
-        elif arg == "-s":
-            out.append("-session")
-            i += 1
-            continue
         elif arg == "-select" and "=" not in arg:
             if i + 1 < len(argv):
                 nxt = argv[i + 1]
@@ -836,7 +831,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         type=str,
         default=None,
         metavar="NAME",
-        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name>); alias: -s <name>",
+        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name>)",
     )
     parser.add_argument(
         "-sessions",
@@ -935,6 +930,7 @@ def main(argv: list[str] | None = None) -> int:
             ("-replace_values",),
             "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead",
         ),
+        (("-s",), "'-s' is not recognized; use '-session <name>' instead"),
     ]
     for aliases, msg in retired_redirects:
         if any(arg in aliases for arg in raw_argv):

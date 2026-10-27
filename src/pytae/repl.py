@@ -154,11 +154,11 @@ def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
     """List all saved persistent Pytae sessions stored on disk."""
     s_dir = get_sessions_dir()
     if not s_dir.exists():
-        output_fn("No saved sessions found. Use 'session save <name>' or 'pytae -s <name>' to create one.")
+        output_fn("No saved sessions found. Use 'session save <name>' or 'pytae -session <name>' to create one.")
         return
     sessions = sorted([p for p in s_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
     if not sessions:
-        output_fn("No saved sessions found. Use 'session save <name>' or 'pytae -s <name>' to create one.")
+        output_fn("No saved sessions found. Use 'session save <name>' or 'pytae -session <name>' to create one.")
         return
     output_fn("Saved Sessions:")
     for s_path in sessions:
@@ -1120,7 +1120,7 @@ class PytaeRepl:
                 )
             else:
                 output_fn(
-                    "No active session (ephemeral). Use 'session save <name>' or 'pytae -s <name>' to persist."
+                    "No active session (ephemeral). Use 'session save <name>' or 'pytae -session <name>' to persist."
                 )
             return
 
@@ -2556,6 +2556,24 @@ class PytaeRepl:
         elif first_sub == "-tail":
             n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
             output_fn(_format_table(target_df.tail(n), tbl_rows=max(n, 10)))
+        elif first_sub == "-sample":
+            n = 5
+            frac = None
+            if len(sub_tokens) > 1:
+                val = sub_tokens[1]
+                if "." in val:
+                    try:
+                        frac = float(val)
+                    except ValueError:
+                        pass
+                elif val.isdigit():
+                    n = int(val)
+            if frac is not None:
+                sampled = target_df.sample(fraction=frac)
+            else:
+                sample_n = min(n, len(target_df))
+                sampled = target_df.sample(n=sample_n) if sample_n > 0 else target_df.head(0)
+            output_fn(_format_table(sampled, tbl_rows=max(len(sampled), 10)))
         elif first_sub == "-o":
             dest = sub_tokens[1] if len(sub_tokens) > 1 else "output.parquet"
             self._cmd_save(dest, output_fn)
@@ -2933,7 +2951,6 @@ class PytaeRepl:
                 "long",
                 "wide",
                 "pivot",
-                "sample",
                 "sql",
             )
             for op in op_order
@@ -2984,6 +3001,7 @@ class PytaeRepl:
                         in (
                             "head",
                             "tail",
+                            "sample",
                             "describe",
                             "glimpse",
                             "freq",

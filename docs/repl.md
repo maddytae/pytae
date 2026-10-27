@@ -75,7 +75,7 @@ pytae -i
 pytae penguins.parquet -filter "body_mass_g > 4000" -i
 
 # 4. Resume or start a named persistent session
-pytae -session analysis   # or short alias: pytae -s analysis
+pytae -session analysis
 
 # 5. List all saved persistent sessions from the command line
 pytae -sessions
@@ -258,7 +258,6 @@ Pytae provides full support for **named, persistent REPL sessions** that can be 
 ```bash
 # Launch or resume a named persistent session
 pytae -session analysis
-pytae -s analysis
 
 # Start a persistent session with an initial dataset pre-loaded
 pytae penguins.parquet -session penguins_lab
