@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.6] - 2026-10-27
+
+### Added
+- **REPL Non-Destructive Preview Framework & Explicit Assignment Mutation**:
+  - Running pipeline commands (`-filter`, `-head`, `-distinct`, etc.) and targeted pipelines (`k -filter`, `k -head`) now previews results without mutating active or target DataFrames.
+  - Mutations occur explicitly via assignment (`k = df`, `filtered_k = df -filter ...`, `k = k -filter ...`, `df = -filter ...`).
+  - Previews output formatted tables directly matching CLI output parity rather than being suppressed.
+- **Standalone Zero-Python Executable Packaging**:
+  - Added `scripts/build_binary.py` supporting single-file binaries on Linux (`pytae-linux-x86_64`) and macOS ARM64 (`pytae-macos-arm64`), plus an optimized pre-extracted `--onedir` zip bundle on Windows (`pytae-windows-x64.zip`) for instant startup.
+  - Added standalone binary release workflow in `.github/workflows/build_binaries.yml` targeting release publishing.
+- **REPL Granular Table Reset (`reset <table_name>`)**:
+  - Added ability to reset a single table back to its original loaded file state without affecting any other loaded workbench tables.
+
+### Fixed
+- **REPL `-distinct` Followed by `-head` Truncation**:
+  - Fixed an issue where chained transformation flags inadvertently truncated the underlying DataFrame in-place.
+- **Windows REPL Memory Management**:
+  - Configured 64-bit Windows process working set trimming (`EmptyWorkingSet` / `SetProcessWorkingSetSize`) and disabled parquet memory mapping to prevent process RAM growth and return unmapped pages to the OS.
+- **REPL Exception Shielding**:
+  - Wrapped interactive runner loop to prevent unexpected command crashes from terminating active REPL sessions.
+
 ## [3.12.5] - 2026-10-26
 
 ### Added

@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.12.6
+
+- REPL non-destructive preview by default (`-filter`, `-head`, `-distinct`) and explicit mutation via assignment.
+- CLI output parity in REPL (formatted table display matching CLI).
+- Resolved `-distinct` followed by `-head` active row truncation.
+- Table-specific reset (`reset <table_name>`) and exploratory `-sample` preview.
+- Windows 64-bit RAM trimming (`EmptyWorkingSet`) and memory-map tuning.
+- Standalone zero-Python executable distributions for Linux, macOS, and Windows.
+
 ## 3.12.5
 
 - Disk-backed session checkpoints (Arrow IPC, 0 RAM overhead).
