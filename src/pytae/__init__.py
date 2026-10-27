@@ -5,7 +5,13 @@ A modern, fluent, Polars-backed tabular data wrangling grammar for Python.
 
 from __future__ import annotations
 
+import os
 import sys
+
+# Configure mimalloc / jemalloc to return freed memory pages to the OS immediately
+os.environ.setdefault("MIMALLOC_PURGE_DELAY", "0")
+os.environ.setdefault("MIMALLOC_RESET_DECOMMIT", "1")
+os.environ.setdefault("_RJEM_MALLOC_CONF", "muzzy_decay_ms:0,dirty_decay_ms:0")
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType

@@ -542,6 +542,7 @@ pytae> -o clip
 | **`sessions`** | `sessions` | List all persistent sessions saved on disk | No |
 | **`rm session`**| `rm session <name>` | Remove a named persistent session directory from disk | No |
 | **`rm`** | `rm <table_name>`, `rm df`, `rm *` | Remove table or active dataset from memory (releases RAM immediately) | No (use `checkpoint` for snapshots) |
+| **`gc` / `free`** | `gc`, `free` | Force garbage collection and return unmapped memory pages to OS | No |
 | **`<var> = <file>`** | `df1 = orders.parquet [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Ingest dataset into a named table with reader options | **Yes** |
 | **`load`** | `load <file> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Load dataset with alias and reader options | **Yes** |
 | **`tables`** | `tables` | List all loaded tables in memory | No |

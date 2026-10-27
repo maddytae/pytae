@@ -1745,3 +1745,34 @@ def test_repl_undo_stack_sliding_window_cap():
     assert len(r.undo_stack) == r.max_undo_steps == 10
     r.close()
 
+
+def test_repl_rm_clears_all_internal_references_and_gc_command():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    r.execute_line("checkpoint abc", output_fn=outputs.append)
+
+    # When df2 is active and df1 is removed, initial_df and orig_df must NOT retain df1
+    r.execute_line("rm df1", output_fn=outputs.append)
+    assert "df1" not in r.tables
+    assert r.initial_df.shape == (244, 7)  # df2 shape, not df1
+    assert r.orig_df.shape == (244, 7)
+
+    # Remove second table
+    r.execute_line("rm df2", output_fn=outputs.append)
+    assert r.current_df is None
+    assert r.orig_df is None
+    assert r.initial_df is None
+
+    # Test explicit 'gc' and 'free' commands
+    outputs.clear()
+    r.execute_line("gc", output_fn=outputs.append)
+    assert "Memory released to operating system." in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("free", output_fn=outputs.append)
+    assert "Memory released to operating system." in outputs[-1]
+
+    r.close()
+

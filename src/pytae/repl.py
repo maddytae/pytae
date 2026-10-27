@@ -30,6 +30,28 @@ def _safe_ipc_filename(name: str) -> str:
     return f"{safe}.ipc"
 
 
+def _release_memory() -> None:
+    """Force Python garbage collection and return unmapped/freed memory pages back to the OS."""
+    gc.collect()
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            # EmptyWorkingSet tells the Windows kernel to reclaim all unreferenced memory pages from the process working set
+            handle = ctypes.windll.kernel32.GetCurrentProcess()
+            ctypes.windll.psapi.EmptyWorkingSet(handle)
+        except Exception:
+            pass
+    elif sys.platform == "linux":
+        try:
+            import ctypes
+
+            libc = ctypes.CDLL("libc.so.6")
+            libc.malloc_trim(0)
+        except Exception:
+            pass
+
+
 _DEFAULT_SESSIONS_DIR = Path.home() / ".pytae" / "sessions"
 
 
@@ -823,12 +845,14 @@ class PytaeRepl:
         self.tables.clear()
         self.orig_tables.clear()
         self.initial_tables.clear()
+        self.table_sources.clear()
         self.undo_stack.clear()
         self.redo_stack.clear()
         self.current_df = None
         self.orig_df = None
         self.initial_df = None
-        gc.collect()
+        self.path_str = None
+        _release_memory()
 
     def __del__(self) -> None:
         self._cleanup_cp_dir()
@@ -1307,6 +1331,12 @@ class PytaeRepl:
                 output_fn(f"Usage: use <table_name> (available: {avail})")
             return True
 
+        # Force immediate OS memory release: `gc` or `free`
+        if first_lower in ("gc", "free"):
+            _release_memory()
+            output_fn("Memory released to operating system.")
+            return True
+
         # Remove table or checkpoint: `rm <table_name>` or `rm checkpoint <name>`
         if first_lower == "rm":
             if len(tokens) < 2:
@@ -1376,7 +1406,7 @@ class PytaeRepl:
                 self.initial_df = None
                 self.path_str = None
                 self.history.append("rm *")
-                gc.collect()
+                _release_memory()
                 output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
                 return True
 
@@ -1405,26 +1435,30 @@ class PytaeRepl:
                 if self.path_str == resolved:
                     if self.tables:
                         next_tbl = next(iter(self.tables.keys()))
+                        self.path_str = next_tbl
                         self.current_df = self.tables[next_tbl]
                         self.orig_df = self.orig_tables.get(next_tbl)
                         self.initial_df = self.initial_tables.get(next_tbl)
-                        self.path_str = next_tbl
                         output_fn(f"Removed table '{resolved}'. Switched active dataset to '{next_tbl}'.")
                     else:
+                        self.path_str = None
                         self.current_df = None
                         self.orig_df = None
                         self.initial_df = None
-                        self.path_str = None
                         output_fn(f"Removed table '{resolved}'. No tables remain loaded.")
                 else:
-                    if not self.tables:
+                    if self.path_str and self.path_str in self.tables:
+                        self.current_df = self.tables[self.path_str]
+                        self.orig_df = self.orig_tables.get(self.path_str)
+                        self.initial_df = self.initial_tables.get(self.path_str)
+                    else:
+                        self.path_str = None
                         self.current_df = None
                         self.orig_df = None
                         self.initial_df = None
-                        self.path_str = None
                     output_fn(f"Removed table '{resolved}'.")
                 self.history.append(f"rm {target}")
-                gc.collect()
+                _release_memory()
                 return True
 
             if target in self.checkpoints:
@@ -1501,9 +1535,13 @@ class PytaeRepl:
                 "py",
                 "status",
                 "reset",
+                "gc",
+                "free",
             )
         ):
             self.current_df = self.tables[resolved_table]
+            self.orig_df = self.orig_tables.get(resolved_table)
+            self.initial_df = self.initial_tables.get(resolved_table)
             self.path_str = resolved_table
             n_rows, n_cols = self.current_df.shape
             output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols")
@@ -1791,26 +1829,30 @@ class PytaeRepl:
                     if k in self.table_sources:
                         del self.table_sources[k]
             for k, orig_df in source_tables.items():
-                self.tables[k] = orig_df.clone()
-                self.orig_tables[k] = orig_df.clone()
+                self.tables[k] = orig_df
+                self.orig_tables[k] = orig_df
+                self.initial_tables[k] = orig_df
 
             if self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
-                self.orig_df = self.current_df.clone()
+                self.orig_df = self.current_df
+                self.initial_df = self.current_df
             elif self.tables:
                 first_k = next(iter(self.tables.keys()))
                 self.path_str = first_k
                 self.current_df = self.tables[first_k]
-                self.orig_df = self.current_df.clone()
+                self.orig_df = self.current_df
+                self.initial_df = self.current_df
         elif source_df is not None:
-            self.current_df = source_df.clone()
-            self.orig_df = source_df.clone()
+            self.current_df = source_df
+            self.orig_df = source_df
+            self.initial_df = source_df
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = self.current_df
 
         self.undo_stack.clear()
         self.redo_stack.clear()
-        gc.collect()
+        _release_memory()
 
         if is_explicit_initial:
             self.history.append("reset initial [reverted to initial read]")
@@ -2055,7 +2097,7 @@ class PytaeRepl:
                 shutil.rmtree(snap["dir"], ignore_errors=True)
         self.undo_stack.clear()
         self.redo_stack.clear()
-        gc.collect()
+        _release_memory()
 
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
@@ -2077,7 +2119,7 @@ class PytaeRepl:
 
         snap = self.checkpoints[name]
 
-        # Purge active session completely to guarantee RAM strictly reflects checkpoint
+        # Purge active session tables to guarantee RAM strictly reflects checkpoint
         self.tables.clear()
         self.orig_tables.clear()
         self.table_sources.clear()
@@ -2099,22 +2141,28 @@ class PytaeRepl:
                     ipc_path = cp_dir / tbl_info.get("file", "_current_df.ipc")
                     if ipc_path.exists():
                         self.current_df = pl.read_ipc(ipc_path)
-                        self.orig_df = self.current_df.clone()
+                        self.orig_df = self.current_df
+                        if self.initial_df is None:
+                            self.initial_df = self.current_df
                     continue
                 ipc_path = cp_dir / tbl_info.get("file", _safe_ipc_filename(tbl_name))
                 if ipc_path.exists():
                     df = pl.read_ipc(ipc_path)
                     self.tables[tbl_name] = df
-                    self.orig_tables[tbl_name] = df.clone()
+                    self.orig_tables[tbl_name] = df
+                    if tbl_name not in self.initial_tables:
+                        self.initial_tables[tbl_name] = df
 
             if self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
                 self.orig_df = self.orig_tables[self.path_str]
+                self.initial_df = self.initial_tables.get(self.path_str)
             elif self.tables:
                 first_tbl = next(iter(self.tables.keys()))
                 self.path_str = first_tbl
                 self.current_df = self.tables[first_tbl]
                 self.orig_df = self.orig_tables[first_tbl]
+                self.initial_df = self.initial_tables.get(first_tbl)
         else:
             self._apply_session_state(snap)
 
@@ -2127,7 +2175,7 @@ class PytaeRepl:
             self._save_session_metadata()
 
         # Explicitly release any memory held by pre-restore intermediate tables
-        gc.collect()
+        _release_memory()
 
         if len(self.tables) > 1:
             active_info = f"; active: {self.path_str}" if self.path_str else ""
@@ -2203,6 +2251,8 @@ class PytaeRepl:
             output_fn(f"pytae: table '{name}' not found. Available tables: {avail}")
             return
         self.current_df = self.tables[resolved]
+        self.orig_df = self.orig_tables.get(resolved)
+        self.initial_df = self.initial_tables.get(resolved)
         self.path_str = resolved
         output_fn(
             f"Switched active dataset to '{resolved}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
@@ -2263,8 +2313,7 @@ class PytaeRepl:
                         self.orig_tables[var_name] = df
                         if var_name not in self.initial_tables:
                             self.initial_tables[var_name] = df
-                        if self.initial_df is None:
-                            self.initial_df = df
+                        self.initial_df = df
                         self.table_sources[var_name] = p.name
                         self.current_df = df
                         self.orig_df = df
@@ -2469,8 +2518,7 @@ class PytaeRepl:
             self.orig_tables[target_alias] = loaded_df
             if target_alias not in self.initial_tables:
                 self.initial_tables[target_alias] = loaded_df
-            if self.initial_df is None:
-                self.initial_df = loaded_df
+            self.initial_df = loaded_df
             self.table_sources[target_alias] = p.name
             self.current_df = loaded_df
             self.orig_df = loaded_df
@@ -2929,6 +2977,7 @@ class PytaeRepl:
             _save_readline_history()
             _save_raw_history(self._raw_history)
             self._cleanup_cp_dir()
+            _release_memory()
         return self.current_df
 
 
