@@ -13197,19 +13197,29 @@ pytae> -describe
 
 ### Session State, Reset Hierarchy, and Rollback
 
-* **`reset`**: Reverts the session to the **latest saved checkpoint**. If no checkpoints exist in the session, it falls back to the original dataset state as loaded from disk. Active RAM is strictly isolated, post-checkpoint tables are purged, undo/redo history is cleared, and garbage collection runs immediately:
+* **`reset`**: Reverts the session to the **latest saved checkpoint**. If no checkpoints exist in the session, it falls back to the original dataset state as loaded from disk. Bare `reset` resets **all tables** across the workbench. Active RAM is strictly isolated, post-checkpoint tables are purged, undo/redo history is cleared, and garbage collection runs immediately:
   ```text
   pytae [df1, df2, df3]> reset
   Restored checkpoint 'maddy' (2 tables: df1, df2; active: df2).
   ```
-* **`reset initial`**: Strictly reverts the entire session back to the initial dataset read state, even when intermediate checkpoints exist:
+* **`reset <table_name>`**: Resets **only the specified table** (e.g., `reset df1`) to its state in the latest checkpoint (or initial file read if no checkpoint exists), leaving all other tables completely untouched:
+  ```text
+  pytae [df1, df2]> reset df1
+  Reset table 'df1' to latest checkpoint 'v1'.
+  ```
+* **`reset <table_name> initial`**: Strictly reverts the specified table back to its initial file read state without touching any other tables in the session:
+  ```text
+  pytae [df1, df2]> reset df1 initial
+  Reset table 'df1' to initial state (344 rows x 7 cols).
+  ```
+* **`reset initial`**: Strictly reverts **all tables** across the entire session back to the initial dataset read state, even when intermediate checkpoints exist:
   ```text
   pytae [df1, df2]> reset initial
-  Restored initial dataset state (1 table: df1). Active shape: (344, 7)
+  Restored initial dataset. Active shape: (344, 7)
   ```
   > [!NOTE]
-  > Unrecognized sub-arguments (such as `reset orig`) are rejected:
-  > `pytae: 'reset orig' is not recognized; use 'reset' or 'reset initial'.`
+  > Unrecognized table names are rejected:
+  > `pytae: table 'orig' not found. Available: df1, df2`
 
 * **`undo` & `redo`**: Step backward and forward through your transformation stack:
   ```text
@@ -13554,8 +13564,10 @@ pytae> -o clip
 | **`help`** | `help` | Display formatted help manual | No |
 | **`clear`** | `clear` | Clear the terminal screen | No |
 | **`status`** | `status` | Show active dataset name, shape, memory, undo stack depth | No |
-| **`reset`** | `reset` | Revert to latest checkpoint (or initial dataset read if no checkpoints exist) | **Yes** (undoable) |
-| **`reset initial`** | `reset initial` | Revert session strictly to initial dataset read (bypassing checkpoints) | **Yes** (undoable) |
+| **`reset`** | `reset` | Revert all tables across workbench to latest checkpoint (or initial dataset read if no checkpoints exist) | **Yes** (clears undo) |
+| **`reset <table_name>`** | `reset <table_name>` | Revert only the specified table to latest checkpoint (or initial read) without affecting other tables | **Yes** (clears undo) |
+| **`reset <table_name> initial`** | `reset <table_name> initial` | Revert only the specified table strictly to initial read without affecting other tables | **Yes** (clears undo) |
+| **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
 | **`history`** | `history` | List numbered history of applied transformation steps and checkpoint banners | No |
@@ -32443,6 +32455,40 @@ class PytaeRepl:
                 return snap["current_df"]
         return None
 
+    def _get_checkpoint_table_df(self, cp_name: str, table_name: str) -> pl.DataFrame | None:
+        """Retrieve a specific table's DataFrame from a named checkpoint."""
+        if cp_name not in self.checkpoints:
+            return None
+        snap = self.checkpoints[cp_name]
+        if isinstance(snap, pl.DataFrame):
+            return snap if table_name in ("df", "_current_df") else None
+        if isinstance(snap, dict):
+            if "dir" in snap:
+                cp_dir = Path(snap["dir"])
+                meta_file = cp_dir / "meta.json"
+                meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else snap
+                tbl_meta = meta.get("tables", {})
+                for k, tbl_info in tbl_meta.items():
+                    if k == table_name or k.lower() == table_name.lower() or Path(k).stem.lower() == table_name.lower():
+                        f_name = (
+                            tbl_info.get("file", _safe_ipc_filename(k))
+                            if isinstance(tbl_info, dict)
+                            else _safe_ipc_filename(k)
+                        )
+                        ipc_p = cp_dir / f_name
+                        if ipc_p.exists():
+                            return pl.read_ipc(ipc_p)
+                if "_current_df" in tbl_meta and (len(tbl_meta) == 1 or meta.get("active_table") == table_name):
+                    ipc_p = cp_dir / "_current_df.ipc"
+                    if ipc_p.exists():
+                        return pl.read_ipc(ipc_p)
+                return None
+            tbls = snap.get("tables", {})
+            for k, val in tbls.items():
+                if k == table_name or k.lower() == table_name.lower() or Path(k).stem.lower() == table_name.lower():
+                    return val.clone() if hasattr(val, "clone") else val
+        return None
+
     def close(self) -> None:
         """Clean up temporary checkpoint disk storage and release all in-memory tables."""
         if self.session_name is None:
@@ -33410,28 +33456,98 @@ class PytaeRepl:
         output_fn(f"Columns ({n_cols}): {', '.join(self.current_df.columns[:10])}{'...' if n_cols > 10 else ''}")
 
     def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        if len(args) > 1:
-            output_fn("pytae: 'reset' accepts at most one argument ('initial').")
-            return
-        if len(args) == 1:
-            sub = args[0].lower()
-            if sub == "initial":
-                self._reset_to_initial(output_fn, is_explicit_initial=True)
+        if not args:
+            # Bare 'reset': Reverts all tables to latest checkpoint if any exist; otherwise reverts to initial file read
+            if self.checkpoints:
+                latest_cp = list(self.checkpoints.keys())[-1]
+                self._cmd_restore(latest_cp, output_fn, record_history=False)
+                self.history.append(f"reset [reverted to checkpoint: {latest_cp}]")
+                output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
+                if self.session_name:
+                    self._save_session_metadata()
                 return
-            output_fn(f"pytae: 'reset {args[0]}' is not recognized; use 'reset' or 'reset initial'.")
+
+            self._reset_to_initial(output_fn, is_explicit_initial=False)
             return
 
-        # Bare 'reset': Reverts to latest checkpoint if any exist; otherwise reverts to initial file read
-        if self.checkpoints:
+        is_explicit_initial = any(a.lower() == "initial" for a in args)
+        target_args = [a for a in args if a.lower() != "initial"]
+
+        if not target_args:
+            # `reset initial`: resets all tables strictly to initial file read
+            self._reset_to_initial(output_fn, is_explicit_initial=True)
+            return
+
+        if len(target_args) > 1:
+            output_fn("Usage: reset [table_name] [initial]")
+            return
+
+        target_name = target_args[0]
+        resolved = self._resolve_table_name(target_name)
+        if resolved is None:
+            if target_name in self.initial_tables or target_name in self.orig_tables:
+                resolved = target_name
+            else:
+                avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                output_fn(f"pytae: table '{target_name}' not found. Available: {avail}")
+                return
+
+        self._reset_single_table(resolved, output_fn, is_explicit_initial=is_explicit_initial)
+
+    def _reset_single_table(
+        self, table_name: str, output_fn: Callable[[str], None], is_explicit_initial: bool = False
+    ) -> None:
+        """Reset a single table to its checkpoint state or initial file read without touching any other tables."""
+        # 1. If not explicit initial and checkpoints exist, revert to state in latest checkpoint
+        if not is_explicit_initial and self.checkpoints:
             latest_cp = list(self.checkpoints.keys())[-1]
-            self._cmd_restore(latest_cp, output_fn, record_history=False)
-            self.history.append(f"reset [reverted to checkpoint: {latest_cp}]")
-            output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
-            if self.session_name:
-                self._save_session_metadata()
+            cp_df = self._get_checkpoint_table_df(latest_cp, table_name)
+            if cp_df is not None:
+                self.tables[table_name] = cp_df
+                if self.path_str == table_name or self.current_df is None:
+                    self.path_str = table_name
+                    self.current_df = cp_df
+                    self.orig_df = cp_df
+                self.undo_stack.clear()
+                self.redo_stack.clear()
+                self.history.append(f"reset {table_name} [reverted to checkpoint: {latest_cp}]")
+                if self.session_name:
+                    self._save_session_metadata()
+                _release_memory()
+                output_fn(f"Reset table '{table_name}' to latest checkpoint '{latest_cp}'.")
+                return
+
+        # 2. Revert strictly to initial/original file read state
+        orig_df = self.initial_tables.get(table_name)
+        if orig_df is None:
+            orig_df = self.orig_tables.get(table_name)
+
+        if orig_df is None:
+            output_fn(f"pytae: no original state found for table '{table_name}'.")
             return
 
-        self._reset_to_initial(output_fn, is_explicit_initial=False)
+        restored_df = orig_df.clone() if hasattr(orig_df, "clone") else orig_df
+        self.tables[table_name] = restored_df
+        if table_name in self.orig_tables:
+            self.orig_tables[table_name] = restored_df
+        if table_name in self.initial_tables:
+            self.initial_tables[table_name] = restored_df
+
+        if self.path_str == table_name or self.current_df is None:
+            self.path_str = table_name
+            self.current_df = restored_df
+            self.orig_df = restored_df
+            self.initial_df = restored_df
+
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        self.history.append(f"reset {table_name} [reverted to initial read]")
+        if self.session_name:
+            self._save_session_metadata()
+        _release_memory()
+        output_fn(
+            f"Reset table '{table_name}' to initial state ({restored_df.shape[0]:,} rows x {restored_df.shape[1]} cols)."
+        )
 
     def _reset_to_initial(
         self, output_fn: Callable[[str], None], is_explicit_initial: bool = False
@@ -47602,12 +47718,16 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     # 3. Test disallowed 'reset orig' and 'reset bad'
     outputs.clear()
     r.execute_line("reset orig", output_fn=outputs.append)
-    assert outputs[-1] == "pytae: 'reset orig' is not recognized; use 'reset' or 'reset initial'."
+    assert outputs[-1] == "pytae: table 'orig' not found. Available: df1, df2"
     assert "flag" in r.tables["df1"].columns  # State preserved
 
     outputs.clear()
     r.execute_line("reset foo", output_fn=outputs.append)
-    assert outputs[-1] == "pytae: 'reset foo' is not recognized; use 'reset' or 'reset initial'."
+    assert outputs[-1] == "pytae: table 'foo' not found. Available: df1, df2"
+
+    outputs.clear()
+    r.execute_line("reset df1 df2 foo", output_fn=outputs.append)
+    assert outputs[-1] == "Usage: reset [table_name] [initial]"
 
     # 4. Bare 'reset' must revert to latest checkpoint 'v1'
     outputs.clear()
@@ -47627,6 +47747,77 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     assert r.tables["df1"].shape == orig_shape
     assert len(r.undo_stack) == 0
     assert len(r.redo_stack) == 0
+
+    r.close()
+
+
+def test_repl_reset_single_table_does_not_affect_other_tables():
+    outputs = []
+    r = PytaeRepl()
+    # 1. Load two separate sample datasets
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    orig_df1_shape = r.tables["df1"].shape
+    orig_df2_shape = r.tables["df2"].shape
+
+    # 2. Filter both tables to distinct smaller subsets
+    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    df1_gentoo_shape = r.tables["df1"].shape
+    assert df1_gentoo_shape[0] < orig_df1_shape[0]
+
+    r.execute_line("use df2", output_fn=outputs.append)
+    r.execute_line('-filter "tip > 5"', output_fn=outputs.append)
+    df2_tip5_shape = r.tables["df2"].shape
+    assert df2_tip5_shape[0] < orig_df2_shape[0]
+
+    # Verify both tables are in filtered state
+    assert r.tables["df1"].shape == df1_gentoo_shape
+    assert r.tables["df2"].shape == df2_tip5_shape
+
+    # 3. reset df1 without checkpoints: resets ONLY df1 to initial, df2 remains filtered
+    outputs.clear()
+    r.execute_line("reset df1", output_fn=outputs.append)
+    assert any("Reset table 'df1' to initial state" in o for o in outputs)
+    assert r.tables["df1"].shape == orig_df1_shape
+    assert r.tables["df2"].shape == df2_tip5_shape  # df2 is untouched!
+
+    # 4. Now filter df1 again and create a checkpoint 'v1'
+    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line('-filter "species == \'Chinstrap\'"', output_fn=outputs.append)
+    df1_chin_shape = r.tables["df1"].shape
+    r.execute_line("checkpoint v1", output_fn=outputs.append)
+
+    # Further modify both df1 and df2
+    r.execute_line('df1 -mutate "flag = 1"', output_fn=outputs.append)
+    r.execute_line('df2 -mutate "extra = 2"', output_fn=outputs.append)
+    assert "flag" in r.tables["df1"].columns
+    assert "extra" in r.tables["df2"].columns
+
+    # 5. reset df1: restores df1 to latest checkpoint v1 (flag dropped, Chinstrap shape)
+    # while df2 STILL has 'extra' column and tip5 shape!
+    outputs.clear()
+    r.execute_line("reset df1", output_fn=outputs.append)
+    assert any("Reset table 'df1' to latest checkpoint 'v1'" in o for o in outputs)
+    assert "flag" not in r.tables["df1"].columns
+    assert r.tables["df1"].shape == df1_chin_shape
+    assert "extra" in r.tables["df2"].columns  # df2 untouched!
+    assert r.tables["df2"].shape[0] == df2_tip5_shape[0]
+
+    # 6. reset df1 initial: restores df1 all the way to original initial penguins
+    outputs.clear()
+    r.execute_line("reset df1 initial", output_fn=outputs.append)
+    assert any("Reset table 'df1' to initial state" in o for o in outputs)
+    assert r.tables["df1"].shape == orig_df1_shape
+    assert "extra" in r.tables["df2"].columns  # df2 still untouched!
+
+    # 7. Bare reset: reverts ALL tables to checkpoint 'v1'
+    outputs.clear()
+    r.execute_line("reset", output_fn=outputs.append)
+    assert any("Reset to latest checkpoint 'v1'" in o for o in outputs)
+    assert r.tables["df1"].shape == df1_chin_shape
+    assert "extra" not in r.tables["df2"].columns
+    assert r.tables["df2"].shape == df2_tip5_shape
 
     r.close()
 
@@ -47913,6 +48104,59 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     assert "Process RAM" in outputs[-1]
 
     r.close()
+
+
+def test_repl_sample_does_not_modify_original_df():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    orig_shape = r.tables["df1"].shape
+    assert orig_shape == (344, 7)
+
+    # 1. Active table -sample (like -head) must preview rows without modifying df1
+    outputs.clear()
+    r.execute_line("-sample 5", output_fn=outputs.append)
+    assert r.tables["df1"].shape == orig_shape
+    assert r.current_df.shape == orig_shape
+    assert not any("-> df1:" in o for o in outputs)
+    assert any("Adelie" in o or "Gentoo" in o or "Chinstrap" in o for o in outputs)
+
+    # 2. Targeted df1 -sample 10 must preview rows without modifying df1
+    outputs.clear()
+    r.execute_line("df1 -sample 10", output_fn=outputs.append)
+    assert r.tables["df1"].shape == orig_shape
+    assert r.current_df.shape == orig_shape
+
+    # 3. Targeted df1 -sample with float fraction
+    outputs.clear()
+    r.execute_line("df1 -sample 0.1", output_fn=outputs.append)
+    assert r.tables["df1"].shape == orig_shape
+
+    # 4. Bare sample warning
+    outputs.clear()
+    r.execute_line("sample 5", output_fn=outputs.append)
+    assert "bare 'sample' is not recognized; use '-sample'" in outputs[-1]
+    assert r.tables["df1"].shape == orig_shape
+
+    r.close()
+
+
+def test_cli_rejects_dash_s_and_accepts_session(tmp_path, monkeypatch, capsys):
+    sess_dir = tmp_path / "sessions"
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+
+    # Test pytae -s is rejected
+    with pytest.raises(SystemExit):
+        cli.main(["-s", "analysis"])
+    captured_err = capsys.readouterr()
+    assert "'-s' is not recognized; use '-session <name>' instead" in captured_err.err
+
+    # Test pytae -session is recognized and accepted
+    # Using -h alongside -session exits cleanly before entering REPL loop
+    with pytest.raises(SystemExit):
+        cli.main(["-session", "analysis", "-h"])
+    captured_out = capsys.readouterr()
+    assert "persistent REPL session name" in captured_out.out
 
 ################################################################################
 # FILE: tests/test_select.py

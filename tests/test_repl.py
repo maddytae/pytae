@@ -1473,12 +1473,16 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     # 3. Test disallowed 'reset orig' and 'reset bad'
     outputs.clear()
     r.execute_line("reset orig", output_fn=outputs.append)
-    assert outputs[-1] == "pytae: 'reset orig' is not recognized; use 'reset' or 'reset initial'."
+    assert outputs[-1] == "pytae: table 'orig' not found. Available: df1, df2"
     assert "flag" in r.tables["df1"].columns  # State preserved
 
     outputs.clear()
     r.execute_line("reset foo", output_fn=outputs.append)
-    assert outputs[-1] == "pytae: 'reset foo' is not recognized; use 'reset' or 'reset initial'."
+    assert outputs[-1] == "pytae: table 'foo' not found. Available: df1, df2"
+
+    outputs.clear()
+    r.execute_line("reset df1 df2 foo", output_fn=outputs.append)
+    assert outputs[-1] == "Usage: reset [table_name] [initial]"
 
     # 4. Bare 'reset' must revert to latest checkpoint 'v1'
     outputs.clear()
@@ -1498,6 +1502,77 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     assert r.tables["df1"].shape == orig_shape
     assert len(r.undo_stack) == 0
     assert len(r.redo_stack) == 0
+
+    r.close()
+
+
+def test_repl_reset_single_table_does_not_affect_other_tables():
+    outputs = []
+    r = PytaeRepl()
+    # 1. Load two separate sample datasets
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    orig_df1_shape = r.tables["df1"].shape
+    orig_df2_shape = r.tables["df2"].shape
+
+    # 2. Filter both tables to distinct smaller subsets
+    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    df1_gentoo_shape = r.tables["df1"].shape
+    assert df1_gentoo_shape[0] < orig_df1_shape[0]
+
+    r.execute_line("use df2", output_fn=outputs.append)
+    r.execute_line('-filter "tip > 5"', output_fn=outputs.append)
+    df2_tip5_shape = r.tables["df2"].shape
+    assert df2_tip5_shape[0] < orig_df2_shape[0]
+
+    # Verify both tables are in filtered state
+    assert r.tables["df1"].shape == df1_gentoo_shape
+    assert r.tables["df2"].shape == df2_tip5_shape
+
+    # 3. reset df1 without checkpoints: resets ONLY df1 to initial, df2 remains filtered
+    outputs.clear()
+    r.execute_line("reset df1", output_fn=outputs.append)
+    assert any("Reset table 'df1' to initial state" in o for o in outputs)
+    assert r.tables["df1"].shape == orig_df1_shape
+    assert r.tables["df2"].shape == df2_tip5_shape  # df2 is untouched!
+
+    # 4. Now filter df1 again and create a checkpoint 'v1'
+    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line('-filter "species == \'Chinstrap\'"', output_fn=outputs.append)
+    df1_chin_shape = r.tables["df1"].shape
+    r.execute_line("checkpoint v1", output_fn=outputs.append)
+
+    # Further modify both df1 and df2
+    r.execute_line('df1 -mutate "flag = 1"', output_fn=outputs.append)
+    r.execute_line('df2 -mutate "extra = 2"', output_fn=outputs.append)
+    assert "flag" in r.tables["df1"].columns
+    assert "extra" in r.tables["df2"].columns
+
+    # 5. reset df1: restores df1 to latest checkpoint v1 (flag dropped, Chinstrap shape)
+    # while df2 STILL has 'extra' column and tip5 shape!
+    outputs.clear()
+    r.execute_line("reset df1", output_fn=outputs.append)
+    assert any("Reset table 'df1' to latest checkpoint 'v1'" in o for o in outputs)
+    assert "flag" not in r.tables["df1"].columns
+    assert r.tables["df1"].shape == df1_chin_shape
+    assert "extra" in r.tables["df2"].columns  # df2 untouched!
+    assert r.tables["df2"].shape[0] == df2_tip5_shape[0]
+
+    # 6. reset df1 initial: restores df1 all the way to original initial penguins
+    outputs.clear()
+    r.execute_line("reset df1 initial", output_fn=outputs.append)
+    assert any("Reset table 'df1' to initial state" in o for o in outputs)
+    assert r.tables["df1"].shape == orig_df1_shape
+    assert "extra" in r.tables["df2"].columns  # df2 still untouched!
+
+    # 7. Bare reset: reverts ALL tables to checkpoint 'v1'
+    outputs.clear()
+    r.execute_line("reset", output_fn=outputs.append)
+    assert any("Reset to latest checkpoint 'v1'" in o for o in outputs)
+    assert r.tables["df1"].shape == df1_chin_shape
+    assert "extra" not in r.tables["df2"].columns
+    assert r.tables["df2"].shape == df2_tip5_shape
 
     r.close()
 

@@ -169,19 +169,29 @@ pytae> -describe
 
 ### Session State, Reset Hierarchy, and Rollback
 
-* **`reset`**: Reverts the session to the **latest saved checkpoint**. If no checkpoints exist in the session, it falls back to the original dataset state as loaded from disk. Active RAM is strictly isolated, post-checkpoint tables are purged, undo/redo history is cleared, and garbage collection runs immediately:
+* **`reset`**: Reverts the session to the **latest saved checkpoint**. If no checkpoints exist in the session, it falls back to the original dataset state as loaded from disk. Bare `reset` resets **all tables** across the workbench. Active RAM is strictly isolated, post-checkpoint tables are purged, undo/redo history is cleared, and garbage collection runs immediately:
   ```text
   pytae [df1, df2, df3]> reset
   Restored checkpoint 'maddy' (2 tables: df1, df2; active: df2).
   ```
-* **`reset initial`**: Strictly reverts the entire session back to the initial dataset read state, even when intermediate checkpoints exist:
+* **`reset <table_name>`**: Resets **only the specified table** (e.g., `reset df1`) to its state in the latest checkpoint (or initial file read if no checkpoint exists), leaving all other tables completely untouched:
+  ```text
+  pytae [df1, df2]> reset df1
+  Reset table 'df1' to latest checkpoint 'v1'.
+  ```
+* **`reset <table_name> initial`**: Strictly reverts the specified table back to its initial file read state without touching any other tables in the session:
+  ```text
+  pytae [df1, df2]> reset df1 initial
+  Reset table 'df1' to initial state (344 rows x 7 cols).
+  ```
+* **`reset initial`**: Strictly reverts **all tables** across the entire session back to the initial dataset read state, even when intermediate checkpoints exist:
   ```text
   pytae [df1, df2]> reset initial
-  Restored initial dataset state (1 table: df1). Active shape: (344, 7)
+  Restored initial dataset. Active shape: (344, 7)
   ```
   > [!NOTE]
-  > Unrecognized sub-arguments (such as `reset orig`) are rejected:
-  > `pytae: 'reset orig' is not recognized; use 'reset' or 'reset initial'.`
+  > Unrecognized table names are rejected:
+  > `pytae: table 'orig' not found. Available: df1, df2`
 
 * **`undo` & `redo`**: Step backward and forward through your transformation stack:
   ```text
@@ -526,8 +536,10 @@ pytae> -o clip
 | **`help`** | `help` | Display formatted help manual | No |
 | **`clear`** | `clear` | Clear the terminal screen | No |
 | **`status`** | `status` | Show active dataset name, shape, memory, undo stack depth | No |
-| **`reset`** | `reset` | Revert to latest checkpoint (or initial dataset read if no checkpoints exist) | **Yes** (undoable) |
-| **`reset initial`** | `reset initial` | Revert session strictly to initial dataset read (bypassing checkpoints) | **Yes** (undoable) |
+| **`reset`** | `reset` | Revert all tables across workbench to latest checkpoint (or initial dataset read if no checkpoints exist) | **Yes** (clears undo) |
+| **`reset <table_name>`** | `reset <table_name>` | Revert only the specified table to latest checkpoint (or initial read) without affecting other tables | **Yes** (clears undo) |
+| **`reset <table_name> initial`** | `reset <table_name> initial` | Revert only the specified table strictly to initial read without affecting other tables | **Yes** (clears undo) |
+| **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
 | **`history`** | `history` | List numbered history of applied transformation steps and checkpoint banners | No |

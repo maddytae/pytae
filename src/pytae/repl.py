@@ -915,6 +915,40 @@ class PytaeRepl:
                 return snap["current_df"]
         return None
 
+    def _get_checkpoint_table_df(self, cp_name: str, table_name: str) -> pl.DataFrame | None:
+        """Retrieve a specific table's DataFrame from a named checkpoint."""
+        if cp_name not in self.checkpoints:
+            return None
+        snap = self.checkpoints[cp_name]
+        if isinstance(snap, pl.DataFrame):
+            return snap if table_name in ("df", "_current_df") else None
+        if isinstance(snap, dict):
+            if "dir" in snap:
+                cp_dir = Path(snap["dir"])
+                meta_file = cp_dir / "meta.json"
+                meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else snap
+                tbl_meta = meta.get("tables", {})
+                for k, tbl_info in tbl_meta.items():
+                    if k == table_name or k.lower() == table_name.lower() or Path(k).stem.lower() == table_name.lower():
+                        f_name = (
+                            tbl_info.get("file", _safe_ipc_filename(k))
+                            if isinstance(tbl_info, dict)
+                            else _safe_ipc_filename(k)
+                        )
+                        ipc_p = cp_dir / f_name
+                        if ipc_p.exists():
+                            return pl.read_ipc(ipc_p)
+                if "_current_df" in tbl_meta and (len(tbl_meta) == 1 or meta.get("active_table") == table_name):
+                    ipc_p = cp_dir / "_current_df.ipc"
+                    if ipc_p.exists():
+                        return pl.read_ipc(ipc_p)
+                return None
+            tbls = snap.get("tables", {})
+            for k, val in tbls.items():
+                if k == table_name or k.lower() == table_name.lower() or Path(k).stem.lower() == table_name.lower():
+                    return val.clone() if hasattr(val, "clone") else val
+        return None
+
     def close(self) -> None:
         """Clean up temporary checkpoint disk storage and release all in-memory tables."""
         if self.session_name is None:
@@ -1882,28 +1916,98 @@ class PytaeRepl:
         output_fn(f"Columns ({n_cols}): {', '.join(self.current_df.columns[:10])}{'...' if n_cols > 10 else ''}")
 
     def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        if len(args) > 1:
-            output_fn("pytae: 'reset' accepts at most one argument ('initial').")
-            return
-        if len(args) == 1:
-            sub = args[0].lower()
-            if sub == "initial":
-                self._reset_to_initial(output_fn, is_explicit_initial=True)
+        if not args:
+            # Bare 'reset': Reverts all tables to latest checkpoint if any exist; otherwise reverts to initial file read
+            if self.checkpoints:
+                latest_cp = list(self.checkpoints.keys())[-1]
+                self._cmd_restore(latest_cp, output_fn, record_history=False)
+                self.history.append(f"reset [reverted to checkpoint: {latest_cp}]")
+                output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
+                if self.session_name:
+                    self._save_session_metadata()
                 return
-            output_fn(f"pytae: 'reset {args[0]}' is not recognized; use 'reset' or 'reset initial'.")
+
+            self._reset_to_initial(output_fn, is_explicit_initial=False)
             return
 
-        # Bare 'reset': Reverts to latest checkpoint if any exist; otherwise reverts to initial file read
-        if self.checkpoints:
+        is_explicit_initial = any(a.lower() == "initial" for a in args)
+        target_args = [a for a in args if a.lower() != "initial"]
+
+        if not target_args:
+            # `reset initial`: resets all tables strictly to initial file read
+            self._reset_to_initial(output_fn, is_explicit_initial=True)
+            return
+
+        if len(target_args) > 1:
+            output_fn("Usage: reset [table_name] [initial]")
+            return
+
+        target_name = target_args[0]
+        resolved = self._resolve_table_name(target_name)
+        if resolved is None:
+            if target_name in self.initial_tables or target_name in self.orig_tables:
+                resolved = target_name
+            else:
+                avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                output_fn(f"pytae: table '{target_name}' not found. Available: {avail}")
+                return
+
+        self._reset_single_table(resolved, output_fn, is_explicit_initial=is_explicit_initial)
+
+    def _reset_single_table(
+        self, table_name: str, output_fn: Callable[[str], None], is_explicit_initial: bool = False
+    ) -> None:
+        """Reset a single table to its checkpoint state or initial file read without touching any other tables."""
+        # 1. If not explicit initial and checkpoints exist, revert to state in latest checkpoint
+        if not is_explicit_initial and self.checkpoints:
             latest_cp = list(self.checkpoints.keys())[-1]
-            self._cmd_restore(latest_cp, output_fn, record_history=False)
-            self.history.append(f"reset [reverted to checkpoint: {latest_cp}]")
-            output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
-            if self.session_name:
-                self._save_session_metadata()
+            cp_df = self._get_checkpoint_table_df(latest_cp, table_name)
+            if cp_df is not None:
+                self.tables[table_name] = cp_df
+                if self.path_str == table_name or self.current_df is None:
+                    self.path_str = table_name
+                    self.current_df = cp_df
+                    self.orig_df = cp_df
+                self.undo_stack.clear()
+                self.redo_stack.clear()
+                self.history.append(f"reset {table_name} [reverted to checkpoint: {latest_cp}]")
+                if self.session_name:
+                    self._save_session_metadata()
+                _release_memory()
+                output_fn(f"Reset table '{table_name}' to latest checkpoint '{latest_cp}'.")
+                return
+
+        # 2. Revert strictly to initial/original file read state
+        orig_df = self.initial_tables.get(table_name)
+        if orig_df is None:
+            orig_df = self.orig_tables.get(table_name)
+
+        if orig_df is None:
+            output_fn(f"pytae: no original state found for table '{table_name}'.")
             return
 
-        self._reset_to_initial(output_fn, is_explicit_initial=False)
+        restored_df = orig_df.clone() if hasattr(orig_df, "clone") else orig_df
+        self.tables[table_name] = restored_df
+        if table_name in self.orig_tables:
+            self.orig_tables[table_name] = restored_df
+        if table_name in self.initial_tables:
+            self.initial_tables[table_name] = restored_df
+
+        if self.path_str == table_name or self.current_df is None:
+            self.path_str = table_name
+            self.current_df = restored_df
+            self.orig_df = restored_df
+            self.initial_df = restored_df
+
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        self.history.append(f"reset {table_name} [reverted to initial read]")
+        if self.session_name:
+            self._save_session_metadata()
+        _release_memory()
+        output_fn(
+            f"Reset table '{table_name}' to initial state ({restored_df.shape[0]:,} rows x {restored_df.shape[1]} cols)."
+        )
 
     def _reset_to_initial(
         self, output_fn: Callable[[str], None], is_explicit_initial: bool = False
