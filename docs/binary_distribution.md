@@ -28,7 +28,6 @@ Download the pre-compiled binary for your operating system from the [Releases](h
 |---|---|---|
 | **Windows** | x86_64 (64-bit) | `pytae-windows-x64.zip` (Pre-extracted fast folder bundle) |
 | **macOS** | Apple Silicon (M1/M2/M3/M4) | `pytae-macos-arm64` |
-| **macOS** | Intel x86_64 | `pytae-macos-x86_64` |
 | **Linux** | x86_64 (64-bit) | `pytae-linux-x86_64` |
 
 ### Running on Windows

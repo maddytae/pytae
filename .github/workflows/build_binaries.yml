@@ -29,11 +29,6 @@ jobs:
             binary_name: pytae-macos-arm64
             is_windows: false
 
-          - os: macos-13
-            target: macos-x86_64
-            binary_name: pytae-macos-x86_64
-            is_windows: false
-
           - os: windows-latest
             target: windows-x64
             binary_name: pytae-windows-x64.zip
