@@ -2,6 +2,8 @@ name: Build Standalone Binaries
 
 on:
   push:
+    branches:
+      - feature/binary
     tags:
       - "v*"
   workflow_dispatch:
@@ -68,10 +70,11 @@ jobs:
 
       - name: Smoke test binary (Windows)
         if: matrix.is_windows
+        shell: cmd
         run: |
-          .\dist\${{ matrix.binary_name }} -h
-          .\dist\${{ matrix.binary_name }} sample:penguins -shape
-          .\dist\${{ matrix.binary_name }} sample:penguins -filter "species == 'Gentoo'" -shape
+          dist\${{ matrix.binary_name }} -h
+          dist\${{ matrix.binary_name }} sample:penguins -shape
+          dist\${{ matrix.binary_name }} sample:penguins -filter "species == 'Gentoo'" -shape
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4

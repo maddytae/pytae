@@ -98,6 +98,13 @@ def build(output_name: str | None = None, is_release: bool = False, strip: bool 
     except ImportError:
         pass
 
+    if is_windows:
+        try:
+            import pyreadline3  # noqa: F401
+            pyinstaller_args.extend(["--collect-all", "pyreadline3"])
+        except ImportError:
+            pass
+
     # Apply symbol stripping on Unix to reduce binary footprint
     if strip and not is_windows:
         pyinstaller_args.append("--strip")
