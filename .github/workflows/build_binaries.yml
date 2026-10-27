@@ -1,0 +1,103 @@
+name: Build Standalone Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+            binary_name: pytae-linux-x86_64
+            is_windows: false
+
+          - os: macos-14
+            target: macos-arm64
+            binary_name: pytae-macos-arm64
+            is_windows: false
+
+          - os: macos-13
+            target: macos-x86_64
+            binary_name: pytae-macos-x86_64
+            is_windows: false
+
+          - os: windows-latest
+            target: windows-x64
+            binary_name: pytae-windows-x64.exe
+            is_windows: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+          pip install pyinstaller
+
+      - name: Build standalone binary
+        run: |
+          python scripts/build_binary.py --release-name
+
+      - name: Smoke test binary (Unix)
+        if: "!matrix.is_windows"
+        run: |
+          chmod +x dist/${{ matrix.binary_name }}
+          ./dist/${{ matrix.binary_name }} -h
+          ./dist/${{ matrix.binary_name }} sample:penguins -shape
+          ./dist/${{ matrix.binary_name }} sample:penguins -filter "species == 'Gentoo'" -shape
+
+      - name: Smoke test binary (Windows)
+        if: matrix.is_windows
+        run: |
+          .\dist\${{ matrix.binary_name }} -h
+          .\dist\${{ matrix.binary_name }} sample:penguins -shape
+          .\dist\${{ matrix.binary_name }} sample:penguins -filter "species == 'Gentoo'" -shape
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary_name }}
+          path: dist/${{ matrix.binary_name }}
+          if-no-files-found: error
+
+  release:
+    name: Publish Binaries to GitHub Release
+    needs: build-binaries
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Display downloaded release assets
+        run: ls -lh release-assets/
+
+      - name: Attach binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
