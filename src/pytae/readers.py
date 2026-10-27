@@ -134,7 +134,7 @@ class ParquetReader:
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
 
-        return pl.read_parquet(self.path, columns=columns, n_rows=nrows)
+        return pl.read_parquet(self.path, columns=columns, n_rows=nrows, memory_map=False)
 
     def to_polars_lazy(self, columns: list[str] | None = None):
         import polars as pl
@@ -1176,6 +1176,7 @@ def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
+    kwargs.setdefault("memory_map", False)
     return DataFrame(pl.read_parquet(source, *args, **kwargs))
 
 

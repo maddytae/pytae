@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+
+# Configure mimalloc / memory allocators before ANY C-extension or Polars import
+os.environ.setdefault("MIMALLOC_PURGE_DELAY", "0")
+os.environ.setdefault("MIMALLOC_RESET_DECOMMIT", "1")
+os.environ.setdefault("_RJEM_MALLOC_CONF", "muzzy_decay_ms:0,dirty_decay_ms:0")
+
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version

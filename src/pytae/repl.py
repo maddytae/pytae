@@ -36,10 +36,29 @@ def _release_memory() -> None:
     if sys.platform == "win32":
         try:
             import ctypes
+            from ctypes import wintypes
 
-            # EmptyWorkingSet tells the Windows kernel to reclaim all unreferenced memory pages from the process working set
-            handle = ctypes.windll.kernel32.GetCurrentProcess()
-            ctypes.windll.psapi.EmptyWorkingSet(handle)
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            h_process = kernel32.GetCurrentProcess()
+
+            # 1. SetProcessWorkingSetSize(h_process, (SIZE_T)-1, (SIZE_T)-1)
+            # Tells the Windows memory manager to trim all unreferenced pages from working set back to the OS
+            c_size_t = ctypes.c_size_t
+            kernel32.SetProcessWorkingSetSize.argtypes = [wintypes.HANDLE, c_size_t, c_size_t]
+            kernel32.SetProcessWorkingSetSize.restype = wintypes.BOOL
+            flg = c_size_t(-1).value
+            kernel32.SetProcessWorkingSetSize(h_process, flg, flg)
+
+            # 2. K32EmptyWorkingSet / psapi.EmptyWorkingSet
+            try:
+                empty_ws = kernel32.K32EmptyWorkingSet
+            except AttributeError:
+                psapi = ctypes.WinDLL("psapi", use_last_error=True)
+                empty_ws = psapi.EmptyWorkingSet
+            empty_ws.argtypes = [wintypes.HANDLE]
+            empty_ws.restype = wintypes.BOOL
+            empty_ws(h_process)
         except Exception:
             pass
     elif sys.platform == "linux":
@@ -50,6 +69,71 @@ def _release_memory() -> None:
             libc.malloc_trim(0)
         except Exception:
             pass
+
+
+def _get_process_rss_mb() -> float | None:
+    """Return the current process RSS / Working Set size in megabytes."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            h_process = kernel32.GetCurrentProcess()
+
+            try:
+                get_mem_info = kernel32.K32GetProcessMemoryInfo
+            except AttributeError:
+                psapi = ctypes.WinDLL("psapi", use_last_error=True)
+                get_mem_info = psapi.GetProcessMemoryInfo
+
+            get_mem_info.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+                wintypes.DWORD,
+            ]
+            get_mem_info.restype = wintypes.BOOL
+
+            counters = PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+            if get_mem_info(h_process, ctypes.byref(counters), counters.cb):
+                return counters.WorkingSetSize / (1024 * 1024)
+        except Exception:
+            pass
+    elif sys.platform == "linux":
+        try:
+            with open("/proc/self/status", "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            return float(parts[1]) / 1024.0
+        except Exception:
+            pass
+    elif sys.platform == "darwin":
+        try:
+            import resource
+
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            return usage.ru_maxrss / (1024 * 1024)
+        except Exception:
+            pass
+    return None
 
 
 _DEFAULT_SESSIONS_DIR = Path.home() / ".pytae" / "sessions"
@@ -1334,7 +1418,11 @@ class PytaeRepl:
         # Force immediate OS memory release: `gc` or `free`
         if first_lower in ("gc", "free"):
             _release_memory()
-            output_fn("Memory released to operating system.")
+            rss = _get_process_rss_mb()
+            if rss is not None:
+                output_fn(f"Memory released to operating system. Process RAM: ~{rss:.1f} MB (PID {os.getpid()}).")
+            else:
+                output_fn(f"Memory released to operating system (PID {os.getpid()}).")
             return True
 
         # Remove table or checkpoint: `rm <table_name>` or `rm checkpoint <name>`
@@ -1775,14 +1863,20 @@ class PytaeRepl:
             output_fn("\033[H\033[2J")
 
     def _cmd_status(self, output_fn: Callable[[str], None]) -> None:
+        rss = _get_process_rss_mb()
+        rss_str = f"~{rss:.1f} MB (PID {os.getpid()})" if rss is not None else f"PID {os.getpid()}"
         if self.current_df is None:
             output_fn("No dataset loaded. Use '<var> = <path.parquet>' to load a table.")
+            output_fn(f"Process RAM   : {rss_str}")
+            if self.checkpoints:
+                output_fn(f"Checkpoints   : {len(self.checkpoints)} saved ({', '.join(self.checkpoints.keys())})")
             return
         n_rows, n_cols = self.current_df.shape
         mem_mb = self.current_df.estimated_size() / (1024 * 1024)
         output_fn(f"Active dataset: {self.path_str or '<memory>'}")
         output_fn(f"Shape         : {n_rows:,} rows x {n_cols} columns")
-        output_fn(f"Memory        : ~{mem_mb:.2f} MB")
+        output_fn(f"Active table  : ~{mem_mb:.2f} MB")
+        output_fn(f"Process RAM   : {rss_str}")
         output_fn(f"Undo steps    : {len(self.undo_stack)} available")
         output_fn(f"Checkpoints   : {len(self.checkpoints)} saved")
         output_fn(f"Columns ({n_cols}): {', '.join(self.current_df.columns[:10])}{'...' if n_cols > 10 else ''}")

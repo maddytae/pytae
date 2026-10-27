@@ -1765,14 +1765,23 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     assert r.orig_df is None
     assert r.initial_df is None
 
+    # Test status command with no tables loaded
+    outputs.clear()
+    r.execute_line("status", output_fn=outputs.append)
+    status_text = "\n".join(outputs)
+    assert "No dataset loaded." in status_text
+    assert "Process RAM" in status_text
+
     # Test explicit 'gc' and 'free' commands
     outputs.clear()
     r.execute_line("gc", output_fn=outputs.append)
     assert "Memory released to operating system." in outputs[-1]
+    assert "Process RAM" in outputs[-1]
 
     outputs.clear()
     r.execute_line("free", output_fn=outputs.append)
     assert "Memory released to operating system." in outputs[-1]
+    assert "Process RAM" in outputs[-1]
 
     r.close()
 
