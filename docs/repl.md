@@ -379,15 +379,10 @@ Removed table 'orders.parquet'. Switched active dataset to 'customers.parquet'.
 # Remove all loaded tables at once:
 pytae [df1, df2]> rm *
 Removed all 2 loaded tables. No tables remain loaded.
-
-# Undo immediately restores the removed tables to session memory:
-pytae> undo
-Undid: rm *. Active shape: (10,000, 4)
-pytae [df1, df2]>
 ```
 
 > [!TIP]
-> **Zero-RAM Retention on `rm` (Disk-Spilled Undo)**: When you remove tables (`rm <name>` or `rm *`), Pytae spills the undo snapshot to temporary Arrow IPC files on disk and clears all in-memory references (`tables`, `orig_tables`, `initial_tables`, and `redo_stack`). Active RAM is reclaimed immediately via garbage collection. If you invoke `undo`, Pytae reads the tables back from disk on-demand. Additionally, the undo history is bounded to a sliding window of 10 steps to prevent long transformation pipelines from accumulating memory.
+> **Immediate Memory Release (`rm`)**: `rm <name>` and `rm *` immediately drop tables from memory and perform garbage collection with zero disk overhead. Table removal is non-undoable to ensure multi-gigabyte datasets are instantly purged without filling disk space with redundant serialization dumps. If you want a recovery snapshot before dropping tables, save a checkpoint first (`checkpoint <name>`), which can be restored anytime with `restore <name>` or `reset`. Additionally, transformation undo history is bounded to a sliding window of 10 steps to prevent long pipelines from accumulating memory.
 
 ### Subject-First Execution
 
@@ -546,7 +541,7 @@ pytae> -o clip
 | **`session load`**| `session load <name>` | Switch to persistent session and restore its latest checkpoint | **Yes** (undoable) |
 | **`sessions`** | `sessions` | List all persistent sessions saved on disk | No |
 | **`rm session`**| `rm session <name>` | Remove a named persistent session directory from disk | No |
-| **`rm`** | `rm <table_name>`, `rm df`, `rm *` | Remove table or active dataset from memory (auto-switches cursor) | **Yes** (undoable) |
+| **`rm`** | `rm <table_name>`, `rm df`, `rm *` | Remove table or active dataset from memory (releases RAM immediately) | No (use `checkpoint` for snapshots) |
 | **`<var> = <file>`** | `df1 = orders.parquet [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Ingest dataset into a named table with reader options | **Yes** |
 | **`load`** | `load <file> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]` | Load dataset with alias and reader options | **Yes** |
 | **`tables`** | `tables` | List all loaded tables in memory | No |

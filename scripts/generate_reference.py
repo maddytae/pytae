@@ -1363,6 +1363,8 @@ Removed all tables from memory.
 │   ├── comparison_to_dplyr.md
 │   ├── comparison_to_pandas.md
 │   ├── comparison_to_sas.md
+│   ├── pytae.md
+│   ├── repl.md
 │   ├── detailed_docs
 │   │   ├── cli
 │   │   │   ├── agg.md
@@ -1381,7 +1383,6 @@ Removed all tables from memory.
 │   │   │   ├── other_utilities.md
 │   │   │   ├── pivot.md
 │   │   │   ├── read_write.md
-│   │   │   ├── repl.md
 │   │   │   ├── reshape.md
 │   │   │   ├── select.md
 │   │   │   └── sql.md
@@ -1594,6 +1595,16 @@ def generate_reference() -> None:
         parts.append(f"# FILE: {cheatsheet_md.relative_to(REPO_ROOT)}")
         parts.append("################################################################################")
         parts.append(cheatsheet_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    repl_md = REPO_ROOT / "docs" / "repl.md"
+    if repl_md.exists():
+        parts.append("================================================================================")
+        parts.append("INTERACTIVE REPL SHELL GUIDE (docs/repl.md)")
+        parts.append("================================================================================\n")
+        parts.append("################################################################################")
+        parts.append(f"# FILE: {repl_md.relative_to(REPO_ROOT)}")
+        parts.append("################################################################################")
+        parts.append(repl_md.read_text(encoding="utf-8").rstrip() + "\n")
 
     # Section 10: Ecosystem Comparisons & Migration Guides (Pandas, dplyr, SAS)
     parts.append("================================================================================")

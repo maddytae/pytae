@@ -868,14 +868,13 @@ def test_repl_rm_table(sample_df):
     assert r.path_str == "df2"
     assert "Removed table 'df1'. Switched active dataset to 'df2'." in outputs[-1]
 
-    # Undo restores df1
+    # rm is non-undoable to ensure immediate RAM release without disk overhead
     outputs.clear()
     r.execute_line("undo", output_fn=outputs.append)
-    assert "df1" in r.tables
-    assert "Undid:" in outputs[-1]
+    assert "Nothing to undo." in outputs[-1]
+    assert "df1" not in r.tables
 
     # Remove last table
-    r.execute_line("rm df1", output_fn=outputs.append)
     r.execute_line("rm df2", output_fn=outputs.append)
     assert len(r.tables) == 0
     assert r.current_df is None
@@ -1036,11 +1035,11 @@ def test_repl_rm_df_with_loaded_file(sample_parquet):
     assert r.path_str is None
     assert "penguins_sample.parquet" not in r.tables
 
-    # Undo restores the table
+    # rm is non-undoable
+    outputs.clear()
     r.execute_line("undo", output_fn=outputs.append)
-    assert r.current_df is not None
-    assert "penguins_sample.parquet" in r.tables
-    assert r.path_str == "penguins_sample.parquet"
+    assert "Nothing to undo." in outputs[-1]
+    assert r.current_df is None
 
 
 def test_repl_rm_df_in_memory(sample_df):
@@ -1054,10 +1053,12 @@ def test_repl_rm_df_in_memory(sample_df):
     assert r.current_df is None
     assert not r.tables
 
-    # Undo restores
+    # rm is non-undoable
+    outputs.clear()
     r.execute_line("undo", output_fn=outputs.append)
-    assert r.current_df is not None
-    assert "<memory>" in r.tables
+    assert "Nothing to undo." in outputs[-1]
+    assert r.current_df is None
+    assert not r.tables
 
 
 def test_repl_rm_stem_matching(sample_parquet):
@@ -1114,9 +1115,11 @@ def test_repl_rm_all_tables(sample_df, tmp_path):
     assert not r.tables
     assert r.current_df is None
 
-    # Undo restores both tables
+    # rm is non-undoable
+    outputs.clear()
     r.execute_line("undo", output_fn=outputs.append)
-    assert len(r.tables) == 2
+    assert "Nothing to undo." in outputs[-1]
+    assert not r.tables
 
 
 def test_repl_table_resolution_targeted_and_use(sample_parquet):
@@ -1636,17 +1639,22 @@ def test_cli_session_flags(tmp_path, monkeypatch, capsys):
     assert "uses double hyphens; pytae uses single hyphen '-sessions'" in captured_err.err
 
 
-def test_repl_rm_releases_ram_and_spills_undo_to_disk():
+def test_repl_rm_releases_ram_immediately_without_disk_spill():
     outputs = []
     r = PytaeRepl()
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     orig_shape = r.tables["df1"].shape
 
+    # Save checkpoint before rm
+    r.execute_line("checkpoint abc", output_fn=outputs.append)
+    cp_dir = Path(r.checkpoints["abc"]["dir"])
+    cp_file_count_before = len(list(cp_dir.glob("*.ipc")))
+
     # Pre-populate redo stack to verify rm clears it
     r.redo_stack.append(("fake_redo", pl.DataFrame({"a": [1, 2, 3]})))
     assert len(r.redo_stack) == 1
 
-    # Remove table: must spill undo snapshot to disk IPC, NOT keep DataFrames in RAM
+    # Remove table: must immediately drop table from memory with ZERO disk I/O
     outputs.clear()
     r.execute_line("rm df1", output_fn=outputs.append)
     assert "Removed table 'df1'" in outputs[-1]
@@ -1658,27 +1666,26 @@ def test_repl_rm_releases_ram_and_spills_undo_to_disk():
     assert r.current_df is None
     assert r.orig_df is None
     assert r.initial_df is None
-    assert len(r.redo_stack) == 0  # Redo cleared!
+    assert len(r.redo_stack) == 0  # Redo cleared
+    assert len(r.undo_stack) == 0  # Undo cleared (no pinned DataFrames or disk IPC folders)
 
-    # Undo stack must hold disk_ipc snapshot, with NO live pl.DataFrame in RAM
-    assert len(r.undo_stack) == 1
-    desc, snap = r.undo_stack[0]
-    assert desc == "rm df1"
-    assert isinstance(snap, dict)
-    assert snap.get("type") == "disk_ipc"
-    assert not any(isinstance(v, pl.DataFrame) for v in snap.values())
+    # Checkpoint on disk has unchanged files - zero disk files written by rm
+    assert len(list(cp_dir.glob("*.ipc"))) == cp_file_count_before
 
-    # Undoing must successfully read IPC from disk and restore table
+    # rm is non-undoable: undo reports Nothing to undo
     outputs.clear()
     r.execute_line("undo", output_fn=outputs.append)
+    assert "Nothing to undo." in outputs[-1]
+
+    # Checkpoint 'abc' can be restored safely
+    outputs.clear()
+    r.execute_line("restore abc", output_fn=outputs.append)
     assert "df1" in r.tables
     assert r.tables["df1"].shape == orig_shape
-    assert r.current_df is not None
-    assert r.current_df.shape == orig_shape
     r.close()
 
 
-def test_repl_rm_wildcard_releases_ram_and_spills_undo_to_disk():
+def test_repl_rm_wildcard_releases_ram_without_disk_spill():
     outputs = []
     r = PytaeRepl()
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
@@ -1691,14 +1698,37 @@ def test_repl_rm_wildcard_releases_ram_and_spills_undo_to_disk():
     assert r.current_df is None
     assert r.orig_df is None
     assert r.initial_df is None
+    assert len(r.undo_stack) == 0
+    assert len(r.redo_stack) == 0
 
-    assert len(r.undo_stack) == 1
-    assert r.undo_stack[0][1]["type"] == "disk_ipc"
-
-    # Undo restores both
+    # Undo reports Nothing to undo
+    outputs.clear()
     r.execute_line("undo", output_fn=outputs.append)
-    assert "df1" in r.tables
-    assert "df2" in r.tables
+    assert "Nothing to undo." in outputs[-1]
+    r.close()
+
+
+def test_repl_run_recovers_from_unhandled_exception(monkeypatch):
+    outputs = []
+    r = PytaeRepl()
+
+    call_count = 0
+
+    def mock_execute_line(line, output_fn):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise OSError("Disk full error (os error 112)")
+        return False  # exit REPL on second call
+
+    monkeypatch.setattr(r, "execute_line", mock_execute_line)
+
+    inputs = iter(["rm df1", "exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+
+    res = r.run(output_fn=outputs.append)
+    assert res is None
+    assert any("pytae error: Disk full error (os error 112)" in o for o in outputs)
     r.close()
 
 

@@ -1357,7 +1357,14 @@ class PytaeRepl:
                 if not self.tables:
                     output_fn("No tables loaded to remove.")
                     return True
-                self._push_undo(line, self._capture_session_state_to_disk())
+                # Clean up any cached IPC directories in undo/redo stacks
+                for _, old_snap in self.undo_stack:
+                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
+                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
+                for _, old_snap in self.redo_stack:
+                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
+                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
+                self.undo_stack.clear()
                 self.redo_stack.clear()
                 count = len(self.tables)
                 self.tables.clear()
@@ -1379,7 +1386,14 @@ class PytaeRepl:
 
             resolved = self._resolve_table_name(target)
             if resolved is not None:
-                self._push_undo(line, self._capture_session_state_to_disk())
+                # Clean up undo/redo stacks to release any pinned DataFrame snapshots and prevent resurrecting removed table
+                for _, old_snap in self.undo_stack:
+                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
+                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
+                for _, old_snap in self.redo_stack:
+                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
+                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
+                self.undo_stack.clear()
                 self.redo_stack.clear()
                 del self.tables[resolved]
                 if resolved in self.orig_tables:
@@ -1836,38 +1850,46 @@ class PytaeRepl:
         undo_dir = self._get_cp_dir() / f"_undo_{uuid.uuid4().hex[:12]}"
         undo_dir.mkdir(parents=True, exist_ok=True)
         saved_tables: dict[str, str] = {}
-        for tbl_name, tbl_df in self.tables.items():
-            ipc_file = _safe_ipc_filename(tbl_name)
-            tbl_df.write_ipc(undo_dir / ipc_file)
-            saved_tables[tbl_name] = ipc_file
-
         saved_orig: dict[str, str] = {}
-        for tbl_name, tbl_df in self.orig_tables.items():
-            ipc_file = f"_orig_{_safe_ipc_filename(tbl_name)}"
-            tbl_df.write_ipc(undo_dir / ipc_file)
-            saved_orig[tbl_name] = ipc_file
-
         saved_initial: dict[str, str] = {}
-        for tbl_name, tbl_df in self.initial_tables.items():
-            ipc_file = f"_init_{_safe_ipc_filename(tbl_name)}"
-            tbl_df.write_ipc(undo_dir / ipc_file)
-            saved_initial[tbl_name] = ipc_file
+        written_files: dict[int, str] = {}
 
-        cur_ipc: str | None = None
-        if self.current_df is not None:
-            cur_ipc = "_current_df.ipc"
-            self.current_df.write_ipc(undo_dir / cur_ipc)
+        def _write_df_once(df: pl.DataFrame, prefix: str, name: str) -> str:
+            df_id = id(df)
+            if df_id in written_files:
+                return written_files[df_id]
+            fname = f"{prefix}{_safe_ipc_filename(name)}"
+            df.write_ipc(undo_dir / fname)
+            written_files[df_id] = fname
+            return fname
 
-        return {
-            "type": "disk_ipc",
-            "dir": str(undo_dir),
-            "tables": saved_tables,
-            "orig_tables": saved_orig,
-            "initial_tables": saved_initial,
-            "current_df": cur_ipc,
-            "table_sources": dict(self.table_sources),
-            "active_table": self.path_str,
-        }
+        try:
+            for tbl_name, tbl_df in self.tables.items():
+                saved_tables[tbl_name] = _write_df_once(tbl_df, "", tbl_name)
+
+            for tbl_name, tbl_df in self.orig_tables.items():
+                saved_orig[tbl_name] = _write_df_once(tbl_df, "_orig_", tbl_name)
+
+            for tbl_name, tbl_df in self.initial_tables.items():
+                saved_initial[tbl_name] = _write_df_once(tbl_df, "_init_", tbl_name)
+
+            cur_ipc: str | None = None
+            if self.current_df is not None:
+                cur_ipc = _write_df_once(self.current_df, "_cur_", "current_df")
+
+            return {
+                "type": "disk_ipc",
+                "dir": str(undo_dir),
+                "tables": saved_tables,
+                "orig_tables": saved_orig,
+                "initial_tables": saved_initial,
+                "current_df": cur_ipc,
+                "table_sources": dict(self.table_sources),
+                "active_table": self.path_str,
+            }
+        except OSError:
+            shutil.rmtree(undo_dir, ignore_errors=True)
+            raise
 
     def _cmd_undo(self, output_fn: Callable[[str], None]) -> None:
         if not self.undo_stack:
@@ -2895,9 +2917,14 @@ class PytaeRepl:
                     output_fn("\nExiting pytae REPL.")
                     break
 
-                should_continue = self.execute_line(line, output_fn=output_fn)
-                if not should_continue:
-                    break
+                try:
+                    should_continue = self.execute_line(line, output_fn=output_fn)
+                    if not should_continue:
+                        break
+                except KeyboardInterrupt:
+                    output_fn("\n(KeyboardInterrupt - command cancelled)")
+                except Exception as exc:
+                    output_fn(f"pytae error: {exc}")
         finally:
             _save_readline_history()
             _save_raw_history(self._raw_history)
