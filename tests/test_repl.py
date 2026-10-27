@@ -65,7 +65,7 @@ def test_repl_filter_and_undo_and_reset(sample_df):
     # 4. Reset to original
     r.execute_line("reset", output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)
-    assert "Restored original dataset" in outputs[-1]
+    assert "Restored" in outputs[-1] and "initial" in outputs[-1]
 
 
 def test_repl_redo(sample_df):
@@ -1446,3 +1446,272 @@ def test_repl_rm_frees_table_without_affecting_disk_checkpoint():
     assert not cp_dir.exists()
 
     r.close()
+
+
+def test_repl_reset_hierarchy_and_disallowed_args():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    orig_shape = r.tables["df1"].shape
+
+    # 1. Filter and create checkpoint v1
+    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    assert r.current_df.shape[0] < orig_shape[0]
+    gentoo_shape = r.current_df.shape
+    r.execute_line("checkpoint v1", output_fn=outputs.append)
+    assert "v1" in r.checkpoints
+
+    # 2. Add extra table and mutate df1
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    r.execute_line('df1 -mutate "flag = 999"', output_fn=outputs.append)
+    assert "df2" in r.tables
+    assert "flag" in r.tables["df1"].columns
+
+    # 3. Test disallowed 'reset orig' and 'reset bad'
+    outputs.clear()
+    r.execute_line("reset orig", output_fn=outputs.append)
+    assert outputs[-1] == "pytae: 'reset orig' is not recognized; use 'reset' or 'reset initial'."
+    assert "flag" in r.tables["df1"].columns  # State preserved
+
+    outputs.clear()
+    r.execute_line("reset foo", output_fn=outputs.append)
+    assert outputs[-1] == "pytae: 'reset foo' is not recognized; use 'reset' or 'reset initial'."
+
+    # 4. Bare 'reset' must revert to latest checkpoint 'v1'
+    outputs.clear()
+    r.execute_line("reset", output_fn=outputs.append)
+    assert any("Reset to latest checkpoint 'v1'" in o for o in outputs)
+    assert "df1" in r.tables
+    assert "df2" not in r.tables  # Post-checkpoint table purged
+    assert "flag" not in r.tables["df1"].columns  # Mutate dropped
+    assert r.current_df.shape == gentoo_shape
+    assert len(r.undo_stack) == 0  # Undo cleared
+    assert len(r.redo_stack) == 0
+
+    # 5. 'reset initial' must revert all the way back to initial file read
+    outputs.clear()
+    r.execute_line("reset initial", output_fn=outputs.append)
+    assert any("Restored initial dataset" in o for o in outputs)
+    assert r.tables["df1"].shape == orig_shape
+    assert len(r.undo_stack) == 0
+    assert len(r.redo_stack) == 0
+
+    r.close()
+
+
+def test_repl_history_option_b_milestone_banners():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("checkpoint baseline", output_fn=outputs.append)
+    r.execute_line('-mutate "mass_kg = body_mass_g / 1000"', output_fn=outputs.append)
+    r.execute_line("reset", output_fn=outputs.append)
+
+    outputs.clear()
+    r.execute_line("history", output_fn=outputs.append)
+    hist_text = "\n".join(outputs)
+
+    # Verify banner is unnumbered and commands are sequentially numbered
+    assert "  *checkpoint: baseline*" in hist_text
+    assert "   1: df1 = sample:penguins" in hist_text
+    assert "   2: -filter \"species == 'Gentoo'\"" in hist_text
+    assert "   3: -mutate \"mass_kg = body_mass_g / 1000\"" in hist_text
+    assert "   4: reset [reverted to checkpoint: baseline]" in hist_text
+
+    r.close()
+
+
+def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
+    sess_dir = tmp_path / "pytae_sessions"
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+
+    outputs = []
+
+    # 1. Start a persistent session 'proj_x'
+    r1 = PytaeRepl(session="proj_x")
+    assert r1._build_prompt() == "pytae:proj_x> "
+
+    r1.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r1.execute_line('-filter "species == \'Adelie\'"', output_fn=outputs.append)
+    r1.execute_line("checkpoint v1", output_fn=outputs.append)
+    adelie_shape = r1.tables["df1"].shape
+
+    # Add uncheckpointed scratch edits in RAM
+    r1.execute_line('df1 -mutate "scratch_col = 123"', output_fn=outputs.append)
+    r1.execute_line("df_scratch = sample:tips", output_fn=outputs.append)
+    assert "scratch_col" in r1.tables["df1"].columns
+    assert "df_scratch" in r1.tables
+
+    # Checkpoint v1 exists on disk
+    cp_path = sess_dir / "proj_x" / "checkpoints" / "v1"
+    assert cp_path.exists()
+    assert (cp_path / "meta.json").exists()
+
+    # Close session (exiting REPL drops RAM and scratch tables)
+    r1.close()
+
+    # 2. Resume session 'proj_x' - boots cleanly from latest checkpoint (v1)
+    outputs.clear()
+    r2 = PytaeRepl(session="proj_x")
+    assert "df1" in r2.tables
+    assert r2.tables["df1"].shape == adelie_shape
+    # Scratch uncheckpointed tables and columns MUST NOT exist!
+    assert "scratch_col" not in r2.tables["df1"].columns
+    assert "df_scratch" not in r2.tables
+
+    # Verify history works in stored session (preserves checkpoint milestones & valid steps)
+    outputs.clear()
+    r2.execute_line("history", output_fn=outputs.append)
+    hist_text = "\n".join(outputs)
+    assert "*checkpoint: v1*" in hist_text
+    assert "species == 'Adelie'" in hist_text
+    assert "scratch_col" not in hist_text
+
+    # 3. Test in-REPL session inspection and commands
+    outputs.clear()
+    r2.execute_line("session", output_fn=outputs.append)
+    assert "Active session: 'proj_x'" in outputs[-1]
+    assert "1 checkpoints" in outputs[-1]
+
+    # Test listing sessions
+    outputs.clear()
+    r2.execute_line("sessions", output_fn=outputs.append)
+    assert any("proj_x" in o for o in outputs)
+
+    # Test session save as another name (clone / fork)
+    outputs.clear()
+    r2.execute_line("session save proj_y", output_fn=outputs.append)
+    assert "Session saved as 'proj_y'" in outputs[-1]
+    assert (sess_dir / "proj_y" / "checkpoints" / "v1").exists()
+
+    # Test session load
+    outputs.clear()
+    r2.execute_line("session load proj_x", output_fn=outputs.append)
+    assert r2.session_name == "proj_x"
+
+    # Test rm session
+    outputs.clear()
+    r2.execute_line("rm session proj_y", output_fn=outputs.append)
+    assert "Removed session 'proj_y'" in outputs[-1]
+    assert not (sess_dir / "proj_y").exists()
+
+    # Apply second checkpoint in r2 and verify history across another restart
+    r2.execute_line('df1 -mutate "is_heavy = body_mass_g > 3500"', output_fn=outputs.append)
+    r2.execute_line("checkpoint v2", output_fn=outputs.append)
+    r2.close()
+
+    # 4. Resume session in r3 - history should contain both v1 and v2 milestones
+    r3 = PytaeRepl(session="proj_x")
+    outputs.clear()
+    r3.execute_line("history", output_fn=outputs.append)
+    hist3 = "\n".join(outputs)
+    assert "*checkpoint: v1*" in hist3
+    assert "*checkpoint: v2*" in hist3
+    assert "is_heavy = body_mass_g > 3500" in hist3
+    r3.close()
+
+
+def test_cli_session_flags(tmp_path, monkeypatch, capsys):
+    sess_dir = tmp_path / "pytae_sessions"
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+
+    # Pre-populate a session
+    r = PytaeRepl(session="analytics")
+    r.execute_line("df1 = sample:penguins", output_fn=lambda _: None)
+    r.execute_line("checkpoint base", output_fn=lambda _: None)
+    r.close()
+
+    # Test pytae -sessions lists saved sessions
+    ret = cli.main(["-sessions"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "analytics" in captured.out
+    assert "1 checkpoints" in captured.out
+
+    # Test pytae --sessions enforces single hyphen guideline
+    with pytest.raises(SystemExit):
+        cli.main(["--sessions"])
+    captured_err = capsys.readouterr()
+    assert "uses double hyphens; pytae uses single hyphen '-sessions'" in captured_err.err
+
+
+def test_repl_rm_releases_ram_and_spills_undo_to_disk():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    orig_shape = r.tables["df1"].shape
+
+    # Pre-populate redo stack to verify rm clears it
+    r.redo_stack.append(("fake_redo", pl.DataFrame({"a": [1, 2, 3]})))
+    assert len(r.redo_stack) == 1
+
+    # Remove table: must spill undo snapshot to disk IPC, NOT keep DataFrames in RAM
+    outputs.clear()
+    r.execute_line("rm df1", output_fn=outputs.append)
+    assert "Removed table 'df1'" in outputs[-1]
+
+    # In-memory tables and references MUST be genuinely empty
+    assert len(r.tables) == 0
+    assert len(r.orig_tables) == 0
+    assert len(r.initial_tables) == 0
+    assert r.current_df is None
+    assert r.orig_df is None
+    assert r.initial_df is None
+    assert len(r.redo_stack) == 0  # Redo cleared!
+
+    # Undo stack must hold disk_ipc snapshot, with NO live pl.DataFrame in RAM
+    assert len(r.undo_stack) == 1
+    desc, snap = r.undo_stack[0]
+    assert desc == "rm df1"
+    assert isinstance(snap, dict)
+    assert snap.get("type") == "disk_ipc"
+    assert not any(isinstance(v, pl.DataFrame) for v in snap.values())
+
+    # Undoing must successfully read IPC from disk and restore table
+    outputs.clear()
+    r.execute_line("undo", output_fn=outputs.append)
+    assert "df1" in r.tables
+    assert r.tables["df1"].shape == orig_shape
+    assert r.current_df is not None
+    assert r.current_df.shape == orig_shape
+    r.close()
+
+
+def test_repl_rm_wildcard_releases_ram_and_spills_undo_to_disk():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+
+    r.execute_line("rm *", output_fn=outputs.append)
+    assert len(r.tables) == 0
+    assert len(r.orig_tables) == 0
+    assert len(r.initial_tables) == 0
+    assert r.current_df is None
+    assert r.orig_df is None
+    assert r.initial_df is None
+
+    assert len(r.undo_stack) == 1
+    assert r.undo_stack[0][1]["type"] == "disk_ipc"
+
+    # Undo restores both
+    r.execute_line("undo", output_fn=outputs.append)
+    assert "df1" in r.tables
+    assert "df2" in r.tables
+    r.close()
+
+
+def test_repl_undo_stack_sliding_window_cap():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+
+    # Execute 15 mutating operations
+    for i in range(15):
+        r.execute_line(f'df1 -filter "body_mass_g > {2000 + i * 10}"', output_fn=outputs.append)
+
+    # Undo stack must be capped at max_undo_steps (10), preventing unbounded memory bloat
+    assert len(r.undo_stack) == r.max_undo_steps == 10
+    r.close()
+

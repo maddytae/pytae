@@ -349,15 +349,27 @@ pytae -i
 # Pre-filter dataset and drop directly into interactive REPL
 pytae data.parquet -filter "sales > 100" -i
 
+# Resume or launch a named persistent session (stored in ~/.pytae/sessions/)
+pytae -session analysis      # or short alias: pytae -s analysis
+
+# List all saved persistent sessions on disk
+pytae -sessions
+
 # Inside the REPL prompt:
 # 1. State Management & Undo
 undo                 # Revert last transformation
 redo                 # Re-apply last undone transformation
-reset                # Restore original dataset from disk (instant O(1))
-history              # Show history of applied pipeline steps
+reset                # Revert to latest checkpoint (or initial dataset if none)
+reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
+history              # Show history of applied steps and checkpoint milestone banners
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
+session              # Display active session name, disk path, and saved checkpoints
+session save v_done  # Save current session checkpoints under named directory
+session load my_lab  # Switch to persistent session and boot from its latest checkpoint
+sessions             # List all saved persistent sessions on disk
+rm session my_lab    # Delete a saved persistent session from disk
 rm df                # Remove active table from memory and free RAM (or rm df1 / rm *)
 clear                # Clear the terminal screen
 status               # Show active dataset shape, columns, and memory

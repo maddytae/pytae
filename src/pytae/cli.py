@@ -142,6 +142,9 @@ _CLI_FLAGS = {
     "-plot",
     "-finalize",
     "-i",
+    "-s",
+    "-session",
+    "-sessions",
 }
 
 
@@ -189,6 +192,10 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
                 out.append("-time=1")
                 i += 1
                 continue
+        elif arg == "-s":
+            out.append("-session")
+            i += 1
+            continue
         elif arg == "-select" and "=" not in arg:
             if i + 1 < len(argv):
                 nxt = argv[i + 1]
@@ -816,6 +823,20 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         action="store_true",
         help="launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration",
     )
+    parser.add_argument(
+        "-session",
+        dest="session",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name>); alias: -s <name>",
+    )
+    parser.add_argument(
+        "-sessions",
+        dest="list_sessions",
+        action="store_true",
+        help="list all saved persistent REPL sessions on disk and exit",
+    )
     return parser
 
 
@@ -935,6 +956,15 @@ def main(argv: list[str] | None = None) -> int:
                 )
             parser.error(msg)
 
+    if getattr(args, "list_sessions", False):
+        from pytae.repl import list_saved_sessions
+
+        list_saved_sessions(print)
+        return 0
+
+    if getattr(args, "session", None) is not None:
+        args.repl = True
+
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000
     args.progress = has_progress
@@ -993,7 +1023,7 @@ def main(argv: list[str] | None = None) -> int:
         elif getattr(args, "repl", False):
             from pytae.repl import repl
 
-            repl()
+            repl(session=getattr(args, "session", None))
             return 0
         else:
             parser.error("the following arguments are required: path")
@@ -1232,6 +1262,7 @@ def main(argv: list[str] | None = None) -> int:
                 repl(
                     path=paths[0] if paths else None,
                     paths=paths if len(paths) > 1 else None,
+                    session=getattr(args, "session", None),
                     **reader_kwargs,
                 )
                 return 0
@@ -1254,7 +1285,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _execute_once()
             result_df = getattr(args, "_result_frame", None)
-            repl(df=result_df, path=paths[0] if paths else None, **reader_kwargs)
+            repl(
+                df=result_df,
+                path=paths[0] if paths else None,
+                session=getattr(args, "session", None),
+                **reader_kwargs,
+            )
             return 0
 
     if args.time is None:

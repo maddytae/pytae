@@ -956,6 +956,8 @@ Launch the stateful interactive REPL shell from the command line:
   pytae -i                              # Launch empty multi-table workbench
   pytae penguins.parquet -i             # Focused exploration on a single table
   pytae data.csv -encoding latin1 -i    # Preserves CLI reader options into REPL
+  pytae -session analysis               # Launch or resume named persistent session (-s alias)
+  pytae -sessions                       # List all saved persistent sessions on disk
 
 Two Dedicated Operation Modes:
 1. Mode 1: Single-Table Exploration (pytae [df: 344x7]>)
@@ -972,13 +974,22 @@ Two Dedicated Operation Modes:
 State Management & Rollback Commands:
   - `undo`                    : Revert the last applied transformation.
   - `redo`                    : Re-apply the last undone transformation.
-  - `reset`                   : Instant O(1) rollback to the original dataset as loaded from disk.
-  - `history`                 : Display numbered list of applied session operations.
+  - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
+  - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
+  - `history`                 : Display audit log with sequential step numbers and *checkpoint: <name>* banners.
 
 Session-Wide Checkpoints:
   - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).
   - `checkpoints`             : List all saved checkpoints and their constituent tables.
   - `restore <name>`          : Restore entire workbench state back to named snapshot.
+
+Persistent Sessions (~/.pytae/sessions/<name>/):
+  - `session`                 : Display active session name, disk path, and checkpoints.
+  - `session save <name>`     : Save or promote current session checkpoints under <name>.
+  - `session load <name>`     : Switch to persistent session and restore its latest checkpoint.
+  - `sessions`                : List all saved persistent sessions on disk.
+  - `rm session <name>`       : Delete a saved persistent session directory from disk.
+  * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
 
 Strict Deletion Syntax (Wildcard):
   - `rm <table_name>` / `rm df`: Remove specific table or active dataset from memory (undoable).

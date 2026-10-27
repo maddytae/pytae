@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import datetime
 import gc
 import json
+import os
 import shlex
 import shutil
 import sys
@@ -26,6 +28,55 @@ def _safe_ipc_filename(name: str) -> str:
     """Generate a filesystem-safe filename for an IPC table file across all OS platforms."""
     safe = "".join(c if (c.isalnum() or c in ("_", "-")) else f"_{ord(c):02x}_" for c in name)
     return f"{safe}.ipc"
+
+
+_DEFAULT_SESSIONS_DIR = Path.home() / ".pytae" / "sessions"
+
+
+def get_sessions_dir() -> Path:
+    """Return the base directory for persistent Pytae sessions."""
+    env_dir = os.environ.get("PYTAE_SESSIONS_DIR")
+    if env_dir:
+        p = Path(env_dir).expanduser().resolve()
+    else:
+        p = _DEFAULT_SESSIONS_DIR
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
+    """List all saved persistent Pytae sessions stored on disk."""
+    s_dir = get_sessions_dir()
+    if not s_dir.exists():
+        output_fn("No saved sessions found. Use 'session save <name>' or 'pytae -s <name>' to create one.")
+        return
+    sessions = sorted([p for p in s_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+    if not sessions:
+        output_fn("No saved sessions found. Use 'session save <name>' or 'pytae -s <name>' to create one.")
+        return
+    output_fn("Saved Sessions:")
+    for s_path in sessions:
+        meta_file = s_path / "session.json"
+        meta: dict[str, Any] = {}
+        if meta_file.exists():
+            try:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+        cp_dir = s_path / "checkpoints"
+        cps = [p.name for p in cp_dir.iterdir() if p.is_dir()] if cp_dir.exists() else []
+        total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
+        if total_bytes >= 1024 * 1024:
+            size_str = f"~{total_bytes / (1024 * 1024):.1f} MB"
+        elif total_bytes >= 1024:
+            size_str = f"~{total_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{total_bytes} B"
+        up_date = meta.get("updated_at") or meta.get("created_at") or ""
+        date_str = f"; updated {up_date}" if up_date else ""
+        cp_str = f"{len(cps)} checkpoints: {', '.join(cps)}" if cps else "0 checkpoints"
+        output_fn(f"  - {s_path.name:<15} ({cp_str}; {size_str}{date_str})")
+
 
 
 try:
@@ -350,12 +401,18 @@ MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
 STATE NAVIGATION (Undoable):
   undo                   : Revert the last transformation step
   redo                   : Re-apply the last undone transformation step
-  reset                  : Restore original dataset state
-  history                : Show numbered transformation log
+  reset                  : Revert to latest checkpoint (or initial read if no checkpoints)
+  reset initial          : Strictly revert to initial read even if checkpoints exist
+  history                : Show numbered transformation log and milestone banners
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
+  session                : Show persistent session status
+  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name>
+  session load <name>    : Load persistent session checkpoints from disk
+  sessions               : List all saved persistent sessions on disk
+  rm session <name>      : Remove a saved persistent session from disk
   clear                  : Clear the terminal screen
   exit                   : Exit REPL
 
@@ -397,6 +454,10 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--checkpoints": "checkpoints",
     "-restore": "restore",
     "--restore": "restore",
+    "-session": "session",
+    "--session": "session",
+    "-sessions": "sessions",
+    "--sessions": "sessions",
     "-use": "use",
     "--use": "use",
     "-load": "load",
@@ -565,9 +626,11 @@ class PytaeRepl:
         nrows: int | None = None,
         chunk_size: int | None = None,
         reader_kwargs: dict[str, Any] | None = None,
+        session: str | None = None,
         **kwargs: Any,
     ) -> None:
         self.prompt = prompt
+        self.session_name: str | None = session.strip() if session and str(session).strip() else None
         self.reader_kwargs: dict[str, Any] = dict(reader_kwargs or {})
         if encoding:
             self.reader_kwargs["encoding"] = encoding
@@ -581,10 +644,13 @@ class PytaeRepl:
             if k not in self.reader_kwargs:
                 self.reader_kwargs[k] = v
 
-        self.undo_stack: list[tuple[str, pl.DataFrame]] = []
-        self.redo_stack: list[tuple[str, pl.DataFrame]] = []
+        self.max_undo_steps: int = 10
+        self.undo_stack: list[tuple[str, Any]] = []
+        self.redo_stack: list[tuple[str, Any]] = []
         self.tables: dict[str, pl.DataFrame] = {}
         self.orig_tables: dict[str, pl.DataFrame] = {}
+        self.initial_tables: dict[str, pl.DataFrame] = {}
+        self.initial_df: pl.DataFrame | None = None
         self.checkpoints: dict[str, Any] = {}
         self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
@@ -610,10 +676,13 @@ class PytaeRepl:
                 try:
                     p, t_df = self._read_file_to_df(path_val)
                     self.tables[var_name] = t_df
-                    self.orig_tables[var_name] = t_df.clone()
+                    self.orig_tables[var_name] = t_df
+                    self.initial_tables[var_name] = t_df
                     self.table_sources[var_name] = p.name
                     self.current_df = t_df
-                    self.orig_df = t_df.clone()
+                    self.orig_df = t_df
+                    if self.initial_df is None:
+                        self.initial_df = t_df
                     self.path_str = var_name
                 except Exception:
                     pass
@@ -623,15 +692,22 @@ class PytaeRepl:
             self.path_str = self.path.name if self.path else "<memory>"
             initial_name = self.path_str or "df"
             self.tables[initial_name] = self.current_df
-            self.orig_tables[initial_name] = self.current_df.clone()
+            self.orig_tables[initial_name] = self.current_df
+            self.initial_tables[initial_name] = self.current_df
+            self.initial_df = self.current_df
             self.table_sources[initial_name] = str(self.path) if self.path else "<memory>"
         elif path is not None:
             self.path = Path(path)
             self._load_file(self.path)
             initial_name = self.path_str or self.path.stem or "df"
             self.tables[initial_name] = self.current_df
-            self.orig_tables[initial_name] = self.current_df.clone()
+            self.orig_tables[initial_name] = self.current_df
+            self.initial_tables[initial_name] = self.current_df
+            self.initial_df = self.current_df
             self.table_sources[initial_name] = self.path.name
+
+        if self.session_name:
+            self._load_session_from_disk(self.session_name)
 
     def _set_initial_df(self, df: Any) -> None:
         from pytae.dataframe import DataFrame as PytaeDataFrame
@@ -647,7 +723,11 @@ class PytaeRepl:
         self.current_df = df
 
     def _get_cp_dir(self) -> Path:
-        """Return the temporary session directory for disk-backed checkpoints, creating lazily if needed."""
+        """Return the checkpoint directory for disk-backed checkpoints, creating lazily if needed."""
+        if self.session_name:
+            p = get_sessions_dir() / self.session_name / "checkpoints"
+            p.mkdir(parents=True, exist_ok=True)
+            return p
         if self._cp_temp_dir is None:
             self._cp_temp_dir = tempfile.TemporaryDirectory(prefix="pytae_cp_")
             atexit.register(self._cleanup_cp_dir)
@@ -655,6 +735,8 @@ class PytaeRepl:
 
     def _cleanup_cp_dir(self) -> None:
         """Clean up the temporary session checkpoint directory from disk."""
+        if self.session_name is not None:
+            return
         if self._cp_temp_dir is not None:
             try:
                 self._cp_temp_dir.cleanup()
@@ -669,6 +751,8 @@ class PytaeRepl:
         snap = self.checkpoints.pop(name)
         if isinstance(snap, dict) and "dir" in snap:
             shutil.rmtree(snap["dir"], ignore_errors=True)
+        if self.session_name:
+            self._save_session_metadata()
         return True
 
     def _clear_all_checkpoints(self) -> int:
@@ -727,14 +811,23 @@ class PytaeRepl:
 
     def close(self) -> None:
         """Clean up temporary checkpoint disk storage and release all in-memory tables."""
-        self._clear_all_checkpoints()
-        self._cleanup_cp_dir()
+        if self.session_name is None:
+            self._clear_all_checkpoints()
+            self._cleanup_cp_dir()
+        for _, snap in self.undo_stack:
+            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
+                shutil.rmtree(snap["dir"], ignore_errors=True)
+        for _, snap in self.redo_stack:
+            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
+                shutil.rmtree(snap["dir"], ignore_errors=True)
         self.tables.clear()
         self.orig_tables.clear()
+        self.initial_tables.clear()
         self.undo_stack.clear()
         self.redo_stack.clear()
         self.current_df = None
         self.orig_df = None
+        self.initial_df = None
         gc.collect()
 
     def __del__(self) -> None:
@@ -814,13 +907,222 @@ class PytaeRepl:
         return None
 
     def _build_prompt(self) -> str:
+        prefix = f"{self.prompt}:{self.session_name}" if self.session_name else self.prompt
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
-            return f"{self.prompt} [{table_names}]> "
+            return f"{prefix} [{table_names}]> "
         elif self.current_df is not None:
             name = self.path_str or "<dataframe>"
-            return f"{self.prompt} [{name}: {self._get_shape_str()}]> "
-        return f"{self.prompt}> "
+            return f"{prefix} [{name}: {self._get_shape_str()}]> "
+        return f"{prefix}> "
+
+    def _save_session_metadata(self) -> None:
+        """Save session manifest and pipeline history to disk under the session directory."""
+        if not self.session_name:
+            return
+        s_dir = get_sessions_dir() / self.session_name
+        s_dir.mkdir(parents=True, exist_ok=True)
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        meta: dict[str, Any] = {
+            "name": self.session_name,
+            "updated_at": now_str,
+            "checkpoints": list(self.checkpoints.keys()),
+            "latest_checkpoint": list(self.checkpoints.keys())[-1] if self.checkpoints else None,
+        }
+        meta_file = s_dir / "session.json"
+        if not meta_file.exists():
+            meta["created_at"] = now_str
+        else:
+            try:
+                old = json.loads(meta_file.read_text(encoding="utf-8"))
+                meta["created_at"] = old.get("created_at", now_str)
+            except Exception:
+                meta["created_at"] = now_str
+        meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        (s_dir / "history.json").write_text(json.dumps(self.history, indent=2), encoding="utf-8")
+
+    def _load_session_from_disk(
+        self, name: str, output_fn: Callable[[str], None] | None = None
+    ) -> bool:
+        """Load session history and saved checkpoints from disk, activating the latest checkpoint."""
+        s_dir = get_sessions_dir() / name
+        if not s_dir.exists():
+            return False
+
+        hist_file = s_dir / "history.json"
+        if hist_file.exists():
+            try:
+                loaded_hist = json.loads(hist_file.read_text(encoding="utf-8"))
+                if isinstance(loaded_hist, list):
+                    self.history = [str(x) for x in loaded_hist]
+            except Exception:
+                pass
+
+        cp_dir = s_dir / "checkpoints"
+        if cp_dir.exists():
+            cp_subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+            meta_file = s_dir / "session.json"
+            cp_order: list[str] = []
+            if meta_file.exists():
+                try:
+                    s_meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                    cp_order = s_meta.get("checkpoints", [])
+                except Exception:
+                    pass
+
+            ordered_subs: list[Path] = []
+            for cp_n in cp_order:
+                sub = cp_dir / cp_n
+                if sub.is_dir() and sub not in ordered_subs:
+                    ordered_subs.append(sub)
+            for sub in cp_subdirs:
+                if sub not in ordered_subs:
+                    ordered_subs.append(sub)
+
+            self.checkpoints.clear()
+            for sub in ordered_subs:
+                cp_name = sub.name
+                m_path = sub / "meta.json"
+                if m_path.exists():
+                    try:
+                        cp_meta = json.loads(m_path.read_text(encoding="utf-8"))
+                    except Exception:
+                        cp_meta = {"dir": str(sub)}
+                else:
+                    cp_meta = {"dir": str(sub)}
+                cp_meta["dir"] = str(sub)
+                self.checkpoints[cp_name] = cp_meta
+
+            if self.checkpoints:
+                latest_cp = list(self.checkpoints.keys())[-1]
+                self._cmd_restore(latest_cp, output_fn or (lambda s: None), record_history=False)
+                if output_fn:
+                    output_fn(f"Resumed session '{name}' from latest checkpoint '{latest_cp}'.")
+                return True
+
+        return True
+
+    def _cmd_session(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
+        """Handle session inspection, saving, loading, and deletion."""
+        if not tokens:
+            if self.session_name:
+                output_fn(
+                    f"Active session: '{self.session_name}' ({len(self.checkpoints)} checkpoints; "
+                    f"location: {get_sessions_dir() / self.session_name})"
+                )
+            else:
+                output_fn(
+                    "No active session (ephemeral). Use 'session save <name>' or 'pytae -s <name>' to persist."
+                )
+            return
+
+        subcmd = tokens[0].lower()
+        if subcmd == "save":
+            if len(tokens) < 2:
+                output_fn("Usage: session save <name>")
+                return
+            self._cmd_session_save(tokens[1], output_fn)
+            return
+
+        if subcmd == "load":
+            if len(tokens) < 2:
+                output_fn("Usage: session load <name>")
+                return
+            self._cmd_session_load(tokens[1], output_fn)
+            return
+
+        if subcmd in ("list", "ls"):
+            list_saved_sessions(output_fn)
+            return
+
+        if subcmd == "rm":
+            if len(tokens) < 2:
+                output_fn("Usage: session rm <name> or rm session <name>")
+                return
+            self._cmd_rm_session(tokens[1], output_fn)
+            return
+
+        output_fn(
+            f"pytae: unknown session action '{subcmd}'. "
+            f"Usage: session, session save <name>, session load <name>, sessions, or rm session <name>"
+        )
+
+    def _cmd_session_save(self, name: str, output_fn: Callable[[str], None]) -> None:
+        target_name = name.strip()
+        if not target_name or any(c in target_name for c in ("/", "\\", "..", "\0")):
+            output_fn("pytae: invalid session name. Use alphanumeric characters, dashes, and underscores.")
+            return
+
+        s_dir = get_sessions_dir() / target_name
+        target_cp_dir = s_dir / "checkpoints"
+        target_cp_dir.mkdir(parents=True, exist_ok=True)
+
+        if self._cp_temp_dir is not None:
+            temp_p = Path(self._cp_temp_dir.name)
+            for cp_name, cp_meta in list(self.checkpoints.items()):
+                src_sub = temp_p / cp_name
+                dst_sub = target_cp_dir / cp_name
+                if src_sub.exists() and src_sub != dst_sub:
+                    if dst_sub.exists():
+                        shutil.rmtree(dst_sub, ignore_errors=True)
+                    shutil.copytree(src_sub, dst_sub)
+                    if isinstance(cp_meta, dict):
+                        cp_meta["dir"] = str(dst_sub)
+                        m_json = dst_sub / "meta.json"
+                        if m_json.exists():
+                            try:
+                                m_data = json.loads(m_json.read_text(encoding="utf-8"))
+                                m_data["dir"] = str(dst_sub)
+                                m_json.write_text(json.dumps(m_data), encoding="utf-8")
+                            except Exception:
+                                pass
+            self._cleanup_cp_dir()
+        elif self.session_name and self.session_name != target_name:
+            src_cp_dir = get_sessions_dir() / self.session_name / "checkpoints"
+            if src_cp_dir.exists():
+                for cp_name, cp_meta in list(self.checkpoints.items()):
+                    src_sub = src_cp_dir / cp_name
+                    dst_sub = target_cp_dir / cp_name
+                    if src_sub.exists() and src_sub != dst_sub:
+                        if dst_sub.exists():
+                            shutil.rmtree(dst_sub, ignore_errors=True)
+                        shutil.copytree(src_sub, dst_sub)
+                        if isinstance(cp_meta, dict):
+                            cp_meta["dir"] = str(dst_sub)
+
+        self.session_name = target_name
+        self._save_session_metadata()
+        output_fn(f"Session saved as '{target_name}' ({len(self.checkpoints)} checkpoints saved).")
+
+    def _cmd_session_load(self, name: str, output_fn: Callable[[str], None]) -> None:
+        target_name = name.strip()
+        s_dir = get_sessions_dir() / target_name
+        if not s_dir.exists():
+            output_fn(f"pytae: session '{target_name}' not found. Use 'sessions' to list saved sessions.")
+            return
+
+        self.close()
+        self.session_name = target_name
+        self._load_session_from_disk(target_name, output_fn)
+
+    def _cmd_rm_session(self, name: str, output_fn: Callable[[str], None]) -> None:
+        target_name = name.strip()
+        s_dir = get_sessions_dir() / target_name
+        if not s_dir.exists():
+            avail = [
+                p.name
+                for p in get_sessions_dir().iterdir()
+                if p.is_dir() and not p.name.startswith(".")
+            ] if get_sessions_dir().exists() else []
+            avail_str = ", ".join(avail) if avail else "none"
+            output_fn(f"pytae: session '{target_name}' not found. Available: {avail_str}")
+            return
+        shutil.rmtree(s_dir, ignore_errors=True)
+        if self.session_name == target_name:
+            self.session_name = None
+            output_fn(f"Removed session '{target_name}'. Active session reverted to ephemeral.")
+        else:
+            output_fn(f"Removed session '{target_name}'.")
 
     def execute_line(self, raw_line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Execute one REPL input line. Returns False if REPL should terminate."""
@@ -947,11 +1249,6 @@ class PytaeRepl:
             self._cmd_status(output_fn)
             return True
 
-        # Reset
-        if line.lower() == "reset":
-            self._cmd_reset(output_fn)
-            return True
-
         # Undo
         if line.lower() == "undo":
             self._cmd_undo(output_fn)
@@ -975,6 +1272,20 @@ class PytaeRepl:
         if first_lower in _DISALLOWED_ALIASES:
             canonical = _DISALLOWED_ALIASES[first_lower]
             output_fn(f"pytae: '{first_lower}' is not recognized; use '{canonical}'.")
+            return True
+
+        # Reset (supports bare 'reset' and 'reset initial')
+        if first_lower == "reset":
+            self._cmd_reset(tokens[1:], output_fn)
+            return True
+
+        # Persistent REPL sessions
+        if first_lower == "sessions":
+            list_saved_sessions(output_fn)
+            return True
+
+        if first_lower == "session":
+            self._cmd_session(tokens[1:], output_fn)
             return True
 
         # Reject bare pipeline verbs and suggest hyphenated CLI flag
@@ -1002,6 +1313,17 @@ class PytaeRepl:
                 output_fn("Usage: rm <table_name> (e.g. rm df1), rm df, or rm *")
                 return True
             target = tokens[1]
+            if target.lower() == "session":
+                if len(tokens) < 3:
+                    output_fn("Usage: rm session <name> (or session rm <name>)")
+                    return True
+                self._cmd_rm_session(tokens[2], output_fn)
+                return True
+
+            if target.lower() == "sessions":
+                output_fn("pytae: 'rm sessions' is not recognized; use 'rm session <name>'.")
+                return True
+
             if target.lower() == "checkpoints":
                 if len(tokens) > 2 and tokens[2] in ("-all", "--all", "all", "-*"):
                     output_fn("pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint *'.")
@@ -1035,13 +1357,16 @@ class PytaeRepl:
                 if not self.tables:
                     output_fn("No tables loaded to remove.")
                     return True
-                self.undo_stack.append((line, self._capture_session_state()))
+                self._push_undo(line, self._capture_session_state_to_disk())
+                self.redo_stack.clear()
                 count = len(self.tables)
                 self.tables.clear()
                 self.orig_tables.clear()
+                self.initial_tables.clear()
                 self.table_sources.clear()
                 self.current_df = None
                 self.orig_df = None
+                self.initial_df = None
                 self.path_str = None
                 self.history.append("rm *")
                 gc.collect()
@@ -1054,24 +1379,35 @@ class PytaeRepl:
 
             resolved = self._resolve_table_name(target)
             if resolved is not None:
-                self.undo_stack.append((line, self._capture_session_state()))
+                self._push_undo(line, self._capture_session_state_to_disk())
+                self.redo_stack.clear()
                 del self.tables[resolved]
                 if resolved in self.orig_tables:
                     del self.orig_tables[resolved]
+                if resolved in self.initial_tables:
+                    del self.initial_tables[resolved]
                 if resolved in self.table_sources:
                     del self.table_sources[resolved]
                 if self.path_str == resolved:
                     if self.tables:
                         next_tbl = next(iter(self.tables.keys()))
                         self.current_df = self.tables[next_tbl]
+                        self.orig_df = self.orig_tables.get(next_tbl)
+                        self.initial_df = self.initial_tables.get(next_tbl)
                         self.path_str = next_tbl
                         output_fn(f"Removed table '{resolved}'. Switched active dataset to '{next_tbl}'.")
                     else:
                         self.current_df = None
                         self.orig_df = None
+                        self.initial_df = None
                         self.path_str = None
                         output_fn(f"Removed table '{resolved}'. No tables remain loaded.")
                 else:
+                    if not self.tables:
+                        self.current_df = None
+                        self.orig_df = None
+                        self.initial_df = None
+                        self.path_str = None
                     output_fn(f"Removed table '{resolved}'.")
                 self.history.append(f"rm {target}")
                 gc.collect()
@@ -1145,6 +1481,8 @@ class PytaeRepl:
                 "checkpoint",
                 "restore",
                 "checkpoints",
+                "session",
+                "sessions",
                 "load",
                 "py",
                 "status",
@@ -1167,6 +1505,9 @@ class PytaeRepl:
                 "rm",
                 "checkpoint",
                 "restore",
+                "session",
+                "sessions",
+                "reset",
                 "save",
                 "write",
                 "pipe",
@@ -1394,31 +1735,149 @@ class PytaeRepl:
         output_fn(f"Checkpoints   : {len(self.checkpoints)} saved")
         output_fn(f"Columns ({n_cols}): {', '.join(self.current_df.columns[:10])}{'...' if n_cols > 10 else ''}")
 
-    def _cmd_reset(self, output_fn: Callable[[str], None]) -> None:
-        if self.path_str and self.path_str in self.orig_tables:
-            orig = self.orig_tables[self.path_str]
-        elif self.orig_df is not None:
-            orig = self.orig_df
-        else:
+    def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
+        if len(args) > 1:
+            output_fn("pytae: 'reset' accepts at most one argument ('initial').")
+            return
+        if len(args) == 1:
+            sub = args[0].lower()
+            if sub == "initial":
+                self._reset_to_initial(output_fn, is_explicit_initial=True)
+                return
+            output_fn(f"pytae: 'reset {args[0]}' is not recognized; use 'reset' or 'reset initial'.")
+            return
+
+        # Bare 'reset': Reverts to latest checkpoint if any exist; otherwise reverts to initial file read
+        if self.checkpoints:
+            latest_cp = list(self.checkpoints.keys())[-1]
+            self._cmd_restore(latest_cp, output_fn, record_history=False)
+            self.history.append(f"reset [reverted to checkpoint: {latest_cp}]")
+            output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
+            if self.session_name:
+                self._save_session_metadata()
+            return
+
+        self._reset_to_initial(output_fn, is_explicit_initial=False)
+
+    def _reset_to_initial(
+        self, output_fn: Callable[[str], None], is_explicit_initial: bool = False
+    ) -> None:
+        source_tables = self.initial_tables if self.initial_tables else self.orig_tables
+        source_df = self.initial_df if self.initial_df is not None else self.orig_df
+        if not source_tables and source_df is None:
             output_fn("pytae: no original dataset loaded to reset.")
             return
-        self.undo_stack.append(("before reset", self.current_df.clone()))
-        self.current_df = orig.clone()
-        if self.path_str and self.path_str in self.tables:
-            self.tables[self.path_str] = self.current_df
+
+        # Purge post-read tables and restore original state
+        if source_tables:
+            current_keys = list(self.tables.keys())
+            for k in current_keys:
+                if k not in source_tables:
+                    del self.tables[k]
+                    if k in self.table_sources:
+                        del self.table_sources[k]
+            for k, orig_df in source_tables.items():
+                self.tables[k] = orig_df.clone()
+                self.orig_tables[k] = orig_df.clone()
+
+            if self.path_str and self.path_str in self.tables:
+                self.current_df = self.tables[self.path_str]
+                self.orig_df = self.current_df.clone()
+            elif self.tables:
+                first_k = next(iter(self.tables.keys()))
+                self.path_str = first_k
+                self.current_df = self.tables[first_k]
+                self.orig_df = self.current_df.clone()
+        elif source_df is not None:
+            self.current_df = source_df.clone()
+            self.orig_df = source_df.clone()
+            if self.path_str and self.path_str in self.tables:
+                self.tables[self.path_str] = self.current_df
+
+        self.undo_stack.clear()
         self.redo_stack.clear()
-        self.history.append("reset")
-        output_fn(
-            f"Restored original dataset. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
-        )
+        gc.collect()
+
+        if is_explicit_initial:
+            self.history.append("reset initial [reverted to initial read]")
+            desc = "initial dataset"
+        else:
+            self.history.append("reset [reverted to initial read]")
+            desc = "initial dataset (no checkpoints exist)"
+
+        if self.session_name:
+            self._save_session_metadata()
+
+        if self.current_df is not None:
+            output_fn(f"Restored {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
+        else:
+            output_fn(f"Restored {desc}.")
+
+    def _push_undo(self, desc: str, snapshot: Any) -> None:
+        """Push an entry onto undo_stack, enforcing MAX_UNDO_STEPS sliding window."""
+        self.undo_stack.append((desc, snapshot))
+        while len(self.undo_stack) > self.max_undo_steps:
+            _, old_snap = self.undo_stack.pop(0)
+            if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
+                shutil.rmtree(old_snap["dir"], ignore_errors=True)
+
+    def _push_redo(self, desc: str, snapshot: Any) -> None:
+        """Push an entry onto redo_stack, enforcing MAX_UNDO_STEPS sliding window."""
+        self.redo_stack.append((desc, snapshot))
+        while len(self.redo_stack) > self.max_undo_steps:
+            _, old_snap = self.redo_stack.pop(0)
+            if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
+                shutil.rmtree(old_snap["dir"], ignore_errors=True)
+
+    def _capture_session_state_to_disk(self) -> dict[str, Any]:
+        """Serialize current session tables to a temporary IPC disk folder to free all RAM."""
+        import uuid
+
+        undo_dir = self._get_cp_dir() / f"_undo_{uuid.uuid4().hex[:12]}"
+        undo_dir.mkdir(parents=True, exist_ok=True)
+        saved_tables: dict[str, str] = {}
+        for tbl_name, tbl_df in self.tables.items():
+            ipc_file = _safe_ipc_filename(tbl_name)
+            tbl_df.write_ipc(undo_dir / ipc_file)
+            saved_tables[tbl_name] = ipc_file
+
+        saved_orig: dict[str, str] = {}
+        for tbl_name, tbl_df in self.orig_tables.items():
+            ipc_file = f"_orig_{_safe_ipc_filename(tbl_name)}"
+            tbl_df.write_ipc(undo_dir / ipc_file)
+            saved_orig[tbl_name] = ipc_file
+
+        saved_initial: dict[str, str] = {}
+        for tbl_name, tbl_df in self.initial_tables.items():
+            ipc_file = f"_init_{_safe_ipc_filename(tbl_name)}"
+            tbl_df.write_ipc(undo_dir / ipc_file)
+            saved_initial[tbl_name] = ipc_file
+
+        cur_ipc: str | None = None
+        if self.current_df is not None:
+            cur_ipc = "_current_df.ipc"
+            self.current_df.write_ipc(undo_dir / cur_ipc)
+
+        return {
+            "type": "disk_ipc",
+            "dir": str(undo_dir),
+            "tables": saved_tables,
+            "orig_tables": saved_orig,
+            "initial_tables": saved_initial,
+            "current_df": cur_ipc,
+            "table_sources": dict(self.table_sources),
+            "active_table": self.path_str,
+        }
 
     def _cmd_undo(self, output_fn: Callable[[str], None]) -> None:
         if not self.undo_stack:
             output_fn("Nothing to undo.")
             return
         desc, prev_state = self.undo_stack.pop()
-        self.redo_stack.append((desc, self._capture_session_state()))
+        self._push_redo(desc, self._capture_session_state())
         self._apply_session_state(prev_state)
+        if isinstance(prev_state, dict) and prev_state.get("type") == "disk_ipc":
+            shutil.rmtree(prev_state["dir"], ignore_errors=True)
         self.history.append(f"undo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
@@ -1430,8 +1889,10 @@ class PytaeRepl:
             output_fn("Nothing to redo.")
             return
         desc, next_state = self.redo_stack.pop()
-        self.undo_stack.append((desc, self._capture_session_state()))
+        self._push_undo(desc, self._capture_session_state())
         self._apply_session_state(next_state)
+        if isinstance(next_state, dict) and next_state.get("type") == "disk_ipc":
+            shutil.rmtree(next_state["dir"], ignore_errors=True)
         self.history.append(f"redo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
@@ -1443,13 +1904,19 @@ class PytaeRepl:
             output_fn("No transformations recorded in this session.")
             return
         output_fn("Pipeline History:")
-        for idx, entry in enumerate(self.history, start=1):
-            output_fn(f"  {idx:2d}: {entry}")
+        step_num = 1
+        for entry in self.history:
+            if entry.startswith("*checkpoint:") and entry.endswith("*"):
+                output_fn(f"  {entry}")
+            else:
+                output_fn(f"  {step_num:2d}: {entry}")
+                step_num += 1
 
     def _capture_session_state(self) -> dict[str, Any]:
         return {
             "tables": {k: v.clone() for k, v in self.tables.items()},
             "orig_tables": {k: v.clone() for k, v in self.orig_tables.items()},
+            "initial_tables": {k: v.clone() for k, v in self.initial_tables.items()},
             "table_sources": dict(self.table_sources),
             "active_table": self.path_str,
             "current_df": self.current_df.clone() if self.current_df is not None else None,
@@ -1462,16 +1929,56 @@ class PytaeRepl:
                 self.tables[self.path_str] = state
             return
         if isinstance(state, dict):
+            if state.get("type") == "disk_ipc":
+                u_dir = Path(state["dir"])
+                self.tables = {}
+                for tbl_name, ipc_file in state.get("tables", {}).items():
+                    p = u_dir / ipc_file
+                    if p.exists():
+                        self.tables[tbl_name] = pl.read_ipc(p)
+                self.orig_tables = {}
+                for tbl_name, ipc_file in state.get("orig_tables", {}).items():
+                    p = u_dir / ipc_file
+                    if p.exists():
+                        self.orig_tables[tbl_name] = pl.read_ipc(p)
+                self.initial_tables = {}
+                for tbl_name, ipc_file in state.get("initial_tables", {}).items():
+                    p = u_dir / ipc_file
+                    if p.exists():
+                        self.initial_tables[tbl_name] = pl.read_ipc(p)
+                self.table_sources = dict(state.get("table_sources", {}))
+                self.path_str = state.get("active_table")
+                if self.path_str and self.path_str in self.tables:
+                    self.current_df = self.tables[self.path_str]
+                    self.orig_df = self.orig_tables.get(self.path_str)
+                    self.initial_df = self.initial_tables.get(self.path_str)
+                elif state.get("current_df") and (u_dir / state["current_df"]).exists():
+                    self.current_df = pl.read_ipc(u_dir / state["current_df"])
+                    self.orig_df = self.current_df
+                    self.initial_df = self.current_df
+                else:
+                    self.current_df = None
+                    self.orig_df = None
+                    self.initial_df = None
+                return
+
             self.tables = {k: v.clone() for k, v in state.get("tables", {}).items()}
             self.orig_tables = {k: v.clone() for k, v in state.get("orig_tables", {}).items()}
+            self.initial_tables = {k: v.clone() for k, v in state.get("initial_tables", {}).items()}
             self.table_sources = dict(state.get("table_sources", {}))
             self.path_str = state.get("active_table")
             if self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
+                self.orig_df = self.orig_tables.get(self.path_str)
+                self.initial_df = self.initial_tables.get(self.path_str)
             elif state.get("current_df") is not None:
                 self.current_df = state["current_df"].clone()
+                self.orig_df = self.current_df
+                self.initial_df = self.current_df
             else:
                 self.current_df = None
+                self.orig_df = None
+                self.initial_df = None
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
         if not self.tables and self.current_df is None:
@@ -1512,7 +2019,18 @@ class PytaeRepl:
         (cp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
         self.checkpoints[name] = meta
 
+        # Record checkpoint banner in history
+        self.history.append(f"*checkpoint: {name}*")
+        if self.session_name:
+            self._save_session_metadata()
+
         # Reset undo and redo stacks upon creating a checkpoint to establish new baseline and free intermediate memory
+        for _, snap in self.undo_stack:
+            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
+                shutil.rmtree(snap["dir"], ignore_errors=True)
+        for _, snap in self.redo_stack:
+            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
+                shutil.rmtree(snap["dir"], ignore_errors=True)
         self.undo_stack.clear()
         self.redo_stack.clear()
         gc.collect()
@@ -1527,7 +2045,9 @@ class PytaeRepl:
         else:
             output_fn(f"Saved checkpoint '{name}'.")
 
-    def _cmd_restore(self, name: str, output_fn: Callable[[str], None]) -> None:
+    def _cmd_restore(
+        self, name: str, output_fn: Callable[[str], None], record_history: bool = True
+    ) -> None:
         if name not in self.checkpoints:
             avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
             output_fn(f"pytae: checkpoint '{name}' not found. Available checkpoints: {avail}")
@@ -1579,7 +2099,10 @@ class PytaeRepl:
         # Reset undo and redo stacks upon restore to anchor session strictly at the restored milestone
         self.undo_stack.clear()
         self.redo_stack.clear()
-        self.history.append(f"restore {name}")
+        if record_history:
+            self.history.append(f"restore {name}")
+        if self.session_name:
+            self._save_session_metadata()
 
         # Explicitly release any memory held by pre-restore intermediate tables
         gc.collect()
@@ -1715,10 +2238,14 @@ class PytaeRepl:
                             load_opts["nrows"] = nrows_val
                         p, df = self._read_file_to_df(clean_path, **load_opts)
                         self.tables[var_name] = df
-                        self.orig_tables[var_name] = df.clone()
+                        self.orig_tables[var_name] = df
+                        if var_name not in self.initial_tables:
+                            self.initial_tables[var_name] = df
+                        if self.initial_df is None:
+                            self.initial_df = df
                         self.table_sources[var_name] = p.name
                         self.current_df = df
-                        self.orig_df = df.clone()
+                        self.orig_df = df
                         self.path_str = var_name
                         self.history.append(f"{var_name} = {right_expr}")
                         opts_desc = ""
@@ -1916,10 +2443,15 @@ class PytaeRepl:
             self.undo_stack.clear()
             self.redo_stack.clear()
             target_alias = alias or self.path_str or p.stem or p.name
-            self.tables[target_alias] = loaded_df.clone()
-            self.orig_tables[target_alias] = loaded_df.clone()
+            self.tables[target_alias] = loaded_df
+            self.orig_tables[target_alias] = loaded_df
+            if target_alias not in self.initial_tables:
+                self.initial_tables[target_alias] = loaded_df
+            if self.initial_df is None:
+                self.initial_df = loaded_df
             self.table_sources[target_alias] = p.name
             self.current_df = loaded_df
+            self.orig_df = loaded_df
             self.path_str = target_alias
             opts_desc = ""
             if reader_kwargs or nrows_val is not None:
@@ -2078,7 +2610,7 @@ class PytaeRepl:
                 right_on=right_col,
                 how=how_polars,  # type: ignore[arg-type]
             )
-            self.undo_stack.append((f"-join {right_name} on={on_key} (how={how})", self.current_df.clone()))
+            self._push_undo(f"-join {right_name} on={on_key} (how={how})", self.current_df.clone())
             self.current_df = joined
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = joined
@@ -2134,7 +2666,7 @@ class PytaeRepl:
             res = ctx.execute(query).collect()
             output_fn(f"-> {self.path_str or 'df'}: {res.shape[0]:,} rows x {res.shape[1]} cols")
             # Update state with SQL query result
-            self.undo_stack.append((f'-sql "{query[:40]}..."', self.current_df.clone()))
+            self._push_undo(f'-sql "{query[:40]}..."', self.current_df.clone())
             self.current_df = res
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = res
@@ -2273,7 +2805,7 @@ class PytaeRepl:
                 res_frame = getattr(args, "_result_frame", None)
                 if res_frame is not None:
                     assert snapshot is not None
-                    self.undo_stack.append((line, snapshot))
+                    self._push_undo(line, snapshot)
                     if isinstance(res_frame, pl.LazyFrame):
                         res_frame = res_frame.collect()
                     elif not isinstance(res_frame, pl.DataFrame):
@@ -2384,6 +2916,7 @@ def repl(
     nrows: int | None = None,
     chunk_size: int | None = None,
     reader_kwargs: dict[str, Any] | None = None,
+    session: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Launch the interactive Pytae REPL.
@@ -2408,6 +2941,8 @@ def repl(
         Chunk size in rows for streaming ingestion.
     reader_kwargs : dict, optional
         Additional keyword arguments to pass to dataset reader.
+    session : str, optional
+        Persistent session name (saves checkpoints across restarts in ~/.pytae/sessions/<name>).
 
     Returns
     -------
@@ -2425,6 +2960,7 @@ def repl(
         nrows=nrows,
         chunk_size=chunk_size,
         reader_kwargs=reader_kwargs,
+        session=session,
         **kwargs,
     )
     return runner.run()

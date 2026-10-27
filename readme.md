@@ -13,7 +13,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 2. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with $O(1)$ pointer-reassignment undo/redo, multi-table joins, and ANSI SQL.
 3. **Python & Jupyter SDK (`pt.DataFrame` / `df.pt`)**: High-performance Polars-native DataFrame library with `.pt` accessor for pandas/polars DataFrames.
 
-👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/repl.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
+👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/repl.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
 
 ---
 
@@ -78,7 +78,7 @@ pytae [df1, df2, df3, df4]> df3 -o merged_orders.parquet
 > [!TIP]
 > **Clean Terminal (Model 2)**: Operations output concise shape confirmations (e.g. `-> df1: 10,000 rows x 3 cols` or `df1: 344 rows x 7 cols`) without dumping full tables. To inspect rows, explicitly run `-head [N]`.
 
-👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/repl.md)
+👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/repl.md)
 
 ---
 
@@ -174,7 +174,7 @@ plotter.finalize(title="Penguin Morphology Dashboard", save="dashboard.png")
 ### Architecture & Comparisons
 - **Master Reference & Architecture Hub**: [docs/pytae.md](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)
 - **Ecosystem Comparisons**: [vs. Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [vs. dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [vs. SAS](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
-- **Interactive Shell Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/repl.md)
+- **Interactive Shell Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/repl.md)
 - **Command-Line Quick Reference**: [CLI Cheat Sheet & Cookbook](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md)
 
 
