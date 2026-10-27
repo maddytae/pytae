@@ -2,8 +2,6 @@ name: Build Standalone Binaries
 
 on:
   push:
-    branches:
-      - feature/binary
     tags:
       - "v*"
   workflow_dispatch:

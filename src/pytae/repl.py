@@ -795,8 +795,8 @@ class PytaeRepl:
         elif df is not None:
             self._set_initial_df(df)
             self.path = Path(path) if path else None
-            self.path_str = self.path.name if self.path else "<memory>"
-            initial_name = self.path_str or "df"
+            self.path_str = self.path.name if self.path else "df"
+            initial_name = self.path_str
             self.tables[initial_name] = self.current_df
             self.orig_tables[initial_name] = self.current_df
             self.initial_tables[initial_name] = self.current_df
@@ -1591,34 +1591,11 @@ class PytaeRepl:
             output_fn(f"pytae: table '{target}' not found. Available: {avail}")
             return True
 
-        # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = sql SELECT ...`
-        if (
-            "=" in line
-            and not line.startswith("-")
-            and not any(
-                line.strip().startswith(p)
-                for p in (
-                    "filter",
-                    "-filter",
-                    "mutate",
-                    "-mutate",
-                    "select",
-                    "-select",
-                    "arrange",
-                    "-arrange",
-                    "by",
-                    "-by",
-                    "agg",
-                    "-agg",
-                    "sql",
-                    "join",
-                    "-join",
-                )
-            )
-        ):
+        # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...`
+        if "=" in line and not line.startswith("-"):
             left_part, right_part = line.split("=", 1)
             var_name = left_part.strip()
-            if var_name.isidentifier():
+            if var_name.isidentifier() and var_name.lower() not in _BARE_PIPELINE_VERBS:
                 self._cmd_assign(var_name, right_part.strip(), output_fn)
                 return True
 
@@ -2534,9 +2511,56 @@ class PytaeRepl:
                         output_fn(f"pytae: failed to load {clean_path}: {exc}")
                         return
 
-        # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = df1 -join df2 ...` or `df3 = df1`
+        # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = -filter ...` or `df3 = df1`
         if right_tokens:
             first_tok = right_tokens[0]
+            first_lower = first_tok.lower()
+            if first_lower in _BARE_PIPELINE_VERBS:
+                output_fn(
+                    f"pytae: bare '{first_tok}' is not recognized; use '-{first_tok}' (matching CLI syntax)."
+                )
+                return
+
+            # Active-table pipeline assignment: `df = -filter ...` or `k = -filter ...`
+            if first_tok.startswith("-"):
+                if self.current_df is None:
+                    output_fn("pytae: no active dataset loaded to apply pipeline.")
+                    return
+                source_df = self.current_df
+                pipe_tokens = right_tokens
+                pipe_line = right_expr
+
+                first_pipe = pipe_tokens[0].lower()
+                if first_pipe in _DISALLOWED_ALIASES:
+                    canonical = _DISALLOWED_ALIASES[first_pipe]
+                    output_fn(f"pytae: '{first_pipe}' is not recognized; use '{canonical}'.")
+                    return
+                if first_pipe in _BARE_PIPELINE_VERBS:
+                    output_fn(
+                        f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
+                    )
+                    return
+
+                if first_pipe == "-join":
+                    self.current_df = source_df.clone()
+                    self._cmd_join(pipe_tokens[1:], output_fn)
+                    res_df = self.current_df
+                else:
+                    res_df = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
+                    if res_df is None:
+                        return
+
+                was_existing = var_name in self.tables
+                self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
+                self.tables[var_name] = res_df
+                self.table_sources[var_name] = f"{self.path_str or 'active'} {pipe_line[:20]}"
+                self.current_df = res_df
+                self.path_str = var_name
+                self.history.append(f"{var_name} = {right_expr}")
+                action = "Updated" if was_existing else "Created"
+                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
+                return
+
             resolved_src = self._resolve_table_name(first_tok)
             if resolved_src is not None or first_tok in self.checkpoints:
                 if resolved_src is not None:
@@ -2572,18 +2596,23 @@ class PytaeRepl:
                     )
                     return
                 # Run pipeline or join on source_df
-                self.current_df = source_df.clone()
                 if first_pipe == "-join":
+                    self.current_df = source_df.clone()
                     self._cmd_join(pipe_tokens[1:], output_fn)
+                    res_df = self.current_df
                 else:
-                    self._cmd_pipeline(pipe_line, pipe_tokens, output_fn)
-                res_df = self.current_df
+                    res_df = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
+                    if res_df is None:
+                        return
+                was_existing = var_name in self.tables
+                self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
                 self.tables[var_name] = res_df
                 self.table_sources[var_name] = f"{first_tok} {pipe_line[:20]}"
                 self.current_df = res_df
                 self.path_str = var_name
                 self.history.append(f"{var_name} = {right_expr}")
-                output_fn(f"Created '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
+                action = "Updated" if was_existing else "Created"
+                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
                 return
 
         output_fn(f"pytae: could not assign '{var_name}'. '{clean_path}' is not an existing file or table.")
@@ -2685,22 +2714,15 @@ class PytaeRepl:
             output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
         elif first_sub == "-join":
             self._cmd_join(sub_tokens[1:], output_fn)
-            self.tables[table_name] = self.current_df
         elif first_sub == "-sql":
             raw_query = sub_line[4:].strip()
             query = raw_query.strip("\"'")
             self._cmd_sql(query, output_fn)
-            self.tables[table_name] = self.current_df
         else:
             self._cmd_pipeline(sub_line, sub_tokens, output_fn)
-            self.tables[table_name] = self.current_df
 
-        if old_path == table_name:
-            self.current_df = self.tables[table_name]
-            self.path_str = table_name
-        else:
-            self.current_df = old_active
-            self.path_str = old_path
+        self.current_df = old_active
+        self.path_str = old_path
 
     def _cmd_load(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(tokens)
@@ -2988,6 +3010,82 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
 
+    def _eval_pipeline_df(
+        self,
+        source_df: pl.DataFrame,
+        tokens: list[str],
+        output_fn: Callable[[str], None] = print,
+    ) -> pl.DataFrame | None:
+        """Evaluate a pipeline on source_df without printing, returning the resulting pl.DataFrame."""
+        from pytae.cli import (
+            build_parser,
+            parse_concat_arg,
+            parse_filter,
+            parse_join_arg,
+            parse_rename,
+            parse_select_spec,
+        )
+
+        exec_argv = ["<memory>"] + tokens
+        parser = build_parser(exit_on_error=False)
+        try:
+            args, extras = parser.parse_known_args(exec_argv)
+            if extras:
+                first_extra = extras[0].lower().lstrip("-")
+                if first_extra in _BARE_PIPELINE_VERBS:
+                    output_fn(
+                        f"pytae: bare '{extras[0]}' is not recognized; use '-{first_extra}' (matching CLI syntax)."
+                    )
+                else:
+                    output_fn(f"pytae: unrecognized arguments: {' '.join(extras)}")
+                return None
+        except (argparse.ArgumentError, SystemExit) as exc:
+            output_fn(f"pytae syntax error: {exc}")
+            return None
+
+        rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
+        select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
+        filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
+        mutate_specs = list(args.mutate or [])
+        sql_specs = list(args.sql or [])
+        join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
+        concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
+        op_order = getattr(args, "op_order", [])
+
+        args._memory_df = source_df
+        args.in_repl = True
+        args.quiet = True
+        args.output_fn = lambda s: None
+
+        try:
+            failed = _process_path(
+                Path("<memory>"),
+                args,
+                parser,
+                batch=True,
+                show_all=not op_order,
+                select_specs=select_specs,
+                filter_specs=filter_specs,
+                mutate_specs=mutate_specs,
+                sql_specs=sql_specs,
+                rename_specs=rename_specs,
+                join_specs=join_specs,
+                concat_specs=concat_specs,
+            )
+            if failed:
+                return None
+            res_frame = getattr(args, "_result_frame", None)
+            if res_frame is not None:
+                if isinstance(res_frame, pl.LazyFrame):
+                    return res_frame.collect()
+                elif isinstance(res_frame, pl.DataFrame):
+                    return res_frame
+                return pl.from_pandas(res_frame)
+            return source_df
+        except Exception as exc:
+            output_fn(f"pytae error: {exc}")
+            return None
+
     def _cmd_pipeline(self, line: str, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
             output_fn("pytae: no dataset loaded. Load a dataset first with '<var> = <path.parquet>'.")
@@ -3034,38 +3132,9 @@ class PytaeRepl:
 
         op_order = getattr(args, "op_order", [])
 
-        # Determine if this command is purely an inspection or preview operation
-        has_transformations = any(
-            op
-            in (
-                "filter",
-                "mutate",
-                "select",
-                "rename",
-                "arrange",
-                "by",
-                "agg",
-                "distinct",
-                "count",
-                "fillna",
-                "dropna",
-                "clean_columns",
-                "mask",
-                "unmask",
-                "long",
-                "wide",
-                "pivot",
-                "sql",
-            )
-            for op in op_order
-        )
-
         args._memory_df = self.current_df
         args.in_repl = True
         args.output_fn = output_fn
-
-        # Save snapshot for undo if it's a mutating transformation
-        snapshot = self.current_df.clone() if has_transformations else None
 
         try:
             failed = _process_path(
@@ -3086,46 +3155,7 @@ class PytaeRepl:
                 output_fn("pytae: command failed with errors.")
                 return
 
-            if has_transformations:
-                res_frame = getattr(args, "_result_frame", None)
-                if res_frame is not None:
-                    assert snapshot is not None
-                    self._push_undo(line, snapshot)
-                    if isinstance(res_frame, pl.LazyFrame):
-                        res_frame = res_frame.collect()
-                    elif not isinstance(res_frame, pl.DataFrame):
-                        res_frame = pl.from_pandas(res_frame)
-                    self.current_df = res_frame
-                    if self.path_str and self.path_str in self.tables:
-                        self.tables[self.path_str] = res_frame
-                    self.redo_stack.clear()
-                    self.history.append(line)
-                    explicit_inspect = any(
-                        op
-                        in (
-                            "head",
-                            "tail",
-                            "sample",
-                            "describe",
-                            "glimpse",
-                            "freq",
-                            "hist",
-                            "bar",
-                            "scatter",
-                            "corr",
-                            "plot",
-                            "diff",
-                            "shape",
-                            "cols",
-                            "dtype",
-                            "nulls",
-                        )
-                        for op in op_order
-                    )
-                    if not explicit_inspect:
-                        output_fn(
-                            f"-> {self.path_str or 'df'}: {res_frame.shape[0]:,} rows x {res_frame.shape[1]} cols"
-                        )
+            self.history.append(line)
         except Exception as exc:
             output_fn(f"pytae error: {exc}")
 

@@ -48,21 +48,27 @@ def test_repl_filter_and_undo_and_reset(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
-    # 1. Apply filter
+    # 1. Exploratory preview filter does not mutate active table
     r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    assert r.current_df.shape == (5, 3)  # Safe preview, untouched!
+    assert any("Gentoo" in o for o in outputs)
+
+    # 2. Assign filter explicitly updates active table and records undo
+    outputs.clear()
+    r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.current_df.shape == (2, 3)
     assert len(r.undo_stack) == 1
 
-    # 2. Undo filter
+    # 3. Undo filter
     r.execute_line("undo", output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)
     assert "Undid:" in outputs[-1]
 
-    # 3. Apply another filter
-    r.execute_line("-filter \"species == 'Adelie'\"", output_fn=outputs.append)
+    # 4. Apply another filter via assignment
+    r.execute_line("df = -filter \"species == 'Adelie'\"", output_fn=outputs.append)
     assert r.current_df.shape == (2, 3)
 
-    # 4. Reset to original
+    # 5. Reset to original
     r.execute_line("reset", output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)
     assert "Restored" in outputs[-1] and "initial" in outputs[-1]
@@ -72,7 +78,7 @@ def test_repl_redo(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
-    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.current_df.shape == (2, 3)
 
     r.execute_line("undo", output_fn=outputs.append)
@@ -91,8 +97,8 @@ def test_repl_checkpoint_and_restore(sample_df):
     r.execute_line("checkpoint v1", output_fn=outputs.append)
     assert "v1" in r.checkpoints
 
-    # Mutate data
-    r.execute_line('-mutate "mass_kg = body_mass_g / 1000.0"', output_fn=outputs.append)
+    # Mutate data via assignment
+    r.execute_line('df = -mutate "mass_kg = body_mass_g / 1000.0"', output_fn=outputs.append)
     assert "mass_kg" in r.current_df.columns
     assert r.current_df.shape == (5, 4)
 
@@ -209,9 +215,9 @@ def test_repl_error_handling(sample_df):
 
 def test_repl_headless_run(sample_df):
     lines = [
-        "-filter \"species == 'Gentoo'\"",
+        "df = -filter \"species == 'Gentoo'\"",
         "checkpoint g_only",
-        '-mutate "mass_kg = body_mass_g / 1000.0"',
+        'df = -mutate "mass_kg = body_mass_g / 1000.0"',
         "undo",
         "exit",
     ]
@@ -235,7 +241,7 @@ def test_repl_convenience_function(sample_df):
 
 def test_dataframe_method_repl(sample_df):
     pt_df = DataFrame(sample_df)
-    lines = ['-filter "body_mass_g > 4000"', "exit"]
+    lines = ['df = -filter "body_mass_g > 4000"', "exit"]
     r = PytaeRepl(df=pt_df)
     res = r.run(input_fn=iter(lines).__next__, output_fn=lambda _: None)
     assert res.shape == (3, 3)
@@ -374,8 +380,11 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     r.execute_line("df2 -shape", output_fn=outputs.append)
     assert "(2, 3)" in outputs[-1]
 
-    # 5. Targeted transformation: filter df1 in place
+    # 5. Targeted preview does not mutate df1
     r.execute_line('df1 -filter "amount > 50"', output_fn=outputs.append)
+    assert r.tables["df1"].shape == (3, 3)  # Preview only!
+    # Explicit assignment filters df1 in place
+    r.execute_line('df1 = df1 -filter "amount > 50"', output_fn=outputs.append)
     assert r.tables["df1"].shape == (2, 3)
 
     # 6. Switch active table with bare name or `use`
@@ -549,12 +558,12 @@ def test_repl_model2_display_no_table_dumps(tmp_path):
     assert "df1: 3 rows x 3 cols" in outputs[0]
     assert "order_id" not in outputs[0]
 
-    # 2. Pipeline transformation outputs concise confirmation, no table dump
+    # 2. Pipeline transformation outputs formatted table matching CLI without mutating df1
     outputs.clear()
     r.execute_line('-filter "amount > 50"', output_fn=outputs.append)
-    assert len(outputs) == 1
-    assert "-> df1: 2 rows x 3 cols" in outputs[0]
-    assert "order_id" not in outputs[0]
+    assert any("order_id" in o for o in outputs)
+    assert any("150" in o for o in outputs)
+    assert r.tables["df1"].shape == (3, 3)
 
     # 3. Explicit inspection '-head' renders table with columns and values
     outputs.clear()
@@ -566,7 +575,7 @@ def test_repl_model2_display_no_table_dumps(tmp_path):
     outputs.clear()
     r.execute_line("-tail 1", output_fn=outputs.append)
     assert any("order_id" in o for o in outputs)
-    assert any("75" in o for o in outputs)
+    assert any("20" in o for o in outputs)
 
 
 def test_repl_help_and_exit_strictly_enforced():
@@ -841,8 +850,8 @@ def test_repl_targeted_pipeline_active_sync(sample_df):
     r = PytaeRepl(df=sample_df)
     tbl_name = r.path_str or "df"
 
-    # Target the active table with -select "!species"
-    r.execute_line(f'{tbl_name} -select "!species"', output_fn=outputs.append)
+    # Target the active table with assignment: tbl = tbl -select "!species"
+    r.execute_line(f'{tbl_name} = {tbl_name} -select "!species"', output_fn=outputs.append)
     assert "species" not in r.tables[tbl_name].columns
     assert "species" not in r.current_df.columns
     assert r.current_df.columns == ["id", "body_mass_g"]
@@ -955,7 +964,7 @@ def test_repl_shell_pipe(sample_df):
 
     # Pipe '|' inside quoted arguments (e.g. select regex) is NOT split as a shell pipe
     outputs.clear()
-    r.execute_line('-select "regex=species|body"', output_fn=outputs.append)
+    r.execute_line('df = -select "regex=species|body"', output_fn=outputs.append)
     assert r.current_df.columns == ["species", "body_mass_g"]
 
 
@@ -1046,10 +1055,10 @@ def test_repl_rm_df_in_memory(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
     assert r.current_df is not None
-    assert "<memory>" in r.tables
+    assert "df" in r.tables
 
     r.execute_line("rm df", output_fn=outputs.append)
-    assert "Removed table '<memory>'" in outputs[-1]
+    assert "Removed table 'df'" in outputs[-1]
     assert r.current_df is None
     assert not r.tables
 
@@ -1213,12 +1222,12 @@ def test_git_bash_pipe_ansi_arrow_history_recall(sample_df):
 
     # Run two commands to populate history
     r.execute_line("-cols", output_fn=outputs.append)
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line('df = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
 
     # In Git Bash without winpty, pressing Up Arrow + Enter sends "\x1b[A"
     outputs.clear()
     r.execute_line("\x1b[A", output_fn=outputs.append)
-    assert any("recalled from history: -filter \"species == 'Gentoo'\"" in o for o in outputs)
+    assert any("recalled from history: df = -filter \"species == 'Gentoo'\"" in o for o in outputs)
     assert r.current_df.shape == (2, 3)
 
     # Pressing Up Arrow twice + Enter sends "\x1b[A\x1b[A" -> recalls 2 steps back ("-cols")
@@ -1359,7 +1368,7 @@ def test_repl_checkpoint_disk_storage_and_undo_reset(sample_df):
     r = PytaeRepl(df=sample_df)
 
     # 1. Do a transformation to create an undo step
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line('df = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
     assert len(r.undo_stack) == 1
 
     # 2. Creating a checkpoint MUST reset undo and save tables to disk IPC
@@ -1379,7 +1388,7 @@ def test_repl_checkpoint_disk_storage_and_undo_reset(sample_df):
     assert not any(isinstance(v, pl.DataFrame) for v in cp_info.values())
 
     # 3. New mutation after checkpoint can be undone back to checkpoint baseline
-    r.execute_line('-mutate "weight_lb = body_mass_g * 0.00220462"', output_fn=outputs.append)
+    r.execute_line('df = -mutate "weight_lb = body_mass_g * 0.00220462"', output_fn=outputs.append)
     assert "weight_lb" in r.current_df.columns
     assert len(r.undo_stack) == 1
 
@@ -1458,7 +1467,7 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     orig_shape = r.tables["df1"].shape
 
     # 1. Filter and create checkpoint v1
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
     assert r.current_df.shape[0] < orig_shape[0]
     gentoo_shape = r.current_df.shape
     r.execute_line("checkpoint v1", output_fn=outputs.append)
@@ -1466,7 +1475,7 @@ def test_repl_reset_hierarchy_and_disallowed_args():
 
     # 2. Add extra table and mutate df1
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
-    r.execute_line('df1 -mutate "flag = 999"', output_fn=outputs.append)
+    r.execute_line('df1 = df1 -mutate "flag = 999"', output_fn=outputs.append)
     assert "df2" in r.tables
     assert "flag" in r.tables["df1"].columns
 
@@ -1515,14 +1524,14 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
     orig_df1_shape = r.tables["df1"].shape
     orig_df2_shape = r.tables["df2"].shape
 
-    # 2. Filter both tables to distinct smaller subsets
+    # 2. Filter both tables to distinct smaller subsets via assignment
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
     df1_gentoo_shape = r.tables["df1"].shape
     assert df1_gentoo_shape[0] < orig_df1_shape[0]
 
     r.execute_line("use df2", output_fn=outputs.append)
-    r.execute_line('-filter "tip > 5"', output_fn=outputs.append)
+    r.execute_line('df2 = -filter "tip > 5"', output_fn=outputs.append)
     df2_tip5_shape = r.tables["df2"].shape
     assert df2_tip5_shape[0] < orig_df2_shape[0]
 
@@ -1539,13 +1548,13 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
 
     # 4. Now filter df1 again and create a checkpoint 'v1'
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('-filter "species == \'Chinstrap\'"', output_fn=outputs.append)
+    r.execute_line('df1 = -filter "species == \'Chinstrap\'"', output_fn=outputs.append)
     df1_chin_shape = r.tables["df1"].shape
     r.execute_line("checkpoint v1", output_fn=outputs.append)
 
     # Further modify both df1 and df2
-    r.execute_line('df1 -mutate "flag = 1"', output_fn=outputs.append)
-    r.execute_line('df2 -mutate "extra = 2"', output_fn=outputs.append)
+    r.execute_line('df1 = df1 -mutate "flag = 1"', output_fn=outputs.append)
+    r.execute_line('df2 = df2 -mutate "extra = 2"', output_fn=outputs.append)
     assert "flag" in r.tables["df1"].columns
     assert "extra" in r.tables["df2"].columns
 
@@ -1611,12 +1620,12 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     assert r1._build_prompt() == "pytae:proj_x> "
 
     r1.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-    r1.execute_line('-filter "species == \'Adelie\'"', output_fn=outputs.append)
+    r1.execute_line('df1 = -filter "species == \'Adelie\'"', output_fn=outputs.append)
     r1.execute_line("checkpoint v1", output_fn=outputs.append)
     adelie_shape = r1.tables["df1"].shape
 
-    # Add uncheckpointed scratch edits in RAM
-    r1.execute_line('df1 -mutate "scratch_col = 123"', output_fn=outputs.append)
+    # Add uncheckpointed scratch edits in RAM via assignment
+    r1.execute_line('df1 = df1 -mutate "scratch_col = 123"', output_fn=outputs.append)
     r1.execute_line("df_scratch = sample:tips", output_fn=outputs.append)
     assert "scratch_col" in r1.tables["df1"].columns
     assert "df_scratch" in r1.tables
@@ -1814,7 +1823,7 @@ def test_repl_undo_stack_sliding_window_cap():
 
     # Execute 15 mutating operations
     for i in range(15):
-        r.execute_line(f'df1 -filter "body_mass_g > {2000 + i * 10}"', output_fn=outputs.append)
+        r.execute_line(f'df1 = df1 -filter "body_mass_g > {2000 + i * 10}"', output_fn=outputs.append)
 
     # Undo stack must be capped at max_undo_steps (10), preventing unbounded memory bloat
     assert len(r.undo_stack) == r.max_undo_steps == 10
@@ -1912,5 +1921,83 @@ def test_cli_rejects_dash_s_and_accepts_session(tmp_path, monkeypatch, capsys):
         cli.main(["-session", "analysis", "-h"])
     captured_out = capsys.readouterr()
     assert "persistent REPL session name" in captured_out.out
+
+
+def test_repl_preview_by_default_and_assignment_mutation():
+    outputs = []
+    r = PytaeRepl()
+
+    # 1. Load sample dataset
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    assert "df1" in r.tables
+    assert r.tables["df1"].shape == (344, 7)
+    assert r.current_df.shape == (344, 7)
+
+    # 2. -distinct followed by -head 5 MUST NOT reduce rows in active dataset!
+    outputs.clear()
+    r.execute_line("-distinct -head 5", output_fn=outputs.append)
+    # Output must be a formatted table (CLI parity) and contain data columns
+    assert any("species" in o for o in outputs)
+    assert any("island" in o for o in outputs)
+    # Active table shape remains full 344 rows!
+    assert r.current_df.shape == (344, 7)
+    assert r.tables["df1"].shape == (344, 7)
+
+    # 3. Exploratory -filter prints formatted table without mutating df1
+    outputs.clear()
+    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    assert any("Gentoo" in o for o in outputs)
+    assert r.current_df.shape == (344, 7)
+    assert r.tables["df1"].shape == (344, 7)
+
+    # 4. Copy: k = df1
+    outputs.clear()
+    r.execute_line("k = df1", output_fn=outputs.append)
+    assert "k" in r.tables
+    assert r.tables["k"].shape == (344, 7)
+    assert any("Assigned 'k' from 'df1'" in o for o in outputs)
+
+    # 5. Targeted preview: k -filter "species == 'Gentoo'" does NOT change k
+    outputs.clear()
+    r.execute_line('k -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    assert any("Gentoo" in o for o in outputs)
+    assert r.tables["k"].shape == (344, 7)  # k is intact!
+
+    # 6. Targeted -distinct followed by -head: k -distinct -head 3
+    outputs.clear()
+    r.execute_line("k -distinct -head 3", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+    assert r.tables["k"].shape == (344, 7)  # k is intact!
+
+    # 7. Assignment from table with pipeline: filtered_k = df1 -filter ...
+    outputs.clear()
+    r.execute_line('filtered_k = df1 -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    assert "filtered_k" in r.tables
+    assert r.tables["filtered_k"].shape == (124, 7)
+    assert r.tables["df1"].shape == (344, 7)  # df1 is untouched!
+    assert any("Created 'filtered_k' (124 rows x 7 cols)" in o for o in outputs)
+
+    # 8. In-place reassignment: k = k -filter "bill_length_mm > 50"
+    outputs.clear()
+    r.execute_line('k = k -filter "bill_length_mm > 50"', output_fn=outputs.append)
+    assert r.tables["k"].shape[0] < 344
+    assert any("Updated 'k'" in o for o in outputs)
+
+    # 9. Active table assignment: df1 = -filter "species == 'Gentoo'"
+    outputs.clear()
+    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    assert r.tables["df1"].shape == (124, 7)
+    assert r.current_df.shape == (124, 7)
+    assert any("Updated 'df1' (124 rows x 7 cols)" in o for o in outputs)
+
+    # 10. Undo restores df1 to original 344 rows
+    outputs.clear()
+    r.execute_line("undo", output_fn=outputs.append)
+    assert r.tables["df1"].shape == (344, 7)
+    assert r.current_df.shape == (344, 7)
+    assert any("Undid:" in o for o in outputs)
+
+    r.close()
 
 

@@ -722,12 +722,12 @@ def _process_path(
     is_clip = out_target is not None and out_target.lower() in ("clip", "clipboard")
     is_file = out_target is not None and not is_clip and not is_image_out
     clip_action = None
-    emit_stdout = not is_clip and not is_file and not is_image_out
+    emit_stdout = not is_clip and not is_file and not is_image_out and not getattr(args, "quiet", False)
 
     if show_all:
         frame = pipeline.current_frame()
         rounded = _apply_round(frame, args.round_ndigits)
-        if emit_stdout and not getattr(args, "in_repl", False):
+        if emit_stdout:
             _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
             df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
@@ -765,8 +765,7 @@ def _process_path(
         frame = pipeline.current_frame()
         rounded = _apply_round(frame, args.round_ndigits)
         if should_print(idx):
-            if not getattr(args, "in_repl", False):
-                _output_text(_format_table(rounded, pretty=args.pretty), args)
+            _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
             df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
             clip_action = lambda d=df: d.to_clipboard(index=False)
