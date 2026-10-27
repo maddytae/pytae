@@ -21,7 +21,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 
 ### Option 1: Standalone Portable Binary (Zero Python Required)
 For locked-down corporate laptops, air-gapped environments, or instant setup without installing Python, download the single-file executable from [GitHub Releases](https://github.com/maddytae/pytae/releases):
-- **Windows**: `pytae-windows-x64.exe`
+- **Windows**: `pytae-windows-x64.zip` (Fast pre-extracted folder bundle)
 - **macOS**: `pytae-macos-arm64` (Apple Silicon) or `pytae-macos-x86_64` (Intel)
 - **Linux**: `pytae-linux-x86_64`
 

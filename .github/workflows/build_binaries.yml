@@ -36,7 +36,7 @@ jobs:
 
           - os: windows-latest
             target: windows-x64
-            binary_name: pytae-windows-x64.exe
+            binary_name: pytae-windows-x64.zip
             is_windows: true
 
     steps:
@@ -61,10 +61,9 @@ jobs:
         run: |
           python scripts/build_binary.py --release-name
 
-      - name: Build standalone binary and fast zip bundle (Windows)
+      - name: Build fast zip bundle (Windows)
         if: matrix.is_windows
         run: |
-          python scripts/build_binary.py --release-name
           python scripts/build_binary.py --release-name --onedir --zip
 
       - name: Smoke test binary (Unix)
@@ -79,28 +78,15 @@ jobs:
         if: matrix.is_windows
         shell: cmd
         run: |
-          dist\${{ matrix.binary_name }} -h
-          dist\${{ matrix.binary_name }} sample:penguins -shape
-          dist\${{ matrix.binary_name }} sample:penguins -filter "species == 'Gentoo'" -shape
           dist\pytae-windows-x64\pytae-windows-x64.exe -h
           dist\pytae-windows-x64\pytae-windows-x64.exe sample:penguins -shape
+          dist\pytae-windows-x64\pytae-windows-x64.exe sample:penguins -filter "species == 'Gentoo'" -shape
 
-      - name: Upload binary artifact (Unix)
-        if: "!matrix.is_windows"
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.binary_name }}
           path: dist/${{ matrix.binary_name }}
-          if-no-files-found: error
-
-      - name: Upload binary artifacts (Windows)
-        if: matrix.is_windows
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytae-windows-x64
-          path: |
-            dist/${{ matrix.binary_name }}
-            dist/pytae-windows-x64.zip
           if-no-files-found: error
 
   release:
