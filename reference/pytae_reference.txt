@@ -161,11 +161,19 @@ RULE 6: DUAL-MODALITY PARITY
   * Python: `df.filter("a > 1").by("b").agg(c="mean")`
   * Standalone Python: `pt.agg(pt.by(pt.filter(df, "a > 1"), "b"), c="mean")`
 
-RULE 7: PREFER BUILT-IN SAMPLE DATASETS FOR IMMEDIATE RUNNABILITY
-- Whenever answering questions or demonstrating functionality, ALWAYS prefer using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`, `sample:titanic`, `sample:flights`, `sample:diamonds`) in examples instead of hypothetical placeholder filepaths (`/path/to/file.parquet` or `my_data.csv`).
-- Why? Built-in sample datasets require ZERO setup or downloads from the user. Users can immediately copy and paste the command or Python snippet directly into their shell or notebook and see verified real results!
-  * CLI: `pytae sample:penguins -filter "species == 'Gentoo'" -head 3`
-  * Python: `penguins = pt.sample("penguins")`
+RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
+- When a user asks a complex question about their own hypothetical or custom dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):
+  1. Direct Solution: FIRST, provide the exact tailored solution using their specified dataset and column names.
+  2. Twin Proof on Sample Data: SECOND, ALWAYS provide a runnable "Twin Proof" on an equivalent built-in sample dataset (e.g. sample:penguins, sample:tips, sample:titanic) with an explicit 1-to-1 column mapping.
+  3. Why? This provides two critical benefits:
+     * Grounding: It anchors the agent's internal reasoning to verified canonical syntax, preventing hallucination.
+     * Instant Dry-Run: It allows the user to copy-paste and verify the pipeline in their terminal with real table outputs in 10ms before touching production data!
+  - Example:
+    * User Query: "Top 2 customers by avg profit for each zone in sales.parquet"
+    * Direct Solution:
+      pytae sales.parquet         -by zone,customer -agg "avg_profit=mean(profit)"         -arrange "zone, avg_profit desc"         -by zone -head 2
+    * Twin Proof on sample:penguins (zone -> island, customer -> species, profit -> body_mass_g):
+      pytae sample:penguins         -by island,species -agg "avg_mass=mean(body_mass_g)"         -arrange "island, avg_mass desc"         -by island -head 2
 ================================================================================
 
 

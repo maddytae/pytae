@@ -193,11 +193,25 @@ RULE 6: DUAL-MODALITY PARITY
   * Python: `df.filter("a > 1").by("b").agg(c="mean")`
   * Standalone Python: `pt.agg(pt.by(pt.filter(df, "a > 1"), "b"), c="mean")`
 
-RULE 7: PREFER BUILT-IN SAMPLE DATASETS FOR IMMEDIATE RUNNABILITY
-- Whenever answering questions or demonstrating functionality, ALWAYS prefer using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`, `sample:titanic`, `sample:flights`, `sample:diamonds`) in examples instead of hypothetical placeholder filepaths (`/path/to/file.parquet` or `my_data.csv`).
-- Why? Built-in sample datasets require ZERO setup or downloads from the user. Users can immediately copy and paste the command or Python snippet directly into their shell or notebook and see verified real results!
-  * CLI: `pytae sample:penguins -filter "species == 'Gentoo'" -head 3`
-  * Python: `penguins = pt.sample("penguins")`
+RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
+- When a user asks a complex question about their own hypothetical or custom dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):
+  1. Direct Solution: FIRST, provide the exact tailored solution using their specified dataset and column names.
+  2. Twin Proof on Sample Data: SECOND, ALWAYS provide a runnable "Twin Proof" on an equivalent built-in sample dataset (e.g. sample:penguins, sample:tips, sample:titanic) with an explicit 1-to-1 column mapping.
+  3. Why? This provides two critical benefits:
+     * Grounding: It anchors the agent's internal reasoning to verified canonical syntax, preventing hallucination.
+     * Instant Dry-Run: It allows the user to copy-paste and verify the pipeline in their terminal with real table outputs in 10ms before touching production data!
+  - Example:
+    * User Query: "Top 2 customers by avg profit for each zone in sales.parquet"
+    * Direct Solution:
+      pytae sales.parquet \
+        -by zone,customer -agg "avg_profit=mean(profit)" \
+        -arrange "zone, avg_profit desc" \
+        -by zone -head 2
+    * Twin Proof on sample:penguins (zone -> island, customer -> species, profit -> body_mass_g):
+      pytae sample:penguins \
+        -by island,species -agg "avg_mass=mean(body_mass_g)" \
+        -arrange "island, avg_mass desc" \
+        -by island -head 2
 ================================================================================
 
 
@@ -2012,15 +2026,17 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - Deletion uses wildcard: `rm *` (all tables) or `rm checkpoint *` (all snapshots). Singular `rm checkpoint <name>`. Never use `rm checkpoints`.
    - Screen clearing is strictly `clear`. Never `cls`.
 
-6. PREFER BUILT-IN SAMPLE DATASETS FOR IMMEDIATE RUNNABILITY:
-   - When demonstrating functionality or providing examples, ALWAYS prefer using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`, `sample:titanic`, `sample:flights`, `sample:diamonds`) instead of abstract placeholder paths (`file.parquet`, `data.csv`).
-   - Built-in sample datasets require ZERO setup or downloads from the user:
-     * CLI: `pytae sample:penguins -filter "species == 'Gentoo'" -head 3`
-     * Python: `penguins = pt.sample("penguins")`
-   - This empowers the user to immediately copy, paste, and run your command in their terminal or notebook to see real results!
+6. THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS):
+   - When a user asks a complex question about their own dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):
+     1. Tailored Solution FIRST: Provide the exact CLI command or Python code tailored to their dataset and column names.
+     2. Runnable Twin Proof SECOND: Immediately follow with a runnable "Twin Proof" on an equivalent built-in sample dataset (e.g. sample:penguins, sample:tips, sample:titanic) with an explicit 1-to-1 mapping of dimensions (e.g. zone -> island, customer -> species, profit -> body_mass_g).
+   - Why?
+     * It grounds your reasoning in canonical syntax to eliminate hallucination.
+     * It gives the user an instant, zero-setup dry run they can run in their terminal in 10ms to verify table outputs before touching production files.
+   - For general questions with no specific dataset provided: Always demonstrate using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`).
 
 When answering questions:
-- Favor testing and demonstrating with built-in sample datasets (`sample:penguins`, `sample:tips`, etc.) as much as feasible so users can run code immediately.
+- Provide the tailored answer on the user's dataset, followed by the runnable "Twin Proof" on a sample dataset with column mapping.
 - Provide both the CLI command and Python equivalent when appropriate.
 - Explain the pipeline step-by-step.
 - Ensure all string values in shell commands are properly quoted with single quotes inside double quotes.
