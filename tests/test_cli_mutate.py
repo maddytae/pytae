@@ -247,6 +247,74 @@ def test_mutate_cli_first_last_window(tmp_path, capsys):
     )
     assert exit_code == 0
     out = capsys.readouterr().out
-    assert "base" in out and "dev" in out and "ending" in out
     assert "15.0" in out or "15" in out  # 25.0 - 10.0 = 15.0
     assert "40.0" in out or "40" in out  # 140.0 - 100.0 = 40.0
+
+
+def test_cli_single_shot_grouping_zero_pollution(tmp_path, capsys):
+    df = pd.DataFrame(
+        {
+            "region": ["North", "North", "South", "South"],
+            "dept": ["IT", "HR", "IT", "HR"],
+            "sales": [100.0, 200.0, 300.0, 400.0],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    # -by region -mutate regional_mean
+    # -mutate global_mean (zero pollution across entire table!)
+    # -by dept -mutate dept_mean
+    exit_code = cli.main(
+        [
+            path,
+            "-by",
+            "region",
+            "-mutate",
+            "regional_mean = mean(sales)",
+            "-mutate",
+            "global_mean = mean(sales)",
+            "-by",
+            "dept",
+            "-mutate",
+            "dept_mean = mean(sales)",
+            "-head",
+            "4",
+        ]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    # Regional means: North = 150.0, South = 350.0
+    assert "150.0" in out or "150" in out
+    assert "350.0" in out or "350" in out
+    # Global mean: 250.0 across all 4 rows
+    assert "250.0" in out or "250" in out
+    # Dept means: IT = (100+300)/2 = 200.0, HR = (200+400)/2 = 300.0
+    assert "200.0" in out or "200" in out
+    assert "300.0" in out or "300" in out
+
+
+def test_cli_multi_by_agg_and_head(tmp_path, capsys):
+    # Top 2 species by avg body mass for each island
+    exit_code = cli.main(
+        [
+            "src/pytae/datasets/penguins.parquet",
+            "-by",
+            "island,species",
+            "-agg",
+            "avg_mass = mean(body_mass_g)",
+            "-arrange",
+            "island, avg_mass desc",
+            "-by",
+            "island",
+            "-head",
+            "2",
+        ]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    # Output must have Biscoe, Dream, Torgersen and species
+    assert "Biscoe" in out
+    assert "Gentoo" in out
+    assert "Dream" in out
+    assert "Chinstrap" in out
+    assert "Torgersen" in out

@@ -734,9 +734,15 @@ def _process_path(
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     op_order = getattr(args, "op_order", [])
-    last_idx = len(op_order) - 1
+    last_idx = max((i for i, op in enumerate(op_order) if op != "by"), default=-1)
     op_values = getattr(args, "_op_values", {})
     op_iters = {k: iter(v) for k, v in op_values.items()}
+
+    raw_by = getattr(args, "by", None)
+    by_list = list(raw_by) if isinstance(raw_by, (list, tuple)) else ([raw_by] if raw_by else [])
+    by_iter = iter(by_list)
+    legacy_by = parse_columns(by_list[0]) if len(by_list) == 1 else None
+    current_by: list[str] | None = None
 
     def _next_op_val(op_name: str, fallback: Any = None) -> Any:
         it = op_iters.get(op_name)
@@ -771,7 +777,13 @@ def _process_path(
             clip_action = lambda d=df: d.to_clipboard(index=False)
 
     for idx, op in enumerate(op_order):
-        if op == "select":
+        if op == "by":
+            by_val = next(by_iter, None)
+            if by_val:
+                current_by = parse_columns(by_val) if isinstance(by_val, str) else list(by_val)
+            else:
+                current_by = None
+        elif op == "select":
             names, kwargs = next(select_iter)
             err = pipeline.apply_select(names, kwargs)
             if err:
@@ -788,12 +800,13 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "mutate":
-            by_cols = parse_columns(args.by) if args.by else None
+            by_cols = current_by if current_by is not None else legacy_by
             if by_cols:
                 avail_cols = pipeline.columns()
                 if any(c not in avail_cols for c in by_cols):
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False)
+            current_by = None
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -1018,14 +1031,23 @@ def _process_path(
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "count":
-            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
+            by_cols = (
+                current_by
+                if current_by is not None
+                else (legacy_by if (args.agg is None and not args.mutate) else None)
+            )
             count_val = _next_op_val("count", getattr(args, "count", None))
             err = pipeline.apply_count(count_val, by_cols=by_cols)
+            current_by = None
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
         elif op == "head":
-            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
+            by_cols = (
+                current_by
+                if current_by is not None
+                else (legacy_by if (args.agg is None and not args.mutate) else None)
+            )
             if by_cols:
                 avail_cols = pipeline.columns()
                 if any(c not in avail_cols for c in by_cols):
@@ -1035,6 +1057,7 @@ def _process_path(
                 frame = pipeline.head(head_val, by=by_cols)
             except Exception as exc:
                 return _fail(parser, batch, f"-head: {exc}")
+            current_by = None
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -1049,7 +1072,11 @@ def _process_path(
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "tail":
-            by_cols = parse_columns(args.by) if (args.by and args.agg is None and not args.mutate) else None
+            by_cols = (
+                current_by
+                if current_by is not None
+                else (legacy_by if (args.agg is None and not args.mutate) else None)
+            )
             if by_cols:
                 avail_cols = pipeline.columns()
                 if any(c not in avail_cols for c in by_cols):
@@ -1059,6 +1086,7 @@ def _process_path(
                 frame = pipeline.tail(tail_val, by=by_cols)
             except Exception as exc:
                 return _fail(parser, batch, f"-tail: {exc}")
+            current_by = None
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -1096,7 +1124,7 @@ def _process_path(
             agg_val = _next_op_val("agg", args.agg)
             if isinstance(agg_val, str):
                 parse_agg(agg_val)
-            by_cols = parse_columns(args.by) if args.by else None
+            by_cols = current_by if current_by is not None else legacy_by
             avail_cols = pipeline.columns()
             if by_cols and any(c not in avail_cols for c in by_cols):
                 return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
@@ -1108,6 +1136,7 @@ def _process_path(
                 pipeline._df = None
             except Exception as e:
                 return _fail(parser, batch, str(e))
+            current_by = None
             emit_frame(idx)
         elif op == "fillna":
             val_str = _next_op_val("fillna", args.fillna)
