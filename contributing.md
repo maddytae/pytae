@@ -102,3 +102,41 @@ python scripts/run_notebooks.py
 2. **Keep Errors Informative**: Avoid generic error messages. Use `difflib.get_close_matches` where appropriate to suggest typos.
 3. **Update Documentation**: If updating a CLI flag or library verb, update the corresponding documentation in `docs/detailed_docs/` and `docs/pytae.md`.
 4. **Follow Typing Standards**: pytae is PEP 561 compliant (`py.typed`). All new functions in `src/pytae/` should have comprehensive type annotations.
+
+---
+
+## Release & Publishing Protocol
+
+Whenever publishing a new release to PyPI or creating a new version tag:
+
+1. **Version Bump**: Update the version string across all manifests:
+   - `pyproject.toml` (`version = "X.Y.Z"`)
+   - `src/pytae/__init__.py` (`__version__ = "X.Y.Z"`)
+   - `extensions/vscode-pytae/package.json` (`"version": "X.Y.Z"`)
+   - Run `uv lock` to update `uv.lock`.
+
+2. **Regenerate Reference Files (MANDATORY)**:
+   Every time a version is bumped or published, the reference artifacts **MUST** be regenerated to keep the release version and reference manuals in sync:
+   ```bash
+   python scripts/generate_reference.py
+   ```
+   This automatically reads the new version from `pyproject.toml` and updates:
+   - `reference/pytae_reference.txt` (Master reference with complete source code & tests)
+   - `reference/pytae_copilot_reference.md` (Curated knowledge base for Microsoft Copilot Studio RAG)
+   - `reference/pytae_copilot_instructions.md` (System instructions card for Copilot Studio)
+
+3. **Changelog Updates**:
+   Document changes under the new version header in `changelog.md` and `extensions/vscode-pytae/CHANGELOG.md`.
+
+4. **Testing & Quality Assurance**:
+   Ensure all checks pass cleanly before publishing:
+   ```bash
+   pytest
+   ruff check src/ tests/ scripts/
+   ```
+
+5. **Commit, Tag & Publish**:
+   - Commit with message: `release: bump version to X.Y.Z`
+   - Create git tag: `git tag vX.Y.Z` (and `git tag X.Y.Z`)
+   - Push to master and push tags: `git push origin master --tags`
+

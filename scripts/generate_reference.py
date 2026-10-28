@@ -24,7 +24,7 @@ def get_version() -> str:
         m = re.search(r'__version__\s*=\s*"([^"]+)"', init_path.read_text(encoding="utf-8"))
         if m:
             return m.group(1)
-    return "3.12.4"
+    return "3.12.6"
 
 
 MANUAL_TEXT = """================================================================================
