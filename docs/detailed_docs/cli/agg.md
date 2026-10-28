@@ -14,6 +14,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
   - [Multiple Functions (`"mean,count"`)](#multiple-functions-meancount)
   - [Column-Specific Mapping](#column-specific-mapping)
   - [Named Outputs (`total = col:aggfunc`)](#named-outputs-total--colaggfunc)
+  - [Top N per Group in Aggregated Pipelines](#top-n-per-group-in-aggregated-pipelines)
 - [Whole-Table Summaries (Grand Totals)](#whole-table-summaries-grand-totals)
 - [Grouped Transforms (`-by` + `-mutate`)](#grouped-transforms--by--mutate)
 - [Handling Missing Group Keys](#handling-missing-group-keys)
@@ -132,6 +133,47 @@ pytae tips.parquet \
 | Yes      | 3.08772 |      23.2323 |  57 |
 
 Multiple grouping columns can be passed comma-separated: `-by "species,island"` or `-by "[group a],[group b]"`.
+
+### Top N per Group in Aggregated Pipelines
+
+To compute group-level metrics and then filter for the top $N$ entities within a higher-level group (e.g. top 2 species by average body mass for each island), chain sequential `-by` operations:
+
+```bash
+pytae sample:penguins \
+  -by island,species -agg "avg_mass=mean(body_mass_g)" \
+  -arrange "island, avg_mass desc" \
+  -by island -head 2
+```
+
+**Output:**
+
+| island    | species   |   avg_mass |
+|:----------|:----------|-----------:|
+| Biscoe    | Gentoo    |    5076.02 |
+| Biscoe    | Adelie    |    3709.66 |
+| Dream     | Chinstrap |    3733.09 |
+| Dream     | Adelie    |    3688.39 |
+| Torgersen | Adelie    |    3706.37 |
+
+> [!NOTE]
+> **Single-Shot Zero-Pollution Scoping**: In Pytae CLI, `-by` is strictly single-shot and auto-clears after the verb that consumes it:
+> 1. `-by island,species` scopes `-agg "avg_mass=mean(body_mass_g)"` and collapses rows to island-species pairs.
+> 2. `-arrange "island, avg_mass desc"` sorts all rows globally (whole-table scope).
+> 3. `-by island` scopes `-head 2`, slicing the top 2 rows for each island before resetting to clean ungrouped state.
+
+Alternatively, you can compute this using ANSI SQL via `-sql`:
+
+```bash
+pytae sample:penguins -sql "
+  WITH ranked AS (
+    SELECT island, species, AVG(body_mass_g) AS avg_mass,
+           ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk
+    FROM data
+    GROUP BY island, species
+  )
+  SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2
+"
+```
 
 ---
 

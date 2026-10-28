@@ -49,8 +49,9 @@ pytae data.parquet -sample -frac 0.05
 Filter rows cleanly using operator expressions, ranges, set membership, or column comparisons:
 
 ```bash
-# Exact match (strict '==' enforced; string values must be quoted)
+# Exact match (strict '==' enforced; string values must be quoted with single quotes inside double quotes)
 pytae data.parquet -filter "species == 'Gentoo'"
+pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30', '2026-08-31']"
 
 # Numeric comparison operators (>, <, >=, <=, !=) and boolean logic (and, or, parens)
 pytae data.parquet -filter "body_mass_g > 5000"
@@ -199,6 +200,12 @@ pytae data.parquet -distinct "species,island"
 
 # Sort rows by multiple columns with directions
 pytae data.parquet -arrange "species asc, body_mass_g desc"
+
+# Sequential -by with single-shot zero-pollution scoping (each -by scopes the next verb, then resets)
+pytae sales.parquet -by region -mutate "regional_mean=mean(sales)" -mutate "global_mean=mean(sales)" -by dept -mutate "dept_mean=mean(sales)"
+
+# Top N per group in a single CLI command (e.g. top 2 species by avg body mass for each island)
+pytae penguins.parquet -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2
 ```
 
 ---

@@ -52,6 +52,13 @@ pytae penguins.parquet -filter "species == 'Gentoo'" -head 3
 > **Strict Equality and String Quoting Requirements**:
 > - **Strict `==`**: Equality comparisons require `==`. Single `=` is reserved exclusively for column assignments in `-mutate`. Using `=` in `-filter` produces an immediate error guiding you to use `==`.
 > - **Quoted String Literals**: String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `species == Gentoo` or `id == 9` where `id` is a string column), `pytae` raises an explicit error guiding you to quote the string. This prevents silent type coercion and avoids unexpected lexicographical comparison bugs.
+>
+> **Shell Quoting Rule (Single Quotes Inside Double Quotes)**:
+> In bash, zsh, or PowerShell, wrap the `-filter` argument in outer double quotes and use **single quotes** for string literals:
+> ```bash
+> pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
+> ```
+> *Avoid nesting unescaped double quotes* like `-filter "currency=="CAD""` — the shell will strip the inner double quotes before `pytae` receives the argument, causing `pytae` to treat `CAD` as an unknown column name!
 
 **Output:**
 
