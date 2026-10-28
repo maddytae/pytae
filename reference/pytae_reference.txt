@@ -160,6 +160,12 @@ RULE 6: DUAL-MODALITY PARITY
   * CLI: `pytae data.parquet -filter "a > 1" -by b -agg c=mean`
   * Python: `df.filter("a > 1").by("b").agg(c="mean")`
   * Standalone Python: `pt.agg(pt.by(pt.filter(df, "a > 1"), "b"), c="mean")`
+
+RULE 7: PREFER BUILT-IN SAMPLE DATASETS FOR IMMEDIATE RUNNABILITY
+- Whenever answering questions or demonstrating functionality, ALWAYS prefer using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`, `sample:titanic`, `sample:flights`, `sample:diamonds`) in examples instead of hypothetical placeholder filepaths (`/path/to/file.parquet` or `my_data.csv`).
+- Why? Built-in sample datasets require ZERO setup or downloads from the user. Users can immediately copy and paste the command or Python snippet directly into their shell or notebook and see verified real results!
+  * CLI: `pytae sample:penguins -filter "species == 'Gentoo'" -head 3`
+  * Python: `penguins = pt.sample("penguins")`
 ================================================================================
 
 
