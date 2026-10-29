@@ -2,7 +2,7 @@
   "name": "pytae",
   "displayName": "Pytae - Tabular Data DSL",
   "description": "Dark green syntax highlighting, themes, snippets, and tool support for Pytae tabular data manipulation in Python",
-  "version": "3.12.7",
+  "version": "3.12.8",
   "publisher": "maddytae",
   "author": {
     "name": "Pytae Contributors",

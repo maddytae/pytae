@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.12.8
+
+- Support and documentation for custom persistent REPL session directories (`PYTAE_SESSIONS_DIR`).
+- Enhanced REPL session commands and reference documentation.
+
 ## 3.12.7
 
 - Sequential `-by` grouping in CLI with single-shot zero-pollution scoping.

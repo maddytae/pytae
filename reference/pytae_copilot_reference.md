@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.12.7
+RELEASE VERSION: 3.12.8
 ================================================================================
 
 TABLE OF CONTENTS
@@ -180,7 +180,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.12.7)
+Package: pytae (Current Release Version: 3.12.8)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -220,8 +220,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.12.7/):
-  pip install pytae==3.12.7
+Installation (PyPI: https://pypi.org/project/pytae/3.12.8/):
+  pip install pytae==3.12.8
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -15070,7 +15070,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.12.7"
+version = "3.12.8"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

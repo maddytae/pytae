@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.8] - 2026-10-28
+
+### Added
+- **REPL Session Directory Customization (`PYTAE_SESSIONS_DIR`)**:
+  - Added comprehensive support and documentation for customizing the interactive REPL persistent session directory via the `PYTAE_SESSIONS_DIR` environment variable.
+  - Configurable across Unix shells (`export PYTAE_SESSIONS_DIR`), Fish shell (`set -gx`), Windows PowerShell (`$env:PYTAE_SESSIONS_DIR`), and Python (`os.environ["PYTAE_SESSIONS_DIR"]`).
+  - Added runtime disk path inspection via the REPL `session` command.
+  - Updated CLI help for `pytae -session` and in-REPL help for `session save`.
+  - Added dedicated reference manual section and FAQ 6.18 in `pytae_reference.txt` and `pytae_copilot_reference.md`.
+- **REPL Documentation & Cheatsheet Enhancements**:
+  - Updated `docs/repl.md` and `docs/cli_cheatsheet.md` with concrete configuration examples and Arrow IPC schema preservation details.
+
 ## [3.12.7] - 2026-10-28
 
 ### Added
