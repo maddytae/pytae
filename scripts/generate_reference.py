@@ -97,7 +97,8 @@ TABLE OF CONTENTS
     6.15. How does terminal clearing and table removal work in the REPL? (clear, rm *, rm checkpoint *)
     6.16. How do I get Top N records per group in the CLI? (Sequential -by)
     6.17. Why did my filter fail with unrecognized token / missing quote in terminal?
-    6.18. Error Message Catalog & Troubleshooting Index
+    6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
+    6.19. Error Message Catalog & Troubleshooting Index
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -1093,12 +1094,13 @@ Session-Wide Checkpoints:
   - `checkpoints`             : List all saved checkpoints and their constituent tables.
   - `restore <name>`          : Restore entire workbench state back to named snapshot.
 
-Persistent Sessions (~/.pytae/sessions/<name>/):
+Persistent Sessions (~/.pytae/sessions/<name>/ or $PYTAE_SESSIONS_DIR/<name>/):
   - `session`                 : Display active session name, disk path, and checkpoints.
   - `session save <name>`     : Save or promote current session checkpoints under <name>.
   - `session load <name>`     : Switch to persistent session and restore its latest checkpoint.
   - `sessions`                : List all saved persistent sessions on disk.
   - `rm session <name>`       : Delete a saved persistent session directory from disk.
+  * Note: Default location is ~/.pytae/sessions/<name>/. Set the PYTAE_SESSIONS_DIR environment variable to customize session storage location.
   * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
 
 Strict Deletion Syntax (Wildcard):
@@ -1271,7 +1273,47 @@ In Unix shells (bash, zsh), unquoted strings inside `-filter` expressions are tr
 - Fix: Always quote string literals with inner single quotes:
   `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"`
 
-6.18. Error Message Catalog & Troubleshooting Index
+6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
+--------------------------------------------------------------------------------
+By default, Pytae saves interactive REPL sessions and checkpoints to `~/.pytae/sessions/<session_name>/`.
+Each checkpoint is saved as an Arrow IPC binary file (`.ipc`) preserving exact Polars SIMD schemas and types.
+
+To store REPL sessions in a custom directory (e.g. project workspace, shared drive, or scratch volume), set the `PYTAE_SESSIONS_DIR` environment variable:
+
+In Unix Shell (bash / zsh):
+```bash
+export PYTAE_SESSIONS_DIR="$HOME/my_project/.pytae_sessions"
+pytae -session project_work
+```
+
+In Fish Shell:
+```fish
+set -gx PYTAE_SESSIONS_DIR "$HOME/my_project/.pytae_sessions"
+pytae -session project_work
+```
+
+In Windows PowerShell:
+```powershell
+$env:PYTAE_SESSIONS_DIR = "C:\\my_project\\.pytae_sessions"
+pytae -session project_work
+```
+
+In Python:
+```python
+import os
+os.environ["PYTAE_SESSIONS_DIR"] = "/path/to/custom/sessions"
+import pytae as pt
+pt.repl()
+```
+
+Verify in REPL:
+Inside the interactive REPL, run `session` to inspect the active directory:
+```
+pytae> session
+Active session: 'default' (2 checkpoints; location: /path/to/custom/sessions/default)
+```
+
+6.19. Error Message Catalog & Troubleshooting Index
 --------------------------------------------------------------------------------
 When encountering an error in Pytae, consult this catalog for the root cause and immediate fix:
 
@@ -2025,6 +2067,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - Table inspection (`-head`, `-tail`, `-shape`, `-cols`) is non-destructive preview.
    - Deletion uses wildcard: `rm *` (all tables) or `rm checkpoint *` (all snapshots). Singular `rm checkpoint <name>`. Never use `rm checkpoints`.
    - Screen clearing is strictly `clear`. Never `cls`.
+   - Session directory: Default is `~/.pytae/sessions/<name>/`. Set `PYTAE_SESSIONS_DIR` to use a custom directory. Inspect active path via `session`.
 
 6. THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS):
    - When a user asks a complex question about their own dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):

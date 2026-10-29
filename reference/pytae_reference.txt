@@ -68,7 +68,8 @@ TABLE OF CONTENTS
     6.15. How does terminal clearing and table removal work in the REPL? (clear, rm *, rm checkpoint *)
     6.16. How do I get Top N records per group in the CLI? (Sequential -by)
     6.17. Why did my filter fail with unrecognized token / missing quote in terminal?
-    6.18. Error Message Catalog & Troubleshooting Index
+    6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
+    6.19. Error Message Catalog & Troubleshooting Index
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -1053,12 +1054,13 @@ Session-Wide Checkpoints:
   - `checkpoints`             : List all saved checkpoints and their constituent tables.
   - `restore <name>`          : Restore entire workbench state back to named snapshot.
 
-Persistent Sessions (~/.pytae/sessions/<name>/):
+Persistent Sessions (~/.pytae/sessions/<name>/ or $PYTAE_SESSIONS_DIR/<name>/):
   - `session`                 : Display active session name, disk path, and checkpoints.
   - `session save <name>`     : Save or promote current session checkpoints under <name>.
   - `session load <name>`     : Switch to persistent session and restore its latest checkpoint.
   - `sessions`                : List all saved persistent sessions on disk.
   - `rm session <name>`       : Delete a saved persistent session directory from disk.
+  * Note: Default location is ~/.pytae/sessions/<name>/. Set the PYTAE_SESSIONS_DIR environment variable to customize session storage location.
   * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
 
 Strict Deletion Syntax (Wildcard):
@@ -1228,7 +1230,47 @@ In Unix shells (bash, zsh), unquoted strings inside `-filter` expressions are tr
 - Fix: Always quote string literals with inner single quotes:
   `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"`
 
-6.18. Error Message Catalog & Troubleshooting Index
+6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
+--------------------------------------------------------------------------------
+By default, Pytae saves interactive REPL sessions and checkpoints to `~/.pytae/sessions/<session_name>/`.
+Each checkpoint is saved as an Arrow IPC binary file (`.ipc`) preserving exact Polars SIMD schemas and types.
+
+To store REPL sessions in a custom directory (e.g. project workspace, shared drive, or scratch volume), set the `PYTAE_SESSIONS_DIR` environment variable:
+
+In Unix Shell (bash / zsh):
+```bash
+export PYTAE_SESSIONS_DIR="$HOME/my_project/.pytae_sessions"
+pytae -session project_work
+```
+
+In Fish Shell:
+```fish
+set -gx PYTAE_SESSIONS_DIR "$HOME/my_project/.pytae_sessions"
+pytae -session project_work
+```
+
+In Windows PowerShell:
+```powershell
+$env:PYTAE_SESSIONS_DIR = "C:\my_project\.pytae_sessions"
+pytae -session project_work
+```
+
+In Python:
+```python
+import os
+os.environ["PYTAE_SESSIONS_DIR"] = "/path/to/custom/sessions"
+import pytae as pt
+pt.repl()
+```
+
+Verify in REPL:
+Inside the interactive REPL, run `session` to inspect the active directory:
+```
+pytae> session
+Active session: 'default' (2 checkpoints; location: /path/to/custom/sessions/default)
+```
+
+6.19. Error Message Catalog & Troubleshooting Index
 --------------------------------------------------------------------------------
 When encountering an error in Pytae, consult this catalog for the root cause and immediate fix:
 
@@ -13259,7 +13301,11 @@ pytae -i
 # Pre-filter dataset and drop directly into interactive REPL
 pytae data.parquet -filter "sales > 100" -i
 
-# Resume or launch a named persistent session (stored in ~/.pytae/sessions/)
+# Resume or launch a named persistent session (default ~/.pytae/sessions/<name>)
+pytae -session analysis
+
+# Custom session storage directory (overrides default location)
+export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/pytae_sessions"
 pytae -session analysis
 
 # List all saved persistent sessions on disk
@@ -13575,7 +13621,31 @@ Pytae provides full support for **named, persistent REPL sessions** that can be 
 
 1. **Only Checkpoints are Persisted**: In a persistent session, only frozen checkpoints (`checkpoint <name>`) and their Arrow IPC tables are saved to disk. Any scratch/uncheckpointed tables, temporary joins, or ad-hoc column mutations in RAM are dropped on REPL exit.
 2. **Clean Boot from Latest Checkpoint**: Upon booting or resuming a session (`pytae -session <name>`), the session loads strictly from its latest checkpoint. Active memory is clean, with 0 MB of scratch memory leaked from previous sessions.
-3. **Session Location**: Sessions are stored under `~/.pytae/sessions/<name>/` (containing session metadata and `.ipc` checkpoint tables). You can override the base directory by setting the `PYTAE_SESSIONS_DIR` environment variable.
+3. **Session Location**: Sessions are stored under `~/.pytae/sessions/<name>/` by default (containing session metadata and `.ipc` checkpoint tables). You can override this base directory to any custom folder, external SSD, or project path by setting the `PYTAE_SESSIONS_DIR` environment variable.
+
+> [!TIP]
+> **Customizing Session Storage Location (`PYTAE_SESSIONS_DIR`)**:
+> - **In Shell (Bash / Zsh)**:
+>   ```bash
+>   # Override for a single session:
+>   PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/my_sessions" pytae -session analysis
+>
+>   # Or export permanently in ~/.zshrc or ~/.bashrc:
+>   export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/my_sessions"
+>   ```
+> - **In Python**:
+>   ```python
+>   import os
+>   os.environ["PYTAE_SESSIONS_DIR"] = "/path/to/custom_sessions"
+>   import pytae as pt
+>   pt.repl(session="analysis")
+>   ```
+> - **Verifying Location**: Type `session` inside the REPL prompt at any time to verify the exact active directory on disk:
+>   ```text
+>   pytae:analysis [df1: 344x7]> session
+>   Active session: 'analysis' (2 checkpoints; location: /Volumes/ExternalSSD/my_sessions/analysis)
+>   ```
+
 
 #### 2. CLI Interface
 
@@ -18725,7 +18795,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         type=str,
         default=None,
         metavar="NAME",
-        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name>)",
+        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name> or $PYTAE_SESSIONS_DIR/<name>)",
     )
     parser.add_argument(
         "-sessions",
@@ -32377,7 +32447,7 @@ STATE NAVIGATION (Undoable):
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   session                : Show persistent session status
-  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name>
+  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or $PYTAE_SESSIONS_DIR)
   session load <name>    : Load persistent session checkpoints from disk
   sessions               : List all saved persistent sessions on disk
   rm session <name>      : Remove a saved persistent session from disk

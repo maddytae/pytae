@@ -832,7 +832,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         type=str,
         default=None,
         metavar="NAME",
-        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name>)",
+        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name> or $PYTAE_SESSIONS_DIR/<name>)",
     )
     parser.add_argument(
         "-sessions",

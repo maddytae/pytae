@@ -356,7 +356,11 @@ pytae -i
 # Pre-filter dataset and drop directly into interactive REPL
 pytae data.parquet -filter "sales > 100" -i
 
-# Resume or launch a named persistent session (stored in ~/.pytae/sessions/)
+# Resume or launch a named persistent session (default ~/.pytae/sessions/<name>)
+pytae -session analysis
+
+# Custom session storage directory (overrides default location)
+export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/pytae_sessions"
 pytae -session analysis
 
 # List all saved persistent sessions on disk

@@ -44,6 +44,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - Table inspection (`-head`, `-tail`, `-shape`, `-cols`) is non-destructive preview.
    - Deletion uses wildcard: `rm *` (all tables) or `rm checkpoint *` (all snapshots). Singular `rm checkpoint <name>`. Never use `rm checkpoints`.
    - Screen clearing is strictly `clear`. Never `cls`.
+   - Session directory: Default is `~/.pytae/sessions/<name>/`. Set `PYTAE_SESSIONS_DIR` to use a custom directory. Inspect active path via `session`.
 
 6. THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS):
    - When a user asks a complex question about their own dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):

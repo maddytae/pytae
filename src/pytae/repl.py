@@ -515,7 +515,7 @@ STATE NAVIGATION (Undoable):
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   session                : Show persistent session status
-  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name>
+  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or $PYTAE_SESSIONS_DIR)
   session load <name>    : Load persistent session checkpoints from disk
   sessions               : List all saved persistent sessions on disk
   rm session <name>      : Remove a saved persistent session from disk

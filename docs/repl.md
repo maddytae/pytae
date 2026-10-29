@@ -261,7 +261,31 @@ Pytae provides full support for **named, persistent REPL sessions** that can be 
 
 1. **Only Checkpoints are Persisted**: In a persistent session, only frozen checkpoints (`checkpoint <name>`) and their Arrow IPC tables are saved to disk. Any scratch/uncheckpointed tables, temporary joins, or ad-hoc column mutations in RAM are dropped on REPL exit.
 2. **Clean Boot from Latest Checkpoint**: Upon booting or resuming a session (`pytae -session <name>`), the session loads strictly from its latest checkpoint. Active memory is clean, with 0 MB of scratch memory leaked from previous sessions.
-3. **Session Location**: Sessions are stored under `~/.pytae/sessions/<name>/` (containing session metadata and `.ipc` checkpoint tables). You can override the base directory by setting the `PYTAE_SESSIONS_DIR` environment variable.
+3. **Session Location**: Sessions are stored under `~/.pytae/sessions/<name>/` by default (containing session metadata and `.ipc` checkpoint tables). You can override this base directory to any custom folder, external SSD, or project path by setting the `PYTAE_SESSIONS_DIR` environment variable.
+
+> [!TIP]
+> **Customizing Session Storage Location (`PYTAE_SESSIONS_DIR`)**:
+> - **In Shell (Bash / Zsh)**:
+>   ```bash
+>   # Override for a single session:
+>   PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/my_sessions" pytae -session analysis
+>
+>   # Or export permanently in ~/.zshrc or ~/.bashrc:
+>   export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/my_sessions"
+>   ```
+> - **In Python**:
+>   ```python
+>   import os
+>   os.environ["PYTAE_SESSIONS_DIR"] = "/path/to/custom_sessions"
+>   import pytae as pt
+>   pt.repl(session="analysis")
+>   ```
+> - **Verifying Location**: Type `session` inside the REPL prompt at any time to verify the exact active directory on disk:
+>   ```text
+>   pytae:analysis [df1: 344x7]> session
+>   Active session: 'analysis' (2 checkpoints; location: /Volumes/ExternalSSD/my_sessions/analysis)
+>   ```
+
 
 #### 2. CLI Interface
 
