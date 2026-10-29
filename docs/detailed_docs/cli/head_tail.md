@@ -152,6 +152,28 @@ pytae penguins.parquet -by island -arrange body_mass_g -head 2 -select "island,s
 pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 10% -select "species,island,body_mass_g"
 ```
 
+### Top N per Group in Chained Pipelines (Sequential `-by`)
+
+In Pytae CLI, `-by` operates with **single-shot zero-pollution scoping**: each `-by` applies strictly to the verb that follows, then resets. You can seamlessly chain aggregation, sorting, and group-aware slicing in a single command:
+
+```bash
+# Top 2 species by average body mass for each island
+pytae penguins.parquet \
+  -by island,species -agg "avg_mass=mean(body_mass_g)" \
+  -arrange "island, avg_mass desc" \
+  -by island -head 2
+```
+
+**Output:**
+
+| island    | species   |   avg_mass |
+|:----------|:----------|-----------:|
+| Biscoe    | Gentoo    |    5076.02 |
+| Biscoe    | Adelie    |    3709.66 |
+| Dream     | Chinstrap |    3733.09 |
+| Dream     | Adelie    |    3688.39 |
+| Torgersen | Adelie    |    3706.37 |
+
 ---
 
 ## Boundary Ties (`ties=true`)

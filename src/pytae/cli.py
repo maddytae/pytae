@@ -492,6 +492,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "-by",
         dest="by",
+        action=_OrderedAppend,
         default=None,
         metavar="COLUMNS",
         help="grouping columns (comma-separated), e.g. -by species or -by 'species,island'. "

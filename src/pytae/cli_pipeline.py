@@ -637,3 +637,10 @@ class _OrderedAppend(argparse.Action):
         setattr(namespace, self.dest, items)
         flag_name = option_string.lstrip("-") if option_string else self.dest
         namespace.op_order = getattr(namespace, "op_order", []) + [flag_name]
+        op_values = getattr(namespace, "_op_values", None)
+        if op_values is None:
+            op_values = {}
+            setattr(namespace, "_op_values", op_values)
+        op_values.setdefault(flag_name, []).append(values)
+        if flag_name != self.dest:
+            op_values.setdefault(self.dest, []).append(values)

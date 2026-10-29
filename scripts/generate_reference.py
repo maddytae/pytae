@@ -24,7 +24,7 @@ def get_version() -> str:
         m = re.search(r'__version__\s*=\s*"([^"]+)"', init_path.read_text(encoding="utf-8"))
         if m:
             return m.group(1)
-    return "3.12.4"
+    return "3.12.6"
 
 
 MANUAL_TEXT = """================================================================================
@@ -34,6 +34,7 @@ RELEASE VERSION: __PYTAE_VERSION__
 
 TABLE OF CONTENTS
 --------------------------------------------------------------------------------
+0.  CRITICAL AGENT GROUND TRUTH & SYNTAX ENFORCEMENT RULES (READ FIRST)
 1.  OVERVIEW & CORE PHILOSOPHY
 2.  PACKAGE ARCHITECTURE & IMPORT PATTERNS
 3.  SAMPLE DATASETS
@@ -74,7 +75,7 @@ TABLE OF CONTENTS
     5.2.  File Formats & Zero-Cost Metadata Inspection
     5.3.  All CLI Flags & Syntax Rules
     5.4.  In-Terminal Visualizations (-freq, -hist, -bar, -scatter, -corr)
-    5.5.  Quoting & Delimiter Standards (: vs =)
+    5.5.  Quoting & Delimiter Standards (: vs =) and Shell Quoting Rules
     5.6.  Multi-File Operations (-file, -join, -concat, -sql)
     5.7.  Batch Processing, Conversions & Clipboard (-o)
     5.8.  Interactive REPL Shell (pytae -i, pytae <file> -i)
@@ -94,6 +95,9 @@ TABLE OF CONTENTS
     6.13. How do I assign literal constants in `mutate()`? (Use quoted strings e.g. status="'active'")
     6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
     6.15. How does terminal clearing and table removal work in the REPL? (clear, rm *, rm checkpoint *)
+    6.16. How do I get Top N records per group in the CLI? (Sequential -by)
+    6.17. Why did my filter fail with unrecognized token / missing quote in terminal?
+    6.18. Error Message Catalog & Troubleshooting Index
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -103,6 +107,7 @@ TABLE OF CONTENTS
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
     Recipe 8: Interactive REPL Multi-Table Exploration & Snapshots
+    Recipe 9: Top N per Group across Chained Pipelines (CLI, Python & SQL)
 8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
@@ -110,6 +115,103 @@ TABLE OF CONTENTS
 12. BUILD & CONFIGURATION (pyproject.toml)
 13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
 14. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
+================================================================================
+
+
+0. CRITICAL AGENT GROUND TRUTH & SYNTAX ENFORCEMENT RULES (READ FIRST)
+================================================================================
+ATTENTION AI ASSISTANTS / COPILOT AGENTS:
+When generating commands, scripts, or explanations for pytae users, you MUST strictly adhere to the following non-negotiable rules. Hallucinating syntax from other libraries (dplyr, pandas, polars, bash) is strictly forbidden.
+
+RULE 1: STRICT CANONICAL VERBS ONLY
+- Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). 
+  * NEVER output `-qry`, `-query`, or `df.query()`.
+- Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python).
+  * Explicit descending: `body_mass_g desc`.
+  * NEVER output `-sort`, `-sort_by`, or `-order`.
+  * NEVER prefix columns with `-` (e.g. `-arrange "-col"` is an error; use `-arrange "col desc"`).
+- Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python).
+  * NEVER output `-dedupe` or `df.drop_duplicates()`.
+- Counting: ALWAYS `-count` (CLI) or `df.count()` (Python) or `agg(total="count")`.
+  * NEVER output `df.tally()`.
+- Reshaping: Pure unmelting is `wide()` / `-wide`; 2D aggregation matrix is `pivot()` / `-pivot`.
+
+RULE 2: SHELL QUOTING STANDARD (BASH / ZSH)
+- In terminal CLI commands, ALWAYS wrap expression arguments in double quotes `""` and wrap string literals inside expressions in single quotes `''`:
+  * Correct: `pytae data.parquet -filter "species == 'Gentoo'"`
+  * Correct: `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"`
+  * Correct: `pytae data.parquet -mutate "status = 'active'"`
+  * INCORRECT: `pytae data.parquet -filter "species == Gentoo"` (Gentoo is parsed as a column identifier and fails with ColumnNotFound!)
+  * INCORRECT: `pytae data.parquet -filter 'species == "Gentoo"'` (Bash outer single quotes prevent variable expansion; Polars treats inner double quotes as column identifiers).
+- Column identifiers must remain UNQUOTED (e.g. `body_mass_g > 3500`).
+- If a column name contains spaces, enclose it in square brackets `[col name]`:
+  * Example: `pytae data.parquet -filter "[body mass g] > 3500"`
+  * Example: `pytae data.parquet -arrange "[bill length mm] desc"`
+
+RULE 3: SINGLE-SHOT ZERO-POLLUTION GROUPING (`-by` / `df.by()`)
+- In Pytae, grouping is strictly single-shot and auto-clearing.
+- `-by col` scopes ONLY the immediate next verb (`mutate`, `agg`, `head`, `tail`, `count`), and then IMMEDIATELY RESETS to the clean ungrouped table scope.
+- In Python: `df.by("col").mutate(...)` returns a clean, ungrouped DataFrame.
+- There is NO persistent grouped state. There is NO `ungroup()` verb. Calling `df.ungroup()` is an error.
+- In Python: `by` is NEVER an argument inside verbs (e.g. `df.mutate(..., by="region")` raises TypeError). Always call `df.by("region").mutate(...)`.
+
+RULE 4: CHAINED PIPELINES & SEQUENTIAL `-by` (TOP N RECIPE)
+- Pytae CLI allows sequential `-by` flags in a single command. Each `-by` scopes the next verb, allowing multi-stage aggregation, whole-table sorting, and group-aware slicing:
+  ```bash
+  # Top 2 species by average body mass for each island:
+  pytae sample:penguins \
+    -by island,species -agg "avg_mass=mean(body_mass_g)" \
+    -arrange "island, avg_mass desc" \
+    -by island -head 2
+  ```
+  * Step 1: `-by island,species -agg ...` groups by island & species and collapses to summary rows.
+  * Step 2: `-arrange "island, avg_mass desc"` sorts all rows globally (whole-table scope).
+  * Step 3: `-by island -head 2` groups by island and takes top 2 rows per island, then resets.
+- ANSI SQL Alternative via `-sql`:
+  ```bash
+  pytae sample:penguins -sql "
+    WITH ranked AS (
+      SELECT island, species, AVG(body_mass_g) AS avg_mass,
+             ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk
+      FROM data
+      GROUP BY island, species
+    )
+    SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2
+  "
+  ```
+
+RULE 5: INTERACTIVE REPL (`pytae -i`, `pytae <file> -i`)
+- 1:1 CLI flag parity: Verbs in REPL must start with a leading hyphen: `-filter "..."`, `-mutate "..."`, `-head 5`, `-cols`.
+- Non-destructive previews: Inspection commands (`-head`, `-tail`, `-shape`, `-cols`, `-describe`, `-glimpse`) preview data WITHOUT truncating or mutating the dataset.
+- Clean confirmation: Transformations output concise shape confirmations (e.g. `-> penguins.parquet: 188 rows x 7 cols`) without dumping full tables.
+- Deletion: Enforce wildcard `rm *` (all tables) or `rm checkpoint *` (all snapshots). Singular `rm checkpoint <name>`. Never use `rm checkpoints` or `-all`.
+- Screen clearing: ALWAYS `clear`. Never `cls`.
+
+RULE 6: DUAL-MODALITY PARITY
+- CLI and Python APIs map 100% symmetrically:
+  * CLI: `pytae data.parquet -filter "a > 1" -by b -agg c=mean`
+  * Python: `df.filter("a > 1").by("b").agg(c="mean")`
+  * Standalone Python: `pt.agg(pt.by(pt.filter(df, "a > 1"), "b"), c="mean")`
+
+RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
+- When a user asks a complex question about their own hypothetical or custom dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):
+  1. Direct Solution: FIRST, provide the exact tailored solution using their specified dataset and column names.
+  2. Twin Proof on Sample Data: SECOND, ALWAYS provide a runnable "Twin Proof" on an equivalent built-in sample dataset (e.g. sample:penguins, sample:tips, sample:titanic) with an explicit 1-to-1 column mapping.
+  3. Why? This provides two critical benefits:
+     * Grounding: It anchors the agent's internal reasoning to verified canonical syntax, preventing hallucination.
+     * Instant Dry-Run: It allows the user to copy-paste and verify the pipeline in their terminal with real table outputs in 10ms before touching production data!
+  - Example:
+    * User Query: "Top 2 customers by avg profit for each zone in sales.parquet"
+    * Direct Solution:
+      pytae sales.parquet \
+        -by zone,customer -agg "avg_profit=mean(profit)" \
+        -arrange "zone, avg_profit desc" \
+        -by zone -head 2
+    * Twin Proof on sample:penguins (zone -> island, customer -> species, profit -> body_mass_g):
+      pytae sample:penguins \
+        -by island,species -agg "avg_mass=mean(body_mass_g)" \
+        -arrange "island, avg_mass desc" \
+        -by island -head 2
 ================================================================================
 
 
@@ -921,7 +1023,7 @@ DSL Validation & Linting:
    pytae penguins.parquet -corr pairwise=true
 
 
-5.5. Quoting & Delimiter Standards (: vs =)
+5.5. Quoting & Delimiter Standards (: vs =) and Shell Quoting Rules
 --------------------------------------------------------------------------------
 1. Mapping / Translation uses COLON (`:`):
    - `-rename`: "old_col:new_col, col_b:col_beta"
@@ -932,6 +1034,14 @@ DSL Validation & Linting:
    - `-agg`: "tip=mean, total_bill=mean, total=count"
 3. Comparison & Filtering uses EQUALITY (`==`) and Boolean (`and`, `or`):
    - `-filter`: "species == 'Adelie' and body_mass_g > 3500"
+
+4. Terminal Shell Quoting Rules (Bash / Zsh / PowerShell):
+   - Wrap the entire flag argument in double quotes `""`: `-filter "..."`, `-mutate "..."`
+   - Wrap string values inside the expression in single quotes `''`:
+     `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30', '2026-08-31']"`
+     `pytae data.parquet -mutate "status = 'active'"`
+   - Column identifiers must NOT be quoted: `body_mass_g > 4000` (correct) vs `'body_mass_g' > 4000` (incorrect).
+   - If a column name has spaces, use square brackets: `[body mass g] > 4000` or `[total bill] = mean`.
 
 
 5.6. Multi-File Operations (-file, -join, -concat, -sql)
@@ -1112,6 +1222,71 @@ Use parenthesized target syntax `[prefix](target_cols)[suffix] = expr` with `_` 
    - `rm *` removes all loaded tables from memory (fully undoable via `undo`).
    - `rm checkpoint *` deletes all saved checkpoint snapshots.
    - Singular `rm checkpoint <name>` is enforced strictly; plural `rm checkpoints` is redirected.
+
+6.16. How do I get Top N records per group in the CLI? (Sequential -by)
+--------------------------------------------------------------------------------
+Chain sequential `-by` flags in the pipeline! In Pytae, `-by` is strictly single-shot: it scopes only the immediate next verb and resets.
+Example: Get top 2 species by average body mass for each island from the penguins dataset:
+```bash
+pytae sample:penguins \
+  -by island,species -agg "avg_mass=mean(body_mass_g)" \
+  -arrange "island, avg_mass desc" \
+  -by island -head 2
+```
+How it executes:
+1. `-by island,species -agg "avg_mass=mean(body_mass_g)"`: Aggregates and collapses to island-species pairs. Grouping auto-resets.
+2. `-arrange "island, avg_mass desc"`: Sorts globally by island and descending average mass.
+3. `-by island -head 2`: Slices top 2 species for each island, then auto-resets.
+
+In Python:
+```python
+(
+    pt.sample("penguins")
+    .by("island", "species")
+    .agg(avg_mass="body_mass_g:mean")
+    .arrange("island", "avg_mass desc")
+    .by("island")
+    .head(2)
+)
+```
+
+In ANSI SQL (`-sql`):
+```bash
+pytae sample:penguins -sql "
+  WITH ranked AS (
+    SELECT island, species, AVG(body_mass_g) AS avg_mass,
+           ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk
+    FROM data
+    GROUP BY island, species
+  )
+  SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2
+"
+```
+
+6.17. Why did my filter fail with unrecognized token / missing quote in terminal?
+--------------------------------------------------------------------------------
+In Unix shells (bash, zsh), unquoted strings inside `-filter` expressions are treated as column identifiers by Polars.
+- Error: `ColumnNotFound: column 'CAD' not found`
+- Cause: You ran `-filter "currency == CAD"` instead of `-filter "currency == 'CAD'"`.
+- Fix: Always quote string literals with inner single quotes:
+  `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"`
+
+6.18. Error Message Catalog & Troubleshooting Index
+--------------------------------------------------------------------------------
+When encountering an error in Pytae, consult this catalog for the root cause and immediate fix:
+
+| Exact Error Output | Root Cause | Immediate Fix |
+|---|---|---|
+| `unrecognized arguments: -sort` or `-sort_by` | Used deprecated/invalid sort flag | Use `-arrange "col desc"` |
+| `unrecognized arguments: -qry` or `-query` | Used deprecated query flag | Use `-filter "expr"` |
+| `unrecognized arguments: -dedupe` | Used deprecated dedupe flag | Use `-distinct "cols"` |
+| `ColumnNotFound: column 'XYZ' not found` | Column name misspelled, wrong casing, or string literal unquoted | Check `-cols`; quote string values (`col == 'XYZ'`); use `[col name]` if name has spaces |
+| `TypeError: pt.mutate() got an unexpected keyword argument 'by'` | Passed `by=` as a parameter inside a verb | Call `df.by("col").mutate(...)` first; `by` is strictly standalone |
+| `AttributeError: ... has no attribute 'ungroup'` | Tried to ungroup a DataFrame | Pytae grouping is single-shot and auto-clearing; no `ungroup()` exists or is needed |
+| `Invalid syntax: rm checkpoints` | Plural form used in REPL | Use singular: `rm checkpoint <name>` or `rm checkpoint *` |
+| `Invalid syntax: cls / -clear` | Non-canonical clear used | Use canonical `clear` |
+| `Missing argument for -agg` with grouped mutation | Grouped window mutation attempted with `-agg` | Use `-by col -mutate "mean_val = mean(col)"` to avoid collapsing rows |
+| `PolarsComputeError: duplicate column name` | Operation produced colliding column names | Explicitly rename output columns (e.g. `avg_val = col:mean`) |
 
 
 7. END-TO-END RECIPES & EXAMPLES
@@ -1343,6 +1518,54 @@ pytae [df1, df2]> rm checkpoint *
 Cleared all saved checkpoints.
 pytae [df1, df2]> rm *
 Removed all tables from memory.
+```
+
+Recipe 9: Top N per Group across Chained Pipelines (CLI, Python & SQL)
+--------------------------------------------------------------------------------
+Finding the top N entities per group (e.g. top 2 species by average body mass for each island from penguins dataset):
+
+CLI Pipeline (Sequential -by):
+```bash
+pytae sample:penguins \
+  -by island,species -agg "avg_mass=mean(body_mass_g)" \
+  -arrange "island, avg_mass desc" \
+  -by island -head 2
+```
+
+Output:
+| island    | species   |   avg_mass |
+|:----------|:----------|-----------:|
+| Biscoe    | Gentoo    |    5076.02 |
+| Biscoe    | Adelie    |    3709.66 |
+| Dream     | Chinstrap |    3733.09 |
+| Dream     | Adelie    |    3688.39 |
+| Torgersen | Adelie    |    3706.37 |
+
+Python Fluent Method Chaining:
+```python
+import pytae as pt
+
+top_species = (
+    pt.sample("penguins")
+    .by("island", "species")
+    .agg(avg_mass="body_mass_g:mean")
+    .arrange("island", "avg_mass desc")
+    .by("island")
+    .head(2)
+)
+```
+
+ANSI SQL (-sql):
+```bash
+pytae sample:penguins -sql "
+  WITH ranked AS (
+    SELECT island, species, AVG(body_mass_g) AS avg_mass,
+           ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk
+    FROM data
+    GROUP BY island, species
+  )
+  SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2
+"
 ```
 
 ================================================================================
@@ -1683,6 +1906,147 @@ def generate_reference() -> None:
     output_path.write_text("\n".join(parts), encoding="utf-8")
     print(f"Successfully generated {output_path} ({len(output_path.read_text(encoding='utf-8').splitlines())} lines)")
 
+    # --------------------------------------------------------------------------
+    # Generate Copilot-optimized Knowledge Base (Docs, Recipes, Guides, FAQs)
+    # Excludes raw unit tests and internal source code to eliminate RAG vector noise!
+    # --------------------------------------------------------------------------
+    copilot_parts: list[str] = [
+        manual_pre.strip(),
+        "\n================================================================================",
+        "8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)",
+        "================================================================================\n",
+    ]
+    for doc_path in detailed_docs:
+        rel_path = doc_path.relative_to(REPO_ROOT)
+        copilot_parts.append("################################################################################")
+        if doc_path.suffix == ".ipynb":
+            copilot_parts.append(f"# NOTEBOOK: {rel_path}")
+            copilot_parts.append("################################################################################")
+            copilot_parts.append(_format_notebook(doc_path).rstrip() + "\n")
+        else:
+            copilot_parts.append(f"# FILE: {rel_path}")
+            copilot_parts.append("################################################################################")
+            copilot_parts.append(doc_path.read_text(encoding="utf-8").rstrip() + "\n")
+
+    if pytae_md.exists():
+        copilot_parts.append("================================================================================")
+        copilot_parts.append("9. MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)")
+        copilot_parts.append("================================================================================\n")
+        copilot_parts.append("################################################################################")
+        copilot_parts.append(f"# FILE: {pytae_md.relative_to(REPO_ROOT)}")
+        copilot_parts.append("################################################################################")
+        copilot_parts.append(pytae_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    if cheatsheet_md.exists():
+        copilot_parts.append("================================================================================")
+        copilot_parts.append("CLI CHEATSHEET & COOKBOOK (docs/cli_cheatsheet.md)")
+        copilot_parts.append("================================================================================\n")
+        copilot_parts.append("################################################################################")
+        copilot_parts.append(f"# FILE: {cheatsheet_md.relative_to(REPO_ROOT)}")
+        copilot_parts.append("################################################################################")
+        copilot_parts.append(cheatsheet_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    if repl_md.exists():
+        copilot_parts.append("================================================================================")
+        copilot_parts.append("INTERACTIVE REPL SHELL GUIDE (docs/repl.md)")
+        copilot_parts.append("================================================================================\n")
+        copilot_parts.append("################################################################################")
+        copilot_parts.append(f"# FILE: {repl_md.relative_to(REPO_ROOT)}")
+        copilot_parts.append("################################################################################")
+        copilot_parts.append(repl_md.read_text(encoding="utf-8").rstrip() + "\n")
+
+    copilot_parts.append("================================================================================")
+    copilot_parts.append("10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)")
+    copilot_parts.append("================================================================================\n")
+    for comp_name in ["comparison_to_pandas.md", "comparison_to_dplyr.md", "comparison_to_sas.md"]:
+        comp_md = REPO_ROOT / "docs" / comp_name
+        if comp_md.exists():
+            copilot_parts.append("################################################################################")
+            copilot_parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
+            copilot_parts.append("################################################################################")
+            copilot_parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n\n")
+
+    copilot_parts.append("================================================================================")
+    copilot_parts.append("11. BUILD & CONFIGURATION (pyproject.toml)")
+    copilot_parts.append("================================================================================\n")
+    copilot_parts.append(pyproject_content)
+
+    copilot_ref_path = REPO_ROOT / "reference" / "pytae_copilot_reference.md"
+    copilot_ref_path.write_text("\n".join(copilot_parts), encoding="utf-8")
+    print(f"Successfully generated {copilot_ref_path} ({len(copilot_ref_path.read_text(encoding='utf-8').splitlines())} lines)")
+
+    # --------------------------------------------------------------------------
+    # Generate Copilot Agent System Instructions Prompt Card
+    # Ready to paste directly into Copilot Studio's System Prompt
+    # --------------------------------------------------------------------------
+    copilot_instructions_content = f"""# Pytae Microsoft Copilot Agent System Instructions
+
+Copy and paste the text block below directly into the **Instructions** (System Prompt) field of your Microsoft Copilot Studio Custom Agent:
+
+```text
+You are the official expert AI assistant for Pytae (v{version}), a high-performance tabular data manipulation framework powered natively by Polars SIMD with seamless Pandas and Matplotlib integration.
+
+You provide accurate, idiomatic, and concise Pytae commands (CLI `-flag`), Python method chains (`df.<verb>()`), and interactive REPL commands (`pytae -i`).
+
+CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
+
+1. CANONICAL VERBS ONLY:
+   - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
+   - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col desc` (e.g. `-arrange "col desc"`). NEVER use `-sort`, `-sort_by`, or `-order`. NEVER use `-arrange "-col"`.
+   - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python). NEVER use `-dedupe` or `drop_duplicates()`.
+   - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `agg(total="count")`.
+   - Reshaping: Pure unmelting is `wide()` / `-wide`; 2D aggregation matrix is `pivot()` / `-pivot`.
+
+2. SHELL QUOTING STANDARD (BASH / ZSH / POWERSHELL):
+   - In CLI commands, ALWAYS wrap expression arguments in double quotes `""` and wrap string values inside expressions in single quotes `''`:
+     * Correct: pytae file.parquet -filter "species == 'Gentoo'"
+     * Correct: pytae file.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
+     * Correct: pytae file.parquet -mutate "status = 'active'"
+     * INCORRECT: pytae file.parquet -filter "species == Gentoo" (Fails with ColumnNotFound because unquoted tokens are treated as column identifiers).
+   - Column identifiers must remain UNQUOTED (e.g. `body_mass_g > 3500`).
+   - If a column name contains spaces, wrap it in square brackets: `[body mass g] > 3500`.
+
+3. SINGLE-SHOT ZERO-POLLUTION GROUPING:
+   - Grouping via `-by` (CLI) or `df.by()` (Python) is strictly single-shot. It scopes ONLY the immediate next verb (`mutate`, `agg`, `head`, `tail`, `count`), and then auto-resets.
+   - Subsequent operations evaluate at whole-table scope.
+   - There is NO persistent grouped state. There is NO `ungroup()` verb. Calling `df.ungroup()` is an error.
+   - In Python, `by` is NEVER an argument inside verbs (e.g. `df.mutate(by="region")` raises TypeError). Always call `df.by("region").mutate(...)`.
+
+4. TOP N PER GROUP & CHAINED PIPELINES:
+   - To get top N entities per group in CLI, chain sequential `-by` operations:
+     `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2`
+   - In Python:
+     `(penguins.by("island", "species").agg(avg_mass="body_mass_g:mean").arrange("island", "avg_mass desc").by("island").head(2))`
+   - In ANSI SQL:
+     `pytae file -sql "WITH ranked AS (SELECT island, species, AVG(body_mass_g) AS avg_mass, ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk FROM data GROUP BY island, species) SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2"`
+
+5. INTERACTIVE REPL (`pytae -i`):
+   - REPL verbs require leading hyphens (`-filter`, `-mutate`, `-arrange`, `-head 5`).
+   - Table inspection (`-head`, `-tail`, `-shape`, `-cols`) is non-destructive preview.
+   - Deletion uses wildcard: `rm *` (all tables) or `rm checkpoint *` (all snapshots). Singular `rm checkpoint <name>`. Never use `rm checkpoints`.
+   - Screen clearing is strictly `clear`. Never `cls`.
+
+6. THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS):
+   - When a user asks a complex question about their own dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):
+     1. Tailored Solution FIRST: Provide the exact CLI command or Python code tailored to their dataset and column names.
+     2. Runnable Twin Proof SECOND: Immediately follow with a runnable "Twin Proof" on an equivalent built-in sample dataset (e.g. sample:penguins, sample:tips, sample:titanic) with an explicit 1-to-1 mapping of dimensions (e.g. zone -> island, customer -> species, profit -> body_mass_g).
+   - Why?
+     * It grounds your reasoning in canonical syntax to eliminate hallucination.
+     * It gives the user an instant, zero-setup dry run they can run in their terminal in 10ms to verify table outputs before touching production files.
+   - For general questions with no specific dataset provided: Always demonstrate using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`).
+
+When answering questions:
+- Provide the tailored answer on the user's dataset, followed by the runnable "Twin Proof" on a sample dataset with column mapping.
+- Provide both the CLI command and Python equivalent when appropriate.
+- Explain the pipeline step-by-step.
+- Ensure all string values in shell commands are properly quoted with single quotes inside double quotes.
+```
+"""
+    copilot_instr_path = REPO_ROOT / "reference" / "pytae_copilot_instructions.md"
+    copilot_instr_path.write_text(copilot_instructions_content, encoding="utf-8")
+    print(f"Successfully generated {copilot_instr_path}")
+
 
 if __name__ == "__main__":
     generate_reference()
+
