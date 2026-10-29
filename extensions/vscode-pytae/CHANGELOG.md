@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.12.7
+
+- Sequential `-by` grouping in CLI with single-shot zero-pollution scoping.
+- Top N per group chained pipeline recipes.
+- Microsoft Copilot Studio RAG knowledge base & agent instructions.
+- Shell quoting standards and Twin Proof grounding protocol.
+
 ## 3.12.6
 
 - REPL non-destructive preview by default (`-filter`, `-head`, `-distinct`) and explicit mutation via assignment.

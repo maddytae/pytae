@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.7] - 2026-10-28
+
+### Added
+- **Position-Aware Sequential `-by` Grouping in CLI**:
+  - Implemented `action=_OrderedAppend` for `-by` in CLI arguments, preserving flag order across multi-stage operations.
+  - Enables multiple distinct `-by` operations within a single chained CLI invocation (e.g. `pytae file -by island,species -agg ... -arrange ... -by island -head 2`).
+  - Enforced single-shot zero-pollution scoping: each `-by` applies to the immediate next verb (`mutate`, `agg`, `head`, `tail`, `count`) and auto-clears to the clean table scope.
+- **Top N per Group Recipes & Shell Quoting Documentation**:
+  - Added comprehensive recipes and guides for Top N per group calculations in CLI, Python fluent chaining, and ANSI SQL across `docs/detailed_docs/cli/agg.md`, `docs/detailed_docs/cli/head_tail.md`, and `docs/cli_cheatsheet.md`.
+  - Added explicit Shell Quoting Standards for Bash, Zsh, and PowerShell in `docs/detailed_docs/cli/filter.md`.
+- **Microsoft Copilot Studio RAG & Agent Optimization**:
+  - Added `reference/pytae_copilot_reference.md`: A curated, signal-only markdown knowledge base (15,000 lines) excluding raw pytest files and compiler AST visitors for optimal chunk retrieval in Microsoft Copilot Studio.
+  - Added `reference/pytae_copilot_instructions.md`: Ready-to-paste system instructions prompt card.
+  - Added the **Twin Proof Rule**: Instructs the agent to provide both a tailored solution on the user's dataset and an instant, runnable demonstration on a built-in sample dataset (`sample:penguins`).
+- **Codified Release & Reference Regeneration Protocol**:
+  - Added `Release & Publishing Protocol` to `contributing.md` and created workspace agent rule `.agents/rules/release_protocol.md` mandating automated reference regeneration on every release.
+
+### Fixed
+- **CLI Flag Overwrite Bug**:
+  - Fixed an issue where repeating `-by` in CLI pipelines caused argparse to overwrite previous grouping keys, preventing multi-stage pipelines and top N per group slicing.
+
 ## [3.12.6] - 2026-10-27
 
 ### Added
