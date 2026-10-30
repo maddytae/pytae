@@ -1222,7 +1222,7 @@ def test_git_bash_pipe_ansi_arrow_history_recall(sample_df):
 
     # Run two commands to populate history
     r.execute_line("-cols", output_fn=outputs.append)
-    r.execute_line('df = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
 
     # In Git Bash without winpty, pressing Up Arrow + Enter sends "\x1b[A"
     outputs.clear()
@@ -1278,7 +1278,7 @@ def test_cli_repl_missing_encoding_reports_clean_error(tmp_path):
 def test_repl_and_cli_identical_schema_inference_and_fallback(tmp_path, monkeypatch, capsys):
     p = tmp_path / "schema_test.csv"
     # 50 rows of integers, then a row with latin-1 text
-    content = "id|val\n" + "".join(f"{i}|{i*10}\n" for i in range(50)) + "51|Montr\xe9al\n"
+    content = "id|val\n" + "".join(f"{i}|{i * 10}\n" for i in range(50)) + "51|Montr\xe9al\n"
     p.write_bytes(content.encode("latin-1"))
 
     # 1. CLI reading via pipeline
@@ -1368,7 +1368,7 @@ def test_repl_checkpoint_disk_storage_and_undo_reset(sample_df):
     r = PytaeRepl(df=sample_df)
 
     # 1. Do a transformation to create an undo step
-    r.execute_line('df = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert len(r.undo_stack) == 1
 
     # 2. Creating a checkpoint MUST reset undo and save tables to disk IPC
@@ -1467,7 +1467,7 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     orig_shape = r.tables["df1"].shape
 
     # 1. Filter and create checkpoint v1
-    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.current_df.shape[0] < orig_shape[0]
     gentoo_shape = r.current_df.shape
     r.execute_line("checkpoint v1", output_fn=outputs.append)
@@ -1526,7 +1526,7 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
 
     # 2. Filter both tables to distinct smaller subsets via assignment
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     df1_gentoo_shape = r.tables["df1"].shape
     assert df1_gentoo_shape[0] < orig_df1_shape[0]
 
@@ -1548,7 +1548,7 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
 
     # 4. Now filter df1 again and create a checkpoint 'v1'
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('df1 = -filter "species == \'Chinstrap\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Chinstrap'\"", output_fn=outputs.append)
     df1_chin_shape = r.tables["df1"].shape
     r.execute_line("checkpoint v1", output_fn=outputs.append)
 
@@ -1590,7 +1590,7 @@ def test_repl_history_option_b_milestone_banners():
     outputs = []
     r = PytaeRepl()
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     r.execute_line("checkpoint baseline", output_fn=outputs.append)
     r.execute_line('-mutate "mass_kg = body_mass_g / 1000"', output_fn=outputs.append)
     r.execute_line("reset", output_fn=outputs.append)
@@ -1603,7 +1603,7 @@ def test_repl_history_option_b_milestone_banners():
     assert "  *checkpoint: baseline*" in hist_text
     assert "   1: df1 = sample:penguins" in hist_text
     assert "   2: -filter \"species == 'Gentoo'\"" in hist_text
-    assert "   3: -mutate \"mass_kg = body_mass_g / 1000\"" in hist_text
+    assert '   3: -mutate "mass_kg = body_mass_g / 1000"' in hist_text
     assert "   4: reset [reverted to checkpoint: baseline]" in hist_text
 
     r.close()
@@ -1620,7 +1620,7 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     assert r1._build_prompt() == "pytae:proj_x> "
 
     r1.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-    r1.execute_line('df1 = -filter "species == \'Adelie\'"', output_fn=outputs.append)
+    r1.execute_line("df1 = -filter \"species == 'Adelie'\"", output_fn=outputs.append)
     r1.execute_line("checkpoint v1", output_fn=outputs.append)
     adelie_shape = r1.tables["df1"].shape
 
@@ -1945,7 +1945,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
 
     # 3. Exploratory -filter prints formatted table without mutating df1
     outputs.clear()
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert any("Gentoo" in o for o in outputs)
     assert r.current_df.shape == (344, 7)
     assert r.tables["df1"].shape == (344, 7)
@@ -1959,7 +1959,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
 
     # 5. Targeted preview: k -filter "species == 'Gentoo'" does NOT change k
     outputs.clear()
-    r.execute_line('k -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("k -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert any("Gentoo" in o for o in outputs)
     assert r.tables["k"].shape == (344, 7)  # k is intact!
 
@@ -1971,7 +1971,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
 
     # 7. Assignment from table with pipeline: filtered_k = df1 -filter ...
     outputs.clear()
-    r.execute_line('filtered_k = df1 -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("filtered_k = df1 -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert "filtered_k" in r.tables
     assert r.tables["filtered_k"].shape == (124, 7)
     assert r.tables["df1"].shape == (344, 7)  # df1 is untouched!
@@ -1986,7 +1986,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
     # 9. Active table assignment: df1 = -filter "species == 'Gentoo'"
     outputs.clear()
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.tables["df1"].shape == (124, 7)
     assert r.current_df.shape == (124, 7)
     assert any("Updated 'df1' (124 rows x 7 cols)" in o for o in outputs)
@@ -2001,3 +2001,137 @@ def test_repl_preview_by_default_and_assignment_mutation():
     r.close()
 
 
+def test_repl_time_exploratory_pipeline(sample_df):
+    """Test -time on exploratory preview pipelines in REPL."""
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # Single-run timing
+    r.execute_line("-distinct -time", output_fn=outputs.append)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+    assert any("Adelie" in o for o in outputs)
+    assert r.current_df.shape == (5, 3)  # Exploratory preview preserves active table
+
+    # Multi-run timing
+    outputs.clear()
+    r.execute_line("-distinct -time 3", output_fn=outputs.append)
+    assert any("Elapsed (3 runs): avg" in o for o in outputs)
+    assert r.current_df.shape == (5, 3)
+
+    r.close()
+
+
+def test_repl_time_inspections(sample_df):
+    """Test -time on inspection commands (-shape, -head, -cols) in REPL."""
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # -shape -time
+    r.execute_line("-shape -time", output_fn=outputs.append)
+    assert any("(5, 3)" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+
+    # -head 2 -time
+    outputs.clear()
+    r.execute_line("-head 2 -time", output_fn=outputs.append)
+    assert any("Adelie" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+
+    # -cols -time
+    outputs.clear()
+    r.execute_line("-cols -time", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+
+    r.close()
+
+
+def test_repl_time_bare_table_switch(sample_df):
+    """Test bare table switch timing (e.g. df1 -time, df1 -time 3)."""
+    r = PytaeRepl()
+    r.tables["df1"] = sample_df.clone()
+    r.tables["df2"] = sample_df.head(2)
+    r.current_df = r.tables["df2"]
+    r.path_str = "df2"
+
+    outputs = []
+    r.execute_line("df1 -time", output_fn=outputs.append)
+    assert r.path_str == "df1"
+    assert len(outputs) == 1
+    assert "df1: 5 rows x 3 cols | Elapsed:" in outputs[0]
+
+    outputs.clear()
+    r.execute_line("df1 -time 3", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "df1: 5 rows x 3 cols | Elapsed (3 runs): avg" in outputs[0]
+
+    r.close()
+
+
+def test_repl_time_targeted_pipeline(sample_df):
+    """Test targeted table commands with timing (e.g. df1 -shape -time, df1 -head 2 -time)."""
+    r = PytaeRepl()
+    r.tables["df1"] = sample_df.clone()
+    r.tables["df2"] = sample_df.head(2)
+    r.current_df = r.tables["df2"]
+    r.path_str = "df2"
+
+    outputs = []
+    r.execute_line("df1 -shape -time", output_fn=outputs.append)
+    assert any("(5, 3)" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+    # Active table remains df2
+    assert r.path_str == "df2"
+
+    outputs.clear()
+    r.execute_line("df1 -head 2 -time", output_fn=outputs.append)
+    assert any("Adelie" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+    assert r.path_str == "df2"
+
+    r.close()
+
+
+def test_repl_time_assignment(sample_df):
+    """Test table assignment with timing (df2 = df1 -distinct -time, df1 = -distinct -time)."""
+    r = PytaeRepl()
+    r.tables["df1"] = sample_df.clone()
+    r.current_df = r.tables["df1"]
+    r.path_str = "df1"
+
+    # Cross-table assignment with -time
+    outputs = []
+    r.execute_line("df2 = df1 -distinct -time", output_fn=outputs.append)
+    assert "df2" in r.tables
+    assert any("Created 'df2' (5 rows x 3 cols) | Elapsed:" in o for o in outputs)
+
+    # In-place assignment with -time
+    outputs.clear()
+    r.execute_line("df1 = -distinct -time", output_fn=outputs.append)
+    assert any("Updated 'df1' (5 rows x 3 cols) | Elapsed:" in o for o in outputs)
+
+    r.close()
+
+
+def test_repl_time_syntax_and_aliases(sample_df):
+    """Test bare 'time' and '--time' rejection and helpful hints."""
+    r = PytaeRepl(df=sample_df)
+    r.tables["df1"] = sample_df.clone()
+
+    outputs = []
+    r.execute_line("time", output_fn=outputs.append)
+    assert "bare 'time' is not recognized; use '-time'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("df1 time", output_fn=outputs.append)
+    assert "bare 'time' is not recognized; use '-time'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("--time", output_fn=outputs.append)
+    assert "'--time' is not recognized; use '-time'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("df1 --time", output_fn=outputs.append)
+    assert "'--time' is not recognized; use '-time'" in outputs[-1]
+
+    r.close()

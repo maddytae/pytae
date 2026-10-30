@@ -184,7 +184,6 @@ def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
         output_fn(f"  - {s_path.name:<15} ({cp_str}; {size_str}{date_str})")
 
 
-
 try:
     import readline  # Standard Unix / macOS readline
 except ImportError:
@@ -274,8 +273,23 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
                         if kbhit_fn():
                             seq += msvcrt.getwch()
                             if seq in (
-                                "[A", "OA", "[B", "OB", "[C", "OC", "[D", "OD",
-                                "[H", "OH", "[F", "OF", "[3~", "[1~", "[4~", "[7~", "[8~",
+                                "[A",
+                                "OA",
+                                "[B",
+                                "OB",
+                                "[C",
+                                "OC",
+                                "[D",
+                                "OD",
+                                "[H",
+                                "OH",
+                                "[F",
+                                "OF",
+                                "[3~",
+                                "[1~",
+                                "[4~",
+                                "[7~",
+                                "[8~",
                             ):
                                 break
                         else:
@@ -289,8 +303,23 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
                         try:
                             seq += msvcrt.getwch()
                             if seq in (
-                                "[A", "OA", "[B", "OB", "[C", "OC", "[D", "OD",
-                                "[H", "OH", "[F", "OF", "[3~", "[1~", "[4~", "[7~", "[8~",
+                                "[A",
+                                "OA",
+                                "[B",
+                                "OB",
+                                "[C",
+                                "OC",
+                                "[D",
+                                "OD",
+                                "[H",
+                                "OH",
+                                "[F",
+                                "OF",
+                                "[3~",
+                                "[1~",
+                                "[4~",
+                                "[7~",
+                                "[8~",
                             ):
                                 break
                         except Exception:
@@ -299,13 +328,23 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
                 pass
 
             ansi_map = {
-                "[A": "H", "OA": "H",  # Up arrow
-                "[B": "P", "OB": "P",  # Down arrow
-                "[D": "K", "OD": "K",  # Left arrow
-                "[C": "M", "OC": "M",  # Right arrow
-                "[H": "G", "OH": "G", "[1~": "G", "[7~": "G",  # Home
-                "[F": "O", "OF": "O", "[4~": "O", "[8~": "O",  # End
-                "[3~": "S",            # Delete
+                "[A": "H",
+                "OA": "H",  # Up arrow
+                "[B": "P",
+                "OB": "P",  # Down arrow
+                "[D": "K",
+                "OD": "K",  # Left arrow
+                "[C": "M",
+                "OC": "M",  # Right arrow
+                "[H": "G",
+                "OH": "G",
+                "[1~": "G",
+                "[7~": "G",  # Home
+                "[F": "O",
+                "OF": "O",
+                "[4~": "O",
+                "[8~": "O",  # End
+                "[3~": "S",  # Delete
             }
             if seq in ansi_map:
                 code = ansi_map[seq]
@@ -485,6 +524,7 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
   -shape                 : Display row and column counts
   -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
   -dtype / -nulls        : Inspect schema dtypes and missing value counts
+  -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
 
@@ -494,6 +534,7 @@ MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
   <tbl> -shape / -cols   : Inspect table metadata (e.g. df1 -shape, df2 -cols asc)
+  <tbl> -time [N]        : Switch active dataset and measure elapsed time (e.g. df1 -time)
   <tbl> -<pipeline>      : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
   <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
   <tbl> -o <path>        : Export specific table (e.g. df1 -o clean_orders.parquet)
@@ -601,6 +642,7 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--join": "-join",
     "--concat": "-concat",
     "--sql": "-sql",
+    "--time": "-time",
     "--output": "-o <path>",
     "-output": "-o <path>",
     "--out_dir": "-out_dir",
@@ -680,6 +722,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "head",
         "tail",
         "sql",
+        "time",
     )
 )
 
@@ -885,18 +928,30 @@ class PytaeRepl:
                     return None
                 act = meta.get("active_table")
                 if act and act in tbl_meta:
-                    f_name = tbl_meta[act].get("file", _safe_ipc_filename(act)) if isinstance(tbl_meta[act], dict) else _safe_ipc_filename(act)
+                    f_name = (
+                        tbl_meta[act].get("file", _safe_ipc_filename(act))
+                        if isinstance(tbl_meta[act], dict)
+                        else _safe_ipc_filename(act)
+                    )
                     ipc_p = cp_dir / f_name
                     if ipc_p.exists():
                         return pl.read_ipc(ipc_p)
                 if len(tbl_meta) == 1:
                     first_k, first_v = next(iter(tbl_meta.items()))
-                    f_name = first_v.get("file", _safe_ipc_filename(first_k)) if isinstance(first_v, dict) else _safe_ipc_filename(first_k)
+                    f_name = (
+                        first_v.get("file", _safe_ipc_filename(first_k))
+                        if isinstance(first_v, dict)
+                        else _safe_ipc_filename(first_k)
+                    )
                     ipc_p = cp_dir / f_name
                     if ipc_p.exists():
                         return pl.read_ipc(ipc_p)
                 if "_current_df" in tbl_meta:
-                    f_name = tbl_meta["_current_df"].get("file", "_current_df.ipc") if isinstance(tbl_meta["_current_df"], dict) else "_current_df.ipc"
+                    f_name = (
+                        tbl_meta["_current_df"].get("file", "_current_df.ipc")
+                        if isinstance(tbl_meta["_current_df"], dict)
+                        else "_current_df.ipc"
+                    )
                     ipc_p = cp_dir / f_name
                     if ipc_p.exists():
                         return pl.read_ipc(ipc_p)
@@ -1083,9 +1138,7 @@ class PytaeRepl:
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         (s_dir / "history.json").write_text(json.dumps(self.history, indent=2), encoding="utf-8")
 
-    def _load_session_from_disk(
-        self, name: str, output_fn: Callable[[str], None] | None = None
-    ) -> bool:
+    def _load_session_from_disk(self, name: str, output_fn: Callable[[str], None] | None = None) -> bool:
         """Load session history and saved checkpoints from disk, activating the latest checkpoint."""
         s_dir = get_sessions_dir() / name
         if not s_dir.exists():
@@ -1251,11 +1304,11 @@ class PytaeRepl:
         target_name = name.strip()
         s_dir = get_sessions_dir() / target_name
         if not s_dir.exists():
-            avail = [
-                p.name
-                for p in get_sessions_dir().iterdir()
-                if p.is_dir() and not p.name.startswith(".")
-            ] if get_sessions_dir().exists() else []
+            avail = (
+                [p.name for p in get_sessions_dir().iterdir() if p.is_dir() and not p.name.startswith(".")]
+                if get_sessions_dir().exists()
+                else []
+            )
             avail_str = ", ".join(avail) if avail else "none"
             output_fn(f"pytae: session '{target_name}' not found. Available: {avail_str}")
             return
@@ -1273,18 +1326,8 @@ class PytaeRepl:
             return True
 
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
-        ansi_up_count = (
-            line.count("\x1b[A")
-            + line.count("\x1bOA")
-            + line.count("^[[A")
-            + line.count("^[OA")
-        )
-        ansi_down_count = (
-            line.count("\x1b[B")
-            + line.count("\x1bOB")
-            + line.count("^[[B")
-            + line.count("^[OB")
-        )
+        ansi_up_count = line.count("\x1b[A") + line.count("\x1bOA") + line.count("^[[A") + line.count("^[OA")
+        ansi_down_count = line.count("\x1b[B") + line.count("\x1bOB") + line.count("^[[B") + line.count("^[OB")
         cleaned_ansi = (
             line.replace("\x1b[A", "")
             .replace("\x1bOA", "")
@@ -1601,9 +1644,19 @@ class PytaeRepl:
 
         # Bare table name switches active dataset and shows shape only (Model 2: no table dump)
         resolved_table = self._resolve_table_name(tokens[0])
+        is_bare_switch_timed = False
+        if resolved_table and len(tokens) >= 2:
+            sub = tokens[1:]
+            if (
+                sub == ["-time"]
+                or (len(sub) == 2 and sub[0] == "-time" and sub[1].isdigit())
+                or (len(sub) == 1 and sub[0].startswith("-time="))
+            ):
+                is_bare_switch_timed = True
+
         if (
             resolved_table
-            and len(tokens) == 1
+            and (len(tokens) == 1 or is_bare_switch_timed)
             and first_lower
             not in (
                 "help",
@@ -1638,12 +1691,36 @@ class PytaeRepl:
                 "free",
             )
         ):
-            self.current_df = self.tables[resolved_table]
-            self.orig_df = self.orig_tables.get(resolved_table)
-            self.initial_df = self.initial_tables.get(resolved_table)
-            self.path_str = resolved_table
-            n_rows, n_cols = self.current_df.shape
-            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols")
+            import time as _time
+
+            from pytae.cli import _format_duration_ms, _format_timing_summary
+
+            runs = 1
+            if len(tokens) == 3 and tokens[1] == "-time" and tokens[2].isdigit():
+                runs = max(1, int(tokens[2]))
+            elif len(tokens) == 2 and tokens[1].startswith("-time="):
+                try:
+                    runs = max(1, int(tokens[1].split("=", 1)[1]))
+                except ValueError:
+                    runs = 1
+
+            durations = []
+            for _ in range(runs):
+                t0 = _time.perf_counter()
+                self.current_df = self.tables[resolved_table]
+                self.orig_df = self.orig_tables.get(resolved_table)
+                self.initial_df = self.initial_tables.get(resolved_table)
+                self.path_str = resolved_table
+                n_rows, n_cols = self.current_df.shape
+                durations.append(_time.perf_counter() - t0)
+
+            timing_str = ""
+            if is_bare_switch_timed:
+                if len(durations) == 1:
+                    timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
+                else:
+                    timing_str = f" | {_format_timing_summary(durations)}"
+            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols{timing_str}")
             return True
 
         # Targeted table command (e.g. `df1 -filter ...` or `df -cols` or `penguins head 5`)
@@ -1678,7 +1755,9 @@ class PytaeRepl:
 
         if first_lower == "checkpoint":
             if len(tokens) < 2:
-                output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline), checkpoint rm <name>, or checkpoint rm *")
+                output_fn(
+                    "Usage: checkpoint <name> (e.g. checkpoint baseline), checkpoint rm <name>, or checkpoint rm *"
+                )
                 return True
             if tokens[1].lower() == "rm":
                 if len(tokens) < 3:
@@ -1759,98 +1838,100 @@ class PytaeRepl:
             return True
 
         # Non-destructive dataset inspection (-shape, -cols, -dtype, etc.)
-        if first_lower == "-shape":
-            if self.current_df is not None:
-                output_fn(f"({self.current_df.shape[0]}, {self.current_df.shape[1]})")
-            else:
-                output_fn("No dataset loaded.")
-            return True
+        has_time = any(t == "-time" or t.startswith("-time=") for t in tokens)
+        if not has_time:
+            if first_lower == "-shape":
+                if self.current_df is not None:
+                    output_fn(f"({self.current_df.shape[0]}, {self.current_df.shape[1]})")
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
-        if first_lower == "-cols" or first_lower.startswith("-cols="):
-            if self.current_df is not None:
-                order = "file"
-                if "=" in first_lower:
-                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                elif len(tokens) > 1:
-                    order = tokens[1].lower()
-                cols = list(self.current_df.columns)
-                if order == "asc":
-                    cols = sorted(cols, key=lambda s: (s.lower(), s))
-                elif order == "desc":
-                    cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
-                elif order != "file":
-                    cols = [c for c in cols if order in c.lower()]
-                output_fn("\n".join(cols))
-            else:
-                output_fn("No dataset loaded.")
-            return True
+            if first_lower == "-cols" or first_lower.startswith("-cols="):
+                if self.current_df is not None:
+                    order = "file"
+                    if "=" in first_lower:
+                        order = first_lower.split("=", 1)[1].strip("\"'").lower()
+                    elif len(tokens) > 1:
+                        order = tokens[1].lower()
+                    cols = list(self.current_df.columns)
+                    if order == "asc":
+                        cols = sorted(cols, key=lambda s: (s.lower(), s))
+                    elif order == "desc":
+                        cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
+                    elif order != "file":
+                        cols = [c for c in cols if order in c.lower()]
+                    output_fn("\n".join(cols))
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
-        if first_lower == "-dtype" or first_lower.startswith("-dtype="):
-            if self.current_df is not None:
-                order = "file"
-                if "=" in first_lower:
-                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                elif len(tokens) > 1:
-                    order = tokens[1].lower()
-                reader = DataFrameReader(self.current_df)
-                dtypes = reader.dtypes()
-                if order == "asc":
-                    dtypes = dtypes.sort_index(ascending=True)
-                elif order == "desc":
-                    dtypes = dtypes.sort_index(ascending=False)
-                output_fn(dtypes.to_string())
-            else:
-                output_fn("No dataset loaded.")
-            return True
+            if first_lower == "-dtype" or first_lower.startswith("-dtype="):
+                if self.current_df is not None:
+                    order = "file"
+                    if "=" in first_lower:
+                        order = first_lower.split("=", 1)[1].strip("\"'").lower()
+                    elif len(tokens) > 1:
+                        order = tokens[1].lower()
+                    reader = DataFrameReader(self.current_df)
+                    dtypes = reader.dtypes()
+                    if order == "asc":
+                        dtypes = dtypes.sort_index(ascending=True)
+                    elif order == "desc":
+                        dtypes = dtypes.sort_index(ascending=False)
+                    output_fn(dtypes.to_string())
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
-        if first_lower == "-nulls" or first_lower.startswith("-nulls="):
-            if self.current_df is not None:
-                order = "file"
-                if "=" in first_lower:
-                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                elif len(tokens) > 1:
-                    order = tokens[1].lower()
-                nulls_s = self.current_df.null_count().to_pandas().iloc[0]
-                if order == "asc":
-                    nulls_s = nulls_s.sort_index(ascending=True)
-                elif order == "desc":
-                    nulls_s = nulls_s.sort_index(ascending=False)
-                output_fn(nulls_s.to_string())
-            else:
-                output_fn("No dataset loaded.")
-            return True
+            if first_lower == "-nulls" or first_lower.startswith("-nulls="):
+                if self.current_df is not None:
+                    order = "file"
+                    if "=" in first_lower:
+                        order = first_lower.split("=", 1)[1].strip("\"'").lower()
+                    elif len(tokens) > 1:
+                        order = tokens[1].lower()
+                    nulls_s = self.current_df.null_count().to_pandas().iloc[0]
+                    if order == "asc":
+                        nulls_s = nulls_s.sort_index(ascending=True)
+                    elif order == "desc":
+                        nulls_s = nulls_s.sort_index(ascending=False)
+                    output_fn(nulls_s.to_string())
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
-        if first_lower == "-glimpse":
-            if self.current_df is not None:
-                from pytae.dataframe import DataFrame as PytaeDataFrame
+            if first_lower == "-glimpse":
+                if self.current_df is not None:
+                    from pytae.dataframe import DataFrame as PytaeDataFrame
 
-                output_fn(PytaeDataFrame(self.current_df).glimpse())
-            else:
-                output_fn("No dataset loaded.")
-            return True
+                    output_fn(PytaeDataFrame(self.current_df).glimpse())
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
-        if first_lower == "-describe":
-            if self.current_df is not None:
-                output_fn(_format_table(self.current_df.describe()))
-            else:
-                output_fn("No dataset loaded.")
-            return True
+            if first_lower == "-describe":
+                if self.current_df is not None:
+                    output_fn(_format_table(self.current_df.describe()))
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
-        if first_lower == "-head":
-            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            if self.current_df is not None:
-                output_fn(_format_table(self.current_df.head(n), tbl_rows=max(n, 10)))
-            else:
-                output_fn("No dataset loaded.")
-            return True
+            if first_lower == "-head":
+                n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
+                if self.current_df is not None:
+                    output_fn(_format_table(self.current_df.head(n), tbl_rows=max(n, 10)))
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
-        if first_lower == "-tail":
-            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            if self.current_df is not None:
-                output_fn(_format_table(self.current_df.tail(n), tbl_rows=max(n, 10)))
-            else:
-                output_fn("No dataset loaded.")
-            return True
+            if first_lower == "-tail":
+                n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
+                if self.current_df is not None:
+                    output_fn(_format_table(self.current_df.tail(n), tbl_rows=max(n, 10)))
+                else:
+                    output_fn("No dataset loaded.")
+                return True
 
         # Otherwise, process as a pytae pipeline command
         self._cmd_pipeline(line, tokens, output_fn)
@@ -1986,9 +2067,7 @@ class PytaeRepl:
             f"Reset table '{table_name}' to initial state ({restored_df.shape[0]:,} rows x {restored_df.shape[1]} cols)."
         )
 
-    def _reset_to_initial(
-        self, output_fn: Callable[[str], None], is_explicit_initial: bool = False
-    ) -> None:
+    def _reset_to_initial(self, output_fn: Callable[[str], None], is_explicit_initial: bool = False) -> None:
         source_tables = self.initial_tables if self.initial_tables else self.orig_tables
         source_df = self.initial_df if self.initial_df is not None else self.orig_df
         if not source_tables and source_df is None:
@@ -2284,9 +2363,7 @@ class PytaeRepl:
         else:
             output_fn(f"Saved checkpoint '{name}'.")
 
-    def _cmd_restore(
-        self, name: str, output_fn: Callable[[str], None], record_history: bool = True
-    ) -> None:
+    def _cmd_restore(self, name: str, output_fn: Callable[[str], None], record_history: bool = True) -> None:
         if name not in self.checkpoints:
             avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
             output_fn(f"pytae: checkpoint '{name}' not found. Available checkpoints: {avail}")
@@ -2388,7 +2465,9 @@ class PytaeRepl:
                         output_fn(f"  - {name:<15}: {summary}{active_suffix}")
                     elif tbls:
                         t_name, val = next(iter(tbls.items()))
-                        shape = val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
+                        shape = (
+                            val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
+                        )
                         if shape:
                             output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols")
                         else:
@@ -2516,9 +2595,7 @@ class PytaeRepl:
             first_tok = right_tokens[0]
             first_lower = first_tok.lower()
             if first_lower in _BARE_PIPELINE_VERBS:
-                output_fn(
-                    f"pytae: bare '{first_tok}' is not recognized; use '-{first_tok}' (matching CLI syntax)."
-                )
+                output_fn(f"pytae: bare '{first_tok}' is not recognized; use '-{first_tok}' (matching CLI syntax).")
                 return
 
             # Active-table pipeline assignment: `df = -filter ...` or `k = -filter ...`
@@ -2545,8 +2622,9 @@ class PytaeRepl:
                     self.current_df = source_df.clone()
                     self._cmd_join(pipe_tokens[1:], output_fn)
                     res_df = self.current_df
+                    durations = None
                 else:
-                    res_df = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
+                    res_df, durations = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
                     if res_df is None:
                         return
 
@@ -2558,7 +2636,15 @@ class PytaeRepl:
                 self.path_str = var_name
                 self.history.append(f"{var_name} = {right_expr}")
                 action = "Updated" if was_existing else "Created"
-                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
+                timing_str = ""
+                if durations:
+                    from pytae.cli import _format_duration_ms, _format_timing_summary
+
+                    if len(durations) == 1:
+                        timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
+                    else:
+                        timing_str = f" | {_format_timing_summary(durations)}"
+                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols){timing_str}.")
                 return
 
             resolved_src = self._resolve_table_name(first_tok)
@@ -2600,8 +2686,9 @@ class PytaeRepl:
                     self.current_df = source_df.clone()
                     self._cmd_join(pipe_tokens[1:], output_fn)
                     res_df = self.current_df
+                    durations = None
                 else:
-                    res_df = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
+                    res_df, durations = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
                     if res_df is None:
                         return
                 was_existing = var_name in self.tables
@@ -2612,7 +2699,15 @@ class PytaeRepl:
                 self.path_str = var_name
                 self.history.append(f"{var_name} = {right_expr}")
                 action = "Updated" if was_existing else "Created"
-                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
+                timing_str = ""
+                if durations:
+                    from pytae.cli import _format_duration_ms, _format_timing_summary
+
+                    if len(durations) == 1:
+                        timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
+                    else:
+                        timing_str = f" | {_format_timing_summary(durations)}"
+                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols){timing_str}.")
                 return
 
         output_fn(f"pytae: could not assign '{var_name}'. '{clean_path}' is not an existing file or table.")
@@ -2630,6 +2725,13 @@ class PytaeRepl:
         if first_sub in _DISALLOWED_ALIASES:
             canonical = _DISALLOWED_ALIASES[first_sub]
             output_fn(f"pytae: '{first_sub}' is not recognized; use '{canonical}'.")
+            self.current_df = old_active
+            self.path_str = old_path
+            return
+
+        has_time = any(t == "-time" or t.startswith("-time=") for t in sub_tokens)
+        if has_time:
+            self._cmd_pipeline(sub_line, sub_tokens, output_fn)
             self.current_df = old_active
             self.path_str = old_path
             return
@@ -2878,9 +2980,7 @@ class PytaeRepl:
             right_df = self._get_checkpoint_df(right_name)
             if right_df is None:
                 avail = ", ".join(self.tables.keys()) if self.tables else "none"
-                output_fn(
-                    f"pytae: could not load right table from checkpoint '{right_name}'. Available: {avail}"
-                )
+                output_fn(f"pytae: could not load right table from checkpoint '{right_name}'. Available: {avail}")
                 return
         else:
             try:
@@ -3015,9 +3115,10 @@ class PytaeRepl:
         source_df: pl.DataFrame,
         tokens: list[str],
         output_fn: Callable[[str], None] = print,
-    ) -> pl.DataFrame | None:
-        """Evaluate a pipeline on source_df without printing, returning the resulting pl.DataFrame."""
+    ) -> tuple[pl.DataFrame | None, list[float] | None]:
+        """Evaluate a pipeline on source_df without printing, returning (resulting_df, durations)."""
         from pytae.cli import (
+            _normalize_cli_args,
             build_parser,
             parse_concat_arg,
             parse_filter,
@@ -3026,7 +3127,7 @@ class PytaeRepl:
             parse_select_spec,
         )
 
-        exec_argv = ["<memory>"] + tokens
+        exec_argv = _normalize_cli_args(["<memory>"] + tokens)
         parser = build_parser(exit_on_error=False)
         try:
             args, extras = parser.parse_known_args(exec_argv)
@@ -3038,10 +3139,10 @@ class PytaeRepl:
                     )
                 else:
                     output_fn(f"pytae: unrecognized arguments: {' '.join(extras)}")
-                return None
+                return None, None
         except (argparse.ArgumentError, SystemExit) as exc:
             output_fn(f"pytae syntax error: {exc}")
-            return None
+            return None, None
 
         rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
         select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
@@ -3057,44 +3158,96 @@ class PytaeRepl:
         args.quiet = True
         args.output_fn = lambda s: None
 
+        has_action = bool(op_order) or any(
+            [
+                args.shape,
+                args.cols,
+                args.dtype,
+                args.nulls,
+                args.describe,
+                args.glimpse,
+                args.head is not None,
+                args.tail is not None,
+                args.sample is not None,
+                args.stats,
+                getattr(args, "diff", None) is not None,
+                getattr(args, "meta", False),
+                getattr(args, "plot", None) is not None,
+                getattr(args, "hist", None) is not None,
+                getattr(args, "bar", None) is not None,
+                getattr(args, "scatter", None) is not None,
+                getattr(args, "corr", None) is not None,
+            ]
+        )
+        show_all = not has_action
+
+        runs = getattr(args, "time", None)
+        durations: list[float] | None = None
         try:
-            failed = _process_path(
-                Path("<memory>"),
-                args,
-                parser,
-                batch=True,
-                show_all=not op_order,
-                select_specs=select_specs,
-                filter_specs=filter_specs,
-                mutate_specs=mutate_specs,
-                sql_specs=sql_specs,
-                rename_specs=rename_specs,
-                join_specs=join_specs,
-                concat_specs=concat_specs,
-            )
+            if runs:
+                import time as _time
+
+                durations = []
+                for _ in range(runs):
+                    t0 = _time.perf_counter()
+                    failed = _process_path(
+                        Path("<memory>"),
+                        args,
+                        parser,
+                        batch=True,
+                        show_all=show_all,
+                        select_specs=select_specs,
+                        filter_specs=filter_specs,
+                        mutate_specs=mutate_specs,
+                        sql_specs=sql_specs,
+                        rename_specs=rename_specs,
+                        join_specs=join_specs,
+                        concat_specs=concat_specs,
+                    )
+                    durations.append(_time.perf_counter() - t0)
+                    if failed:
+                        break
+            else:
+                failed = _process_path(
+                    Path("<memory>"),
+                    args,
+                    parser,
+                    batch=True,
+                    show_all=show_all,
+                    select_specs=select_specs,
+                    filter_specs=filter_specs,
+                    mutate_specs=mutate_specs,
+                    sql_specs=sql_specs,
+                    rename_specs=rename_specs,
+                    join_specs=join_specs,
+                    concat_specs=concat_specs,
+                )
             if failed:
-                return None
+                return None, None
             res_frame = getattr(args, "_result_frame", None)
+            res_pl: pl.DataFrame | None = None
             if res_frame is not None:
                 if isinstance(res_frame, pl.LazyFrame):
-                    return res_frame.collect()
+                    res_pl = res_frame.collect()
                 elif isinstance(res_frame, pl.DataFrame):
-                    return res_frame
-                return pl.from_pandas(res_frame)
-            return source_df
+                    res_pl = res_frame
+                else:
+                    res_pl = pl.from_pandas(res_frame)
+            else:
+                res_pl = source_df
+            return res_pl, durations
         except Exception as exc:
             output_fn(f"pytae error: {exc}")
-            return None
+            return None, None
 
     def _cmd_pipeline(self, line: str, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
             output_fn("pytae: no dataset loaded. Load a dataset first with '<var> = <path.parquet>'.")
             return
 
-        # Build pipeline execution argv directly without bare verb auto-prefixing
-        exec_argv = ["<memory>"] + tokens
-
         from pytae.cli import (
+            _format_timing_summary,
+            _normalize_cli_args,
             build_parser,
             parse_concat_arg,
             parse_filter,
@@ -3103,6 +3256,7 @@ class PytaeRepl:
             parse_select_spec,
         )
 
+        exec_argv = _normalize_cli_args(["<memory>"] + tokens)
         parser = build_parser(exit_on_error=False)
         try:
             args, extras = parser.parse_known_args(exec_argv)
@@ -3136,24 +3290,95 @@ class PytaeRepl:
         args.in_repl = True
         args.output_fn = output_fn
 
+        has_action = bool(op_order) or any(
+            [
+                args.shape,
+                args.cols,
+                args.dtype,
+                args.nulls,
+                args.describe,
+                args.glimpse,
+                args.head is not None,
+                args.tail is not None,
+                args.sample is not None,
+                args.stats,
+                getattr(args, "diff", None) is not None,
+                getattr(args, "meta", False),
+                getattr(args, "plot", None) is not None,
+                getattr(args, "hist", None) is not None,
+                getattr(args, "bar", None) is not None,
+                getattr(args, "scatter", None) is not None,
+                getattr(args, "corr", None) is not None,
+            ]
+        )
+        show_all = not has_action
+
+        runs = getattr(args, "time", None)
         try:
-            failed = _process_path(
-                Path("<memory>"),
-                args,
-                parser,
-                batch=True,
-                show_all=not op_order,
-                select_specs=select_specs,
-                filter_specs=filter_specs,
-                mutate_specs=mutate_specs,
-                sql_specs=sql_specs,
-                rename_specs=rename_specs,
-                join_specs=join_specs,
-                concat_specs=concat_specs,
-            )
-            if failed:
-                output_fn("pytae: command failed with errors.")
-                return
+            if runs:
+                import time as _time
+
+                durations: list[float] = []
+                failed = False
+                for run_idx in range(runs):
+                    t0 = _time.perf_counter()
+                    if run_idx == 0:
+                        failed = _process_path(
+                            Path("<memory>"),
+                            args,
+                            parser,
+                            batch=True,
+                            show_all=show_all,
+                            select_specs=select_specs,
+                            filter_specs=filter_specs,
+                            mutate_specs=mutate_specs,
+                            sql_specs=sql_specs,
+                            rename_specs=rename_specs,
+                            join_specs=join_specs,
+                            concat_specs=concat_specs,
+                        )
+                    else:
+                        quiet_args = argparse.Namespace(**vars(args))
+                        quiet_args.output_fn = lambda s: None
+                        failed = _process_path(
+                            Path("<memory>"),
+                            quiet_args,
+                            parser,
+                            batch=True,
+                            show_all=False,
+                            select_specs=select_specs,
+                            filter_specs=filter_specs,
+                            mutate_specs=mutate_specs,
+                            sql_specs=sql_specs,
+                            rename_specs=rename_specs,
+                            join_specs=join_specs,
+                            concat_specs=concat_specs,
+                        )
+                    durations.append(_time.perf_counter() - t0)
+                    if failed:
+                        break
+                if failed:
+                    output_fn("pytae: command failed with errors.")
+                    return
+                output_fn(_format_timing_summary(durations))
+            else:
+                failed = _process_path(
+                    Path("<memory>"),
+                    args,
+                    parser,
+                    batch=True,
+                    show_all=show_all,
+                    select_specs=select_specs,
+                    filter_specs=filter_specs,
+                    mutate_specs=mutate_specs,
+                    sql_specs=sql_specs,
+                    rename_specs=rename_specs,
+                    join_specs=join_specs,
+                    concat_specs=concat_specs,
+                )
+                if failed:
+                    output_fn("pytae: command failed with errors.")
+                    return
 
             self.history.append(line)
         except Exception as exc:
@@ -3176,7 +3401,9 @@ class PytaeRepl:
                 "No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
             )
         if sys.platform == "win32" and not sys.stdin.isatty():
-            output_fn("  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)")
+            output_fn(
+                "  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)"
+            )
         output_fn("")
 
         def _get_input(prompt_text: str) -> str:
