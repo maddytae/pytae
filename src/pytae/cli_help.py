@@ -540,22 +540,22 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Compare schema and values between two tabular datasets.",
         description=(
             "Compares column lists, types, row counts, null counts, and value differences "
-            "between two datasets. Use -tol or -tolerance to set an absolute numeric threshold."
+            "between two datasets. Use -tol to set an absolute numeric threshold."
         ),
         options=[
             "PATH : Target file path to compare against.",
-            "-tol N, -tolerance N : Numeric tolerance threshold for floating-point comparisons (e.g. -tol 0.001).",
+            "-tol N : Numeric tolerance threshold for floating-point comparisons (e.g. -tol 0.001).",
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet",
             "pytae current.parquet -diff previous.parquet -tol 0.001",
-            "pytae current.parquet -diff previous.parquet -tolerance 1e-4",
+            "pytae current.parquet -diff previous.parquet -tol 1e-4",
         ],
         see_also=["-meta", "-cols", "-dtype"],
     ),
     "tol": KeywordHelp(
         name="tol",
-        flag="-tol, -tolerance N",
+        flag="-tol N",
         syntax="pytae <file1> -diff <file2> -tol <N>",
         summary="Set numeric threshold / tolerance for -diff.",
         description=(
@@ -567,7 +567,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet -tol 0.001",
-            "pytae current.parquet -diff previous.parquet -tolerance 1e-5",
+            "pytae current.parquet -diff previous.parquet -tol 1e-5",
         ],
         see_also=["-diff"],
     ),

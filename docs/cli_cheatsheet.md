@@ -124,25 +124,25 @@ pytae data.parquet -mutate "target_copy = col('body_mass_g') * 1.5"
 
 ---
 
-## 4. 🎯 Column Selection & Renaming (`--select`, `-rename`)
+## 4. 🎯 Column Selection & Renaming (`-select`, `-rename`)
 
 Select, reorder, and drop columns with flexible pattern matching:
 
 ```bash
 # Explicit column selection and reordering
-pytae data.parquet --select "species,island,body_mass_g"
+pytae data.parquet -select "species,island,body_mass_g"
 
 # Drop columns using exclamation mark negation (!col)
-pytae data.parquet --select "!sex,!year"
+pytae data.parquet -select "!sex,!year"
 
 # Pattern and prefix matching
-pytae data.parquet --select "startswith=bill_"
-pytae data.parquet --select "endswith=_mm"
-pytae data.parquet --select "contains=length"
+pytae data.parquet -select "startswith=bill_"
+pytae data.parquet -select "endswith=_mm"
+pytae data.parquet -select "contains=length"
 
 # Select by data type
-pytae data.parquet --select "dtype=float"
-pytae data.parquet --select "exclude_dtype=string"
+pytae data.parquet -select "dtype=float"
+pytae data.parquet -select "exclude_dtype=string"
 
 # Rename columns (old_name:new_name)
 pytae data.parquet -rename "body_mass_g:weight_g,bill_length_mm:beak_len"

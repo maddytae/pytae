@@ -382,7 +382,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         action=_OrderedStore,
-        help="compare schema and contents against another dataset file (use -tol or -tolerance to set a numeric threshold)",
+        help="compare schema and contents against another dataset file (use -tol to set a numeric threshold)",
     )
     parser.add_argument(
         "-freq",
@@ -712,7 +712,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         metavar="SPEC",
         help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
         '"new_col = expression" or multi-column "(col1, col2) = _ * 2" entries, comma-separated; '
-        "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
+        "column names in the expression stay unquoted (or bracketed [col name] for spaces), e.g. "
         '"bmi = body_mass_g / bill_length_mm ** 2" or "(startswith=bill_) = _ / 10"',
     )
     parser.add_argument(
@@ -817,8 +817,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         type=float,
         default=None,
         metavar="N",
-        help="numeric difference tolerance / threshold for dataset comparison (-diff); "
-        "e.g. -tol 0.001 or -tolerance 1e-4",
+        help="numeric difference tolerance / threshold for dataset comparison (-diff); e.g. -tol 0.001 or -tol 1e-4",
     )
     parser.add_argument(
         "-i",

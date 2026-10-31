@@ -255,3 +255,114 @@ def test_select_negation_bracketed_string():
     df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
     res = pt.select(df, "![col a]", "![col b]")
     assert list(res.columns) == ["keep"]
+
+
+def test_select_polars_and_lazy_and_dtypes():
+    import polars as pl
+
+    from pytae.select import _matches_dtype, select
+
+    pl_df = pl.DataFrame(
+        {
+            "id": [1, 2],
+            "val": [1.5, 2.5],
+            "flag": [True, False],
+            "cat": pl.Series(["a", "b"], dtype=pl.Categorical),
+            "txt": ["x", "y"],
+            "dt": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+        }
+    )
+
+    # _matches_dtype unit checks across Polars DataTypes, Python types, and string shorthands
+    assert _matches_dtype(pl.Int64, "numeric")
+    assert _matches_dtype(pl.Float64, "number")
+    assert _matches_dtype(pl.String, "non_numeric")
+    assert _matches_dtype(pl.Datetime("us"), "datetime")
+    assert _matches_dtype(pl.Date, "datetime")
+    assert _matches_dtype(pl.Categorical, "category")
+    assert _matches_dtype(pl.Boolean, "bool")
+    assert _matches_dtype(pl.String, "str")
+    assert _matches_dtype(pl.Int64, "int64")
+    assert _matches_dtype(pl.Int64, pl.Int64)
+    assert _matches_dtype(pl.Int64(), pl.Int64)
+    assert _matches_dtype(pl.Int64, int)
+    assert _matches_dtype(pl.Float64, float)
+    assert _matches_dtype(pl.Boolean, bool)
+    assert _matches_dtype(pl.String, str)
+    assert _matches_dtype(pl.Int64, ["str", "int64"])
+    assert not _matches_dtype(pl.String, object())
+
+    # Direct select() on pl.DataFrame and pl.LazyFrame
+    assert select(pl_df, dtype="numeric").columns == ["id", "val"]
+    assert select(pl_df, dtype="category").columns == ["cat"]
+    assert select(pl_df, dtype="bool").columns == ["flag"]
+    assert select(pl_df, dtype="string").columns == ["txt"]
+    assert select(pl_df, dtype="datetime").columns == ["dt"]
+    assert select(pl_df, exclude_dtype="non_numeric").columns == ["id", "val"]
+    assert select(pl_df, exclude_dtype="numeric").columns == ["flag", "cat", "txt", "dt"]
+    assert select(pl_df.lazy(), "!val:txt").collect().columns == ["id", "dt"]
+
+    # Callable column selector & comma-separated slices/negations
+    assert select(pl_df, lambda c: len(c) == 2).columns == ["id", "dt"]
+    assert select(pl_df, "id:flag, !val").columns == ["id", "flag"]
+
+
+def test_select_error_paths_and_pandas_exclude_dtypes():
+    import polars as pl
+
+    from pytae.select import select
+
+    df = pd.DataFrame(
+        {
+            "a": [1],
+            "b": [1.5],
+            "c": [True],
+            "d": pd.Series(["x"], dtype="category"),
+            "e": pd.to_datetime(["2024-01-01"]),
+        }
+    )
+
+    assert list(select(df, dtype="category").columns) == ["d"]
+    assert list(select(df, dtype="bool").columns) == ["c"]
+    assert list(select(df, exclude_dtype="category").columns) == ["a", "b", "c", "e"]
+    assert list(select(df, exclude_dtype=["bool", "category"]).columns) == ["a", "b", "e"]
+    assert list(select(df, exclude_dtype=bool).columns) == ["a", "b", "d", "e"]
+
+    # Slice boundary errors (positive, negative, and comma-tokenized)
+    with pytest.raises(KeyError, match="Start column 'missing' not found"):
+        select(df, "missing:b")
+    with pytest.raises(KeyError, match="End column 'missing' not found"):
+        select(df, "a:missing")
+    with pytest.raises(KeyError, match="Start column 'missing' not found"):
+        select(df, "!missing:b")
+    with pytest.raises(KeyError, match="End column 'missing' not found"):
+        select(df, "!a:missing")
+    with pytest.raises(KeyError, match="Start column 'missing' not found"):
+        select(df, "a, missing:b")
+    with pytest.raises(KeyError, match="End column 'missing' not found"):
+        select(df, "a, b:missing")
+    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+        select(df, "a, -b")
+    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+        select(df, ["-b"])
+    with pytest.raises(KeyError, match="Column not found: 'z'"):
+        select(df, "a, z")
+
+    # Invalid argument types
+    with pytest.raises(TypeError, match="Unsupported argument type"):
+        select(df, 123)
+    with pytest.raises(TypeError, match="dtype must be"):
+        select(df, dtype=123)
+    with pytest.raises(TypeError, match="dtype must be"):
+        select(pl.DataFrame({"a": [1]}), dtype=123)
+    with pytest.raises(TypeError, match="exclude_dtype must be"):
+        select(df, exclude_dtype=123)
+    with pytest.raises(TypeError, match="exclude_dtype must be"):
+        select(pl.DataFrame({"a": [1]}), exclude_dtype=123)
+    with pytest.raises(TypeError, match="contains must be"):
+        select(df, contains=123)
+    with pytest.raises(TypeError, match="startswith must be"):
+        select(df, startswith=123)
+    with pytest.raises(TypeError, match="endswith must be"):
+        select(df, endswith=123)
+

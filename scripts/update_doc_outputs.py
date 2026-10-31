@@ -101,31 +101,9 @@ def run_cli_command(command_str: str, cwd: str) -> str:
     return res.stdout if res.returncode == 0 else res.stderr
 
 
-def format_table(raw_output: str) -> str:
-    """Ensure table output is formatted as clean Markdown table."""
-    raw = raw_output.strip()
-    if not raw:
-        return ""
-    if raw.startswith("|") and "|:" in raw:
-        return raw
-    # Plain text table
-    lines = raw.splitlines()
-    if len(lines) >= 2 and not raw.startswith("Rows:") and not raw.startswith("<class"):
-        import io
-
-        import pandas as pd
-
-        try:
-            df = pd.read_csv(io.StringIO(raw), sep=r"\s+")
-            return df.to_markdown(index=False)
-        except Exception:
-            pass
-    return f"```text\n{raw}\n```"
-
-
-def audit_docs() -> dict[Path, list[str]]:
+def audit_docs() -> dict[Path, dict[str, int]]:
     """Scan docs directory for code blocks and outputs."""
-    results = {}
+    results: dict[Path, dict[str, int]] = {}
     for md_file in sorted(DOCS_DIR.rglob("*.md")):
         text = md_file.read_text(encoding="utf-8")
         code_blocks = re.findall(r"```(?:bash|sh|python)\n(.*?)```", text, re.DOTALL)
@@ -137,7 +115,7 @@ def audit_docs() -> dict[Path, list[str]]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Audit and update pytae doc outputs.")
     parser.add_argument("--check", action="store_true", help="Check doc outputs without modifying files.")
-    parser.add_argument("--regen-ref", action="store_true", default=True, help="Regenerate pytae_reference.txt.")
+    parser.add_argument("--regen-ref", action="store_true", help="Regenerate pytae_reference.txt.")
     args = parser.parse_args()
 
     print(f"Auditing documentation files in {DOCS_DIR}...")
@@ -159,7 +137,7 @@ def main() -> int:
             print(f"Error initializing CLI in sandbox: {sample_out}", file=sys.stderr)
             return 1
 
-    if args.regen_ref:
+    if args.regen_ref or not args.check:
         print("Regenerating reference/pytae_reference.txt...")
         ref_script = REPO_ROOT / "scripts" / "generate_reference.py"
         res = subprocess.run([sys.executable, str(ref_script)], capture_output=True, text=True)

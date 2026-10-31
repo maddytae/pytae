@@ -374,3 +374,167 @@ def test_csv_reader_late_decimals_infer_schema(tmp_path):
     # pt.read_csv and pt.scan_csv
     assert pt.read_csv(path)["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
     assert pt.scan_csv(path).collect()["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+
+
+def test_ipc_reader_writer_and_cli_roundtrip(tmp_path):
+    import polars as pl
+
+    from pytae import cli
+
+    df = _frame()
+    for ext in (".ipc", ".arrow", ".feather"):
+        p = tmp_path / f"sample{ext}"
+        write_dataframe(df, p)
+        assert p.exists()
+        reader = get_reader(p)
+        assert reader.shape() == (3, 2)
+        assert reader.columns() == ["a", "b"]
+        pd.testing.assert_frame_equal(reader.head(2), df.head(2))
+        pd.testing.assert_frame_equal(reader.tail(1).reset_index(drop=True), df.tail(1).reset_index(drop=True))
+        pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+        assert reader.to_polars_lazy(columns=["a"]).collect().columns == ["a"]
+
+    # LazyFrame sink_ipc via write_dataframe
+    lf = pl.DataFrame(df).lazy()
+    lazy_ipc_path = tmp_path / "lazy_out.ipc"
+    write_dataframe(lf, lazy_ipc_path)
+    assert get_reader(lazy_ipc_path).shape() == (3, 2)
+
+    # CLI -o ipc format shorthand
+    src_pq = tmp_path / "src.parquet"
+    df.to_parquet(src_pq, index=False)
+    rc = cli.main([str(src_pq), "-o", "ipc"])
+    assert rc == 0
+    assert (tmp_path / "src.ipc").exists()
+    assert get_reader(tmp_path / "src.ipc").shape() == (3, 2)
+
+
+def test_lazy_dataframe_methods_and_accessors(tmp_path):
+    import warnings
+
+    import polars as pl
+
+    import pytae as pt
+    from pytae.select import select
+
+    pq_path = tmp_path / "lazy_methods.parquet"
+    raw_pl = pl.DataFrame({"id": [1, 2], "a": [10, 20], "b": [30.0, 40.0]})
+    raw_pl.write_parquet(pq_path)
+
+    ldf = pt.scan_parquet(pq_path)
+    edf = pt.read_parquet(pq_path)
+
+    # .equals(), .to_numpy(), .values, .iloc on Lazy DataFrame
+    assert ldf.equals(edf)
+    assert edf.equals(ldf)
+    assert ldf.to_numpy().shape == (2, 3)
+    assert ldf.values.shape == (2, 3)
+    assert ldf.iloc[0]["a"] == 10
+    assert ldf.iloc[1, 2] == 40.0
+
+    # .select_dtypes() and select() on LazyFrame without PerformanceWarning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", pl.exceptions.PerformanceWarning)
+        num_df = ldf.select_dtypes(include="float")
+        assert list(num_df.columns) == ["b"]
+        sel_lf = select(raw_pl.lazy(), "id, a")
+        assert sel_lf.collect().columns == ["id", "a"]
+
+    # pt.long and .pt.long with r= parameter
+    long_pt = pt.long(edf, cols="a,b", r="id")
+    assert set(long_pt.columns) == {"id", "variable", "value"}
+    long_pl = raw_pl.pt.long(cols="a,b", r="id")
+    assert set(long_pl.columns) == {"id", "variable", "value"}
+    long_pd = raw_pl.to_pandas().pt.long(cols="a,b", r="id")
+    assert set(long_pd.columns) == {"id", "variable", "value"}
+
+    # pt.DataFrame.glimpse() returns pytae.DataFrame for chaining, while .pt.glimpse() returns self._obj
+    chained_pt = edf.glimpse().mutate("c = a + 1")
+    assert isinstance(chained_pt, pt.DataFrame)
+    assert "c" in chained_pt.columns
+    assert raw_pl.pt.glimpse() is raw_pl
+
+
+def test_read_database_and_connections_yaml_and_lazy_sinks(tmp_path, monkeypatch):
+    import sqlite3
+
+    import polars as pl
+
+    import pytae as pt
+
+    # 1. pt.read_database with SQLite connection
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE items (id INTEGER, name TEXT)")
+    conn.executemany("INSERT INTO items VALUES (?, ?)", [(1, "alpha"), (2, "beta")])
+    conn.commit()
+    df_db = pt.read_database("SELECT * FROM items ORDER BY id", conn)
+    conn.close()
+    assert isinstance(df_db, pt.DataFrame)
+    assert df_db["name"].to_list() == ["alpha", "beta"]
+
+    # 2. Retired pt.read() and pt.scan() stubs raise informative AttributeError
+    with pytest.raises(AttributeError, match="pt.read\\(\\) has been removed"):
+        pt.read("foo.parquet")
+    with pytest.raises(AttributeError, match="pt.scan\\(\\) has been removed"):
+        pt.scan("foo.parquet")
+
+    # 3. YAML connection error paths when PYTAE_CONNECTIONS_PATH is unset or missing
+    monkeypatch.setattr(readers, "_EXTERNAL_CONNECTIONS_MODULE", None)
+    monkeypatch.delenv("PYTAE_CONNECTIONS_PATH", raising=False)
+    with pytest.raises(FileNotFoundError, match="PYTAE_CONNECTIONS_PATH"):
+        get_reader(tmp_path / "conn.yaml")
+
+    monkeypatch.setenv("PYTAE_CONNECTIONS_PATH", str(tmp_path / "missing_conn.py"))
+    with pytest.raises(FileNotFoundError, match="connection reader not found"):
+        get_reader(tmp_path / "conn.yaml")
+
+    # Valid mock connections module
+    conn_mod = tmp_path / "mock_conn.py"
+    conn_mod.write_text(
+        "import pandas as pd\n"
+        "from pytae.readers import DataFrameReader\n"
+        "def build_yaml_reader(path):\n"
+        "    return DataFrameReader(pd.DataFrame({'k': [42]}), path=path)\n"
+    )
+    monkeypatch.setenv("PYTAE_CONNECTIONS_PATH", str(conn_mod))
+    yaml_reader = get_reader(tmp_path / "conn.yaml")
+    assert yaml_reader.shape() == (1, 1)
+    assert yaml_reader.to_polars()["k"].to_list() == [42]
+
+    # 4. LazyFrame write_dataframe sink_parquet, sink_csv, sink_ndjson
+    lf = pl.DataFrame({"a": [1, 2], "b": ["u", "v"]}).lazy()
+    for ext in (".parquet", ".csv", ".ndjson", ".txt"):
+        out_p = tmp_path / f"lazy_sink{ext}"
+        write_dataframe(lf, out_p)
+        assert get_reader(out_p).shape() == (2, 2)
+
+    # 5. StdinReader and DataFrameReader coverage
+    from pytae.readers import DataFrameReader, StdinReader
+
+    s_csv = StdinReader(b"a,b\n1,x\n2,y\n")
+    assert s_csv.shape() == (2, 2)
+    assert s_csv.columns() == ["a", "b"]
+    assert len(s_csv.head(1)) == 1
+    assert len(s_csv.tail(1)) == 1
+    assert s_csv.to_polars(columns=["a"], nrows=1).shape == (1, 1)
+    assert s_csv.to_polars_lazy(columns=["b"]).collect().columns == ["b"]
+
+    s_tsv = StdinReader(b"a\tb\n1\tx\n")
+    assert s_tsv.shape() == (1, 2)
+    s_pipe = StdinReader(b"a|b\n1|x\n")
+    assert s_pipe.shape() == (1, 2)
+    s_json = StdinReader(b'{"a": 1, "b": "x"}\n')
+    assert s_json.shape() == (1, 2)
+    s_empty = StdinReader(b"")
+    assert s_empty.shape() == (0, 0)
+
+    dfr = DataFrameReader(pt.DataFrame({"a": [1, 2], "b": [3, 4]}))
+    assert dfr.shape() == (2, 2)
+    assert dfr.columns() == ["a", "b"]
+    assert len(dfr.dtypes()) == 2
+    assert len(dfr.head(1)) == 1
+    assert len(dfr.tail(1)) == 1
+    assert dfr.to_dataframe(columns=["a"], nrows=1).shape == (1, 1)
+    assert dfr.to_polars_lazy(columns=["b"]).collect().columns == ["b"]
+

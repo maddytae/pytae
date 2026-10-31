@@ -152,7 +152,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('startswith', 'A'))`| `-filter "name.startswith('A')"` |
-| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -239,7 +239,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Safe Blank Row Dropping** | `filter(df, if_any(everything(), ~ !is.na(.)))` | `df.dropna()` *(Defaults to safe `how='all'`)* | `-dropna` |
 | **Targeted Key Dropping** | `drop_na(df, id, email)` | `df.dropna("id", "email")` | `-dropna id,email` |
 | **Missing Imputation** | `replace_na(df, list(score = 0))` | `df.fillna({"score": 0})` | `-fillna "score=0"` |
-| **Column Name Cleaning** | `janitor::clean_names(df)` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Column Name Cleaning** | `janitor::clean_names(df)` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | Default behavior (keeps `NA` levels) | Default behavior (`dropna=False`) | Default behavior |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
@@ -290,7 +290,7 @@ import pytae as pt
 
 (
     pt.read_parquet("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.notna()")
+    .filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
     .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
@@ -302,7 +302,7 @@ import pytae as pt
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \

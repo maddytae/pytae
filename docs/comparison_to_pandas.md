@@ -172,7 +172,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
-| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 | **Callable / Lambda** | `df[lambda d: d['x'] > 5]` | `df.filter(lambda d: d['x'] > 5)` | N/A |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
@@ -265,7 +265,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Targeted Key Dropping** | `df.dropna(subset=['id', 'email'])` | `df.dropna("id", "email")` | `-dropna id,email` |
 | **Dual Null & NaN Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0, nans=True)` | `-fillna 0` |
 | **Column-Specific Imputation**| `df.fillna({'a': 0, 'b': 'N/A'})` | `df.fillna({'a': 0, 'b': 'N/A'})` | `-fillna "a=0,b='N/A'"` |
-| **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | `df.groupby('g', dropna=False).agg(...)` | Default behavior (`dropna=False`) | Default behavior |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
@@ -335,7 +335,7 @@ import pytae as pt
 
 (
     pt.read_parquet("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.notna()")
+    .filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
     .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
@@ -347,7 +347,7 @@ import pytae as pt
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \

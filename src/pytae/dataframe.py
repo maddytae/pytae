@@ -71,11 +71,6 @@ class ColumnNames(list[str]):
         except Exception:
             return [self.index(x) if x in self else -1 for x in target]
 
-    def _get_level_values(self, i: int) -> Any:
-        import pandas as pd
-
-        return pd.Index(self)
-
 
 class _IlocIndexer:
     """Row/column indexer for compatibility with Pandas iloc syntax."""
@@ -83,31 +78,37 @@ class _IlocIndexer:
     def __init__(self, df: DataFrame):
         self._df = df
 
+    def _eager_df(self) -> pl.DataFrame:
+        raw = self._df._df
+        return raw.collect() if isinstance(raw, pl.LazyFrame) else raw
+
     def __getitem__(self, item: Any) -> Any:
+        edf = self._eager_df()
         if isinstance(item, int):
-            row_dict = self._df._df.row(item, named=True)
+            row_dict = edf.row(item, named=True)
             import pandas as pd
 
             return pd.Series(row_dict)
         elif isinstance(item, tuple) and len(item) == 2:
             row_idx, col_idx = item
             if isinstance(col_idx, int):
-                col_name = self._df._df.columns[col_idx]
-                return self._df._df[row_idx, col_name]
+                col_name = edf.columns[col_idx]
+                return edf[row_idx, col_name]
             elif isinstance(col_idx, str):
-                return self._df._df[row_idx, col_idx]
-        return self._df._df[item]
+                return edf[row_idx, col_idx]
+        return edf[item]
 
     def __setitem__(self, item: Any, value: Any) -> None:
+        edf = self._eager_df()
         if isinstance(item, tuple) and len(item) == 2:
             row_idx, col_idx = item
             if isinstance(col_idx, int):
-                col_name = self._df._df.columns[col_idx]
+                col_name = edf.columns[col_idx]
             else:
                 col_name = str(col_idx)
-            s_list = self._df._df[col_name].to_list()
+            s_list = edf[col_name].to_list()
             s_list[row_idx] = value
-            self._df._df = self._df._df.with_columns(pl.Series(col_name, s_list))
+            self._df._df = edf.with_columns(pl.Series(col_name, s_list))
 
 
 class _LocIndexer:
@@ -341,7 +342,9 @@ class DataFrame:
 
     def equals(self, other: Any) -> bool:
         if isinstance(other, DataFrame):
-            return self._df.equals(other._df)
+            left = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
+            right = other._df.collect() if isinstance(other._df, pl.LazyFrame) else other._df
+            return left.equals(right)
         try:
             return self.to_pandas().equals(other)
         except Exception:
@@ -349,10 +352,11 @@ class DataFrame:
 
     @property
     def values(self) -> Any:
-        return self._df.to_numpy()
+        return self.to_numpy()
 
     def to_numpy(self, *args: Any, **kwargs: Any) -> Any:
-        return self._df.to_numpy(*args, **kwargs)
+        edf = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
+        return edf.to_numpy(*args, **kwargs)
 
     def select_dtypes(self, *args: Any, **kwargs: Any) -> DataFrame:
         """Filter columns based on data types."""
@@ -361,7 +365,7 @@ class DataFrame:
         include = kwargs.get("include", args[0] if len(args) > 0 else None)
         exclude = kwargs.get("exclude", args[1] if len(args) > 1 else None)
         matched = list(self.columns)
-        schema = self._df.schema
+        schema = self.schema
         if include is not None:
             matched = [c for c in matched if _matches_dtype(schema[c], include)]
         if exclude is not None:

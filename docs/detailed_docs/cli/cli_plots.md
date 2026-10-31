@@ -235,7 +235,7 @@ Produce multi-series bar or scatter plots with automated color mapping:
 
 ```bash
 pytae penguins.parquet \
-  -filter "sex.notna()" \
+  -filter "sex.is_not_null()" \
   -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=species" \
   -finalize "title='Bill Length vs Body Mass', tight_layout=true" \
   -o scatter.png

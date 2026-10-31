@@ -55,14 +55,14 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -mutate "species_lower = species.str.lower()"
   pytae data.parquet -mutate "diff = irba_unsecured_lgd_(1g00) - post_crm_lgd_(2a)"
 
-4. 🎯 COLUMN SELECTION & RENAMING (--select, -rename)
+4. 🎯 COLUMN SELECTION & RENAMING (-select, -rename)
 --------------------------------------------------------------------------------
-  pytae data.parquet --select "species,island,body_mass_g"
-  pytae data.parquet --select "!sex,!year"                        # Drop columns
-  pytae data.parquet --select "startswith=bill_"                  # Prefix match
-  pytae data.parquet --select "endswith=_mm"                      # Suffix match
-  pytae data.parquet --select "contains=length"                   # Substring match
-  pytae data.parquet --select "dtype=float"                       # Dtype match
+  pytae data.parquet -select "species,island,body_mass_g"
+  pytae data.parquet -select "!sex,!year"                         # Drop columns
+  pytae data.parquet -select "startswith=bill_"                   # Prefix match
+  pytae data.parquet -select "endswith=_mm"                       # Suffix match
+  pytae data.parquet -select "contains=length"                    # Substring match
+  pytae data.parquet -select "dtype=float"                        # Dtype match
   pytae data.parquet -rename "body_mass_g:weight_g"               # Old:new
   pytae messy.csv -clean_columns "strip,fill=_,case=lower,dedupe" # Header hygiene
 

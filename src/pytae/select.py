@@ -193,21 +193,6 @@ def resolve_select_columns(
                     f"select(): '{arg[0]}col' negation is retired in favor of '!col'. "
                     f"Use '!{arg[1:]}' instead: e.g. select('!{arg[1:]}')."
                 )
-            elif arg.startswith("!"):
-                excluded_cols.update(_resolve_negation(arg[1:]))
-            elif ":" in arg:
-                start_raw, end_raw = arg.split(":", 1)
-                start = _unquote_name(start_raw.strip()) or None
-                end = _unquote_name(end_raw.strip()) or None
-                start_idx = all_cols.index(start) if start in all_cols else 0
-                end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
-                if start and start not in all_cols:
-                    raise KeyError(f"Start column '{start}' not found")
-                if end and end not in all_cols:
-                    raise KeyError(f"End column '{end}' not found")
-                slice_cols = all_cols[start_idx : end_idx + 1]
-                selected_cols.update(slice_cols)
-                ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
             elif "," in arg:
                 for sub_token in _tokenize(arg, ",", track_brackets=True):
                     if not sub_token:
@@ -245,6 +230,21 @@ def resolve_select_columns(
                         close = difflib.get_close_matches(clean_sub, [str(c) for c in all_cols], n=1)
                         hint = f" (did you mean '{close[0]}'?)" if close else ""
                         raise KeyError(f"Column not found: '{sub_token}'{hint}")
+            elif arg.startswith("!"):
+                excluded_cols.update(_resolve_negation(arg[1:]))
+            elif ":" in arg:
+                start_raw, end_raw = arg.split(":", 1)
+                start = _unquote_name(start_raw.strip()) or None
+                end = _unquote_name(end_raw.strip()) or None
+                start_idx = all_cols.index(start) if start in all_cols else 0
+                end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
+                if start and start not in all_cols:
+                    raise KeyError(f"Start column '{start}' not found")
+                if end and end not in all_cols:
+                    raise KeyError(f"End column '{end}' not found")
+                slice_cols = all_cols[start_idx : end_idx + 1]
+                selected_cols.update(slice_cols)
+                ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
             else:
                 close = difflib.get_close_matches(clean_arg, [str(c) for c in all_cols], n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
@@ -376,9 +376,10 @@ def select(
     import polars as pl
 
     if isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        schema = df.collect_schema() if isinstance(df, pl.LazyFrame) else df.schema
         target_cols = resolve_select_columns(
-            list(df.columns),
-            df.schema,
+            list(schema.names()),
+            schema,
             *args,
             exclude=exclude,
             dtype=dtype,

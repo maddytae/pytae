@@ -146,6 +146,8 @@ class ParquetReader:
 
 
 class CsvReader:
+    _file_kind = "CSV"
+
     def __init__(
         self,
         path: Path,
@@ -186,7 +188,7 @@ class CsvReader:
                 compression=self.compression,
             ).columns.tolist()
         except pd.errors.EmptyDataError as exc:
-            raise ValueError(f"'{self.path.name}' is empty or not a valid CSV file") from exc
+            raise ValueError(f"'{self.path.name}' is empty or not a valid {self._file_kind} file") from exc
 
     def dtypes(self) -> pd.Series:
         return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
@@ -263,6 +265,7 @@ class CsvReader:
     ):
         import polars as pl
 
+        null_vals = ["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"]
         try:
             return pl.read_csv(
                 self.path,
@@ -270,7 +273,7 @@ class CsvReader:
                 columns=columns,
                 n_rows=nrows,
                 encoding=self.encoding or "utf8",
-                null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                null_values=null_vals,
                 truncate_ragged_lines=True,
                 infer_schema_length=infer_schema_length,
             )
@@ -283,23 +286,15 @@ class CsvReader:
                         columns=columns,
                         n_rows=nrows,
                         encoding=self.encoding or "utf8",
-                        null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                        null_values=null_vals,
                         truncate_ragged_lines=True,
                         infer_schema_length=None,
                     )
                 except Exception:
                     pass
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
+            return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
         except Exception:
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
+            return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
 
     def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
         import polars as pl
@@ -317,8 +312,10 @@ class CsvReader:
         return lf
 
 
-class TxtReader:
+class TxtReader(CsvReader):
     """Reads delimited .txt/.dat files (tab-delimited for .txt, pipe-delimited for .dat by default)."""
+
+    _file_kind = "delimited"
 
     def __init__(
         self,
@@ -328,167 +325,7 @@ class TxtReader:
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         compression: str | None = None,
     ) -> None:
-        self.path = path
-        self.sep = sep
-        self.encoding = encoding
-        self.chunk_size = chunk_size
-        self.compression = compression
-
-    def shape(self) -> tuple[int, int]:
-        n_cols = len(self.columns())
-        total = 0
-        for chunk in pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            usecols=[0],
-            chunksize=self.chunk_size,
-            low_memory=False,
-            compression=self.compression,
-        ):
-            total += len(chunk)
-        return (total, n_cols)
-
-    def columns(self) -> list[str]:
-        try:
-            return pd.read_csv(
-                self.path,
-                sep=self.sep,
-                encoding=self.encoding,
-                nrows=0,
-                low_memory=False,
-                compression=self.compression,
-            ).columns.tolist()
-        except pd.errors.EmptyDataError as exc:
-            raise ValueError(f"'{self.path.name}' is empty or not a valid delimited file") from exc
-
-    def dtypes(self) -> pd.Series:
-        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
-
-    def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            nrows=n,
-            low_memory=False,
-            compression=self.compression,
-        )
-
-    def tail(self, n: int) -> pd.DataFrame:
-        total = self.shape()[0]
-        skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            skiprows=skip,
-            low_memory=False,
-            compression=self.compression,
-        )
-
-    def to_dataframe(
-        self,
-        columns: list[str] | None = None,
-        progress: bool = False,
-        nrows: int | None = None,
-        chunk_size: int | None = None,
-    ) -> pd.DataFrame:
-        if not progress:
-            if self.encoding is None or self.encoding.lower() in ("utf-8", "utf8"):
-                try:
-                    return self.to_polars(columns=columns, nrows=nrows).to_pandas()
-                except Exception:
-                    pass
-            return pd.read_csv(
-                self.path,
-                sep=self.sep,
-                encoding=self.encoding,
-                usecols=columns,
-                nrows=nrows,
-                low_memory=False,
-                compression=self.compression,
-            )
-        total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
-        chunks, done = [], 0
-        csize = chunk_size or self.chunk_size
-        reader = pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            usecols=columns,
-            chunksize=csize,
-            nrows=nrows,
-            low_memory=False,
-            compression=self.compression,
-        )
-        for chunk in reader:
-            chunks.append(chunk)
-            done += len(chunk)
-            _print_progress(done, total, "reading")
-        print()
-        return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=columns or [])
-
-    def to_polars(
-        self,
-        columns: list[str] | None = None,
-        nrows: int | None = None,
-        infer_schema_length: int | None = 10000,
-    ):
-        import polars as pl
-
-        try:
-            return pl.read_csv(
-                self.path,
-                separator=self.sep,
-                columns=columns,
-                n_rows=nrows,
-                encoding=self.encoding or "utf8",
-                null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-                truncate_ragged_lines=True,
-                infer_schema_length=infer_schema_length,
-            )
-        except pl.exceptions.ComputeError:
-            if infer_schema_length is not None:
-                try:
-                    return pl.read_csv(
-                        self.path,
-                        separator=self.sep,
-                        columns=columns,
-                        n_rows=nrows,
-                        encoding=self.encoding or "utf8",
-                        null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-                        truncate_ragged_lines=True,
-                        infer_schema_length=None,
-                    )
-                except Exception:
-                    pass
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
-        except Exception:
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
-
-    def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
-        import polars as pl
-
-        lf = pl.scan_csv(
-            self.path,
-            separator=self.sep,
-            encoding=self.encoding or "utf8",
-            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-            truncate_ragged_lines=True,
-            infer_schema_length=infer_schema_length,
-        )
-        if columns is not None:
-            lf = lf.select(columns)
-        return lf
+        super().__init__(path, sep=sep, encoding=encoding, chunk_size=chunk_size, compression=compression)
 
 
 class SasReader:
@@ -827,9 +664,72 @@ class DataFrameReader:
         return self.to_polars(columns=columns).lazy()
 
 
+class IpcReader:
+    def __init__(self, path: Path, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+        self.path = path
+        self.chunk_size = chunk_size
+
+    def shape(self) -> tuple[int, int]:
+        import polars as pl
+
+        lf = pl.scan_ipc(self.path)
+        n_rows = lf.select(pl.len()).collect().item()
+        n_cols = len(lf.collect_schema().names())
+        return (n_rows, n_cols)
+
+    def columns(self) -> list[str]:
+        import polars as pl
+
+        return list(pl.read_ipc_schema(self.path).keys())
+
+    def dtypes(self) -> pd.Series:
+        import polars as pl
+
+        return pl.read_ipc(self.path, n_rows=0).to_pandas().dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        import polars as pl
+
+        if n <= 0:
+            return pl.read_ipc(self.path, n_rows=0).to_pandas()
+        return pl.read_ipc(self.path, n_rows=n).to_pandas()
+
+    def tail(self, n: int) -> pd.DataFrame:
+        import polars as pl
+
+        if n <= 0:
+            return pl.read_ipc(self.path, n_rows=0).to_pandas()
+        return pl.scan_ipc(self.path).tail(n).collect().to_pandas()
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+
+        return pl.read_ipc(self.path, columns=columns, n_rows=nrows)
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        lf = pl.scan_ipc(self.path)
+        if columns is not None:
+            lf = lf.select(columns)
+        return lf
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
+    ".ipc": IpcReader,
+    ".arrow": IpcReader,
+    ".feather": IpcReader,
     ".csv": CsvReader,
     ".txt": TxtReader,
     ".dat": TxtReader,
@@ -904,6 +804,9 @@ def get_reader(
 _WRITABLE_SUFFIXES = (
     ".parquet",
     ".pq",
+    ".ipc",
+    ".arrow",
+    ".feather",
     ".csv",
     ".txt",
     ".dat",
@@ -940,6 +843,12 @@ def write_dataframe(
                 return
             except Exception:
                 df = df.collect()
+        elif suffix in (".ipc", ".arrow", ".feather"):
+            try:
+                df.sink_ipc(dest)
+                return
+            except Exception:
+                df = df.collect()
         elif suffix == ".csv":
             if compression != "gzip" and (encoding is None or encoding.lower() in ("utf-8", "utf8")):
                 try:
@@ -968,6 +877,9 @@ def write_dataframe(
         else:
             if suffix in (".parquet", ".pq"):
                 df.write_parquet(dest)
+                return
+            elif suffix in (".ipc", ".arrow", ".feather"):
+                df.write_ipc(dest)
                 return
             elif suffix == ".csv":
                 df.write_csv(
@@ -1001,6 +913,8 @@ def write_dataframe(
     suffix, compression = _split_path_suffixes(dest)
     if suffix in (".parquet", ".pq"):
         _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)
+    elif suffix in (".ipc", ".arrow", ".feather"):
+        pl.from_pandas(df).write_ipc(dest)
     elif suffix == ".csv":
         _write_delimited(
             df,

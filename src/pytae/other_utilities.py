@@ -907,6 +907,23 @@ def corr(
     if method_clean not in ("pearson", "spearman"):
         raise ValueError(f"corr: invalid method '{method}'; must be 'pearson' or 'spearman'")
 
+    def _pair_corr(col_x: str, col_y: str) -> float:
+        clean = pldf.select(
+            [
+                pl.col(col_x).cast(pl.Float64, strict=False).alias("x"),
+                pl.col(col_y).cast(pl.Float64, strict=False).alias("y"),
+            ]
+        ).filter(
+            pl.col("x").is_not_null() & pl.col("y").is_not_null() & pl.col("x").is_not_nan() & pl.col("y").is_not_nan()
+        )
+        if clean.height < 2:
+            return 0.0
+        try:
+            r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+            return float(r) if (r is not None and not math.isnan(r)) else 0.0
+        except Exception:
+            return 0.0
+
     if target is not None:
         target_col = _unquote_name(str(target).strip())
         if target_col not in all_num_cols:
@@ -925,26 +942,7 @@ def corr(
         abs_vals: list[float] = []
 
         for feat in features:
-            clean = pldf.select(
-                [
-                    pl.col(target_col).cast(pl.Float64, strict=False).alias("y"),
-                    pl.col(feat).cast(pl.Float64, strict=False).alias("x"),
-                ]
-            ).filter(
-                pl.col("y").is_not_null()
-                & pl.col("x").is_not_null()
-                & pl.col("y").is_not_nan()
-                & pl.col("x").is_not_nan()
-            )
-            if clean.height < 2:
-                r_val = 0.0
-            else:
-                try:
-                    r = clean.select(pl.corr("x", "y", method=method_clean)).item()
-                    r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
-                except Exception:
-                    r_val = 0.0
-
+            r_val = _pair_corr(feat, target_col)
             abs_r = abs(r_val)
             bar_len = int(round(abs_r * 15))
             bar_char = "█" if r_val >= 0 else "▒"
@@ -973,26 +971,7 @@ def corr(
         for i in range(len(num_cols)):
             for j in range(i + 1, len(num_cols)):
                 c1, c2 = num_cols[i], num_cols[j]
-                clean = pldf.select(
-                    [
-                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
-                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
-                    ]
-                ).filter(
-                    pl.col("x").is_not_null()
-                    & pl.col("y").is_not_null()
-                    & pl.col("x").is_not_nan()
-                    & pl.col("y").is_not_nan()
-                )
-                if clean.height < 2:
-                    r_val = 0.0
-                else:
-                    try:
-                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
-                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
-                    except Exception:
-                        r_val = 0.0
-
+                r_val = _pair_corr(c1, c2)
                 abs_r = abs(r_val)
                 if abs_r >= 0.8:
                     label = "Very Strong"
@@ -1030,31 +1009,7 @@ def corr(
     # Matrix view (default)
     matrix_data: dict[str, list[Any]] = {"column": num_cols}
     for c2 in num_cols:
-        col_vals = []
-        for c1 in num_cols:
-            if c1 == c2:
-                col_vals.append(1.0)
-            else:
-                clean = pldf.select(
-                    [
-                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
-                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
-                    ]
-                ).filter(
-                    pl.col("x").is_not_null()
-                    & pl.col("y").is_not_null()
-                    & pl.col("x").is_not_nan()
-                    & pl.col("y").is_not_nan()
-                )
-                if clean.height < 2:
-                    r_val = 0.0
-                else:
-                    try:
-                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
-                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
-                    except Exception:
-                        r_val = 0.0
-                col_vals.append(round(r_val, 2))
+        col_vals = [1.0 if c1 == c2 else round(_pair_corr(c1, c2), 2) for c1 in num_cols]
         matrix_data[c2] = col_vals
 
     return DataFrame(pl.DataFrame(matrix_data))

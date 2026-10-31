@@ -2135,3 +2135,115 @@ def test_repl_time_syntax_and_aliases(sample_df):
     assert "'--time' is not recognized; use '-time'" in outputs[-1]
 
     r.close()
+
+
+def test_repl_glimpse_captures_string_and_does_not_double_print(sample_df, capsys):
+    r = PytaeRepl(df=sample_df)
+    r.tables["df1"] = sample_df.clone()
+
+    outputs = []
+    r.execute_line("-glimpse", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], str)
+    assert "Rows: 5" in outputs[0]
+    assert capsys.readouterr().out == ""
+
+    outputs.clear()
+    r.execute_line("df1 -glimpse", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], str)
+    assert "Rows: 5" in outputs[0]
+    assert capsys.readouterr().out == ""
+    r.close()
+
+
+def test_repl_load_error_prints_once(tmp_path):
+    bad_file = tmp_path / "corrupt.parquet"
+    bad_file.write_text("not a valid parquet file")
+
+    r = PytaeRepl()
+    outputs = []
+    r.execute_line(f"load {bad_file}", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "failed to load" in outputs[0]
+    r.close()
+
+
+def test_repl_shell_escape_and_pipe_and_gc(sample_df):
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # 1. Bare ! shows usage
+    r.execute_line("!", output_fn=outputs.append)
+    assert any("Usage: !<command>" in o for o in outputs)
+
+    # 2. !<shell_cmd> executes shell command
+    outputs.clear()
+    r.execute_line("!echo hello_from_shell", output_fn=outputs.append)
+    assert any("hello_from_shell" in o for o in outputs)
+
+    # 3. <repl_cmd> | <shell_cmd> pipes REPL output into shell command
+    outputs.clear()
+    r.execute_line("-cols | grep species", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+    assert not any("body_mass_g" in o for o in outputs)
+
+    # 4. gc / free memory release command
+    outputs.clear()
+    r.execute_line("gc", output_fn=outputs.append)
+    assert any("Memory released" in o for o in outputs)
+    r.close()
+
+
+def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_df):
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(tmp_path / "sessions"))
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # Ephemeral status
+    r.execute_line("session", output_fn=outputs.append)
+    assert any("No active session (ephemeral)" in o for o in outputs)
+
+    # Invalid session name rejected
+    outputs.clear()
+    r.execute_line("session save ../bad", output_fn=outputs.append)
+    assert any("invalid session name" in o for o in outputs)
+
+    # Create checkpoint and save session
+    r.execute_line("checkpoint cp1", output_fn=outputs.append)
+    outputs.clear()
+    r.execute_line("session save work1", output_fn=outputs.append)
+    assert r.session_name == "work1"
+    assert any("Session saved as 'work1'" in o for o in outputs)
+
+    # Active session status & sessions list
+    outputs.clear()
+    r.execute_line("session", output_fn=outputs.append)
+    assert any("Active session: 'work1'" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("sessions", output_fn=outputs.append)
+    assert any("work1" in o for o in outputs)
+
+    # Save under a second session name (copies existing session checkpoints)
+    outputs.clear()
+    r.execute_line("session save work2", output_fn=outputs.append)
+    assert r.session_name == "work2"
+
+    # Load first session back
+    outputs.clear()
+    r.execute_line("session load work1", output_fn=outputs.append)
+    assert r.session_name == "work1"
+    assert "cp1" in r.checkpoints
+
+    # Remove sessions
+    outputs.clear()
+    r.execute_line("rm session work2", output_fn=outputs.append)
+    assert any("Removed session 'work2'" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("session rm work1", output_fn=outputs.append)
+    assert r.session_name is None
+    assert any("Active session reverted to ephemeral" in o for o in outputs)
+    r.close()
+

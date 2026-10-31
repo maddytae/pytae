@@ -329,9 +329,6 @@ class _Pipeline:
         except Exception as exc:
             return f"-arrange: {exc}"
 
-    def apply_pick(self, *args: Any, **kwargs: Any) -> str:
-        return "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
-
     def apply_fillna(self, value: Any, cols: list[str] | None = None, nans: bool = True) -> str | None:
         """Apply one -fillna operation to the current view. Returns an error message or None."""
         available = self._available_columns()

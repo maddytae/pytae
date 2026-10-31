@@ -1883,12 +1883,6 @@ def _slice_bound_polars(
             return df.tail(n)
 
 
-def pick_polars(*args: Any, **kwargs: Any) -> Any:
-    raise AttributeError(
-        "pick() has been removed; use arrange().head(n) instead (or by().arrange().head(n) for grouped slicing)."
-    )
-
-
 def long_polars(
     df: pl.DataFrame,
     cols: str | Sequence[str] | None = None,

@@ -89,7 +89,7 @@ The compiled binary will be placed in the `dist/` folder.
 
 ## Automated Multi-Platform CI/CD Pipeline
 
-The repository includes a GitHub Actions workflow at [`.github/workflows/build_binaries.yml`](file:///.github/workflows/build_binaries.yml):
+The repository includes a GitHub Actions workflow at [`.github/workflows/build_binaries.yml`](../.github/workflows/build_binaries.yml):
 
 1. **Matrix Build**: Concurrently builds on `ubuntu-latest`, `macos-14` (Apple Silicon), `macos-13` (Intel), and `windows-latest`.
 2. **Automated Smoke Tests**: Runs automated validation tests on each compiled binary to verify that Polars, sample datasets, filters, and sessions execute properly without errors.

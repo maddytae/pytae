@@ -45,7 +45,7 @@ Clean messy column names automatically. Options execute in this order:
 
 ```bash
 # Clean leading spaces, punctuation, lowercase, and replace spaces with underscores:
-pytae messy.parquet -clean "strip,strip_special,case=lower,fill=_"
+pytae messy.parquet -clean_columns "strip,strip_special,case=lower,fill=_"
 ```
 
 **Before:**

@@ -84,7 +84,7 @@ RUN;
 In Pytae, missing values adhere to strict three-valued logic and IEEE-754 semantics:
 - A comparison with missing (`null` or `NaN`) always evaluates to missing / false.
 - Filtering `df.filter("age < 18")` **never** includes null or NaN records.
-- Null checks are explicit and readable: `df.filter("age.notna()")` or `df.filter("age.isna()")`.
+- Null checks are explicit and readable: `df.filter("age.is_not_null()")` or `df.filter("age.is_null()")`.
 
 ---
 
@@ -215,7 +215,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 1. Data Ingestion & I/O
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Read SAS Dataset** | `SET libref.dataset;` | `pt.read_sas("dataset.sas7bdat")` | `pytae dataset.sas7bdat` |
+| **Read SAS Dataset** | `SET libref.dataset;` | `pt.DataFrame(pd.read_sas("dataset.sas7bdat"))` | `pytae dataset.sas7bdat` |
 | **Read CSV** | `PROC IMPORT DATAFILE='...' DBMS=CSV;` | `pt.read_csv("file.csv")` | `pytae file.csv` |
 | **Read Parquet** | SAS Viya CAS Parquet engine | `pt.read_parquet("file.parquet")` | `pytae file.parquet` |
 | **Write Parquet** | Viya CAS Save | `df.to_parquet("file.parquet")` | `-o file.parquet` |
@@ -231,7 +231,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
-| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 3. Column Derivations & Feature Engineering (`mutate`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -363,14 +363,15 @@ RUN;
 
 ### In Pytae (Python Library):
 ```python
+import pandas as pd
 import pytae as pt
 
 # Ingest directly from SAS datasets or Parquet
-vsl = pt.read_sas("vsl.sas7bdat")
-dm = pt.read_sas("dm.sas7bdat")
+vsl = pt.DataFrame(pd.read_sas("vsl.sas7bdat"))
+dm = pt.DataFrame(pd.read_sas("dm.sas7bdat"))
 
 summary = (
-    vsl.filter("VISIT == 'Baseline' & SYSBP.notna() & DIABP.notna()")
+    vsl.filter("VISIT == 'Baseline' & SYSBP.is_not_null() & DIABP.is_not_null()")
     .join(dm, on="USUBJID", how="inner")
     .mutate(
         pulse_pressure="SYSBP - DIABP",
@@ -396,7 +397,7 @@ summary.to_parquet("summary.parquet")
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae vsl.sas7bdat \
-  -filter "VISIT == 'Baseline' and SYSBP.notna() and DIABP.notna()" \
+  -filter "VISIT == 'Baseline' and SYSBP.is_not_null() and DIABP.is_not_null()" \
   -join "dm.sas7bdat,on=USUBJID,how=inner" \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
   -by TRTP,SEX \

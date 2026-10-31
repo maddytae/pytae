@@ -2015,7 +2015,7 @@ Clean messy column names automatically. Options execute in this order:
 
 ```bash
 # Clean leading spaces, punctuation, lowercase, and replace spaces with underscores:
-pytae messy.parquet -clean "strip,strip_special,case=lower,fill=_"
+pytae messy.parquet -clean_columns "strip,strip_special,case=lower,fill=_"
 ```
 
 **Before:**
@@ -2355,7 +2355,7 @@ Produce multi-series bar or scatter plots with automated color mapping:
 
 ```bash
 pytae penguins.parquet \
-  -filter "sex.notna()" \
+  -filter "sex.is_not_null()" \
   -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=species" \
   -finalize "title='Bill Length vs Body Mass', tight_layout=true" \
   -o scatter.png
@@ -12904,7 +12904,7 @@ import pytae as pt
 penguins = pt.read_parquet("penguins.parquet")
 
 report = (
-    penguins.filter("body_mass_g > 3500 & sex.notna()")
+    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(
         body_mass_kg="body_mass_g / 1000",
         bill_ratio="bill_length_mm / bill_depth_mm",
@@ -12928,7 +12928,7 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
@@ -13069,25 +13069,25 @@ pytae data.parquet -mutate "target_copy = col('body_mass_g') * 1.5"
 
 ---
 
-## 4. 🎯 Column Selection & Renaming (`--select`, `-rename`)
+## 4. 🎯 Column Selection & Renaming (`-select`, `-rename`)
 
 Select, reorder, and drop columns with flexible pattern matching:
 
 ```bash
 # Explicit column selection and reordering
-pytae data.parquet --select "species,island,body_mass_g"
+pytae data.parquet -select "species,island,body_mass_g"
 
 # Drop columns using exclamation mark negation (!col)
-pytae data.parquet --select "!sex,!year"
+pytae data.parquet -select "!sex,!year"
 
 # Pattern and prefix matching
-pytae data.parquet --select "startswith=bill_"
-pytae data.parquet --select "endswith=_mm"
-pytae data.parquet --select "contains=length"
+pytae data.parquet -select "startswith=bill_"
+pytae data.parquet -select "endswith=_mm"
+pytae data.parquet -select "contains=length"
 
 # Select by data type
-pytae data.parquet --select "dtype=float"
-pytae data.parquet --select "exclude_dtype=string"
+pytae data.parquet -select "dtype=float"
+pytae data.parquet -select "exclude_dtype=string"
 
 # Rename columns (old_name:new_name)
 pytae data.parquet -rename "body_mass_g:weight_g,bill_length_mm:beak_len"
@@ -14139,7 +14139,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
-| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 | **Callable / Lambda** | `df[lambda d: d['x'] > 5]` | `df.filter(lambda d: d['x'] > 5)` | N/A |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
@@ -14232,7 +14232,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Targeted Key Dropping** | `df.dropna(subset=['id', 'email'])` | `df.dropna("id", "email")` | `-dropna id,email` |
 | **Dual Null & NaN Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0, nans=True)` | `-fillna 0` |
 | **Column-Specific Imputation**| `df.fillna({'a': 0, 'b': 'N/A'})` | `df.fillna({'a': 0, 'b': 'N/A'})` | `-fillna "a=0,b='N/A'"` |
-| **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | `df.groupby('g', dropna=False).agg(...)` | Default behavior (`dropna=False`) | Default behavior |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
@@ -14302,7 +14302,7 @@ import pytae as pt
 
 (
     pt.read_parquet("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.notna()")
+    .filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
     .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
@@ -14314,7 +14314,7 @@ import pytae as pt
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
@@ -14482,7 +14482,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('startswith', 'A'))`| `-filter "name.startswith('A')"` |
-| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -14569,7 +14569,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Safe Blank Row Dropping** | `filter(df, if_any(everything(), ~ !is.na(.)))` | `df.dropna()` *(Defaults to safe `how='all'`)* | `-dropna` |
 | **Targeted Key Dropping** | `drop_na(df, id, email)` | `df.dropna("id", "email")` | `-dropna id,email` |
 | **Missing Imputation** | `replace_na(df, list(score = 0))` | `df.fillna({"score": 0})` | `-fillna "score=0"` |
-| **Column Name Cleaning** | `janitor::clean_names(df)` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Column Name Cleaning** | `janitor::clean_names(df)` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | Default behavior (keeps `NA` levels) | Default behavior (`dropna=False`) | Default behavior |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
@@ -14620,7 +14620,7 @@ import pytae as pt
 
 (
     pt.read_parquet("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.notna()")
+    .filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
     .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
@@ -14632,7 +14632,7 @@ import pytae as pt
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
@@ -14732,7 +14732,7 @@ RUN;
 In Pytae, missing values adhere to strict three-valued logic and IEEE-754 semantics:
 - A comparison with missing (`null` or `NaN`) always evaluates to missing / false.
 - Filtering `df.filter("age < 18")` **never** includes null or NaN records.
-- Null checks are explicit and readable: `df.filter("age.notna()")` or `df.filter("age.isna()")`.
+- Null checks are explicit and readable: `df.filter("age.is_not_null()")` or `df.filter("age.is_null()")`.
 
 ---
 
@@ -14863,7 +14863,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 1. Data Ingestion & I/O
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Read SAS Dataset** | `SET libref.dataset;` | `pt.read_sas("dataset.sas7bdat")` | `pytae dataset.sas7bdat` |
+| **Read SAS Dataset** | `SET libref.dataset;` | `pt.DataFrame(pd.read_sas("dataset.sas7bdat"))` | `pytae dataset.sas7bdat` |
 | **Read CSV** | `PROC IMPORT DATAFILE='...' DBMS=CSV;` | `pt.read_csv("file.csv")` | `pytae file.csv` |
 | **Read Parquet** | SAS Viya CAS Parquet engine | `pt.read_parquet("file.parquet")` | `pytae file.parquet` |
 | **Write Parquet** | Viya CAS Save | `df.to_parquet("file.parquet")` | `-o file.parquet` |
@@ -14879,7 +14879,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
-| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 3. Column Derivations & Feature Engineering (`mutate`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -15011,14 +15011,15 @@ RUN;
 
 ### In Pytae (Python Library):
 ```python
+import pandas as pd
 import pytae as pt
 
 # Ingest directly from SAS datasets or Parquet
-vsl = pt.read_sas("vsl.sas7bdat")
-dm = pt.read_sas("dm.sas7bdat")
+vsl = pt.DataFrame(pd.read_sas("vsl.sas7bdat"))
+dm = pt.DataFrame(pd.read_sas("dm.sas7bdat"))
 
 summary = (
-    vsl.filter("VISIT == 'Baseline' & SYSBP.notna() & DIABP.notna()")
+    vsl.filter("VISIT == 'Baseline' & SYSBP.is_not_null() & DIABP.is_not_null()")
     .join(dm, on="USUBJID", how="inner")
     .mutate(
         pulse_pressure="SYSBP - DIABP",
@@ -15044,7 +15045,7 @@ summary.to_parquet("summary.parquet")
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae vsl.sas7bdat \
-  -filter "VISIT == 'Baseline' and SYSBP.notna() and DIABP.notna()" \
+  -filter "VISIT == 'Baseline' and SYSBP.is_not_null() and DIABP.is_not_null()" \
   -join "dm.sas7bdat,on=USUBJID,how=inner" \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
   -by TRTP,SEX \
@@ -15624,7 +15625,7 @@ pytae = "pytae.cli:main"
 "reference" = "pytae/reference"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 src = ["src", "tests"]
 
@@ -15928,8 +15929,9 @@ def long(
     id_vars: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
+    r: str | Sequence[str] | None = None,
 ) -> DataFrame:
-    return DataFrame(df).long(cols=cols, id_vars=id_vars, c=c, v=v)
+    return DataFrame(df).long(cols=cols, id_vars=id_vars, c=c, v=v, r=r)
 
 
 def wide(
@@ -16103,54 +16105,11 @@ class _PytaeModule(ModuleType):
     def __call__(self, data: Any = None) -> DataFrame:
         return DataFrame(data)
 
-    select = _VerbDescriptor(select)
-    filter = _VerbDescriptor(filter)
-    mutate = _VerbDescriptor(mutate)
-    arrange = _VerbDescriptor(arrange)
-    pick = _VerbDescriptor(pick)
-    distinct = _VerbDescriptor(distinct)
-    count = _VerbDescriptor(count)
-    dropna = _VerbDescriptor(dropna)
-    fillna = _VerbDescriptor(fillna)
-    rename = _VerbDescriptor(rename)
-    sql = _VerbDescriptor(sql)
-    by = _VerbDescriptor(by)
-    agg = _VerbDescriptor(agg)
-    pivot = _VerbDescriptor(pivot)
-    long = _VerbDescriptor(long)
-    wide = _VerbDescriptor(wide)
-    clean_columns = _VerbDescriptor(clean_columns)
-    cols = _VerbDescriptor(cols)
-    glimpse = _VerbDescriptor(glimpse)
-    freq = _VerbDescriptor(freq)
-    hist = _VerbDescriptor(hist)
-    bar = _VerbDescriptor(bar)
-    scatter = _VerbDescriptor(scatter)
-    corr = _VerbDescriptor(corr)
-    join = _VerbDescriptor(join)
-    concat = _VerbDescriptor(concat)
-    slice_max = _VerbDescriptor(slice_max)
-    slice_min = _VerbDescriptor(slice_min)
-    lit = _VerbDescriptor(lit)
-    sample = _VerbDescriptor(sample)
-    sample_data = _VerbDescriptor(sample_data)
-    read_parquet = _VerbDescriptor(read_parquet)
-    read_csv = _VerbDescriptor(read_csv)
-    read_ndjson = _VerbDescriptor(read_ndjson)
-    read_json = _VerbDescriptor(read_json)
-    read_ipc = _VerbDescriptor(read_ipc)
-    read_excel = _VerbDescriptor(read_excel)
-    read_database = _VerbDescriptor(read_database)
-    scan_parquet = _VerbDescriptor(scan_parquet)
-    scan_csv = _VerbDescriptor(scan_csv)
-    scan_ndjson = _VerbDescriptor(scan_ndjson)
-    scan_ipc = _VerbDescriptor(scan_ipc)
-    read = _VerbDescriptor(read)
-    scan = _VerbDescriptor(scan)
-    validate_pipeline = _VerbDescriptor(validate_pipeline)
-    check_dsl = _VerbDescriptor(check_dsl_string)
-    mask = _VerbDescriptor(mask)
-    unmask = _VerbDescriptor(unmask)
+
+for _k, _v in list(globals().items()):
+    if callable(_v) and not _k.startswith("_") and isinstance(_v, type(select)):
+        setattr(_PytaeModule, _k, _VerbDescriptor(_v))
+_PytaeModule.check_dsl = _VerbDescriptor(check_dsl_string)  # type: ignore[attr-defined]
 
 
 sys.modules[__name__].__class__ = _PytaeModule
@@ -16159,14 +16118,9 @@ sys.modules[__name__].__class__ = _PytaeModule
 def __getattr__(name: str) -> Any:
     if name in ("Plotter", "plot", "finalize"):
         try:
-            from .plotting import Plotter, finalize, plot
+            from . import plotting
 
-            if name == "Plotter":
-                return Plotter
-            elif name == "plot":
-                return plot
-            else:
-                return finalize
+            return getattr(plotting, name)
         except ImportError as exc:
             raise ImportError(f"{name} requires matplotlib. Install with: pip install 'pytae[plot]'") from exc
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -17314,251 +17268,10 @@ import polars as pl
 from pytae.dataframe import DataFrame, GroupedDataFrame, _plot_impl
 
 
-@pl.api.register_dataframe_namespace("pt")
-@pl.api.register_lazyframe_namespace("pt")
-class PolarsPtAccessor:
-    """Polars DataFrame and LazyFrame accessor entering Pytae's fluent data manipulation pipeline."""
+class _BasePtAccessor:
+    """Shared base accessor forwarding Pytae's fluent grammar to `pytae.DataFrame`."""
 
-    def __init__(self, obj: pl.DataFrame | pl.LazyFrame):
-        self._obj = obj
-
-    def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).filter(*conditions, params=params, **kwargs)
-
-    def select(self, *names: Any, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).select(*names, **kwargs)
-
-    def arrange(self, *specs: str, na_last: bool = True) -> DataFrame:
-        return DataFrame(self._obj).arrange(*specs, na_last=na_last)
-
-    def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
-        return DataFrame(self._obj).distinct(*cols, keep=keep)
-
-    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
-        return DataFrame(self._obj).count(*cols, sort=sort, name=name)
-
-    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
-
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
-
-    def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
-        return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
-
-    def head(
-        self,
-        n: int | str | None = None,
-        *,
-        prop: float | None = None,
-        with_ties: bool = False,
-    ) -> DataFrame:
-        return DataFrame(self._obj).head(n=n, prop=prop, with_ties=with_ties)
-
-    def tail(
-        self,
-        n: int | str | None = None,
-        *,
-        prop: float | None = None,
-        with_ties: bool = False,
-    ) -> DataFrame:
-        return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
-
-    def pick(self, *args: Any, **kwargs: Any) -> Any:
-        raise AttributeError(
-            "df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing)."
-        )
-
-    def sample(
-        self,
-        n: int | None = None,
-        frac: float | None = None,
-        *,
-        fraction: float | None = None,
-        seed: int | None = None,
-        random_state: int | None = None,
-        with_replacement: bool = False,
-        replace: bool = False,
-        shuffle: bool = False,
-    ) -> DataFrame:
-        return DataFrame(self._obj).sample(
-            n=n,
-            frac=frac,
-            fraction=fraction,
-            seed=seed,
-            random_state=random_state,
-            with_replacement=with_replacement,
-            replace=replace,
-            shuffle=shuffle,
-        )
-
-    def by(self, *cols: Any) -> GroupedDataFrame:
-        return DataFrame(self._obj).by(*cols)
-
-    def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).mutate(*specs, **kwargs)
-
-    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).rename(*args, columns=columns, **kwargs)
-
-    def sql(self, query: str) -> DataFrame:
-        return DataFrame(self._obj).sql(query)
-
-    def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).agg(*specs, a=a, dropna=dropna, **kwargs)
-
-    def pivot(
-        self,
-        r: str | Sequence[str] | None = None,
-        c: str | Sequence[str] | None = None,
-        v: str | Sequence[str] | None = None,
-        a: str = "sum",
-        dropna: bool = False,
-        f_v: Any = None,
-        **kwargs: Any,
-    ) -> DataFrame:
-        return DataFrame(self._obj).pivot(r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, **kwargs)
-
-    def long(
-        self,
-        cols: str | Sequence[str] | None = None,
-        id_vars: str | Sequence[str] | None = None,
-        c: str = "variable",
-        v: str = "value",
-    ) -> DataFrame:
-        return DataFrame(self._obj).long(cols=cols, id_vars=id_vars, c=c, v=v)
-
-    def wide(
-        self,
-        r: str | Sequence[str] | None = None,
-        c: str = "variable",
-        v: str = "value",
-        **kwargs: Any,
-    ) -> DataFrame:
-        return DataFrame(self._obj).wide(r=r, c=c, v=v, **kwargs)
-
-    def clean_columns(self, **opts: Any) -> DataFrame:
-        return DataFrame(self._obj).clean_columns(**opts)
-
-    def mask(self, spec: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).mask(spec, *args, **kwargs)
-
-    def unmask(self, cols: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
-        return DataFrame(self._obj).unmask(cols, *args, **kwargs)
-
-    def cols(self, ascending: bool | None = True) -> list[str]:
-        return DataFrame(self._obj).cols(ascending=ascending)
-
-    def glimpse(self, width: int | None = None) -> pl.DataFrame:
-        from pytae.other_utilities import format_glimpse
-
-        print(format_glimpse(self._obj, width=width))
-        return self._obj
-
-    def repl(self, prompt: str = "pytae") -> Any:
-        from pytae.repl import repl
-
-        return repl(df=self._obj, prompt=prompt)
-
-    def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
-        return DataFrame(self._obj).freq(col=col, dropna=dropna, width=width)
-
-    def hist(self, col: str | None = None, bins: int = 10, width: int = 20) -> DataFrame:
-        return DataFrame(self._obj).hist(col=col, bins=bins, width=width)
-
-    def bar(
-        self,
-        cat: str | None = None,
-        val: str | None = None,
-        *,
-        limit: tuple[float, float] | list[float] | None = None,
-        pct: bool = False,
-        width: int = 20,
-    ) -> DataFrame:
-        return DataFrame(self._obj).bar(cat=cat, val=val, limit=limit, pct=pct, width=width)
-
-    def scatter(
-        self,
-        x: str | None = None,
-        y: str | None = None,
-        *,
-        width: int = 50,
-        height: int = 15,
-        limit_x: tuple[float, float] | list[float] | None = None,
-        limit_y: tuple[float, float] | list[float] | None = None,
-    ) -> str:
-        return DataFrame(self._obj).scatter(x=x, y=y, width=width, height=height, limit_x=limit_x, limit_y=limit_y)
-
-    def corr(
-        self,
-        target: str | None = None,
-        *,
-        cols: list[str] | None = None,
-        pairs: bool = False,
-        method: str = "pearson",
-    ) -> DataFrame:
-        return DataFrame(self._obj).corr(target=target, cols=cols, pairs=pairs, method=method)
-
-    def pipe(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        return DataFrame(self._obj).pipe(func, *args, **kwargs)
-
-    def join(
-        self,
-        other: Any,
-        on: str | Sequence[str] | None = None,
-        how: str = "inner",
-        *,
-        left_on: str | Sequence[str] | None = None,
-        right_on: str | Sequence[str] | None = None,
-        suffix: str = "_right",
-        suffixes: tuple[str, str] | None = None,
-        validate: str = "m:m",
-        coalesce: bool | None = None,
-        **kwargs: Any,
-    ) -> DataFrame:
-        return DataFrame(self._obj).join(
-            other,
-            on=on,
-            how=how,
-            left_on=left_on,
-            right_on=right_on,
-            suffix=suffix,
-            suffixes=suffixes,
-            validate=validate,
-            coalesce=coalesce,
-            **kwargs,
-        )
-
-    def concat(
-        self,
-        *others: Any,
-        how: str = "vertical",
-        axis: int | str | None = None,
-        **kwargs: Any,
-    ) -> DataFrame:
-        return DataFrame(self._obj).concat(*others, how=how, axis=axis, **kwargs)
-
-    def to_clip(self) -> None:
-        return DataFrame(self._obj).to_clip()
-
-    def to_pandas(self) -> Any:
-        return DataFrame(self._obj).to_pandas()
-
-    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
-        return self._obj
-
-    def plot(self, *args: Any, **kwargs: Any) -> Any:
-        return _plot_impl(self._obj, *args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(DataFrame(self._obj), name)
-
-
-@pd.api.extensions.register_dataframe_accessor("pt")
-class PandasPtAccessor:
-    """Pandas DataFrame accessor providing a seamless zero-friction bridge into Pytae's Polars engine."""
-
-    def __init__(self, obj: pd.DataFrame):
+    def __init__(self, obj: Any) -> None:
         self._obj = obj
 
     def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
@@ -17668,8 +17381,9 @@ class PandasPtAccessor:
         id_vars: str | Sequence[str] | None = None,
         c: str = "variable",
         v: str = "value",
+        r: str | Sequence[str] | None = None,
     ) -> DataFrame:
-        return DataFrame(self._obj).long(cols=cols, id_vars=id_vars, c=c, v=v)
+        return DataFrame(self._obj).long(cols=cols, id_vars=id_vars, c=c, v=v, r=r)
 
     def wide(
         self,
@@ -17692,7 +17406,7 @@ class PandasPtAccessor:
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 
-    def glimpse(self, width: int | None = None) -> pd.DataFrame:
+    def glimpse(self, width: int | None = None) -> Any:
         from pytae.other_utilities import format_glimpse
 
         print(format_glimpse(self._obj, width=width))
@@ -17782,6 +17496,35 @@ class PandasPtAccessor:
         return DataFrame(self._obj).concat(*others, how=how, axis=axis, **kwargs)
 
     def to_clip(self) -> None:
+        return DataFrame(self._obj).to_clip()
+
+    def to_pandas(self) -> Any:
+        return DataFrame(self._obj).to_pandas()
+
+    def to_polars(self) -> Any:
+        return DataFrame(self._obj).to_polars()
+
+    def plot(self, *args: Any, **kwargs: Any) -> Any:
+        return _plot_impl(self._obj, *args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(DataFrame(self._obj), name)
+
+
+@pl.api.register_dataframe_namespace("pt")
+@pl.api.register_lazyframe_namespace("pt")
+class PolarsPtAccessor(_BasePtAccessor):
+    """Polars DataFrame and LazyFrame accessor entering Pytae's fluent data manipulation pipeline."""
+
+    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
+        return self._obj
+
+
+@pd.api.extensions.register_dataframe_accessor("pt")
+class PandasPtAccessor(_BasePtAccessor):
+    """Pandas DataFrame accessor providing a seamless zero-friction bridge into Pytae's Polars engine."""
+
+    def to_clip(self) -> None:
         return self._obj.to_clipboard(index=False)
 
     def safe_reset_index(self) -> pd.DataFrame:
@@ -17791,15 +17534,6 @@ class PandasPtAccessor:
 
     def to_pandas(self) -> pd.DataFrame:
         return self._obj
-
-    def to_polars(self) -> pl.DataFrame:
-        return DataFrame(self._obj).to_polars()
-
-    def plot(self, *args: Any, **kwargs: Any) -> Any:
-        return _plot_impl(self._obj, *args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(DataFrame(self._obj), name)
 
 ################################################################################
 # FILE: src/pytae/cheatsheet.py
@@ -17861,14 +17595,14 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -mutate "species_lower = species.str.lower()"
   pytae data.parquet -mutate "diff = irba_unsecured_lgd_(1g00) - post_crm_lgd_(2a)"
 
-4. 🎯 COLUMN SELECTION & RENAMING (--select, -rename)
+4. 🎯 COLUMN SELECTION & RENAMING (-select, -rename)
 --------------------------------------------------------------------------------
-  pytae data.parquet --select "species,island,body_mass_g"
-  pytae data.parquet --select "!sex,!year"                        # Drop columns
-  pytae data.parquet --select "startswith=bill_"                  # Prefix match
-  pytae data.parquet --select "endswith=_mm"                      # Suffix match
-  pytae data.parquet --select "contains=length"                   # Substring match
-  pytae data.parquet --select "dtype=float"                       # Dtype match
+  pytae data.parquet -select "species,island,body_mass_g"
+  pytae data.parquet -select "!sex,!year"                         # Drop columns
+  pytae data.parquet -select "startswith=bill_"                   # Prefix match
+  pytae data.parquet -select "endswith=_mm"                       # Suffix match
+  pytae data.parquet -select "contains=length"                    # Substring match
+  pytae data.parquet -select "dtype=float"                        # Dtype match
   pytae data.parquet -rename "body_mass_g:weight_g"               # Old:new
   pytae messy.csv -clean_columns "strip,fill=_,case=lower,dedupe" # Header hygiene
 
@@ -18345,7 +18079,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         action=_OrderedStore,
-        help="compare schema and contents against another dataset file (use -tol or -tolerance to set a numeric threshold)",
+        help="compare schema and contents against another dataset file (use -tol to set a numeric threshold)",
     )
     parser.add_argument(
         "-freq",
@@ -18675,7 +18409,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         metavar="SPEC",
         help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
         '"new_col = expression" or multi-column "(col1, col2) = _ * 2" entries, comma-separated; '
-        "the expression is pandas eval() syntax and column names in it must stay unquoted, e.g. "
+        "column names in the expression stay unquoted (or bracketed [col name] for spaces), e.g. "
         '"bmi = body_mass_g / bill_length_mm ** 2" or "(startswith=bill_) = _ / 10"',
     )
     parser.add_argument(
@@ -18780,8 +18514,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         type=float,
         default=None,
         metavar="N",
-        help="numeric difference tolerance / threshold for dataset comparison (-diff); "
-        "e.g. -tol 0.001 or -tolerance 1e-4",
+        help="numeric difference tolerance / threshold for dataset comparison (-diff); e.g. -tol 0.001 or -tol 1e-4",
     )
     parser.add_argument(
         "-i",
@@ -19833,22 +19566,22 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Compare schema and values between two tabular datasets.",
         description=(
             "Compares column lists, types, row counts, null counts, and value differences "
-            "between two datasets. Use -tol or -tolerance to set an absolute numeric threshold."
+            "between two datasets. Use -tol to set an absolute numeric threshold."
         ),
         options=[
             "PATH : Target file path to compare against.",
-            "-tol N, -tolerance N : Numeric tolerance threshold for floating-point comparisons (e.g. -tol 0.001).",
+            "-tol N : Numeric tolerance threshold for floating-point comparisons (e.g. -tol 0.001).",
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet",
             "pytae current.parquet -diff previous.parquet -tol 0.001",
-            "pytae current.parquet -diff previous.parquet -tolerance 1e-4",
+            "pytae current.parquet -diff previous.parquet -tol 1e-4",
         ],
         see_also=["-meta", "-cols", "-dtype"],
     ),
     "tol": KeywordHelp(
         name="tol",
-        flag="-tol, -tolerance N",
+        flag="-tol N",
         syntax="pytae <file1> -diff <file2> -tol <N>",
         summary="Set numeric threshold / tolerance for -diff.",
         description=(
@@ -19860,7 +19593,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet -tol 0.001",
-            "pytae current.parquet -diff previous.parquet -tolerance 1e-5",
+            "pytae current.parquet -diff previous.parquet -tol 1e-5",
         ],
         see_also=["-diff"],
     ),
@@ -20511,37 +20244,6 @@ def parse_fillna_spec(
     return val, cols, nans
 
 
-def parse_sort_by(raw: str) -> tuple[list[str], str]:
-    """Parse legacy -sort_by SPEC: a comma-separated column list, optionally ending with
-    asc or desc as a trailing word (default asc). e.g. "species,body_mass_g desc"."""
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
-    order = "asc"
-    head, sep, tail = raw.rpartition(" ")
-    if sep and tail.lower() in ("asc", "desc"):
-        raw, order = head.rstrip(",").strip(), tail.lower()
-    cols = parse_columns(raw)
-    if not cols:
-        raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
-    return cols, order
-
-
-def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
-    """Parse -arrange SPEC: a comma-separated column list with optional asc/desc directions,
-    leading '-', or brackets for spaced columns. e.g. "species, [annual salary] desc".
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
-    from pytae._parsing import _extract_arrange_specs
-
-    cols, asc_list = _extract_arrange_specs((raw,))
-    if not cols:
-        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
-    return cols, asc_list
-
-
 @dataclass
 class SliceSpec:
     n: int | None = None
@@ -20633,12 +20335,6 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
     if n is None and prop is None:
         n = 5
     return SliceSpec(n=n, prop=prop, with_ties=with_ties)
-
-
-def parse_pick_spec(*args: Any, **kwargs: Any) -> Any:
-    raise SystemExit(
-        "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
-    )
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -20792,22 +20488,6 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
     return results
 
 
-def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
-    """Legacy helper for splitting filter conditions into (column, condition) tuples."""
-    node = _parse_filter_node(raw)
-    out: list[tuple[str, str]] = []
-
-    def _collect(n: Any):
-        if hasattr(n, "left") and hasattr(n, "right"):
-            _collect(n.left)
-            _collect(n.right)
-        elif hasattr(n, "col") and hasattr(n, "cond"):
-            out.append((n.col, str(n.cond)))
-
-    _collect(node)
-    return out
-
-
 def parse_filter(raw: str) -> FilterNode | dict[str, Any]:
     """Parse -filter conditions like "col == 5 and other in ['a','b']", or dict literal '{"col": 5}'."""
     stripped = raw.strip()
@@ -20815,11 +20495,6 @@ def parse_filter(raw: str) -> FilterNode | dict[str, Any]:
     if parsed_dict is not None:
         return parsed_dict
     return _parse_filter_node(stripped)
-
-
-def parse_qry(raw: str) -> FilterNode | dict[str, Any]:
-    """Deprecated alias for parse_filter."""
-    return parse_filter(raw)
 
 
 def parse_agg(raw: str):
@@ -20875,41 +20550,6 @@ def parse_agg(raw: str):
         raise SystemExit("-agg: mix of names and col=aggfunc mappings; use one or the other")
     names = [_unquote_name(e) for e in entries]
     return names[0] if len(names) == 1 else names
-
-
-_AGG_KEYS = ("column", "aggfunc", "as")
-
-
-def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
-    """Parse -agg as key=value specs: column=, aggfunc=, optional as=.
-
-    Several specs are separated by ';'. Several source columns in one spec share
-    the same aggfunc: column='value,val_growth',aggfunc=sum. as= needs a single column.
-    Returns (source_col, output_name, aggfunc) rows.
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-agg: expected key=value specs, e.g. column=value,aggfunc=sum,as=v")
-    if raw.startswith("{"):
-        raise SystemExit("-agg: use key=value specs, e.g. column=value,aggfunc=sum,as=v (not a dict literal)")
-    rows: list[tuple[str, str, str]] = []
-    for group in _split_groups(raw, ";"):
-        canon = parse_reshape_kwargs(group, keys=_AGG_KEYS, flag="-agg")
-        if "column" not in canon or "aggfunc" not in canon:
-            raise SystemExit("-agg: each spec needs column= and aggfunc=")
-        cols = parse_columns(canon["column"])
-        if not cols:
-            raise SystemExit("-agg: column= needs at least one column")
-        out = canon.get("as")
-        if out and len(cols) != 1:
-            raise SystemExit("-agg: as= requires a single column")
-        aggfunc = canon["aggfunc"]
-        for col in cols:
-            rows.append((col, out or col, aggfunc))
-    names = [name for _, name, _ in rows]
-    if len(names) != len(set(names)):
-        raise SystemExit("-agg: duplicate output names")
-    return rows
 
 
 _LONG_KEYS = ("cols", "id_vars", "c", "v", "r")
@@ -21783,9 +21423,6 @@ class _Pipeline:
         except Exception as exc:
             return f"-arrange: {exc}"
 
-    def apply_pick(self, *args: Any, **kwargs: Any) -> str:
-        return "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
-
     def apply_fillna(self, value: Any, cols: list[str] | None = None, nans: bool = True) -> str | None:
         """Apply one -fillna operation to the current view. Returns an error message or None."""
         available = self._available_columns()
@@ -22229,44 +21866,38 @@ def _format_table(
     return str(df)
 
 
-def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
-    from pytae.other_utilities import freq
-
+def _split_width_arg(flag: str, arg: str | None) -> tuple[str | None, int]:
     width = 20
-    target_col = col
-    if col and ",width=" in col:
-        c_part, _, w_part = col.partition(",width=")
-        target_col = c_part.strip()
+    if arg and ",width=" in arg:
+        c_part, _, w_part = arg.partition(",width=")
         try:
-            width = int(w_part.strip())
+            return c_part.strip(), int(w_part.strip())
         except ValueError:
-            raise SystemExit(f"-freq: invalid width='{w_part.strip()}'; expected positive integer")
+            raise SystemExit(f"{flag}: invalid width='{w_part.strip()}'; expected positive integer")
+    return arg, width
+
+
+def _run_viz_op(flag: str, func: Any, *args: Any, **kwargs: Any) -> Any:
     try:
-        return freq(source_df, col=target_col, dropna=dropna, width=width)
+        return func(*args, **kwargs)
     except KeyError as exc:
         raise SystemExit(str(exc))
     except ValueError as exc:
-        raise SystemExit(f"-freq: {exc}")
+        raise SystemExit(f"{flag}: {exc}")
+
+
+def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
+    from pytae.other_utilities import freq
+
+    target_col, width = _split_width_arg("-freq", col)
+    return _run_viz_op("-freq", freq, source_df, col=target_col, dropna=dropna, width=width)
 
 
 def _compute_hist(source_df: Any, hist_arg: str | None) -> Any:
     from pytae.other_utilities import hist
 
-    width = 20
-    target_arg = hist_arg
-    if hist_arg and ",width=" in hist_arg:
-        h_part, _, w_part = hist_arg.partition(",width=")
-        target_arg = h_part.strip()
-        try:
-            width = int(w_part.strip())
-        except ValueError:
-            raise SystemExit(f"-hist: invalid width='{w_part.strip()}'; expected positive integer")
-    try:
-        return hist(source_df, col=target_arg, width=width)
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-hist: {exc}")
+    target_arg, width = _split_width_arg("-hist", hist_arg)
+    return _run_viz_op("-hist", hist, source_df, col=target_arg, width=width)
 
 
 def _compute_bar(source_df: Any, bar_arg: str | None) -> Any:
@@ -22274,19 +21905,16 @@ def _compute_bar(source_df: Any, bar_arg: str | None) -> Any:
     from pytae.other_utilities import bar
 
     spec = parse_bar_spec(bar_arg)
-    try:
-        return bar(
-            source_df,
-            cat=spec["cat"],
-            val=spec["val"],
-            limit=spec["limit"],
-            pct=spec["pct"],
-            width=spec["width"],
-        )
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-bar: {exc}")
+    return _run_viz_op(
+        "-bar",
+        bar,
+        source_df,
+        cat=spec["cat"],
+        val=spec["val"],
+        limit=spec["limit"],
+        pct=spec["pct"],
+        width=spec["width"],
+    )
 
 
 def _compute_scatter(source_df: Any, scatter_arg: str | None) -> str:
@@ -22294,20 +21922,17 @@ def _compute_scatter(source_df: Any, scatter_arg: str | None) -> str:
     from pytae.other_utilities import scatter
 
     spec = parse_scatter_spec(scatter_arg)
-    try:
-        return scatter(
-            source_df,
-            x=spec["x"],
-            y=spec["y"],
-            width=spec["width"],
-            height=spec["height"],
-            limit_x=spec["limit_x"],
-            limit_y=spec["limit_y"],
-        )
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-scatter: {exc}")
+    return _run_viz_op(
+        "-scatter",
+        scatter,
+        source_df,
+        x=spec["x"],
+        y=spec["y"],
+        width=spec["width"],
+        height=spec["height"],
+        limit_x=spec["limit_x"],
+        limit_y=spec["limit_y"],
+    )
 
 
 def _compute_corr(source_df: Any, corr_arg: str | None) -> Any:
@@ -22315,17 +21940,14 @@ def _compute_corr(source_df: Any, corr_arg: str | None) -> Any:
     from pytae.other_utilities import corr
 
     spec = parse_corr_spec(corr_arg)
-    try:
-        return corr(
-            source_df,
-            target=spec["target"],
-            pairs=spec["pairs"],
-            method=spec["method"],
-        )
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-corr: {exc}")
+    return _run_viz_op(
+        "-corr",
+        corr,
+        source_df,
+        target=spec["target"],
+        pairs=spec["pairs"],
+        method=spec["method"],
+    )
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -23418,6 +23040,9 @@ def _process_path(
             "csv",
             "parquet",
             "pq",
+            "ipc",
+            "arrow",
+            "feather",
             "txt",
             "dat",
             "jsonl",
@@ -23551,11 +23176,6 @@ class ColumnNames(list[str]):
         except Exception:
             return [self.index(x) if x in self else -1 for x in target]
 
-    def _get_level_values(self, i: int) -> Any:
-        import pandas as pd
-
-        return pd.Index(self)
-
 
 class _IlocIndexer:
     """Row/column indexer for compatibility with Pandas iloc syntax."""
@@ -23563,31 +23183,37 @@ class _IlocIndexer:
     def __init__(self, df: DataFrame):
         self._df = df
 
+    def _eager_df(self) -> pl.DataFrame:
+        raw = self._df._df
+        return raw.collect() if isinstance(raw, pl.LazyFrame) else raw
+
     def __getitem__(self, item: Any) -> Any:
+        edf = self._eager_df()
         if isinstance(item, int):
-            row_dict = self._df._df.row(item, named=True)
+            row_dict = edf.row(item, named=True)
             import pandas as pd
 
             return pd.Series(row_dict)
         elif isinstance(item, tuple) and len(item) == 2:
             row_idx, col_idx = item
             if isinstance(col_idx, int):
-                col_name = self._df._df.columns[col_idx]
-                return self._df._df[row_idx, col_name]
+                col_name = edf.columns[col_idx]
+                return edf[row_idx, col_name]
             elif isinstance(col_idx, str):
-                return self._df._df[row_idx, col_idx]
-        return self._df._df[item]
+                return edf[row_idx, col_idx]
+        return edf[item]
 
     def __setitem__(self, item: Any, value: Any) -> None:
+        edf = self._eager_df()
         if isinstance(item, tuple) and len(item) == 2:
             row_idx, col_idx = item
             if isinstance(col_idx, int):
-                col_name = self._df._df.columns[col_idx]
+                col_name = edf.columns[col_idx]
             else:
                 col_name = str(col_idx)
-            s_list = self._df._df[col_name].to_list()
+            s_list = edf[col_name].to_list()
             s_list[row_idx] = value
-            self._df._df = self._df._df.with_columns(pl.Series(col_name, s_list))
+            self._df._df = edf.with_columns(pl.Series(col_name, s_list))
 
 
 class _LocIndexer:
@@ -23821,7 +23447,9 @@ class DataFrame:
 
     def equals(self, other: Any) -> bool:
         if isinstance(other, DataFrame):
-            return self._df.equals(other._df)
+            left = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
+            right = other._df.collect() if isinstance(other._df, pl.LazyFrame) else other._df
+            return left.equals(right)
         try:
             return self.to_pandas().equals(other)
         except Exception:
@@ -23829,10 +23457,11 @@ class DataFrame:
 
     @property
     def values(self) -> Any:
-        return self._df.to_numpy()
+        return self.to_numpy()
 
     def to_numpy(self, *args: Any, **kwargs: Any) -> Any:
-        return self._df.to_numpy(*args, **kwargs)
+        edf = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
+        return edf.to_numpy(*args, **kwargs)
 
     def select_dtypes(self, *args: Any, **kwargs: Any) -> DataFrame:
         """Filter columns based on data types."""
@@ -23841,7 +23470,7 @@ class DataFrame:
         include = kwargs.get("include", args[0] if len(args) > 0 else None)
         exclude = kwargs.get("exclude", args[1] if len(args) > 1 else None)
         matched = list(self.columns)
-        schema = self._df.schema
+        schema = self.schema
         if include is not None:
             matched = [c for c in matched if _matches_dtype(schema[c], include)]
         if exclude is not None:
@@ -26700,6 +26329,23 @@ def corr(
     if method_clean not in ("pearson", "spearman"):
         raise ValueError(f"corr: invalid method '{method}'; must be 'pearson' or 'spearman'")
 
+    def _pair_corr(col_x: str, col_y: str) -> float:
+        clean = pldf.select(
+            [
+                pl.col(col_x).cast(pl.Float64, strict=False).alias("x"),
+                pl.col(col_y).cast(pl.Float64, strict=False).alias("y"),
+            ]
+        ).filter(
+            pl.col("x").is_not_null() & pl.col("y").is_not_null() & pl.col("x").is_not_nan() & pl.col("y").is_not_nan()
+        )
+        if clean.height < 2:
+            return 0.0
+        try:
+            r = clean.select(pl.corr("x", "y", method=method_clean)).item()
+            return float(r) if (r is not None and not math.isnan(r)) else 0.0
+        except Exception:
+            return 0.0
+
     if target is not None:
         target_col = _unquote_name(str(target).strip())
         if target_col not in all_num_cols:
@@ -26718,26 +26364,7 @@ def corr(
         abs_vals: list[float] = []
 
         for feat in features:
-            clean = pldf.select(
-                [
-                    pl.col(target_col).cast(pl.Float64, strict=False).alias("y"),
-                    pl.col(feat).cast(pl.Float64, strict=False).alias("x"),
-                ]
-            ).filter(
-                pl.col("y").is_not_null()
-                & pl.col("x").is_not_null()
-                & pl.col("y").is_not_nan()
-                & pl.col("x").is_not_nan()
-            )
-            if clean.height < 2:
-                r_val = 0.0
-            else:
-                try:
-                    r = clean.select(pl.corr("x", "y", method=method_clean)).item()
-                    r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
-                except Exception:
-                    r_val = 0.0
-
+            r_val = _pair_corr(feat, target_col)
             abs_r = abs(r_val)
             bar_len = int(round(abs_r * 15))
             bar_char = "█" if r_val >= 0 else "▒"
@@ -26766,26 +26393,7 @@ def corr(
         for i in range(len(num_cols)):
             for j in range(i + 1, len(num_cols)):
                 c1, c2 = num_cols[i], num_cols[j]
-                clean = pldf.select(
-                    [
-                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
-                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
-                    ]
-                ).filter(
-                    pl.col("x").is_not_null()
-                    & pl.col("y").is_not_null()
-                    & pl.col("x").is_not_nan()
-                    & pl.col("y").is_not_nan()
-                )
-                if clean.height < 2:
-                    r_val = 0.0
-                else:
-                    try:
-                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
-                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
-                    except Exception:
-                        r_val = 0.0
-
+                r_val = _pair_corr(c1, c2)
                 abs_r = abs(r_val)
                 if abs_r >= 0.8:
                     label = "Very Strong"
@@ -26823,31 +26431,7 @@ def corr(
     # Matrix view (default)
     matrix_data: dict[str, list[Any]] = {"column": num_cols}
     for c2 in num_cols:
-        col_vals = []
-        for c1 in num_cols:
-            if c1 == c2:
-                col_vals.append(1.0)
-            else:
-                clean = pldf.select(
-                    [
-                        pl.col(c1).cast(pl.Float64, strict=False).alias("x"),
-                        pl.col(c2).cast(pl.Float64, strict=False).alias("y"),
-                    ]
-                ).filter(
-                    pl.col("x").is_not_null()
-                    & pl.col("y").is_not_null()
-                    & pl.col("x").is_not_nan()
-                    & pl.col("y").is_not_nan()
-                )
-                if clean.height < 2:
-                    r_val = 0.0
-                else:
-                    try:
-                        r = clean.select(pl.corr("x", "y", method=method_clean)).item()
-                        r_val = float(r) if (r is not None and not math.isnan(r)) else 0.0
-                    except Exception:
-                        r_val = 0.0
-                col_vals.append(round(r_val, 2))
+        col_vals = [1.0 if c1 == c2 else round(_pair_corr(c1, c2), 2) for c1 in num_cols]
         matrix_data[c2] = col_vals
 
     return DataFrame(pl.DataFrame(matrix_data))
@@ -30021,12 +29605,6 @@ def _slice_bound_polars(
             return df.tail(n)
 
 
-def pick_polars(*args: Any, **kwargs: Any) -> Any:
-    raise AttributeError(
-        "pick() has been removed; use arrange().head(n) instead (or by().arrange().head(n) for grouped slicing)."
-    )
-
-
 def long_polars(
     df: pl.DataFrame,
     cols: str | Sequence[str] | None = None,
@@ -30799,6 +30377,8 @@ class ParquetReader:
 
 
 class CsvReader:
+    _file_kind = "CSV"
+
     def __init__(
         self,
         path: Path,
@@ -30839,7 +30419,7 @@ class CsvReader:
                 compression=self.compression,
             ).columns.tolist()
         except pd.errors.EmptyDataError as exc:
-            raise ValueError(f"'{self.path.name}' is empty or not a valid CSV file") from exc
+            raise ValueError(f"'{self.path.name}' is empty or not a valid {self._file_kind} file") from exc
 
     def dtypes(self) -> pd.Series:
         return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
@@ -30916,6 +30496,7 @@ class CsvReader:
     ):
         import polars as pl
 
+        null_vals = ["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"]
         try:
             return pl.read_csv(
                 self.path,
@@ -30923,7 +30504,7 @@ class CsvReader:
                 columns=columns,
                 n_rows=nrows,
                 encoding=self.encoding or "utf8",
-                null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                null_values=null_vals,
                 truncate_ragged_lines=True,
                 infer_schema_length=infer_schema_length,
             )
@@ -30936,23 +30517,15 @@ class CsvReader:
                         columns=columns,
                         n_rows=nrows,
                         encoding=self.encoding or "utf8",
-                        null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                        null_values=null_vals,
                         truncate_ragged_lines=True,
                         infer_schema_length=None,
                     )
                 except Exception:
                     pass
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
+            return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
         except Exception:
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
+            return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
 
     def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
         import polars as pl
@@ -30970,8 +30543,10 @@ class CsvReader:
         return lf
 
 
-class TxtReader:
+class TxtReader(CsvReader):
     """Reads delimited .txt/.dat files (tab-delimited for .txt, pipe-delimited for .dat by default)."""
+
+    _file_kind = "delimited"
 
     def __init__(
         self,
@@ -30981,167 +30556,7 @@ class TxtReader:
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         compression: str | None = None,
     ) -> None:
-        self.path = path
-        self.sep = sep
-        self.encoding = encoding
-        self.chunk_size = chunk_size
-        self.compression = compression
-
-    def shape(self) -> tuple[int, int]:
-        n_cols = len(self.columns())
-        total = 0
-        for chunk in pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            usecols=[0],
-            chunksize=self.chunk_size,
-            low_memory=False,
-            compression=self.compression,
-        ):
-            total += len(chunk)
-        return (total, n_cols)
-
-    def columns(self) -> list[str]:
-        try:
-            return pd.read_csv(
-                self.path,
-                sep=self.sep,
-                encoding=self.encoding,
-                nrows=0,
-                low_memory=False,
-                compression=self.compression,
-            ).columns.tolist()
-        except pd.errors.EmptyDataError as exc:
-            raise ValueError(f"'{self.path.name}' is empty or not a valid delimited file") from exc
-
-    def dtypes(self) -> pd.Series:
-        return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
-
-    def head(self, n: int) -> pd.DataFrame:
-        return pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            nrows=n,
-            low_memory=False,
-            compression=self.compression,
-        )
-
-    def tail(self, n: int) -> pd.DataFrame:
-        total = self.shape()[0]
-        skip = range(1, max(total - n, 0) + 1)  # keep the header (row 0), skip everything before the tail
-        return pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            skiprows=skip,
-            low_memory=False,
-            compression=self.compression,
-        )
-
-    def to_dataframe(
-        self,
-        columns: list[str] | None = None,
-        progress: bool = False,
-        nrows: int | None = None,
-        chunk_size: int | None = None,
-    ) -> pd.DataFrame:
-        if not progress:
-            if self.encoding is None or self.encoding.lower() in ("utf-8", "utf8"):
-                try:
-                    return self.to_polars(columns=columns, nrows=nrows).to_pandas()
-                except Exception:
-                    pass
-            return pd.read_csv(
-                self.path,
-                sep=self.sep,
-                encoding=self.encoding,
-                usecols=columns,
-                nrows=nrows,
-                low_memory=False,
-                compression=self.compression,
-            )
-        total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
-        chunks, done = [], 0
-        csize = chunk_size or self.chunk_size
-        reader = pd.read_csv(
-            self.path,
-            sep=self.sep,
-            encoding=self.encoding,
-            usecols=columns,
-            chunksize=csize,
-            nrows=nrows,
-            low_memory=False,
-            compression=self.compression,
-        )
-        for chunk in reader:
-            chunks.append(chunk)
-            done += len(chunk)
-            _print_progress(done, total, "reading")
-        print()
-        return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=columns or [])
-
-    def to_polars(
-        self,
-        columns: list[str] | None = None,
-        nrows: int | None = None,
-        infer_schema_length: int | None = 10000,
-    ):
-        import polars as pl
-
-        try:
-            return pl.read_csv(
-                self.path,
-                separator=self.sep,
-                columns=columns,
-                n_rows=nrows,
-                encoding=self.encoding or "utf8",
-                null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-                truncate_ragged_lines=True,
-                infer_schema_length=infer_schema_length,
-            )
-        except pl.exceptions.ComputeError:
-            if infer_schema_length is not None:
-                try:
-                    return pl.read_csv(
-                        self.path,
-                        separator=self.sep,
-                        columns=columns,
-                        n_rows=nrows,
-                        encoding=self.encoding or "utf8",
-                        null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-                        truncate_ragged_lines=True,
-                        infer_schema_length=None,
-                    )
-                except Exception:
-                    pass
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
-        except Exception:
-            try:
-                df = self.to_dataframe(columns=columns, nrows=nrows)
-                return pl.from_pandas(df)
-            except Exception:
-                raise
-
-    def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
-        import polars as pl
-
-        lf = pl.scan_csv(
-            self.path,
-            separator=self.sep,
-            encoding=self.encoding or "utf8",
-            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-            truncate_ragged_lines=True,
-            infer_schema_length=infer_schema_length,
-        )
-        if columns is not None:
-            lf = lf.select(columns)
-        return lf
+        super().__init__(path, sep=sep, encoding=encoding, chunk_size=chunk_size, compression=compression)
 
 
 class SasReader:
@@ -31480,9 +30895,72 @@ class DataFrameReader:
         return self.to_polars(columns=columns).lazy()
 
 
+class IpcReader:
+    def __init__(self, path: Path, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
+        self.path = path
+        self.chunk_size = chunk_size
+
+    def shape(self) -> tuple[int, int]:
+        import polars as pl
+
+        lf = pl.scan_ipc(self.path)
+        n_rows = lf.select(pl.len()).collect().item()
+        n_cols = len(lf.collect_schema().names())
+        return (n_rows, n_cols)
+
+    def columns(self) -> list[str]:
+        import polars as pl
+
+        return list(pl.read_ipc_schema(self.path).keys())
+
+    def dtypes(self) -> pd.Series:
+        import polars as pl
+
+        return pl.read_ipc(self.path, n_rows=0).to_pandas().dtypes
+
+    def head(self, n: int) -> pd.DataFrame:
+        import polars as pl
+
+        if n <= 0:
+            return pl.read_ipc(self.path, n_rows=0).to_pandas()
+        return pl.read_ipc(self.path, n_rows=n).to_pandas()
+
+    def tail(self, n: int) -> pd.DataFrame:
+        import polars as pl
+
+        if n <= 0:
+            return pl.read_ipc(self.path, n_rows=0).to_pandas()
+        return pl.scan_ipc(self.path).tail(n).collect().to_pandas()
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+
+        return pl.read_ipc(self.path, columns=columns, n_rows=nrows)
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        lf = pl.scan_ipc(self.path)
+        if columns is not None:
+            lf = lf.select(columns)
+        return lf
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
+    ".ipc": IpcReader,
+    ".arrow": IpcReader,
+    ".feather": IpcReader,
     ".csv": CsvReader,
     ".txt": TxtReader,
     ".dat": TxtReader,
@@ -31557,6 +31035,9 @@ def get_reader(
 _WRITABLE_SUFFIXES = (
     ".parquet",
     ".pq",
+    ".ipc",
+    ".arrow",
+    ".feather",
     ".csv",
     ".txt",
     ".dat",
@@ -31593,6 +31074,12 @@ def write_dataframe(
                 return
             except Exception:
                 df = df.collect()
+        elif suffix in (".ipc", ".arrow", ".feather"):
+            try:
+                df.sink_ipc(dest)
+                return
+            except Exception:
+                df = df.collect()
         elif suffix == ".csv":
             if compression != "gzip" and (encoding is None or encoding.lower() in ("utf-8", "utf8")):
                 try:
@@ -31621,6 +31108,9 @@ def write_dataframe(
         else:
             if suffix in (".parquet", ".pq"):
                 df.write_parquet(dest)
+                return
+            elif suffix in (".ipc", ".arrow", ".feather"):
+                df.write_ipc(dest)
                 return
             elif suffix == ".csv":
                 df.write_csv(
@@ -31654,6 +31144,8 @@ def write_dataframe(
     suffix, compression = _split_path_suffixes(dest)
     if suffix in (".parquet", ".pq"):
         _write_parquet(df, dest, progress=progress, chunk_size=chunk_size, index=index)
+    elif suffix in (".ipc", ".arrow", ".feather"):
+        pl.from_pandas(df).write_ipc(dest)
     elif suffix == ".csv":
         _write_delimited(
             df,
@@ -32116,7 +31608,6 @@ def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
         output_fn(f"  - {s_path.name:<15} ({cp_str}; {size_str}{date_str})")
 
 
-
 try:
     import readline  # Standard Unix / macOS readline
 except ImportError:
@@ -32206,8 +31697,23 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
                         if kbhit_fn():
                             seq += msvcrt.getwch()
                             if seq in (
-                                "[A", "OA", "[B", "OB", "[C", "OC", "[D", "OD",
-                                "[H", "OH", "[F", "OF", "[3~", "[1~", "[4~", "[7~", "[8~",
+                                "[A",
+                                "OA",
+                                "[B",
+                                "OB",
+                                "[C",
+                                "OC",
+                                "[D",
+                                "OD",
+                                "[H",
+                                "OH",
+                                "[F",
+                                "OF",
+                                "[3~",
+                                "[1~",
+                                "[4~",
+                                "[7~",
+                                "[8~",
                             ):
                                 break
                         else:
@@ -32221,8 +31727,23 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
                         try:
                             seq += msvcrt.getwch()
                             if seq in (
-                                "[A", "OA", "[B", "OB", "[C", "OC", "[D", "OD",
-                                "[H", "OH", "[F", "OF", "[3~", "[1~", "[4~", "[7~", "[8~",
+                                "[A",
+                                "OA",
+                                "[B",
+                                "OB",
+                                "[C",
+                                "OC",
+                                "[D",
+                                "OD",
+                                "[H",
+                                "OH",
+                                "[F",
+                                "OF",
+                                "[3~",
+                                "[1~",
+                                "[4~",
+                                "[7~",
+                                "[8~",
                             ):
                                 break
                         except Exception:
@@ -32231,13 +31752,23 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
                 pass
 
             ansi_map = {
-                "[A": "H", "OA": "H",  # Up arrow
-                "[B": "P", "OB": "P",  # Down arrow
-                "[D": "K", "OD": "K",  # Left arrow
-                "[C": "M", "OC": "M",  # Right arrow
-                "[H": "G", "OH": "G", "[1~": "G", "[7~": "G",  # Home
-                "[F": "O", "OF": "O", "[4~": "O", "[8~": "O",  # End
-                "[3~": "S",            # Delete
+                "[A": "H",
+                "OA": "H",  # Up arrow
+                "[B": "P",
+                "OB": "P",  # Down arrow
+                "[D": "K",
+                "OD": "K",  # Left arrow
+                "[C": "M",
+                "OC": "M",  # Right arrow
+                "[H": "G",
+                "OH": "G",
+                "[1~": "G",
+                "[7~": "G",  # Home
+                "[F": "O",
+                "OF": "O",
+                "[4~": "O",
+                "[8~": "O",  # End
+                "[3~": "S",  # Delete
             }
             if seq in ansi_map:
                 code = ansi_map[seq]
@@ -32417,6 +31948,7 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
   -shape                 : Display row and column counts
   -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
   -dtype / -nulls        : Inspect schema dtypes and missing value counts
+  -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
 
@@ -32426,6 +31958,7 @@ MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
   <tbl> -shape / -cols   : Inspect table metadata (e.g. df1 -shape, df2 -cols asc)
+  <tbl> -time [N]        : Switch active dataset and measure elapsed time (e.g. df1 -time)
   <tbl> -<pipeline>      : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
   <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
   <tbl> -o <path>        : Export specific table (e.g. df1 -o clean_orders.parquet)
@@ -32533,6 +32066,7 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--join": "-join",
     "--concat": "-concat",
     "--sql": "-sql",
+    "--time": "-time",
     "--output": "-o <path>",
     "-output": "-o <path>",
     "--out_dir": "-out_dir",
@@ -32612,6 +32146,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "head",
         "tail",
         "sql",
+        "time",
     )
 )
 
@@ -32817,18 +32352,30 @@ class PytaeRepl:
                     return None
                 act = meta.get("active_table")
                 if act and act in tbl_meta:
-                    f_name = tbl_meta[act].get("file", _safe_ipc_filename(act)) if isinstance(tbl_meta[act], dict) else _safe_ipc_filename(act)
+                    f_name = (
+                        tbl_meta[act].get("file", _safe_ipc_filename(act))
+                        if isinstance(tbl_meta[act], dict)
+                        else _safe_ipc_filename(act)
+                    )
                     ipc_p = cp_dir / f_name
                     if ipc_p.exists():
                         return pl.read_ipc(ipc_p)
                 if len(tbl_meta) == 1:
                     first_k, first_v = next(iter(tbl_meta.items()))
-                    f_name = first_v.get("file", _safe_ipc_filename(first_k)) if isinstance(first_v, dict) else _safe_ipc_filename(first_k)
+                    f_name = (
+                        first_v.get("file", _safe_ipc_filename(first_k))
+                        if isinstance(first_v, dict)
+                        else _safe_ipc_filename(first_k)
+                    )
                     ipc_p = cp_dir / f_name
                     if ipc_p.exists():
                         return pl.read_ipc(ipc_p)
                 if "_current_df" in tbl_meta:
-                    f_name = tbl_meta["_current_df"].get("file", "_current_df.ipc") if isinstance(tbl_meta["_current_df"], dict) else "_current_df.ipc"
+                    f_name = (
+                        tbl_meta["_current_df"].get("file", "_current_df.ipc")
+                        if isinstance(tbl_meta["_current_df"], dict)
+                        else "_current_df.ipc"
+                    )
                     ipc_p = cp_dir / f_name
                     if ipc_p.exists():
                         return pl.read_ipc(ipc_p)
@@ -32886,12 +32433,6 @@ class PytaeRepl:
         if self.session_name is None:
             self._clear_all_checkpoints()
             self._cleanup_cp_dir()
-        for _, snap in self.undo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
-        for _, snap in self.redo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
         self.tables.clear()
         self.orig_tables.clear()
         self.initial_tables.clear()
@@ -33015,9 +32556,7 @@ class PytaeRepl:
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         (s_dir / "history.json").write_text(json.dumps(self.history, indent=2), encoding="utf-8")
 
-    def _load_session_from_disk(
-        self, name: str, output_fn: Callable[[str], None] | None = None
-    ) -> bool:
+    def _load_session_from_disk(self, name: str, output_fn: Callable[[str], None] | None = None) -> bool:
         """Load session history and saved checkpoints from disk, activating the latest checkpoint."""
         s_dir = get_sessions_dir() / name
         if not s_dir.exists():
@@ -33183,11 +32722,11 @@ class PytaeRepl:
         target_name = name.strip()
         s_dir = get_sessions_dir() / target_name
         if not s_dir.exists():
-            avail = [
-                p.name
-                for p in get_sessions_dir().iterdir()
-                if p.is_dir() and not p.name.startswith(".")
-            ] if get_sessions_dir().exists() else []
+            avail = (
+                [p.name for p in get_sessions_dir().iterdir() if p.is_dir() and not p.name.startswith(".")]
+                if get_sessions_dir().exists()
+                else []
+            )
             avail_str = ", ".join(avail) if avail else "none"
             output_fn(f"pytae: session '{target_name}' not found. Available: {avail_str}")
             return
@@ -33205,18 +32744,8 @@ class PytaeRepl:
             return True
 
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
-        ansi_up_count = (
-            line.count("\x1b[A")
-            + line.count("\x1bOA")
-            + line.count("^[[A")
-            + line.count("^[OA")
-        )
-        ansi_down_count = (
-            line.count("\x1b[B")
-            + line.count("\x1bOB")
-            + line.count("^[[B")
-            + line.count("^[OB")
-        )
+        ansi_up_count = line.count("\x1b[A") + line.count("\x1bOA") + line.count("^[[A") + line.count("^[OA")
+        ansi_down_count = line.count("\x1b[B") + line.count("\x1bOB") + line.count("^[[B") + line.count("^[OB")
         cleaned_ansi = (
             line.replace("\x1b[A", "")
             .replace("\x1bOA", "")
@@ -33441,13 +32970,6 @@ class PytaeRepl:
                 if not self.tables:
                     output_fn("No tables loaded to remove.")
                     return True
-                # Clean up any cached IPC directories in undo/redo stacks
-                for _, old_snap in self.undo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
-                for _, old_snap in self.redo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
                 self.undo_stack.clear()
                 self.redo_stack.clear()
                 count = len(self.tables)
@@ -33470,13 +32992,6 @@ class PytaeRepl:
 
             resolved = self._resolve_table_name(target)
             if resolved is not None:
-                # Clean up undo/redo stacks to release any pinned DataFrame snapshots and prevent resurrecting removed table
-                for _, old_snap in self.undo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
-                for _, old_snap in self.redo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
                 self.undo_stack.clear()
                 self.redo_stack.clear()
                 del self.tables[resolved]
@@ -33533,9 +33048,19 @@ class PytaeRepl:
 
         # Bare table name switches active dataset and shows shape only (Model 2: no table dump)
         resolved_table = self._resolve_table_name(tokens[0])
+        is_bare_switch_timed = False
+        if resolved_table and len(tokens) >= 2:
+            sub = tokens[1:]
+            if (
+                sub == ["-time"]
+                or (len(sub) == 2 and sub[0] == "-time" and sub[1].isdigit())
+                or (len(sub) == 1 and sub[0].startswith("-time="))
+            ):
+                is_bare_switch_timed = True
+
         if (
             resolved_table
-            and len(tokens) == 1
+            and (len(tokens) == 1 or is_bare_switch_timed)
             and first_lower
             not in (
                 "help",
@@ -33570,12 +33095,36 @@ class PytaeRepl:
                 "free",
             )
         ):
-            self.current_df = self.tables[resolved_table]
-            self.orig_df = self.orig_tables.get(resolved_table)
-            self.initial_df = self.initial_tables.get(resolved_table)
-            self.path_str = resolved_table
-            n_rows, n_cols = self.current_df.shape
-            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols")
+            import time as _time
+
+            from pytae.cli import _format_duration_ms, _format_timing_summary
+
+            runs = 1
+            if len(tokens) == 3 and tokens[1] == "-time" and tokens[2].isdigit():
+                runs = max(1, int(tokens[2]))
+            elif len(tokens) == 2 and tokens[1].startswith("-time="):
+                try:
+                    runs = max(1, int(tokens[1].split("=", 1)[1]))
+                except ValueError:
+                    runs = 1
+
+            durations = []
+            for _ in range(runs):
+                t0 = _time.perf_counter()
+                self.current_df = self.tables[resolved_table]
+                self.orig_df = self.orig_tables.get(resolved_table)
+                self.initial_df = self.initial_tables.get(resolved_table)
+                self.path_str = resolved_table
+                n_rows, n_cols = self.current_df.shape
+                durations.append(_time.perf_counter() - t0)
+
+            timing_str = ""
+            if is_bare_switch_timed:
+                if len(durations) == 1:
+                    timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
+                else:
+                    timing_str = f" | {_format_timing_summary(durations)}"
+            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols{timing_str}")
             return True
 
         # Targeted table command (e.g. `df1 -filter ...` or `df -cols` or `penguins head 5`)
@@ -33610,7 +33159,9 @@ class PytaeRepl:
 
         if first_lower == "checkpoint":
             if len(tokens) < 2:
-                output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline), checkpoint rm <name>, or checkpoint rm *")
+                output_fn(
+                    "Usage: checkpoint <name> (e.g. checkpoint baseline), checkpoint rm <name>, or checkpoint rm *"
+                )
                 return True
             if tokens[1].lower() == "rm":
                 if len(tokens) < 3:
@@ -33691,101 +33242,111 @@ class PytaeRepl:
             return True
 
         # Non-destructive dataset inspection (-shape, -cols, -dtype, etc.)
-        if first_lower == "-shape":
-            if self.current_df is not None:
-                output_fn(f"({self.current_df.shape[0]}, {self.current_df.shape[1]})")
-            else:
-                output_fn("No dataset loaded.")
-            return True
-
-        if first_lower == "-cols" or first_lower.startswith("-cols="):
-            if self.current_df is not None:
-                order = "file"
-                if "=" in first_lower:
-                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                elif len(tokens) > 1:
-                    order = tokens[1].lower()
-                cols = list(self.current_df.columns)
-                if order == "asc":
-                    cols = sorted(cols, key=lambda s: (s.lower(), s))
-                elif order == "desc":
-                    cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
-                elif order != "file":
-                    cols = [c for c in cols if order in c.lower()]
-                output_fn("\n".join(cols))
-            else:
-                output_fn("No dataset loaded.")
-            return True
-
-        if first_lower == "-dtype" or first_lower.startswith("-dtype="):
-            if self.current_df is not None:
-                order = "file"
-                if "=" in first_lower:
-                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                elif len(tokens) > 1:
-                    order = tokens[1].lower()
-                reader = DataFrameReader(self.current_df)
-                dtypes = reader.dtypes()
-                if order == "asc":
-                    dtypes = dtypes.sort_index(ascending=True)
-                elif order == "desc":
-                    dtypes = dtypes.sort_index(ascending=False)
-                output_fn(dtypes.to_string())
-            else:
-                output_fn("No dataset loaded.")
-            return True
-
-        if first_lower == "-nulls" or first_lower.startswith("-nulls="):
-            if self.current_df is not None:
-                order = "file"
-                if "=" in first_lower:
-                    order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                elif len(tokens) > 1:
-                    order = tokens[1].lower()
-                nulls_s = self.current_df.null_count().to_pandas().iloc[0]
-                if order == "asc":
-                    nulls_s = nulls_s.sort_index(ascending=True)
-                elif order == "desc":
-                    nulls_s = nulls_s.sort_index(ascending=False)
-                output_fn(nulls_s.to_string())
-            else:
-                output_fn("No dataset loaded.")
-            return True
-
-        if first_lower == "-glimpse":
-            if self.current_df is not None:
-                from pytae.dataframe import DataFrame as PytaeDataFrame
-
-                output_fn(PytaeDataFrame(self.current_df).glimpse())
-            else:
-                output_fn("No dataset loaded.")
-            return True
-
-        if first_lower == "-describe":
-            if self.current_df is not None:
-                output_fn(_format_table(self.current_df.describe()))
-            else:
-                output_fn("No dataset loaded.")
-            return True
-
-        if first_lower == "-head":
-            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            if self.current_df is not None:
-                output_fn(_format_table(self.current_df.head(n), tbl_rows=max(n, 10)))
-            else:
-                output_fn("No dataset loaded.")
-            return True
-
-        if first_lower == "-tail":
-            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            if self.current_df is not None:
-                output_fn(_format_table(self.current_df.tail(n), tbl_rows=max(n, 10)))
-            else:
-                output_fn("No dataset loaded.")
+        has_time = any(t == "-time" or t.startswith("-time=") for t in tokens)
+        if not has_time and self._try_fast_inspection(self.current_df, tokens, output_fn):
             return True
 
         # Otherwise, process as a pytae pipeline command
         self._cmd_pipeline(line, tokens, output_fn)
+        return True
+
+    def _try_fast_inspection(
+        self,
+        df: pl.DataFrame | None,
+        tokens: list[str],
+        output_fn: Callable[[str], None],
+        *,
+        allow_sample: bool = False,
+    ) -> bool:
+        """Handle fast single-flag inspection commands on `df`. Returns True if handled."""
+        if not tokens:
+            return False
+        first_lower = tokens[0].lower()
+        is_inspect = (
+            first_lower in ("-shape", "-glimpse", "-describe", "-head", "-tail")
+            or first_lower == "-cols"
+            or first_lower.startswith("-cols=")
+            or first_lower == "-dtype"
+            or first_lower.startswith("-dtype=")
+            or first_lower == "-nulls"
+            or first_lower.startswith("-nulls=")
+            or (allow_sample and first_lower == "-sample")
+        )
+        if not is_inspect:
+            return False
+        if df is None:
+            output_fn("No dataset loaded.")
+            return True
+        if first_lower == "-shape":
+            output_fn(f"({df.shape[0]}, {df.shape[1]})")
+        elif first_lower == "-cols" or first_lower.startswith("-cols="):
+            order = "file"
+            if "=" in first_lower:
+                order = first_lower.split("=", 1)[1].strip("\"'").lower()
+            elif len(tokens) > 1:
+                order = tokens[1].lower()
+            cols = list(df.columns)
+            if order == "asc":
+                cols = sorted(cols, key=lambda s: (s.lower(), s))
+            elif order == "desc":
+                cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
+            elif order != "file":
+                cols = [c for c in cols if order in c.lower()]
+            output_fn("\n".join(cols))
+        elif first_lower == "-dtype" or first_lower.startswith("-dtype="):
+            order = "file"
+            if "=" in first_lower:
+                order = first_lower.split("=", 1)[1].strip("\"'").lower()
+            elif len(tokens) > 1:
+                order = tokens[1].lower()
+            dtypes = DataFrameReader(df).dtypes()
+            if order == "asc":
+                dtypes = dtypes.sort_index(ascending=True)
+            elif order == "desc":
+                dtypes = dtypes.sort_index(ascending=False)
+            output_fn(dtypes.to_string())
+        elif first_lower == "-nulls" or first_lower.startswith("-nulls="):
+            order = "file"
+            if "=" in first_lower:
+                order = first_lower.split("=", 1)[1].strip("\"'").lower()
+            elif len(tokens) > 1:
+                order = tokens[1].lower()
+            nulls_s = df.null_count().to_pandas().iloc[0]
+            if order == "asc":
+                nulls_s = nulls_s.sort_index(ascending=True)
+            elif order == "desc":
+                nulls_s = nulls_s.sort_index(ascending=False)
+            output_fn(nulls_s.to_string())
+        elif first_lower == "-glimpse":
+            from pytae.other_utilities import format_glimpse
+
+            output_fn(format_glimpse(df))
+        elif first_lower == "-describe":
+            output_fn(_format_table(df.describe()))
+        elif first_lower == "-head":
+            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
+            output_fn(_format_table(df.head(n), tbl_rows=max(n, 10)))
+        elif first_lower == "-tail":
+            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
+            output_fn(_format_table(df.tail(n), tbl_rows=max(n, 10)))
+        elif first_lower == "-sample":
+            n = 5
+            frac = None
+            if len(tokens) > 1:
+                val = tokens[1]
+                if "." in val:
+                    try:
+                        frac = float(val)
+                    except ValueError:
+                        pass
+                elif val.isdigit():
+                    n = int(val)
+            if frac is not None:
+                sampled = df.sample(fraction=frac)
+            else:
+                sample_n = min(n, len(df))
+                sampled = df.sample(n=sample_n) if sample_n > 0 else df.head(0)
+            output_fn(_format_table(sampled, tbl_rows=max(len(sampled), 10)))
         return True
 
     def clear(self, output_fn: Callable[[str], None] = print) -> None:
@@ -33918,9 +33479,7 @@ class PytaeRepl:
             f"Reset table '{table_name}' to initial state ({restored_df.shape[0]:,} rows x {restored_df.shape[1]} cols)."
         )
 
-    def _reset_to_initial(
-        self, output_fn: Callable[[str], None], is_explicit_initial: bool = False
-    ) -> None:
+    def _reset_to_initial(self, output_fn: Callable[[str], None], is_explicit_initial: bool = False) -> None:
         source_tables = self.initial_tables if self.initial_tables else self.orig_tables
         source_df = self.initial_df if self.initial_df is not None else self.orig_df
         if not source_tables and source_df is None:
@@ -33980,65 +33539,13 @@ class PytaeRepl:
         """Push an entry onto undo_stack, enforcing MAX_UNDO_STEPS sliding window."""
         self.undo_stack.append((desc, snapshot))
         while len(self.undo_stack) > self.max_undo_steps:
-            _, old_snap = self.undo_stack.pop(0)
-            if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                shutil.rmtree(old_snap["dir"], ignore_errors=True)
+            self.undo_stack.pop(0)
 
     def _push_redo(self, desc: str, snapshot: Any) -> None:
         """Push an entry onto redo_stack, enforcing MAX_UNDO_STEPS sliding window."""
         self.redo_stack.append((desc, snapshot))
         while len(self.redo_stack) > self.max_undo_steps:
-            _, old_snap = self.redo_stack.pop(0)
-            if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                shutil.rmtree(old_snap["dir"], ignore_errors=True)
-
-    def _capture_session_state_to_disk(self) -> dict[str, Any]:
-        """Serialize current session tables to a temporary IPC disk folder to free all RAM."""
-        import uuid
-
-        undo_dir = self._get_cp_dir() / f"_undo_{uuid.uuid4().hex[:12]}"
-        undo_dir.mkdir(parents=True, exist_ok=True)
-        saved_tables: dict[str, str] = {}
-        saved_orig: dict[str, str] = {}
-        saved_initial: dict[str, str] = {}
-        written_files: dict[int, str] = {}
-
-        def _write_df_once(df: pl.DataFrame, prefix: str, name: str) -> str:
-            df_id = id(df)
-            if df_id in written_files:
-                return written_files[df_id]
-            fname = f"{prefix}{_safe_ipc_filename(name)}"
-            df.write_ipc(undo_dir / fname)
-            written_files[df_id] = fname
-            return fname
-
-        try:
-            for tbl_name, tbl_df in self.tables.items():
-                saved_tables[tbl_name] = _write_df_once(tbl_df, "", tbl_name)
-
-            for tbl_name, tbl_df in self.orig_tables.items():
-                saved_orig[tbl_name] = _write_df_once(tbl_df, "_orig_", tbl_name)
-
-            for tbl_name, tbl_df in self.initial_tables.items():
-                saved_initial[tbl_name] = _write_df_once(tbl_df, "_init_", tbl_name)
-
-            cur_ipc: str | None = None
-            if self.current_df is not None:
-                cur_ipc = _write_df_once(self.current_df, "_cur_", "current_df")
-
-            return {
-                "type": "disk_ipc",
-                "dir": str(undo_dir),
-                "tables": saved_tables,
-                "orig_tables": saved_orig,
-                "initial_tables": saved_initial,
-                "current_df": cur_ipc,
-                "table_sources": dict(self.table_sources),
-                "active_table": self.path_str,
-            }
-        except OSError:
-            shutil.rmtree(undo_dir, ignore_errors=True)
-            raise
+            self.redo_stack.pop(0)
 
     def _cmd_undo(self, output_fn: Callable[[str], None]) -> None:
         if not self.undo_stack:
@@ -34047,8 +33554,6 @@ class PytaeRepl:
         desc, prev_state = self.undo_stack.pop()
         self._push_redo(desc, self._capture_session_state())
         self._apply_session_state(prev_state)
-        if isinstance(prev_state, dict) and prev_state.get("type") == "disk_ipc":
-            shutil.rmtree(prev_state["dir"], ignore_errors=True)
         self.history.append(f"undo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
@@ -34062,8 +33567,6 @@ class PytaeRepl:
         desc, next_state = self.redo_stack.pop()
         self._push_undo(desc, self._capture_session_state())
         self._apply_session_state(next_state)
-        if isinstance(next_state, dict) and next_state.get("type") == "disk_ipc":
-            shutil.rmtree(next_state["dir"], ignore_errors=True)
         self.history.append(f"redo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
@@ -34100,39 +33603,6 @@ class PytaeRepl:
                 self.tables[self.path_str] = state
             return
         if isinstance(state, dict):
-            if state.get("type") == "disk_ipc":
-                u_dir = Path(state["dir"])
-                self.tables = {}
-                for tbl_name, ipc_file in state.get("tables", {}).items():
-                    p = u_dir / ipc_file
-                    if p.exists():
-                        self.tables[tbl_name] = pl.read_ipc(p)
-                self.orig_tables = {}
-                for tbl_name, ipc_file in state.get("orig_tables", {}).items():
-                    p = u_dir / ipc_file
-                    if p.exists():
-                        self.orig_tables[tbl_name] = pl.read_ipc(p)
-                self.initial_tables = {}
-                for tbl_name, ipc_file in state.get("initial_tables", {}).items():
-                    p = u_dir / ipc_file
-                    if p.exists():
-                        self.initial_tables[tbl_name] = pl.read_ipc(p)
-                self.table_sources = dict(state.get("table_sources", {}))
-                self.path_str = state.get("active_table")
-                if self.path_str and self.path_str in self.tables:
-                    self.current_df = self.tables[self.path_str]
-                    self.orig_df = self.orig_tables.get(self.path_str)
-                    self.initial_df = self.initial_tables.get(self.path_str)
-                elif state.get("current_df") and (u_dir / state["current_df"]).exists():
-                    self.current_df = pl.read_ipc(u_dir / state["current_df"])
-                    self.orig_df = self.current_df
-                    self.initial_df = self.current_df
-                else:
-                    self.current_df = None
-                    self.orig_df = None
-                    self.initial_df = None
-                return
-
             self.tables = {k: v.clone() for k, v in state.get("tables", {}).items()}
             self.orig_tables = {k: v.clone() for k, v in state.get("orig_tables", {}).items()}
             self.initial_tables = {k: v.clone() for k, v in state.get("initial_tables", {}).items()}
@@ -34196,12 +33666,6 @@ class PytaeRepl:
             self._save_session_metadata()
 
         # Reset undo and redo stacks upon creating a checkpoint to establish new baseline and free intermediate memory
-        for _, snap in self.undo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
-        for _, snap in self.redo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
         self.undo_stack.clear()
         self.redo_stack.clear()
         _release_memory()
@@ -34216,9 +33680,7 @@ class PytaeRepl:
         else:
             output_fn(f"Saved checkpoint '{name}'.")
 
-    def _cmd_restore(
-        self, name: str, output_fn: Callable[[str], None], record_history: bool = True
-    ) -> None:
+    def _cmd_restore(self, name: str, output_fn: Callable[[str], None], record_history: bool = True) -> None:
         if name not in self.checkpoints:
             avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
             output_fn(f"pytae: checkpoint '{name}' not found. Available checkpoints: {avail}")
@@ -34320,7 +33782,9 @@ class PytaeRepl:
                         output_fn(f"  - {name:<15}: {summary}{active_suffix}")
                     elif tbls:
                         t_name, val = next(iter(tbls.items()))
-                        shape = val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
+                        shape = (
+                            val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
+                        )
                         if shape:
                             output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols")
                         else:
@@ -34448,75 +33912,48 @@ class PytaeRepl:
             first_tok = right_tokens[0]
             first_lower = first_tok.lower()
             if first_lower in _BARE_PIPELINE_VERBS:
-                output_fn(
-                    f"pytae: bare '{first_tok}' is not recognized; use '-{first_tok}' (matching CLI syntax)."
-                )
+                output_fn(f"pytae: bare '{first_tok}' is not recognized; use '-{first_tok}' (matching CLI syntax).")
                 return
 
-            # Active-table pipeline assignment: `df = -filter ...` or `k = -filter ...`
+            source_df: pl.DataFrame | None = None
+            source_label = ""
+            pipe_tokens: list[str] = []
+            pipe_line = ""
+
             if first_tok.startswith("-"):
                 if self.current_df is None:
                     output_fn("pytae: no active dataset loaded to apply pipeline.")
                     return
                 source_df = self.current_df
+                source_label = self.path_str or "active"
                 pipe_tokens = right_tokens
                 pipe_line = right_expr
-
-                first_pipe = pipe_tokens[0].lower()
-                if first_pipe in _DISALLOWED_ALIASES:
-                    canonical = _DISALLOWED_ALIASES[first_pipe]
-                    output_fn(f"pytae: '{first_pipe}' is not recognized; use '{canonical}'.")
-                    return
-                if first_pipe in _BARE_PIPELINE_VERBS:
-                    output_fn(
-                        f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
-                    )
-                    return
-
-                if first_pipe == "-join":
-                    self.current_df = source_df.clone()
-                    self._cmd_join(pipe_tokens[1:], output_fn)
-                    res_df = self.current_df
-                else:
-                    res_df = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
-                    if res_df is None:
-                        return
-
-                was_existing = var_name in self.tables
-                self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
-                self.tables[var_name] = res_df
-                self.table_sources[var_name] = f"{self.path_str or 'active'} {pipe_line[:20]}"
-                self.current_df = res_df
-                self.path_str = var_name
-                self.history.append(f"{var_name} = {right_expr}")
-                action = "Updated" if was_existing else "Created"
-                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
-                return
-
-            resolved_src = self._resolve_table_name(first_tok)
-            if resolved_src is not None or first_tok in self.checkpoints:
-                if resolved_src is not None:
-                    source_df = self.tables[resolved_src]
-                else:
-                    source_df = self._get_checkpoint_df(first_tok)
-                    if source_df is None:
+            else:
+                resolved_src = self._resolve_table_name(first_tok)
+                if resolved_src is not None or first_tok in self.checkpoints:
+                    if resolved_src is not None:
+                        source_df = self.tables[resolved_src]
+                    else:
+                        source_df = self._get_checkpoint_df(first_tok)
+                        if source_df is None:
+                            output_fn(
+                                f"pytae: checkpoint '{first_tok}' contains multiple tables. Use 'restore {first_tok}' to restore entire workbench."
+                            )
+                            return
+                    source_label = first_tok
+                    pipe_tokens = right_tokens[1:]
+                    pipe_line = right_expr[len(first_tok) :].strip()
+                    if not pipe_tokens:
+                        self.tables[var_name] = source_df.clone()
+                        self.table_sources[var_name] = f"copy of {first_tok}"
+                        self.current_df = self.tables[var_name]
+                        self.path_str = var_name
                         output_fn(
-                            f"pytae: checkpoint '{first_tok}' contains multiple tables. Use 'restore {first_tok}' to restore entire workbench."
+                            f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols)."
                         )
                         return
-                pipe_tokens = right_tokens[1:]
-                pipe_line = right_expr[len(first_tok) :].strip()
-                if not pipe_tokens:
-                    # Simple copy: `df3 = df1`
-                    self.tables[var_name] = source_df.clone()
-                    self.table_sources[var_name] = f"copy of {first_tok}"
-                    self.current_df = self.tables[var_name]
-                    self.path_str = var_name
-                    output_fn(
-                        f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols)."
-                    )
-                    return
-                # Check for disallowed alias or bare verb in pipeline
+
+            if source_df is not None:
                 first_pipe = pipe_tokens[0].lower()
                 if first_pipe in _DISALLOWED_ALIASES:
                     canonical = _DISALLOWED_ALIASES[first_pipe]
@@ -34527,24 +33964,32 @@ class PytaeRepl:
                         f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
                     )
                     return
-                # Run pipeline or join on source_df
                 if first_pipe == "-join":
                     self.current_df = source_df.clone()
                     self._cmd_join(pipe_tokens[1:], output_fn)
                     res_df = self.current_df
+                    durations = None
                 else:
-                    res_df = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
+                    res_df, durations = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
                     if res_df is None:
                         return
                 was_existing = var_name in self.tables
                 self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
                 self.tables[var_name] = res_df
-                self.table_sources[var_name] = f"{first_tok} {pipe_line[:20]}"
+                self.table_sources[var_name] = f"{source_label} {pipe_line[:20]}"
                 self.current_df = res_df
                 self.path_str = var_name
                 self.history.append(f"{var_name} = {right_expr}")
                 action = "Updated" if was_existing else "Created"
-                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols).")
+                timing_str = ""
+                if durations:
+                    from pytae.cli import _format_duration_ms, _format_timing_summary
+
+                    if len(durations) == 1:
+                        timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
+                    else:
+                        timing_str = f" | {_format_timing_summary(durations)}"
+                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols){timing_str}.")
                 return
 
         output_fn(f"pytae: could not assign '{var_name}'. '{clean_path}' is not an existing file or table.")
@@ -34566,79 +34011,17 @@ class PytaeRepl:
             self.path_str = old_path
             return
 
+        has_time = any(t == "-time" or t.startswith("-time=") for t in sub_tokens)
+        if has_time:
+            self._cmd_pipeline(sub_line, sub_tokens, output_fn)
+            self.current_df = old_active
+            self.path_str = old_path
+            return
+
         if first_sub in _BARE_PIPELINE_VERBS:
             output_fn(f"pytae: bare '{first_sub}' is not recognized; use '-{first_sub}' (matching CLI syntax).")
-        elif first_sub == "-shape":
-            output_fn(f"({target_df.shape[0]}, {target_df.shape[1]})")
-        elif first_sub == "-cols" or first_sub.startswith("-cols="):
-            order = "file"
-            if "=" in first_sub:
-                order = first_sub.split("=", 1)[1].strip("\"'").lower()
-            elif len(sub_tokens) > 1:
-                order = sub_tokens[1].lower()
-            cols = list(target_df.columns)
-            if order == "asc":
-                cols = sorted(cols, key=lambda s: (s.lower(), s))
-            elif order == "desc":
-                cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
-            elif order != "file":
-                cols = [c for c in cols if order in c.lower()]
-            output_fn("\n".join(cols))
-        elif first_sub == "-dtype" or first_sub.startswith("-dtype="):
-            order = "file"
-            if "=" in first_sub:
-                order = first_sub.split("=", 1)[1].strip("\"'").lower()
-            elif len(sub_tokens) > 1:
-                order = sub_tokens[1].lower()
-            reader = DataFrameReader(target_df)
-            dtypes = reader.dtypes()
-            if order == "asc":
-                dtypes = dtypes.sort_index(ascending=True)
-            elif order == "desc":
-                dtypes = dtypes.sort_index(ascending=False)
-            output_fn(dtypes.to_string())
-        elif first_sub == "-nulls" or first_sub.startswith("-nulls="):
-            order = "file"
-            if "=" in first_sub:
-                order = first_sub.split("=", 1)[1].strip("\"'").lower()
-            elif len(sub_tokens) > 1:
-                order = sub_tokens[1].lower()
-            nulls_s = target_df.null_count().to_pandas().iloc[0]
-            if order == "asc":
-                nulls_s = nulls_s.sort_index(ascending=True)
-            elif order == "desc":
-                nulls_s = nulls_s.sort_index(ascending=False)
-            output_fn(nulls_s.to_string())
-        elif first_sub == "-glimpse":
-            from pytae.dataframe import DataFrame as PytaeDataFrame
-
-            output_fn(PytaeDataFrame(target_df).glimpse())
-        elif first_sub == "-describe":
-            output_fn(_format_table(target_df.describe()))
-        elif first_sub == "-head":
-            n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
-            output_fn(_format_table(target_df.head(n), tbl_rows=max(n, 10)))
-        elif first_sub == "-tail":
-            n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
-            output_fn(_format_table(target_df.tail(n), tbl_rows=max(n, 10)))
-        elif first_sub == "-sample":
-            n = 5
-            frac = None
-            if len(sub_tokens) > 1:
-                val = sub_tokens[1]
-                if "." in val:
-                    try:
-                        frac = float(val)
-                    except ValueError:
-                        pass
-                elif val.isdigit():
-                    n = int(val)
-            if frac is not None:
-                sampled = target_df.sample(fraction=frac)
-            else:
-                sample_n = min(n, len(target_df))
-                sampled = target_df.sample(n=sample_n) if sample_n > 0 else target_df.head(0)
-            output_fn(_format_table(sampled, tbl_rows=max(len(sampled), 10)))
+        elif self._try_fast_inspection(target_df, sub_tokens, output_fn, allow_sample=True):
+            pass
         elif first_sub == "-o":
             dest = sub_tokens[1] if len(sub_tokens) > 1 else "output.parquet"
             self._cmd_save(dest, output_fn)
@@ -34710,7 +34093,6 @@ class PytaeRepl:
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
         except Exception as exc:
-            output_fn(f"pytae: failed to load {p}: {exc}")
             output_fn(f"pytae: failed to load {p}: {exc}")
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
@@ -34810,9 +34192,7 @@ class PytaeRepl:
             right_df = self._get_checkpoint_df(right_name)
             if right_df is None:
                 avail = ", ".join(self.tables.keys()) if self.tables else "none"
-                output_fn(
-                    f"pytae: could not load right table from checkpoint '{right_name}'. Available: {avail}"
-                )
+                output_fn(f"pytae: could not load right table from checkpoint '{right_name}'. Available: {avail}")
                 return
         else:
             try:
@@ -34947,9 +34327,10 @@ class PytaeRepl:
         source_df: pl.DataFrame,
         tokens: list[str],
         output_fn: Callable[[str], None] = print,
-    ) -> pl.DataFrame | None:
-        """Evaluate a pipeline on source_df without printing, returning the resulting pl.DataFrame."""
+    ) -> tuple[pl.DataFrame | None, list[float] | None]:
+        """Evaluate a pipeline on source_df without printing, returning (resulting_df, durations)."""
         from pytae.cli import (
+            _normalize_cli_args,
             build_parser,
             parse_concat_arg,
             parse_filter,
@@ -34958,7 +34339,7 @@ class PytaeRepl:
             parse_select_spec,
         )
 
-        exec_argv = ["<memory>"] + tokens
+        exec_argv = _normalize_cli_args(["<memory>"] + tokens)
         parser = build_parser(exit_on_error=False)
         try:
             args, extras = parser.parse_known_args(exec_argv)
@@ -34970,10 +34351,10 @@ class PytaeRepl:
                     )
                 else:
                     output_fn(f"pytae: unrecognized arguments: {' '.join(extras)}")
-                return None
+                return None, None
         except (argparse.ArgumentError, SystemExit) as exc:
             output_fn(f"pytae syntax error: {exc}")
-            return None
+            return None, None
 
         rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
         select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
@@ -34989,44 +34370,96 @@ class PytaeRepl:
         args.quiet = True
         args.output_fn = lambda s: None
 
+        has_action = bool(op_order) or any(
+            [
+                args.shape,
+                args.cols,
+                args.dtype,
+                args.nulls,
+                args.describe,
+                args.glimpse,
+                args.head is not None,
+                args.tail is not None,
+                args.sample is not None,
+                args.stats,
+                getattr(args, "diff", None) is not None,
+                getattr(args, "meta", False),
+                getattr(args, "plot", None) is not None,
+                getattr(args, "hist", None) is not None,
+                getattr(args, "bar", None) is not None,
+                getattr(args, "scatter", None) is not None,
+                getattr(args, "corr", None) is not None,
+            ]
+        )
+        show_all = not has_action
+
+        runs = getattr(args, "time", None)
+        durations: list[float] | None = None
         try:
-            failed = _process_path(
-                Path("<memory>"),
-                args,
-                parser,
-                batch=True,
-                show_all=not op_order,
-                select_specs=select_specs,
-                filter_specs=filter_specs,
-                mutate_specs=mutate_specs,
-                sql_specs=sql_specs,
-                rename_specs=rename_specs,
-                join_specs=join_specs,
-                concat_specs=concat_specs,
-            )
+            if runs:
+                import time as _time
+
+                durations = []
+                for _ in range(runs):
+                    t0 = _time.perf_counter()
+                    failed = _process_path(
+                        Path("<memory>"),
+                        args,
+                        parser,
+                        batch=True,
+                        show_all=show_all,
+                        select_specs=select_specs,
+                        filter_specs=filter_specs,
+                        mutate_specs=mutate_specs,
+                        sql_specs=sql_specs,
+                        rename_specs=rename_specs,
+                        join_specs=join_specs,
+                        concat_specs=concat_specs,
+                    )
+                    durations.append(_time.perf_counter() - t0)
+                    if failed:
+                        break
+            else:
+                failed = _process_path(
+                    Path("<memory>"),
+                    args,
+                    parser,
+                    batch=True,
+                    show_all=show_all,
+                    select_specs=select_specs,
+                    filter_specs=filter_specs,
+                    mutate_specs=mutate_specs,
+                    sql_specs=sql_specs,
+                    rename_specs=rename_specs,
+                    join_specs=join_specs,
+                    concat_specs=concat_specs,
+                )
             if failed:
-                return None
+                return None, None
             res_frame = getattr(args, "_result_frame", None)
+            res_pl: pl.DataFrame | None = None
             if res_frame is not None:
                 if isinstance(res_frame, pl.LazyFrame):
-                    return res_frame.collect()
+                    res_pl = res_frame.collect()
                 elif isinstance(res_frame, pl.DataFrame):
-                    return res_frame
-                return pl.from_pandas(res_frame)
-            return source_df
+                    res_pl = res_frame
+                else:
+                    res_pl = pl.from_pandas(res_frame)
+            else:
+                res_pl = source_df
+            return res_pl, durations
         except Exception as exc:
             output_fn(f"pytae error: {exc}")
-            return None
+            return None, None
 
     def _cmd_pipeline(self, line: str, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
             output_fn("pytae: no dataset loaded. Load a dataset first with '<var> = <path.parquet>'.")
             return
 
-        # Build pipeline execution argv directly without bare verb auto-prefixing
-        exec_argv = ["<memory>"] + tokens
-
         from pytae.cli import (
+            _format_timing_summary,
+            _normalize_cli_args,
             build_parser,
             parse_concat_arg,
             parse_filter,
@@ -35035,6 +34468,7 @@ class PytaeRepl:
             parse_select_spec,
         )
 
+        exec_argv = _normalize_cli_args(["<memory>"] + tokens)
         parser = build_parser(exit_on_error=False)
         try:
             args, extras = parser.parse_known_args(exec_argv)
@@ -35068,24 +34502,95 @@ class PytaeRepl:
         args.in_repl = True
         args.output_fn = output_fn
 
+        has_action = bool(op_order) or any(
+            [
+                args.shape,
+                args.cols,
+                args.dtype,
+                args.nulls,
+                args.describe,
+                args.glimpse,
+                args.head is not None,
+                args.tail is not None,
+                args.sample is not None,
+                args.stats,
+                getattr(args, "diff", None) is not None,
+                getattr(args, "meta", False),
+                getattr(args, "plot", None) is not None,
+                getattr(args, "hist", None) is not None,
+                getattr(args, "bar", None) is not None,
+                getattr(args, "scatter", None) is not None,
+                getattr(args, "corr", None) is not None,
+            ]
+        )
+        show_all = not has_action
+
+        runs = getattr(args, "time", None)
         try:
-            failed = _process_path(
-                Path("<memory>"),
-                args,
-                parser,
-                batch=True,
-                show_all=not op_order,
-                select_specs=select_specs,
-                filter_specs=filter_specs,
-                mutate_specs=mutate_specs,
-                sql_specs=sql_specs,
-                rename_specs=rename_specs,
-                join_specs=join_specs,
-                concat_specs=concat_specs,
-            )
-            if failed:
-                output_fn("pytae: command failed with errors.")
-                return
+            if runs:
+                import time as _time
+
+                durations: list[float] = []
+                failed = False
+                for run_idx in range(runs):
+                    t0 = _time.perf_counter()
+                    if run_idx == 0:
+                        failed = _process_path(
+                            Path("<memory>"),
+                            args,
+                            parser,
+                            batch=True,
+                            show_all=show_all,
+                            select_specs=select_specs,
+                            filter_specs=filter_specs,
+                            mutate_specs=mutate_specs,
+                            sql_specs=sql_specs,
+                            rename_specs=rename_specs,
+                            join_specs=join_specs,
+                            concat_specs=concat_specs,
+                        )
+                    else:
+                        quiet_args = argparse.Namespace(**vars(args))
+                        quiet_args.output_fn = lambda s: None
+                        failed = _process_path(
+                            Path("<memory>"),
+                            quiet_args,
+                            parser,
+                            batch=True,
+                            show_all=False,
+                            select_specs=select_specs,
+                            filter_specs=filter_specs,
+                            mutate_specs=mutate_specs,
+                            sql_specs=sql_specs,
+                            rename_specs=rename_specs,
+                            join_specs=join_specs,
+                            concat_specs=concat_specs,
+                        )
+                    durations.append(_time.perf_counter() - t0)
+                    if failed:
+                        break
+                if failed:
+                    output_fn("pytae: command failed with errors.")
+                    return
+                output_fn(_format_timing_summary(durations))
+            else:
+                failed = _process_path(
+                    Path("<memory>"),
+                    args,
+                    parser,
+                    batch=True,
+                    show_all=show_all,
+                    select_specs=select_specs,
+                    filter_specs=filter_specs,
+                    mutate_specs=mutate_specs,
+                    sql_specs=sql_specs,
+                    rename_specs=rename_specs,
+                    join_specs=join_specs,
+                    concat_specs=concat_specs,
+                )
+                if failed:
+                    output_fn("pytae: command failed with errors.")
+                    return
 
             self.history.append(line)
         except Exception as exc:
@@ -35108,7 +34613,9 @@ class PytaeRepl:
                 "No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
             )
         if sys.platform == "win32" and not sys.stdin.isatty():
-            output_fn("  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)")
+            output_fn(
+                "  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)"
+            )
         output_fn("")
 
         def _get_input(prompt_text: str) -> str:
@@ -35600,9 +35107,10 @@ def select(
     import polars as pl
 
     if isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        schema = df.collect_schema() if isinstance(df, pl.LazyFrame) else df.schema
         target_cols = resolve_select_columns(
-            list(df.columns),
-            df.schema,
+            list(schema.names()),
+            schema,
             *args,
             exclude=exclude,
             dtype=dtype,
@@ -35748,7 +35256,7 @@ def validate_pipeline(
     import polars as pl
 
     from pytae.dataframe import DataFrame
-    from pytae.readers import read, scan_csv, scan_ipc, scan_ndjson, scan_parquet
+    from pytae.readers import get_reader, scan_csv, scan_ipc, scan_ndjson, scan_parquet
 
     if isinstance(source, (str, Path)):
         source_str = str(source)
@@ -35759,13 +35267,10 @@ def validate_pipeline(
             df = scan_csv(source_str, **kwargs).head(0)
         elif ext in (".ndjson", ".jsonl"):
             df = scan_ndjson(source_str, **kwargs).head(0)
-        elif ext in (".ipc", ".arrow"):
+        elif ext in (".ipc", ".arrow", ".feather"):
             df = scan_ipc(source_str, **kwargs).head(0)
         else:
-            try:
-                df = scan_parquet(source_str, **kwargs).head(0)
-            except Exception:
-                df = read(source_str, **kwargs).head(0)
+            df = DataFrame(get_reader(Path(source_str), **kwargs).head(0))
     elif isinstance(source, DataFrame):
         df = source.head(0)
     elif isinstance(source, (pl.DataFrame, pl.LazyFrame)):
@@ -39974,15 +39479,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-
-
-def test_parse_sort_by_trailing_direction():
-    from pytae.cli_parsing import parse_sort_by
-
-    assert parse_sort_by("val") == (["val"], "asc")
-    assert parse_sort_by("val desc") == (["val"], "desc")
-    assert parse_sort_by("species,body_mass_g desc") == (["species", "body_mass_g"], "desc")
-    assert parse_sort_by("bill length mm desc") == (["bill length mm"], "desc")
 
 
 def test_expand_paths_single_and_list(tmp_path):
@@ -46730,6 +46226,85 @@ def test_csv_reader_late_decimals_infer_schema(tmp_path):
     assert pt.read_csv(path)["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
     assert pt.scan_csv(path).collect()["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
 
+
+def test_ipc_reader_writer_and_cli_roundtrip(tmp_path):
+    import polars as pl
+
+    from pytae import cli
+
+    df = _frame()
+    for ext in (".ipc", ".arrow", ".feather"):
+        p = tmp_path / f"sample{ext}"
+        write_dataframe(df, p)
+        assert p.exists()
+        reader = get_reader(p)
+        assert reader.shape() == (3, 2)
+        assert reader.columns() == ["a", "b"]
+        pd.testing.assert_frame_equal(reader.head(2), df.head(2))
+        pd.testing.assert_frame_equal(reader.tail(1).reset_index(drop=True), df.tail(1).reset_index(drop=True))
+        pd.testing.assert_frame_equal(reader.to_dataframe(), df)
+        assert reader.to_polars_lazy(columns=["a"]).collect().columns == ["a"]
+
+    # LazyFrame sink_ipc via write_dataframe
+    lf = pl.DataFrame(df).lazy()
+    lazy_ipc_path = tmp_path / "lazy_out.ipc"
+    write_dataframe(lf, lazy_ipc_path)
+    assert get_reader(lazy_ipc_path).shape() == (3, 2)
+
+    # CLI -o ipc format shorthand
+    src_pq = tmp_path / "src.parquet"
+    df.to_parquet(src_pq, index=False)
+    rc = cli.main([str(src_pq), "-o", "ipc"])
+    assert rc == 0
+    assert (tmp_path / "src.ipc").exists()
+    assert get_reader(tmp_path / "src.ipc").shape() == (3, 2)
+
+
+def test_lazy_dataframe_methods_and_accessors(tmp_path):
+    import warnings
+
+    import polars as pl
+
+    import pytae as pt
+    from pytae.select import select
+
+    pq_path = tmp_path / "lazy_methods.parquet"
+    raw_pl = pl.DataFrame({"id": [1, 2], "a": [10, 20], "b": [30.0, 40.0]})
+    raw_pl.write_parquet(pq_path)
+
+    ldf = pt.scan_parquet(pq_path)
+    edf = pt.read_parquet(pq_path)
+
+    # .equals(), .to_numpy(), .values, .iloc on Lazy DataFrame
+    assert ldf.equals(edf)
+    assert edf.equals(ldf)
+    assert ldf.to_numpy().shape == (2, 3)
+    assert ldf.values.shape == (2, 3)
+    assert ldf.iloc[0]["a"] == 10
+    assert ldf.iloc[1, 2] == 40.0
+
+    # .select_dtypes() and select() on LazyFrame without PerformanceWarning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", pl.exceptions.PerformanceWarning)
+        num_df = ldf.select_dtypes(include="float")
+        assert list(num_df.columns) == ["b"]
+        sel_lf = select(raw_pl.lazy(), "id, a")
+        assert sel_lf.collect().columns == ["id", "a"]
+
+    # pt.long and .pt.long with r= parameter
+    long_pt = pt.long(edf, cols="a,b", r="id")
+    assert set(long_pt.columns) == {"id", "variable", "value"}
+    long_pl = raw_pl.pt.long(cols="a,b", r="id")
+    assert set(long_pl.columns) == {"id", "variable", "value"}
+    long_pd = raw_pl.to_pandas().pt.long(cols="a,b", r="id")
+    assert set(long_pd.columns) == {"id", "variable", "value"}
+
+    # pt.DataFrame.glimpse() returns pytae.DataFrame for chaining, while .pt.glimpse() returns self._obj
+    chained_pt = edf.glimpse().mutate("c = a + 1")
+    assert isinstance(chained_pt, pt.DataFrame)
+    assert "c" in chained_pt.columns
+    assert raw_pl.pt.glimpse() is raw_pl
+
 ################################################################################
 # FILE: tests/test_repl.py
 ################################################################################
@@ -47957,7 +47532,7 @@ def test_git_bash_pipe_ansi_arrow_history_recall(sample_df):
 
     # Run two commands to populate history
     r.execute_line("-cols", output_fn=outputs.append)
-    r.execute_line('df = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
 
     # In Git Bash without winpty, pressing Up Arrow + Enter sends "\x1b[A"
     outputs.clear()
@@ -48013,7 +47588,7 @@ def test_cli_repl_missing_encoding_reports_clean_error(tmp_path):
 def test_repl_and_cli_identical_schema_inference_and_fallback(tmp_path, monkeypatch, capsys):
     p = tmp_path / "schema_test.csv"
     # 50 rows of integers, then a row with latin-1 text
-    content = "id|val\n" + "".join(f"{i}|{i*10}\n" for i in range(50)) + "51|Montr\xe9al\n"
+    content = "id|val\n" + "".join(f"{i}|{i * 10}\n" for i in range(50)) + "51|Montr\xe9al\n"
     p.write_bytes(content.encode("latin-1"))
 
     # 1. CLI reading via pipeline
@@ -48103,7 +47678,7 @@ def test_repl_checkpoint_disk_storage_and_undo_reset(sample_df):
     r = PytaeRepl(df=sample_df)
 
     # 1. Do a transformation to create an undo step
-    r.execute_line('df = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert len(r.undo_stack) == 1
 
     # 2. Creating a checkpoint MUST reset undo and save tables to disk IPC
@@ -48202,7 +47777,7 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     orig_shape = r.tables["df1"].shape
 
     # 1. Filter and create checkpoint v1
-    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.current_df.shape[0] < orig_shape[0]
     gentoo_shape = r.current_df.shape
     r.execute_line("checkpoint v1", output_fn=outputs.append)
@@ -48261,7 +47836,7 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
 
     # 2. Filter both tables to distinct smaller subsets via assignment
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     df1_gentoo_shape = r.tables["df1"].shape
     assert df1_gentoo_shape[0] < orig_df1_shape[0]
 
@@ -48283,7 +47858,7 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
 
     # 4. Now filter df1 again and create a checkpoint 'v1'
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('df1 = -filter "species == \'Chinstrap\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Chinstrap'\"", output_fn=outputs.append)
     df1_chin_shape = r.tables["df1"].shape
     r.execute_line("checkpoint v1", output_fn=outputs.append)
 
@@ -48325,7 +47900,7 @@ def test_repl_history_option_b_milestone_banners():
     outputs = []
     r = PytaeRepl()
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     r.execute_line("checkpoint baseline", output_fn=outputs.append)
     r.execute_line('-mutate "mass_kg = body_mass_g / 1000"', output_fn=outputs.append)
     r.execute_line("reset", output_fn=outputs.append)
@@ -48338,7 +47913,7 @@ def test_repl_history_option_b_milestone_banners():
     assert "  *checkpoint: baseline*" in hist_text
     assert "   1: df1 = sample:penguins" in hist_text
     assert "   2: -filter \"species == 'Gentoo'\"" in hist_text
-    assert "   3: -mutate \"mass_kg = body_mass_g / 1000\"" in hist_text
+    assert '   3: -mutate "mass_kg = body_mass_g / 1000"' in hist_text
     assert "   4: reset [reverted to checkpoint: baseline]" in hist_text
 
     r.close()
@@ -48355,7 +47930,7 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     assert r1._build_prompt() == "pytae:proj_x> "
 
     r1.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-    r1.execute_line('df1 = -filter "species == \'Adelie\'"', output_fn=outputs.append)
+    r1.execute_line("df1 = -filter \"species == 'Adelie'\"", output_fn=outputs.append)
     r1.execute_line("checkpoint v1", output_fn=outputs.append)
     adelie_shape = r1.tables["df1"].shape
 
@@ -48680,7 +48255,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
 
     # 3. Exploratory -filter prints formatted table without mutating df1
     outputs.clear()
-    r.execute_line('-filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert any("Gentoo" in o for o in outputs)
     assert r.current_df.shape == (344, 7)
     assert r.tables["df1"].shape == (344, 7)
@@ -48694,7 +48269,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
 
     # 5. Targeted preview: k -filter "species == 'Gentoo'" does NOT change k
     outputs.clear()
-    r.execute_line('k -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("k -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert any("Gentoo" in o for o in outputs)
     assert r.tables["k"].shape == (344, 7)  # k is intact!
 
@@ -48706,7 +48281,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
 
     # 7. Assignment from table with pipeline: filtered_k = df1 -filter ...
     outputs.clear()
-    r.execute_line('filtered_k = df1 -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("filtered_k = df1 -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert "filtered_k" in r.tables
     assert r.tables["filtered_k"].shape == (124, 7)
     assert r.tables["df1"].shape == (344, 7)  # df1 is untouched!
@@ -48721,7 +48296,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
     # 9. Active table assignment: df1 = -filter "species == 'Gentoo'"
     outputs.clear()
     r.execute_line("use df1", output_fn=outputs.append)
-    r.execute_line('df1 = -filter "species == \'Gentoo\'"', output_fn=outputs.append)
+    r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.tables["df1"].shape == (124, 7)
     assert r.current_df.shape == (124, 7)
     assert any("Updated 'df1' (124 rows x 7 cols)" in o for o in outputs)
@@ -48733,6 +48308,174 @@ def test_repl_preview_by_default_and_assignment_mutation():
     assert r.current_df.shape == (344, 7)
     assert any("Undid:" in o for o in outputs)
 
+    r.close()
+
+
+def test_repl_time_exploratory_pipeline(sample_df):
+    """Test -time on exploratory preview pipelines in REPL."""
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # Single-run timing
+    r.execute_line("-distinct -time", output_fn=outputs.append)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+    assert any("Adelie" in o for o in outputs)
+    assert r.current_df.shape == (5, 3)  # Exploratory preview preserves active table
+
+    # Multi-run timing
+    outputs.clear()
+    r.execute_line("-distinct -time 3", output_fn=outputs.append)
+    assert any("Elapsed (3 runs): avg" in o for o in outputs)
+    assert r.current_df.shape == (5, 3)
+
+    r.close()
+
+
+def test_repl_time_inspections(sample_df):
+    """Test -time on inspection commands (-shape, -head, -cols) in REPL."""
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # -shape -time
+    r.execute_line("-shape -time", output_fn=outputs.append)
+    assert any("(5, 3)" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+
+    # -head 2 -time
+    outputs.clear()
+    r.execute_line("-head 2 -time", output_fn=outputs.append)
+    assert any("Adelie" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+
+    # -cols -time
+    outputs.clear()
+    r.execute_line("-cols -time", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+
+    r.close()
+
+
+def test_repl_time_bare_table_switch(sample_df):
+    """Test bare table switch timing (e.g. df1 -time, df1 -time 3)."""
+    r = PytaeRepl()
+    r.tables["df1"] = sample_df.clone()
+    r.tables["df2"] = sample_df.head(2)
+    r.current_df = r.tables["df2"]
+    r.path_str = "df2"
+
+    outputs = []
+    r.execute_line("df1 -time", output_fn=outputs.append)
+    assert r.path_str == "df1"
+    assert len(outputs) == 1
+    assert "df1: 5 rows x 3 cols | Elapsed:" in outputs[0]
+
+    outputs.clear()
+    r.execute_line("df1 -time 3", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "df1: 5 rows x 3 cols | Elapsed (3 runs): avg" in outputs[0]
+
+    r.close()
+
+
+def test_repl_time_targeted_pipeline(sample_df):
+    """Test targeted table commands with timing (e.g. df1 -shape -time, df1 -head 2 -time)."""
+    r = PytaeRepl()
+    r.tables["df1"] = sample_df.clone()
+    r.tables["df2"] = sample_df.head(2)
+    r.current_df = r.tables["df2"]
+    r.path_str = "df2"
+
+    outputs = []
+    r.execute_line("df1 -shape -time", output_fn=outputs.append)
+    assert any("(5, 3)" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+    # Active table remains df2
+    assert r.path_str == "df2"
+
+    outputs.clear()
+    r.execute_line("df1 -head 2 -time", output_fn=outputs.append)
+    assert any("Adelie" in o for o in outputs)
+    assert any("Elapsed (1 run):" in o for o in outputs)
+    assert r.path_str == "df2"
+
+    r.close()
+
+
+def test_repl_time_assignment(sample_df):
+    """Test table assignment with timing (df2 = df1 -distinct -time, df1 = -distinct -time)."""
+    r = PytaeRepl()
+    r.tables["df1"] = sample_df.clone()
+    r.current_df = r.tables["df1"]
+    r.path_str = "df1"
+
+    # Cross-table assignment with -time
+    outputs = []
+    r.execute_line("df2 = df1 -distinct -time", output_fn=outputs.append)
+    assert "df2" in r.tables
+    assert any("Created 'df2' (5 rows x 3 cols) | Elapsed:" in o for o in outputs)
+
+    # In-place assignment with -time
+    outputs.clear()
+    r.execute_line("df1 = -distinct -time", output_fn=outputs.append)
+    assert any("Updated 'df1' (5 rows x 3 cols) | Elapsed:" in o for o in outputs)
+
+    r.close()
+
+
+def test_repl_time_syntax_and_aliases(sample_df):
+    """Test bare 'time' and '--time' rejection and helpful hints."""
+    r = PytaeRepl(df=sample_df)
+    r.tables["df1"] = sample_df.clone()
+
+    outputs = []
+    r.execute_line("time", output_fn=outputs.append)
+    assert "bare 'time' is not recognized; use '-time'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("df1 time", output_fn=outputs.append)
+    assert "bare 'time' is not recognized; use '-time'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("--time", output_fn=outputs.append)
+    assert "'--time' is not recognized; use '-time'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("df1 --time", output_fn=outputs.append)
+    assert "'--time' is not recognized; use '-time'" in outputs[-1]
+
+    r.close()
+
+
+def test_repl_glimpse_captures_string_and_does_not_double_print(sample_df, capsys):
+    r = PytaeRepl(df=sample_df)
+    r.tables["df1"] = sample_df.clone()
+
+    outputs = []
+    r.execute_line("-glimpse", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], str)
+    assert "Rows: 5" in outputs[0]
+    assert capsys.readouterr().out == ""
+
+    outputs.clear()
+    r.execute_line("df1 -glimpse", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], str)
+    assert "Rows: 5" in outputs[0]
+    assert capsys.readouterr().out == ""
+    r.close()
+
+
+def test_repl_load_error_prints_once(tmp_path):
+    bad_file = tmp_path / "corrupt.parquet"
+    bad_file.write_text("not a valid parquet file")
+
+    r = PytaeRepl()
+    outputs = []
+    r.execute_line(f"load {bad_file}", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "failed to load" in outputs[0]
     r.close()
 
 ################################################################################
@@ -49659,6 +49402,23 @@ df = df.select(exclude='val')
     assert exit_code == 1
     out = capsys.readouterr().out
     assert "Found 1 DSL syntax error" in out
+
+
+def test_validate_pipeline_txt_and_feather_sources(tmp_path):
+    txt_path = tmp_path / "sample.txt"
+    txt_path.write_text("x\ty\n1.0\t3.0\n2.0\t4.0\n")
+
+    feather_path = tmp_path / "sample.feather"
+    pl.DataFrame({"x": [1.0, 2.0], "y": [3.0, 4.0]}).write_ipc(feather_path)
+
+    def pipeline(df):
+        return df.mutate("z = x + y").select("x", "z")
+
+    res_txt = validate_pipeline(pipeline, txt_path)
+    assert res_txt.columns == ["x", "z"]
+
+    res_feather = validate_pipeline(pipeline, feather_path)
+    assert res_feather.columns == ["x", "z"]
 
 ################################################################################
 # FILE: tests/test_verbs_v39.py

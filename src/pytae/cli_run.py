@@ -125,44 +125,38 @@ def _format_table(
     return str(df)
 
 
-def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
-    from pytae.other_utilities import freq
-
+def _split_width_arg(flag: str, arg: str | None) -> tuple[str | None, int]:
     width = 20
-    target_col = col
-    if col and ",width=" in col:
-        c_part, _, w_part = col.partition(",width=")
-        target_col = c_part.strip()
+    if arg and ",width=" in arg:
+        c_part, _, w_part = arg.partition(",width=")
         try:
-            width = int(w_part.strip())
+            return c_part.strip(), int(w_part.strip())
         except ValueError:
-            raise SystemExit(f"-freq: invalid width='{w_part.strip()}'; expected positive integer")
+            raise SystemExit(f"{flag}: invalid width='{w_part.strip()}'; expected positive integer")
+    return arg, width
+
+
+def _run_viz_op(flag: str, func: Any, *args: Any, **kwargs: Any) -> Any:
     try:
-        return freq(source_df, col=target_col, dropna=dropna, width=width)
+        return func(*args, **kwargs)
     except KeyError as exc:
         raise SystemExit(str(exc))
     except ValueError as exc:
-        raise SystemExit(f"-freq: {exc}")
+        raise SystemExit(f"{flag}: {exc}")
+
+
+def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
+    from pytae.other_utilities import freq
+
+    target_col, width = _split_width_arg("-freq", col)
+    return _run_viz_op("-freq", freq, source_df, col=target_col, dropna=dropna, width=width)
 
 
 def _compute_hist(source_df: Any, hist_arg: str | None) -> Any:
     from pytae.other_utilities import hist
 
-    width = 20
-    target_arg = hist_arg
-    if hist_arg and ",width=" in hist_arg:
-        h_part, _, w_part = hist_arg.partition(",width=")
-        target_arg = h_part.strip()
-        try:
-            width = int(w_part.strip())
-        except ValueError:
-            raise SystemExit(f"-hist: invalid width='{w_part.strip()}'; expected positive integer")
-    try:
-        return hist(source_df, col=target_arg, width=width)
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-hist: {exc}")
+    target_arg, width = _split_width_arg("-hist", hist_arg)
+    return _run_viz_op("-hist", hist, source_df, col=target_arg, width=width)
 
 
 def _compute_bar(source_df: Any, bar_arg: str | None) -> Any:
@@ -170,19 +164,16 @@ def _compute_bar(source_df: Any, bar_arg: str | None) -> Any:
     from pytae.other_utilities import bar
 
     spec = parse_bar_spec(bar_arg)
-    try:
-        return bar(
-            source_df,
-            cat=spec["cat"],
-            val=spec["val"],
-            limit=spec["limit"],
-            pct=spec["pct"],
-            width=spec["width"],
-        )
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-bar: {exc}")
+    return _run_viz_op(
+        "-bar",
+        bar,
+        source_df,
+        cat=spec["cat"],
+        val=spec["val"],
+        limit=spec["limit"],
+        pct=spec["pct"],
+        width=spec["width"],
+    )
 
 
 def _compute_scatter(source_df: Any, scatter_arg: str | None) -> str:
@@ -190,20 +181,17 @@ def _compute_scatter(source_df: Any, scatter_arg: str | None) -> str:
     from pytae.other_utilities import scatter
 
     spec = parse_scatter_spec(scatter_arg)
-    try:
-        return scatter(
-            source_df,
-            x=spec["x"],
-            y=spec["y"],
-            width=spec["width"],
-            height=spec["height"],
-            limit_x=spec["limit_x"],
-            limit_y=spec["limit_y"],
-        )
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-scatter: {exc}")
+    return _run_viz_op(
+        "-scatter",
+        scatter,
+        source_df,
+        x=spec["x"],
+        y=spec["y"],
+        width=spec["width"],
+        height=spec["height"],
+        limit_x=spec["limit_x"],
+        limit_y=spec["limit_y"],
+    )
 
 
 def _compute_corr(source_df: Any, corr_arg: str | None) -> Any:
@@ -211,17 +199,14 @@ def _compute_corr(source_df: Any, corr_arg: str | None) -> Any:
     from pytae.other_utilities import corr
 
     spec = parse_corr_spec(corr_arg)
-    try:
-        return corr(
-            source_df,
-            target=spec["target"],
-            pairs=spec["pairs"],
-            method=spec["method"],
-        )
-    except KeyError as exc:
-        raise SystemExit(str(exc))
-    except ValueError as exc:
-        raise SystemExit(f"-corr: {exc}")
+    return _run_viz_op(
+        "-corr",
+        corr,
+        source_df,
+        target=spec["target"],
+        pairs=spec["pairs"],
+        method=spec["method"],
+    )
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -1314,6 +1299,9 @@ def _process_path(
             "csv",
             "parquet",
             "pq",
+            "ipc",
+            "arrow",
+            "feather",
             "txt",
             "dat",
             "jsonl",

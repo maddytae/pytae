@@ -200,37 +200,6 @@ def parse_fillna_spec(
     return val, cols, nans
 
 
-def parse_sort_by(raw: str) -> tuple[list[str], str]:
-    """Parse legacy -sort_by SPEC: a comma-separated column list, optionally ending with
-    asc or desc as a trailing word (default asc). e.g. "species,body_mass_g desc"."""
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
-    order = "asc"
-    head, sep, tail = raw.rpartition(" ")
-    if sep and tail.lower() in ("asc", "desc"):
-        raw, order = head.rstrip(",").strip(), tail.lower()
-    cols = parse_columns(raw)
-    if not cols:
-        raise SystemExit("-sort_by: expected a column list, optionally followed by asc or desc")
-    return cols, order
-
-
-def parse_arrange(raw: str) -> tuple[list[str], list[bool]]:
-    """Parse -arrange SPEC: a comma-separated column list with optional asc/desc directions,
-    leading '-', or brackets for spaced columns. e.g. "species, [annual salary] desc".
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
-    from pytae._parsing import _extract_arrange_specs
-
-    cols, asc_list = _extract_arrange_specs((raw,))
-    if not cols:
-        raise SystemExit("-arrange: expected a column list with optional asc/desc directions")
-    return cols, asc_list
-
-
 @dataclass
 class SliceSpec:
     n: int | None = None
@@ -322,12 +291,6 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
     if n is None and prop is None:
         n = 5
     return SliceSpec(n=n, prop=prop, with_ties=with_ties)
-
-
-def parse_pick_spec(*args: Any, **kwargs: Any) -> Any:
-    raise SystemExit(
-        "'-pick' has been removed; use '-arrange ... -head N' (or '-by ... -arrange ... -head N') instead."
-    )
 
 
 def _split_tokens(raw: str, sep: str = ",") -> list[str]:
@@ -481,22 +444,6 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
     return results
 
 
-def _split_qry_entries(raw: str) -> list[tuple[str, str]]:
-    """Legacy helper for splitting filter conditions into (column, condition) tuples."""
-    node = _parse_filter_node(raw)
-    out: list[tuple[str, str]] = []
-
-    def _collect(n: Any):
-        if hasattr(n, "left") and hasattr(n, "right"):
-            _collect(n.left)
-            _collect(n.right)
-        elif hasattr(n, "col") and hasattr(n, "cond"):
-            out.append((n.col, str(n.cond)))
-
-    _collect(node)
-    return out
-
-
 def parse_filter(raw: str) -> FilterNode | dict[str, Any]:
     """Parse -filter conditions like "col == 5 and other in ['a','b']", or dict literal '{"col": 5}'."""
     stripped = raw.strip()
@@ -504,11 +451,6 @@ def parse_filter(raw: str) -> FilterNode | dict[str, Any]:
     if parsed_dict is not None:
         return parsed_dict
     return _parse_filter_node(stripped)
-
-
-def parse_qry(raw: str) -> FilterNode | dict[str, Any]:
-    """Deprecated alias for parse_filter."""
-    return parse_filter(raw)
 
 
 def parse_agg(raw: str):
@@ -564,41 +506,6 @@ def parse_agg(raw: str):
         raise SystemExit("-agg: mix of names and col=aggfunc mappings; use one or the other")
     names = [_unquote_name(e) for e in entries]
     return names[0] if len(names) == 1 else names
-
-
-_AGG_KEYS = ("column", "aggfunc", "as")
-
-
-def parse_group_agg(raw: str) -> list[tuple[str, str, str]]:
-    """Parse -agg as key=value specs: column=, aggfunc=, optional as=.
-
-    Several specs are separated by ';'. Several source columns in one spec share
-    the same aggfunc: column='value,val_growth',aggfunc=sum. as= needs a single column.
-    Returns (source_col, output_name, aggfunc) rows.
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-agg: expected key=value specs, e.g. column=value,aggfunc=sum,as=v")
-    if raw.startswith("{"):
-        raise SystemExit("-agg: use key=value specs, e.g. column=value,aggfunc=sum,as=v (not a dict literal)")
-    rows: list[tuple[str, str, str]] = []
-    for group in _split_groups(raw, ";"):
-        canon = parse_reshape_kwargs(group, keys=_AGG_KEYS, flag="-agg")
-        if "column" not in canon or "aggfunc" not in canon:
-            raise SystemExit("-agg: each spec needs column= and aggfunc=")
-        cols = parse_columns(canon["column"])
-        if not cols:
-            raise SystemExit("-agg: column= needs at least one column")
-        out = canon.get("as")
-        if out and len(cols) != 1:
-            raise SystemExit("-agg: as= requires a single column")
-        aggfunc = canon["aggfunc"]
-        for col in cols:
-            rows.append((col, out or col, aggfunc))
-    names = [name for _, name, _ in rows]
-    if len(names) != len(set(names)):
-        raise SystemExit("-agg: duplicate output names")
-    return rows
 
 
 _LONG_KEYS = ("cols", "id_vars", "c", "v", "r")

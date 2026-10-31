@@ -188,3 +188,20 @@ df = df.select(exclude='val')
     assert exit_code == 1
     out = capsys.readouterr().out
     assert "Found 1 DSL syntax error" in out
+
+
+def test_validate_pipeline_txt_and_feather_sources(tmp_path):
+    txt_path = tmp_path / "sample.txt"
+    txt_path.write_text("x\ty\n1.0\t3.0\n2.0\t4.0\n")
+
+    feather_path = tmp_path / "sample.feather"
+    pl.DataFrame({"x": [1.0, 2.0], "y": [3.0, 4.0]}).write_ipc(feather_path)
+
+    def pipeline(df):
+        return df.mutate("z = x + y").select("x", "z")
+
+    res_txt = validate_pipeline(pipeline, txt_path)
+    assert res_txt.columns == ["x", "z"]
+
+    res_feather = validate_pipeline(pipeline, feather_path)
+    assert res_feather.columns == ["x", "z"]

@@ -262,8 +262,9 @@ def long(
     id_vars: str | Sequence[str] | None = None,
     c: str = "variable",
     v: str = "value",
+    r: str | Sequence[str] | None = None,
 ) -> DataFrame:
-    return DataFrame(df).long(cols=cols, id_vars=id_vars, c=c, v=v)
+    return DataFrame(df).long(cols=cols, id_vars=id_vars, c=c, v=v, r=r)
 
 
 def wide(
@@ -437,54 +438,11 @@ class _PytaeModule(ModuleType):
     def __call__(self, data: Any = None) -> DataFrame:
         return DataFrame(data)
 
-    select = _VerbDescriptor(select)
-    filter = _VerbDescriptor(filter)
-    mutate = _VerbDescriptor(mutate)
-    arrange = _VerbDescriptor(arrange)
-    pick = _VerbDescriptor(pick)
-    distinct = _VerbDescriptor(distinct)
-    count = _VerbDescriptor(count)
-    dropna = _VerbDescriptor(dropna)
-    fillna = _VerbDescriptor(fillna)
-    rename = _VerbDescriptor(rename)
-    sql = _VerbDescriptor(sql)
-    by = _VerbDescriptor(by)
-    agg = _VerbDescriptor(agg)
-    pivot = _VerbDescriptor(pivot)
-    long = _VerbDescriptor(long)
-    wide = _VerbDescriptor(wide)
-    clean_columns = _VerbDescriptor(clean_columns)
-    cols = _VerbDescriptor(cols)
-    glimpse = _VerbDescriptor(glimpse)
-    freq = _VerbDescriptor(freq)
-    hist = _VerbDescriptor(hist)
-    bar = _VerbDescriptor(bar)
-    scatter = _VerbDescriptor(scatter)
-    corr = _VerbDescriptor(corr)
-    join = _VerbDescriptor(join)
-    concat = _VerbDescriptor(concat)
-    slice_max = _VerbDescriptor(slice_max)
-    slice_min = _VerbDescriptor(slice_min)
-    lit = _VerbDescriptor(lit)
-    sample = _VerbDescriptor(sample)
-    sample_data = _VerbDescriptor(sample_data)
-    read_parquet = _VerbDescriptor(read_parquet)
-    read_csv = _VerbDescriptor(read_csv)
-    read_ndjson = _VerbDescriptor(read_ndjson)
-    read_json = _VerbDescriptor(read_json)
-    read_ipc = _VerbDescriptor(read_ipc)
-    read_excel = _VerbDescriptor(read_excel)
-    read_database = _VerbDescriptor(read_database)
-    scan_parquet = _VerbDescriptor(scan_parquet)
-    scan_csv = _VerbDescriptor(scan_csv)
-    scan_ndjson = _VerbDescriptor(scan_ndjson)
-    scan_ipc = _VerbDescriptor(scan_ipc)
-    read = _VerbDescriptor(read)
-    scan = _VerbDescriptor(scan)
-    validate_pipeline = _VerbDescriptor(validate_pipeline)
-    check_dsl = _VerbDescriptor(check_dsl_string)
-    mask = _VerbDescriptor(mask)
-    unmask = _VerbDescriptor(unmask)
+
+for _k, _v in list(globals().items()):
+    if callable(_v) and not _k.startswith("_") and isinstance(_v, type(select)):
+        setattr(_PytaeModule, _k, _VerbDescriptor(_v))
+_PytaeModule.check_dsl = _VerbDescriptor(check_dsl_string)  # type: ignore[attr-defined]
 
 
 sys.modules[__name__].__class__ = _PytaeModule
@@ -493,14 +451,9 @@ sys.modules[__name__].__class__ = _PytaeModule
 def __getattr__(name: str) -> Any:
     if name in ("Plotter", "plot", "finalize"):
         try:
-            from .plotting import Plotter, finalize, plot
+            from . import plotting
 
-            if name == "Plotter":
-                return Plotter
-            elif name == "plot":
-                return plot
-            else:
-                return finalize
+            return getattr(plotting, name)
         except ImportError as exc:
             raise ImportError(f"{name} requires matplotlib. Install with: pip install 'pytae[plot]'") from exc
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

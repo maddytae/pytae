@@ -166,3 +166,90 @@ def test_pt_accessor_by_auto_ungroups(tmp_path):
     assert isinstance(k_res, pt.DataFrame)
     assert k_res["group_mean"].to_list() == [15.0, 15.0, 150.0, 150.0]
     assert k_res["overall_mean"].to_list() == [82.5, 82.5, 82.5, 82.5]
+
+
+def test_pt_accessor_comprehensive_shared_verbs(capsys):
+    import polars as pl
+    import pytest
+
+    sample_pl = pl.DataFrame(
+        {
+            "id": [1, 2, 3, 4],
+            "grp": ["A", "A", "B", "B"],
+            "val": [10.0, 20.0, None, 40.0],
+            "other": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    sample_pd = sample_pl.to_pandas()
+
+    for obj in (sample_pl, sample_pl.lazy(), sample_pd):
+        def _collect(res):
+            return res.collect() if res.is_lazy else res
+
+        assert len(_collect(obj.pt.filter("id > 2"))) == 2
+        assert list(_collect(obj.pt.select("id, grp")).columns) == ["id", "grp"]
+        assert _collect(obj.pt.arrange("id desc"))["id"].to_list() == [4, 3, 2, 1]
+        assert len(_collect(obj.pt.distinct("grp"))) == 2
+        assert _collect(obj.pt.count("grp"))["n"].to_list() == [2, 2]
+        assert len(_collect(obj.pt.dropna("val"))) == 3
+        assert _collect(obj.pt.fillna(0.0, "val"))["val"].to_list() == [10.0, 20.0, 0.0, 40.0]
+        assert len(_collect(obj.pt.head(2))) == 2
+        assert len(_collect(obj.pt.tail(2))) == 2
+        assert _collect(obj.pt.mutate("doubled = other * 2"))["doubled"].to_list() == [2.0, 4.0, 6.0, 8.0]
+        assert list(_collect(obj.pt.rename("grp:group")).columns) == ["id", "group", "val", "other"]
+        assert _collect(obj.pt.by("grp").agg("s = sum(other)")).shape == (2, 2)
+        assert _collect(obj.pt.agg("s = sum(other)"))["s"].to_list() == [10.0]
+        assert _collect(obj.pt.pipe(lambda d: d.head(1))).shape == (1, 4)
+
+    for obj in (sample_pl, sample_pd):
+        # pivot, long, wide
+        piv = obj.pt.fillna(0.0, "val").pivot(r="grp", c="id", v="other", a="sum")
+        assert "grp" in piv.columns
+        melted = obj.pt.long(cols=["val", "other"], id_vars="id")
+        assert set(melted.columns) == {"id", "variable", "value"}
+        unmelted = melted.to_polars().pt.wide(r="id", c="variable", v="value")
+        assert "other" in unmelted.columns
+
+        # clean_columns, mask, unmask
+        messy = (
+            pl.DataFrame({"Bad Col": ["secret"]})
+            if isinstance(obj, pl.DataFrame)
+            else pd.DataFrame({"Bad Col": ["secret"]})
+        )
+        assert messy.pt.clean_columns(case="lower", fill="_").columns == ["bad_col"]
+        masked = obj.pt.mask("grp=encrypt", key="secret_key")
+        assert masked["grp"].to_list() != ["A", "A", "B", "B"]
+        unmasked = masked.to_polars().pt.unmask("grp", key="secret_key")
+        assert unmasked["grp"].to_list() == ["A", "A", "B", "B"]
+
+        # cols, diff, glimpse
+        assert obj.pt.cols() == ["grp", "id", "other", "val"]
+        assert "Identical" in obj.pt.diff(obj)
+        assert obj.pt.glimpse() is obj
+        _ = capsys.readouterr()
+
+        # freq, hist, bar, scatter, corr
+        assert len(obj.pt.freq("grp")) == 2
+        assert len(obj.pt.hist("other", bins=2)) == 2
+        assert len(obj.pt.bar("grp", "other")) == 4
+        assert isinstance(obj.pt.scatter("id", "other", width=20, height=5), str)
+        assert len(obj.pt.corr()) >= 1
+
+        # join & concat
+        right = pl.DataFrame({"id": [1, 2], "tag": ["x", "y"]})
+        joined = obj.pt.join(right, on="id", how="inner")
+        assert len(joined) == 2
+        stacked = obj.pt.concat(obj)
+        assert len(stacked) == 8
+
+        # conversions and fallback getattr
+        assert isinstance(obj.pt.to_polars(), pl.DataFrame)
+        assert isinstance(obj.pt.to_pandas(), pd.DataFrame)
+        assert obj.pt.shape == (4, 4)
+
+        # retired pick() and invalid agg(by=...) error paths
+        with pytest.raises(AttributeError, match="pick\\(\\) has been removed"):
+            obj.pt.pick("id")
+        with pytest.raises(TypeError, match="does not accept 'by'"):
+            obj.pt.agg("count", by="grp")
+

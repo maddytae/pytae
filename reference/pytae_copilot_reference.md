@@ -2015,7 +2015,7 @@ Clean messy column names automatically. Options execute in this order:
 
 ```bash
 # Clean leading spaces, punctuation, lowercase, and replace spaces with underscores:
-pytae messy.parquet -clean "strip,strip_special,case=lower,fill=_"
+pytae messy.parquet -clean_columns "strip,strip_special,case=lower,fill=_"
 ```
 
 **Before:**
@@ -2355,7 +2355,7 @@ Produce multi-series bar or scatter plots with automated color mapping:
 
 ```bash
 pytae penguins.parquet \
-  -filter "sex.notna()" \
+  -filter "sex.is_not_null()" \
   -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, by=species" \
   -finalize "title='Bill Length vs Body Mass', tight_layout=true" \
   -o scatter.png
@@ -12904,7 +12904,7 @@ import pytae as pt
 penguins = pt.read_parquet("penguins.parquet")
 
 report = (
-    penguins.filter("body_mass_g > 3500 & sex.notna()")
+    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(
         body_mass_kg="body_mass_g / 1000",
         bill_ratio="bill_length_mm / bill_depth_mm",
@@ -12928,7 +12928,7 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
@@ -13069,25 +13069,25 @@ pytae data.parquet -mutate "target_copy = col('body_mass_g') * 1.5"
 
 ---
 
-## 4. 🎯 Column Selection & Renaming (`--select`, `-rename`)
+## 4. 🎯 Column Selection & Renaming (`-select`, `-rename`)
 
 Select, reorder, and drop columns with flexible pattern matching:
 
 ```bash
 # Explicit column selection and reordering
-pytae data.parquet --select "species,island,body_mass_g"
+pytae data.parquet -select "species,island,body_mass_g"
 
 # Drop columns using exclamation mark negation (!col)
-pytae data.parquet --select "!sex,!year"
+pytae data.parquet -select "!sex,!year"
 
 # Pattern and prefix matching
-pytae data.parquet --select "startswith=bill_"
-pytae data.parquet --select "endswith=_mm"
-pytae data.parquet --select "contains=length"
+pytae data.parquet -select "startswith=bill_"
+pytae data.parquet -select "endswith=_mm"
+pytae data.parquet -select "contains=length"
 
 # Select by data type
-pytae data.parquet --select "dtype=float"
-pytae data.parquet --select "exclude_dtype=string"
+pytae data.parquet -select "dtype=float"
+pytae data.parquet -select "exclude_dtype=string"
 
 # Rename columns (old_name:new_name)
 pytae data.parquet -rename "body_mass_g:weight_g,bill_length_mm:beak_len"
@@ -14139,7 +14139,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
-| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 | **Callable / Lambda** | `df[lambda d: d['x'] > 5]` | `df.filter(lambda d: d['x'] > 5)` | N/A |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
@@ -14232,7 +14232,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Targeted Key Dropping** | `df.dropna(subset=['id', 'email'])` | `df.dropna("id", "email")` | `-dropna id,email` |
 | **Dual Null & NaN Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0, nans=True)` | `-fillna 0` |
 | **Column-Specific Imputation**| `df.fillna({'a': 0, 'b': 'N/A'})` | `df.fillna({'a': 0, 'b': 'N/A'})` | `-fillna "a=0,b='N/A'"` |
-| **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | `df.groupby('g', dropna=False).agg(...)` | Default behavior (`dropna=False`) | Default behavior |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
@@ -14302,7 +14302,7 @@ import pytae as pt
 
 (
     pt.read_parquet("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.notna()")
+    .filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
     .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
@@ -14314,7 +14314,7 @@ import pytae as pt
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
@@ -14482,7 +14482,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('startswith', 'A'))`| `-filter "name.startswith('A')"` |
-| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -14569,7 +14569,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Safe Blank Row Dropping** | `filter(df, if_any(everything(), ~ !is.na(.)))` | `df.dropna()` *(Defaults to safe `how='all'`)* | `-dropna` |
 | **Targeted Key Dropping** | `drop_na(df, id, email)` | `df.dropna("id", "email")` | `-dropna id,email` |
 | **Missing Imputation** | `replace_na(df, list(score = 0))` | `df.fillna({"score": 0})` | `-fillna "score=0"` |
-| **Column Name Cleaning** | `janitor::clean_names(df)` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean` |
+| **Column Name Cleaning** | `janitor::clean_names(df)` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | Default behavior (keeps `NA` levels) | Default behavior (`dropna=False`) | Default behavior |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
@@ -14620,7 +14620,7 @@ import pytae as pt
 
 (
     pt.read_parquet("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.notna()")
+    .filter("body_mass_g > 3500 & sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
     .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
@@ -14632,7 +14632,7 @@ import pytae as pt
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500, sex.notna()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
@@ -14732,7 +14732,7 @@ RUN;
 In Pytae, missing values adhere to strict three-valued logic and IEEE-754 semantics:
 - A comparison with missing (`null` or `NaN`) always evaluates to missing / false.
 - Filtering `df.filter("age < 18")` **never** includes null or NaN records.
-- Null checks are explicit and readable: `df.filter("age.notna()")` or `df.filter("age.isna()")`.
+- Null checks are explicit and readable: `df.filter("age.is_not_null()")` or `df.filter("age.is_null()")`.
 
 ---
 
@@ -14863,7 +14863,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 1. Data Ingestion & I/O
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Read SAS Dataset** | `SET libref.dataset;` | `pt.read_sas("dataset.sas7bdat")` | `pytae dataset.sas7bdat` |
+| **Read SAS Dataset** | `SET libref.dataset;` | `pt.DataFrame(pd.read_sas("dataset.sas7bdat"))` | `pytae dataset.sas7bdat` |
 | **Read CSV** | `PROC IMPORT DATAFILE='...' DBMS=CSV;` | `pt.read_csv("file.csv")` | `pytae file.csv` |
 | **Read Parquet** | SAS Viya CAS Parquet engine | `pt.read_parquet("file.parquet")` | `pytae file.parquet` |
 | **Write Parquet** | Viya CAS Save | `df.to_parquet("file.parquet")` | `-o file.parquet` |
@@ -14879,7 +14879,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
 | **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
-| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.notna()")` | `-filter "col.notna()"` |
+| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 3. Column Derivations & Feature Engineering (`mutate`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -15011,14 +15011,15 @@ RUN;
 
 ### In Pytae (Python Library):
 ```python
+import pandas as pd
 import pytae as pt
 
 # Ingest directly from SAS datasets or Parquet
-vsl = pt.read_sas("vsl.sas7bdat")
-dm = pt.read_sas("dm.sas7bdat")
+vsl = pt.DataFrame(pd.read_sas("vsl.sas7bdat"))
+dm = pt.DataFrame(pd.read_sas("dm.sas7bdat"))
 
 summary = (
-    vsl.filter("VISIT == 'Baseline' & SYSBP.notna() & DIABP.notna()")
+    vsl.filter("VISIT == 'Baseline' & SYSBP.is_not_null() & DIABP.is_not_null()")
     .join(dm, on="USUBJID", how="inner")
     .mutate(
         pulse_pressure="SYSBP - DIABP",
@@ -15044,7 +15045,7 @@ summary.to_parquet("summary.parquet")
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae vsl.sas7bdat \
-  -filter "VISIT == 'Baseline' and SYSBP.notna() and DIABP.notna()" \
+  -filter "VISIT == 'Baseline' and SYSBP.is_not_null() and DIABP.is_not_null()" \
   -join "dm.sas7bdat,on=USUBJID,how=inner" \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
   -by TRTP,SEX \
@@ -15112,7 +15113,7 @@ pytae = "pytae.cli:main"
 "reference" = "pytae/reference"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 src = ["src", "tests"]
 

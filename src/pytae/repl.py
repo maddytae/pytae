@@ -1009,12 +1009,6 @@ class PytaeRepl:
         if self.session_name is None:
             self._clear_all_checkpoints()
             self._cleanup_cp_dir()
-        for _, snap in self.undo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
-        for _, snap in self.redo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
         self.tables.clear()
         self.orig_tables.clear()
         self.initial_tables.clear()
@@ -1552,13 +1546,6 @@ class PytaeRepl:
                 if not self.tables:
                     output_fn("No tables loaded to remove.")
                     return True
-                # Clean up any cached IPC directories in undo/redo stacks
-                for _, old_snap in self.undo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
-                for _, old_snap in self.redo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
                 self.undo_stack.clear()
                 self.redo_stack.clear()
                 count = len(self.tables)
@@ -1581,13 +1568,6 @@ class PytaeRepl:
 
             resolved = self._resolve_table_name(target)
             if resolved is not None:
-                # Clean up undo/redo stacks to release any pinned DataFrame snapshots and prevent resurrecting removed table
-                for _, old_snap in self.undo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
-                for _, old_snap in self.redo_stack:
-                    if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                        shutil.rmtree(old_snap["dir"], ignore_errors=True)
                 self.undo_stack.clear()
                 self.redo_stack.clear()
                 del self.tables[resolved]
@@ -1839,102 +1819,110 @@ class PytaeRepl:
 
         # Non-destructive dataset inspection (-shape, -cols, -dtype, etc.)
         has_time = any(t == "-time" or t.startswith("-time=") for t in tokens)
-        if not has_time:
-            if first_lower == "-shape":
-                if self.current_df is not None:
-                    output_fn(f"({self.current_df.shape[0]}, {self.current_df.shape[1]})")
-                else:
-                    output_fn("No dataset loaded.")
-                return True
-
-            if first_lower == "-cols" or first_lower.startswith("-cols="):
-                if self.current_df is not None:
-                    order = "file"
-                    if "=" in first_lower:
-                        order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                    elif len(tokens) > 1:
-                        order = tokens[1].lower()
-                    cols = list(self.current_df.columns)
-                    if order == "asc":
-                        cols = sorted(cols, key=lambda s: (s.lower(), s))
-                    elif order == "desc":
-                        cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
-                    elif order != "file":
-                        cols = [c for c in cols if order in c.lower()]
-                    output_fn("\n".join(cols))
-                else:
-                    output_fn("No dataset loaded.")
-                return True
-
-            if first_lower == "-dtype" or first_lower.startswith("-dtype="):
-                if self.current_df is not None:
-                    order = "file"
-                    if "=" in first_lower:
-                        order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                    elif len(tokens) > 1:
-                        order = tokens[1].lower()
-                    reader = DataFrameReader(self.current_df)
-                    dtypes = reader.dtypes()
-                    if order == "asc":
-                        dtypes = dtypes.sort_index(ascending=True)
-                    elif order == "desc":
-                        dtypes = dtypes.sort_index(ascending=False)
-                    output_fn(dtypes.to_string())
-                else:
-                    output_fn("No dataset loaded.")
-                return True
-
-            if first_lower == "-nulls" or first_lower.startswith("-nulls="):
-                if self.current_df is not None:
-                    order = "file"
-                    if "=" in first_lower:
-                        order = first_lower.split("=", 1)[1].strip("\"'").lower()
-                    elif len(tokens) > 1:
-                        order = tokens[1].lower()
-                    nulls_s = self.current_df.null_count().to_pandas().iloc[0]
-                    if order == "asc":
-                        nulls_s = nulls_s.sort_index(ascending=True)
-                    elif order == "desc":
-                        nulls_s = nulls_s.sort_index(ascending=False)
-                    output_fn(nulls_s.to_string())
-                else:
-                    output_fn("No dataset loaded.")
-                return True
-
-            if first_lower == "-glimpse":
-                if self.current_df is not None:
-                    from pytae.dataframe import DataFrame as PytaeDataFrame
-
-                    output_fn(PytaeDataFrame(self.current_df).glimpse())
-                else:
-                    output_fn("No dataset loaded.")
-                return True
-
-            if first_lower == "-describe":
-                if self.current_df is not None:
-                    output_fn(_format_table(self.current_df.describe()))
-                else:
-                    output_fn("No dataset loaded.")
-                return True
-
-            if first_lower == "-head":
-                n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-                if self.current_df is not None:
-                    output_fn(_format_table(self.current_df.head(n), tbl_rows=max(n, 10)))
-                else:
-                    output_fn("No dataset loaded.")
-                return True
-
-            if first_lower == "-tail":
-                n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-                if self.current_df is not None:
-                    output_fn(_format_table(self.current_df.tail(n), tbl_rows=max(n, 10)))
-                else:
-                    output_fn("No dataset loaded.")
-                return True
+        if not has_time and self._try_fast_inspection(self.current_df, tokens, output_fn):
+            return True
 
         # Otherwise, process as a pytae pipeline command
         self._cmd_pipeline(line, tokens, output_fn)
+        return True
+
+    def _try_fast_inspection(
+        self,
+        df: pl.DataFrame | None,
+        tokens: list[str],
+        output_fn: Callable[[str], None],
+        *,
+        allow_sample: bool = False,
+    ) -> bool:
+        """Handle fast single-flag inspection commands on `df`. Returns True if handled."""
+        if not tokens:
+            return False
+        first_lower = tokens[0].lower()
+        is_inspect = (
+            first_lower in ("-shape", "-glimpse", "-describe", "-head", "-tail")
+            or first_lower == "-cols"
+            or first_lower.startswith("-cols=")
+            or first_lower == "-dtype"
+            or first_lower.startswith("-dtype=")
+            or first_lower == "-nulls"
+            or first_lower.startswith("-nulls=")
+            or (allow_sample and first_lower == "-sample")
+        )
+        if not is_inspect:
+            return False
+        if df is None:
+            output_fn("No dataset loaded.")
+            return True
+        if first_lower == "-shape":
+            output_fn(f"({df.shape[0]}, {df.shape[1]})")
+        elif first_lower == "-cols" or first_lower.startswith("-cols="):
+            order = "file"
+            if "=" in first_lower:
+                order = first_lower.split("=", 1)[1].strip("\"'").lower()
+            elif len(tokens) > 1:
+                order = tokens[1].lower()
+            cols = list(df.columns)
+            if order == "asc":
+                cols = sorted(cols, key=lambda s: (s.lower(), s))
+            elif order == "desc":
+                cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
+            elif order != "file":
+                cols = [c for c in cols if order in c.lower()]
+            output_fn("\n".join(cols))
+        elif first_lower == "-dtype" or first_lower.startswith("-dtype="):
+            order = "file"
+            if "=" in first_lower:
+                order = first_lower.split("=", 1)[1].strip("\"'").lower()
+            elif len(tokens) > 1:
+                order = tokens[1].lower()
+            dtypes = DataFrameReader(df).dtypes()
+            if order == "asc":
+                dtypes = dtypes.sort_index(ascending=True)
+            elif order == "desc":
+                dtypes = dtypes.sort_index(ascending=False)
+            output_fn(dtypes.to_string())
+        elif first_lower == "-nulls" or first_lower.startswith("-nulls="):
+            order = "file"
+            if "=" in first_lower:
+                order = first_lower.split("=", 1)[1].strip("\"'").lower()
+            elif len(tokens) > 1:
+                order = tokens[1].lower()
+            nulls_s = df.null_count().to_pandas().iloc[0]
+            if order == "asc":
+                nulls_s = nulls_s.sort_index(ascending=True)
+            elif order == "desc":
+                nulls_s = nulls_s.sort_index(ascending=False)
+            output_fn(nulls_s.to_string())
+        elif first_lower == "-glimpse":
+            from pytae.other_utilities import format_glimpse
+
+            output_fn(format_glimpse(df))
+        elif first_lower == "-describe":
+            output_fn(_format_table(df.describe()))
+        elif first_lower == "-head":
+            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
+            output_fn(_format_table(df.head(n), tbl_rows=max(n, 10)))
+        elif first_lower == "-tail":
+            n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
+            output_fn(_format_table(df.tail(n), tbl_rows=max(n, 10)))
+        elif first_lower == "-sample":
+            n = 5
+            frac = None
+            if len(tokens) > 1:
+                val = tokens[1]
+                if "." in val:
+                    try:
+                        frac = float(val)
+                    except ValueError:
+                        pass
+                elif val.isdigit():
+                    n = int(val)
+            if frac is not None:
+                sampled = df.sample(fraction=frac)
+            else:
+                sample_n = min(n, len(df))
+                sampled = df.sample(n=sample_n) if sample_n > 0 else df.head(0)
+            output_fn(_format_table(sampled, tbl_rows=max(len(sampled), 10)))
         return True
 
     def clear(self, output_fn: Callable[[str], None] = print) -> None:
@@ -2127,65 +2115,13 @@ class PytaeRepl:
         """Push an entry onto undo_stack, enforcing MAX_UNDO_STEPS sliding window."""
         self.undo_stack.append((desc, snapshot))
         while len(self.undo_stack) > self.max_undo_steps:
-            _, old_snap = self.undo_stack.pop(0)
-            if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                shutil.rmtree(old_snap["dir"], ignore_errors=True)
+            self.undo_stack.pop(0)
 
     def _push_redo(self, desc: str, snapshot: Any) -> None:
         """Push an entry onto redo_stack, enforcing MAX_UNDO_STEPS sliding window."""
         self.redo_stack.append((desc, snapshot))
         while len(self.redo_stack) > self.max_undo_steps:
-            _, old_snap = self.redo_stack.pop(0)
-            if isinstance(old_snap, dict) and old_snap.get("type") == "disk_ipc":
-                shutil.rmtree(old_snap["dir"], ignore_errors=True)
-
-    def _capture_session_state_to_disk(self) -> dict[str, Any]:
-        """Serialize current session tables to a temporary IPC disk folder to free all RAM."""
-        import uuid
-
-        undo_dir = self._get_cp_dir() / f"_undo_{uuid.uuid4().hex[:12]}"
-        undo_dir.mkdir(parents=True, exist_ok=True)
-        saved_tables: dict[str, str] = {}
-        saved_orig: dict[str, str] = {}
-        saved_initial: dict[str, str] = {}
-        written_files: dict[int, str] = {}
-
-        def _write_df_once(df: pl.DataFrame, prefix: str, name: str) -> str:
-            df_id = id(df)
-            if df_id in written_files:
-                return written_files[df_id]
-            fname = f"{prefix}{_safe_ipc_filename(name)}"
-            df.write_ipc(undo_dir / fname)
-            written_files[df_id] = fname
-            return fname
-
-        try:
-            for tbl_name, tbl_df in self.tables.items():
-                saved_tables[tbl_name] = _write_df_once(tbl_df, "", tbl_name)
-
-            for tbl_name, tbl_df in self.orig_tables.items():
-                saved_orig[tbl_name] = _write_df_once(tbl_df, "_orig_", tbl_name)
-
-            for tbl_name, tbl_df in self.initial_tables.items():
-                saved_initial[tbl_name] = _write_df_once(tbl_df, "_init_", tbl_name)
-
-            cur_ipc: str | None = None
-            if self.current_df is not None:
-                cur_ipc = _write_df_once(self.current_df, "_cur_", "current_df")
-
-            return {
-                "type": "disk_ipc",
-                "dir": str(undo_dir),
-                "tables": saved_tables,
-                "orig_tables": saved_orig,
-                "initial_tables": saved_initial,
-                "current_df": cur_ipc,
-                "table_sources": dict(self.table_sources),
-                "active_table": self.path_str,
-            }
-        except OSError:
-            shutil.rmtree(undo_dir, ignore_errors=True)
-            raise
+            self.redo_stack.pop(0)
 
     def _cmd_undo(self, output_fn: Callable[[str], None]) -> None:
         if not self.undo_stack:
@@ -2194,8 +2130,6 @@ class PytaeRepl:
         desc, prev_state = self.undo_stack.pop()
         self._push_redo(desc, self._capture_session_state())
         self._apply_session_state(prev_state)
-        if isinstance(prev_state, dict) and prev_state.get("type") == "disk_ipc":
-            shutil.rmtree(prev_state["dir"], ignore_errors=True)
         self.history.append(f"undo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
@@ -2209,8 +2143,6 @@ class PytaeRepl:
         desc, next_state = self.redo_stack.pop()
         self._push_undo(desc, self._capture_session_state())
         self._apply_session_state(next_state)
-        if isinstance(next_state, dict) and next_state.get("type") == "disk_ipc":
-            shutil.rmtree(next_state["dir"], ignore_errors=True)
         self.history.append(f"redo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
@@ -2247,39 +2179,6 @@ class PytaeRepl:
                 self.tables[self.path_str] = state
             return
         if isinstance(state, dict):
-            if state.get("type") == "disk_ipc":
-                u_dir = Path(state["dir"])
-                self.tables = {}
-                for tbl_name, ipc_file in state.get("tables", {}).items():
-                    p = u_dir / ipc_file
-                    if p.exists():
-                        self.tables[tbl_name] = pl.read_ipc(p)
-                self.orig_tables = {}
-                for tbl_name, ipc_file in state.get("orig_tables", {}).items():
-                    p = u_dir / ipc_file
-                    if p.exists():
-                        self.orig_tables[tbl_name] = pl.read_ipc(p)
-                self.initial_tables = {}
-                for tbl_name, ipc_file in state.get("initial_tables", {}).items():
-                    p = u_dir / ipc_file
-                    if p.exists():
-                        self.initial_tables[tbl_name] = pl.read_ipc(p)
-                self.table_sources = dict(state.get("table_sources", {}))
-                self.path_str = state.get("active_table")
-                if self.path_str and self.path_str in self.tables:
-                    self.current_df = self.tables[self.path_str]
-                    self.orig_df = self.orig_tables.get(self.path_str)
-                    self.initial_df = self.initial_tables.get(self.path_str)
-                elif state.get("current_df") and (u_dir / state["current_df"]).exists():
-                    self.current_df = pl.read_ipc(u_dir / state["current_df"])
-                    self.orig_df = self.current_df
-                    self.initial_df = self.current_df
-                else:
-                    self.current_df = None
-                    self.orig_df = None
-                    self.initial_df = None
-                return
-
             self.tables = {k: v.clone() for k, v in state.get("tables", {}).items()}
             self.orig_tables = {k: v.clone() for k, v in state.get("orig_tables", {}).items()}
             self.initial_tables = {k: v.clone() for k, v in state.get("initial_tables", {}).items()}
@@ -2343,12 +2242,6 @@ class PytaeRepl:
             self._save_session_metadata()
 
         # Reset undo and redo stacks upon creating a checkpoint to establish new baseline and free intermediate memory
-        for _, snap in self.undo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
-        for _, snap in self.redo_stack:
-            if isinstance(snap, dict) and snap.get("type") == "disk_ipc":
-                shutil.rmtree(snap["dir"], ignore_errors=True)
         self.undo_stack.clear()
         self.redo_stack.clear()
         _release_memory()
@@ -2598,79 +2491,45 @@ class PytaeRepl:
                 output_fn(f"pytae: bare '{first_tok}' is not recognized; use '-{first_tok}' (matching CLI syntax).")
                 return
 
-            # Active-table pipeline assignment: `df = -filter ...` or `k = -filter ...`
+            source_df: pl.DataFrame | None = None
+            source_label = ""
+            pipe_tokens: list[str] = []
+            pipe_line = ""
+
             if first_tok.startswith("-"):
                 if self.current_df is None:
                     output_fn("pytae: no active dataset loaded to apply pipeline.")
                     return
                 source_df = self.current_df
+                source_label = self.path_str or "active"
                 pipe_tokens = right_tokens
                 pipe_line = right_expr
-
-                first_pipe = pipe_tokens[0].lower()
-                if first_pipe in _DISALLOWED_ALIASES:
-                    canonical = _DISALLOWED_ALIASES[first_pipe]
-                    output_fn(f"pytae: '{first_pipe}' is not recognized; use '{canonical}'.")
-                    return
-                if first_pipe in _BARE_PIPELINE_VERBS:
-                    output_fn(
-                        f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
-                    )
-                    return
-
-                if first_pipe == "-join":
-                    self.current_df = source_df.clone()
-                    self._cmd_join(pipe_tokens[1:], output_fn)
-                    res_df = self.current_df
-                    durations = None
-                else:
-                    res_df, durations = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
-                    if res_df is None:
-                        return
-
-                was_existing = var_name in self.tables
-                self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
-                self.tables[var_name] = res_df
-                self.table_sources[var_name] = f"{self.path_str or 'active'} {pipe_line[:20]}"
-                self.current_df = res_df
-                self.path_str = var_name
-                self.history.append(f"{var_name} = {right_expr}")
-                action = "Updated" if was_existing else "Created"
-                timing_str = ""
-                if durations:
-                    from pytae.cli import _format_duration_ms, _format_timing_summary
-
-                    if len(durations) == 1:
-                        timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
+            else:
+                resolved_src = self._resolve_table_name(first_tok)
+                if resolved_src is not None or first_tok in self.checkpoints:
+                    if resolved_src is not None:
+                        source_df = self.tables[resolved_src]
                     else:
-                        timing_str = f" | {_format_timing_summary(durations)}"
-                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols){timing_str}.")
-                return
-
-            resolved_src = self._resolve_table_name(first_tok)
-            if resolved_src is not None or first_tok in self.checkpoints:
-                if resolved_src is not None:
-                    source_df = self.tables[resolved_src]
-                else:
-                    source_df = self._get_checkpoint_df(first_tok)
-                    if source_df is None:
+                        source_df = self._get_checkpoint_df(first_tok)
+                        if source_df is None:
+                            output_fn(
+                                f"pytae: checkpoint '{first_tok}' contains multiple tables. Use 'restore {first_tok}' to restore entire workbench."
+                            )
+                            return
+                    source_label = first_tok
+                    pipe_tokens = right_tokens[1:]
+                    pipe_line = right_expr[len(first_tok) :].strip()
+                    if not pipe_tokens:
+                        self.tables[var_name] = source_df.clone()
+                        self.table_sources[var_name] = f"copy of {first_tok}"
+                        self.current_df = self.tables[var_name]
+                        self.path_str = var_name
                         output_fn(
-                            f"pytae: checkpoint '{first_tok}' contains multiple tables. Use 'restore {first_tok}' to restore entire workbench."
+                            f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols)."
                         )
                         return
-                pipe_tokens = right_tokens[1:]
-                pipe_line = right_expr[len(first_tok) :].strip()
-                if not pipe_tokens:
-                    # Simple copy: `df3 = df1`
-                    self.tables[var_name] = source_df.clone()
-                    self.table_sources[var_name] = f"copy of {first_tok}"
-                    self.current_df = self.tables[var_name]
-                    self.path_str = var_name
-                    output_fn(
-                        f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols)."
-                    )
-                    return
-                # Check for disallowed alias or bare verb in pipeline
+
+            if source_df is not None:
                 first_pipe = pipe_tokens[0].lower()
                 if first_pipe in _DISALLOWED_ALIASES:
                     canonical = _DISALLOWED_ALIASES[first_pipe]
@@ -2681,7 +2540,6 @@ class PytaeRepl:
                         f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
                     )
                     return
-                # Run pipeline or join on source_df
                 if first_pipe == "-join":
                     self.current_df = source_df.clone()
                     self._cmd_join(pipe_tokens[1:], output_fn)
@@ -2694,7 +2552,7 @@ class PytaeRepl:
                 was_existing = var_name in self.tables
                 self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
                 self.tables[var_name] = res_df
-                self.table_sources[var_name] = f"{first_tok} {pipe_line[:20]}"
+                self.table_sources[var_name] = f"{source_label} {pipe_line[:20]}"
                 self.current_df = res_df
                 self.path_str = var_name
                 self.history.append(f"{var_name} = {right_expr}")
@@ -2738,77 +2596,8 @@ class PytaeRepl:
 
         if first_sub in _BARE_PIPELINE_VERBS:
             output_fn(f"pytae: bare '{first_sub}' is not recognized; use '-{first_sub}' (matching CLI syntax).")
-        elif first_sub == "-shape":
-            output_fn(f"({target_df.shape[0]}, {target_df.shape[1]})")
-        elif first_sub == "-cols" or first_sub.startswith("-cols="):
-            order = "file"
-            if "=" in first_sub:
-                order = first_sub.split("=", 1)[1].strip("\"'").lower()
-            elif len(sub_tokens) > 1:
-                order = sub_tokens[1].lower()
-            cols = list(target_df.columns)
-            if order == "asc":
-                cols = sorted(cols, key=lambda s: (s.lower(), s))
-            elif order == "desc":
-                cols = sorted(cols, key=lambda s: (s.lower(), s), reverse=True)
-            elif order != "file":
-                cols = [c for c in cols if order in c.lower()]
-            output_fn("\n".join(cols))
-        elif first_sub == "-dtype" or first_sub.startswith("-dtype="):
-            order = "file"
-            if "=" in first_sub:
-                order = first_sub.split("=", 1)[1].strip("\"'").lower()
-            elif len(sub_tokens) > 1:
-                order = sub_tokens[1].lower()
-            reader = DataFrameReader(target_df)
-            dtypes = reader.dtypes()
-            if order == "asc":
-                dtypes = dtypes.sort_index(ascending=True)
-            elif order == "desc":
-                dtypes = dtypes.sort_index(ascending=False)
-            output_fn(dtypes.to_string())
-        elif first_sub == "-nulls" or first_sub.startswith("-nulls="):
-            order = "file"
-            if "=" in first_sub:
-                order = first_sub.split("=", 1)[1].strip("\"'").lower()
-            elif len(sub_tokens) > 1:
-                order = sub_tokens[1].lower()
-            nulls_s = target_df.null_count().to_pandas().iloc[0]
-            if order == "asc":
-                nulls_s = nulls_s.sort_index(ascending=True)
-            elif order == "desc":
-                nulls_s = nulls_s.sort_index(ascending=False)
-            output_fn(nulls_s.to_string())
-        elif first_sub == "-glimpse":
-            from pytae.dataframe import DataFrame as PytaeDataFrame
-
-            output_fn(PytaeDataFrame(target_df).glimpse())
-        elif first_sub == "-describe":
-            output_fn(_format_table(target_df.describe()))
-        elif first_sub == "-head":
-            n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
-            output_fn(_format_table(target_df.head(n), tbl_rows=max(n, 10)))
-        elif first_sub == "-tail":
-            n = int(sub_tokens[1]) if len(sub_tokens) > 1 and sub_tokens[1].isdigit() else 5
-            output_fn(_format_table(target_df.tail(n), tbl_rows=max(n, 10)))
-        elif first_sub == "-sample":
-            n = 5
-            frac = None
-            if len(sub_tokens) > 1:
-                val = sub_tokens[1]
-                if "." in val:
-                    try:
-                        frac = float(val)
-                    except ValueError:
-                        pass
-                elif val.isdigit():
-                    n = int(val)
-            if frac is not None:
-                sampled = target_df.sample(fraction=frac)
-            else:
-                sample_n = min(n, len(target_df))
-                sampled = target_df.sample(n=sample_n) if sample_n > 0 else target_df.head(0)
-            output_fn(_format_table(sampled, tbl_rows=max(len(sampled), 10)))
+        elif self._try_fast_inspection(target_df, sub_tokens, output_fn, allow_sample=True):
+            pass
         elif first_sub == "-o":
             dest = sub_tokens[1] if len(sub_tokens) > 1 else "output.parquet"
             self._cmd_save(dest, output_fn)
@@ -2880,7 +2669,6 @@ class PytaeRepl:
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
         except Exception as exc:
-            output_fn(f"pytae: failed to load {p}: {exc}")
             output_fn(f"pytae: failed to load {p}: {exc}")
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
