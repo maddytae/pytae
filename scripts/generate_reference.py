@@ -2091,6 +2091,12 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
      * It gives the user an instant, zero-setup dry run they can run in their terminal in 10ms to verify table outputs before touching production files.
    - For general questions with no specific dataset provided: Always demonstrate using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`).
 
+7. DYNAMIC DOCUMENTATION LOOKUP & MCP TOOL:
+   - When in doubt about flag syntax, parameters, or edge cases, invoke documentation lookup on demand:
+     * CLI: `pytae doc <keyword>` (e.g. `pytae doc explode`, `pytae doc "diff on key"`, `pytae doc assert`)
+     * Python: `pt.doc("<keyword>")`
+     * MCP Tool: `pytae_doc(query="...")` via the built-in MCP server (`pytae mcp`)
+
 When answering questions:
 - Provide the tailored answer on the user's dataset, followed by the runnable "Twin Proof" on a sample dataset with column mapping.
 - Provide both the CLI command and Python equivalent when appropriate.
@@ -2101,6 +2107,11 @@ When answering questions:
     copilot_instr_path = REPO_ROOT / "reference" / "pytae_copilot_instructions.md"
     copilot_instr_path.write_text(copilot_instructions_content, encoding="utf-8")
     print(f"Successfully generated {copilot_instr_path}")
+
+    from pytae.doc_search import build_search_index
+    db_path = REPO_ROOT / "reference" / "pytae_docs.db"
+    build_search_index(db_path)
+    print(f"Successfully generated {db_path}")
 
 
 if __name__ == "__main__":

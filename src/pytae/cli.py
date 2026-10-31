@@ -153,6 +153,8 @@ _CLI_FLAGS = {
     "-i",
     "-session",
     "-sessions",
+    "-doc",
+    "-mcp",
 }
 
 
@@ -893,6 +895,18 @@ def main(argv: list[str] | None = None) -> int:
         from pytae.validation import run_cli_check
 
         return run_cli_check(raw_argv[1:])
+
+    # Check for documentation search subcommand: `pytae doc [query...]` or `pytae -doc [query...]`
+    if raw_argv and raw_argv[0] in ("doc", "-doc", "--doc"):
+        from pytae.doc_search import cli_doc_search
+
+        return cli_doc_search(raw_argv[1:])
+
+    # Check for MCP server subcommand: `pytae mcp` or `pytae -mcp` or `pytae --mcp`
+    if raw_argv and raw_argv[0] in ("mcp", "-mcp", "--mcp"):
+        from pytae.doc_search import run_mcp_server
+
+        return run_mcp_server()
 
     # Legacy repl subcommand redirect
     if raw_argv and raw_argv[0] == "repl":

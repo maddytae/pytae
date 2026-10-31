@@ -437,6 +437,14 @@ def lit(*args: Any, **kwargs: Any) -> None:
     )
 
 
+def doc(query: str = "", limit: int = 3) -> None:
+    """Search Pytae documentation, CLI flags, Python API verbs, syntax rules, and cookbooks."""
+    from pytae.doc_search import format_search_results, search_docs
+
+    results = search_docs(query, limit=limit)
+    print(format_search_results(results, query=query))
+
+
 class _VerbDescriptor:
     def __init__(self, func: Any) -> None:
         self.func = func
@@ -536,6 +544,7 @@ __all__ = [
     "unmask",
     "repl",
     "clear",
+    "doc",
     "everything",
     "validate_pipeline",
     "PipelineValidationError",

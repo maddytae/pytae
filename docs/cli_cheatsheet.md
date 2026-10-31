@@ -422,4 +422,25 @@ pytae> -o clip                                               # Copy active table
 
 ---
 
+## 13. 📖 Documentation Search & MCP Server (`doc`, `mcp`)
+
+Search documentation, CLI flags, Python API verbs, and syntax rules instantly from your terminal or AI coding assistant:
+
+```bash
+# Search by keyword or verb
+pytae doc explode
+pytae doc assert
+pytae doc "diff on key"
+
+# Search by concept or natural language (BM25 full-text ranking)
+pytae doc "flatten list"
+pytae doc "schema drift"
+pytae doc "grouped percentiles"
+
+# Launch Model Context Protocol (MCP) server for Copilot, Cursor, or VS Code
+pytae mcp
+```
+
+---
+
 👉 **For Python Library Reference**: See [docs/pytae.md](pytae.md) or import directly via `import pytae as pt`.

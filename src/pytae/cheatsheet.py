@@ -156,6 +156,13 @@ CHEATSHEET_TEXT = """\
   #   Up / Down arrow keys    Recall persistent command history (~/.pytae_history)
   #   -filter, -mutate, etc.  Standard pytae pipeline flags executed in RAM!
 
+14. 📖 DOCUMENTATION SEARCH & MCP SERVER (doc, mcp)
+--------------------------------------------------------------------------------
+  pytae doc explode                                               # Instant doc search
+  pytae doc "diff on key"                                         # Search by topic or phrase
+  pytae doc "flatten list"                                        # Search by synonym
+  pytae mcp                                                       # Stdio MCP server for Copilot/Cursor
+
 Full documentation: https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md
 ================================================================================
 """
