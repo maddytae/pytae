@@ -32,7 +32,7 @@
   "repository": {
     "pytae-verb-call-triple-double": {
       "name": "meta.embedded.pytae",
-      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (\"\"\")",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask|assert_|assert|explode) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (\"\"\")",
       "beginCaptures": {
         "1": { "name": "entity.name.function.python" },
         "2": { "name": "punctuation.definition.string.begin.python" }
@@ -47,7 +47,7 @@
     },
     "pytae-verb-call-triple-single": {
       "name": "meta.embedded.pytae",
-      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (''')",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask|assert_|assert|explode) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (''')",
       "beginCaptures": {
         "1": { "name": "entity.name.function.python" },
         "2": { "name": "punctuation.definition.string.begin.python" }
@@ -62,7 +62,7 @@
     },
     "pytae-verb-call-single-double": {
       "name": "meta.embedded.pytae",
-      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (\")",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask|assert_|assert|explode) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (\")",
       "beginCaptures": {
         "1": { "name": "entity.name.function.python" },
         "2": { "name": "punctuation.definition.string.begin.python" }
@@ -77,7 +77,7 @@
     },
     "pytae-verb-call-single-single": {
       "name": "meta.embedded.pytae",
-      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (')",
+      "begin": "(?x) (?: (?:\\bpt\\b|\\bdf\\b|\\w+)\\s*\\.\\s* | \\b ) (mutate|filter|select|arrange|agg|by|mask|unmask|assert_|assert|explode) \\s* \\( (?: [^\"'\\)]*? , \\s* )* (')",
       "beginCaptures": {
         "1": { "name": "entity.name.function.python" },
         "2": { "name": "punctuation.definition.string.begin.python" }

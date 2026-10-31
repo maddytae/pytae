@@ -14,6 +14,7 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
   - [1. Pure 1-to-1 Unmelting](#1-pure-1-to-1-unmelting)
   - [2. Explicit Row Index (`r=`)](#2-explicit-row-index-r)
   - [3. Round-Trip Reshaping (`-long` → `-wide`)](#3-round-trip-reshaping--long---wide)
+- [Unnesting List & Array Columns (`-explode`)](#unnesting-list--array-columns--explode)
 - [When to Use `-pivot` Instead of `-wide`](#when-to-use--pivot-instead-of--wide)
 
 ---
@@ -122,6 +123,37 @@ pytae items.parquet \
 | row1 | 10.0 | 100.0 |
 | row2 | 20.0 | 200.0 |
 | row3 | 30.0 | 300.0 |
+
+---
+
+## Unnesting List & Array Columns (`-explode`)
+
+When tables contain list, array, or iterable values in cells (such as tags, items, or JSON arrays), `-explode` flattens them into individual rows, duplicating non-exploded column values across each element.
+
+```bash
+# Unnest a single list/array column:
+pytae events.parquet -explode tags
+
+# Unnest multiple list columns simultaneously:
+pytae orders.parquet -explode "items,quantities"
+```
+
+### Python API (`df.explode()` / `pt.explode()`)
+
+```python
+import pytae as pt
+
+df = pt.read_parquet("events.parquet")
+
+# Unnest via verb function:
+flat = pt.explode(df, "tags")
+
+# Or via DataFrame method chaining:
+flat = df.explode("items", "quantities")
+
+# Or via pandas accessor:
+flat = df.pt.explode("tags")
+```
 
 ---
 

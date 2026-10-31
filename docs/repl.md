@@ -372,9 +372,13 @@ Loaded raw_data.csv as 'df2' (5,000 rows x 8 cols) [encoding=latin1, sep=;, nrow
 pytae [df1, df2]> load sales.csv as df3 -dlim "\t"
 Loaded sales.csv as 'df3' (1,200 rows x 6 cols) [sep=	].
 
-# 4. Or explicitly load a bundled sample dataset via sample:<name>
-pytae [df1, df2, df3]> df4 = sample:penguins
-Loaded penguins.parquet as 'df4' (344 rows x 7 cols).
+# 4. Multi-file globbing and directory scanning
+pytae [df1, df2, df3]> load "parts/*.parquet" as df4
+Loaded 12 files matching 'parts/*.parquet' as 'df4' (120,000 rows x 8 cols).
+
+# 5. Or explicitly load a bundled sample dataset via sample:<name>
+pytae [df1, df2, df3, df4]> df5 = sample:penguins
+Loaded penguins.parquet as 'df5' (344 rows x 7 cols).
 
 pytae [df1, df2, df3, df4]>
 ```
@@ -534,6 +538,8 @@ The REPL automatically preserves command history across sessions:
 - **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Supported on Unix/macOS (`libedit`, GNU `readline`), Windows Terminal, and PowerShell.
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered log of pipeline transformation steps applied during the current session.
+- **`history -cli`**: Generates and prints an exact, reproducible one-shot CLI command string reconstructing the entire interactive session from scratch.
+- **`history -py`**: Generates and prints a complete, runnable Python script using `import pytae as pt` and DataFrame method chaining.
 
 ---
 
@@ -566,7 +572,7 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history` | List numbered history of applied transformation steps and checkpoint banners | No |
+| **`history`** | `history`, `history -cli`, `history -py` | List numbered transformation steps, or export history as CLI command (`-cli`) or Python script (`-py`) | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |

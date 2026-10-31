@@ -51,6 +51,9 @@ TABLE OF CONTENTS
     4.10. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.11. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
     4.12. Other Utilities:
+          - pt.assert_() / df.pt.assert_() / df.assert_() (Data Quality Assertion)
+          - pt.explode() / df.pt.explode() / df.explode() (List Unnesting)
+          - pt.diff() / df.pt.diff() / df.diff() (Key-Aware Dataset Diffing)
           - pt.dropna() / df.pt.dropna()
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
@@ -810,6 +813,12 @@ Examples:
 
 4.12. Other Utilities
 --------------------------------------------------------------------------------
+- pt.assert_(df, *conditions, params=None, **kwargs) / df.pt.assert_(...) / df.assert_(...):
+  Enforces data quality and validation invariants across all rows without filtering. Raises ValidationError displaying the number of failing rows and sample violations if any condition fails; returns the unmodified DataFrame on success for chaining.
+- pt.explode(df, *cols) / df.pt.explode(...) / df.explode(...):
+  Flattens and unnests list, array, or iterable columns into separate rows, duplicating non-exploded column values.
+- pt.diff(left, right, tol=0.0, rtol=0.0, *, on=None) / df.pt.diff(...) / df.diff(...):
+  Compares schema, dimensions, null count variations, and cell values between two datasets. Use on="id" or on=["id", "date"] for key-aligned row comparison with added/removed key reporting and cell mismatches across matching keys, even when row counts or ordering differ.
 - pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...):
   Drops rows with missing values (Arrow null and float NaN). Defaults to how='all' (Zero Data Loss) when cols is empty,
   or how='any' when columns are explicitly passed. Pass drop_nans=False to drop only Arrow nulls and preserve float NaNs.
@@ -941,7 +950,7 @@ Inspection & Summary Flags:
   -describe             Descriptive statistics for numeric columns
   -glimpse              Transposed column overview with dtypes and sample values
   -meta                 Display zero-scan Parquet metadata
-  -diff PATH            Compare schema, shape, null counts against another file
+  -diff PATH[,on=...]   Compare schema, shape, null counts against another file; optionally align by key (on=id) & set tolerance (tol=1e-4)
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
   -sample [N]           Random sample of N rows (default 5)
@@ -959,6 +968,7 @@ In-Terminal Visualizations:
 
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species == 'Adelie' and body_mass_g > 3500")
+  -assert CONDITIONS    Enforce data quality invariants across all rows; halts pipeline with sample errors if violated
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -fillna [VAL]         Impute missing values (e.g. -fillna 0 or -fillna "col:val")
   -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
@@ -977,6 +987,7 @@ Aggregation & Reshaping Flags:
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
   -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=count")
+  -explode COLS         Unnest/flatten list or array columns into rows (e.g. -explode tags or -explode "items,qty")
 
 SQL & Multi-File Flags:
   -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
@@ -1088,6 +1099,8 @@ State Management & Rollback Commands:
   - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
   - `history`                 : Display audit log with sequential step numbers and *checkpoint: <name>* banners.
+  - `history -cli`            : Export reproducible one-shot CLI command string reconstructing the session.
+  - `history -py`             : Export runnable Python script reconstructing the session with pt/DataFrame calls.
 
 Session-Wide Checkpoints:
   - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).

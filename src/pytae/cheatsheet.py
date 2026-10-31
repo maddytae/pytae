@@ -41,6 +41,7 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -filter "sex.is_not_null()"                 # Missing checks (or {'sex': 'is_null()'})
   pytae data.parquet -filter "score.is_nan()"                    # NaN checks (or {'score': 'is_nan()'})
   pytae data.parquet -filter "counterparty_class_(irb).is_not_null()" # Special columns
+  pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"   # Schema & data assertion
   pytae data.parquet -dropna                                      # Drop 100% null rows
   pytae data.parquet -dropna "body_mass_g,sex"
 
@@ -90,6 +91,8 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -long "r=species,island, c=metric, v=val"
   pytae long.parquet -wide "r=species, c=metric, v=val"
   pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
+  pytae events.parquet -explode tags                              # Unnest list/array column
+  pytae orders.parquet -explode "items,quantities"
 
 8. 🔗 MULTI-FILE RELATIONAL OPERATIONS (-file, -join, -concat, -sql)
 --------------------------------------------------------------------------------
@@ -111,6 +114,7 @@ CHEATSHEET_TEXT = """\
 --------------------------------------------------------------------------------
   pytae baseline.parquet -diff current.parquet                    # Schema + cell diff
   pytae baseline.parquet -diff current.parquet -tol 1e-4          # Numerical tolerance
+  pytae baseline.parquet -diff "current.parquet,on=id,tol=1e-4"   # Key-aligned row diff
   pytae left.csv -diff right.csv -dlim "," -tol 0.001
 
 11. 🚰 UNIX SHELL PIPING
@@ -135,6 +139,10 @@ CHEATSHEET_TEXT = """\
   pytae -i                                                        # Launch empty REPL workbench
   pytae data.parquet -filter "sales > 100" -i                     # Pre-filter then enter REPL
   # Inside REPL session:
+  #   df1 = "parts/*.parquet" Load globbed partitions into single table
+  #   history                 Show numbered audit log of transformations
+  #   history -cli            Export pipeline as reproducible CLI command
+  #   history -py             Export pipeline as runnable Python script
   #   undo / redo             Revert / re-apply last transformation step
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables

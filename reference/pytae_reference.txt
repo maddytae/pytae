@@ -22,6 +22,9 @@ TABLE OF CONTENTS
     4.10. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.11. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
     4.12. Other Utilities:
+          - pt.assert_() / df.pt.assert_() / df.assert_() (Data Quality Assertion)
+          - pt.explode() / df.pt.explode() / df.explode() (List Unnesting)
+          - pt.diff() / df.pt.diff() / df.diff() (Key-Aware Dataset Diffing)
           - pt.dropna() / df.pt.dropna()
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
@@ -772,6 +775,12 @@ Examples:
 
 4.12. Other Utilities
 --------------------------------------------------------------------------------
+- pt.assert_(df, *conditions, params=None, **kwargs) / df.pt.assert_(...) / df.assert_(...):
+  Enforces data quality and validation invariants across all rows without filtering. Raises ValidationError displaying the number of failing rows and sample violations if any condition fails; returns the unmodified DataFrame on success for chaining.
+- pt.explode(df, *cols) / df.pt.explode(...) / df.explode(...):
+  Flattens and unnests list, array, or iterable columns into separate rows, duplicating non-exploded column values.
+- pt.diff(left, right, tol=0.0, rtol=0.0, *, on=None) / df.pt.diff(...) / df.diff(...):
+  Compares schema, dimensions, null count variations, and cell values between two datasets. Use on="id" or on=["id", "date"] for key-aligned row comparison with added/removed key reporting and cell mismatches across matching keys, even when row counts or ordering differ.
 - pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...):
   Drops rows with missing values (Arrow null and float NaN). Defaults to how='all' (Zero Data Loss) when cols is empty,
   or how='any' when columns are explicitly passed. Pass drop_nans=False to drop only Arrow nulls and preserve float NaNs.
@@ -903,7 +912,7 @@ Inspection & Summary Flags:
   -describe             Descriptive statistics for numeric columns
   -glimpse              Transposed column overview with dtypes and sample values
   -meta                 Display zero-scan Parquet metadata
-  -diff PATH            Compare schema, shape, null counts against another file
+  -diff PATH[,on=...]   Compare schema, shape, null counts against another file; optionally align by key (on=id) & set tolerance (tol=1e-4)
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
   -sample [N]           Random sample of N rows (default 5)
@@ -921,6 +930,7 @@ In-Terminal Visualizations:
 
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species == 'Adelie' and body_mass_g > 3500")
+  -assert CONDITIONS    Enforce data quality invariants across all rows; halts pipeline with sample errors if violated
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -fillna [VAL]         Impute missing values (e.g. -fillna 0 or -fillna "col:val")
   -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
@@ -939,6 +949,7 @@ Aggregation & Reshaping Flags:
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
   -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=count")
+  -explode COLS         Unnest/flatten list or array columns into rows (e.g. -explode tags or -explode "items,qty")
 
 SQL & Multi-File Flags:
   -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
@@ -1048,6 +1059,8 @@ State Management & Rollback Commands:
   - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
   - `history`                 : Display audit log with sequential step numbers and *checkpoint: <name>* banners.
+  - `history -cli`            : Export reproducible one-shot CLI command string reconstructing the session.
+  - `history -py`             : Export runnable Python script reconstructing the session with pt/DataFrame calls.
 
 Session-Wide Checkpoints:
   - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).
@@ -2446,6 +2459,8 @@ Compare schemas, dimensions, added/removed columns, data type drift, null count 
   - [4. Null Count Variations](#4-null-count-variations)
   - [5. Value Mismatches Across Matching Rows](#5-value-mismatches-across-matching-rows)
 - [Filtering / Transforming Before Diffing](#filtering--transforming-before-diffing)
+- [Key-Aware Diffing (`on=key`)](#key-aware-diffing-onkey)
+- [Python API (`df.diff` / `pt.diff`)](#python-api-dfdiff--ptdiff)
 - [Copying Diff Reports to Clipboard (`-o clip`)](#copying-diff-reports-to-clipboard--o-clip)
 - [Batch Diffing Across Multiple Files](#batch-diffing-across-multiple-files)
 
@@ -2543,6 +2558,63 @@ pytae incoming.parquet \
   -filter "status == 'ACTIVE'" \
   -select "user_id,email,balance" \
   -diff baseline.parquet
+```
+
+---
+
+## Key-Aware Diffing (`on=key`)
+
+When comparing tables where rows may be inserted, deleted, reordered, or filtered, direct positional row matching may fail or report misleading cell differences. Use the `on=` parameter inside `-diff` to align rows by primary or composite keys:
+
+```bash
+# Key alignment on a single column:
+pytae v1.parquet -diff "v2.parquet,on=id"
+
+# Key alignment with numeric tolerance:
+pytae v1.parquet -diff "v2.parquet,on=id,tol=1e-4,rtol=1e-5"
+
+# Composite key alignment:
+pytae v1.parquet -diff "v2.parquet,on=customer_id:order_date"
+```
+
+**Key Alignment Output:**
+```text
+Key Alignment (on id):
+  Matched keys:    1,420
+  + Added in left (2):   [1051, 1052]
+  - Removed in left (1): [994]
+
+Values:
+  Tolerance: tol=0.0001 (for numeric columns)
+  Identical: all cell values match within tolerance.
+```
+
+When `on=` is specified:
+1. Keys present only in the left or right dataset are identified and reported.
+2. Matching keys are aligned directly to compare cell values across common non-key columns, regardless of physical row order.
+
+---
+
+## Python API (`df.diff` / `pt.diff`)
+
+Dataset diffing is also available directly in Python pipelines via `pt.diff()` or `DataFrame.diff()`:
+
+```python
+import pytae as pt
+
+left = pt.read_parquet("left.parquet")
+right = pt.read_parquet("right.parquet")
+
+# Simple diff
+report = left.diff(right)
+print(report)
+
+# Key-aware diff with tolerance:
+report = pt.diff(left, right, on="id", tol=1e-3)
+print(report)
+
+# Or via the pt accessor:
+report = df.pt.diff(df_ref, on=["user_id", "date"], tol=0.01)
 ```
 
 ---
@@ -2705,6 +2777,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Combining Multiple Conditions](#combining-multiple-conditions)
   - [Strict Syntax Enforcement & Diagnostic Errors](#strict-syntax-enforcement)
 - [Slicing Extreme Rows](#slicing-extreme-rows)
+- [Inline Data Assertions (`-assert`)](#inline-data-assertions--assert)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
@@ -2982,6 +3055,48 @@ pytae penguins.parquet -by species -arrange body_mass_g -head 1 -select "species
 | Adelie    |          2850 |
 | Chinstrap |          2700 |
 | Gentoo    |          3950 |
+
+---
+
+## Inline Data Assertions (`-assert`)
+
+While `-filter` silently keeps only matching rows, `-assert` enforces data quality and schema invariants at any point in the pipeline. If all rows satisfy the assertion conditions, the pipeline continues uninterrupted; if any condition fails, execution halts immediately with an informative error displaying the number of failing rows and sample violations.
+
+```bash
+# Validate ranges and non-null constraints:
+pytae penguins.parquet -assert "body_mass_g > 0 and species.is_not_null()"
+
+# Chain assertions between transformations:
+pytae raw_events.parquet \
+  -filter "status == 'SUCCESS'" \
+  -assert "user_id.is_not_null() and amount >= 0" \
+  -mutate "tax = amount * 0.08" \
+  -assert "tax >= 0" \
+  -save processed_events.parquet
+```
+
+### Python API (`df.assert_()` / `pt.assert_()`)
+
+```python
+import pytae as pt
+
+df = pt.read_parquet("penguins.parquet")
+
+# Method chaining:
+validated = (
+    df
+    .filter("body_mass_g > 3000")
+    .assert_("species in ['Adelie', 'Gentoo', 'Chinstrap']")
+    .mutate("mass_kg = body_mass_g / 1000")
+    .assert_("mass_kg > 3.0")
+)
+
+# Functional API:
+pt.assert_(df, "bill_length_mm > 0", "sex.is_not_null()")
+
+# Accessor API:
+df.pt.assert_("body_mass_g > 0")
+```
 
 ---
 
@@ -5436,6 +5551,7 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
   - [1. Pure 1-to-1 Unmelting](#1-pure-1-to-1-unmelting)
   - [2. Explicit Row Index (`r=`)](#2-explicit-row-index-r)
   - [3. Round-Trip Reshaping (`-long` → `-wide`)](#3-round-trip-reshaping--long---wide)
+- [Unnesting List & Array Columns (`-explode`)](#unnesting-list--array-columns--explode)
 - [When to Use `-pivot` Instead of `-wide`](#when-to-use--pivot-instead-of--wide)
 
 ---
@@ -5544,6 +5660,37 @@ pytae items.parquet \
 | row1 | 10.0 | 100.0 |
 | row2 | 20.0 | 200.0 |
 | row3 | 30.0 | 300.0 |
+
+---
+
+## Unnesting List & Array Columns (`-explode`)
+
+When tables contain list, array, or iterable values in cells (such as tags, items, or JSON arrays), `-explode` flattens them into individual rows, duplicating non-exploded column values across each element.
+
+```bash
+# Unnest a single list/array column:
+pytae events.parquet -explode tags
+
+# Unnest multiple list columns simultaneously:
+pytae orders.parquet -explode "items,quantities"
+```
+
+### Python API (`df.explode()` / `pt.explode()`)
+
+```python
+import pytae as pt
+
+df = pt.read_parquet("events.parquet")
+
+# Unnest via verb function:
+flat = pt.explode(df, "tags")
+
+# Or via DataFrame method chaining:
+flat = df.explode("items", "quantities")
+
+# Or via pandas accessor:
+flat = df.pt.explode("tags")
+```
 
 ---
 
@@ -12873,20 +13020,20 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 |:---|:---|:---|:---|
 | **Data I/O** | **[read_write.ipynb](detailed_docs/library/read_write.ipynb)** | **[read_write.md](detailed_docs/cli/read_write.md)** | `pt.read_*`, `pt.scan_*`, `write_*`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
 | **Derivations** | **[mutate.ipynb](detailed_docs/library/mutate.ipynb)** | **[mutate.md](detailed_docs/cli/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
-| **Row Filtering** | **[filter.ipynb](detailed_docs/library/filter.ipynb)** | **[filter.md](detailed_docs/cli/filter.md)** | `filter`, intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
+| **Row Filtering** | **[filter.ipynb](detailed_docs/library/filter.ipynb)** | **[filter.md](detailed_docs/cli/filter.md)** | `filter`, `assert_` (data assertions), intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
 | **Columns** | **[select.ipynb](detailed_docs/library/select.ipynb)** | **[select.md](detailed_docs/cli/select.md)** | `select`, drop with `!`, regex/patterns, inline rename, `pt.everything` |
 | **Sorting** | **[arrange.ipynb](detailed_docs/library/arrange.ipynb)** | **[arrange.md](detailed_docs/cli/arrange.md)** | `arrange`, ascending, descending `col desc`, multi-column ordering, null positioning |
 | **Aggregation** | **[agg.ipynb](detailed_docs/library/agg.ipynb)** | **[agg.md](detailed_docs/cli/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
 | **Cross-Tab** | **[pivot.ipynb](detailed_docs/library/pivot.ipynb)** | **[pivot.md](detailed_docs/cli/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
 | **Deduplication** | **[distinct.ipynb](detailed_docs/library/distinct.ipynb)** | **[distinct.md](detailed_docs/cli/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
 | **Slicing** | **[head_tail.ipynb](detailed_docs/library/head_tail.ipynb)** | **[head_tail.md](detailed_docs/cli/head_tail.md)** | `arrange` + `head`/`tail`, group-aware with `by`, percentage `prop=`, ties `with_ties=` |
-| **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
+| **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Masking & Privacy**| **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[mask.md](detailed_docs/cli/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
-| **Interactive REPL**| — | **[repl.md](repl.md)** | `pytae -i`, `pytae <file> -i`, state history, `undo`, `redo`, `reset`, `checkpoint`, `restore`, `rm *`, `rm checkpoint *`, `clear` |
-| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |
+| **Interactive REPL**| — | **[repl.md](repl.md)** | `pytae -i`, `pytae <file> -i`, state history, `history -cli`, `history -py`, `undo`, `redo`, `reset`, `checkpoint`, `restore`, `rm *`, `clear` |
+| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `to_clip` |
 | **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
-| **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
+| **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
 | **Plotting** | **[plotting.ipynb](detailed_docs/plotting/plotting.ipynb)** | **[cli_plots.md](detailed_docs/cli/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Comparisons** | **[vs. Pandas](comparison_to_pandas.md)**<br>**[vs. dplyr](comparison_to_dplyr.md)**<br>**[vs. SAS](comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
@@ -13028,6 +13175,10 @@ pytae data.parquet -filter "{score: is_nan()}"
 pytae data.parquet -filter "counterparty_class_(irb) == 'Sovereigns'"
 pytae data.parquet -filter "[counterparty class (irb)].is_not_null()"
 
+# Inline assertions (validates all rows satisfy conditions; fails fast on violation)
+pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"
+pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet
+
 # Drop rows containing missing values
 pytae data.parquet -dropna
 pytae data.parquet -dropna "body_mass_g,sex"
@@ -13168,6 +13319,10 @@ pytae long.parquet -wide "r=species, c=metric, v=value"
 
 # 2D Pivot table with aggregation: r (rows), c (columns), v (values), a (aggregation)
 pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
+
+# Explode / unnest list-like or array columns into multiple rows (one element per row)
+pytae events.parquet -explode tags
+pytae orders.parquet -explode "items,quantities"
 ```
 
 ---
@@ -13189,6 +13344,10 @@ pytae -file "q1.parquet=a; q2.parquet=b; q3.parquet=c" \
 # Run analytical ANSI SQL across files
 pytae -file "sales.parquet=s; stores.csv=st" \
   -sql "SELECT st.region, SUM(s.amount) as total FROM s JOIN st ON s.store_id = st.id GROUP BY 1 ORDER BY 2 DESC"
+
+# Load globbed multi-file partitions into -file
+pytae -file "parts/*.parquet=all_parts; stores.csv=st" \
+  -join "left=all_parts, right=st, on=store_id, how=left"
 ```
 
 ---
@@ -13226,6 +13385,10 @@ pytae baseline.parquet -diff current.parquet
 
 # Tolerance threshold for floating-point calculations (absolute & relative)
 pytae baseline.parquet -diff current.parquet -tol 1e-4
+
+# Key-aware row alignment (reconcile by primary/composite keys, detect added/removed keys & cell diffs)
+pytae baseline.parquet -diff "current.parquet,on=id,tol=1e-4"
+pytae baseline.parquet -diff "current.parquet,on=id:cust_id,tol=0.01"
 
 # Compare with custom delimiter or encoding
 pytae left.csv -diff right.csv -dlim "," -tol 0.001
@@ -13318,6 +13481,8 @@ redo                 # Re-apply last undone transformation
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show history of applied steps and checkpoint milestone banners
+history -cli         # Export session transformations as reproducible one-line CLI command
+history -py          # Export session transformations as runnable Python script (import pytae as pt...)
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
@@ -13732,9 +13897,13 @@ Loaded raw_data.csv as 'df2' (5,000 rows x 8 cols) [encoding=latin1, sep=;, nrow
 pytae [df1, df2]> load sales.csv as df3 -dlim "\t"
 Loaded sales.csv as 'df3' (1,200 rows x 6 cols) [sep=	].
 
-# 4. Or explicitly load a bundled sample dataset via sample:<name>
-pytae [df1, df2, df3]> df4 = sample:penguins
-Loaded penguins.parquet as 'df4' (344 rows x 7 cols).
+# 4. Multi-file globbing and directory scanning
+pytae [df1, df2, df3]> load "parts/*.parquet" as df4
+Loaded 12 files matching 'parts/*.parquet' as 'df4' (120,000 rows x 8 cols).
+
+# 5. Or explicitly load a bundled sample dataset via sample:<name>
+pytae [df1, df2, df3, df4]> df5 = sample:penguins
+Loaded penguins.parquet as 'df5' (344 rows x 7 cols).
 
 pytae [df1, df2, df3, df4]>
 ```
@@ -13894,6 +14063,8 @@ The REPL automatically preserves command history across sessions:
 - **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Supported on Unix/macOS (`libedit`, GNU `readline`), Windows Terminal, and PowerShell.
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered log of pipeline transformation steps applied during the current session.
+- **`history -cli`**: Generates and prints an exact, reproducible one-shot CLI command string reconstructing the entire interactive session from scratch.
+- **`history -py`**: Generates and prints a complete, runnable Python script using `import pytae as pt` and DataFrame method chaining.
 
 ---
 
@@ -13926,7 +14097,7 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history` | List numbered history of applied transformation steps and checkpoint banners | No |
+| **`history`** | `history`, `history -cli`, `history -py` | List numbered transformation steps, or export history as CLI command (`-cli`) or Python script (`-py`) | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
@@ -14585,7 +14756,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Within-Group Percentage** | `df %>% group_by(g) %>% mutate(pct = x / sum(x)) %>% ungroup()` | `df.by("g").mutate(pct="x / sum(x)")` | `-by g -mutate "pct = x / sum(x)"` |
 | **Within-Group Rank** | `df %>% group_by(g) %>% mutate(r = min_rank(x)) %>% ungroup()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
 | **Grouped Shift / Lag** | `df %>% group_by(g) %>% mutate(prev = lag(x)) %>% ungroup()` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
-| **Grouped Cumulative Sum** | `df %>% group_by(g) %>% mutate(cum = cumsum(x)) %>% ungroup()` | `df.by("g").mutate(cum="cum_sum(x)")` | `-by g -mutate "cum = cum_sum(x)"` |
+| **Grouped Cumulative Sum** | `df %>% group_by(g) %>% mutate(cum = cumsum(x)) %>% ungroup()` | `df.by("g").mutate(cum="x.cumsum()")` | `-by g -mutate "cum = x.cumsum()"` |
 
 ---
 
@@ -14803,7 +14974,7 @@ In Pytae, grouped calculations are written as clear, declarative expressions wit
 
 ```python
 # PYTAE: One obvious declarative line
-sales.by("region").mutate(cum_sales="cum_sum(amount)")
+sales.by("region").mutate(cum_sales="amount.cumsum()")
 ```
 
 ---
@@ -15833,6 +16004,14 @@ def filter(df: Any, *conditions: Any, params: dict[str, Any] | None = None, **kw
     return DataFrame(df).filter(*conditions, params=params, **kwargs)
 
 
+def assert_(df: Any, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+    return DataFrame(df).assert_(*conditions, params=params, **kwargs)
+
+
+def explode(df: Any, *cols: Any) -> DataFrame:
+    return DataFrame(df).explode(*cols)
+
+
 def mutate(df: Any, *specs: Any, **kwargs: Any) -> DataFrame:
     if isinstance(df, GroupedDataFrame):
         return df.mutate(*specs, **kwargs)
@@ -16052,9 +16231,16 @@ def join(
     )
 
 
-def diff(left: Any, right: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
-    """Compare schema and contents between two datasets with optional numeric tolerance."""
-    return DataFrame(left).diff(right, tol=tol, rtol=rtol)
+def diff(
+    left: Any,
+    right: Any,
+    tol: float = 0.0,
+    rtol: float = 0.0,
+    *,
+    on: str | Sequence[str] | None = None,
+) -> str:
+    """Compare schema and contents between two datasets with optional key alignment and numeric tolerance."""
+    return DataFrame(left).diff(right, on=on, tol=tol, rtol=rtol)
 
 
 def concat(
@@ -16155,6 +16341,8 @@ __all__ = [
     "sample",
     "select",
     "filter",
+    "assert_",
+    "explode",
     "by",
     "mutate",
     "rename",
@@ -17277,6 +17465,12 @@ class _BasePtAccessor:
     def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).filter(*conditions, params=params, **kwargs)
 
+    def assert_(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).assert_(*conditions, params=params, **kwargs)
+
+    def explode(self, *cols: Any) -> DataFrame:
+        return DataFrame(self._obj).explode(*cols)
+
     def select(self, *names: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).select(*names, **kwargs)
 
@@ -17295,8 +17489,15 @@ class _BasePtAccessor:
     def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
-    def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
-        return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
+    def diff(
+        self,
+        other: Any,
+        tol: float = 0.0,
+        rtol: float = 0.0,
+        *,
+        on: str | Sequence[str] | None = None,
+    ) -> str:
+        return DataFrame(self._obj).diff(other, on=on, tol=tol, rtol=rtol)
 
     def head(
         self,
@@ -17581,6 +17782,7 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -filter "sex.is_not_null()"                 # Missing checks (or {'sex': 'is_null()'})
   pytae data.parquet -filter "score.is_nan()"                    # NaN checks (or {'score': 'is_nan()'})
   pytae data.parquet -filter "counterparty_class_(irb).is_not_null()" # Special columns
+  pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"   # Schema & data assertion
   pytae data.parquet -dropna                                      # Drop 100% null rows
   pytae data.parquet -dropna "body_mass_g,sex"
 
@@ -17630,6 +17832,8 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -long "r=species,island, c=metric, v=val"
   pytae long.parquet -wide "r=species, c=metric, v=val"
   pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
+  pytae events.parquet -explode tags                              # Unnest list/array column
+  pytae orders.parquet -explode "items,quantities"
 
 8. 🔗 MULTI-FILE RELATIONAL OPERATIONS (-file, -join, -concat, -sql)
 --------------------------------------------------------------------------------
@@ -17651,6 +17855,7 @@ CHEATSHEET_TEXT = """\
 --------------------------------------------------------------------------------
   pytae baseline.parquet -diff current.parquet                    # Schema + cell diff
   pytae baseline.parquet -diff current.parquet -tol 1e-4          # Numerical tolerance
+  pytae baseline.parquet -diff "current.parquet,on=id,tol=1e-4"   # Key-aligned row diff
   pytae left.csv -diff right.csv -dlim "," -tol 0.001
 
 11. 🚰 UNIX SHELL PIPING
@@ -17675,6 +17880,10 @@ CHEATSHEET_TEXT = """\
   pytae -i                                                        # Launch empty REPL workbench
   pytae data.parquet -filter "sales > 100" -i                     # Pre-filter then enter REPL
   # Inside REPL session:
+  #   df1 = "parts/*.parquet" Load globbed partitions into single table
+  #   history                 Show numbered audit log of transformations
+  #   history -cli            Export pipeline as reproducible CLI command
+  #   history -py             Export pipeline as runnable Python script
   #   undo / redo             Revert / re-apply last transformation step
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables
@@ -17825,6 +18034,8 @@ _CLI_FLAGS = {
     "-rename",
     "-file",
     "-filter",
+    "-assert",
+    "-explode",
     "-mutate",
     "-sql",
     "-join",
@@ -18402,6 +18613,23 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="filter rows at this point in the pipeline using pytae filter(); conditions like \"col = 'val', col > 5\"",
     )
     parser.add_argument(
+        "-assert",
+        dest="assert_specs",
+        action=_OrderedAppend,
+        default=None,
+        metavar="CONDITIONS",
+        help="validate that all rows satisfy conditions at this point in the pipeline (raises error on violation), "
+        'e.g. -assert "amount >= 0 and id.is_not_null()"',
+    )
+    parser.add_argument(
+        "-explode",
+        dest="explode",
+        action=_OrderedAppend,
+        default=None,
+        metavar="COLUMNS",
+        help='explode list/array-like columns into multiple rows (one per element), e.g. -explode tags or -explode "tags,items"',
+    )
+    parser.add_argument(
         "-mutate",
         dest="mutate",
         action=_OrderedAppend,
@@ -18755,12 +18983,16 @@ def main(argv: list[str] | None = None) -> int:
             args.pivot is not None,
             args.select,
             args.filter,
+            args.assert_specs,
+            args.explode,
             args.mutate,
             args.sql,
             args.rename,
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.assert_specs,
+            args.explode,
             args.join,
             args.concat,
             args.meta,
@@ -18795,6 +19027,8 @@ def main(argv: list[str] | None = None) -> int:
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.assert_specs,
+            args.explode,
             args.join,
             args.concat,
             args.plot is not None,
@@ -18871,7 +19105,7 @@ def main(argv: list[str] | None = None) -> int:
             frames: dict[str, Any] = {}
             for entry in parse_file_arg(args.file):
                 entry_path = Path(entry["path"])
-                if not entry_path.exists():
+                if not entry_path.exists() and not any(ch in str(entry_path) for ch in "*?["):
                     from pytae import DATA_PATH
 
                     candidate = DATA_PATH / entry_path.name
@@ -19920,7 +20154,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "repl": KeywordHelp(
         name="repl",
-        flag="-i, --interactive, -repl, --repl",
+        flag="-i",
         syntax="pytae [<path>] -i",
         summary="Launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration.",
         description=(
@@ -19932,13 +20166,13 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "undo : Revert the last applied transformation step.",
             "redo : Re-apply the last undone transformation step.",
             "reset : Restore the original dataset as loaded from disk.",
-            "history : Show numbered history of transformation steps in this session.",
+            "history [-cli|-py] : Show numbered history or export as reproducible CLI command / Python code.",
             "status : Show active table shape, columns, and memory usage.",
-            "checkpoint <name> : Freeze and save current state with a name (alias: cp).",
-            "restore <name> : Restore table to a saved checkpoint (alias: checkout).",
-            "load <path> : Load a new dataset from disk into the REPL (alias: read).",
-            "save <path> : Save active table to Parquet/CSV or clipboard (-o clip).",
-            "sql <query> : Run ANSI SQL queries against in-memory table `df`.",
+            "checkpoint <name> : Freeze and save current state with a name.",
+            "restore <name> : Restore table to a saved checkpoint.",
+            "load <path> : Load a new dataset (or glob pattern) from disk into the REPL.",
+            "-o <path> : Save active table to Parquet/CSV/Feather or clipboard (-o clip).",
+            "-sql <query> : Run ANSI SQL queries against in-memory table `df`.",
             "py <expr> : Evaluate arbitrary Python expressions on `df` / `pldf`.",
         ],
         examples=[
@@ -19947,6 +20181,46 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -filter \"species == 'Gentoo'\" -i",
         ],
         see_also=["-filter", "-mutate", "-agg", "-sql", "-cheatsheet"],
+    ),
+    "assert": KeywordHelp(
+        name="assert",
+        flag="-assert CONDITIONS",
+        syntax='pytae <path> -assert "<CONDITIONS>"',
+        summary="Validate that all rows satisfy data quality conditions, failing fast on violation.",
+        description=(
+            "Evaluates pytae filter expressions across all rows at this point in the pipeline.\n"
+            "If all rows pass, the DataFrame continues unchanged. If any row violates the condition\n"
+            "(or evaluates to null), execution stops with a detailed summary and sample failing rows."
+        ),
+        options=[
+            "col > 0 : Assert numeric bounds.",
+            "col.is_not_null() : Assert non-null constraint.",
+            "col in ['A', 'B'] : Assert allowed categorical values.",
+        ],
+        examples=[
+            'pytae penguins.parquet -assert "body_mass_g > 0"',
+            'pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet',
+        ],
+        see_also=["-filter", "-dropna", "-nulls"],
+    ),
+    "explode": KeywordHelp(
+        name="explode",
+        flag="-explode COLUMNS",
+        syntax='pytae <path> -explode "<COLUMNS>"',
+        summary="Unnest / explode list or array columns into one row per element.",
+        description=(
+            "Expands list-typed or array-typed columns vertically so each element becomes its own row,\n"
+            "repeating values in other columns."
+        ),
+        options=[
+            "col : Explode a single list column.",
+            "col1,col2 : Simultaneously explode multiple aligned list columns.",
+        ],
+        examples=[
+            "pytae events.parquet -explode tags",
+            'pytae orders.parquet -explode "items,quantities"',
+        ],
+        see_also=["-long", "-wide", "-mutate"],
     ),
 }
 
@@ -21293,6 +21567,62 @@ class _Pipeline:
         except Exception as exc:
             return f"{flag_name}: {exc}"
 
+    def apply_assert(self, raw_spec: str) -> str | None:
+        """Validate that all rows satisfy one -assert spec. Returns an error message or None."""
+        from pytae.cli_parsing import parse_filter
+
+        try:
+            conditions = parse_filter(raw_spec)
+        except (SystemExit, Exception) as exc:
+            return f"-assert: {exc}"
+
+        available = self._available_columns()
+        if hasattr(conditions, "columns"):
+            cond_cols = conditions.columns()
+        elif isinstance(conditions, dict):
+            cond_cols = list(conditions.keys())
+        else:
+            cond_cols = []
+
+        def _get_base_col(c: str) -> str:
+            if ".dt." in c:
+                return c.split(".dt.")[0].strip()
+            if ".str." in c:
+                return c.split(".str.")[0].strip()
+            return c.strip("[]").strip()
+
+        unknown = [_get_base_col(c) for c in cond_cols if _get_base_col(c) not in available]
+        if unknown:
+            return unknown_columns_message("-assert", unknown, available)
+
+        try:
+            from pytae.polars_engine import assert_polars
+
+            assert_polars(self.polars_lazy_frame(), conditions, raw_desc=raw_spec)
+            return None
+        except Exception as exc:
+            return f"-assert: {exc}"
+
+    def apply_explode(self, raw_cols: str) -> str | None:
+        """Explode list/array-like columns into multiple rows. Returns an error message or None."""
+        from pytae.cli_parsing import parse_columns, unknown_columns_message
+
+        cols = parse_columns(raw_cols)
+        if not cols:
+            return "-explode: expected at least one column name"
+        available = self._available_columns()
+        unknown = [c for c in cols if c not in available]
+        if unknown:
+            return unknown_columns_message("-explode", unknown, available)
+        try:
+            from pytae.polars_engine import explode_polars
+
+            self._pldf = explode_polars(self.polars_lazy_frame(), cols)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-explode: {exc}"
+
     def apply_mutate(self, spec: str, by: list[str] | None = None, dropna: bool = False) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()
@@ -21746,6 +22076,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -22047,11 +22378,48 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
     return "\n".join(lines)
 
 
+def _parse_diff_arg(
+    raw_diff: str,
+    default_tol: float = 0.0,
+) -> tuple[str, list[str] | None, float, float]:
+    """Parse `-diff` argument string, extracting optional `,on=...`, `,tol=...`, `,rtol=...`."""
+    from pytae._text import tokenize as _tok
+
+    parts = [p.strip() for p in _tok(raw_diff, ",", keep_quotes=False, track_brackets=True) if p.strip()]
+    if not parts:
+        return raw_diff, None, default_tol, 0.0
+
+    target_str = parts[0]
+    on_cols: list[str] | None = None
+    tol = default_tol
+    rtol = 0.0
+
+    for tok in parts[1:]:
+        if "=" in tok:
+            k, v = tok.split("=", 1)
+            k_clean = k.strip().lower()
+            v_clean = v.strip().strip("\"'")
+            if k_clean in ("on", "key", "keys"):
+                on_cols = [c.strip() for c in v_clean.replace(":", ",").split(",") if c.strip()]
+            elif k_clean in ("tol", "atol"):
+                try:
+                    tol = float(v_clean)
+                except ValueError:
+                    pass
+            elif k_clean == "rtol":
+                try:
+                    rtol = float(v_clean)
+                except ValueError:
+                    pass
+    return target_str, on_cols, tol, rtol
+
+
 def _compute_diff(
     left_df: pd.DataFrame,
     right_target: Any,
     left_name: str,
     *,
+    on: str | Sequence[str] | None = None,
     tol: float = 0.0,
     rtol: float = 0.0,
     sep: str | None = None,
@@ -22065,8 +22433,16 @@ def _compute_diff(
         right_df = right_target.to_pandas()
         right_name = getattr(right_target, "_name", "<right>")
     else:
+        if isinstance(right_target, str) and "," in right_target and not Path(right_target).exists():
+            parsed_target, parsed_on, parsed_tol, parsed_rtol = _parse_diff_arg(right_target, default_tol=tol)
+            right_target = parsed_target
+            if on is None and parsed_on is not None:
+                on = parsed_on
+            tol = parsed_tol
+            if rtol == 0.0 and parsed_rtol > 0.0:
+                rtol = parsed_rtol
         right_path = Path(right_target)
-        if not right_path.exists():
+        if not right_path.exists() and not any(ch in str(right_path) for ch in "*?["):
             return f"Diff target not found: {right_path}"
         try:
             reader = get_reader(right_path, sep=sep, encoding=encoding)
@@ -22081,6 +22457,19 @@ def _compute_diff(
     r2, c2 = right_df.shape
     cols1 = list(left_df.columns)
     cols2 = list(right_df.columns)
+
+    key_cols: list[str] = []
+    if on is not None:
+        if isinstance(on, str):
+            key_cols = [c.strip() for c in on.replace(":", ",").split(",") if c.strip()]
+        else:
+            key_cols = [str(c).strip() for c in on if str(c).strip()]
+        missing_left = [k for k in key_cols if k not in cols1]
+        missing_right = [k for k in key_cols if k not in cols2]
+        if missing_left:
+            return f"Diff key column(s) {missing_left} not found in left dataset (available: {', '.join(cols1)})"
+        if missing_right:
+            return f"Diff key column(s) {missing_right} not found in right dataset (available: {', '.join(cols2)})"
 
     lines: list[str] = [
         "Comparing:",
@@ -22130,13 +22519,51 @@ def _compute_diff(
         lines.append("Null Counts:")
         lines.extend(null_diffs)
 
-    if r1 == r2 and common_cols:
+    compare_left = left_df
+    compare_right = right_df
+    compare_cols = common_cols
+    can_compare_values = (r1 == r2) and bool(common_cols)
+    key_diff_found = False
+
+    if key_cols:
+        lines.append("")
+        lines.append(f"Key Alignment (on {', '.join(key_cols)}):")
+        left_keys = set(left_df[key_cols].itertuples(index=False, name=None))
+        right_keys = set(right_df[key_cols].itertuples(index=False, name=None))
+        matched_keys = left_keys & right_keys
+        only_left = left_keys - right_keys
+        only_right = right_keys - left_keys
+
+        lines.append(f"  Matched keys:    {len(matched_keys):,}")
+        if only_left:
+            key_diff_found = True
+            sample_left = [k[0] if len(k) == 1 else k for k in sorted(only_left, key=str)[:5]]
+            suffix = ", ..." if len(only_left) > 5 else ""
+            lines.append(f"  + Added in left ({len(only_left):,}):   {sample_left}{suffix}")
+        if only_right:
+            key_diff_found = True
+            sample_right = [k[0] if len(k) == 1 else k for k in sorted(only_right, key=str)[:5]]
+            suffix = ", ..." if len(only_right) > 5 else ""
+            lines.append(f"  - Removed in left ({len(only_right):,}): {sample_right}{suffix}")
+
+        compare_cols = [c for c in common_cols if c not in key_cols]
+        if matched_keys and compare_cols:
+            l_dedup = left_df.drop_duplicates(subset=key_cols, keep="first").set_index(key_cols)
+            r_dedup = right_df.drop_duplicates(subset=key_cols, keep="first").set_index(key_cols)
+            common_idx = l_dedup.index.intersection(r_dedup.index)
+            compare_left = l_dedup.loc[common_idx].reset_index(drop=True)
+            compare_right = r_dedup.loc[common_idx].reset_index(drop=True)
+            can_compare_values = True
+        else:
+            can_compare_values = False
+
+    if can_compare_values and compare_cols:
         try:
             mismatches = 0
             col_mismatches: dict[str, tuple[int, float | None]] = {}
-            for c in common_cols:
-                s1 = left_df[c]
-                s2 = right_df[c]
+            for c in compare_cols:
+                s1 = compare_left[c]
+                s2 = compare_right[c]
                 is_num1 = pd.api.types.is_numeric_dtype(s1)
                 is_num2 = pd.api.types.is_numeric_dtype(s2)
                 if (tol > 0 or rtol > 0) and is_num1 and is_num2:
@@ -22178,7 +22605,7 @@ def _compute_diff(
                     tol_desc.append(f"rtol={rtol:g}")
                 lines.append(f"  Tolerance: {', '.join(tol_desc)} (for numeric columns)")
 
-            if mismatches == 0 and cols1 == cols2:
+            if mismatches == 0 and cols1 == cols2 and not key_diff_found and r1 == r2:
                 if tol > 0 or rtol > 0:
                     lines.append("  Identical: all cell values match within tolerance.")
                 else:
@@ -22202,6 +22629,10 @@ def _compute_diff(
                         lines.append(f"    * {c}: {cnt:,} cell(s) differ")
         except Exception:
             pass
+    elif r1 != r2 and not key_cols:
+        lines.append("")
+        lines.append("Values:")
+        lines.append("  Row counts differ; pass on='<key>' to align rows by key.")
 
     return "\n".join(lines)
 
@@ -22525,6 +22956,22 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "assert":
+            assert_val = _next_op_val("assert", getattr(args, "assert_specs", None))
+            if isinstance(assert_val, list):
+                assert_val = assert_val[0] if assert_val else ""
+            err = pipeline.apply_assert(str(assert_val or ""))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "explode":
+            explode_val = _next_op_val("explode", getattr(args, "explode", None))
+            if isinstance(explode_val, list):
+                explode_val = explode_val[0] if explode_val else ""
+            err = pipeline.apply_explode(str(explode_val or ""))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "mutate":
             by_cols = current_by if current_by is not None else legacy_by
             if by_cols:
@@ -22684,11 +23131,10 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
-            diff_path = Path(args.diff)
             diff_tol = getattr(args, "tol", None) or 0.0
             diff_str = _compute_diff(
                 pipeline.dataframe(),
-                diff_path,
+                str(args.diff),
                 path.name if path is not None else "<pipeline>",
                 tol=diff_tol,
                 sep=args.dlim,
@@ -23121,11 +23567,13 @@ from pytae.polars_engine import (
     _df_columns,
     agg_polars,
     arrange_polars,
+    assert_polars,
     clean_columns_polars,
     concat_polars,
     count_polars,
     distinct_polars,
     dropna_polars,
+    explode_polars,
     fillna_polars,
     filter_polars,
     join_polars,
@@ -23889,6 +24337,68 @@ class DataFrame:
 
         return DataFrame(filter_polars(self._df, cond_pairs))
 
+    def assert_(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+        """Validate that all rows satisfy the given filter conditions, raising ValueError on violation."""
+        import inspect
+
+        _here = inspect.currentframe()
+        caller_frame = None if _here is None else _here.f_back
+        del _here
+        while caller_frame is not None:
+            name = caller_frame.f_globals.get("__name__") or ""
+            if name != "pytae" and not name.startswith("pytae."):
+                break
+            caller_frame = caller_frame.f_back
+        frame_vars: dict[str, Any] = {}
+        if caller_frame is not None:
+            frame_vars.update(caller_frame.f_globals)
+            frame_vars.update(caller_frame.f_locals)
+        del caller_frame
+
+        if params is None:
+            params = kwargs.pop("_params", None)
+        if "params" in kwargs:
+            p_val = kwargs.pop("params")
+            if params is None and isinstance(p_val, dict):
+                params = p_val
+
+        if kwargs:
+            first_k = next(iter(kwargs))
+            first_v = kwargs[first_k]
+            example_val = repr(first_v) if isinstance(first_v, (str, int, float)) else "'...'"
+            raise TypeError(
+                f"assert_(): keyword arguments are not supported (received {list(kwargs.keys())}). "
+                f'Use a string expression (e.g. df.assert_("{first_k} == {example_val}")) '
+                f"or a dictionary (e.g. df.assert_({{{repr(first_k)}: {example_val}}}))"
+            )
+
+        merged_params = dict(frame_vars)
+        if params:
+            merged_params.update(params)
+
+        cond_pairs: list[Any] = []
+        raw_descs: list[str] = []
+        for cond in conditions:
+            if isinstance(cond, str):
+                cond_pairs.append(_parse_filter_string(cond, params=merged_params))
+                raw_descs.append(cond)
+            elif isinstance(cond, dict):
+                cond_pairs.append(cond)
+                raw_descs.append(repr(cond))
+            elif isinstance(cond, (list, tuple)) and cond and isinstance(cond[0], tuple):
+                cond_pairs.extend(cond)  # type: ignore[arg-type]
+                raw_descs.append(repr(cond))
+            elif isinstance(cond, tuple) and len(cond) == 2:
+                cond_pairs.append(cond)  # type: ignore[arg-type]
+                raw_descs.append(repr(cond))
+
+        assert_polars(self._df, cond_pairs, raw_desc=", ".join(raw_descs))
+        return self
+
+    def explode(self, *cols: Any) -> DataFrame:
+        """Explode list/array-like columns into multiple rows (one row per element)."""
+        return DataFrame(explode_polars(self._df, *cols), orig_col_map=self._orig_col_map)
+
     def select(self, *names: Any, **kwargs: Any) -> DataFrame:
         """Select, reorder, slice, and drop columns using Pytae selection grammar."""
         return DataFrame(select_polars(self._df, list(names), kwargs), orig_col_map=self._orig_col_map)
@@ -23998,6 +24508,8 @@ class DataFrame:
         other: Any,
         tol: float = 0.0,
         rtol: float = 0.0,
+        *,
+        on: str | Sequence[str] | None = None,
     ) -> str:
         """Compare schema and contents against another DataFrame or dataset file with optional tolerance.
 
@@ -24005,6 +24517,8 @@ class DataFrame:
         ----------
         other : DataFrame, pl.DataFrame, pd.DataFrame, str, or Path
             Dataset or file path to compare against.
+        on : str or Sequence[str], optional
+            Key column(s) to align rows before comparing cell values and reporting added/removed keys.
         tol : float, default 0.0
             Absolute numeric threshold / tolerance for numeric comparisons.
         rtol : float, default 0.0
@@ -24018,7 +24532,7 @@ class DataFrame:
         from pytae.cli_run import _compute_diff
 
         left_df = self.to_pandas()
-        return _compute_diff(left_df, other, "<left>", tol=tol, rtol=rtol)
+        return _compute_diff(left_df, other, "<left>", on=on, tol=tol, rtol=rtol)
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
         """Deprecated: pick() has been removed in favor of arrange().head(n) / arrange().tail(n)."""
@@ -28137,11 +28651,11 @@ def _eval_filter_node(node: FilterNode, schema: pl.Schema | None = None) -> pl.E
     raise TypeError(f"Unknown filter node: {type(node)}")
 
 
-def filter_polars(df: Any, conditions: Any) -> Any:
-    """Filter a Polars DataFrame or LazyFrame using pytae filter specifications."""
+def _build_filter_expr(df: Any, conditions: Any, caller: str = "filter()") -> pl.Expr | None:
+    """Build a combined boolean Polars expression from pytae filter specifications."""
     schema = _df_schema(df)
     if isinstance(conditions, FilterNode):
-        return df.filter(_eval_filter_node(conditions, schema))
+        return _eval_filter_node(conditions, schema)
 
     cond_items: list[Any]
     if isinstance(conditions, dict):
@@ -28152,7 +28666,7 @@ def filter_polars(df: Any, conditions: Any) -> Any:
         cond_items = [conditions]
 
     if not cond_items:
-        return df
+        return None
 
     combined_expr: pl.Expr | None = None
     for item in cond_items:
@@ -28173,14 +28687,76 @@ def filter_polars(df: Any, conditions: Any) -> Any:
             else:
                 expr = _cond_to_polars_expr(col, cond, schema=schema)
         else:
-            raise TypeError(f"filter(): unsupported condition item {item!r}")
+            raise TypeError(f"{caller}: unsupported condition item {item!r}")
 
         if expr is not None:
             combined_expr = expr if combined_expr is None else (combined_expr & expr)
+    return combined_expr
 
+
+def filter_polars(df: Any, conditions: Any) -> Any:
+    """Filter a Polars DataFrame or LazyFrame using pytae filter specifications."""
+    combined_expr = _build_filter_expr(df, conditions, caller="filter()")
     if combined_expr is None:
         return df
     return df.filter(combined_expr)
+
+
+def assert_polars(df: Any, conditions: Any, raw_desc: str = "") -> Any:
+    """Validate that all rows in a Polars DataFrame or LazyFrame satisfy the given conditions."""
+    combined_expr = _build_filter_expr(df, conditions, caller="assert_()")
+    if combined_expr is None:
+        return df
+
+    materialized = df.collect() if isinstance(df, pl.LazyFrame) else df
+    total_rows = len(materialized)
+    if total_rows == 0:
+        return df
+
+    violation_expr = (~combined_expr) | combined_expr.is_null()
+    failing = materialized.filter(violation_expr)
+    fail_count = len(failing)
+    if fail_count > 0:
+        desc_part = f" ({raw_desc})" if raw_desc else ""
+        sample_str = str(failing.head(5))
+        raise ValueError(
+            f"assert failed{desc_part}: {fail_count:,} of {total_rows:,} row(s) violated condition.\n"
+            f"Sample failing rows:\n{sample_str}"
+        )
+    return df
+
+
+def explode_polars(df: Any, *cols: Any) -> Any:
+    """Explode list/array-like columns into multiple rows (one per element)."""
+    import difflib
+
+    from pytae.cli_parsing import parse_columns
+
+    resolved: list[str] = []
+    for item in cols:
+        if isinstance(item, str):
+            resolved.extend(parse_columns(item))
+        elif isinstance(item, (list, tuple)):
+            for sub in item:
+                if isinstance(sub, str):
+                    resolved.extend(parse_columns(sub))
+                else:
+                    resolved.append(str(sub))
+        elif item is not None:
+            resolved.append(str(item))
+
+    if not resolved:
+        raise ValueError("explode() requires at least one column name")
+
+    avail = _df_columns(df)
+    avail_set = set(avail)
+    for c in resolved:
+        if c not in avail_set:
+            close = difflib.get_close_matches(c, avail, n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"explode: column '{c}' not found in DataFrame{hint}")
+
+    return df.explode(resolved)
 
 
 def select_polars(df: Any, names: list[str], kwargs: dict) -> Any:
@@ -30955,6 +31531,114 @@ class IpcReader:
         return lf
 
 
+class GlobReader:
+    """Unified multi-file reader for glob patterns or directories of tabular files."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        sep: str | None = None,
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+    ) -> None:
+        import glob as _glob
+
+        self.path = path
+        self.sep = sep
+        self.encoding = encoding
+        self.chunk_size = chunk_size
+
+        raw_str = str(path.expanduser())
+        if path.exists() and path.is_dir():
+            candidates: list[Path] = []
+            for ext in (".parquet", ".pq", ".ipc", ".arrow", ".feather", ".csv", ".jsonl", ".ndjson", ".txt", ".dat"):
+                found = sorted(path.glob(f"*{ext}"))
+                if found:
+                    candidates = found
+                    break
+            if not candidates:
+                raise FileNotFoundError(f"no supported data files found in directory: {path}")
+            self.files = candidates
+        else:
+            matches = sorted(Path(p) for p in _glob.glob(raw_str, recursive=True) if Path(p).is_file())
+            if not matches:
+                raise FileNotFoundError(f"no files matched pattern: {path}")
+            self.files = matches
+
+        self._first_reader = get_reader(
+            self.files[0], sep=sep, encoding=encoding, chunk_size=chunk_size
+        )
+
+    def shape(self) -> tuple[int, int]:
+        lf = self.to_polars_lazy()
+        import polars as pl
+
+        rows = int(lf.select(pl.len()).collect().item())
+        cols = len(self.columns())
+        return (rows, cols)
+
+    def columns(self) -> list[str]:
+        return self._first_reader.columns()
+
+    def dtypes(self) -> pd.Series:
+        return self._first_reader.dtypes()
+
+    def head(self, n: int) -> pd.DataFrame:
+        if n <= 0:
+            return self.to_polars(nrows=0).to_pandas()
+        return self.to_polars(nrows=n).to_pandas()
+
+    def tail(self, n: int) -> pd.DataFrame:
+        if n <= 0:
+            return self.to_polars(nrows=0).to_pandas()
+        return self.to_polars_lazy().tail(n).collect().to_pandas()
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        lf = self.to_polars_lazy(columns=columns)
+        if nrows is not None:
+            lf = lf.head(nrows)
+        return lf.collect()
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        suffix, compression = _split_path_suffixes(self.files[0])
+        if compression is None and (self.encoding is None or self.encoding.lower() in ("utf-8", "utf8")):
+            try:
+                if suffix in (".parquet", ".pq"):
+                    lf = pl.scan_parquet(self.files)
+                    return lf.select(columns) if columns is not None else lf
+                if suffix in (".ipc", ".arrow", ".feather"):
+                    lf = pl.scan_ipc(self.files)
+                    return lf.select(columns) if columns is not None else lf
+                if suffix in (".csv", ".txt", ".dat"):
+                    eff_sep = self.sep or (_TXT_DEFAULT_SEP.get(suffix, ","))
+                    lf = pl.scan_csv(self.files, separator=eff_sep, infer_schema_length=10000)
+                    return lf.select(columns) if columns is not None else lf
+                if suffix in (".jsonl", ".ndjson"):
+                    lf = pl.scan_ndjson(self.files)
+                    return lf.select(columns) if columns is not None else lf
+            except Exception:
+                pass
+
+        frames = [
+            get_reader(f, sep=self.sep, encoding=self.encoding, chunk_size=self.chunk_size).to_polars(columns=columns)
+            for f in self.files
+        ]
+        combined = pl.concat(frames, how="diagonal_relaxed")
+        return combined.lazy()
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
@@ -30985,6 +31669,9 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 def get_reader(
     path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE
 ):
+    path = Path(path)
+    if (path.exists() and path.is_dir()) or (not path.exists() and any(ch in str(path) for ch in "*?[")):
+        return GlobReader(path, sep=sep, encoding=encoding, chunk_size=chunk_size)
     suffix, compression = _split_path_suffixes(path)
     if suffix in _YAML_SUFFIXES:
         global _EXTERNAL_CONNECTIONS_MODULE
@@ -32044,6 +32731,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--tail": "-tail",
     # Double-hyphen pipeline flags
     "--filter": "-filter",
+    "--assert": "-assert",
+    "--explode": "-explode",
     "--mutate": "-mutate",
     "--select": "-select",
     "--arrange": "-arrange",
@@ -32118,6 +32807,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
 _BARE_PIPELINE_VERBS = frozenset(
     (
         "filter",
+        "assert",
+        "explode",
         "mutate",
         "select",
         "rename",
@@ -32461,15 +33152,18 @@ class PytaeRepl:
                 raise FileNotFoundError(f"unknown sample dataset '{sample_name}'. Available: {available}")
             p = sample_file
         elif not p.exists():
-            from pytae import DATA_PATH
-
-            candidate = DATA_PATH / p.name
-            if not candidate.exists():
-                candidate = DATA_PATH / f"{p.stem}.parquet"
-            if candidate.exists():
-                p = candidate
+            if any(ch in str(p) for ch in "*?["):
+                pass
             else:
-                raise FileNotFoundError(f"File not found: {p}")
+                from pytae import DATA_PATH
+
+                candidate = DATA_PATH / p.name
+                if not candidate.exists():
+                    candidate = DATA_PATH / f"{p.stem}.parquet"
+                if candidate.exists():
+                    p = candidate
+                else:
+                    raise FileNotFoundError(f"File not found: {p}")
         opts = dict(self.reader_kwargs)
         opts.update(reader_opts)
         sep_val = opts.get("sep") or opts.get("delimiter")
@@ -32862,14 +33556,14 @@ class PytaeRepl:
             self._cmd_redo(output_fn)
             return True
 
-        # History
-        if line.lower() == "history":
-            self._cmd_history(output_fn)
-            return True
-
         # Tokenize line
         tokens = shlex.split(line)
         first_lower = tokens[0].lower()
+
+        # History
+        if first_lower == "history":
+            self._cmd_history(output_fn, args=tokens[1:])
+            return True
 
         # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands
         if first_lower in _DISALLOWED_ALIASES:
@@ -33573,9 +34267,19 @@ class PytaeRepl:
         else:
             output_fn(f"Redid: {desc}.")
 
-    def _cmd_history(self, output_fn: Callable[[str], None]) -> None:
+    def _cmd_history(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
         if not self.history:
             output_fn("No transformations recorded in this session.")
+            return
+        if args:
+            mode = args[0].lower().lstrip("-")
+            if mode in ("cli", "sh", "bash"):
+                output_fn(self._format_history_cli())
+                return
+            if mode in ("py", "python"):
+                output_fn(self._format_history_py())
+                return
+            output_fn(f"Usage: history [-cli | -py] (unrecognized option: '{args[0]}')")
             return
         output_fn("Pipeline History:")
         step_num = 1
@@ -33585,6 +34289,125 @@ class PytaeRepl:
             else:
                 output_fn(f"  {step_num:2d}: {entry}")
                 step_num += 1
+
+    def _format_history_cli(self) -> str:
+        """Export recorded session transformations as a reproducible CLI command."""
+        source = str(self.path) if self.path else (self.table_sources.get(self.path_str or "", "") or "data.parquet")
+        cli_parts: list[str] = []
+        for entry in self.history:
+            if entry.startswith("*checkpoint:") or entry.startswith(("undo ", "redo ", "restore ", "reset")):
+                continue
+            if entry.startswith("load "):
+                toks = shlex.split(entry)
+                if len(toks) >= 2:
+                    source = toks[1]
+                continue
+            if "=" in entry and not entry.lstrip().startswith("-"):
+                _, rhs = entry.split("=", 1)
+                rhs = rhs.strip()
+                if rhs.startswith("-"):
+                    cli_parts.append(rhs)
+                else:
+                    toks = shlex.split(rhs)
+                    if toks and not toks[0].startswith("-"):
+                        if len(toks) == 1:
+                            source = toks[0]
+                        else:
+                            cli_parts.append(rhs[len(toks[0]) :].strip())
+                    else:
+                        cli_parts.append(rhs)
+            else:
+                cli_parts.append(entry.strip())
+
+        if not cli_parts:
+            return f"pytae {source}"
+        return f"pytae {source} " + " ".join(cli_parts)
+
+    def _format_history_py(self) -> str:
+        """Export recorded session transformations as a runnable Python script."""
+        lines: list[str] = ["import pytae as pt", ""]
+        source = str(self.path) if self.path else (self.table_sources.get(self.path_str or "", "") or "data.parquet")
+        active_var = self.path_str if (self.path_str and self.path_str.isidentifier()) else "df"
+
+        def _read_stmt(var: str, src: str) -> str:
+            if src.startswith("sample:"):
+                sname = src[7:].strip().removesuffix(".parquet")
+                return f'{var} = pt.sample("{sname}")'
+            low = src.lower()
+            if low.endswith(".csv") or low.endswith(".csv.gz"):
+                return f'{var} = pt.read_csv("{src}")'
+            if low.endswith((".jsonl", ".ndjson", ".jsonl.gz", ".ndjson.gz")):
+                return f'{var} = pt.read_ndjson("{src}")'
+            if low.endswith((".ipc", ".arrow", ".feather")):
+                return f'{var} = pt.read_ipc("{src}")'
+            return f'{var} = pt.read_parquet("{src}")'
+
+        def _flags_to_chain(raw_flags: str) -> list[str]:
+            calls: list[str] = []
+            try:
+                toks = shlex.split(raw_flags)
+            except ValueError:
+                toks = raw_flags.split()
+            i = 0
+            while i < len(toks):
+                t = toks[i]
+                if t.startswith("-"):
+                    verb = t.lstrip("-")
+                    val: str | None = None
+                    if "=" in verb:
+                        verb, val = verb.split("=", 1)
+                    elif i + 1 < len(toks) and not toks[i + 1].startswith("-"):
+                        val = toks[i + 1]
+                        i += 1
+                    verb_py = "assert_" if verb == "assert" else verb
+                    if val is None or val == "":
+                        calls.append(f".{verb_py}()")
+                    elif verb in ("head", "tail", "sample") and val.isdigit():
+                        calls.append(f".{verb_py}({val})")
+                    else:
+                        calls.append(f".{verb_py}({val!r})")
+                i += 1
+            return calls
+
+        if self.path or (self.path_str and self.path_str in self.table_sources):
+            lines.append(_read_stmt(active_var, source))
+
+        for entry in self.history:
+            if entry.startswith("*checkpoint:") or entry.startswith(("undo ", "redo ", "restore ", "reset")):
+                continue
+            if entry.startswith("load "):
+                toks = shlex.split(entry)
+                if len(toks) >= 4 and toks[2].lower() == "as":
+                    active_var = toks[3]
+                    lines.append(_read_stmt(active_var, toks[1]))
+                elif len(toks) >= 2:
+                    lines.append(_read_stmt(active_var, toks[1]))
+                continue
+            if "=" in entry and not entry.lstrip().startswith("-"):
+                lhs, rhs = entry.split("=", 1)
+                lhs = lhs.strip()
+                rhs = rhs.strip()
+                if rhs.startswith("-"):
+                    chain = "".join(_flags_to_chain(rhs))
+                    lines.append(f"{lhs} = {active_var}{chain}")
+                    active_var = lhs
+                else:
+                    toks = shlex.split(rhs)
+                    if len(toks) == 1 and not toks[0].startswith("-"):
+                        lines.append(_read_stmt(lhs, toks[0]))
+                        active_var = lhs
+                    elif toks:
+                        src_tbl = toks[0]
+                        rest = rhs[len(src_tbl) :].strip()
+                        chain = "".join(_flags_to_chain(rest))
+                        lines.append(f"{lhs} = {src_tbl}{chain}")
+                        active_var = lhs
+            elif entry.lstrip().startswith("-"):
+                chain = "".join(_flags_to_chain(entry.strip()))
+                if chain:
+                    lines.append(f"{active_var} = {active_var}{chain}")
+
+        return "\n".join(lines)
 
     def _capture_session_state(self) -> dict[str, Any]:
         return {
@@ -33872,7 +34695,7 @@ class PytaeRepl:
                 is_sample = clean_path.startswith("sample:")
                 from pytae import DATA_PATH
 
-                is_file = p.exists() and not p.is_dir()
+                is_file = (p.exists() and not p.is_dir()) or (p.exists() and p.is_dir()) or any(ch in clean_path for ch in "*?[")
                 is_data_cand = (DATA_PATH / p.name).exists() or (DATA_PATH / f"{p.stem}.parquet").exists()
                 if is_sample or is_file or is_data_cand:
                     try:
@@ -34050,7 +34873,7 @@ class PytaeRepl:
             alias = cleaned_tokens[3]
 
         p = Path(path_str).expanduser()
-        if not path_str.startswith("sample:") and not p.exists():
+        if not path_str.startswith("sample:") and not p.exists() and not any(ch in path_str for ch in "*?["):
             from pytae import DATA_PATH
 
             candidate = DATA_PATH / p.name
@@ -34924,21 +35747,6 @@ def resolve_select_columns(
                     f"select(): '{arg[0]}col' negation is retired in favor of '!col'. "
                     f"Use '!{arg[1:]}' instead: e.g. select('!{arg[1:]}')."
                 )
-            elif arg.startswith("!"):
-                excluded_cols.update(_resolve_negation(arg[1:]))
-            elif ":" in arg:
-                start_raw, end_raw = arg.split(":", 1)
-                start = _unquote_name(start_raw.strip()) or None
-                end = _unquote_name(end_raw.strip()) or None
-                start_idx = all_cols.index(start) if start in all_cols else 0
-                end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
-                if start and start not in all_cols:
-                    raise KeyError(f"Start column '{start}' not found")
-                if end and end not in all_cols:
-                    raise KeyError(f"End column '{end}' not found")
-                slice_cols = all_cols[start_idx : end_idx + 1]
-                selected_cols.update(slice_cols)
-                ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
             elif "," in arg:
                 for sub_token in _tokenize(arg, ",", track_brackets=True):
                     if not sub_token:
@@ -34976,6 +35784,21 @@ def resolve_select_columns(
                         close = difflib.get_close_matches(clean_sub, [str(c) for c in all_cols], n=1)
                         hint = f" (did you mean '{close[0]}'?)" if close else ""
                         raise KeyError(f"Column not found: '{sub_token}'{hint}")
+            elif arg.startswith("!"):
+                excluded_cols.update(_resolve_negation(arg[1:]))
+            elif ":" in arg:
+                start_raw, end_raw = arg.split(":", 1)
+                start = _unquote_name(start_raw.strip()) or None
+                end = _unquote_name(end_raw.strip()) or None
+                start_idx = all_cols.index(start) if start in all_cols else 0
+                end_idx = all_cols.index(end) if end in all_cols else len(all_cols) - 1
+                if start and start not in all_cols:
+                    raise KeyError(f"Start column '{start}' not found")
+                if end and end not in all_cols:
+                    raise KeyError(f"End column '{end}' not found")
+                slice_cols = all_cols[start_idx : end_idx + 1]
+                selected_cols.update(slice_cols)
+                ordered_cols.extend([col for col in slice_cols if col not in ordered_cols])
             else:
                 close = difflib.get_close_matches(clean_arg, [str(c) for c in all_cols], n=1)
                 hint = f" (did you mean '{close[0]}'?)" if close else ""
@@ -35915,6 +36738,92 @@ def test_pt_accessor_by_auto_ungroups(tmp_path):
     assert isinstance(k_res, pt.DataFrame)
     assert k_res["group_mean"].to_list() == [15.0, 15.0, 150.0, 150.0]
     assert k_res["overall_mean"].to_list() == [82.5, 82.5, 82.5, 82.5]
+
+
+def test_pt_accessor_comprehensive_shared_verbs(capsys):
+    import polars as pl
+    import pytest
+
+    sample_pl = pl.DataFrame(
+        {
+            "id": [1, 2, 3, 4],
+            "grp": ["A", "A", "B", "B"],
+            "val": [10.0, 20.0, None, 40.0],
+            "other": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    sample_pd = sample_pl.to_pandas()
+
+    for obj in (sample_pl, sample_pl.lazy(), sample_pd):
+        def _collect(res):
+            return res.collect() if res.is_lazy else res
+
+        assert len(_collect(obj.pt.filter("id > 2"))) == 2
+        assert list(_collect(obj.pt.select("id, grp")).columns) == ["id", "grp"]
+        assert _collect(obj.pt.arrange("id desc"))["id"].to_list() == [4, 3, 2, 1]
+        assert len(_collect(obj.pt.distinct("grp"))) == 2
+        assert _collect(obj.pt.count("grp"))["n"].to_list() == [2, 2]
+        assert len(_collect(obj.pt.dropna("val"))) == 3
+        assert _collect(obj.pt.fillna(0.0, "val"))["val"].to_list() == [10.0, 20.0, 0.0, 40.0]
+        assert len(_collect(obj.pt.head(2))) == 2
+        assert len(_collect(obj.pt.tail(2))) == 2
+        assert _collect(obj.pt.mutate("doubled = other * 2"))["doubled"].to_list() == [2.0, 4.0, 6.0, 8.0]
+        assert list(_collect(obj.pt.rename("grp:group")).columns) == ["id", "group", "val", "other"]
+        assert _collect(obj.pt.by("grp").agg("s = sum(other)")).shape == (2, 2)
+        assert _collect(obj.pt.agg("s = sum(other)"))["s"].to_list() == [10.0]
+        assert _collect(obj.pt.pipe(lambda d: d.head(1))).shape == (1, 4)
+
+    for obj in (sample_pl, sample_pd):
+        # pivot, long, wide
+        piv = obj.pt.fillna(0.0, "val").pivot(r="grp", c="id", v="other", a="sum")
+        assert "grp" in piv.columns
+        melted = obj.pt.long(cols=["val", "other"], id_vars="id")
+        assert set(melted.columns) == {"id", "variable", "value"}
+        unmelted = melted.to_polars().pt.wide(r="id", c="variable", v="value")
+        assert "other" in unmelted.columns
+
+        # clean_columns, mask, unmask
+        messy = (
+            pl.DataFrame({"Bad Col": ["secret"]})
+            if isinstance(obj, pl.DataFrame)
+            else pd.DataFrame({"Bad Col": ["secret"]})
+        )
+        assert messy.pt.clean_columns(case="lower", fill="_").columns == ["bad_col"]
+        masked = obj.pt.mask("grp=encrypt", key="secret_key")
+        assert masked["grp"].to_list() != ["A", "A", "B", "B"]
+        unmasked = masked.to_polars().pt.unmask("grp", key="secret_key")
+        assert unmasked["grp"].to_list() == ["A", "A", "B", "B"]
+
+        # cols, diff, glimpse
+        assert obj.pt.cols() == ["grp", "id", "other", "val"]
+        assert "Identical" in obj.pt.diff(obj)
+        assert obj.pt.glimpse() is obj
+        _ = capsys.readouterr()
+
+        # freq, hist, bar, scatter, corr
+        assert len(obj.pt.freq("grp")) == 2
+        assert len(obj.pt.hist("other", bins=2)) == 2
+        assert len(obj.pt.bar("grp", "other")) == 4
+        assert isinstance(obj.pt.scatter("id", "other", width=20, height=5), str)
+        assert len(obj.pt.corr()) >= 1
+
+        # join & concat
+        right = pl.DataFrame({"id": [1, 2], "tag": ["x", "y"]})
+        joined = obj.pt.join(right, on="id", how="inner")
+        assert len(joined) == 2
+        stacked = obj.pt.concat(obj)
+        assert len(stacked) == 8
+
+        # conversions and fallback getattr
+        assert isinstance(obj.pt.to_polars(), pl.DataFrame)
+        assert isinstance(obj.pt.to_pandas(), pd.DataFrame)
+        assert obj.pt.shape == (4, 4)
+
+        # retired pick() and invalid agg(by=...) error paths
+        with pytest.raises(AttributeError, match="pick\\(\\) has been removed"):
+            obj.pt.pick("id")
+        with pytest.raises(TypeError, match="does not accept 'by'"):
+            obj.pt.agg("count", by="grp")
 
 ################################################################################
 # FILE: tests/test_agg.py
@@ -46305,6 +47214,253 @@ def test_lazy_dataframe_methods_and_accessors(tmp_path):
     assert "c" in chained_pt.columns
     assert raw_pl.pt.glimpse() is raw_pl
 
+
+def test_read_database_and_connections_yaml_and_lazy_sinks(tmp_path, monkeypatch):
+    import sqlite3
+
+    import polars as pl
+
+    import pytae as pt
+
+    # 1. pt.read_database with SQLite connection
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE items (id INTEGER, name TEXT)")
+    conn.executemany("INSERT INTO items VALUES (?, ?)", [(1, "alpha"), (2, "beta")])
+    conn.commit()
+    df_db = pt.read_database("SELECT * FROM items ORDER BY id", conn)
+    conn.close()
+    assert isinstance(df_db, pt.DataFrame)
+    assert df_db["name"].to_list() == ["alpha", "beta"]
+
+    # 2. Retired pt.read() and pt.scan() stubs raise informative AttributeError
+    with pytest.raises(AttributeError, match="pt.read\\(\\) has been removed"):
+        pt.read("foo.parquet")
+    with pytest.raises(AttributeError, match="pt.scan\\(\\) has been removed"):
+        pt.scan("foo.parquet")
+
+    # 3. YAML connection error paths when PYTAE_CONNECTIONS_PATH is unset or missing
+    monkeypatch.setattr(readers, "_EXTERNAL_CONNECTIONS_MODULE", None)
+    monkeypatch.delenv("PYTAE_CONNECTIONS_PATH", raising=False)
+    with pytest.raises(FileNotFoundError, match="PYTAE_CONNECTIONS_PATH"):
+        get_reader(tmp_path / "conn.yaml")
+
+    monkeypatch.setenv("PYTAE_CONNECTIONS_PATH", str(tmp_path / "missing_conn.py"))
+    with pytest.raises(FileNotFoundError, match="connection reader not found"):
+        get_reader(tmp_path / "conn.yaml")
+
+    # Valid mock connections module
+    conn_mod = tmp_path / "mock_conn.py"
+    conn_mod.write_text(
+        "import pandas as pd\n"
+        "from pytae.readers import DataFrameReader\n"
+        "def build_yaml_reader(path):\n"
+        "    return DataFrameReader(pd.DataFrame({'k': [42]}), path=path)\n"
+    )
+    monkeypatch.setenv("PYTAE_CONNECTIONS_PATH", str(conn_mod))
+    yaml_reader = get_reader(tmp_path / "conn.yaml")
+    assert yaml_reader.shape() == (1, 1)
+    assert yaml_reader.to_polars()["k"].to_list() == [42]
+
+    # 4. LazyFrame write_dataframe sink_parquet, sink_csv, sink_ndjson
+    lf = pl.DataFrame({"a": [1, 2], "b": ["u", "v"]}).lazy()
+    for ext in (".parquet", ".csv", ".ndjson", ".txt"):
+        out_p = tmp_path / f"lazy_sink{ext}"
+        write_dataframe(lf, out_p)
+        assert get_reader(out_p).shape() == (2, 2)
+
+    # 5. StdinReader and DataFrameReader coverage
+    from pytae.readers import DataFrameReader, StdinReader
+
+    s_csv = StdinReader(b"a,b\n1,x\n2,y\n")
+    assert s_csv.shape() == (2, 2)
+    assert s_csv.columns() == ["a", "b"]
+    assert len(s_csv.head(1)) == 1
+    assert len(s_csv.tail(1)) == 1
+    assert s_csv.to_polars(columns=["a"], nrows=1).shape == (1, 1)
+    assert s_csv.to_polars_lazy(columns=["b"]).collect().columns == ["b"]
+
+    s_tsv = StdinReader(b"a\tb\n1\tx\n")
+    assert s_tsv.shape() == (1, 2)
+    s_pipe = StdinReader(b"a|b\n1|x\n")
+    assert s_pipe.shape() == (1, 2)
+    s_json = StdinReader(b'{"a": 1, "b": "x"}\n')
+    assert s_json.shape() == (1, 2)
+    s_empty = StdinReader(b"")
+    assert s_empty.shape() == (0, 0)
+
+    dfr = DataFrameReader(pt.DataFrame({"a": [1, 2], "b": [3, 4]}))
+    assert dfr.shape() == (2, 2)
+    assert dfr.columns() == ["a", "b"]
+    assert len(dfr.dtypes()) == 2
+    assert len(dfr.head(1)) == 1
+    assert len(dfr.tail(1)) == 1
+    assert dfr.to_dataframe(columns=["a"], nrows=1).shape == (1, 1)
+    assert dfr.to_polars_lazy(columns=["b"]).collect().columns == ["b"]
+
+
+def test_key_aware_diff_and_cli(tmp_path, capsys):
+    import pytae as pt
+    from pytae import cli
+
+    df1 = pt.DataFrame({"id": [1, 2, 3], "val": [10.0, 20.0, 30.0], "name": ["a", "b", "c"]})
+    df2 = pt.DataFrame({"id": [2, 3, 4], "val": [20.005, 35.0, 40.0], "name": ["b", "c", "d"]})
+
+    # Without on=, row counts differ works and gives a tip when sizes differ
+    df_short = pt.DataFrame({"id": [1, 2], "val": [10.0, 20.0], "name": ["a", "b"]})
+    report_no_on = df1.diff(df_short)
+    assert "pass on='<key>' to align rows by key" in report_no_on
+
+    # Key-aware diff in Python API (DataFrame.diff, pt.diff, .pt.diff)
+    report_key = df1.diff(df2, on="id", tol=0.01)
+    assert "Key Alignment (on id):" in report_key
+    assert "Matched keys:    2" in report_key
+    assert "+ Added in left (1):   [1]" in report_key
+    assert "- Removed in left (1): [4]" in report_key
+    assert "* val: 1 cell(s) differ (max diff: 5)" in report_key
+
+    assert pt.diff(df1, df2, on="id", tol=0.01) == report_key
+    assert df1.to_polars().pt.diff(df2, on="id", tol=0.01) == report_key
+
+    # CLI -diff with inline on= and tol=
+    p1 = tmp_path / "left.parquet"
+    p2 = tmp_path / "right.parquet"
+    df1.write_parquet(p1)
+    df2.write_parquet(p2)
+
+    rc = cli.main([str(p1), "-diff", f"{p2},on=id,tol=0.01"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Key Alignment (on id):" in out
+    assert "Matched keys:    2" in out
+    assert "* val: 1 cell(s) differ" in out
+
+
+def test_explode_python_accessor_and_cli(tmp_path, capsys):
+    import polars as pl
+
+    import pytae as pt
+    from pytae import cli
+
+    df = pt.DataFrame({"id": [1, 2], "tags": [["x", "y"], ["z"]]})
+    res = df.explode("tags")
+    assert res.shape == (3, 2)
+    assert res["id"].to_list() == [1, 1, 2]
+    assert res["tags"].to_list() == ["x", "y", "z"]
+
+    # Top-level pt.explode and .pt.explode
+    assert pt.explode(df, "tags").shape == (3, 2)
+    assert df.to_polars().pt.explode("tags").shape == (3, 2)
+
+    # LazyFrame explode
+    lf = pt.DataFrame(pl.DataFrame({"id": [1, 2], "tags": [["a", "b"], ["c"]]}).lazy())
+    assert lf.explode("tags").collect().shape == (3, 2)
+
+    # Error on unknown column
+    with pytest.raises(KeyError, match="explode: column 'tag' not found"):
+        df.explode("tag")
+
+    # CLI -explode
+    p = tmp_path / "nested.parquet"
+    df.write_parquet(p)
+    rc = cli.main([str(p), "-explode", "tags"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "x" in out and "y" in out and "z" in out
+
+
+def test_assert_verb_python_accessor_and_cli(tmp_path, capsys):
+    import pytae as pt
+    from pytae import cli
+
+    df = pt.DataFrame({"id": [1, 2, 3], "amount": [10.0, 25.0, 50.0]})
+
+    # Passing assertions return self unchanged
+    res = df.assert_("amount > 0 and id.is_not_null()").mutate("doubled = amount * 2")
+    assert res.shape == (3, 3)
+    assert pt.assert_(df, "amount >= 10").shape == (3, 2)
+    assert df.to_polars().pt.assert_("amount <= 100").shape == (3, 2)
+
+    # Failing assertion raises ValueError with sample rows
+    with pytest.raises(ValueError, match="assert failed.*1 of 3 row\\(s\\) violated condition"):
+        df.assert_("amount < 30")
+
+    # CLI -assert passing and failing
+    p = tmp_path / "orders.parquet"
+    df.write_parquet(p)
+
+    rc_pass = cli.main([str(p), "-assert", "amount > 0", "-shape"])
+    assert rc_pass == 0
+    assert "(3, 2)" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit):
+        cli.main([str(p), "-assert", "amount < 20"])
+
+
+def test_glob_reader_and_repl_glob_and_history_export(tmp_path):
+    import pytae as pt
+    from pytae import cli
+    from pytae.repl import PytaeRepl
+
+    part_dir = tmp_path / "parts"
+    part_dir.mkdir()
+    pt.DataFrame({"id": [1, 2], "v": [10, 20]}).write_parquet(part_dir / "part_1.parquet")
+    pt.DataFrame({"id": [3, 4], "v": [30, 40]}).write_parquet(part_dir / "part_2.parquet")
+
+    # 1. GlobReader via get_reader with wildcard pattern and directory path
+    glob_pat = part_dir / "part_*.parquet"
+    r_glob = get_reader(glob_pat)
+    assert r_glob.shape() == (4, 2)
+    assert r_glob.columns() == ["id", "v"]
+    assert len(r_glob.head(2)) == 2
+    assert len(r_glob.tail(2)) == 2
+    assert r_glob.to_polars()["v"].to_list() == [10, 20, 30, 40]
+
+    r_dir = get_reader(part_dir)
+    assert r_dir.shape() == (4, 2)
+
+    # 2. CLI -file with glob pattern
+    out_file = tmp_path / "combined.parquet"
+    ref_file = tmp_path / "ref.parquet"
+    pt.DataFrame({"id": [2, 3, 4], "label": ["b", "c", "d"]}).write_parquet(ref_file)
+    rc = cli.main(
+        [
+            "-file",
+            f"{glob_pat}=all_parts; {ref_file}=ref",
+            "-sql",
+            "SELECT all_parts.id, all_parts.v, ref.label FROM all_parts JOIN ref ON all_parts.id = ref.id",
+            "-o",
+            str(out_file),
+        ]
+    )
+    assert rc == 0
+    assert pt.read_parquet(out_file).shape == (3, 3)
+
+    # 3. REPL glob loading + -explode / -assert + history -cli / history -py
+    outputs: list[str] = []
+    r = PytaeRepl()
+    r.execute_line(f'df = "{glob_pat}"', output_fn=outputs.append)
+    assert r.current_df is not None and r.current_df.shape == (4, 2)
+
+    r.execute_line('df = df -assert "v > 0" -filter "v >= 20" -mutate "v2 = v * 2"', output_fn=outputs.append)
+    assert r.current_df.shape == (3, 3)
+
+    outputs.clear()
+    r.execute_line("history -cli", output_fn=outputs.append)
+    cli_export = "\n".join(outputs)
+    assert "pytae" in cli_export
+    assert '-assert "v > 0"' in cli_export
+    assert '-filter "v >= 20"' in cli_export
+
+    outputs.clear()
+    r.execute_line("history -py", output_fn=outputs.append)
+    py_export = "\n".join(outputs)
+    assert "import pytae as pt" in py_export
+    assert "pt.read_parquet(" in py_export
+    assert ".assert_('v > 0')" in py_export
+    assert ".filter('v >= 20')" in py_export
+    assert ".mutate('v2 = v * 2')" in py_export
+
 ################################################################################
 # FILE: tests/test_repl.py
 ################################################################################
@@ -48478,6 +49634,85 @@ def test_repl_load_error_prints_once(tmp_path):
     assert "failed to load" in outputs[0]
     r.close()
 
+
+def test_repl_shell_escape_and_pipe_and_gc(sample_df):
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # 1. Bare ! shows usage
+    r.execute_line("!", output_fn=outputs.append)
+    assert any("Usage: !<command>" in o for o in outputs)
+
+    # 2. !<shell_cmd> executes shell command
+    outputs.clear()
+    r.execute_line("!echo hello_from_shell", output_fn=outputs.append)
+    assert any("hello_from_shell" in o for o in outputs)
+
+    # 3. <repl_cmd> | <shell_cmd> pipes REPL output into shell command
+    outputs.clear()
+    r.execute_line("-cols | grep species", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+    assert not any("body_mass_g" in o for o in outputs)
+
+    # 4. gc / free memory release command
+    outputs.clear()
+    r.execute_line("gc", output_fn=outputs.append)
+    assert any("Memory released" in o for o in outputs)
+    r.close()
+
+
+def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_df):
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(tmp_path / "sessions"))
+    r = PytaeRepl(df=sample_df)
+    outputs = []
+
+    # Ephemeral status
+    r.execute_line("session", output_fn=outputs.append)
+    assert any("No active session (ephemeral)" in o for o in outputs)
+
+    # Invalid session name rejected
+    outputs.clear()
+    r.execute_line("session save ../bad", output_fn=outputs.append)
+    assert any("invalid session name" in o for o in outputs)
+
+    # Create checkpoint and save session
+    r.execute_line("checkpoint cp1", output_fn=outputs.append)
+    outputs.clear()
+    r.execute_line("session save work1", output_fn=outputs.append)
+    assert r.session_name == "work1"
+    assert any("Session saved as 'work1'" in o for o in outputs)
+
+    # Active session status & sessions list
+    outputs.clear()
+    r.execute_line("session", output_fn=outputs.append)
+    assert any("Active session: 'work1'" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("sessions", output_fn=outputs.append)
+    assert any("work1" in o for o in outputs)
+
+    # Save under a second session name (copies existing session checkpoints)
+    outputs.clear()
+    r.execute_line("session save work2", output_fn=outputs.append)
+    assert r.session_name == "work2"
+
+    # Load first session back
+    outputs.clear()
+    r.execute_line("session load work1", output_fn=outputs.append)
+    assert r.session_name == "work1"
+    assert "cp1" in r.checkpoints
+
+    # Remove sessions
+    outputs.clear()
+    r.execute_line("rm session work2", output_fn=outputs.append)
+    assert any("Removed session 'work2'" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("session rm work1", output_fn=outputs.append)
+    assert r.session_name is None
+    assert any("Active session reverted to ephemeral" in o for o in outputs)
+    r.close()
+
 ################################################################################
 # FILE: tests/test_select.py
 ################################################################################
@@ -48738,6 +49973,116 @@ def test_select_negation_bracketed_string():
     df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
     res = pt.select(df, "![col a]", "![col b]")
     assert list(res.columns) == ["keep"]
+
+
+def test_select_polars_and_lazy_and_dtypes():
+    import polars as pl
+
+    from pytae.select import _matches_dtype, select
+
+    pl_df = pl.DataFrame(
+        {
+            "id": [1, 2],
+            "val": [1.5, 2.5],
+            "flag": [True, False],
+            "cat": pl.Series(["a", "b"], dtype=pl.Categorical),
+            "txt": ["x", "y"],
+            "dt": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+        }
+    )
+
+    # _matches_dtype unit checks across Polars DataTypes, Python types, and string shorthands
+    assert _matches_dtype(pl.Int64, "numeric")
+    assert _matches_dtype(pl.Float64, "number")
+    assert _matches_dtype(pl.String, "non_numeric")
+    assert _matches_dtype(pl.Datetime("us"), "datetime")
+    assert _matches_dtype(pl.Date, "datetime")
+    assert _matches_dtype(pl.Categorical, "category")
+    assert _matches_dtype(pl.Boolean, "bool")
+    assert _matches_dtype(pl.String, "str")
+    assert _matches_dtype(pl.Int64, "int64")
+    assert _matches_dtype(pl.Int64, pl.Int64)
+    assert _matches_dtype(pl.Int64(), pl.Int64)
+    assert _matches_dtype(pl.Int64, int)
+    assert _matches_dtype(pl.Float64, float)
+    assert _matches_dtype(pl.Boolean, bool)
+    assert _matches_dtype(pl.String, str)
+    assert _matches_dtype(pl.Int64, ["str", "int64"])
+    assert not _matches_dtype(pl.String, object())
+
+    # Direct select() on pl.DataFrame and pl.LazyFrame
+    assert select(pl_df, dtype="numeric").columns == ["id", "val"]
+    assert select(pl_df, dtype="category").columns == ["cat"]
+    assert select(pl_df, dtype="bool").columns == ["flag"]
+    assert select(pl_df, dtype="string").columns == ["txt"]
+    assert select(pl_df, dtype="datetime").columns == ["dt"]
+    assert select(pl_df, exclude_dtype="non_numeric").columns == ["id", "val"]
+    assert select(pl_df, exclude_dtype="numeric").columns == ["flag", "cat", "txt", "dt"]
+    assert select(pl_df.lazy(), "!val:txt").collect().columns == ["id", "dt"]
+
+    # Callable column selector & comma-separated slices/negations
+    assert select(pl_df, lambda c: len(c) == 2).columns == ["id", "dt"]
+    assert select(pl_df, "id:flag, !val").columns == ["id", "flag"]
+
+
+def test_select_error_paths_and_pandas_exclude_dtypes():
+    import polars as pl
+
+    from pytae.select import select
+
+    df = pd.DataFrame(
+        {
+            "a": [1],
+            "b": [1.5],
+            "c": [True],
+            "d": pd.Series(["x"], dtype="category"),
+            "e": pd.to_datetime(["2024-01-01"]),
+        }
+    )
+
+    assert list(select(df, dtype="category").columns) == ["d"]
+    assert list(select(df, dtype="bool").columns) == ["c"]
+    assert list(select(df, exclude_dtype="category").columns) == ["a", "b", "c", "e"]
+    assert list(select(df, exclude_dtype=["bool", "category"]).columns) == ["a", "b", "e"]
+    assert list(select(df, exclude_dtype=bool).columns) == ["a", "b", "d", "e"]
+
+    # Slice boundary errors (positive, negative, and comma-tokenized)
+    with pytest.raises(KeyError, match="Start column 'missing' not found"):
+        select(df, "missing:b")
+    with pytest.raises(KeyError, match="End column 'missing' not found"):
+        select(df, "a:missing")
+    with pytest.raises(KeyError, match="Start column 'missing' not found"):
+        select(df, "!missing:b")
+    with pytest.raises(KeyError, match="End column 'missing' not found"):
+        select(df, "!a:missing")
+    with pytest.raises(KeyError, match="Start column 'missing' not found"):
+        select(df, "a, missing:b")
+    with pytest.raises(KeyError, match="End column 'missing' not found"):
+        select(df, "a, b:missing")
+    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+        select(df, "a, -b")
+    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+        select(df, ["-b"])
+    with pytest.raises(KeyError, match="Column not found: 'z'"):
+        select(df, "a, z")
+
+    # Invalid argument types
+    with pytest.raises(TypeError, match="Unsupported argument type"):
+        select(df, 123)
+    with pytest.raises(TypeError, match="dtype must be"):
+        select(df, dtype=123)
+    with pytest.raises(TypeError, match="dtype must be"):
+        select(pl.DataFrame({"a": [1]}), dtype=123)
+    with pytest.raises(TypeError, match="exclude_dtype must be"):
+        select(df, exclude_dtype=123)
+    with pytest.raises(TypeError, match="exclude_dtype must be"):
+        select(pl.DataFrame({"a": [1]}), exclude_dtype=123)
+    with pytest.raises(TypeError, match="contains must be"):
+        select(df, contains=123)
+    with pytest.raises(TypeError, match="startswith must be"):
+        select(df, startswith=123)
+    with pytest.raises(TypeError, match="endswith must be"):
+        select(df, endswith=123)
 
 ################################################################################
 # FILE: tests/test_shape.py

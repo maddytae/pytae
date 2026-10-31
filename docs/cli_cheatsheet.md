@@ -83,6 +83,10 @@ pytae data.parquet -filter "{score: is_nan()}"
 pytae data.parquet -filter "counterparty_class_(irb) == 'Sovereigns'"
 pytae data.parquet -filter "[counterparty class (irb)].is_not_null()"
 
+# Inline assertions (validates all rows satisfy conditions; fails fast on violation)
+pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"
+pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet
+
 # Drop rows containing missing values
 pytae data.parquet -dropna
 pytae data.parquet -dropna "body_mass_g,sex"
@@ -223,6 +227,10 @@ pytae long.parquet -wide "r=species, c=metric, v=value"
 
 # 2D Pivot table with aggregation: r (rows), c (columns), v (values), a (aggregation)
 pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
+
+# Explode / unnest list-like or array columns into multiple rows (one element per row)
+pytae events.parquet -explode tags
+pytae orders.parquet -explode "items,quantities"
 ```
 
 ---
@@ -244,6 +252,10 @@ pytae -file "q1.parquet=a; q2.parquet=b; q3.parquet=c" \
 # Run analytical ANSI SQL across files
 pytae -file "sales.parquet=s; stores.csv=st" \
   -sql "SELECT st.region, SUM(s.amount) as total FROM s JOIN st ON s.store_id = st.id GROUP BY 1 ORDER BY 2 DESC"
+
+# Load globbed multi-file partitions into -file
+pytae -file "parts/*.parquet=all_parts; stores.csv=st" \
+  -join "left=all_parts, right=st, on=store_id, how=left"
 ```
 
 ---
@@ -281,6 +293,10 @@ pytae baseline.parquet -diff current.parquet
 
 # Tolerance threshold for floating-point calculations (absolute & relative)
 pytae baseline.parquet -diff current.parquet -tol 1e-4
+
+# Key-aware row alignment (reconcile by primary/composite keys, detect added/removed keys & cell diffs)
+pytae baseline.parquet -diff "current.parquet,on=id,tol=1e-4"
+pytae baseline.parquet -diff "current.parquet,on=id:cust_id,tol=0.01"
 
 # Compare with custom delimiter or encoding
 pytae left.csv -diff right.csv -dlim "," -tol 0.001
@@ -373,6 +389,8 @@ redo                 # Re-apply last undone transformation
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show history of applied steps and checkpoint milestone banners
+history -cli         # Export session transformations as reproducible one-line CLI command
+history -py          # Export session transformations as runnable Python script (import pytae as pt...)
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)

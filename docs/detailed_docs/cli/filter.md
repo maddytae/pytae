@@ -20,6 +20,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Combining Multiple Conditions](#combining-multiple-conditions)
   - [Strict Syntax Enforcement & Diagnostic Errors](#strict-syntax-enforcement)
 - [Slicing Extreme Rows](#slicing-extreme-rows)
+- [Inline Data Assertions (`-assert`)](#inline-data-assertions--assert)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
@@ -297,6 +298,48 @@ pytae penguins.parquet -by species -arrange body_mass_g -head 1 -select "species
 | Adelie    |          2850 |
 | Chinstrap |          2700 |
 | Gentoo    |          3950 |
+
+---
+
+## Inline Data Assertions (`-assert`)
+
+While `-filter` silently keeps only matching rows, `-assert` enforces data quality and schema invariants at any point in the pipeline. If all rows satisfy the assertion conditions, the pipeline continues uninterrupted; if any condition fails, execution halts immediately with an informative error displaying the number of failing rows and sample violations.
+
+```bash
+# Validate ranges and non-null constraints:
+pytae penguins.parquet -assert "body_mass_g > 0 and species.is_not_null()"
+
+# Chain assertions between transformations:
+pytae raw_events.parquet \
+  -filter "status == 'SUCCESS'" \
+  -assert "user_id.is_not_null() and amount >= 0" \
+  -mutate "tax = amount * 0.08" \
+  -assert "tax >= 0" \
+  -save processed_events.parquet
+```
+
+### Python API (`df.assert_()` / `pt.assert_()`)
+
+```python
+import pytae as pt
+
+df = pt.read_parquet("penguins.parquet")
+
+# Method chaining:
+validated = (
+    df
+    .filter("body_mass_g > 3000")
+    .assert_("species in ['Adelie', 'Gentoo', 'Chinstrap']")
+    .mutate("mass_kg = body_mass_g / 1000")
+    .assert_("mass_kg > 3.0")
+)
+
+# Functional API:
+pt.assert_(df, "bill_length_mm > 0", "sex.is_not_null()")
+
+# Accessor API:
+df.pt.assert_("body_mass_g > 0")
+```
 
 ---
 

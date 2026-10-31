@@ -17,6 +17,8 @@ Compare schemas, dimensions, added/removed columns, data type drift, null count 
   - [4. Null Count Variations](#4-null-count-variations)
   - [5. Value Mismatches Across Matching Rows](#5-value-mismatches-across-matching-rows)
 - [Filtering / Transforming Before Diffing](#filtering--transforming-before-diffing)
+- [Key-Aware Diffing (`on=key`)](#key-aware-diffing-onkey)
+- [Python API (`df.diff` / `pt.diff`)](#python-api-dfdiff--ptdiff)
 - [Copying Diff Reports to Clipboard (`-o clip`)](#copying-diff-reports-to-clipboard--o-clip)
 - [Batch Diffing Across Multiple Files](#batch-diffing-across-multiple-files)
 
@@ -114,6 +116,63 @@ pytae incoming.parquet \
   -filter "status == 'ACTIVE'" \
   -select "user_id,email,balance" \
   -diff baseline.parquet
+```
+
+---
+
+## Key-Aware Diffing (`on=key`)
+
+When comparing tables where rows may be inserted, deleted, reordered, or filtered, direct positional row matching may fail or report misleading cell differences. Use the `on=` parameter inside `-diff` to align rows by primary or composite keys:
+
+```bash
+# Key alignment on a single column:
+pytae v1.parquet -diff "v2.parquet,on=id"
+
+# Key alignment with numeric tolerance:
+pytae v1.parquet -diff "v2.parquet,on=id,tol=1e-4,rtol=1e-5"
+
+# Composite key alignment:
+pytae v1.parquet -diff "v2.parquet,on=customer_id:order_date"
+```
+
+**Key Alignment Output:**
+```text
+Key Alignment (on id):
+  Matched keys:    1,420
+  + Added in left (2):   [1051, 1052]
+  - Removed in left (1): [994]
+
+Values:
+  Tolerance: tol=0.0001 (for numeric columns)
+  Identical: all cell values match within tolerance.
+```
+
+When `on=` is specified:
+1. Keys present only in the left or right dataset are identified and reported.
+2. Matching keys are aligned directly to compare cell values across common non-key columns, regardless of physical row order.
+
+---
+
+## Python API (`df.diff` / `pt.diff`)
+
+Dataset diffing is also available directly in Python pipelines via `pt.diff()` or `DataFrame.diff()`:
+
+```python
+import pytae as pt
+
+left = pt.read_parquet("left.parquet")
+right = pt.read_parquet("right.parquet")
+
+# Simple diff
+report = left.diff(right)
+print(report)
+
+# Key-aware diff with tolerance:
+report = pt.diff(left, right, on="id", tol=1e-3)
+print(report)
+
+# Or via the pt accessor:
+report = df.pt.diff(df_ref, on=["user_id", "date"], tol=0.01)
 ```
 
 ---

@@ -22,6 +22,9 @@ TABLE OF CONTENTS
     4.10. pt.long() / pt.wide() / df.pt.long() / df.pt.wide() — Reshaping (Pure 1-to-1)
     4.11. pt.pivot() / df.pt.pivot() — 2D Pivot Tables (Excel-Style)
     4.12. Other Utilities:
+          - pt.assert_() / df.pt.assert_() / df.assert_() (Data Quality Assertion)
+          - pt.explode() / df.pt.explode() / df.explode() (List Unnesting)
+          - pt.diff() / df.pt.diff() / df.diff() (Key-Aware Dataset Diffing)
           - pt.dropna() / df.pt.dropna()
           - pt.cols() / df.pt.cols()
           - pt.glimpse() / df.pt.glimpse()
@@ -772,6 +775,12 @@ Examples:
 
 4.12. Other Utilities
 --------------------------------------------------------------------------------
+- pt.assert_(df, *conditions, params=None, **kwargs) / df.pt.assert_(...) / df.assert_(...):
+  Enforces data quality and validation invariants across all rows without filtering. Raises ValidationError displaying the number of failing rows and sample violations if any condition fails; returns the unmodified DataFrame on success for chaining.
+- pt.explode(df, *cols) / df.pt.explode(...) / df.explode(...):
+  Flattens and unnests list, array, or iterable columns into separate rows, duplicating non-exploded column values.
+- pt.diff(left, right, tol=0.0, rtol=0.0, *, on=None) / df.pt.diff(...) / df.diff(...):
+  Compares schema, dimensions, null count variations, and cell values between two datasets. Use on="id" or on=["id", "date"] for key-aligned row comparison with added/removed key reporting and cell mismatches across matching keys, even when row counts or ordering differ.
 - pt.dropna(df, *cols, how=None, drop_nans=True) / df.pt.dropna(...):
   Drops rows with missing values (Arrow null and float NaN). Defaults to how='all' (Zero Data Loss) when cols is empty,
   or how='any' when columns are explicitly passed. Pass drop_nans=False to drop only Arrow nulls and preserve float NaNs.
@@ -903,7 +912,7 @@ Inspection & Summary Flags:
   -describe             Descriptive statistics for numeric columns
   -glimpse              Transposed column overview with dtypes and sample values
   -meta                 Display zero-scan Parquet metadata
-  -diff PATH            Compare schema, shape, null counts against another file
+  -diff PATH[,on=...]   Compare schema, shape, null counts against another file; optionally align by key (on=id) & set tolerance (tol=1e-4)
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
   -sample [N]           Random sample of N rows (default 5)
@@ -921,6 +930,7 @@ In-Terminal Visualizations:
 
 Row Filtering & Slicing Flags:
   -filter CONDITIONS    pytae filter expressions (e.g. "species == 'Adelie' and body_mass_g > 3500")
+  -assert CONDITIONS    Enforce data quality invariants across all rows; halts pipeline with sample errors if violated
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -fillna [VAL]         Impute missing values (e.g. -fillna 0 or -fillna "col:val")
   -head [LIMIT]         Extract first N rows, percentage (e.g. 10%), or ties ("3, ties=true"); group-aware with -by
@@ -939,6 +949,7 @@ Aggregation & Reshaping Flags:
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
   -wide [SPECS]         Pure 1-to-1 unmelting into headers: "c=variable, v=value"
   -pivot SPECS          2D pivot table: "r=species, c=island, v=body_mass_g, a=mean" (or counts: "r=species, c=island, a=count")
+  -explode COLS         Unnest/flatten list or array columns into rows (e.g. -explode tags or -explode "items,qty")
 
 SQL & Multi-File Flags:
   -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
@@ -1048,6 +1059,8 @@ State Management & Rollback Commands:
   - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
   - `history`                 : Display audit log with sequential step numbers and *checkpoint: <name>* banners.
+  - `history -cli`            : Export reproducible one-shot CLI command string reconstructing the session.
+  - `history -py`             : Export runnable Python script reconstructing the session with pt/DataFrame calls.
 
 Session-Wide Checkpoints:
   - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).
@@ -2446,6 +2459,8 @@ Compare schemas, dimensions, added/removed columns, data type drift, null count 
   - [4. Null Count Variations](#4-null-count-variations)
   - [5. Value Mismatches Across Matching Rows](#5-value-mismatches-across-matching-rows)
 - [Filtering / Transforming Before Diffing](#filtering--transforming-before-diffing)
+- [Key-Aware Diffing (`on=key`)](#key-aware-diffing-onkey)
+- [Python API (`df.diff` / `pt.diff`)](#python-api-dfdiff--ptdiff)
 - [Copying Diff Reports to Clipboard (`-o clip`)](#copying-diff-reports-to-clipboard--o-clip)
 - [Batch Diffing Across Multiple Files](#batch-diffing-across-multiple-files)
 
@@ -2543,6 +2558,63 @@ pytae incoming.parquet \
   -filter "status == 'ACTIVE'" \
   -select "user_id,email,balance" \
   -diff baseline.parquet
+```
+
+---
+
+## Key-Aware Diffing (`on=key`)
+
+When comparing tables where rows may be inserted, deleted, reordered, or filtered, direct positional row matching may fail or report misleading cell differences. Use the `on=` parameter inside `-diff` to align rows by primary or composite keys:
+
+```bash
+# Key alignment on a single column:
+pytae v1.parquet -diff "v2.parquet,on=id"
+
+# Key alignment with numeric tolerance:
+pytae v1.parquet -diff "v2.parquet,on=id,tol=1e-4,rtol=1e-5"
+
+# Composite key alignment:
+pytae v1.parquet -diff "v2.parquet,on=customer_id:order_date"
+```
+
+**Key Alignment Output:**
+```text
+Key Alignment (on id):
+  Matched keys:    1,420
+  + Added in left (2):   [1051, 1052]
+  - Removed in left (1): [994]
+
+Values:
+  Tolerance: tol=0.0001 (for numeric columns)
+  Identical: all cell values match within tolerance.
+```
+
+When `on=` is specified:
+1. Keys present only in the left or right dataset are identified and reported.
+2. Matching keys are aligned directly to compare cell values across common non-key columns, regardless of physical row order.
+
+---
+
+## Python API (`df.diff` / `pt.diff`)
+
+Dataset diffing is also available directly in Python pipelines via `pt.diff()` or `DataFrame.diff()`:
+
+```python
+import pytae as pt
+
+left = pt.read_parquet("left.parquet")
+right = pt.read_parquet("right.parquet")
+
+# Simple diff
+report = left.diff(right)
+print(report)
+
+# Key-aware diff with tolerance:
+report = pt.diff(left, right, on="id", tol=1e-3)
+print(report)
+
+# Or via the pt accessor:
+report = df.pt.diff(df_ref, on=["user_id", "date"], tol=0.01)
 ```
 
 ---
@@ -2705,6 +2777,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Combining Multiple Conditions](#combining-multiple-conditions)
   - [Strict Syntax Enforcement & Diagnostic Errors](#strict-syntax-enforcement)
 - [Slicing Extreme Rows](#slicing-extreme-rows)
+- [Inline Data Assertions (`-assert`)](#inline-data-assertions--assert)
 - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
 - [Quoting Best Practices](#quoting-best-practices)
 
@@ -2982,6 +3055,48 @@ pytae penguins.parquet -by species -arrange body_mass_g -head 1 -select "species
 | Adelie    |          2850 |
 | Chinstrap |          2700 |
 | Gentoo    |          3950 |
+
+---
+
+## Inline Data Assertions (`-assert`)
+
+While `-filter` silently keeps only matching rows, `-assert` enforces data quality and schema invariants at any point in the pipeline. If all rows satisfy the assertion conditions, the pipeline continues uninterrupted; if any condition fails, execution halts immediately with an informative error displaying the number of failing rows and sample violations.
+
+```bash
+# Validate ranges and non-null constraints:
+pytae penguins.parquet -assert "body_mass_g > 0 and species.is_not_null()"
+
+# Chain assertions between transformations:
+pytae raw_events.parquet \
+  -filter "status == 'SUCCESS'" \
+  -assert "user_id.is_not_null() and amount >= 0" \
+  -mutate "tax = amount * 0.08" \
+  -assert "tax >= 0" \
+  -save processed_events.parquet
+```
+
+### Python API (`df.assert_()` / `pt.assert_()`)
+
+```python
+import pytae as pt
+
+df = pt.read_parquet("penguins.parquet")
+
+# Method chaining:
+validated = (
+    df
+    .filter("body_mass_g > 3000")
+    .assert_("species in ['Adelie', 'Gentoo', 'Chinstrap']")
+    .mutate("mass_kg = body_mass_g / 1000")
+    .assert_("mass_kg > 3.0")
+)
+
+# Functional API:
+pt.assert_(df, "bill_length_mm > 0", "sex.is_not_null()")
+
+# Accessor API:
+df.pt.assert_("body_mass_g > 0")
+```
 
 ---
 
@@ -5436,6 +5551,7 @@ Pure structural 1-to-1 reshaping between long and wide formats without aggregati
   - [1. Pure 1-to-1 Unmelting](#1-pure-1-to-1-unmelting)
   - [2. Explicit Row Index (`r=`)](#2-explicit-row-index-r)
   - [3. Round-Trip Reshaping (`-long` → `-wide`)](#3-round-trip-reshaping--long---wide)
+- [Unnesting List & Array Columns (`-explode`)](#unnesting-list--array-columns--explode)
 - [When to Use `-pivot` Instead of `-wide`](#when-to-use--pivot-instead-of--wide)
 
 ---
@@ -5544,6 +5660,37 @@ pytae items.parquet \
 | row1 | 10.0 | 100.0 |
 | row2 | 20.0 | 200.0 |
 | row3 | 30.0 | 300.0 |
+
+---
+
+## Unnesting List & Array Columns (`-explode`)
+
+When tables contain list, array, or iterable values in cells (such as tags, items, or JSON arrays), `-explode` flattens them into individual rows, duplicating non-exploded column values across each element.
+
+```bash
+# Unnest a single list/array column:
+pytae events.parquet -explode tags
+
+# Unnest multiple list columns simultaneously:
+pytae orders.parquet -explode "items,quantities"
+```
+
+### Python API (`df.explode()` / `pt.explode()`)
+
+```python
+import pytae as pt
+
+df = pt.read_parquet("events.parquet")
+
+# Unnest via verb function:
+flat = pt.explode(df, "tags")
+
+# Or via DataFrame method chaining:
+flat = df.explode("items", "quantities")
+
+# Or via pandas accessor:
+flat = df.pt.explode("tags")
+```
 
 ---
 
@@ -12873,20 +13020,20 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 |:---|:---|:---|:---|
 | **Data I/O** | **[read_write.ipynb](detailed_docs/library/read_write.ipynb)** | **[read_write.md](detailed_docs/cli/read_write.md)** | `pt.read_*`, `pt.scan_*`, `write_*`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
 | **Derivations** | **[mutate.ipynb](detailed_docs/library/mutate.ipynb)** | **[mutate.md](detailed_docs/cli/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
-| **Row Filtering** | **[filter.ipynb](detailed_docs/library/filter.ipynb)** | **[filter.md](detailed_docs/cli/filter.md)** | `filter`, intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
+| **Row Filtering** | **[filter.ipynb](detailed_docs/library/filter.ipynb)** | **[filter.md](detailed_docs/cli/filter.md)** | `filter`, `assert_` (data assertions), intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
 | **Columns** | **[select.ipynb](detailed_docs/library/select.ipynb)** | **[select.md](detailed_docs/cli/select.md)** | `select`, drop with `!`, regex/patterns, inline rename, `pt.everything` |
 | **Sorting** | **[arrange.ipynb](detailed_docs/library/arrange.ipynb)** | **[arrange.md](detailed_docs/cli/arrange.md)** | `arrange`, ascending, descending `col desc`, multi-column ordering, null positioning |
 | **Aggregation** | **[agg.ipynb](detailed_docs/library/agg.ipynb)** | **[agg.md](detailed_docs/cli/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
 | **Cross-Tab** | **[pivot.ipynb](detailed_docs/library/pivot.ipynb)** | **[pivot.md](detailed_docs/cli/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
 | **Deduplication** | **[distinct.ipynb](detailed_docs/library/distinct.ipynb)** | **[distinct.md](detailed_docs/cli/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
 | **Slicing** | **[head_tail.ipynb](detailed_docs/library/head_tail.ipynb)** | **[head_tail.md](detailed_docs/cli/head_tail.md)** | `arrange` + `head`/`tail`, group-aware with `by`, percentage `prop=`, ties `with_ties=` |
-| **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting) and `wide` (1:1 pivoting) with identical intuitive vocabularies |
+| **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Masking & Privacy**| **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[mask.md](detailed_docs/cli/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
-| **Interactive REPL**| — | **[repl.md](repl.md)** | `pytae -i`, `pytae <file> -i`, state history, `undo`, `redo`, `reset`, `checkpoint`, `restore`, `rm *`, `rm checkpoint *`, `clear` |
-| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (with `tol=`), `glimpse`, `cols`, `to_clip` |
+| **Interactive REPL**| — | **[repl.md](repl.md)** | `pytae -i`, `pytae <file> -i`, state history, `history -cli`, `history -py`, `undo`, `redo`, `reset`, `checkpoint`, `restore`, `rm *`, `clear` |
+| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `to_clip` |
 | **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
-| **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-table joining, batch inputs, pipes, Unix redirection |
+| **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | `-file` pipelines, multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
 | **Plotting** | **[plotting.ipynb](detailed_docs/plotting/plotting.ipynb)** | **[cli_plots.md](detailed_docs/cli/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Comparisons** | **[vs. Pandas](comparison_to_pandas.md)**<br>**[vs. dplyr](comparison_to_dplyr.md)**<br>**[vs. SAS](comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
@@ -13028,6 +13175,10 @@ pytae data.parquet -filter "{score: is_nan()}"
 pytae data.parquet -filter "counterparty_class_(irb) == 'Sovereigns'"
 pytae data.parquet -filter "[counterparty class (irb)].is_not_null()"
 
+# Inline assertions (validates all rows satisfy conditions; fails fast on violation)
+pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"
+pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet
+
 # Drop rows containing missing values
 pytae data.parquet -dropna
 pytae data.parquet -dropna "body_mass_g,sex"
@@ -13168,6 +13319,10 @@ pytae long.parquet -wide "r=species, c=metric, v=value"
 
 # 2D Pivot table with aggregation: r (rows), c (columns), v (values), a (aggregation)
 pytae data.parquet -pivot "r=species, c=island, v=body_mass_g, a=mean"
+
+# Explode / unnest list-like or array columns into multiple rows (one element per row)
+pytae events.parquet -explode tags
+pytae orders.parquet -explode "items,quantities"
 ```
 
 ---
@@ -13189,6 +13344,10 @@ pytae -file "q1.parquet=a; q2.parquet=b; q3.parquet=c" \
 # Run analytical ANSI SQL across files
 pytae -file "sales.parquet=s; stores.csv=st" \
   -sql "SELECT st.region, SUM(s.amount) as total FROM s JOIN st ON s.store_id = st.id GROUP BY 1 ORDER BY 2 DESC"
+
+# Load globbed multi-file partitions into -file
+pytae -file "parts/*.parquet=all_parts; stores.csv=st" \
+  -join "left=all_parts, right=st, on=store_id, how=left"
 ```
 
 ---
@@ -13226,6 +13385,10 @@ pytae baseline.parquet -diff current.parquet
 
 # Tolerance threshold for floating-point calculations (absolute & relative)
 pytae baseline.parquet -diff current.parquet -tol 1e-4
+
+# Key-aware row alignment (reconcile by primary/composite keys, detect added/removed keys & cell diffs)
+pytae baseline.parquet -diff "current.parquet,on=id,tol=1e-4"
+pytae baseline.parquet -diff "current.parquet,on=id:cust_id,tol=0.01"
 
 # Compare with custom delimiter or encoding
 pytae left.csv -diff right.csv -dlim "," -tol 0.001
@@ -13318,6 +13481,8 @@ redo                 # Re-apply last undone transformation
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show history of applied steps and checkpoint milestone banners
+history -cli         # Export session transformations as reproducible one-line CLI command
+history -py          # Export session transformations as runnable Python script (import pytae as pt...)
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
@@ -13732,9 +13897,13 @@ Loaded raw_data.csv as 'df2' (5,000 rows x 8 cols) [encoding=latin1, sep=;, nrow
 pytae [df1, df2]> load sales.csv as df3 -dlim "\t"
 Loaded sales.csv as 'df3' (1,200 rows x 6 cols) [sep=	].
 
-# 4. Or explicitly load a bundled sample dataset via sample:<name>
-pytae [df1, df2, df3]> df4 = sample:penguins
-Loaded penguins.parquet as 'df4' (344 rows x 7 cols).
+# 4. Multi-file globbing and directory scanning
+pytae [df1, df2, df3]> load "parts/*.parquet" as df4
+Loaded 12 files matching 'parts/*.parquet' as 'df4' (120,000 rows x 8 cols).
+
+# 5. Or explicitly load a bundled sample dataset via sample:<name>
+pytae [df1, df2, df3, df4]> df5 = sample:penguins
+Loaded penguins.parquet as 'df5' (344 rows x 7 cols).
 
 pytae [df1, df2, df3, df4]>
 ```
@@ -13894,6 +14063,8 @@ The REPL automatically preserves command history across sessions:
 - **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Supported on Unix/macOS (`libedit`, GNU `readline`), Windows Terminal, and PowerShell.
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered log of pipeline transformation steps applied during the current session.
+- **`history -cli`**: Generates and prints an exact, reproducible one-shot CLI command string reconstructing the entire interactive session from scratch.
+- **`history -py`**: Generates and prints a complete, runnable Python script using `import pytae as pt` and DataFrame method chaining.
 
 ---
 
@@ -13926,7 +14097,7 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history` | List numbered history of applied transformation steps and checkpoint banners | No |
+| **`history`** | `history`, `history -cli`, `history -py` | List numbered transformation steps, or export history as CLI command (`-cli`) or Python script (`-py`) | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
@@ -14585,7 +14756,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Within-Group Percentage** | `df %>% group_by(g) %>% mutate(pct = x / sum(x)) %>% ungroup()` | `df.by("g").mutate(pct="x / sum(x)")` | `-by g -mutate "pct = x / sum(x)"` |
 | **Within-Group Rank** | `df %>% group_by(g) %>% mutate(r = min_rank(x)) %>% ungroup()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
 | **Grouped Shift / Lag** | `df %>% group_by(g) %>% mutate(prev = lag(x)) %>% ungroup()` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
-| **Grouped Cumulative Sum** | `df %>% group_by(g) %>% mutate(cum = cumsum(x)) %>% ungroup()` | `df.by("g").mutate(cum="cum_sum(x)")` | `-by g -mutate "cum = cum_sum(x)"` |
+| **Grouped Cumulative Sum** | `df %>% group_by(g) %>% mutate(cum = cumsum(x)) %>% ungroup()` | `df.by("g").mutate(cum="x.cumsum()")` | `-by g -mutate "cum = x.cumsum()"` |
 
 ---
 
@@ -14803,7 +14974,7 @@ In Pytae, grouped calculations are written as clear, declarative expressions wit
 
 ```python
 # PYTAE: One obvious declarative line
-sales.by("region").mutate(cum_sales="cum_sum(amount)")
+sales.by("region").mutate(cum_sales="amount.cumsum()")
 ```
 
 ---
