@@ -2047,6 +2047,9 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 1. CANONICAL VERBS ONLY:
    - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
+   - Data assertions / invariants: ALWAYS `-assert` (CLI) or `df.assert_()` (Python). Fails fast on invalid rows.
+   - List / array unnesting: ALWAYS `-explode` (CLI) or `df.explode()` (Python). Flattens array/list elements into rows.
+   - Key-aware diffing: ALWAYS `-diff "target,on=key"` (CLI) or `df.diff(other, on="key")` (Python).
    - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col desc` (e.g. `-arrange "col desc"`). NEVER use `-sort`, `-sort_by`, or `-order`. NEVER use `-arrange "-col"`.
    - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python). NEVER use `-dedupe` or `drop_duplicates()`.
    - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `agg(total="count")`.
@@ -2107,6 +2110,12 @@ When answering questions:
     copilot_instr_path = REPO_ROOT / "reference" / "pytae_copilot_instructions.md"
     copilot_instr_path.write_text(copilot_instructions_content, encoding="utf-8")
     print(f"Successfully generated {copilot_instr_path}")
+
+    github_dir = REPO_ROOT / ".github"
+    if github_dir.exists():
+        gh_copilot_path = github_dir / "copilot-instructions.md"
+        gh_copilot_path.write_text(copilot_instructions_content, encoding="utf-8")
+        print(f"Successfully generated {gh_copilot_path}")
 
     from pytae.doc_search import build_search_index
     db_path = REPO_ROOT / "reference" / "pytae_docs.db"

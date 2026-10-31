@@ -11,6 +11,9 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 1. CANONICAL VERBS ONLY:
    - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
+   - Data assertions / invariants: ALWAYS `-assert` (CLI) or `df.assert_()` (Python). Fails fast on invalid rows.
+   - List / array unnesting: ALWAYS `-explode` (CLI) or `df.explode()` (Python). Flattens array/list elements into rows.
+   - Key-aware diffing: ALWAYS `-diff "target,on=key"` (CLI) or `df.diff(other, on="key")` (Python).
    - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col desc` (e.g. `-arrange "col desc"`). NEVER use `-sort`, `-sort_by`, or `-order`. NEVER use `-arrange "-col"`.
    - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python). NEVER use `-dedupe` or `drop_duplicates()`.
    - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `agg(total="count")`.
