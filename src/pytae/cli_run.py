@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -306,11 +307,48 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
     return "\n".join(lines)
 
 
+def _parse_diff_arg(
+    raw_diff: str,
+    default_tol: float = 0.0,
+) -> tuple[str, list[str] | None, float, float]:
+    """Parse `-diff` argument string, extracting optional `,on=...`, `,tol=...`, `,rtol=...`."""
+    from pytae._text import tokenize as _tok
+
+    parts = [p.strip() for p in _tok(raw_diff, ",", keep_quotes=False, track_brackets=True) if p.strip()]
+    if not parts:
+        return raw_diff, None, default_tol, 0.0
+
+    target_str = parts[0]
+    on_cols: list[str] | None = None
+    tol = default_tol
+    rtol = 0.0
+
+    for tok in parts[1:]:
+        if "=" in tok:
+            k, v = tok.split("=", 1)
+            k_clean = k.strip().lower()
+            v_clean = v.strip().strip("\"'")
+            if k_clean in ("on", "key", "keys"):
+                on_cols = [c.strip() for c in v_clean.replace(":", ",").split(",") if c.strip()]
+            elif k_clean in ("tol", "atol"):
+                try:
+                    tol = float(v_clean)
+                except ValueError:
+                    pass
+            elif k_clean == "rtol":
+                try:
+                    rtol = float(v_clean)
+                except ValueError:
+                    pass
+    return target_str, on_cols, tol, rtol
+
+
 def _compute_diff(
     left_df: pd.DataFrame,
     right_target: Any,
     left_name: str,
     *,
+    on: str | Sequence[str] | None = None,
     tol: float = 0.0,
     rtol: float = 0.0,
     sep: str | None = None,
@@ -324,8 +362,16 @@ def _compute_diff(
         right_df = right_target.to_pandas()
         right_name = getattr(right_target, "_name", "<right>")
     else:
+        if isinstance(right_target, str) and "," in right_target and not Path(right_target).exists():
+            parsed_target, parsed_on, parsed_tol, parsed_rtol = _parse_diff_arg(right_target, default_tol=tol)
+            right_target = parsed_target
+            if on is None and parsed_on is not None:
+                on = parsed_on
+            tol = parsed_tol
+            if rtol == 0.0 and parsed_rtol > 0.0:
+                rtol = parsed_rtol
         right_path = Path(right_target)
-        if not right_path.exists():
+        if not right_path.exists() and not any(ch in str(right_path) for ch in "*?["):
             return f"Diff target not found: {right_path}"
         try:
             reader = get_reader(right_path, sep=sep, encoding=encoding)
@@ -340,6 +386,19 @@ def _compute_diff(
     r2, c2 = right_df.shape
     cols1 = list(left_df.columns)
     cols2 = list(right_df.columns)
+
+    key_cols: list[str] = []
+    if on is not None:
+        if isinstance(on, str):
+            key_cols = [c.strip() for c in on.replace(":", ",").split(",") if c.strip()]
+        else:
+            key_cols = [str(c).strip() for c in on if str(c).strip()]
+        missing_left = [k for k in key_cols if k not in cols1]
+        missing_right = [k for k in key_cols if k not in cols2]
+        if missing_left:
+            return f"Diff key column(s) {missing_left} not found in left dataset (available: {', '.join(cols1)})"
+        if missing_right:
+            return f"Diff key column(s) {missing_right} not found in right dataset (available: {', '.join(cols2)})"
 
     lines: list[str] = [
         "Comparing:",
@@ -389,13 +448,51 @@ def _compute_diff(
         lines.append("Null Counts:")
         lines.extend(null_diffs)
 
-    if r1 == r2 and common_cols:
+    compare_left = left_df
+    compare_right = right_df
+    compare_cols = common_cols
+    can_compare_values = (r1 == r2) and bool(common_cols)
+    key_diff_found = False
+
+    if key_cols:
+        lines.append("")
+        lines.append(f"Key Alignment (on {', '.join(key_cols)}):")
+        left_keys = set(left_df[key_cols].itertuples(index=False, name=None))
+        right_keys = set(right_df[key_cols].itertuples(index=False, name=None))
+        matched_keys = left_keys & right_keys
+        only_left = left_keys - right_keys
+        only_right = right_keys - left_keys
+
+        lines.append(f"  Matched keys:    {len(matched_keys):,}")
+        if only_left:
+            key_diff_found = True
+            sample_left = [k[0] if len(k) == 1 else k for k in sorted(only_left, key=str)[:5]]
+            suffix = ", ..." if len(only_left) > 5 else ""
+            lines.append(f"  + Added in left ({len(only_left):,}):   {sample_left}{suffix}")
+        if only_right:
+            key_diff_found = True
+            sample_right = [k[0] if len(k) == 1 else k for k in sorted(only_right, key=str)[:5]]
+            suffix = ", ..." if len(only_right) > 5 else ""
+            lines.append(f"  - Removed in left ({len(only_right):,}): {sample_right}{suffix}")
+
+        compare_cols = [c for c in common_cols if c not in key_cols]
+        if matched_keys and compare_cols:
+            l_dedup = left_df.drop_duplicates(subset=key_cols, keep="first").set_index(key_cols)
+            r_dedup = right_df.drop_duplicates(subset=key_cols, keep="first").set_index(key_cols)
+            common_idx = l_dedup.index.intersection(r_dedup.index)
+            compare_left = l_dedup.loc[common_idx].reset_index(drop=True)
+            compare_right = r_dedup.loc[common_idx].reset_index(drop=True)
+            can_compare_values = True
+        else:
+            can_compare_values = False
+
+    if can_compare_values and compare_cols:
         try:
             mismatches = 0
             col_mismatches: dict[str, tuple[int, float | None]] = {}
-            for c in common_cols:
-                s1 = left_df[c]
-                s2 = right_df[c]
+            for c in compare_cols:
+                s1 = compare_left[c]
+                s2 = compare_right[c]
                 is_num1 = pd.api.types.is_numeric_dtype(s1)
                 is_num2 = pd.api.types.is_numeric_dtype(s2)
                 if (tol > 0 or rtol > 0) and is_num1 and is_num2:
@@ -437,7 +534,7 @@ def _compute_diff(
                     tol_desc.append(f"rtol={rtol:g}")
                 lines.append(f"  Tolerance: {', '.join(tol_desc)} (for numeric columns)")
 
-            if mismatches == 0 and cols1 == cols2:
+            if mismatches == 0 and cols1 == cols2 and not key_diff_found and r1 == r2:
                 if tol > 0 or rtol > 0:
                     lines.append("  Identical: all cell values match within tolerance.")
                 else:
@@ -461,6 +558,10 @@ def _compute_diff(
                         lines.append(f"    * {c}: {cnt:,} cell(s) differ")
         except Exception:
             pass
+    elif r1 != r2 and not key_cols:
+        lines.append("")
+        lines.append("Values:")
+        lines.append("  Row counts differ; pass on='<key>' to align rows by key.")
 
     return "\n".join(lines)
 
@@ -784,6 +885,22 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "assert":
+            assert_val = _next_op_val("assert", getattr(args, "assert_specs", None))
+            if isinstance(assert_val, list):
+                assert_val = assert_val[0] if assert_val else ""
+            err = pipeline.apply_assert(str(assert_val or ""))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "explode":
+            explode_val = _next_op_val("explode", getattr(args, "explode", None))
+            if isinstance(explode_val, list):
+                explode_val = explode_val[0] if explode_val else ""
+            err = pipeline.apply_explode(str(explode_val or ""))
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "mutate":
             by_cols = current_by if current_by is not None else legacy_by
             if by_cols:
@@ -943,11 +1060,10 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
-            diff_path = Path(args.diff)
             diff_tol = getattr(args, "tol", None) or 0.0
             diff_str = _compute_diff(
                 pipeline.dataframe(),
-                diff_path,
+                str(args.diff),
                 path.name if path is not None else "<pipeline>",
                 tol=diff_tol,
                 sep=args.dlim,

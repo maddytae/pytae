@@ -24,6 +24,12 @@ class _BasePtAccessor:
     def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).filter(*conditions, params=params, **kwargs)
 
+    def assert_(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).assert_(*conditions, params=params, **kwargs)
+
+    def explode(self, *cols: Any) -> DataFrame:
+        return DataFrame(self._obj).explode(*cols)
+
     def select(self, *names: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).select(*names, **kwargs)
 
@@ -42,8 +48,15 @@ class _BasePtAccessor:
     def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
-    def diff(self, other: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
-        return DataFrame(self._obj).diff(other, tol=tol, rtol=rtol)
+    def diff(
+        self,
+        other: Any,
+        tol: float = 0.0,
+        rtol: float = 0.0,
+        *,
+        on: str | Sequence[str] | None = None,
+    ) -> str:
+        return DataFrame(self._obj).diff(other, on=on, tol=tol, rtol=rtol)
 
     def head(
         self,

@@ -128,6 +128,8 @@ _CLI_FLAGS = {
     "-rename",
     "-file",
     "-filter",
+    "-assert",
+    "-explode",
     "-mutate",
     "-sql",
     "-join",
@@ -705,6 +707,23 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="filter rows at this point in the pipeline using pytae filter(); conditions like \"col = 'val', col > 5\"",
     )
     parser.add_argument(
+        "-assert",
+        dest="assert_specs",
+        action=_OrderedAppend,
+        default=None,
+        metavar="CONDITIONS",
+        help="validate that all rows satisfy conditions at this point in the pipeline (raises error on violation), "
+        'e.g. -assert "amount >= 0 and id.is_not_null()"',
+    )
+    parser.add_argument(
+        "-explode",
+        dest="explode",
+        action=_OrderedAppend,
+        default=None,
+        metavar="COLUMNS",
+        help='explode list/array-like columns into multiple rows (one per element), e.g. -explode tags or -explode "tags,items"',
+    )
+    parser.add_argument(
         "-mutate",
         dest="mutate",
         action=_OrderedAppend,
@@ -1058,12 +1077,16 @@ def main(argv: list[str] | None = None) -> int:
             args.pivot is not None,
             args.select,
             args.filter,
+            args.assert_specs,
+            args.explode,
             args.mutate,
             args.sql,
             args.rename,
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.assert_specs,
+            args.explode,
             args.join,
             args.concat,
             args.meta,
@@ -1098,6 +1121,8 @@ def main(argv: list[str] | None = None) -> int:
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.assert_specs,
+            args.explode,
             args.join,
             args.concat,
             args.plot is not None,
@@ -1174,7 +1199,7 @@ def main(argv: list[str] | None = None) -> int:
             frames: dict[str, Any] = {}
             for entry in parse_file_arg(args.file):
                 entry_path = Path(entry["path"])
-                if not entry_path.exists():
+                if not entry_path.exists() and not any(ch in str(entry_path) for ch in "*?["):
                     from pytae import DATA_PATH
 
                     candidate = DATA_PATH / entry_path.name

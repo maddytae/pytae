@@ -724,6 +724,114 @@ class IpcReader:
         return lf
 
 
+class GlobReader:
+    """Unified multi-file reader for glob patterns or directories of tabular files."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        sep: str | None = None,
+        encoding: str | None = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+    ) -> None:
+        import glob as _glob
+
+        self.path = path
+        self.sep = sep
+        self.encoding = encoding
+        self.chunk_size = chunk_size
+
+        raw_str = str(path.expanduser())
+        if path.exists() and path.is_dir():
+            candidates: list[Path] = []
+            for ext in (".parquet", ".pq", ".ipc", ".arrow", ".feather", ".csv", ".jsonl", ".ndjson", ".txt", ".dat"):
+                found = sorted(path.glob(f"*{ext}"))
+                if found:
+                    candidates = found
+                    break
+            if not candidates:
+                raise FileNotFoundError(f"no supported data files found in directory: {path}")
+            self.files = candidates
+        else:
+            matches = sorted(Path(p) for p in _glob.glob(raw_str, recursive=True) if Path(p).is_file())
+            if not matches:
+                raise FileNotFoundError(f"no files matched pattern: {path}")
+            self.files = matches
+
+        self._first_reader = get_reader(
+            self.files[0], sep=sep, encoding=encoding, chunk_size=chunk_size
+        )
+
+    def shape(self) -> tuple[int, int]:
+        lf = self.to_polars_lazy()
+        import polars as pl
+
+        rows = int(lf.select(pl.len()).collect().item())
+        cols = len(self.columns())
+        return (rows, cols)
+
+    def columns(self) -> list[str]:
+        return self._first_reader.columns()
+
+    def dtypes(self) -> pd.Series:
+        return self._first_reader.dtypes()
+
+    def head(self, n: int) -> pd.DataFrame:
+        if n <= 0:
+            return self.to_polars(nrows=0).to_pandas()
+        return self.to_polars(nrows=n).to_pandas()
+
+    def tail(self, n: int) -> pd.DataFrame:
+        if n <= 0:
+            return self.to_polars(nrows=0).to_pandas()
+        return self.to_polars_lazy().tail(n).collect().to_pandas()
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> pd.DataFrame:
+        return self.to_polars(columns=columns, nrows=nrows).to_pandas()
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        lf = self.to_polars_lazy(columns=columns)
+        if nrows is not None:
+            lf = lf.head(nrows)
+        return lf.collect()
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        suffix, compression = _split_path_suffixes(self.files[0])
+        if compression is None and (self.encoding is None or self.encoding.lower() in ("utf-8", "utf8")):
+            try:
+                if suffix in (".parquet", ".pq"):
+                    lf = pl.scan_parquet(self.files)
+                    return lf.select(columns) if columns is not None else lf
+                if suffix in (".ipc", ".arrow", ".feather"):
+                    lf = pl.scan_ipc(self.files)
+                    return lf.select(columns) if columns is not None else lf
+                if suffix in (".csv", ".txt", ".dat"):
+                    eff_sep = self.sep or (_TXT_DEFAULT_SEP.get(suffix, ","))
+                    lf = pl.scan_csv(self.files, separator=eff_sep, infer_schema_length=10000)
+                    return lf.select(columns) if columns is not None else lf
+                if suffix in (".jsonl", ".ndjson"):
+                    lf = pl.scan_ndjson(self.files)
+                    return lf.select(columns) if columns is not None else lf
+            except Exception:
+                pass
+
+        frames = [
+            get_reader(f, sep=self.sep, encoding=self.encoding, chunk_size=self.chunk_size).to_polars(columns=columns)
+            for f in self.files
+        ]
+        combined = pl.concat(frames, how="diagonal_relaxed")
+        return combined.lazy()
+
+
 _READERS = {
     ".parquet": ParquetReader,
     ".pq": ParquetReader,
@@ -754,6 +862,9 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 def get_reader(
     path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE
 ):
+    path = Path(path)
+    if (path.exists() and path.is_dir()) or (not path.exists() and any(ch in str(path) for ch in "*?[")):
+        return GlobReader(path, sep=sep, encoding=encoding, chunk_size=chunk_size)
     suffix, compression = _split_path_suffixes(path)
     if suffix in _YAML_SUFFIXES:
         global _EXTERNAL_CONNECTIONS_MODULE

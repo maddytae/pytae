@@ -166,6 +166,14 @@ def filter(df: Any, *conditions: Any, params: dict[str, Any] | None = None, **kw
     return DataFrame(df).filter(*conditions, params=params, **kwargs)
 
 
+def assert_(df: Any, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+    return DataFrame(df).assert_(*conditions, params=params, **kwargs)
+
+
+def explode(df: Any, *cols: Any) -> DataFrame:
+    return DataFrame(df).explode(*cols)
+
+
 def mutate(df: Any, *specs: Any, **kwargs: Any) -> DataFrame:
     if isinstance(df, GroupedDataFrame):
         return df.mutate(*specs, **kwargs)
@@ -385,9 +393,16 @@ def join(
     )
 
 
-def diff(left: Any, right: Any, tol: float = 0.0, rtol: float = 0.0) -> str:
-    """Compare schema and contents between two datasets with optional numeric tolerance."""
-    return DataFrame(left).diff(right, tol=tol, rtol=rtol)
+def diff(
+    left: Any,
+    right: Any,
+    tol: float = 0.0,
+    rtol: float = 0.0,
+    *,
+    on: str | Sequence[str] | None = None,
+) -> str:
+    """Compare schema and contents between two datasets with optional key alignment and numeric tolerance."""
+    return DataFrame(left).diff(right, on=on, tol=tol, rtol=rtol)
 
 
 def concat(
@@ -488,6 +503,8 @@ __all__ = [
     "sample",
     "select",
     "filter",
+    "assert_",
+    "explode",
     "by",
     "mutate",
     "rename",

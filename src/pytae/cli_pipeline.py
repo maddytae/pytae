@@ -199,6 +199,62 @@ class _Pipeline:
         except Exception as exc:
             return f"{flag_name}: {exc}"
 
+    def apply_assert(self, raw_spec: str) -> str | None:
+        """Validate that all rows satisfy one -assert spec. Returns an error message or None."""
+        from pytae.cli_parsing import parse_filter
+
+        try:
+            conditions = parse_filter(raw_spec)
+        except (SystemExit, Exception) as exc:
+            return f"-assert: {exc}"
+
+        available = self._available_columns()
+        if hasattr(conditions, "columns"):
+            cond_cols = conditions.columns()
+        elif isinstance(conditions, dict):
+            cond_cols = list(conditions.keys())
+        else:
+            cond_cols = []
+
+        def _get_base_col(c: str) -> str:
+            if ".dt." in c:
+                return c.split(".dt.")[0].strip()
+            if ".str." in c:
+                return c.split(".str.")[0].strip()
+            return c.strip("[]").strip()
+
+        unknown = [_get_base_col(c) for c in cond_cols if _get_base_col(c) not in available]
+        if unknown:
+            return unknown_columns_message("-assert", unknown, available)
+
+        try:
+            from pytae.polars_engine import assert_polars
+
+            assert_polars(self.polars_lazy_frame(), conditions, raw_desc=raw_spec)
+            return None
+        except Exception as exc:
+            return f"-assert: {exc}"
+
+    def apply_explode(self, raw_cols: str) -> str | None:
+        """Explode list/array-like columns into multiple rows. Returns an error message or None."""
+        from pytae.cli_parsing import parse_columns, unknown_columns_message
+
+        cols = parse_columns(raw_cols)
+        if not cols:
+            return "-explode: expected at least one column name"
+        available = self._available_columns()
+        unknown = [c for c in cols if c not in available]
+        if unknown:
+            return unknown_columns_message("-explode", unknown, available)
+        try:
+            from pytae.polars_engine import explode_polars
+
+            self._pldf = explode_polars(self.polars_lazy_frame(), cols)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-explode: {exc}"
+
     def apply_mutate(self, spec: str, by: list[str] | None = None, dropna: bool = False) -> str | None:
         """Apply one -mutate spec to the current view. Returns an error message or None."""
         raw_spec = spec.strip()

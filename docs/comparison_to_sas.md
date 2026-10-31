@@ -155,7 +155,7 @@ In Pytae, grouped calculations are written as clear, declarative expressions wit
 
 ```python
 # PYTAE: One obvious declarative line
-sales.by("region").mutate(cum_sales="cum_sum(amount)")
+sales.by("region").mutate(cum_sales="amount.cumsum()")
 ```
 
 ---

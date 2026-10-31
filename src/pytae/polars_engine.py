@@ -415,11 +415,11 @@ def _eval_filter_node(node: FilterNode, schema: pl.Schema | None = None) -> pl.E
     raise TypeError(f"Unknown filter node: {type(node)}")
 
 
-def filter_polars(df: Any, conditions: Any) -> Any:
-    """Filter a Polars DataFrame or LazyFrame using pytae filter specifications."""
+def _build_filter_expr(df: Any, conditions: Any, caller: str = "filter()") -> pl.Expr | None:
+    """Build a combined boolean Polars expression from pytae filter specifications."""
     schema = _df_schema(df)
     if isinstance(conditions, FilterNode):
-        return df.filter(_eval_filter_node(conditions, schema))
+        return _eval_filter_node(conditions, schema)
 
     cond_items: list[Any]
     if isinstance(conditions, dict):
@@ -430,7 +430,7 @@ def filter_polars(df: Any, conditions: Any) -> Any:
         cond_items = [conditions]
 
     if not cond_items:
-        return df
+        return None
 
     combined_expr: pl.Expr | None = None
     for item in cond_items:
@@ -451,14 +451,76 @@ def filter_polars(df: Any, conditions: Any) -> Any:
             else:
                 expr = _cond_to_polars_expr(col, cond, schema=schema)
         else:
-            raise TypeError(f"filter(): unsupported condition item {item!r}")
+            raise TypeError(f"{caller}: unsupported condition item {item!r}")
 
         if expr is not None:
             combined_expr = expr if combined_expr is None else (combined_expr & expr)
+    return combined_expr
 
+
+def filter_polars(df: Any, conditions: Any) -> Any:
+    """Filter a Polars DataFrame or LazyFrame using pytae filter specifications."""
+    combined_expr = _build_filter_expr(df, conditions, caller="filter()")
     if combined_expr is None:
         return df
     return df.filter(combined_expr)
+
+
+def assert_polars(df: Any, conditions: Any, raw_desc: str = "") -> Any:
+    """Validate that all rows in a Polars DataFrame or LazyFrame satisfy the given conditions."""
+    combined_expr = _build_filter_expr(df, conditions, caller="assert_()")
+    if combined_expr is None:
+        return df
+
+    materialized = df.collect() if isinstance(df, pl.LazyFrame) else df
+    total_rows = len(materialized)
+    if total_rows == 0:
+        return df
+
+    violation_expr = (~combined_expr) | combined_expr.is_null()
+    failing = materialized.filter(violation_expr)
+    fail_count = len(failing)
+    if fail_count > 0:
+        desc_part = f" ({raw_desc})" if raw_desc else ""
+        sample_str = str(failing.head(5))
+        raise ValueError(
+            f"assert failed{desc_part}: {fail_count:,} of {total_rows:,} row(s) violated condition.\n"
+            f"Sample failing rows:\n{sample_str}"
+        )
+    return df
+
+
+def explode_polars(df: Any, *cols: Any) -> Any:
+    """Explode list/array-like columns into multiple rows (one per element)."""
+    import difflib
+
+    from pytae.cli_parsing import parse_columns
+
+    resolved: list[str] = []
+    for item in cols:
+        if isinstance(item, str):
+            resolved.extend(parse_columns(item))
+        elif isinstance(item, (list, tuple)):
+            for sub in item:
+                if isinstance(sub, str):
+                    resolved.extend(parse_columns(sub))
+                else:
+                    resolved.append(str(sub))
+        elif item is not None:
+            resolved.append(str(item))
+
+    if not resolved:
+        raise ValueError("explode() requires at least one column name")
+
+    avail = _df_columns(df)
+    avail_set = set(avail)
+    for c in resolved:
+        if c not in avail_set:
+            close = difflib.get_close_matches(c, avail, n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"explode: column '{c}' not found in DataFrame{hint}")
+
+    return df.explode(resolved)
 
 
 def select_polars(df: Any, names: list[str], kwargs: dict) -> Any:

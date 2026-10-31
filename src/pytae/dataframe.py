@@ -16,11 +16,13 @@ from pytae.polars_engine import (
     _df_columns,
     agg_polars,
     arrange_polars,
+    assert_polars,
     clean_columns_polars,
     concat_polars,
     count_polars,
     distinct_polars,
     dropna_polars,
+    explode_polars,
     fillna_polars,
     filter_polars,
     join_polars,
@@ -784,6 +786,68 @@ class DataFrame:
 
         return DataFrame(filter_polars(self._df, cond_pairs))
 
+    def assert_(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
+        """Validate that all rows satisfy the given filter conditions, raising ValueError on violation."""
+        import inspect
+
+        _here = inspect.currentframe()
+        caller_frame = None if _here is None else _here.f_back
+        del _here
+        while caller_frame is not None:
+            name = caller_frame.f_globals.get("__name__") or ""
+            if name != "pytae" and not name.startswith("pytae."):
+                break
+            caller_frame = caller_frame.f_back
+        frame_vars: dict[str, Any] = {}
+        if caller_frame is not None:
+            frame_vars.update(caller_frame.f_globals)
+            frame_vars.update(caller_frame.f_locals)
+        del caller_frame
+
+        if params is None:
+            params = kwargs.pop("_params", None)
+        if "params" in kwargs:
+            p_val = kwargs.pop("params")
+            if params is None and isinstance(p_val, dict):
+                params = p_val
+
+        if kwargs:
+            first_k = next(iter(kwargs))
+            first_v = kwargs[first_k]
+            example_val = repr(first_v) if isinstance(first_v, (str, int, float)) else "'...'"
+            raise TypeError(
+                f"assert_(): keyword arguments are not supported (received {list(kwargs.keys())}). "
+                f'Use a string expression (e.g. df.assert_("{first_k} == {example_val}")) '
+                f"or a dictionary (e.g. df.assert_({{{repr(first_k)}: {example_val}}}))"
+            )
+
+        merged_params = dict(frame_vars)
+        if params:
+            merged_params.update(params)
+
+        cond_pairs: list[Any] = []
+        raw_descs: list[str] = []
+        for cond in conditions:
+            if isinstance(cond, str):
+                cond_pairs.append(_parse_filter_string(cond, params=merged_params))
+                raw_descs.append(cond)
+            elif isinstance(cond, dict):
+                cond_pairs.append(cond)
+                raw_descs.append(repr(cond))
+            elif isinstance(cond, (list, tuple)) and cond and isinstance(cond[0], tuple):
+                cond_pairs.extend(cond)  # type: ignore[arg-type]
+                raw_descs.append(repr(cond))
+            elif isinstance(cond, tuple) and len(cond) == 2:
+                cond_pairs.append(cond)  # type: ignore[arg-type]
+                raw_descs.append(repr(cond))
+
+        assert_polars(self._df, cond_pairs, raw_desc=", ".join(raw_descs))
+        return self
+
+    def explode(self, *cols: Any) -> DataFrame:
+        """Explode list/array-like columns into multiple rows (one row per element)."""
+        return DataFrame(explode_polars(self._df, *cols), orig_col_map=self._orig_col_map)
+
     def select(self, *names: Any, **kwargs: Any) -> DataFrame:
         """Select, reorder, slice, and drop columns using Pytae selection grammar."""
         return DataFrame(select_polars(self._df, list(names), kwargs), orig_col_map=self._orig_col_map)
@@ -893,6 +957,8 @@ class DataFrame:
         other: Any,
         tol: float = 0.0,
         rtol: float = 0.0,
+        *,
+        on: str | Sequence[str] | None = None,
     ) -> str:
         """Compare schema and contents against another DataFrame or dataset file with optional tolerance.
 
@@ -900,6 +966,8 @@ class DataFrame:
         ----------
         other : DataFrame, pl.DataFrame, pd.DataFrame, str, or Path
             Dataset or file path to compare against.
+        on : str or Sequence[str], optional
+            Key column(s) to align rows before comparing cell values and reporting added/removed keys.
         tol : float, default 0.0
             Absolute numeric threshold / tolerance for numeric comparisons.
         rtol : float, default 0.0
@@ -913,7 +981,7 @@ class DataFrame:
         from pytae.cli_run import _compute_diff
 
         left_df = self.to_pandas()
-        return _compute_diff(left_df, other, "<left>", tol=tol, rtol=rtol)
+        return _compute_diff(left_df, other, "<left>", on=on, tol=tol, rtol=rtol)
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
         """Deprecated: pick() has been removed in favor of arrange().head(n) / arrange().tail(n)."""

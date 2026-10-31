@@ -538,3 +538,167 @@ def test_read_database_and_connections_yaml_and_lazy_sinks(tmp_path, monkeypatch
     assert dfr.to_dataframe(columns=["a"], nrows=1).shape == (1, 1)
     assert dfr.to_polars_lazy(columns=["b"]).collect().columns == ["b"]
 
+
+def test_key_aware_diff_and_cli(tmp_path, capsys):
+    import pytae as pt
+    from pytae import cli
+
+    df1 = pt.DataFrame({"id": [1, 2, 3], "val": [10.0, 20.0, 30.0], "name": ["a", "b", "c"]})
+    df2 = pt.DataFrame({"id": [2, 3, 4], "val": [20.005, 35.0, 40.0], "name": ["b", "c", "d"]})
+
+    # Without on=, row counts differ works and gives a tip when sizes differ
+    df_short = pt.DataFrame({"id": [1, 2], "val": [10.0, 20.0], "name": ["a", "b"]})
+    report_no_on = df1.diff(df_short)
+    assert "pass on='<key>' to align rows by key" in report_no_on
+
+    # Key-aware diff in Python API (DataFrame.diff, pt.diff, .pt.diff)
+    report_key = df1.diff(df2, on="id", tol=0.01)
+    assert "Key Alignment (on id):" in report_key
+    assert "Matched keys:    2" in report_key
+    assert "+ Added in left (1):   [1]" in report_key
+    assert "- Removed in left (1): [4]" in report_key
+    assert "* val: 1 cell(s) differ (max diff: 5)" in report_key
+
+    assert pt.diff(df1, df2, on="id", tol=0.01) == report_key
+    assert df1.to_polars().pt.diff(df2, on="id", tol=0.01) == report_key
+
+    # CLI -diff with inline on= and tol=
+    p1 = tmp_path / "left.parquet"
+    p2 = tmp_path / "right.parquet"
+    df1.write_parquet(p1)
+    df2.write_parquet(p2)
+
+    rc = cli.main([str(p1), "-diff", f"{p2},on=id,tol=0.01"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Key Alignment (on id):" in out
+    assert "Matched keys:    2" in out
+    assert "* val: 1 cell(s) differ" in out
+
+
+def test_explode_python_accessor_and_cli(tmp_path, capsys):
+    import polars as pl
+
+    import pytae as pt
+    from pytae import cli
+
+    df = pt.DataFrame({"id": [1, 2], "tags": [["x", "y"], ["z"]]})
+    res = df.explode("tags")
+    assert res.shape == (3, 2)
+    assert res["id"].to_list() == [1, 1, 2]
+    assert res["tags"].to_list() == ["x", "y", "z"]
+
+    # Top-level pt.explode and .pt.explode
+    assert pt.explode(df, "tags").shape == (3, 2)
+    assert df.to_polars().pt.explode("tags").shape == (3, 2)
+
+    # LazyFrame explode
+    lf = pt.DataFrame(pl.DataFrame({"id": [1, 2], "tags": [["a", "b"], ["c"]]}).lazy())
+    assert lf.explode("tags").collect().shape == (3, 2)
+
+    # Error on unknown column
+    with pytest.raises(KeyError, match="explode: column 'tag' not found"):
+        df.explode("tag")
+
+    # CLI -explode
+    p = tmp_path / "nested.parquet"
+    df.write_parquet(p)
+    rc = cli.main([str(p), "-explode", "tags"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "x" in out and "y" in out and "z" in out
+
+
+def test_assert_verb_python_accessor_and_cli(tmp_path, capsys):
+    import pytae as pt
+    from pytae import cli
+
+    df = pt.DataFrame({"id": [1, 2, 3], "amount": [10.0, 25.0, 50.0]})
+
+    # Passing assertions return self unchanged
+    res = df.assert_("amount > 0 and id.is_not_null()").mutate("doubled = amount * 2")
+    assert res.shape == (3, 3)
+    assert pt.assert_(df, "amount >= 10").shape == (3, 2)
+    assert df.to_polars().pt.assert_("amount <= 100").shape == (3, 2)
+
+    # Failing assertion raises ValueError with sample rows
+    with pytest.raises(ValueError, match="assert failed.*1 of 3 row\\(s\\) violated condition"):
+        df.assert_("amount < 30")
+
+    # CLI -assert passing and failing
+    p = tmp_path / "orders.parquet"
+    df.write_parquet(p)
+
+    rc_pass = cli.main([str(p), "-assert", "amount > 0", "-shape"])
+    assert rc_pass == 0
+    assert "(3, 2)" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit):
+        cli.main([str(p), "-assert", "amount < 20"])
+
+
+def test_glob_reader_and_repl_glob_and_history_export(tmp_path):
+    import pytae as pt
+    from pytae import cli
+    from pytae.repl import PytaeRepl
+
+    part_dir = tmp_path / "parts"
+    part_dir.mkdir()
+    pt.DataFrame({"id": [1, 2], "v": [10, 20]}).write_parquet(part_dir / "part_1.parquet")
+    pt.DataFrame({"id": [3, 4], "v": [30, 40]}).write_parquet(part_dir / "part_2.parquet")
+
+    # 1. GlobReader via get_reader with wildcard pattern and directory path
+    glob_pat = part_dir / "part_*.parquet"
+    r_glob = get_reader(glob_pat)
+    assert r_glob.shape() == (4, 2)
+    assert r_glob.columns() == ["id", "v"]
+    assert len(r_glob.head(2)) == 2
+    assert len(r_glob.tail(2)) == 2
+    assert r_glob.to_polars()["v"].to_list() == [10, 20, 30, 40]
+
+    r_dir = get_reader(part_dir)
+    assert r_dir.shape() == (4, 2)
+
+    # 2. CLI -file with glob pattern
+    out_file = tmp_path / "combined.parquet"
+    ref_file = tmp_path / "ref.parquet"
+    pt.DataFrame({"id": [2, 3, 4], "label": ["b", "c", "d"]}).write_parquet(ref_file)
+    rc = cli.main(
+        [
+            "-file",
+            f"{glob_pat}=all_parts; {ref_file}=ref",
+            "-sql",
+            "SELECT all_parts.id, all_parts.v, ref.label FROM all_parts JOIN ref ON all_parts.id = ref.id",
+            "-o",
+            str(out_file),
+        ]
+    )
+    assert rc == 0
+    assert pt.read_parquet(out_file).shape == (3, 3)
+
+    # 3. REPL glob loading + -explode / -assert + history -cli / history -py
+    outputs: list[str] = []
+    r = PytaeRepl()
+    r.execute_line(f'df = "{glob_pat}"', output_fn=outputs.append)
+    assert r.current_df is not None and r.current_df.shape == (4, 2)
+
+    r.execute_line('df = df -assert "v > 0" -filter "v >= 20" -mutate "v2 = v * 2"', output_fn=outputs.append)
+    assert r.current_df.shape == (3, 3)
+
+    outputs.clear()
+    r.execute_line("history -cli", output_fn=outputs.append)
+    cli_export = "\n".join(outputs)
+    assert "pytae" in cli_export
+    assert '-assert "v > 0"' in cli_export
+    assert '-filter "v >= 20"' in cli_export
+
+    outputs.clear()
+    r.execute_line("history -py", output_fn=outputs.append)
+    py_export = "\n".join(outputs)
+    assert "import pytae as pt" in py_export
+    assert "pt.read_parquet(" in py_export
+    assert ".assert_('v > 0')" in py_export
+    assert ".filter('v >= 20')" in py_export
+    assert ".mutate('v2 = v * 2')" in py_export
+
+

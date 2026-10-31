@@ -894,7 +894,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "repl": KeywordHelp(
         name="repl",
-        flag="-i, --interactive, -repl, --repl",
+        flag="-i",
         syntax="pytae [<path>] -i",
         summary="Launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration.",
         description=(
@@ -906,13 +906,13 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "undo : Revert the last applied transformation step.",
             "redo : Re-apply the last undone transformation step.",
             "reset : Restore the original dataset as loaded from disk.",
-            "history : Show numbered history of transformation steps in this session.",
+            "history [-cli|-py] : Show numbered history or export as reproducible CLI command / Python code.",
             "status : Show active table shape, columns, and memory usage.",
-            "checkpoint <name> : Freeze and save current state with a name (alias: cp).",
-            "restore <name> : Restore table to a saved checkpoint (alias: checkout).",
-            "load <path> : Load a new dataset from disk into the REPL (alias: read).",
-            "save <path> : Save active table to Parquet/CSV or clipboard (-o clip).",
-            "sql <query> : Run ANSI SQL queries against in-memory table `df`.",
+            "checkpoint <name> : Freeze and save current state with a name.",
+            "restore <name> : Restore table to a saved checkpoint.",
+            "load <path> : Load a new dataset (or glob pattern) from disk into the REPL.",
+            "-o <path> : Save active table to Parquet/CSV/Feather or clipboard (-o clip).",
+            "-sql <query> : Run ANSI SQL queries against in-memory table `df`.",
             "py <expr> : Evaluate arbitrary Python expressions on `df` / `pldf`.",
         ],
         examples=[
@@ -921,6 +921,46 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -filter \"species == 'Gentoo'\" -i",
         ],
         see_also=["-filter", "-mutate", "-agg", "-sql", "-cheatsheet"],
+    ),
+    "assert": KeywordHelp(
+        name="assert",
+        flag="-assert CONDITIONS",
+        syntax='pytae <path> -assert "<CONDITIONS>"',
+        summary="Validate that all rows satisfy data quality conditions, failing fast on violation.",
+        description=(
+            "Evaluates pytae filter expressions across all rows at this point in the pipeline.\n"
+            "If all rows pass, the DataFrame continues unchanged. If any row violates the condition\n"
+            "(or evaluates to null), execution stops with a detailed summary and sample failing rows."
+        ),
+        options=[
+            "col > 0 : Assert numeric bounds.",
+            "col.is_not_null() : Assert non-null constraint.",
+            "col in ['A', 'B'] : Assert allowed categorical values.",
+        ],
+        examples=[
+            'pytae penguins.parquet -assert "body_mass_g > 0"',
+            'pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet',
+        ],
+        see_also=["-filter", "-dropna", "-nulls"],
+    ),
+    "explode": KeywordHelp(
+        name="explode",
+        flag="-explode COLUMNS",
+        syntax='pytae <path> -explode "<COLUMNS>"',
+        summary="Unnest / explode list or array columns into one row per element.",
+        description=(
+            "Expands list-typed or array-typed columns vertically so each element becomes its own row,\n"
+            "repeating values in other columns."
+        ),
+        options=[
+            "col : Explode a single list column.",
+            "col1,col2 : Simultaneously explode multiple aligned list columns.",
+        ],
+        examples=[
+            "pytae events.parquet -explode tags",
+            'pytae orders.parquet -explode "items,quantities"',
+        ],
+        see_also=["-long", "-wide", "-mutate"],
     ),
 }
 

@@ -620,6 +620,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--tail": "-tail",
     # Double-hyphen pipeline flags
     "--filter": "-filter",
+    "--assert": "-assert",
+    "--explode": "-explode",
     "--mutate": "-mutate",
     "--select": "-select",
     "--arrange": "-arrange",
@@ -694,6 +696,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
 _BARE_PIPELINE_VERBS = frozenset(
     (
         "filter",
+        "assert",
+        "explode",
         "mutate",
         "select",
         "rename",
@@ -1037,15 +1041,18 @@ class PytaeRepl:
                 raise FileNotFoundError(f"unknown sample dataset '{sample_name}'. Available: {available}")
             p = sample_file
         elif not p.exists():
-            from pytae import DATA_PATH
-
-            candidate = DATA_PATH / p.name
-            if not candidate.exists():
-                candidate = DATA_PATH / f"{p.stem}.parquet"
-            if candidate.exists():
-                p = candidate
+            if any(ch in str(p) for ch in "*?["):
+                pass
             else:
-                raise FileNotFoundError(f"File not found: {p}")
+                from pytae import DATA_PATH
+
+                candidate = DATA_PATH / p.name
+                if not candidate.exists():
+                    candidate = DATA_PATH / f"{p.stem}.parquet"
+                if candidate.exists():
+                    p = candidate
+                else:
+                    raise FileNotFoundError(f"File not found: {p}")
         opts = dict(self.reader_kwargs)
         opts.update(reader_opts)
         sep_val = opts.get("sep") or opts.get("delimiter")
@@ -1438,14 +1445,14 @@ class PytaeRepl:
             self._cmd_redo(output_fn)
             return True
 
-        # History
-        if line.lower() == "history":
-            self._cmd_history(output_fn)
-            return True
-
         # Tokenize line
         tokens = shlex.split(line)
         first_lower = tokens[0].lower()
+
+        # History
+        if first_lower == "history":
+            self._cmd_history(output_fn, args=tokens[1:])
+            return True
 
         # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands
         if first_lower in _DISALLOWED_ALIASES:
@@ -2149,9 +2156,19 @@ class PytaeRepl:
         else:
             output_fn(f"Redid: {desc}.")
 
-    def _cmd_history(self, output_fn: Callable[[str], None]) -> None:
+    def _cmd_history(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
         if not self.history:
             output_fn("No transformations recorded in this session.")
+            return
+        if args:
+            mode = args[0].lower().lstrip("-")
+            if mode in ("cli", "sh", "bash"):
+                output_fn(self._format_history_cli())
+                return
+            if mode in ("py", "python"):
+                output_fn(self._format_history_py())
+                return
+            output_fn(f"Usage: history [-cli | -py] (unrecognized option: '{args[0]}')")
             return
         output_fn("Pipeline History:")
         step_num = 1
@@ -2161,6 +2178,125 @@ class PytaeRepl:
             else:
                 output_fn(f"  {step_num:2d}: {entry}")
                 step_num += 1
+
+    def _format_history_cli(self) -> str:
+        """Export recorded session transformations as a reproducible CLI command."""
+        source = str(self.path) if self.path else (self.table_sources.get(self.path_str or "", "") or "data.parquet")
+        cli_parts: list[str] = []
+        for entry in self.history:
+            if entry.startswith("*checkpoint:") or entry.startswith(("undo ", "redo ", "restore ", "reset")):
+                continue
+            if entry.startswith("load "):
+                toks = shlex.split(entry)
+                if len(toks) >= 2:
+                    source = toks[1]
+                continue
+            if "=" in entry and not entry.lstrip().startswith("-"):
+                _, rhs = entry.split("=", 1)
+                rhs = rhs.strip()
+                if rhs.startswith("-"):
+                    cli_parts.append(rhs)
+                else:
+                    toks = shlex.split(rhs)
+                    if toks and not toks[0].startswith("-"):
+                        if len(toks) == 1:
+                            source = toks[0]
+                        else:
+                            cli_parts.append(rhs[len(toks[0]) :].strip())
+                    else:
+                        cli_parts.append(rhs)
+            else:
+                cli_parts.append(entry.strip())
+
+        if not cli_parts:
+            return f"pytae {source}"
+        return f"pytae {source} " + " ".join(cli_parts)
+
+    def _format_history_py(self) -> str:
+        """Export recorded session transformations as a runnable Python script."""
+        lines: list[str] = ["import pytae as pt", ""]
+        source = str(self.path) if self.path else (self.table_sources.get(self.path_str or "", "") or "data.parquet")
+        active_var = self.path_str if (self.path_str and self.path_str.isidentifier()) else "df"
+
+        def _read_stmt(var: str, src: str) -> str:
+            if src.startswith("sample:"):
+                sname = src[7:].strip().removesuffix(".parquet")
+                return f'{var} = pt.sample("{sname}")'
+            low = src.lower()
+            if low.endswith(".csv") or low.endswith(".csv.gz"):
+                return f'{var} = pt.read_csv("{src}")'
+            if low.endswith((".jsonl", ".ndjson", ".jsonl.gz", ".ndjson.gz")):
+                return f'{var} = pt.read_ndjson("{src}")'
+            if low.endswith((".ipc", ".arrow", ".feather")):
+                return f'{var} = pt.read_ipc("{src}")'
+            return f'{var} = pt.read_parquet("{src}")'
+
+        def _flags_to_chain(raw_flags: str) -> list[str]:
+            calls: list[str] = []
+            try:
+                toks = shlex.split(raw_flags)
+            except ValueError:
+                toks = raw_flags.split()
+            i = 0
+            while i < len(toks):
+                t = toks[i]
+                if t.startswith("-"):
+                    verb = t.lstrip("-")
+                    val: str | None = None
+                    if "=" in verb:
+                        verb, val = verb.split("=", 1)
+                    elif i + 1 < len(toks) and not toks[i + 1].startswith("-"):
+                        val = toks[i + 1]
+                        i += 1
+                    verb_py = "assert_" if verb == "assert" else verb
+                    if val is None or val == "":
+                        calls.append(f".{verb_py}()")
+                    elif verb in ("head", "tail", "sample") and val.isdigit():
+                        calls.append(f".{verb_py}({val})")
+                    else:
+                        calls.append(f".{verb_py}({val!r})")
+                i += 1
+            return calls
+
+        if self.path or (self.path_str and self.path_str in self.table_sources):
+            lines.append(_read_stmt(active_var, source))
+
+        for entry in self.history:
+            if entry.startswith("*checkpoint:") or entry.startswith(("undo ", "redo ", "restore ", "reset")):
+                continue
+            if entry.startswith("load "):
+                toks = shlex.split(entry)
+                if len(toks) >= 4 and toks[2].lower() == "as":
+                    active_var = toks[3]
+                    lines.append(_read_stmt(active_var, toks[1]))
+                elif len(toks) >= 2:
+                    lines.append(_read_stmt(active_var, toks[1]))
+                continue
+            if "=" in entry and not entry.lstrip().startswith("-"):
+                lhs, rhs = entry.split("=", 1)
+                lhs = lhs.strip()
+                rhs = rhs.strip()
+                if rhs.startswith("-"):
+                    chain = "".join(_flags_to_chain(rhs))
+                    lines.append(f"{lhs} = {active_var}{chain}")
+                    active_var = lhs
+                else:
+                    toks = shlex.split(rhs)
+                    if len(toks) == 1 and not toks[0].startswith("-"):
+                        lines.append(_read_stmt(lhs, toks[0]))
+                        active_var = lhs
+                    elif toks:
+                        src_tbl = toks[0]
+                        rest = rhs[len(src_tbl) :].strip()
+                        chain = "".join(_flags_to_chain(rest))
+                        lines.append(f"{lhs} = {src_tbl}{chain}")
+                        active_var = lhs
+            elif entry.lstrip().startswith("-"):
+                chain = "".join(_flags_to_chain(entry.strip()))
+                if chain:
+                    lines.append(f"{active_var} = {active_var}{chain}")
+
+        return "\n".join(lines)
 
     def _capture_session_state(self) -> dict[str, Any]:
         return {
@@ -2448,7 +2584,7 @@ class PytaeRepl:
                 is_sample = clean_path.startswith("sample:")
                 from pytae import DATA_PATH
 
-                is_file = p.exists() and not p.is_dir()
+                is_file = (p.exists() and not p.is_dir()) or (p.exists() and p.is_dir()) or any(ch in clean_path for ch in "*?[")
                 is_data_cand = (DATA_PATH / p.name).exists() or (DATA_PATH / f"{p.stem}.parquet").exists()
                 if is_sample or is_file or is_data_cand:
                     try:
@@ -2626,7 +2762,7 @@ class PytaeRepl:
             alias = cleaned_tokens[3]
 
         p = Path(path_str).expanduser()
-        if not path_str.startswith("sample:") and not p.exists():
+        if not path_str.startswith("sample:") and not p.exists() and not any(ch in path_str for ch in "*?["):
             from pytae import DATA_PATH
 
             candidate = DATA_PATH / p.name
