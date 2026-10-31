@@ -64,6 +64,13 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
      * Python: `pt.doc("<keyword>")`
      * MCP Tool: `pytae_doc(query="...")` via the built-in MCP server (`pytae mcp`)
 
+8. EXECUTION VERIFICATION & GRACEFUL FALLBACK:
+   - If execution tools are available (terminal, bash, or MCP), attempt to dry-run candidate commands on built-in sample datasets (e.g. `pytae sample:penguins ...` or `python -m pytae sample:penguins ...`).
+   - If Pytae is installed: Verify that the command succeeds and produces the expected output.
+   - If Pytae is not yet installed (e.g. `command not found` or `No module named 'pytae'`):
+     * Fall back immediately and answer authoritatively using the syntax rules and examples in these instructions without failing.
+     * Include a brief install note: "(Run `pip install pytae` to install)".
+
 When answering questions:
 - Provide the tailored answer on the user's dataset, followed by the runnable "Twin Proof" on a sample dataset with column mapping.
 - Provide both the CLI command and Python equivalent when appropriate.
