@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.0] - 2026-11-01
+
+### Added
+- **Readline Tab Autocompletion (`[Tab]`)**:
+  - Context-aware tab completion in the REPL across commands, pipeline verbs, flags, table names, checkpoint names, column names, settings, and file paths.
+  - Tailored completion delimiters (`" \t\n\"'=(),;[]"`) ensuring hyphenated flags, column names with underscores, and nested paths complete cleanly.
+- **In-REPL Diff Command (`diff`)**:
+  - Direct dataset comparison in the REPL: `diff <tbl1> <tbl2>` (compare two loaded tables), `diff <tbl2>` (compare active dataset against target), and `diff <tbl> <checkpoint>` (compare against a saved disk checkpoint).
+  - Optional numeric float tolerance flag (`-tol <val>`).
+- **Zero-Copy In-Memory Table Rename (`rename`)**:
+  - Instant $O(1)$ key reassignment in memory via `rename <old_name> <new_name>` across loaded tables, tracking dictionaries, and the active cursor without copying underlying Arrow buffers.
+  - Recorded in session history for deterministic batch replay.
+- **Dedicated Table Switch (`use <name>`)**:
+  - Explicit cursor switching via `use <name>` with bare `<name>` reserved for displaying table dimensions.
+- **Unified Session Settings & Relocation (`set`)**:
+  - Added `set load_session = <name>` for loading saved persistent sessions by clean identifier.
+  - Atomic relocation: `set sessions_dir = <path>` relocates the active session and its checkpoints to the new directory; setting `sessions_dir` alone without an active session is cleanly rejected to avoid orphan configuration.
+  - Single-line multi-property configuration supporting commas, semicolons, and spaces (e.g. `set load_session = project_x, sessions_dir = /Volumes/SSD`).
+- **Pure Explicit SQL in REPL**:
+  - Embedded Polars SQLContext strictly registers explicit user-assigned table names and saved checkpoints.
+  - Eliminated synthetic aliases (`data`, `this`, `self`, fallback `df`), preventing variable shadowing and ensuring 100% ANSI SQL standard compliance.
+
 ## [3.12.9] - 2026-10-31
 
 ### Added
