@@ -2033,7 +2033,7 @@ def test_repl_time_inspections(sample_df):
 
 
 def test_repl_time_bare_table_switch(sample_df):
-    """Test bare table switch timing (e.g. df1 -time, df1 -time 3)."""
+    """Test bare table inspection with timing (e.g. df1 -time, df1 -time 3) does not alter active dataset."""
     r = PytaeRepl()
     r.tables["df1"] = sample_df.clone()
     r.tables["df2"] = sample_df.head(2)
@@ -2042,14 +2042,22 @@ def test_repl_time_bare_table_switch(sample_df):
 
     outputs = []
     r.execute_line("df1 -time", output_fn=outputs.append)
-    assert r.path_str == "df1"
+    # Active table remains df2; bare df1 only inspects dimensions
+    assert r.path_str == "df2"
     assert len(outputs) == 1
     assert "df1: 5 rows x 3 cols | Elapsed:" in outputs[0]
+    assert "tip: 'use df1'" in outputs[0]
 
     outputs.clear()
     r.execute_line("df1 -time 3", output_fn=outputs.append)
     assert len(outputs) == 1
     assert "df1: 5 rows x 3 cols | Elapsed (3 runs): avg" in outputs[0]
+
+    # Explicit 'use df1' switches active dataset
+    outputs.clear()
+    r.execute_line("use df1", output_fn=outputs.append)
+    assert r.path_str == "df1"
+    assert "Switched active dataset to 'df1'" in outputs[0]
 
     r.close()
 

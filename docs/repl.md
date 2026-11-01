@@ -17,7 +17,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Sample Datasets (`sample:<name>`)](#sample-datasets-samplename)
 - [Multi-Table Workbench Operations](#multi-table-workbench-operations)
   - [Listing Tables (`tables`)](#listing-tables-tables)
-  - [Switching Active Tables (`use <name>` or bare `<name>`)](#switching-active-tables-use-name-or-bare-name)
+  - [Switching Active Tables (`use <name>`)](#switching-active-tables-use-name)
   - [Subject-First Execution (`<tbl> -<cmd>`)](#subject-first-execution-tbl--cmd)
   - [Multi-Table Joins (`-join`)](#multi-table-joins--join)
   - [Assigning Results (`<var> = <tbl> -<pipeline>`)](#assigning-results-var--tbl--pipeline)
@@ -174,19 +174,21 @@ Tables in memory:
    cust        : 15,000 rows x 5 cols (customers.csv)
 ```
 
-### Switching Active Tables (`use <name>` or bare `<name>`)
-Switch the active cursor to another table by typing its bare name or using `use`:
+### Switching Active Tables (`use <name>`)
+Switch the active cursor to another table using `use <name>` (e.g. `use orders`, `use df`, `use cust`):
 
 ```text
-# Switch via bare table name
-pytae [orders, cust]> cust
-cust: 15,000 rows x 5 cols
+# Switch active dataset to cust
+pytae [orders, cust]> use cust
 Switched active dataset to 'cust'. Active shape: (15,000, 5)
 
-# Or switch via use
-pytae [orders, cust]> use orders
-Switched active dataset to 'orders'. Active shape: (100,000, 6)
+# Inspect a table's dimensions without switching active cursor:
+pytae [orders, cust]> orders
+orders: 100,000 rows x 6 cols (tip: 'use orders' to switch active dataset)
 ```
+
+> [!NOTE]
+> Bare table names (like `orders` or `df`) display table dimensions without altering the active table cursor. To switch the active table, explicitly use `use <name>`.
 
 ### Subject-First Execution (`<tbl> -<cmd>`)
 Execute commands on non-active tables without switching cursors:

@@ -633,7 +633,7 @@ DATASET INGEST & MANAGEMENT:
   <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet)
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   tables                 : List all loaded datasets in memory with row/col counts
-  use <name>             : Switch active dataset (or type bare table name, e.g. df)
+  use <name>             : Switch active dataset (e.g. use df, use orders)
   rm <table_name>        : Remove in-memory table (e.g. rm df1, rm df, or rm *)
 
 DATA TRANSFORMATION & PIPELINES:
@@ -1908,7 +1908,7 @@ class PytaeRepl:
                 self._cmd_assign(var_name, right_part.strip(), output_fn)
                 return True
 
-        # Bare table name switches active dataset and shows shape only (Model 2: no table dump)
+        # Bare table name displays shape and status without changing active dataset
         resolved_table = self._resolve_table_name(tokens[0])
         is_bare_switch_timed = False
         if resolved_table and len(tokens) >= 2:
@@ -1972,13 +1972,10 @@ class PytaeRepl:
                     runs = 1
 
             durations = []
+            target_df = self.tables[resolved_table]
             for _ in range(runs):
                 t0 = _time.perf_counter()
-                self.current_df = self.tables[resolved_table]
-                self.orig_df = self.orig_tables.get(resolved_table)
-                self.initial_df = self.initial_tables.get(resolved_table)
-                self.path_str = resolved_table
-                n_rows, n_cols = self.current_df.shape
+                n_rows, n_cols = target_df.shape
                 durations.append(_time.perf_counter() - t0)
 
             timing_str = ""
@@ -1987,7 +1984,10 @@ class PytaeRepl:
                     timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
                 else:
                     timing_str = f" | {_format_timing_summary(durations)}"
-            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols{timing_str}")
+
+            is_active = self.path_str == resolved_table
+            active_info = " [active]" if is_active else f" (tip: 'use {resolved_table}' to switch active dataset)"
+            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols{timing_str}{active_info}")
             return True
 
         # Targeted table command (e.g. `df1 -filter ...` or `df -cols` or `penguins head 5`)
