@@ -36,6 +36,39 @@ def _safe_ipc_filename(name: str) -> str:
     return _safe_table_filename(name, ".ipc")
 
 
+def _resolve_to_canonical_path(path_str: str) -> str:
+    """Resolve a file path to its canonical absolute path, converting Windows mapped network drives to UNC."""
+    raw = path_str.strip().strip("'\"")
+    if not raw or raw.startswith("sample:") or raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+
+    try:
+        p = Path(os.path.expanduser(raw)).resolve()
+    except Exception:
+        return raw
+
+    if sys.platform == "win32":
+        drive = p.drive  # e.g. "Z:"
+        if drive and len(drive) == 2 and drive[1] == ":":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                mpr = ctypes.windll.mpr
+                buffer = ctypes.create_unicode_buffer(1024)
+                buf_len = wintypes.DWORD(1024)
+                # WNetGetConnectionW resolves drive letter to UNC path (e.g. \\server\share)
+                res = mpr.WNetGetConnectionW(ctypes.c_wchar_p(drive), buffer, ctypes.byref(buf_len))
+                if res == 0:  # NO_ERROR
+                    unc_remote = buffer.value.rstrip("\\/")
+                    sub_path = str(p)[len(drive) :].lstrip("\\/")
+                    return f"{unc_remote}\\{sub_path}"
+            except Exception:
+                pass
+
+    return str(p)
+
+
 def _read_checkpoint_file(path: Path) -> pl.DataFrame:
     """Read a checkpoint table file, supporting both .parquet and .ipc."""
     target_p = path
@@ -614,7 +647,7 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
-  set [key [= value]]    : Configure session settings (e.g. set history = run.txt, set checkpoint_format = parquet)
+  set [key [= value]]    : Configure session settings (e.g. set save = run.txt, set checkpoint_format = parquet)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or $PYTAE_SESSIONS_DIR)
   session load <name>    : Load persistent session checkpoints from disk
@@ -870,7 +903,7 @@ class PytaeRepl:
         self.initial_df: pl.DataFrame | None = None
         self.checkpoints: dict[str, Any] = {}
         self.checkpoint_format: str = "ipc"
-        self.history_file: str | None = None
+        self.save_history_file: str | None = None
         self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -991,7 +1024,11 @@ class PytaeRepl:
                 ]
                 for entry in self.history:
                     clean = entry.strip()
-                    if (clean.startswith("*checkpoint:") and clean.endswith("*")) or clean.startswith("#"):
+                    if (
+                        (clean.startswith("*checkpoint:") and clean.endswith("*"))
+                        or clean.startswith("checkpoint ")
+                        or clean.startswith("#")
+                    ):
                         continue
                     lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1551,8 +1588,8 @@ class PytaeRepl:
         # Check for exit (supports 'exit' and 'exit -s <path>')
         clean_line_lower = line.lower()
         if clean_line_lower == "exit":
-            if self.history_file:
-                self._export_session_history(self.history_file, output_fn)
+            if self.save_history_file:
+                self._export_session_history(self.save_history_file, output_fn)
             output_fn("Exiting pytae REPL.")
             return False
 
@@ -2362,12 +2399,12 @@ class PytaeRepl:
             clean_arg0 = arg0.lower().lstrip("-")
             if clean_arg0 in ("s", "save"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set history = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set history = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
@@ -2433,11 +2470,11 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set history = history.txt)."""
+        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set save = history.txt)."""
         if not args:
-            hist_str = self.history_file or "none"
+            save_str = self.save_history_file or "none"
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
-            output_fn(f"history           = {hist_str} (options: <path>, none)")
+            output_fn(f"save              = {save_str} (options: <path>, none)")
             return
 
         line = " ".join(args).strip()
@@ -2448,7 +2485,7 @@ class PytaeRepl:
         elif len(args) == 1:
             key, val = args[0].strip(), ""
         else:
-            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet, set history = history.txt)")
+            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet, set save = history.txt)")
             return
 
         key_lower = key.lower().replace("-", "_")
@@ -2469,27 +2506,27 @@ class PytaeRepl:
                 output_fn(f"pytae: unsupported checkpoint_format '{val}'. Supported formats: ipc, parquet.")
             return
 
-        if key_lower in ("history", "history_file", "save_history"):
+        if key_lower in ("save", "save_history", "history", "history_file"):
             if not val:
-                hist_str = self.history_file or "none"
-                output_fn(f"history = {hist_str} (options: <path>, none)")
+                save_str = self.save_history_file or "none"
+                output_fn(f"save = {save_str} (options: <path>, none)")
                 return
             clean_val = val.strip("'\"")
             if clean_val.lower() in ("none", "off", "false", "0", ""):
-                self.history_file = None
+                self.save_history_file = None
                 output_fn("Disabled auto-saving history on exit.")
             elif clean_val.lower() in ("true", "on", "1"):
-                self.history_file = "history.txt"
-                self._record_history("set history = history.txt")
-                output_fn("Set history = 'history.txt' (session commands will be auto-saved here on exit).")
+                self.save_history_file = "history.txt"
+                self._record_history("set save = history.txt")
+                output_fn("Set save = 'history.txt' (session commands will be auto-saved here on exit).")
             else:
-                self.history_file = clean_val
-                self._record_history(f"set history = {clean_val}")
-                output_fn(f"Set history = '{clean_val}' (session commands will be auto-saved here on exit).")
+                self.save_history_file = clean_val
+                self._record_history(f"set save = {clean_val}")
+                output_fn(f"Set save = '{clean_val}' (session commands will be auto-saved here on exit).")
             return
 
         output_fn(
-            f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet), history (<path>, none)."
+            f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet), save (<path>, none)."
         )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -2782,7 +2819,10 @@ class PytaeRepl:
                         self.current_df = df
                         self.orig_df = df
                         self.path_str = var_name
-                        self._record_history(f"{var_name} = {right_expr}")
+                        canonical_target = _resolve_to_canonical_path(clean_path)
+                        # Reconstruct right_expr with canonical path for replay portability
+                        canonical_right = right_expr.replace(clean_path, canonical_target, 1)
+                        self._record_history(f"{var_name} = {canonical_right}")
                         opts_desc = ""
                         if reader_kwargs or nrows_val is not None:
                             opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
@@ -2981,13 +3021,14 @@ class PytaeRepl:
                 if nrows_val is not None:
                     opts_items.append(f"nrows={nrows_val}")
                 opts_desc = f" [{', '.join(opts_items)}]"
+            canonical_target = _resolve_to_canonical_path(path_str)
             if alias:
-                self._record_history(f"load {p.name} as {alias}")
+                self._record_history(f"load {canonical_target} as {alias}")
                 output_fn(
                     f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
             else:
-                self._record_history(f"load {p.name}")
+                self._record_history(f"load {canonical_target}")
                 output_fn(
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
@@ -3446,8 +3487,8 @@ class PytaeRepl:
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
                     continue
                 except EOFError:
-                    if self.history_file:
-                        self._export_session_history(self.history_file, output_fn)
+                    if self.save_history_file:
+                        self._export_session_history(self.save_history_file, output_fn)
                     output_fn("\nExiting pytae REPL.")
                     break
 

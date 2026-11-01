@@ -2315,7 +2315,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert not (work_dir / "empty.txt").exists()
     assert any("'history -s' is not supported" in o for o in outputs)
 
-    # Case 2: Run commands and use 'set history = ...' upfront
+    # Case 2: Run commands and use 'set save = ...' upfront
     r2 = PytaeRepl()
     r2.execute_line("df = sample:penguins", output_fn=outputs.append)
     r2.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
@@ -2326,11 +2326,11 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert res is True
     assert any("'history -s' is not supported" in o for o in outputs)
 
-    # Configure 'set history = rel_hist.txt' upfront
+    # Configure 'set save = rel_hist.txt' upfront
     outputs.clear()
-    r2.execute_line("set history = rel_hist.txt", output_fn=outputs.append)
-    assert r2.history_file == "rel_hist.txt"
-    assert any("Set history = 'rel_hist.txt'" in o for o in outputs)
+    r2.execute_line("set save = rel_hist.txt", output_fn=outputs.append)
+    assert r2.save_history_file == "rel_hist.txt"
+    assert any("Set save = 'rel_hist.txt'" in o for o in outputs)
 
     # Plain exit automatically saves to configured history file
     outputs.clear()
@@ -2418,7 +2418,7 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     outputs.clear()
     r.execute_line("set", output_fn=outputs.append)
     assert any("checkpoint_format = ipc" in o for o in outputs)
-    assert any("history           = none" in o for o in outputs)
+    assert any("save              = none" in o for o in outputs)
 
     outputs.clear()
     r.execute_line("set checkpoint_format", output_fn=outputs.append)
@@ -2490,6 +2490,55 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     assert r.checkpoint_format == "ipc"
 
     r.close()
+
+
+def test_repl_input_canonical_path_and_checkpoint_omission_in_save(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data_folder"
+    data_dir.mkdir()
+    sample_file = data_dir / "my_orders.parquet"
+    import polars as pl
+    pl.DataFrame({"id": [1, 2, 3], "val": [10, 20, 30]}).write_parquet(sample_file)
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    monkeypatch.chdir(work_dir)
+
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # Load file with relative path
+    rel_path = "../data_folder/my_orders.parquet"
+    r.execute_line(f"orders = {rel_path}", output_fn=outputs.append)
+    assert "orders" in r.tables
+
+    # Checkpoint baseline (live session artifact)
+    r.execute_line("checkpoint baseline", output_fn=outputs.append)
+
+    # Transform
+    r.execute_line('orders = orders -mutate "doubled = val * 2"', output_fn=outputs.append)
+
+    # Save to history file via 'exit -s replay.txt'
+    outputs.clear()
+    r.execute_line("exit -s replay.txt", output_fn=outputs.append)
+
+    replay_file = work_dir / "replay.txt"
+    assert replay_file.exists()
+    content = replay_file.read_text(encoding="utf-8")
+
+    # 1. Input path MUST be canonical absolute path (not relative)
+    assert str(sample_file.resolve()) in content
+    # 2. Checkpoints MUST be omitted from replay script
+    assert "checkpoint baseline" not in content
+    assert "*checkpoint" not in content
+    # 3. Transformation MUST be preserved
+    assert 'orders = orders -mutate "doubled = val * 2"' in content
+
+    # 4. In-REPL history still displays all commands including checkpoint
+    outputs.clear()
+    r.execute_line("history", output_fn=outputs.append)
+    h_out = "\n".join(outputs)
+    assert "checkpoint baseline" in h_out
+
 
 
 

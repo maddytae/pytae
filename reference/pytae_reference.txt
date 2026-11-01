@@ -14093,8 +14093,9 @@ The REPL automatically preserves command history and logs full session flight re
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered audit log of every command executed during the session (ingestions, transformations, inspection flags, checkpoints, settings), cleanly formatted without comment headers.
 - **`history <N>`**: Displays only the last `N` history entries (e.g., `history 10`).
-- **`set history = <path>`**: Configures the session history target file upfront (e.g. `set history = my_pipeline.txt`). When exiting the session via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically exports the session history to that file.
-- **`exit [-s [path]]`**: Exits the REPL session. If `set history` was configured, or if `-s` is provided (e.g. `exit -s` or `exit -s my_pipeline.txt`), saves the session history upon exit. Note that mid-session export (`history -s`) is not supported to keep file creation strictly at the beginning (`set history = ...`) or at the end (`exit -s`).
+- **`set save = <path>`**: Configures the session history target file upfront (e.g. `set save = my_pipeline.txt`). When exiting the session via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically exports the session history to that file.
+- **`exit [-s [path]]`**: Exits the REPL session. If `set save` was configured, or if `-s` is provided (e.g. `exit -s` or `exit -s my_pipeline.txt`), saves the session history upon exit. Note that mid-session export (`history -s`) is not supported to keep file creation strictly at the beginning (`set save = ...`) or at the end (`exit -s`).
+- **Replay Portability ("Run Anywhere")**: When saving replay scripts, Pytae automatically resolves input file paths to canonical absolute paths (and converts Windows mapped network drives like `Z:\...` to universal UNC paths like `\\server\share\...`). Checkpoints are interactive exploration tools and are omitted from the replay script, so batch replays (`pytae -i < history.txt`) run pure transformations with zero checkpoint disk I/O, writing outputs to the current working directory.
 
 ---
 
@@ -14132,7 +14133,7 @@ pytae> -o clip
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
-| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set history = run.txt`, `set checkpoint_format = parquet`) | No |
+| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set save = run.txt`, `set checkpoint_format = parquet`) | No |
 | **`session`** | `session` | Display active session name, disk path, and checkpoints | No |
 | **`session save`**| `session save <name>` | Save or promote session to persistent storage under `<name>` | No |
 | **`session load`**| `session load <name>` | Switch to persistent session and restore its latest checkpoint | **Yes** (undoable) |
@@ -32972,6 +32973,39 @@ def _safe_ipc_filename(name: str) -> str:
     return _safe_table_filename(name, ".ipc")
 
 
+def _resolve_to_canonical_path(path_str: str) -> str:
+    """Resolve a file path to its canonical absolute path, converting Windows mapped network drives to UNC."""
+    raw = path_str.strip().strip("'\"")
+    if not raw or raw.startswith("sample:") or raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+
+    try:
+        p = Path(os.path.expanduser(raw)).resolve()
+    except Exception:
+        return raw
+
+    if sys.platform == "win32":
+        drive = p.drive  # e.g. "Z:"
+        if drive and len(drive) == 2 and drive[1] == ":":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                mpr = ctypes.windll.mpr
+                buffer = ctypes.create_unicode_buffer(1024)
+                buf_len = wintypes.DWORD(1024)
+                # WNetGetConnectionW resolves drive letter to UNC path (e.g. \\server\share)
+                res = mpr.WNetGetConnectionW(ctypes.c_wchar_p(drive), buffer, ctypes.byref(buf_len))
+                if res == 0:  # NO_ERROR
+                    unc_remote = buffer.value.rstrip("\\/")
+                    sub_path = str(p)[len(drive) :].lstrip("\\/")
+                    return f"{unc_remote}\\{sub_path}"
+            except Exception:
+                pass
+
+    return str(p)
+
+
 def _read_checkpoint_file(path: Path) -> pl.DataFrame:
     """Read a checkpoint table file, supporting both .parquet and .ipc."""
     target_p = path
@@ -33550,7 +33584,7 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
-  set [key [= value]]    : Configure session settings (e.g. set history = run.txt, set checkpoint_format = parquet)
+  set [key [= value]]    : Configure session settings (e.g. set save = run.txt, set checkpoint_format = parquet)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or $PYTAE_SESSIONS_DIR)
   session load <name>    : Load persistent session checkpoints from disk
@@ -33806,7 +33840,7 @@ class PytaeRepl:
         self.initial_df: pl.DataFrame | None = None
         self.checkpoints: dict[str, Any] = {}
         self.checkpoint_format: str = "ipc"
-        self.history_file: str | None = None
+        self.save_history_file: str | None = None
         self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -33927,7 +33961,11 @@ class PytaeRepl:
                 ]
                 for entry in self.history:
                     clean = entry.strip()
-                    if (clean.startswith("*checkpoint:") and clean.endswith("*")) or clean.startswith("#"):
+                    if (
+                        (clean.startswith("*checkpoint:") and clean.endswith("*"))
+                        or clean.startswith("checkpoint ")
+                        or clean.startswith("#")
+                    ):
                         continue
                     lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -34487,8 +34525,8 @@ class PytaeRepl:
         # Check for exit (supports 'exit' and 'exit -s <path>')
         clean_line_lower = line.lower()
         if clean_line_lower == "exit":
-            if self.history_file:
-                self._export_session_history(self.history_file, output_fn)
+            if self.save_history_file:
+                self._export_session_history(self.save_history_file, output_fn)
             output_fn("Exiting pytae REPL.")
             return False
 
@@ -35298,12 +35336,12 @@ class PytaeRepl:
             clean_arg0 = arg0.lower().lstrip("-")
             if clean_arg0 in ("s", "save"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set history = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set history = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
@@ -35369,11 +35407,11 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set history = history.txt)."""
+        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set save = history.txt)."""
         if not args:
-            hist_str = self.history_file or "none"
+            save_str = self.save_history_file or "none"
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
-            output_fn(f"history           = {hist_str} (options: <path>, none)")
+            output_fn(f"save              = {save_str} (options: <path>, none)")
             return
 
         line = " ".join(args).strip()
@@ -35384,7 +35422,7 @@ class PytaeRepl:
         elif len(args) == 1:
             key, val = args[0].strip(), ""
         else:
-            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet, set history = history.txt)")
+            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet, set save = history.txt)")
             return
 
         key_lower = key.lower().replace("-", "_")
@@ -35405,27 +35443,27 @@ class PytaeRepl:
                 output_fn(f"pytae: unsupported checkpoint_format '{val}'. Supported formats: ipc, parquet.")
             return
 
-        if key_lower in ("history", "history_file", "save_history"):
+        if key_lower in ("save", "save_history", "history", "history_file"):
             if not val:
-                hist_str = self.history_file or "none"
-                output_fn(f"history = {hist_str} (options: <path>, none)")
+                save_str = self.save_history_file or "none"
+                output_fn(f"save = {save_str} (options: <path>, none)")
                 return
             clean_val = val.strip("'\"")
             if clean_val.lower() in ("none", "off", "false", "0", ""):
-                self.history_file = None
+                self.save_history_file = None
                 output_fn("Disabled auto-saving history on exit.")
             elif clean_val.lower() in ("true", "on", "1"):
-                self.history_file = "history.txt"
-                self._record_history("set history = history.txt")
-                output_fn("Set history = 'history.txt' (session commands will be auto-saved here on exit).")
+                self.save_history_file = "history.txt"
+                self._record_history("set save = history.txt")
+                output_fn("Set save = 'history.txt' (session commands will be auto-saved here on exit).")
             else:
-                self.history_file = clean_val
-                self._record_history(f"set history = {clean_val}")
-                output_fn(f"Set history = '{clean_val}' (session commands will be auto-saved here on exit).")
+                self.save_history_file = clean_val
+                self._record_history(f"set save = {clean_val}")
+                output_fn(f"Set save = '{clean_val}' (session commands will be auto-saved here on exit).")
             return
 
         output_fn(
-            f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet), history (<path>, none)."
+            f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet), save (<path>, none)."
         )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -35718,7 +35756,10 @@ class PytaeRepl:
                         self.current_df = df
                         self.orig_df = df
                         self.path_str = var_name
-                        self._record_history(f"{var_name} = {right_expr}")
+                        canonical_target = _resolve_to_canonical_path(clean_path)
+                        # Reconstruct right_expr with canonical path for replay portability
+                        canonical_right = right_expr.replace(clean_path, canonical_target, 1)
+                        self._record_history(f"{var_name} = {canonical_right}")
                         opts_desc = ""
                         if reader_kwargs or nrows_val is not None:
                             opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
@@ -35917,13 +35958,14 @@ class PytaeRepl:
                 if nrows_val is not None:
                     opts_items.append(f"nrows={nrows_val}")
                 opts_desc = f" [{', '.join(opts_items)}]"
+            canonical_target = _resolve_to_canonical_path(path_str)
             if alias:
-                self._record_history(f"load {p.name} as {alias}")
+                self._record_history(f"load {canonical_target} as {alias}")
                 output_fn(
                     f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
             else:
-                self._record_history(f"load {p.name}")
+                self._record_history(f"load {canonical_target}")
                 output_fn(
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
@@ -36382,8 +36424,8 @@ class PytaeRepl:
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
                     continue
                 except EOFError:
-                    if self.history_file:
-                        self._export_session_history(self.history_file, output_fn)
+                    if self.save_history_file:
+                        self._export_session_history(self.save_history_file, output_fn)
                     output_fn("\nExiting pytae REPL.")
                     break
 
@@ -50900,7 +50942,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert not (work_dir / "empty.txt").exists()
     assert any("'history -s' is not supported" in o for o in outputs)
 
-    # Case 2: Run commands and use 'set history = ...' upfront
+    # Case 2: Run commands and use 'set save = ...' upfront
     r2 = PytaeRepl()
     r2.execute_line("df = sample:penguins", output_fn=outputs.append)
     r2.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
@@ -50911,11 +50953,11 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert res is True
     assert any("'history -s' is not supported" in o for o in outputs)
 
-    # Configure 'set history = rel_hist.txt' upfront
+    # Configure 'set save = rel_hist.txt' upfront
     outputs.clear()
-    r2.execute_line("set history = rel_hist.txt", output_fn=outputs.append)
-    assert r2.history_file == "rel_hist.txt"
-    assert any("Set history = 'rel_hist.txt'" in o for o in outputs)
+    r2.execute_line("set save = rel_hist.txt", output_fn=outputs.append)
+    assert r2.save_history_file == "rel_hist.txt"
+    assert any("Set save = 'rel_hist.txt'" in o for o in outputs)
 
     # Plain exit automatically saves to configured history file
     outputs.clear()
@@ -51003,7 +51045,7 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     outputs.clear()
     r.execute_line("set", output_fn=outputs.append)
     assert any("checkpoint_format = ipc" in o for o in outputs)
-    assert any("history           = none" in o for o in outputs)
+    assert any("save              = none" in o for o in outputs)
 
     outputs.clear()
     r.execute_line("set checkpoint_format", output_fn=outputs.append)
@@ -51075,6 +51117,54 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     assert r.checkpoint_format == "ipc"
 
     r.close()
+
+
+def test_repl_input_canonical_path_and_checkpoint_omission_in_save(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data_folder"
+    data_dir.mkdir()
+    sample_file = data_dir / "my_orders.parquet"
+    import polars as pl
+    pl.DataFrame({"id": [1, 2, 3], "val": [10, 20, 30]}).write_parquet(sample_file)
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    monkeypatch.chdir(work_dir)
+
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # Load file with relative path
+    rel_path = f"../data_folder/my_orders.parquet"
+    r.execute_line(f"orders = {rel_path}", output_fn=outputs.append)
+    assert "orders" in r.tables
+
+    # Checkpoint baseline (live session artifact)
+    r.execute_line("checkpoint baseline", output_fn=outputs.append)
+
+    # Transform
+    r.execute_line('orders = orders -mutate "doubled = val * 2"', output_fn=outputs.append)
+
+    # Save to history file via 'exit -s replay.txt'
+    outputs.clear()
+    r.execute_line("exit -s replay.txt", output_fn=outputs.append)
+
+    replay_file = work_dir / "replay.txt"
+    assert replay_file.exists()
+    content = replay_file.read_text(encoding="utf-8")
+
+    # 1. Input path MUST be canonical absolute path (not relative)
+    assert str(sample_file.resolve()) in content
+    # 2. Checkpoints MUST be omitted from replay script
+    assert "checkpoint baseline" not in content
+    assert "*checkpoint" not in content
+    # 3. Transformation MUST be preserved
+    assert 'orders = orders -mutate "doubled = val * 2"' in content
+
+    # 4. In-REPL history still displays all commands including checkpoint
+    outputs.clear()
+    r.execute_line("history", output_fn=outputs.append)
+    h_out = "\n".join(outputs)
+    assert "checkpoint baseline" in h_out
 
 ################################################################################
 # FILE: tests/test_select.py

@@ -546,8 +546,9 @@ The REPL automatically preserves command history and logs full session flight re
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered audit log of every command executed during the session (ingestions, transformations, inspection flags, checkpoints, settings), cleanly formatted without comment headers.
 - **`history <N>`**: Displays only the last `N` history entries (e.g., `history 10`).
-- **`set history = <path>`**: Configures the session history target file upfront (e.g. `set history = my_pipeline.txt`). When exiting the session via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically exports the session history to that file.
-- **`exit [-s [path]]`**: Exits the REPL session. If `set history` was configured, or if `-s` is provided (e.g. `exit -s` or `exit -s my_pipeline.txt`), saves the session history upon exit. Note that mid-session export (`history -s`) is not supported to keep file creation strictly at the beginning (`set history = ...`) or at the end (`exit -s`).
+- **`set save = <path>`**: Configures the session history target file upfront (e.g. `set save = my_pipeline.txt`). When exiting the session via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically exports the session history to that file.
+- **`exit [-s [path]]`**: Exits the REPL session. If `set save` was configured, or if `-s` is provided (e.g. `exit -s` or `exit -s my_pipeline.txt`), saves the session history upon exit. Note that mid-session export (`history -s`) is not supported to keep file creation strictly at the beginning (`set save = ...`) or at the end (`exit -s`).
+- **Replay Portability ("Run Anywhere")**: When saving replay scripts, Pytae automatically resolves input file paths to canonical absolute paths (and converts Windows mapped network drives like `Z:\...` to universal UNC paths like `\\server\share\...`). Checkpoints are interactive exploration tools and are omitted from the replay script, so batch replays (`pytae -i < history.txt`) run pure transformations with zero checkpoint disk I/O, writing outputs to the current working directory.
 
 ---
 
@@ -585,7 +586,7 @@ pytae> -o clip
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
-| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set history = run.txt`, `set checkpoint_format = parquet`) | No |
+| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set save = run.txt`, `set checkpoint_format = parquet`) | No |
 | **`session`** | `session` | Display active session name, disk path, and checkpoints | No |
 | **`session save`**| `session save <name>` | Save or promote session to persistent storage under `<name>` | No |
 | **`session load`**| `session load <name>` | Switch to persistent session and restore its latest checkpoint | **Yes** (undoable) |
