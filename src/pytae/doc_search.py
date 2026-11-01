@@ -509,7 +509,7 @@ def run_mcp_server() -> int:
     try:
         ver = _pkg_version("pytae")
     except PackageNotFoundError:
-        ver = "3.12.8"
+        from pytae import __version__ as ver
 
     while True:
         try:

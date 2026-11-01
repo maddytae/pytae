@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.12.8
+RELEASE VERSION: 3.12.9
 ================================================================================
 
 TABLE OF CONTENTS
@@ -183,7 +183,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.12.8)
+Package: pytae (Current Release Version: 3.12.9)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -223,8 +223,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.12.8/):
-  pip install pytae==3.12.8
+Installation (PyPI: https://pypi.org/project/pytae/3.12.9/):
+  pip install pytae==3.12.9
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -15784,7 +15784,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.12.8"
+version = "3.12.9"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -15914,7 +15914,7 @@ from pytae.validation import (
     validate_pipeline,
 )
 
-__version__ = "3.12.8"
+__version__ = "3.12.9"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -26033,7 +26033,7 @@ def run_mcp_server() -> int:
     try:
         ver = _pkg_version("pytae")
     except PackageNotFoundError:
-        ver = "3.12.8"
+        from pytae import __version__ as ver
 
     while True:
         try:
@@ -33741,6 +33741,7 @@ class PytaeRepl:
             "# Pytae REPL Session History",
             f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
             f"# Initial target: {init_target}",
+            "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted.",
             "# " + "-" * 76,
             "",
         ]
@@ -33750,14 +33751,14 @@ class PytaeRepl:
             pass
 
     def _log_session_line(self, entry: str) -> None:
+        clean = entry.strip()
+        # Omit checkpoints from disk session history files
+        if clean.startswith("*checkpoint:") and clean.endswith("*"):
+            return
         self.session_cmd_count += 1
         try:
             with open(self.session_log_path, "a", encoding="utf-8") as f:
-                clean = entry.strip()
-                if clean.startswith("*checkpoint:") and clean.endswith("*"):
-                    f.write(f"# {clean}\n")
-                else:
-                    f.write(f"{clean}\n")
+                f.write(f"{clean}\n")
                 f.flush()
         except Exception:
             pass
@@ -33786,15 +33787,15 @@ class PytaeRepl:
                 lines = [
                     f"# Pytae REPL Session History: {target_path.name}",
                     f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+                    "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted.",
                     "# " + "-" * 76,
                     "",
                 ]
                 for entry in self.history:
                     clean = entry.strip()
                     if clean.startswith("*checkpoint:") and clean.endswith("*"):
-                        lines.append(f"# {clean}")
-                    else:
-                        lines.append(clean)
+                        continue
+                    lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             output_fn(f"Session history saved to {target_path}.")
             return True
@@ -34263,7 +34264,10 @@ class PytaeRepl:
     def execute_line(self, raw_line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Execute one REPL input line. Returns False if REPL should terminate."""
         line = raw_line.strip()
-        if not line or line.startswith("#"):
+        if not line:
+            return True
+        if line.startswith("#"):
+            self._record_history(line)
             return True
 
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
@@ -35163,6 +35167,8 @@ class PytaeRepl:
         step_num = 1
         for entry in entries:
             if entry.startswith("*checkpoint:") and entry.endswith("*"):
+                output_fn(f"  {entry}")
+            elif entry.startswith("#"):
                 output_fn(f"  {entry}")
             else:
                 output_fn(f"  {step_num:2d}: {entry}")
@@ -50658,27 +50664,31 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     assert r.session_log_path.exists()
     assert r.session_log_path.parent == hist_dir
 
-    # Execute commands and checkpoints
+    # Execute commands, comments, and checkpoints
+    r.execute_line("# my custom comment", output_fn=outputs.append)
     r.execute_line("df = sample:penguins", output_fn=outputs.append)
     r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     r.execute_line("checkpoint v1", output_fn=outputs.append)
     r.execute_line("-mutate \"m = 1\"", output_fn=outputs.append)
 
-    # Check file content on disk in real time
+    # Check file content on disk in real time: checkpoints omitted, note present
     content = r.session_log_path.read_text(encoding="utf-8")
     assert "# Pytae REPL Session History" in content
+    assert "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted." in content
+    assert "# my custom comment" in content
     assert "df = sample:penguins" in content
     assert "-filter \"species == 'Gentoo'\"" in content
-    assert "# *checkpoint: v1*" in content
+    assert "*checkpoint: v1*" not in content
     assert '-mutate "m = 1"' in content
 
-    # Test in-REPL history command
+    # Test in-REPL history command (displays checkpoint banner in live terminal view)
     outputs.clear()
     r.execute_line("history", output_fn=outputs.append)
     h_out = "\n".join(outputs)
     assert "Session History" in h_out
     assert str(r.session_log_path) in h_out
     assert "df = sample:penguins" in h_out
+    assert "*checkpoint: v1*" in h_out
 
     # Test history N
     outputs.clear()

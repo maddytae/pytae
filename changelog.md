@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.12.9] - 2026-10-31
+
+### Added
+- **Interactive REPL Session Flight Recorder (`~/.pytae_history/`)**:
+  - Automatically records full interactive REPL sessions to timestamped files: `~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt`.
+  - Commands and user commentary are flushed to disk in real time, preventing data loss on disconnects or crashes.
+  - Automatically unlinks empty session log files on exit if zero commands were executed.
+- **Session History Export (`exit -s` & `history -s`)**:
+  - Added `exit -s [path]` to export session history directly on exit (defaults to `./history.txt` in the current working directory).
+  - Added `history -s [path]` to export session history mid-session without terminating the REPL.
+  - Supports relative paths and tilde expansion (`~/...`), automatically creating destination directories as needed.
+  - Added zero-command guard to prevent creating blank history files.
+- **Pure Replayable Pipeline Philosophy**:
+  - Preserves user comment lines (`# ...`) in history files and `history` command output.
+  - Excludes syntax errors and non-mutating inspection commands (`-head`, `-tail`, `-shape`, etc.) from history files to guarantee clean, deterministic replays (`pytae -i < history.txt`).
+  - Checkpoints are omitted from `.txt` script files while remaining visible in live terminal `history` banners.
+  - Includes an explanatory note in the header of every session log file.
+- **Zero-Dependency SQLite FTS5 Documentation Search & Stdio MCP Server**:
+  - Added `pytae doc <query>` CLI command powered by pre-indexed SQLite FTS5 full-text search (`pytae_docs.db`).
+  - Added `pytae mcp` stdio Model Context Protocol (MCP) server exposing `search_pytae_docs` and `get_pytae_cheatsheet` tools for AI agents and coding assistants.
+  - Added Python API `pytae.doc(<query>)`.
+- **REPL Uniform Benchmarking (`-time`)**:
+  - Uniform `-time [N]` support across pipelines, inspections (`-head -time`, `-cols -time`), and table switches (`df1 -time`).
+- **Copilot AI Instructions & Verification**:
+  - Added execution verification and graceful fallback rule to `.github/copilot-instructions.md` and `reference/pytae_copilot_instructions.md`.
+
+### Removed
+- Retired fragile `history -cli` and `history -py` command synthesis flags in favor of reproducible, executable history scripts.
+
 ## [3.12.8] - 2026-10-28
 
 ### Added

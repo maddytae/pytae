@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.12.9
+
+- Interactive REPL continuous flight recorder (`~/.pytae_history/`).
+- Session history export (`exit -s [path]` and `history -s [path]`).
+- Clean replayable pipeline generation with comment preservation.
+- Zero-dependency SQLite FTS5 documentation search (`pytae doc`) and stdio MCP server (`pytae mcp`).
+- REPL uniform `-time` benchmarking across tables and inspections.
+
 ## 3.12.8
 
 - Support and documentation for custom persistent REPL session directories (`PYTAE_SESSIONS_DIR`).
