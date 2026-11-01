@@ -210,15 +210,24 @@ pytae> -describe
 Checkpoints in Pytae are **session-wide, persisted to disk (Arrow IPC), and consume 0 MB of active RAM**.
 
 Key Architectural Guarantees:
-1. **Disk Storage (Arrow IPC)**: Tables are serialized to session storage via Polars Arrow IPC (`.ipc`). Saved checkpoints do not duplicate memory or pin RAM.
-2. **Undo Baseline Reset**: Creating a checkpoint (`checkpoint <name>`) establishes a clean milestone. The undo/redo stacks are cleared, immediately releasing intermediate transformation memory from RAM via garbage collection. Any *subsequent* transformations push to a fresh undo stack, so you can freely experiment and `undo` back to your checkpoint milestone.
-3. **Strict Memory Isolation on `restore`**: Running `restore <name>` completely purges any post-checkpoint tables (e.g. `df3`, temporary joins) from memory, resets the undo stack, triggers `gc.collect()`, and loads strictly the checkpoint tables. Active RAM is guaranteed to match the checkpoint state only.
-4. **Decoupled `rm`**: Running `rm <table_name>` reclaims RAM immediately. Checkpoints on disk remain completely safe and independent.
+1. **Disk Storage (Arrow IPC or Parquet)**: Tables are serialized to session storage via Polars Arrow IPC (`.ipc`, default) or compressed Parquet (`.parquet`). Saved checkpoints do not duplicate memory or pin RAM.
+2. **Format Configuration (`set checkpoint_format = parquet`)**: You can set your preferred checkpoint format once per session with `set checkpoint_format = parquet` (to minimize disk footprint) or `set checkpoint_format = ipc` (for fastest write speeds). Pytae auto-detects and restores checkpoints regardless of format.
+3. **Undo Baseline Reset**: Creating a checkpoint (`checkpoint <name>`) establishes a clean milestone. The undo/redo stacks are cleared, immediately releasing intermediate transformation memory from RAM via garbage collection. Any *subsequent* transformations push to a fresh undo stack, so you can freely experiment and `undo` back to your checkpoint milestone.
+4. **Strict Memory Isolation on `restore`**: Running `restore <name>` completely purges any post-checkpoint tables (e.g. `df3`, temporary joins) from memory, resets the undo stack, triggers `gc.collect()`, and loads strictly the checkpoint tables. Active RAM is guaranteed to match the checkpoint state only.
+5. **Decoupled `rm`**: Running `rm <table_name>` reclaims RAM immediately. Checkpoints on disk remain completely safe and independent.
 
 ```text
+# Inspect current checkpoint storage format
+pytae> set
+checkpoint_format = ipc (options: ipc, parquet)
+
+# Switch to compressed Parquet format to save disk space
+pytae> set checkpoint_format = parquet
+Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet).
+
 # Save a named checkpoint across the entire workbench session (persisted to disk, undo reset)
 pytae [df1, df2]> checkpoint maddy
-Saved checkpoint 'maddy' (2 tables: df1, df2).
+Saved checkpoint 'maddy' [parquet] (2 tables: df1, df2).
 
 # Create experimental tables or run mutations
 pytae [df1, df2]> df3 = df1 -filter "amount > 100"
@@ -227,7 +236,7 @@ pytae [df1, df2, df3]> df2 -filter "status == 'active'"
 # List all saved checkpoints and their constituent tables
 pytae [df1, df2, df3]> checkpoints
 Saved Checkpoints:
-  - maddy          : df1 (344x7), df2 (244x7) [active: df2]
+  - maddy          : df1 (344x7), df2 (244x7) [active: df2] [parquet]
 
 # Delete a single saved checkpoint (frees disk files)
 pytae [df1, df2, df3]> rm checkpoint maddy
@@ -576,6 +585,7 @@ pytae> -o clip
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
+| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set checkpoint_format = parquet`) | No |
 | **`session`** | `session` | Display active session name, disk path, and checkpoints | No |
 | **`session save`**| `session save <name>` | Save or promote session to persistent storage under `<name>` | No |
 | **`session load`**| `session load <name>` | Switch to persistent session and restore its latest checkpoint | **Yes** (undoable) |
@@ -596,6 +606,7 @@ pytae> -o clip
 | **`-head`** | `-head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
 | **`-tail`** | `-tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
 | **`-shape`** | `-shape` | Display row and column counts | No |
+| **`-schema`** | `-schema` | Display structured schema breakdown (columns, dtypes, nulls, cardinality) | No |
 | **`-cols`** | `-cols [asc\|desc\|pattern]` | List column names (file order, or asc/desc sorted, or filtered) | No |
 | **`-dtype`** | `-dtype [asc\|desc]` | Display column data types (optional alphabetical sort) | No |
 | **`-nulls`** | `-nulls [asc\|desc]` | Display missing value counts (optional alphabetical sort) | No |

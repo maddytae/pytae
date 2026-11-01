@@ -13757,15 +13757,24 @@ pytae> -describe
 Checkpoints in Pytae are **session-wide, persisted to disk (Arrow IPC), and consume 0 MB of active RAM**.
 
 Key Architectural Guarantees:
-1. **Disk Storage (Arrow IPC)**: Tables are serialized to session storage via Polars Arrow IPC (`.ipc`). Saved checkpoints do not duplicate memory or pin RAM.
-2. **Undo Baseline Reset**: Creating a checkpoint (`checkpoint <name>`) establishes a clean milestone. The undo/redo stacks are cleared, immediately releasing intermediate transformation memory from RAM via garbage collection. Any *subsequent* transformations push to a fresh undo stack, so you can freely experiment and `undo` back to your checkpoint milestone.
-3. **Strict Memory Isolation on `restore`**: Running `restore <name>` completely purges any post-checkpoint tables (e.g. `df3`, temporary joins) from memory, resets the undo stack, triggers `gc.collect()`, and loads strictly the checkpoint tables. Active RAM is guaranteed to match the checkpoint state only.
-4. **Decoupled `rm`**: Running `rm <table_name>` reclaims RAM immediately. Checkpoints on disk remain completely safe and independent.
+1. **Disk Storage (Arrow IPC or Parquet)**: Tables are serialized to session storage via Polars Arrow IPC (`.ipc`, default) or compressed Parquet (`.parquet`). Saved checkpoints do not duplicate memory or pin RAM.
+2. **Format Configuration (`set checkpoint_format = parquet`)**: You can set your preferred checkpoint format once per session with `set checkpoint_format = parquet` (to minimize disk footprint) or `set checkpoint_format = ipc` (for fastest write speeds). Pytae auto-detects and restores checkpoints regardless of format.
+3. **Undo Baseline Reset**: Creating a checkpoint (`checkpoint <name>`) establishes a clean milestone. The undo/redo stacks are cleared, immediately releasing intermediate transformation memory from RAM via garbage collection. Any *subsequent* transformations push to a fresh undo stack, so you can freely experiment and `undo` back to your checkpoint milestone.
+4. **Strict Memory Isolation on `restore`**: Running `restore <name>` completely purges any post-checkpoint tables (e.g. `df3`, temporary joins) from memory, resets the undo stack, triggers `gc.collect()`, and loads strictly the checkpoint tables. Active RAM is guaranteed to match the checkpoint state only.
+5. **Decoupled `rm`**: Running `rm <table_name>` reclaims RAM immediately. Checkpoints on disk remain completely safe and independent.
 
 ```text
+# Inspect current checkpoint storage format
+pytae> set
+checkpoint_format = ipc (options: ipc, parquet)
+
+# Switch to compressed Parquet format to save disk space
+pytae> set checkpoint_format = parquet
+Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet).
+
 # Save a named checkpoint across the entire workbench session (persisted to disk, undo reset)
 pytae [df1, df2]> checkpoint maddy
-Saved checkpoint 'maddy' (2 tables: df1, df2).
+Saved checkpoint 'maddy' [parquet] (2 tables: df1, df2).
 
 # Create experimental tables or run mutations
 pytae [df1, df2]> df3 = df1 -filter "amount > 100"
@@ -13774,7 +13783,7 @@ pytae [df1, df2, df3]> df2 -filter "status == 'active'"
 # List all saved checkpoints and their constituent tables
 pytae [df1, df2, df3]> checkpoints
 Saved Checkpoints:
-  - maddy          : df1 (344x7), df2 (244x7) [active: df2]
+  - maddy          : df1 (344x7), df2 (244x7) [active: df2] [parquet]
 
 # Delete a single saved checkpoint (frees disk files)
 pytae [df1, df2, df3]> rm checkpoint maddy
@@ -14123,6 +14132,7 @@ pytae> -o clip
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
+| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set checkpoint_format = parquet`) | No |
 | **`session`** | `session` | Display active session name, disk path, and checkpoints | No |
 | **`session save`**| `session save <name>` | Save or promote session to persistent storage under `<name>` | No |
 | **`session load`**| `session load <name>` | Switch to persistent session and restore its latest checkpoint | **Yes** (undoable) |
@@ -14143,6 +14153,7 @@ pytae> -o clip
 | **`-head`** | `-head [N]` | Non-destructive preview of top $N$ rows (default 5) | No |
 | **`-tail`** | `-tail [N]` | Non-destructive preview of bottom $N$ rows (default 5) | No |
 | **`-shape`** | `-shape` | Display row and column counts | No |
+| **`-schema`** | `-schema` | Display structured schema breakdown (columns, dtypes, nulls, cardinality) | No |
 | **`-cols`** | `-cols [asc\|desc\|pattern]` | List column names (file order, or asc/desc sorted, or filtered) | No |
 | **`-dtype`** | `-dtype [asc\|desc]` | Display column data types (optional alphabetical sort) | No |
 | **`-nulls`** | `-nulls [asc\|desc]` | Display missing value counts (optional alphabetical sort) | No |
@@ -26943,6 +26954,7 @@ def format_glimpse(df: Any, width: int | None = None) -> str:
 def format_schema(df: Any, is_tty: bool | None = None) -> str:
     """Format DataFrame as a concise schema summary table: Column, Type, Nulls (%), Unique."""
     import polars as pl
+
     from pytae.dataframe import DataFrame as PytaeDataFrame
 
     underlying = df._df if isinstance(df, PytaeDataFrame) else df
@@ -32948,10 +32960,36 @@ from pytae.cli_run import _format_table, _process_path
 from pytae.readers import DataFrameReader, get_reader
 
 
+def _safe_table_filename(name: str, ext: str = ".ipc") -> str:
+    """Generate a filesystem-safe filename for a table file across all OS platforms."""
+    safe = "".join(c if (c.isalnum() or c in ("_", "-")) else f"_{ord(c):02x}_" for c in name)
+    clean_ext = ext if ext.startswith(".") else f".{ext}"
+    return f"{safe}{clean_ext}"
+
+
 def _safe_ipc_filename(name: str) -> str:
     """Generate a filesystem-safe filename for an IPC table file across all OS platforms."""
-    safe = "".join(c if (c.isalnum() or c in ("_", "-")) else f"_{ord(c):02x}_" for c in name)
-    return f"{safe}.ipc"
+    return _safe_table_filename(name, ".ipc")
+
+
+def _read_checkpoint_file(path: Path) -> pl.DataFrame:
+    """Read a checkpoint table file, supporting both .parquet and .ipc."""
+    target_p = path
+    if not target_p.exists():
+        if target_p.suffix == ".ipc":
+            alt = target_p.with_suffix(".parquet")
+            if alt.exists():
+                target_p = alt
+        elif target_p.suffix == ".parquet":
+            alt = target_p.with_suffix(".ipc")
+            if alt.exists():
+                target_p = alt
+        if not target_p.exists():
+            raise FileNotFoundError(f"Checkpoint file not found: {path}")
+
+    if target_p.suffix in (".parquet", ".pq"):
+        return pl.read_parquet(target_p)
+    return pl.read_ipc(target_p)
 
 
 def _release_memory() -> None:
@@ -33495,6 +33533,7 @@ DATA TRANSFORMATION & PIPELINES:
 INSPECTION & EXPORT:
   -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
   -shape                 : Display row and column counts
+  -schema                : Display structured schema breakdown (columns, dtypes, nulls, cardinality)
   -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
   -dtype / -nulls        : Inspect schema dtypes and missing value counts
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
@@ -33512,6 +33551,7 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
+  set [key [= value]]    : Configure session settings (e.g. set checkpoint_format = parquet)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or $PYTAE_SESSIONS_DIR)
   session load <name>    : Load persistent session checkpoints from disk
@@ -33556,6 +33596,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--checkpoint": "checkpoint",
     "-checkpoints": "checkpoints",
     "--checkpoints": "checkpoints",
+    "-set": "set",
+    "--set": "set",
     "-restore": "restore",
     "--restore": "restore",
     "-session": "session",
@@ -33568,6 +33610,7 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--load": "load",
     # Double-hyphen data inspection forms
     "--shape": "-shape",
+    "--schema": "-schema",
     "--cols": "-cols",
     "--dtype": "-dtype",
     "--nulls": "-nulls",
@@ -33675,6 +33718,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "join",
         "concat",
         "shape",
+        "schema",
         "cols",
         "dtype",
         "nulls",
@@ -33762,6 +33806,7 @@ class PytaeRepl:
         self.initial_tables: dict[str, pl.DataFrame] = {}
         self.initial_df: pl.DataFrame | None = None
         self.checkpoints: dict[str, Any] = {}
+        self.checkpoint_format: str = "ipc"
         self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -33968,9 +34013,10 @@ class PytaeRepl:
                         if isinstance(tbl_meta[act], dict)
                         else _safe_ipc_filename(act)
                     )
-                    ipc_p = cp_dir / f_name
-                    if ipc_p.exists():
-                        return pl.read_ipc(ipc_p)
+                    try:
+                        return _read_checkpoint_file(cp_dir / f_name)
+                    except Exception:
+                        pass
                 if len(tbl_meta) == 1:
                     first_k, first_v = next(iter(tbl_meta.items()))
                     f_name = (
@@ -33978,23 +34024,26 @@ class PytaeRepl:
                         if isinstance(first_v, dict)
                         else _safe_ipc_filename(first_k)
                     )
-                    ipc_p = cp_dir / f_name
-                    if ipc_p.exists():
-                        return pl.read_ipc(ipc_p)
+                    try:
+                        return _read_checkpoint_file(cp_dir / f_name)
+                    except Exception:
+                        pass
                 if "_current_df" in tbl_meta:
                     f_name = (
                         tbl_meta["_current_df"].get("file", "_current_df.ipc")
                         if isinstance(tbl_meta["_current_df"], dict)
                         else "_current_df.ipc"
                     )
-                    ipc_p = cp_dir / f_name
-                    if ipc_p.exists():
-                        return pl.read_ipc(ipc_p)
+                    try:
+                        return _read_checkpoint_file(cp_dir / f_name)
+                    except Exception:
+                        pass
                 for k, v in tbl_meta.items():
                     f_name = v.get("file", _safe_ipc_filename(k)) if isinstance(v, dict) else _safe_ipc_filename(k)
-                    ipc_p = cp_dir / f_name
-                    if ipc_p.exists():
-                        return pl.read_ipc(ipc_p)
+                    try:
+                        return _read_checkpoint_file(cp_dir / f_name)
+                    except Exception:
+                        pass
                 return None
             tbls = snap.get("tables", {})
             if snap.get("active_table") and snap["active_table"] in tbls:
@@ -34025,13 +34074,15 @@ class PytaeRepl:
                             if isinstance(tbl_info, dict)
                             else _safe_ipc_filename(k)
                         )
-                        ipc_p = cp_dir / f_name
-                        if ipc_p.exists():
-                            return pl.read_ipc(ipc_p)
+                        try:
+                            return _read_checkpoint_file(cp_dir / f_name)
+                        except Exception:
+                            pass
                 if "_current_df" in tbl_meta and (len(tbl_meta) == 1 or meta.get("active_table") == table_name):
-                    ipc_p = cp_dir / "_current_df.ipc"
-                    if ipc_p.exists():
-                        return pl.read_ipc(ipc_p)
+                    try:
+                        return _read_checkpoint_file(cp_dir / "_current_df.ipc")
+                    except Exception:
+                        pass
                 return None
             tbls = snap.get("tables", {})
             for k, val in tbls.items():
@@ -34155,6 +34206,7 @@ class PytaeRepl:
         meta: dict[str, Any] = {
             "name": self.session_name,
             "updated_at": now_str,
+            "checkpoint_format": self.checkpoint_format,
             "checkpoints": list(self.checkpoints.keys()),
             "latest_checkpoint": list(self.checkpoints.keys())[-1] if self.checkpoints else None,
         }
@@ -34194,6 +34246,8 @@ class PytaeRepl:
                 try:
                     s_meta = json.loads(meta_file.read_text(encoding="utf-8"))
                     cp_order = s_meta.get("checkpoints", [])
+                    if s_meta.get("checkpoint_format"):
+                        self.checkpoint_format = str(s_meta["checkpoint_format"]).lower()
                 except Exception:
                     pass
 
@@ -34525,6 +34579,11 @@ class PytaeRepl:
             self._cmd_reset(tokens[1:], output_fn)
             return True
 
+        # Session configuration settings: 'set [key [= value]]'
+        if first_lower == "set":
+            self._cmd_set(tokens[1:], output_fn)
+            return True
+
         # Persistent REPL sessions
         if first_lower == "sessions":
             list_saved_sessions(output_fn)
@@ -34734,6 +34793,7 @@ class PytaeRepl:
                 "py",
                 "status",
                 "reset",
+                "set",
                 "gc",
                 "free",
             )
@@ -34783,6 +34843,7 @@ class PytaeRepl:
                 "session",
                 "sessions",
                 "reset",
+                "set",
                 "save",
                 "write",
                 "pipe",
@@ -35312,6 +35373,43 @@ class PytaeRepl:
                 self.orig_df = None
                 self.initial_df = None
 
+    def _cmd_set(self, args: list[str], output_fn: Callable[[str], None]) -> None:
+        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet)."""
+        if not args:
+            output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
+            return
+
+        line = " ".join(args).strip()
+        if "=" in line:
+            key, val = [p.strip() for p in line.split("=", 1)]
+        elif len(args) == 2:
+            key, val = args[0].strip(), args[1].strip()
+        elif len(args) == 1:
+            key, val = args[0].strip(), ""
+        else:
+            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet)")
+            return
+
+        key_lower = key.lower().replace("-", "_")
+        if key_lower in ("checkpoint_format", "checkpoint_fmt", "cp_format", "cp_fmt"):
+            if not val:
+                output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
+                return
+            clean_val = val.lower().strip("'\"")
+            if clean_val in ("parquet", "pq"):
+                self.checkpoint_format = "parquet"
+                self._record_history("set checkpoint_format = parquet")
+                output_fn("Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet).")
+            elif clean_val in ("ipc", "arrow", "feather"):
+                self.checkpoint_format = "ipc"
+                self._record_history("set checkpoint_format = ipc")
+                output_fn("Set checkpoint_format = ipc (checkpoints will be saved as fast uncompressed Arrow IPC).")
+            else:
+                output_fn(f"pytae: unsupported checkpoint_format '{val}'. Supported formats: ipc, parquet.")
+            return
+
+        output_fn(f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet).")
+
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
         if not self.tables and self.current_df is None:
             output_fn("pytae: no dataset loaded to checkpoint.")
@@ -35323,25 +35421,37 @@ class PytaeRepl:
             shutil.rmtree(cp_path, ignore_errors=True)
         cp_path.mkdir(parents=True, exist_ok=True)
 
+        fmt = self.checkpoint_format.lower()
+        ext = ".parquet" if fmt == "parquet" else ".ipc"
+
         saved_tables: dict[str, Any] = {}
         if self.tables:
             for tbl_name, tbl_df in self.tables.items():
-                ipc_file = _safe_ipc_filename(tbl_name)
-                tbl_df.write_ipc(cp_path / ipc_file)
+                f_name = _safe_table_filename(tbl_name, ext)
+                if fmt == "parquet":
+                    tbl_df.write_parquet(cp_path / f_name)
+                else:
+                    tbl_df.write_ipc(cp_path / f_name)
                 saved_tables[tbl_name] = {
-                    "file": ipc_file,
+                    "file": f_name,
+                    "format": fmt,
                     "shape": list(tbl_df.shape),
                 }
         elif self.current_df is not None:
-            ipc_file = "_current_df.ipc"
-            self.current_df.write_ipc(cp_path / ipc_file)
+            f_name = f"_current_df{ext}"
+            if fmt == "parquet":
+                self.current_df.write_parquet(cp_path / f_name)
+            else:
+                self.current_df.write_ipc(cp_path / f_name)
             saved_tables["_current_df"] = {
-                "file": ipc_file,
+                "file": f_name,
+                "format": fmt,
                 "shape": list(self.current_df.shape),
             }
 
         meta = {
             "dir": str(cp_path),
+            "format": fmt,
             "tables": saved_tables,
             "table_sources": dict(self.table_sources),
             "active_table": self.path_str,
@@ -35361,15 +35471,16 @@ class PytaeRepl:
         self.redo_stack.clear()
         _release_memory()
 
+        fmt_tag = f" [{fmt}]" if fmt == "parquet" else ""
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
-            output_fn(f"Saved checkpoint '{name}' ({len(self.tables)} tables: {table_names}).")
+            output_fn(f"Saved checkpoint '{name}'{fmt_tag} ({len(self.tables)} tables: {table_names}).")
         elif self.current_df is not None:
             output_fn(
-                f"Saved checkpoint '{name}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)."
+                f"Saved checkpoint '{name}'{fmt_tag} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)."
             )
         else:
-            output_fn(f"Saved checkpoint '{name}'.")
+            output_fn(f"Saved checkpoint '{name}'{fmt_tag}.")
 
     def _cmd_restore(self, name: str, output_fn: Callable[[str], None], record_history: bool = True) -> None:
         if name not in self.checkpoints:
@@ -35398,20 +35509,28 @@ class PytaeRepl:
             tbl_meta = meta.get("tables", {})
             for tbl_name, tbl_info in tbl_meta.items():
                 if tbl_name == "_current_df":
-                    ipc_path = cp_dir / tbl_info.get("file", "_current_df.ipc")
-                    if ipc_path.exists():
-                        self.current_df = pl.read_ipc(ipc_path)
+                    target_file = tbl_info.get("file", "_current_df.ipc") if isinstance(tbl_info, dict) else "_current_df.ipc"
+                    try:
+                        self.current_df = _read_checkpoint_file(cp_dir / target_file)
                         self.orig_df = self.current_df
                         if self.initial_df is None:
                             self.initial_df = self.current_df
+                    except Exception:
+                        pass
                     continue
-                ipc_path = cp_dir / tbl_info.get("file", _safe_ipc_filename(tbl_name))
-                if ipc_path.exists():
-                    df = pl.read_ipc(ipc_path)
+                target_file = (
+                    tbl_info.get("file", _safe_ipc_filename(tbl_name))
+                    if isinstance(tbl_info, dict)
+                    else _safe_ipc_filename(tbl_name)
+                )
+                try:
+                    df = _read_checkpoint_file(cp_dir / target_file)
                     self.tables[tbl_name] = df
                     self.orig_tables[tbl_name] = df
                     if tbl_name not in self.initial_tables:
                         self.initial_tables[tbl_name] = df
+                except Exception:
+                    pass
 
             if self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
@@ -35457,6 +35576,7 @@ class PytaeRepl:
         for name, snap in self.checkpoints.items():
             if isinstance(snap, dict):
                 tbls = snap.get("tables", {})
+                fmt_tag = f" [{snap['format']}]" if snap.get("format") and snap["format"] != "ipc" else ""
                 if isinstance(tbls, dict):
                     if len(tbls) > 1:
                         parts = []
@@ -35470,24 +35590,24 @@ class PytaeRepl:
                                 parts.append(str(t))
                         summary = ", ".join(parts)
                         active_suffix = f" [active: {snap['active_table']}]" if snap.get("active_table") else ""
-                        output_fn(f"  - {name:<15}: {summary}{active_suffix}")
+                        output_fn(f"  - {name:<15}: {summary}{active_suffix}{fmt_tag}")
                     elif tbls:
                         t_name, val = next(iter(tbls.items()))
                         shape = (
                             val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
                         )
                         if shape:
-                            output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols")
+                            output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols{fmt_tag}")
                         else:
-                            output_fn(f"  - {name:<15}: 1 table ({t_name})")
+                            output_fn(f"  - {name:<15}: 1 table ({t_name}){fmt_tag}")
                     elif snap.get("current_df_shape") is not None:
                         s = snap["current_df_shape"]
-                        output_fn(f"  - {name:<15}: {s[0]:,} rows x {s[1]} cols")
+                        output_fn(f"  - {name:<15}: {s[0]:,} rows x {s[1]} cols{fmt_tag}")
                     elif snap.get("current_df") is not None:
                         df = snap["current_df"]
-                        output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols")
+                        output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols{fmt_tag}")
                     else:
-                        output_fn(f"  - {name:<15}: (empty session)")
+                        output_fn(f"  - {name:<15}: (empty session){fmt_tag}")
             elif isinstance(snap, pl.DataFrame):
                 output_fn(f"  - {name:<15}: {snap.shape[0]:,} rows x {snap.shape[1]} cols")
 
@@ -36027,13 +36147,15 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
 
-    def _eval_pipeline_df(
+    def _run_pipeline_on_df(
         self,
         source_df: pl.DataFrame,
         tokens: list[str],
-        output_fn: Callable[[str], None] = print,
-    ) -> tuple[pl.DataFrame | None, list[float] | None]:
-        """Evaluate a pipeline on source_df without printing, returning (resulting_df, durations)."""
+        output_fn: Callable[[str], None],
+        *,
+        quiet: bool = False,
+    ) -> tuple[pl.DataFrame | None, list[float] | None, bool]:
+        """Parse and run a CLI pipeline on source_df. Returns (res_df, durations, failed)."""
         from pytae.cli import (
             _normalize_cli_args,
             build_parser,
@@ -36056,10 +36178,10 @@ class PytaeRepl:
                     )
                 else:
                     output_fn(f"pytae: unrecognized arguments: {' '.join(extras)}")
-                return None, None
+                return None, None, True
         except (argparse.ArgumentError, SystemExit) as exc:
             output_fn(f"pytae syntax error: {exc}")
-            return None, None
+            return None, None, True
 
         rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
         select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
@@ -36072,8 +36194,8 @@ class PytaeRepl:
 
         args._memory_df = source_df
         args.in_repl = True
-        args.quiet = True
-        args.output_fn = lambda s: None
+        args.quiet = quiet
+        args.output_fn = (lambda s: None) if quiet else output_fn
 
         has_action = bool(op_order) or any(
             [
@@ -36081,6 +36203,7 @@ class PytaeRepl:
                 args.cols,
                 args.dtype,
                 args.nulls,
+                getattr(args, "schema", False),
                 args.describe,
                 args.glimpse,
                 args.head is not None,
@@ -36105,14 +36228,18 @@ class PytaeRepl:
                 import time as _time
 
                 durations = []
-                for _ in range(runs):
+                failed = False
+                for run_idx in range(runs):
                     t0 = _time.perf_counter()
+                    curr_args = args if (run_idx == 0 and not quiet) else argparse.Namespace(**vars(args))
+                    if run_idx > 0 or quiet:
+                        curr_args.output_fn = lambda s: None
                     failed = _process_path(
                         Path("<memory>"),
-                        args,
+                        curr_args,
                         parser,
                         batch=True,
-                        show_all=show_all,
+                        show_all=show_all if (run_idx == 0 and not quiet) else False,
                         select_specs=select_specs,
                         filter_specs=filter_specs,
                         mutate_specs=mutate_specs,
@@ -36140,7 +36267,7 @@ class PytaeRepl:
                     concat_specs=concat_specs,
                 )
             if failed:
-                return None, None
+                return None, None, True
             res_frame = getattr(args, "_result_frame", None)
             res_pl: pl.DataFrame | None = None
             if res_frame is not None:
@@ -36152,154 +36279,39 @@ class PytaeRepl:
                     res_pl = pl.from_pandas(res_frame)
             else:
                 res_pl = source_df
-            return res_pl, durations
+            return res_pl, durations, False
         except Exception as exc:
             output_fn(f"pytae error: {exc}")
+            return None, None, True
+
+    def _eval_pipeline_df(
+        self,
+        source_df: pl.DataFrame,
+        tokens: list[str],
+        output_fn: Callable[[str], None] = print,
+    ) -> tuple[pl.DataFrame | None, list[float] | None]:
+        """Evaluate a pipeline on source_df without printing, returning (resulting_df, durations)."""
+        res_pl, durations, failed = self._run_pipeline_on_df(source_df, tokens, output_fn, quiet=True)
+        if failed:
             return None, None
+        return res_pl, durations
 
     def _cmd_pipeline(self, line: str, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
             output_fn("pytae: no dataset loaded. Load a dataset first with '<var> = <path.parquet>'.")
             return
 
-        from pytae.cli import (
-            _format_timing_summary,
-            _normalize_cli_args,
-            build_parser,
-            parse_concat_arg,
-            parse_filter,
-            parse_join_arg,
-            parse_rename,
-            parse_select_spec,
-        )
-
-        exec_argv = _normalize_cli_args(["<memory>"] + tokens)
-        parser = build_parser(exit_on_error=False)
-        try:
-            args, extras = parser.parse_known_args(exec_argv)
-            if extras:
-                first_extra = extras[0].lower().lstrip("-")
-                if first_extra in _BARE_PIPELINE_VERBS:
-                    output_fn(
-                        f"pytae: bare '{extras[0]}' is not recognized; use '-{first_extra}' (matching CLI syntax)."
-                    )
-                else:
-                    output_fn(f"pytae: unrecognized arguments: {' '.join(extras)}")
-                return
-        except argparse.ArgumentError as exc:
-            output_fn(f"pytae: {exc}")
-            return
-        except SystemExit as exc:
-            output_fn(f"pytae: {exc}")
+        res_pl, durations, failed = self._run_pipeline_on_df(self.current_df, tokens, output_fn, quiet=False)
+        if failed:
+            output_fn("pytae: command failed with errors.")
             return
 
-        rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
-        select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-        filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
-        mutate_specs = list(args.mutate or [])
-        sql_specs = list(args.sql or [])
-        join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
-        concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
+        if durations:
+            from pytae.cli import _format_timing_summary
 
-        op_order = getattr(args, "op_order", [])
+            output_fn(_format_timing_summary(durations))
 
-        args._memory_df = self.current_df
-        args.in_repl = True
-        args.output_fn = output_fn
-
-        has_action = bool(op_order) or any(
-            [
-                args.shape,
-                args.cols,
-                args.dtype,
-                args.nulls,
-                args.describe,
-                args.glimpse,
-                args.head is not None,
-                args.tail is not None,
-                args.sample is not None,
-                args.stats,
-                getattr(args, "diff", None) is not None,
-                getattr(args, "meta", False),
-                getattr(args, "plot", None) is not None,
-                getattr(args, "hist", None) is not None,
-                getattr(args, "bar", None) is not None,
-                getattr(args, "scatter", None) is not None,
-                getattr(args, "corr", None) is not None,
-            ]
-        )
-        show_all = not has_action
-
-        runs = getattr(args, "time", None)
-        try:
-            if runs:
-                import time as _time
-
-                durations: list[float] = []
-                failed = False
-                for run_idx in range(runs):
-                    t0 = _time.perf_counter()
-                    if run_idx == 0:
-                        failed = _process_path(
-                            Path("<memory>"),
-                            args,
-                            parser,
-                            batch=True,
-                            show_all=show_all,
-                            select_specs=select_specs,
-                            filter_specs=filter_specs,
-                            mutate_specs=mutate_specs,
-                            sql_specs=sql_specs,
-                            rename_specs=rename_specs,
-                            join_specs=join_specs,
-                            concat_specs=concat_specs,
-                        )
-                    else:
-                        quiet_args = argparse.Namespace(**vars(args))
-                        quiet_args.output_fn = lambda s: None
-                        failed = _process_path(
-                            Path("<memory>"),
-                            quiet_args,
-                            parser,
-                            batch=True,
-                            show_all=False,
-                            select_specs=select_specs,
-                            filter_specs=filter_specs,
-                            mutate_specs=mutate_specs,
-                            sql_specs=sql_specs,
-                            rename_specs=rename_specs,
-                            join_specs=join_specs,
-                            concat_specs=concat_specs,
-                        )
-                    durations.append(_time.perf_counter() - t0)
-                    if failed:
-                        break
-                if failed:
-                    output_fn("pytae: command failed with errors.")
-                    return
-                output_fn(_format_timing_summary(durations))
-            else:
-                failed = _process_path(
-                    Path("<memory>"),
-                    args,
-                    parser,
-                    batch=True,
-                    show_all=show_all,
-                    select_specs=select_specs,
-                    filter_specs=filter_specs,
-                    mutate_specs=mutate_specs,
-                    sql_specs=sql_specs,
-                    rename_specs=rename_specs,
-                    join_specs=join_specs,
-                    concat_specs=concat_specs,
-                )
-                if failed:
-                    output_fn("pytae: command failed with errors.")
-                    return
-
-            self._record_history(line)
-        except Exception as exc:
-            output_fn(f"pytae error: {exc}")
+        self._record_history(line)
 
     def run(
         self,
@@ -50959,6 +50971,91 @@ def test_repl_schema_and_sample_and_keyword_join():
     r.execute_line("history", output_fn=hist_lines.append)
     hist_text = "\n".join(hist_lines)
     assert "-join left=p,right=t,how=cross" in hist_text
+
+
+def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
+    sess_dir = tmp_path / "sessions"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+
+    outputs: list[str] = []
+    r = PytaeRepl(session="test_fmt")
+
+    # 1. Inspect default format
+    outputs.clear()
+    r.execute_line("set", output_fn=outputs.append)
+    assert "checkpoint_format = ipc" in outputs[0]
+
+    outputs.clear()
+    r.execute_line("set checkpoint_format", output_fn=outputs.append)
+    assert "checkpoint_format = ipc" in outputs[0]
+
+    # 2. Reject invalid format
+    outputs.clear()
+    r.execute_line("set checkpoint_format = csv", output_fn=outputs.append)
+    assert "unsupported checkpoint_format 'csv'" in outputs[0]
+    assert r.checkpoint_format == "ipc"
+
+    # 3. Load tables
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+
+    # 4. Save IPC checkpoint (default)
+    outputs.clear()
+    r.execute_line("checkpoint cp_ipc", output_fn=outputs.append)
+    assert "Saved checkpoint 'cp_ipc'" in outputs[0]
+    ipc_dir = sess_dir / "test_fmt" / "checkpoints" / "cp_ipc"
+    assert (ipc_dir / "df1.ipc").exists()
+    assert (ipc_dir / "df2.ipc").exists()
+
+    # 5. Set checkpoint_format = parquet
+    outputs.clear()
+    r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
+    assert "Set checkpoint_format = parquet" in outputs[0]
+    assert r.checkpoint_format == "parquet"
+
+    # 6. Save Parquet checkpoint
+    outputs.clear()
+    r.execute_line("checkpoint cp_pq", output_fn=outputs.append)
+    assert "Saved checkpoint 'cp_pq' [parquet]" in outputs[0]
+    pq_dir = sess_dir / "test_fmt" / "checkpoints" / "cp_pq"
+    assert (pq_dir / "df1.parquet").exists()
+    assert (pq_dir / "df2.parquet").exists()
+    # Confirm they really are readable parquet files
+    df1_pq = pl.read_parquet(pq_dir / "df1.parquet")
+    assert df1_pq.shape == r.tables["df1"].shape
+
+    # 7. Check checkpoints listing displays format
+    outputs.clear()
+    r.execute_line("checkpoints", output_fn=outputs.append)
+    cps_text = "\n".join(outputs)
+    assert "cp_ipc" in cps_text
+    assert "cp_pq" in cps_text
+    assert "[parquet]" in cps_text
+
+    # 8. Mutate RAM table, then restore from parquet checkpoint
+    orig_shape = r.tables["df1"].shape
+    r.execute_line("df1 = df1 -filter \"species == 'Adelie'\"", output_fn=outputs.append)
+    assert r.tables["df1"].shape[0] < orig_shape[0]
+
+    outputs.clear()
+    r.execute_line("restore cp_pq", output_fn=outputs.append)
+    assert "Restored checkpoint 'cp_pq'" in outputs[0]
+    assert r.tables["df1"].shape == orig_shape
+
+    # 9. Restore from IPC checkpoint seamlessly
+    outputs.clear()
+    r.execute_line("restore cp_ipc", output_fn=outputs.append)
+    assert "Restored checkpoint 'cp_ipc'" in outputs[0]
+    assert r.tables["df1"].shape == orig_shape
+
+    # 10. Switch back to IPC format
+    outputs.clear()
+    r.execute_line("set checkpoint_format = ipc", output_fn=outputs.append)
+    assert "Set checkpoint_format = ipc" in outputs[0]
+    assert r.checkpoint_format == "ipc"
+
+    r.close()
 
 ################################################################################
 # FILE: tests/test_select.py

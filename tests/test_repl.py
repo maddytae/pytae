@@ -2408,4 +2408,90 @@ def test_repl_schema_and_sample_and_keyword_join():
     assert "-join left=p,right=t,how=cross" in hist_text
 
 
+def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
+    sess_dir = tmp_path / "sessions"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+
+    outputs: list[str] = []
+    r = PytaeRepl(session="test_fmt")
+
+    # 1. Inspect default format
+    outputs.clear()
+    r.execute_line("set", output_fn=outputs.append)
+    assert "checkpoint_format = ipc" in outputs[0]
+
+    outputs.clear()
+    r.execute_line("set checkpoint_format", output_fn=outputs.append)
+    assert "checkpoint_format = ipc" in outputs[0]
+
+    # 2. Reject invalid format
+    outputs.clear()
+    r.execute_line("set checkpoint_format = csv", output_fn=outputs.append)
+    assert "unsupported checkpoint_format 'csv'" in outputs[0]
+    assert r.checkpoint_format == "ipc"
+
+    # 3. Load tables
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+
+    # 4. Save IPC checkpoint (default)
+    outputs.clear()
+    r.execute_line("checkpoint cp_ipc", output_fn=outputs.append)
+    assert "Saved checkpoint 'cp_ipc'" in outputs[0]
+    ipc_dir = sess_dir / "test_fmt" / "checkpoints" / "cp_ipc"
+    assert (ipc_dir / "df1.ipc").exists()
+    assert (ipc_dir / "df2.ipc").exists()
+
+    # 5. Set checkpoint_format = parquet
+    outputs.clear()
+    r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
+    assert "Set checkpoint_format = parquet" in outputs[0]
+    assert r.checkpoint_format == "parquet"
+
+    # 6. Save Parquet checkpoint
+    outputs.clear()
+    r.execute_line("checkpoint cp_pq", output_fn=outputs.append)
+    assert "Saved checkpoint 'cp_pq' [parquet]" in outputs[0]
+    pq_dir = sess_dir / "test_fmt" / "checkpoints" / "cp_pq"
+    assert (pq_dir / "df1.parquet").exists()
+    assert (pq_dir / "df2.parquet").exists()
+    # Confirm they really are readable parquet files
+    df1_pq = pl.read_parquet(pq_dir / "df1.parquet")
+    assert df1_pq.shape == r.tables["df1"].shape
+
+    # 7. Check checkpoints listing displays format
+    outputs.clear()
+    r.execute_line("checkpoints", output_fn=outputs.append)
+    cps_text = "\n".join(outputs)
+    assert "cp_ipc" in cps_text
+    assert "cp_pq" in cps_text
+    assert "[parquet]" in cps_text
+
+    # 8. Mutate RAM table, then restore from parquet checkpoint
+    orig_shape = r.tables["df1"].shape
+    r.execute_line("df1 = df1 -filter \"species == 'Adelie'\"", output_fn=outputs.append)
+    assert r.tables["df1"].shape[0] < orig_shape[0]
+
+    outputs.clear()
+    r.execute_line("restore cp_pq", output_fn=outputs.append)
+    assert "Restored checkpoint 'cp_pq'" in outputs[0]
+    assert r.tables["df1"].shape == orig_shape
+
+    # 9. Restore from IPC checkpoint seamlessly
+    outputs.clear()
+    r.execute_line("restore cp_ipc", output_fn=outputs.append)
+    assert "Restored checkpoint 'cp_ipc'" in outputs[0]
+    assert r.tables["df1"].shape == orig_shape
+
+    # 10. Switch back to IPC format
+    outputs.clear()
+    r.execute_line("set checkpoint_format = ipc", output_fn=outputs.append)
+    assert "Set checkpoint_format = ipc" in outputs[0]
+    assert r.checkpoint_format == "ipc"
+
+    r.close()
+
+
+
 
