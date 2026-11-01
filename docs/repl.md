@@ -33,7 +33,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Fluent Python Execution (`py <expr>`)](#fluent-python-execution-py-expr)
 - [Memory Management & Garbage Collection](#memory-management--garbage-collection)
-  - [Removing Tables (`rm <name>`, `rm df`, `rm *`)](#removing-tables-rm-name-rm-df-rm-)
+  - [Removing Tables (`rm <name>`, `rm *`)](#removing-tables-rm-name-rm-)
   - [Immediate Memory Deallocation & OS Trimming](#immediate-memory-deallocation--os-trimming)
   - [Manual GC & Memory Stats (`gc`, `status`)](#manual-gc--memory-stats-gc-status)
 - [State Navigation & History](#state-navigation--history)
@@ -351,7 +351,7 @@ shape: (3, 2)
 
 ## Memory Management & Garbage Collection
 
-### Removing Tables (`rm <name>`, `rm df`, `rm *`)
+### Removing Tables (`rm <name>`, `rm *`)
 Purge tables from memory when they are no longer needed:
 
 ```text
@@ -359,14 +359,13 @@ Purge tables from memory when they are no longer needed:
 pytae [df1, df2]> rm df1
 Removed table 'df1'. Switched active dataset to 'df2'.
 
-# Remove active dataset using universal alias 'df'
-pytae [df2]> rm df
-Removed table 'df2'. No tables remain loaded.
-
 # Remove all loaded tables at once
 pytae [orders, cust, big_orders]> rm *
 Removed all 3 loaded tables. No tables remain loaded.
 ```
+
+> [!NOTE]
+> Explicit table names (or `rm *`) are required. Vague generic aliases like `rm df` are not used when removing tables to protect against accidental deletions of the wrong dataset.
 
 ### Immediate Memory Deallocation & OS Trimming
 Unlike standard Python shells that retain memory pages in process heaps:
@@ -648,10 +647,10 @@ pytae [df: 344x7]> -head 50 | wc -l
 | | `load` | `load sales.csv as df2 -dlim ";"` | Load file with alias and reader options | Yes |
 | | Samples | `df = sample:penguins` | Load bundled sample dataset | Yes |
 | **Tables** | `tables` | `tables` | List loaded tables, shapes, and sources | No |
-| | Bare name | `df1` | Switch active dataset and display shape | Yes (active) |
+| | Bare name | `df1` | Display table dimensions without switching cursor | No |
 | | `use` | `use df1` | Switch active dataset | Yes (active) |
 | | Subject-first | `df1 -head 5`, `df2 -shape` | Execute command directly on named table | Depends |
-| | `rm` | `rm df1`, `rm df`, `rm *` | Remove table from memory (immediate OS trim) | Yes |
+| | `rm` | `rm df1`, `rm orders`, `rm *` | Remove table from memory (immediate OS trim) | Yes |
 | **Transform** | `-filter` | `-filter "amount > 100"` | Filter rows by expression | Yes (undoable) |
 | | `-mutate` | `-mutate "tax = amount * 0.1"` | Add or modify columns | Yes (undoable) |
 | | `-select` | `-select "id,name,!notes"` | Column projection and exclusion | Yes (undoable) |

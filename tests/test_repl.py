@@ -1037,8 +1037,14 @@ def test_repl_rm_df_with_loaded_file(sample_parquet):
     assert r.current_df is not None
     assert "penguins_sample.parquet" in r.tables
 
-    # 'rm df' should resolve 'df' alias to active table 'penguins_sample.parquet'
+    # 'rm df' is rejected when 'df' is not a table name
     r.execute_line("rm df", output_fn=outputs.append)
+    assert "table 'df' not found" in outputs[-1]
+    assert "penguins_sample.parquet" in r.tables
+
+    # Removing by explicit name or stem succeeds
+    outputs.clear()
+    r.execute_line("rm penguins_sample", output_fn=outputs.append)
     assert "Removed table 'penguins_sample.parquet'" in outputs[-1]
     assert "No tables remain loaded" in outputs[-1]
     assert r.current_df is None
@@ -1054,6 +1060,7 @@ def test_repl_rm_df_with_loaded_file(sample_parquet):
 
 def test_repl_rm_df_in_memory(sample_df):
     outputs = []
+    # Loaded directly as 'df'
     r = PytaeRepl(df=sample_df)
     assert r.current_df is not None
     assert "df" in r.tables
@@ -1093,7 +1100,8 @@ def test_repl_rm_multiple_tables_switches_active(sample_df, tmp_path):
 
     # Active table is 't2'
     assert r.path_str == "t2"
-    r.execute_line("rm df", output_fn=outputs.append)
+    # rm requires explicit table name
+    r.execute_line("rm t2", output_fn=outputs.append)
     assert "Removed table 't2'" in outputs[-1]
     assert "Switched active dataset to 't1'" in outputs[-1]
     assert r.path_str == "t1"
@@ -1136,20 +1144,10 @@ def test_repl_table_resolution_targeted_and_use(sample_parquet):
     r = PytaeRepl(path=sample_parquet)
     outputs = []
 
-    # 'df -cols' targeted command
-    r.execute_line("df -cols", output_fn=outputs.append)
-    assert "id" in outputs[-1]
-    assert "species" in outputs[-1]
-
     # 'penguins_sample -cols' stem targeted command
     outputs.clear()
     r.execute_line("penguins_sample -cols", output_fn=outputs.append)
     assert "body_mass_g" in outputs[-1]
-
-    # 'use df' alias
-    outputs.clear()
-    r.execute_line("use df", output_fn=outputs.append)
-    assert "Switched active dataset to 'penguins_sample.parquet'" in outputs[-1]
 
     # 'use penguins_sample' stem
     outputs.clear()

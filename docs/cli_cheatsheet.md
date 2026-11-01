@@ -400,7 +400,7 @@ session save v_done  # Save current session checkpoints under named directory
 session load my_lab  # Switch to persistent session and boot from its latest checkpoint
 sessions             # List all saved persistent sessions on disk
 rm session my_lab    # Delete a saved persistent session from disk
-rm df                # Remove active table from memory and free RAM (or rm df1 / rm *)
+rm orders            # Remove specific table from memory and free RAM (or rm *)
 clear                # Clear the terminal screen
 status               # Show active dataset shape, columns, and memory
 

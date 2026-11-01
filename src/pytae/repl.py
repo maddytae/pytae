@@ -634,7 +634,7 @@ DATASET INGEST & MANAGEMENT:
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   tables                 : List all loaded datasets in memory with row/col counts
   use <name>             : Switch active dataset (e.g. use df, use orders)
-  rm <table_name>        : Remove in-memory table (e.g. rm df1, rm df, or rm *)
+  rm <table_name>        : Remove in-memory table (e.g. rm df1, rm orders, or rm *)
 
 DATA TRANSFORMATION & PIPELINES:
   -filter <condition>    : Filter active table, e.g. -filter "species == 'Gentoo'"
@@ -1322,8 +1322,6 @@ class PytaeRepl:
         1. Exact match (e.g. 'penguins.parquet', 'df1')
         2. Case-insensitive match (e.g. 'PENGUINS.PARQUET')
         3. Path stem match (e.g. 'penguins' matches 'penguins.parquet' or 'data/penguins.parquet')
-        4. Universal alias 'df', 'data', 'self', 'active': resolves to current active table
-           (self.path_str) if set and in self.tables, or the sole loaded table if only one exists.
         """
         if not self.tables:
             return None
@@ -1337,11 +1335,6 @@ class PytaeRepl:
             stem = Path(k).stem.lower()
             if stem == target_lower:
                 return k
-        if target_lower in ("df", "data", "self", "active"):
-            if self.path_str and self.path_str in self.tables:
-                return self.path_str
-            if len(self.tables) == 1:
-                return next(iter(self.tables.keys()))
         return None
 
     def _build_prompt(self) -> str:
@@ -1785,7 +1778,7 @@ class PytaeRepl:
         # Remove table or checkpoint: `rm <table_name>` or `rm checkpoint <name>`
         if first_lower == "rm":
             if len(tokens) < 2:
-                output_fn("Usage: rm <table_name> (e.g. rm df1), rm df, or rm *")
+                output_fn("Usage: rm <table_name> (e.g. rm df1) or rm *")
                 return True
             target = tokens[1]
             if target.lower() == "session":
