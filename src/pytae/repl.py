@@ -979,14 +979,51 @@ class PytaeRepl:
         except Exception:
             pass
 
+    def _is_replayable_entry(self, entry: str) -> bool:
+        """Determine if a history entry is a state-mutating transformation or artifact export.
+
+        Exploratory previews (bare -pivot, -head, -describe, inspection, etc.) and session
+        checkpoints/comments are excluded from exported replay scripts.
+        """
+        clean = entry.strip()
+        if not clean or clean.startswith("#"):
+            return False
+        if clean.startswith("*checkpoint:") and clean.endswith("*"):
+            return False
+        if clean.startswith("checkpoint "):
+            return False
+        if clean.startswith("history") or clean == "tables" or clean == "checkpoints" or clean == "session":
+            return False
+
+        # Variable assignments (df = ..., df1 = df -pivot ..., etc.) are state mutations
+        if "=" in clean and not clean.startswith("-"):
+            left_part = clean.split("=", 1)[0].strip()
+            if left_part.isidentifier():
+                return True
+
+        # Ingestion commands: load <path> [as <alias>]
+        if clean.startswith("load "):
+            return True
+
+        # Export commands: -o <path> or pipeline ending with -o <path>
+        tokens = clean.split()
+        if any(t == "-o" or t.startswith("-o=") for t in tokens):
+            return True
+
+        # Session configuration commands (e.g. set checkpoint_format = parquet)
+        if clean.startswith("set "):
+            return True
+
+        # Explicit reset / restore of state
+        if clean.startswith("reset") or clean.startswith("restore "):
+            return True
+
+        # Otherwise, bare pipelines without assignment or -o (e.g. -pivot ..., -filter ..., -head 5) are exploratory previews
+        return False
+
     def _log_session_line(self, entry: str) -> None:
         clean = entry.strip()
-        # Omit checkpoints and metadata comments from replayable disk session history files
-        if (
-            (clean.startswith("*checkpoint:") and clean.endswith("*"))
-            or clean.startswith("checkpoint ")
-            or clean.startswith("#")
-        ):
+        if not self._is_replayable_entry(clean):
             return
         self.session_cmd_count += 1
         try:
@@ -1024,11 +1061,7 @@ class PytaeRepl:
                 ]
                 for entry in self.history:
                     clean = entry.strip()
-                    if (
-                        (clean.startswith("*checkpoint:") and clean.endswith("*"))
-                        or clean.startswith("checkpoint ")
-                        or clean.startswith("#")
-                    ):
+                    if not self._is_replayable_entry(clean):
                         continue
                     lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

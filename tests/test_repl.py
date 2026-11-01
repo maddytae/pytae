@@ -2246,17 +2246,17 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     # Execute commands, comments, and checkpoints
     r.execute_line("# my custom comment", output_fn=outputs.append)
     r.execute_line("df = sample:penguins", output_fn=outputs.append)
-    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)  # Exploratory preview (not mutating df)
     r.execute_line("checkpoint v1", output_fn=outputs.append)
-    r.execute_line("-mutate \"m = 1\"", output_fn=outputs.append)
+    r.execute_line("df = -mutate \"m = 1\"", output_fn=outputs.append)  # State mutation via assignment
 
-    # Check file content on disk in real time: checkpoints omitted
+    # Check file content on disk in real time: checkpoints & exploratory previews omitted
     content = r.session_log_path.read_text(encoding="utf-8")
     assert "# Pytae REPL Session History" in content
     assert "df = sample:penguins" in content
-    assert "-filter \"species == 'Gentoo'\"" in content
-    assert "*checkpoint: v1*" not in content
-    assert '-mutate "m = 1"' in content
+    assert '-filter "species == \'Gentoo\'"' not in content  # Exploratory preview omitted!
+    assert "*checkpoint: v1*" not in content  # Checkpoint omitted!
+    assert 'df = -mutate "m = 1"' in content  # State mutation preserved!
 
     # Test in-REPL history command: clean sequential numbering without comments
     outputs.clear()
@@ -2514,6 +2514,9 @@ def test_repl_input_canonical_path_and_checkpoint_omission_in_save(tmp_path, mon
     # Checkpoint baseline (live session artifact)
     r.execute_line("checkpoint baseline", output_fn=outputs.append)
 
+    # Bare exploratory preview (e.g. -describe)
+    r.execute_line("-describe", output_fn=outputs.append)
+
     # Transform
     r.execute_line('orders = orders -mutate "doubled = val * 2"', output_fn=outputs.append)
 
@@ -2530,14 +2533,17 @@ def test_repl_input_canonical_path_and_checkpoint_omission_in_save(tmp_path, mon
     # 2. Checkpoints MUST be omitted from replay script
     assert "checkpoint baseline" not in content
     assert "*checkpoint" not in content
-    # 3. Transformation MUST be preserved
+    # 3. Exploratory bare preview (-describe) MUST be omitted from replay script
+    assert "-describe" not in content
+    # 4. State-mutating transformation MUST be preserved
     assert 'orders = orders -mutate "doubled = val * 2"' in content
 
-    # 4. In-REPL history still displays all commands including checkpoint
+    # 5. In-REPL history still displays all commands including checkpoint and -describe
     outputs.clear()
     r.execute_line("history", output_fn=outputs.append)
     h_out = "\n".join(outputs)
     assert "checkpoint baseline" in h_out
+    assert "-describe" in h_out
 
 
 

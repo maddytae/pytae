@@ -33916,14 +33916,51 @@ class PytaeRepl:
         except Exception:
             pass
 
+    def _is_replayable_entry(self, entry: str) -> bool:
+        """Determine if a history entry is a state-mutating transformation or artifact export.
+
+        Exploratory previews (bare -pivot, -head, -describe, inspection, etc.) and session
+        checkpoints/comments are excluded from exported replay scripts.
+        """
+        clean = entry.strip()
+        if not clean or clean.startswith("#"):
+            return False
+        if clean.startswith("*checkpoint:") and clean.endswith("*"):
+            return False
+        if clean.startswith("checkpoint "):
+            return False
+        if clean.startswith("history") or clean == "tables" or clean == "checkpoints" or clean == "session":
+            return False
+
+        # Variable assignments (df = ..., df1 = df -pivot ..., etc.) are state mutations
+        if "=" in clean and not clean.startswith("-"):
+            left_part = clean.split("=", 1)[0].strip()
+            if left_part.isidentifier():
+                return True
+
+        # Ingestion commands: load <path> [as <alias>]
+        if clean.startswith("load "):
+            return True
+
+        # Export commands: -o <path> or pipeline ending with -o <path>
+        tokens = clean.split()
+        if any(t == "-o" or t.startswith("-o=") for t in tokens):
+            return True
+
+        # Session configuration commands (e.g. set checkpoint_format = parquet)
+        if clean.startswith("set "):
+            return True
+
+        # Explicit reset / restore of state
+        if clean.startswith("reset") or clean.startswith("restore "):
+            return True
+
+        # Otherwise, bare pipelines without assignment or -o (e.g. -pivot ..., -filter ..., -head 5) are exploratory previews
+        return False
+
     def _log_session_line(self, entry: str) -> None:
         clean = entry.strip()
-        # Omit checkpoints and metadata comments from replayable disk session history files
-        if (
-            (clean.startswith("*checkpoint:") and clean.endswith("*"))
-            or clean.startswith("checkpoint ")
-            or clean.startswith("#")
-        ):
+        if not self._is_replayable_entry(clean):
             return
         self.session_cmd_count += 1
         try:
@@ -33961,11 +33998,7 @@ class PytaeRepl:
                 ]
                 for entry in self.history:
                     clean = entry.strip()
-                    if (
-                        (clean.startswith("*checkpoint:") and clean.endswith("*"))
-                        or clean.startswith("checkpoint ")
-                        or clean.startswith("#")
-                    ):
+                    if not self._is_replayable_entry(clean):
                         continue
                     lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -50873,17 +50906,17 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     # Execute commands, comments, and checkpoints
     r.execute_line("# my custom comment", output_fn=outputs.append)
     r.execute_line("df = sample:penguins", output_fn=outputs.append)
-    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)  # Exploratory preview (not mutating df)
     r.execute_line("checkpoint v1", output_fn=outputs.append)
-    r.execute_line("-mutate \"m = 1\"", output_fn=outputs.append)
+    r.execute_line("df = -mutate \"m = 1\"", output_fn=outputs.append)  # State mutation via assignment
 
-    # Check file content on disk in real time: checkpoints omitted
+    # Check file content on disk in real time: checkpoints & exploratory previews omitted
     content = r.session_log_path.read_text(encoding="utf-8")
     assert "# Pytae REPL Session History" in content
     assert "df = sample:penguins" in content
-    assert "-filter \"species == 'Gentoo'\"" in content
-    assert "*checkpoint: v1*" not in content
-    assert '-mutate "m = 1"' in content
+    assert '-filter "species == \'Gentoo\'"' not in content  # Exploratory preview omitted!
+    assert "*checkpoint: v1*" not in content  # Checkpoint omitted!
+    assert 'df = -mutate "m = 1"' in content  # State mutation preserved!
 
     # Test in-REPL history command: clean sequential numbering without comments
     outputs.clear()
@@ -51134,12 +51167,15 @@ def test_repl_input_canonical_path_and_checkpoint_omission_in_save(tmp_path, mon
     r = PytaeRepl()
 
     # Load file with relative path
-    rel_path = f"../data_folder/my_orders.parquet"
+    rel_path = "../data_folder/my_orders.parquet"
     r.execute_line(f"orders = {rel_path}", output_fn=outputs.append)
     assert "orders" in r.tables
 
     # Checkpoint baseline (live session artifact)
     r.execute_line("checkpoint baseline", output_fn=outputs.append)
+
+    # Bare exploratory preview (e.g. -describe)
+    r.execute_line("-describe", output_fn=outputs.append)
 
     # Transform
     r.execute_line('orders = orders -mutate "doubled = val * 2"', output_fn=outputs.append)
@@ -51157,14 +51193,17 @@ def test_repl_input_canonical_path_and_checkpoint_omission_in_save(tmp_path, mon
     # 2. Checkpoints MUST be omitted from replay script
     assert "checkpoint baseline" not in content
     assert "*checkpoint" not in content
-    # 3. Transformation MUST be preserved
+    # 3. Exploratory bare preview (-describe) MUST be omitted from replay script
+    assert "-describe" not in content
+    # 4. State-mutating transformation MUST be preserved
     assert 'orders = orders -mutate "doubled = val * 2"' in content
 
-    # 4. In-REPL history still displays all commands including checkpoint
+    # 5. In-REPL history still displays all commands including checkpoint and -describe
     outputs.clear()
     r.execute_line("history", output_fn=outputs.append)
     h_out = "\n".join(outputs)
     assert "checkpoint baseline" in h_out
+    assert "-describe" in h_out
 
 ################################################################################
 # FILE: tests/test_select.py
