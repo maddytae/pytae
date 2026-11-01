@@ -381,6 +381,10 @@ pytae> sessions
 
 # Inside the REPL prompt:
 # 1. State Management & Undo
+tables               # List all tables loaded in memory with row/col counts
+use orders           # Switch active dataset cursor to 'orders'
+rename df1 customers # Zero-copy O(1) in-memory table rename
+diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
 undo                 # Revert last transformation
 redo                 # Re-apply last undone transformation
 reset                # Revert to latest checkpoint (or initial dataset if none)
@@ -399,6 +403,7 @@ rm session my_lab    # Delete a saved persistent session from disk
 rm orders            # Remove specific table from memory and free RAM (or rm *)
 clear                # Clear the terminal screen
 status               # Show active dataset shape, columns, and memory
+[Tab]                # Autocomplete commands, flags, tables, columns, and paths
 
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
 pytae> -filter "species == 'Gentoo'"
@@ -410,7 +415,7 @@ pytae> -cols asc                                             # Column names sort
 pytae> -cols | grep mass                                     # Pipe command output to shell utility
 
 # 3. Direct Query Engines & Export
-pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1"
+pytae> -sql "SELECT species, AVG(body_mass_g) FROM this GROUP BY 1" # 'this', 'data', 'self', 'df' auto-registered
 pytae> py df.shape
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard

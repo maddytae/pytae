@@ -18,6 +18,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
 - [Multi-Table Workbench Operations](#multi-table-workbench-operations)
   - [Listing Tables (`tables`)](#listing-tables-tables)
   - [Switching Active Tables (`use <name>`)](#switching-active-tables-use-name)
+  - [Renaming Tables (`rename <old> <new>`)](#renaming-tables-rename-old-new)
   - [Subject-First Execution (`<tbl> -<cmd>`)](#subject-first-execution-tbl--cmd)
   - [Multi-Table Joins (`-join`)](#multi-table-joins--join)
   - [Assigning Results (`<var> = <tbl> -<pipeline>`)](#assigning-results-var--tbl--pipeline)
@@ -28,10 +29,13 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Previews (`-head`, `-tail`, `-sample`)](#previews--head--tail--sample)
   - [Metadata (`-shape`, `-cols`, `-schema`, `-dtype`, `-nulls`)](#metadata--shape--cols--schema--dtype--nulls)
   - [Summaries (`-glimpse`, `-describe`, `-freq`)](#summaries--glimpse--describe--freq)
+  - [Comparing Datasets (`diff <tbl1> <tbl2>`)](#comparing-datasets-diff-tbl1-tbl2)
 - [SQL & Python Interop](#sql--python-interop)
   - [ANSI SQL across Tables (`-sql`)](#ansi-sql-across-tables--sql)
+  - [Active Dataset Aliases (`data`, `this`, `self`, `df`)](#active-dataset-aliases-data-this-self-df)
   - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Fluent Python Execution (`py <expr>`)](#fluent-python-execution-py-expr)
+- [Tab Autocompletion & Navigation](#tab-autocompletion--navigation)
 - [Memory Management & Garbage Collection](#memory-management--garbage-collection)
   - [Removing Tables (`rm <name>`, `rm *`)](#removing-tables-rm-name-rm-)
   - [Immediate Memory Deallocation & OS Trimming](#immediate-memory-deallocation--os-trimming)
@@ -184,6 +188,17 @@ orders: 100,000 rows x 6 cols (tip: 'use orders' to switch active dataset)
 > [!NOTE]
 > Bare table names (like `orders` or `df`) display table dimensions without altering the active table cursor. To switch the active table, explicitly use `use <name>`.
 
+### Renaming Tables (`rename <old> <new>`)
+Rename an in-memory dataset via instant $O(1)$ zero-copy pointer reassignment:
+
+```text
+# Rename table df1 to customers
+pytae [df1, orders]> rename df1 customers
+Renamed table 'df1' to 'customers'.
+pytae [customers, orders]>
+```
+All references in the multi-table workbench, table source tracking, and active cursor update instantaneously without copying underlying Arrow memory buffers.
+
 ### Subject-First Execution (`<tbl> -<cmd>`)
 Execute commands on non-active tables without switching cursors:
 
@@ -296,6 +311,23 @@ pytae> -describe         # Descriptive statistics (mean, std, min, max, quartile
 pytae> -freq species     # Frequency distribution table for column
 ```
 
+### Comparing Datasets (`diff <tbl1> <tbl2>`)
+Compare two in-memory tables, compare the active dataset against another table, or compare against a saved checkpoint:
+
+```text
+# Compare active table against orders_backup
+pytae [orders]> diff orders_backup
+
+# Explicitly compare two loaded tables
+pytae> diff df1 df2
+
+# Compare with numeric float tolerance
+pytae> diff df1 df2 -tol 0.001
+
+# Compare active table against a saved checkpoint
+pytae [df: 344x7]> diff snap1
+```
+
 ---
 
 ## SQL & Python Interop
@@ -314,6 +346,17 @@ shape: (1,240, 3)
 │ 1001     ┆ Jane Doe    ┆ 245.50 │
 │ 1004     ┆ John Smith  ┆ 512.00 │
 └──────────┴─────────────┴────────┘
+```
+
+### Active Dataset Aliases (`data`, `this`, `self`, `df`)
+In addition to explicit table names, the active dataset is automatically registered in Polars SQLContext under `data`, `this`, `self`, and `df`. This enables writing generic, table-agnostic SQL queries without hardcoding the variable name:
+
+```text
+# Query active table directly via 'this' or 'data'
+pytae [customers: 10,000x5]> -sql "SELECT country, COUNT(*) as n FROM this GROUP BY country"
+
+# Join active table 'self' with a secondary table
+pytae [orders, cust]> -sql "SELECT self.*, cust.name FROM self JOIN cust ON self.cust_id = cust.id"
 ```
 
 ### SQL Variable Assignment (`df3 = -sql "..."`)
@@ -645,6 +688,19 @@ pytae [df: 344x7]> -head 50 | wc -l
 
 ---
 
+## Tab Autocompletion & Navigation
+
+The Pytae REPL provides context-aware autocompletion via standard `readline`:
+
+- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `restore`, etc.).
+- **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-select`, `-mutate`, `-arrange`, `-pivot`, etc.).
+- **Table & Checkpoint Names**: Autocompletes loaded tables after `use `, `rename `, `diff `, and `rm `, or checkpoints after `restore `.
+- **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names of the active dataset or specified table prefix.
+- **File Paths**: Autocompletes local filesystem files and directories after `load `, `-o `, or assignment (`df = `).
+- **Settings**: Autocompletes configuration keys and options after `set ` (e.g. `set checkpoint_format = ` -> `ipc`, `parquet`, `arrow`).
+
+---
+
 ## Complete REPL Command Reference
 
 | Category | Command | Syntax Example | Description | Mutates State? |
@@ -655,6 +711,7 @@ pytae [df: 344x7]> -head 50 | wc -l
 | **Tables** | `tables` | `tables` | List loaded tables, shapes, and sources | No |
 | | Bare name | `df1` | Display table dimensions without switching cursor | No |
 | | `use` | `use df1` | Switch active dataset | Yes (active) |
+| | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table rename | Yes |
 | | Subject-first | `df1 -head 5`, `df2 -shape` | Execute command directly on named table | Depends |
 | | `rm` | `rm df1`, `rm orders`, `rm *` | Remove table from memory (immediate OS trim) | Yes |
 | **Transform** | `-filter` | `-filter "amount > 100"` | Filter rows by expression | Yes (undoable) |
@@ -672,7 +729,8 @@ pytae [df: 344x7]> -head 50 | wc -l
 | | `-dtype` / `-nulls` | `-dtype asc`, `-nulls` | Column types and missing value counts | No |
 | | `-glimpse` | `-glimpse` | Transposed schema and preview values | No |
 | | `-describe` | `-describe` | Statistical summary of numeric columns | No |
-| **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across all loaded tables | Yes (undoable) |
+| | `diff` | `diff df1 df2 [-tol 0.01]` | Compare two tables or active table against target | No |
+| **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across tables (`data`, `this`, `self`, `df`) | Yes (undoable) |
 | | SQL Assign | `df4 = -sql "..."` | Create new table from SQL query | Yes |
 | | `py` | `py pldf.columns` | Evaluate Python/Polars expression | No |
 | **State & Undo** | `undo` | `undo` | Revert last transformation step (up to 10) | Yes (undoable) |
@@ -692,6 +750,7 @@ pytae [df: 344x7]> -head 50 | wc -l
 | | `sessions` | `sessions` | List all persistent sessions on disk | No |
 | | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
+| | `set session` | `set session = <name>` | Bind REPL to persistent session | No |
 | | `set save` | `set save = pipeline.txt` | Set target replay script path upfront | No |
 | | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
@@ -700,3 +759,4 @@ pytae [df: 344x7]> -head 50 | wc -l
 | | `gc` | `gc` | Force garbage collection and OS memory trim | No |
 | | `clear` | `clear` | Clear terminal screen | No |
 | | `exit` | `exit [-s [path]]` | Exit REPL (optionally save replay script) | — |
+| **Navigation** | `[Tab]` | `[Tab]` | Autocomplete commands, flags, tables, columns, paths | No |

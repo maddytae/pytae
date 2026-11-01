@@ -2602,3 +2602,175 @@ def test_repl_rm_memory_deallocation_weakref():
     assert r.initial_df is None
 
 
+def test_repl_rename_table_zero_copy():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    assert "df1" in r.tables
+    assert r.path_str == "df1"
+    original_df = r.tables["df1"]
+
+    # Valid rename
+    outputs.clear()
+    r.execute_line("rename df1 customers", output_fn=outputs.append)
+    assert "Renamed table 'df1' to 'customers'." in outputs[0]
+    assert "df1" not in r.tables
+    assert "customers" in r.tables
+    assert r.path_str == "customers"
+    # Ensure zero-copy pointer equivalence
+    assert r.tables["customers"] is original_df
+    assert r.current_df is original_df
+
+    # Error handling: nonexistent table
+    outputs.clear()
+    r.execute_line("rename nonexistent foo", output_fn=outputs.append)
+    assert "table 'nonexistent' not found" in outputs[0]
+
+    # Error handling: invalid identifier
+    outputs.clear()
+    r.execute_line("rename customers 123bad", output_fn=outputs.append)
+    assert "invalid table name" in outputs[0]
+
+    # Error handling: name collision
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    outputs.clear()
+    r.execute_line("rename customers df2", output_fn=outputs.append)
+    assert "already exists" in outputs[0]
+
+    # Missing args
+    outputs.clear()
+    r.execute_line("rename customers", output_fn=outputs.append)
+    assert "Usage: rename <old_name> <new_name>" in outputs[0]
+    r.close()
+
+
+def test_repl_diff_command():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = df1 -head 50", output_fn=outputs.append)
+
+    # diff <tbl1> <tbl2>
+    outputs.clear()
+    r.execute_line("diff df1 df2", output_fn=outputs.append)
+    combined = "\n".join(outputs)
+    assert "Comparing 'df1' vs 'df2':" in combined
+    assert "Rows:" in combined
+
+    # diff <tbl2> with active table
+    outputs.clear()
+    r.execute_line("diff df2", output_fn=outputs.append)
+    combined = "\n".join(outputs)
+    assert "Comparing 'df2' vs 'df2':" in combined or "Comparing 'df1' vs 'df2':" in combined
+
+    # diff with tolerance
+    outputs.clear()
+    r.execute_line("diff df1 df2 -tol 0.01", output_fn=outputs.append)
+    combined = "\n".join(outputs)
+    assert "Rows:" in combined
+
+    # diff with checkpoint
+    r.execute_line("checkpoint snap1", output_fn=outputs.append)
+    r.execute_line("df2 -mutate \"x = 1\"", output_fn=outputs.append)
+    outputs.clear()
+    r.execute_line("diff df2 snap1", output_fn=outputs.append)
+    combined = "\n".join(outputs)
+    assert "checkpoint:snap1" in combined
+
+    # diff non-existent target
+    outputs.clear()
+    r.execute_line("diff nonexistent_target", output_fn=outputs.append)
+    assert "not found" in outputs[0]
+    r.close()
+
+
+def test_repl_sql_data_this_self_registration():
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("t1 = sample:penguins", output_fn=outputs.append)
+
+    # Query with 'data'
+    r.execute_line('res1 = -sql "SELECT COUNT(*) as cnt FROM data"', output_fn=outputs.append)
+    assert "res1" in r.tables
+    assert r.tables["res1"]["cnt"][0] == 344
+
+    # Switch back to t1 and query with 'this'
+    r.execute_line("use t1", output_fn=outputs.append)
+    r.execute_line('res2 = -sql "SELECT COUNT(*) as cnt FROM this"', output_fn=outputs.append)
+    assert "res2" in r.tables
+    assert r.tables["res2"]["cnt"][0] == 344
+
+    # Switch back to t1 and query with 'self'
+    r.execute_line("use t1", output_fn=outputs.append)
+    r.execute_line('res3 = -sql "SELECT COUNT(*) as cnt FROM self"', output_fn=outputs.append)
+    assert "res3" in r.tables
+    assert r.tables["res3"]["cnt"][0] == 344
+
+    # Switch back to t1 and assign from SQL with 'this' and group by
+    r.execute_line("use t1", output_fn=outputs.append)
+    r.execute_line('res4 = -sql "SELECT species, COUNT(*) as cnt FROM this GROUP BY species"', output_fn=outputs.append)
+    assert "res4" in r.tables
+    assert r.tables["res4"].shape[0] == 3
+    r.close()
+
+
+def test_repl_tab_autocompletions():
+    r = PytaeRepl()
+    r.execute_line("customers = sample:penguins")
+    r.execute_line("orders = sample:tips")
+    r.execute_line("checkpoint cp_v1")
+
+    # Table completion after 'use '
+    matches = r._get_completions("cu", "use cu")
+    assert matches == ["customers"]
+
+    # Table completion after 'rename '
+    matches = r._get_completions("or", "rename or")
+    assert matches == ["orders"]
+
+    # Checkpoint completion after 'restore '
+    matches = r._get_completions("cp", "restore cp")
+    assert matches == ["cp_v1"]
+
+    # Tables & checkpoints after 'diff '
+    matches = r._get_completions("c", "diff c")
+    assert "customers" in matches and "cp_v1" in matches
+
+    # Flags completion
+    matches = r._get_completions("-fil", "-fil")
+    assert "-filter" in matches
+
+    # Columns completion in pipeline (active dataset is orders, so test orders columns)
+    matches = r._get_completions("total_", "-select total_")
+    assert "total_bill" in matches
+
+    # Columns completion for specific table prefix
+    matches = r._get_completions("bill_", "customers -select bill_")
+    assert "bill_length_mm" in matches
+    assert "bill_depth_mm" in matches
+
+    # SQL context completion
+    matches = r._get_completions("th", "-sql SELECT * FROM th")
+    assert "this" in matches
+
+    matches = r._get_completions("da", "-sql SELECT * FROM da")
+    assert "data" in matches
+
+    matches = r._get_completions("se", "-sql SELECT * FROM se")
+    assert "self" in matches
+
+    # Config completion after 'set '
+    matches = r._get_completions("ch", "set ch")
+    assert "checkpoint_format" in matches
+
+    matches = r._get_completions("par", "set checkpoint_format = par")
+    assert "parquet" in matches
+
+    # Replay entry includes rename and use
+    assert r._is_replayable_entry("rename df1 customers") is True
+    assert r._is_replayable_entry("use customers") is True
+
+    r.close()
+
+
+

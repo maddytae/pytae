@@ -249,6 +249,17 @@ def set_sessions_dir(path: Path | str | None) -> Path:
     return p
 
 
+def _get_saved_session_names() -> list[str]:
+    """Return list of saved persistent session names on disk."""
+    s_dir = get_sessions_dir()
+    if not s_dir.exists():
+        return []
+    try:
+        return sorted([p.name for p in s_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+    except Exception:
+        return []
+
+
 def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
     """List all saved persistent Pytae sessions stored on disk."""
     s_dir = get_sessions_dir()
@@ -556,8 +567,39 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
             render()
 
 
-def _init_readline() -> None:
-    """Initialize readline history file and arrow key navigation."""
+def _complete_paths(text: str) -> list[str]:
+    """Provide filesystem path completions for files and directories."""
+    quote = ""
+    clean_text = text
+    if clean_text.startswith(('"', "'")):
+        quote = clean_text[0]
+        clean_text = clean_text[1:]
+    raw = os.path.expanduser(clean_text)
+    if os.path.isdir(raw) and clean_text and not clean_text.endswith(os.sep):
+        return [quote + clean_text + os.sep]
+    dirname = os.path.dirname(raw) or "."
+    prefix = os.path.basename(raw)
+    orig_dir = os.path.dirname(clean_text)
+    if orig_dir and not orig_dir.endswith(os.sep):
+        orig_dir += os.sep
+    try:
+        entries = os.listdir(dirname)
+    except Exception:
+        return []
+    matches = []
+    for entry in sorted(entries):
+        if entry.startswith(".") and not prefix.startswith("."):
+            continue
+        if entry.startswith(prefix):
+            full = os.path.join(dirname, entry)
+            is_dir = os.path.isdir(full)
+            m = (orig_dir if orig_dir else "") + entry + (os.sep if is_dir else "")
+            matches.append(quote + m)
+    return matches
+
+
+def _init_readline(completer_fn: Callable[[str, int], str | None] | None = None) -> None:
+    """Initialize readline history file, arrow key navigation, and tab completion."""
     if readline is None:
         return
     doc = getattr(readline, "__doc__", "") or ""
@@ -568,6 +610,7 @@ def _init_readline() -> None:
             readline.parse_and_bind(r"bind '\e[B' ed-next-history")
             readline.parse_and_bind(r"bind '\eOA' ed-prev-history")
             readline.parse_and_bind(r"bind '\eOB' ed-next-history")
+            readline.parse_and_bind("bind ^I rl_complete")
         except Exception:
             pass
     else:
@@ -582,6 +625,15 @@ def _init_readline() -> None:
             readline.parse_and_bind(r'"\eOD": backward-char')
             readline.parse_and_bind(r'"\e[H": beginning-of-line')
             readline.parse_and_bind(r'"\e[F": end-of-line')
+            readline.parse_and_bind("tab: complete")
+        except Exception:
+            pass
+    if completer_fn is not None and hasattr(readline, "set_completer"):
+        try:
+            readline.set_completer(completer_fn)
+            # Exclude '-', '_', '/', and '.' from completion delimiters so flags, identifiers, and file paths complete cleanly
+            if hasattr(readline, "set_completer_delims"):
+                readline.set_completer_delims(" \t\n\"'=(),;[]")
         except Exception:
             pass
     hist_file = _get_readline_hist_file()
@@ -651,6 +703,7 @@ DATASET INGEST & MANAGEMENT:
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   tables                 : List all loaded datasets in memory with row/col counts
   use <name>             : Switch active dataset (e.g. use df, use orders)
+  rename <old> <new>     : Rename in-memory table (zero-copy alias reassignment)
   rm <table_name>        : Remove in-memory table (e.g. rm df1, rm orders, or rm *)
 
 DATA TRANSFORMATION & PIPELINES:
@@ -673,6 +726,7 @@ INSPECTION & EXPORT:
   -schema                : Display structured schema breakdown (columns, dtypes, nulls, cardinality)
   -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
   -dtype / -nulls        : Inspect schema dtypes and missing value counts
+  diff [<tbl1>] <tbl2>   : Compare two tables or active table against <tbl2> (or checkpoint)
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
@@ -697,9 +751,12 @@ STATE NAVIGATION (Undoable):
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
 
 QUERY & PYTHON EXPRESSIONS:
-  -sql "<query>"         : Run ANSI SQL on active table or across named tables
-                           e.g. -sql "SELECT df1.*, df2.name FROM df1 JOIN df2 ON df1.id = df2.id"
+  -sql "<query>"         : Run ANSI SQL on active table ('data', 'this', 'self', 'df') or named tables
+                           e.g. -sql "SELECT this.*, df2.name FROM this JOIN df2 ON this.id = df2.id"
   py <expr>              : Evaluate Python expression with 'df' (pytae) and 'pldf' (polars)
+
+AUTOCOMPLETION & SHORTCUTS:
+  [Tab]                  : Autocomplete table names, column names, commands, flags, and file paths
 ================================================================================\
 """
 
@@ -1007,6 +1064,7 @@ class PytaeRepl:
         timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
         self.session_log_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
         self.session_cmd_count: int = 0
+        self._completion_matches: list[str] = []
 
         init_target = str(path) if path else (str(paths[0]) if paths else "(none)")
         header = [
@@ -1054,10 +1112,12 @@ class PytaeRepl:
         if clean.startswith("set "):
             return True
 
-        # Explicit reset / restore / table removal of state
+        # Explicit reset / restore / table removal or mutation of state
         if clean.startswith("reset") or clean.startswith("restore "):
             return True
         if clean.startswith("rm ") and not clean.startswith(("rm checkpoint", "rm session", "rm cp", "rm tag")):
+            return True
+        if clean.startswith("rename ") or clean.startswith("use "):
             return True
 
         # Otherwise, bare pipelines without assignment or -o (e.g. -pivot ..., -filter ..., -head 5) are exploratory previews
@@ -1761,6 +1821,16 @@ class PytaeRepl:
 
         if first_lower == "session":
             self._cmd_session(tokens[1:], output_fn)
+            return True
+
+        # Rename an in-memory table (`rename <old> <new>`)
+        if first_lower == "rename" and len(tokens) >= 2 and "=" not in line:
+            self._cmd_rename(tokens[1:], output_fn)
+            return True
+
+        # Compare two datasets (`diff <tbl1> <tbl2>` or `diff <tbl>`)
+        if first_lower == "diff":
+            self._cmd_diff(tokens[1:], output_fn)
             return True
 
         # Reject bare pipeline verbs and suggest hyphenated CLI flag
@@ -2846,6 +2916,154 @@ class PytaeRepl:
             status = " [active]" if is_active else ""
             output_fn(f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols{source_info}{status}")
 
+    def _cmd_rename(self, args: list[str], output_fn: Callable[[str], None]) -> None:
+        """Rename an in-memory table via zero-copy dictionary key reassignment."""
+        if len(args) < 2:
+            output_fn("Usage: rename <old_name> <new_name> (e.g. rename df1 customers)")
+            return
+
+        old_name, new_name = args[0].strip(), args[1].strip()
+        resolved_old = self._resolve_table_name(old_name)
+        if resolved_old is None:
+            avail = ", ".join(self.tables.keys()) if self.tables else "none"
+            output_fn(f"pytae: table '{old_name}' not found. Available tables: {avail}")
+            return
+
+        if not new_name.isidentifier() or new_name.lower() in _BARE_PIPELINE_VERBS:
+            output_fn(f"pytae: invalid table name '{new_name}'. Must be a valid Python identifier.")
+            return
+
+        if new_name in self.tables and new_name != resolved_old:
+            output_fn(f"pytae: table '{new_name}' already exists. Remove it first with 'rm {new_name}' before renaming.")
+            return
+
+        # Zero-copy dictionary key reassignment
+        self.tables[new_name] = self.tables.pop(resolved_old)
+        if resolved_old in self.orig_tables:
+            self.orig_tables[new_name] = self.orig_tables.pop(resolved_old)
+        if resolved_old in self.initial_tables:
+            self.initial_tables[new_name] = self.initial_tables.pop(resolved_old)
+        if resolved_old in self.table_sources:
+            self.table_sources[new_name] = self.table_sources.pop(resolved_old)
+
+        if self.path_str == resolved_old:
+            self.path_str = new_name
+            self.current_df = self.tables[new_name]
+            self.orig_df = self.orig_tables.get(new_name)
+            self.initial_df = self.initial_tables.get(new_name)
+
+        self._record_history(f"rename {resolved_old} {new_name}")
+        output_fn(f"Renamed table '{resolved_old}' to '{new_name}'.")
+
+    def _cmd_diff(self, args: list[str], output_fn: Callable[[str], None]) -> None:
+        """Compare two tables or compare active table against another table / checkpoint."""
+        if not args:
+            output_fn("Usage: diff <tbl1> <tbl2> or diff <tbl2> (to compare active table with <tbl2>)")
+            return
+
+        left_tbl_name: str | None = None
+        right_tbl_name: str | None = None
+        tol_val: float = 0.0
+
+        clean_args = []
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if a in ("-tol", "--tol") and i + 1 < len(args):
+                try:
+                    tol_val = float(args[i + 1])
+                except ValueError:
+                    pass
+                i += 2
+            elif a.startswith(("-tol=", "--tol=")):
+                try:
+                    tol_val = float(a.split("=", 1)[1])
+                except ValueError:
+                    pass
+                i += 1
+            else:
+                clean_args.append(a)
+                i += 1
+
+        if len(clean_args) == 1:
+            if self.current_df is None:
+                output_fn("pytae: no active dataset loaded to compare. Usage: diff <tbl1> <tbl2>")
+                return
+            left_tbl_name = self.path_str or "active"
+            left_df = self.current_df
+            right_target = clean_args[0]
+            resolved_right = self._resolve_table_name(right_target)
+            if resolved_right is not None:
+                right_tbl_name = resolved_right
+                right_df = self.tables[resolved_right]
+            elif right_target in self.checkpoints:
+                right_tbl_name = f"checkpoint:{right_target}"
+                right_df = self._get_checkpoint_df(right_target)
+                if right_df is None:
+                    output_fn(f"pytae: could not load table from checkpoint '{right_target}'.")
+                    return
+            else:
+                try:
+                    p, right_df = self._read_file_to_df(right_target)
+                    right_tbl_name = p.name
+                except Exception:
+                    avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                    output_fn(f"pytae: comparison target '{right_target}' not found. Available: {avail}")
+                    return
+        elif len(clean_args) >= 2:
+            left_target, right_target = clean_args[0], clean_args[1]
+            resolved_left = self._resolve_table_name(left_target)
+            if resolved_left is not None:
+                left_tbl_name = resolved_left
+                left_df = self.tables[resolved_left]
+            elif left_target in self.checkpoints:
+                left_tbl_name = f"checkpoint:{left_target}"
+                left_df = self._get_checkpoint_df(left_target)
+                if left_df is None:
+                    output_fn(f"pytae: could not load table from checkpoint '{left_target}'.")
+                    return
+            else:
+                try:
+                    p, left_df = self._read_file_to_df(left_target)
+                    left_tbl_name = p.name
+                except Exception:
+                    avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                    output_fn(f"pytae: left comparison table '{left_target}' not found. Available: {avail}")
+                    return
+
+            resolved_right = self._resolve_table_name(right_target)
+            if resolved_right is not None:
+                right_tbl_name = resolved_right
+                right_df = self.tables[resolved_right]
+            elif right_target in self.checkpoints:
+                right_tbl_name = f"checkpoint:{right_target}"
+                right_df = self._get_checkpoint_df(right_target)
+                if right_df is None:
+                    output_fn(f"pytae: could not load table from checkpoint '{right_target}'.")
+                    return
+            else:
+                try:
+                    p, right_df = self._read_file_to_df(right_target)
+                    right_tbl_name = p.name
+                except Exception:
+                    avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                    output_fn(f"pytae: right comparison table '{right_target}' not found. Available: {avail}")
+                    return
+        else:
+            output_fn("Usage: diff <tbl1> <tbl2> or diff <tbl2>")
+            return
+
+        from pytae import diff as pt_diff
+
+        try:
+            diff_res = pt_diff(left_df, right_df, tol=tol_val)
+            # Re-label header for clarity
+            header = f"Comparing '{left_tbl_name}' vs '{right_tbl_name}':"
+            output_fn(header)
+            output_fn(diff_res)
+        except Exception as exc:
+            output_fn(f"pytae diff error: {exc}")
+
     def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
         resolved = self._resolve_table_name(name)
         if resolved is None:
@@ -2867,8 +3085,12 @@ class PytaeRepl:
             try:
                 ctx = pl.SQLContext()
                 if self.current_df is not None:
-                    ctx.register("df", self.current_df)
                     ctx.register("data", self.current_df)
+                    ctx.register("df", self.current_df)
+                    ctx.register("this", self.current_df)
+                    ctx.register("self", self.current_df)
+                    if self.path_str:
+                        ctx.register(self.path_str, self.current_df)
                 for tbl_name, tbl_df in self.tables.items():
                     ctx.register(tbl_name, tbl_df)
                 for cp_name in self.checkpoints:
@@ -3315,10 +3537,14 @@ class PytaeRepl:
             return
         try:
             ctx = pl.SQLContext()
-            ctx.register("df", self.current_df)
             ctx.register("data", self.current_df)
+            ctx.register("df", self.current_df)
+            ctx.register("this", self.current_df)
+            ctx.register("self", self.current_df)
             if self.path and self.path.stem:
                 ctx.register(self.path.stem, self.current_df)
+            if self.path_str and self.path_str not in ("df", "data", "this", "self"):
+                ctx.register(self.path_str, self.current_df)
             for tbl_name, tbl_df in self.tables.items():
                 ctx.register(tbl_name, tbl_df)
             for cp_name in self.checkpoints:
@@ -3531,13 +3757,169 @@ class PytaeRepl:
 
         self._record_history(line)
 
+    def _complete(self, text: str, state: int) -> str | None:
+        """Readline tab-autocompletion callback."""
+        if state == 0:
+            line_buf = ""
+            begidx = -1
+            endidx = -1
+            if readline is not None:
+                try:
+                    line_buf = readline.get_line_buffer()
+                    begidx = readline.get_begidx()
+                    endidx = readline.get_endidx()
+                except Exception:
+                    pass
+            self._completion_matches = self._get_completions(text, line_buf, begidx, endidx)
+        if state < len(self._completion_matches):
+            return self._completion_matches[state]
+        return None
+
+    def _get_completions(
+        self,
+        text: str,
+        line_buf: str = "",
+        begidx: int = -1,
+        endidx: int = -1,
+    ) -> list[str]:
+        """Compute candidate autocompletions based on context."""
+        if begidx >= 0:
+            prefix = line_buf[:begidx]
+        elif text and line_buf.endswith(text):
+            prefix = line_buf[:-len(text)]
+        else:
+            prefix = line_buf
+
+        prefix_tokens = prefix.strip().split()
+        first_token = prefix_tokens[0].lower() if prefix_tokens else ""
+        last_token = prefix_tokens[-1].lower() if prefix_tokens else ""
+
+        # Case: 'set ' configuration keys and values
+        if first_token == "set":
+            if last_token == "set":
+                configs = ["checkpoint_format", "sessions_dir", "session", "save"]
+                return [c for c in configs if c.startswith(text)]
+            if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
+                return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
+            if "session" in [t.lower() for t in prefix_tokens]:
+                avail = ["none"] + _get_saved_session_names()
+                return [s for s in avail if s.startswith(text)]
+            if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save" in [t.lower() for t in prefix_tokens]:
+                return _complete_paths(text)
+
+        # Case 1: Ingestion / Export / Path completion
+        if last_token in ("load", "-o") or last_token.startswith("-o=") or prefix.rstrip().endswith("="):
+            return _complete_paths(text)
+
+        if text.startswith(("./", "../", "/", "~")):
+            return _complete_paths(text)
+
+        # Case 2: 'use ' -> complete table names
+        if last_token == "use":
+            return [t for t in self.tables if t.startswith(text)]
+
+        # Case 3: 'rename ' -> complete table names (for first argument)
+        if last_token == "rename":
+            return [t for t in self.tables if t.startswith(text)]
+
+        # Case 4: 'restore ' -> complete checkpoint names
+        if last_token == "restore":
+            return [c for c in self.checkpoints if c.startswith(text)]
+
+        # Case 5: 'rm ' -> complete table names or checkpoint/session keywords
+        if last_token == "rm":
+            options = list(self.tables.keys()) + ["checkpoint", "session"]
+            return [opt for opt in options if opt.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "checkpoint":
+            return [c for c in self.checkpoints if c.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "session":
+            return [s for s in _get_saved_session_names() if s.startswith(text)]
+
+        # Case 6: 'diff ' -> complete table names or checkpoint names
+        if first_token == "diff":
+            candidates = list(self.tables.keys()) + list(self.checkpoints.keys())
+            return [c for c in candidates if c.startswith(text)]
+
+        # Case 7: 'set ' -> complete configuration keys
+        if last_token == "set":
+            configs = ["checkpoint_format", "sessions_dir", "session", "save"]
+            return [c for c in configs if c.startswith(text)]
+        if "set" in [t.lower() for t in prefix_tokens]:
+            if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
+                return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
+            if "session" in [t.lower() for t in prefix_tokens]:
+                avail = ["none"] + _get_saved_session_names()
+                return [s for s in avail if s.startswith(text)]
+
+        # Case 8: 'session ' -> complete subcommands
+        if last_token == "session":
+            return [cmd for cmd in ("save", "load") if cmd.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "session" and prefix_tokens[-1].lower() == "load":
+            return [s for s in _get_saved_session_names() if s.startswith(text)]
+
+        # Case 9: Flag completion (starts with '-')
+        if text.startswith("-"):
+            flags = [
+                "-filter", "-select", "-mutate", "-arrange", "-group_by", "-by",
+                "-summarize", "-count", "-slice", "-distinct", "-join", "-left_join",
+                "-inner_join", "-outer_join", "-cross_join", "-semi_join", "-anti_join",
+                "-pivot", "-pivot_longer", "-pivot_wider", "-unpivot",
+                "-head", "-tail", "-sample", "-describe", "-glimpse", "-schema",
+                "-columns", "-cols", "-info", "-shape", "-print", "-o", "-sort", "-where",
+                "-drop", "-rename", "-relocate", "-tol", "-save", "-restore", "-time",
+                "-dropna", "-fillna", "-sql",
+            ]
+            return [f for f in flags if f.startswith(text)]
+
+        # Case 10: Start of line (no prefix tokens)
+        if not prefix_tokens:
+            top_cmds = [
+                "use", "diff", "rename", "rm", "set", "load", "checkpoint", "restore",
+                "reset", "tables", "checkpoints", "history", "session", "sessions", "sql",
+                "python", "undo", "redo", "gc", "free", "exit", "quit", "help", "time",
+                "clear",
+                # Bare verbs
+                "filter", "select", "mutate", "arrange", "group_by", "by", "summarize",
+                "count", "slice", "distinct", "join", "pivot", "head", "tail", "sample",
+                "describe", "glimpse", "schema", "columns", "info", "shape", "print",
+            ]
+            candidates = top_cmds + list(self.tables.keys())
+            return [c for c in candidates if c.startswith(text)]
+
+        # Case 11: SQL Context
+        if first_token in ("sql", "-sql") or "SELECT" in [t.upper() for t in prefix_tokens]:
+            sql_keywords = [
+                "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "LIMIT", "JOIN",
+                "LEFT JOIN", "INNER JOIN", "ON", "AS", "COUNT", "SUM", "AVG", "MIN", "MAX",
+            ]
+            sql_tables = list(self.tables.keys()) + ["data", "this", "self", "df"]
+            cols = []
+            if self.current_df is not None:
+                cols = list(self.current_df.columns)
+            candidates = sql_keywords + sql_tables + cols
+            return [c for c in candidates if c.lower().startswith(text.lower())]
+
+        # Case 12: Pipeline context (columns of active or referenced table)
+        target_df = self.current_df
+        if prefix_tokens and prefix_tokens[0] in self.tables:
+            target_df = self.tables[prefix_tokens[0]]
+
+        matches: list[str] = []
+        if target_df is not None:
+            matches.extend([c for c in target_df.columns if c.startswith(text)])
+
+        if last_token in ("-join", "-left_join", "-inner_join", "-outer_join", "-cross_join", "-semi_join", "-anti_join", "join"):
+            matches.extend([t for t in self.tables if t.startswith(text)])
+
+        return list(dict.fromkeys(matches))
+
     def run(
         self,
         input_fn: Callable[[str], str] | None = None,
         output_fn: Callable[[str], None] = print,
     ) -> Any:
         """Run the REPL interactive loop until user exits. Returns final active DataFrame."""
-        _init_readline()
+        _init_readline(self._complete)
         output_fn(REPL_BANNER)
         if self.current_df is not None:
             output_fn(
