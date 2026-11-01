@@ -2258,7 +2258,7 @@ class PytaeRepl:
                 i += 1
             return calls
 
-        if self.path or (self.path_str and self.path_str in self.table_sources):
+        if self.path:
             lines.append(_read_stmt(active_var, source))
 
         for entry in self.history:
