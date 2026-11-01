@@ -40,52 +40,46 @@ pip install "pytae[plot]"       # Includes matplotlib for plotting & dashboards
 Instead of re-reading multi-gigabyte files from disk on every command, the **Pytae REPL** loads datasets into memory **once** and provides an instantaneous interactive workbench with zero syntax bloat:
 
 ```bash
-# Mode 1: Pre-load a dataset into the interactive shell
-pytae penguins.parquet -i
-
-# Mode 2: Launch an empty workbench (load multiple datasets on the fly)
+# Launch the interactive workbench
 pytae -i
 ```
 
-### Mode 1: Single-Table Exploration (`pytae <file> -i`)
-Operate directly on the loaded table with zero prefixing:
+### In-Memory Multi-Table Workbench
+Load datasets interactively (local files or bundled `sample:<name>`), explore with instant previews, and transform data:
+
 ```text
-pytae [penguins.parquet: 344x7]> -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
--> penguins.parquet: 188 rows x 7 cols
+pytae> df1 = sample:penguins
+Loaded penguins.parquet as 'df1' (344 rows x 7 cols).
 
-pytae [penguins.parquet: 188x7]> -mutate "mass_kg = body_mass_g / 1000" -select "species,island,mass_kg"
--> penguins.parquet: 188 rows x 3 cols
+# Fast non-destructive inspection (does not truncate active data)
+pytae [df1: 344x7]> -schema
+pytae [df1: 344x7]> -head 3
+pytae [df1: 344x7]> -sample 5%
 
-# Non-destructive inspection (does not truncate active data)
-pytae [penguins.parquet: 188x3]> -head 3
-pytae [penguins.parquet: 188x3]> -shape
+# Exploratory previews (safe, non-mutating preview matching CLI output)
+pytae [df1: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
 
-# Instant $O(1)$ rollback & snapshots
+# State mutation via explicit assignment
+pytae [df1: 344x7]> df1 = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+Updated 'df1' (188 rows x 7 cols).
+
+pytae [df1: 188x7]> df1 = -mutate "mass_kg = body_mass_g / 1000" -select "species,island,mass_kg"
+Updated 'df1' (188 rows x 3 cols).
+
+# Multi-table workflows, relational joins & ANSI SQL
+pytae [df1: 188x3]> df2 = sample:tips
+pytae [df1, df2]> df3 = -join "left=df1,right=df2,how=cross"
+pytae [df1, df2, df3]> df4 = -sql "SELECT df1.species, count(*) as n FROM df1 GROUP BY 1"
+
+# Instant $O(1)$ rollback, checkpoints & reproducible history
 pytae> undo                      # Revert last step
 pytae> checkpoint baseline       # Save named snapshot
 pytae> restore baseline          # Revert to snapshot
-```
-
-### Mode 2: Multi-Table Workbench (`pytae -i`)
-Load multiple datasets and operate with clean **subject-first commands (`<tbl> -<cmd>`)**:
-```text
-pytae> df1 = orders.parquet
-pytae> df2 = customers.parquet
-
-# Subject-first inspection & transformations
-pytae [df1, df2]> df1 -head 5
-pytae [df1, df2]> df1 -filter "amount > 100"
-
-# Multi-table joins & ANSI SQL
-pytae [df1, df2]> df3 = df1 -join df2 on=cust_id
-pytae [df1, df2, df3]> df4 = -sql "SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id"
-
-# Export specific table
-pytae [df1, df2, df3, df4]> df3 -o merged_orders.parquet
+pytae> exit -s                   # Save self-contained session history to ./history.txt
 ```
 
 > [!TIP]
-> **Clean Terminal (Model 2)**: Operations output concise shape confirmations (e.g. `-> df1: 10,000 rows x 3 cols` or `df1: 344 rows x 7 cols`) without dumping full tables. To inspect rows, explicitly run `-head [N]`.
+> **Reproducible Sessions**: Because datasets are loaded interactively (e.g. `df = penguins.parquet`), every command is saved to session history. You can replay the entire session at any time with `pytae -i < history.txt`.
 
 👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/repl.md)
 
@@ -96,8 +90,10 @@ pytae [df1, df2, df3, df4]> df3 -o merged_orders.parquet
 Flags execute from left to right as an in-memory pipeline powered natively by Polars multithreading:
 
 ```bash
-# 1. Zero-cost inspection (reads headers without loading rows)
+# 1. Zero-cost inspection & schema summary (columns, types, nulls %, unique count)
+pytae penguins.parquet -schema
 pytae penguins.parquet -head 5
+pytae penguins.parquet -sample 5% -seed 42
 
 # 2. In-memory pipeline: filter, engineer features, sort, and export
 pytae penguins.parquet \
@@ -111,11 +107,15 @@ pytae penguins.parquet \
 pytae penguins.parquet -freq species -bar
 pytae sales.parquet -sql "SELECT region, sum(revenue) FROM data GROUP BY 1"
 
-# 4. Instant format conversion & dataset diff
+# 4. Multi-file relational operations (-join, -concat)
+pytae -file "orders.parquet=ord; customers.csv=cust" \
+  -join "left=ord,right=cust,on=customer_id,how=left" -head 5
+
+# 5. Instant format conversion & dataset diff
 pytae legacy.sas7bdat -o clean.parquet
 pytae yesterday.parquet -diff today.parquet -tol 1e-4
 
-# 5. Sensitive PII masking and encryption
+# 6. Sensitive PII masking and encryption
 pytae users.csv -mask "email=hash, ssn=encrypt" -key "SecretKey123" -o secure.parquet
 ```
 
