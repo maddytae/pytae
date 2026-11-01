@@ -2257,7 +2257,8 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     assert r.session_log_path.exists()
     assert r.session_log_path.parent == hist_dir
 
-    # Execute commands and checkpoints
+    # Execute commands, comments, and checkpoints
+    r.execute_line("# my custom comment", output_fn=outputs.append)
     r.execute_line("df = sample:penguins", output_fn=outputs.append)
     r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     r.execute_line("checkpoint v1", output_fn=outputs.append)
@@ -2266,6 +2267,7 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     # Check file content on disk in real time
     content = r.session_log_path.read_text(encoding="utf-8")
     assert "# Pytae REPL Session History" in content
+    assert "# my custom comment" in content
     assert "df = sample:penguins" in content
     assert "-filter \"species == 'Gentoo'\"" in content
     assert "# *checkpoint: v1*" in content

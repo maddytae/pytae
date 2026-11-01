@@ -1434,7 +1434,10 @@ class PytaeRepl:
     def execute_line(self, raw_line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Execute one REPL input line. Returns False if REPL should terminate."""
         line = raw_line.strip()
-        if not line or line.startswith("#"):
+        if not line:
+            return True
+        if line.startswith("#"):
+            self._record_history(line)
             return True
 
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
@@ -2334,6 +2337,8 @@ class PytaeRepl:
         step_num = 1
         for entry in entries:
             if entry.startswith("*checkpoint:") and entry.endswith("*"):
+                output_fn(f"  {entry}")
+            elif entry.startswith("#"):
                 output_fn(f"  {entry}")
             else:
                 output_fn(f"  {step_num:2d}: {entry}")
