@@ -544,6 +544,8 @@ The REPL automatically preserves command history and logs full session flight re
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered audit log of pipeline transformation steps and checkpoints applied during the current session, along with the active log file path.
 - **`history <N>`**: Displays only the last `N` history entries (e.g., `history 10`).
+- **`history -s <path>`**: Exports the current session history up to this point to a named file (e.g. `history -s my_pipeline.txt` or `history -s ~/scripts/run.txt`) without exiting the REPL.
+- **`exit [-s <path>]`**: Exits the REPL session. If `-s <path>` is provided (e.g. `exit -s my_pipeline.txt` or `exit -s ~/scripts/run.txt`), saves the session history to the specified file upon exit. Relative paths save to the current working directory.
 
 ---
 
@@ -576,7 +578,7 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history`, `history <N>` | Display session audit log and checkpoint events (auto-logged to `~/.pytae_history/`) | No |
+| **`history`** | `history`, `history <N>`, `history -s <path>` | Display session audit log or export to a named file | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
@@ -606,5 +608,5 @@ pytae> -o clip
 | **`-nulls`** | `-nulls [asc\|desc]` | Display missing value counts (optional alphabetical sort) | No |
 | **`-glimpse`** | `-glimpse` | Display transposed schema and sample values | No |
 | **`-describe`**| `-describe` | Display statistical summary of numeric columns | No |
-| **`exit`** | `exit` | Exit the REPL session | — |
+| **`exit`** | `exit`, `exit -s <path>` | Exit the REPL session (optionally export session history to file) | — |
 

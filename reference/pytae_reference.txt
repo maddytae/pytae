@@ -1060,6 +1060,7 @@ State Management & Rollback Commands:
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
   - `history`                 : Display session audit log with sequential step numbers and *checkpoint: <name>* banners.
   - `history <N>`             : Display the last N transformation steps.
+  - `history -s <path>`       : Export session history up to this point to a named file (without exiting).
   - Session Flight Recorder   : Sessions are automatically logged in real-time to ~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt.
 
 Session-Wide Checkpoints:
@@ -1089,7 +1090,7 @@ Terminal Control & Utilities:
   - `tables`                  : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
   - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
-  - `exit` / `quit` / Ctrl-D  : Exit REPL.
+  - `exit` / `exit -s <path>` : Exit REPL (optionally save session history to a named file).
 
 
 6. FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
@@ -13483,6 +13484,7 @@ reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show session audit log (all steps auto-logged to ~/.pytae_history/)
 history 5            # Show last 5 steps from current session audit log
+history -s <path>    # Export session history up to this point to named file
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
@@ -13509,6 +13511,7 @@ pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1"
 pytae> py df.shape
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard
+pytae> exit -s run.txt                                       # Exit and export session history to file
 # Up / Down arrow keys recall persistent command history (~/.pytae_history)
 ```
 
@@ -14090,6 +14093,8 @@ The REPL automatically preserves command history and logs full session flight re
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered audit log of pipeline transformation steps and checkpoints applied during the current session, along with the active log file path.
 - **`history <N>`**: Displays only the last `N` history entries (e.g., `history 10`).
+- **`history -s <path>`**: Exports the current session history up to this point to a named file (e.g. `history -s my_pipeline.txt` or `history -s ~/scripts/run.txt`) without exiting the REPL.
+- **`exit [-s <path>]`**: Exits the REPL session. If `-s <path>` is provided (e.g. `exit -s my_pipeline.txt` or `exit -s ~/scripts/run.txt`), saves the session history to the specified file upon exit. Relative paths save to the current working directory.
 
 ---
 
@@ -14122,7 +14127,7 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history`, `history <N>` | Display session audit log and checkpoint events (auto-logged to `~/.pytae_history/`) | No |
+| **`history`** | `history`, `history <N>`, `history -s <path>` | Display session audit log or export to a named file | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
@@ -14152,7 +14157,7 @@ pytae> -o clip
 | **`-nulls`** | `-nulls [asc\|desc]` | Display missing value counts (optional alphabetical sort) | No |
 | **`-glimpse`** | `-glimpse` | Display transposed schema and sample values | No |
 | **`-describe`**| `-describe` | Display statistical summary of numeric columns | No |
-| **`exit`** | `exit` | Exit the REPL session | — |
+| **`exit`** | `exit`, `exit -s <path>` | Exit the REPL session (optionally export session history to file) | — |
 
 ================================================================================
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
@@ -17915,7 +17920,8 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -filter "sales > 100" -i                     # Pre-filter then enter REPL
   # Inside REPL session:
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
-  #   history                 Show numbered session audit log (~/.pytae_history/)
+  #   history [-s <path>]     Show session audit log or export to named file
+  #   exit [-s <path>]        Exit REPL (optionally save session history to file)
   #   undo / redo             Revert / re-apply last transformation step
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables
@@ -20219,7 +20225,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "undo : Revert the last applied transformation step.",
             "redo : Re-apply the last undone transformation step.",
             "reset : Restore the original dataset as loaded from disk.",
-            "history [N] : Show numbered session audit log (all commands are automatically recorded in ~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt).",
+            "history [N] : Show numbered session audit log (or export with 'history -s <path>').",
+            "exit [-s <path>] : Exit REPL (optionally save session history to named file).",
             "status : Show active table shape, columns, and memory usage.",
             "checkpoint <name> : Freeze and save current state with a name.",
             "restore <name> : Restore table to a saved checkpoint.",
@@ -33409,7 +33416,8 @@ STATE NAVIGATION (Undoable):
   redo                   : Re-apply the last undone transformation step
   reset                  : Revert to latest checkpoint (or initial read if no checkpoints)
   reset initial          : Strictly revert to initial read even if checkpoints exist
-  history                : Show numbered transformation log and milestone banners
+  history [N]            : Show numbered transformation log (auto-logged to ~/.pytae_history/)
+  history -s <path>      : Save current session history to named file
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
@@ -33420,7 +33428,7 @@ STATE NAVIGATION (Undoable):
   sessions               : List all saved persistent sessions on disk
   rm session <name>      : Remove a saved persistent session from disk
   clear                  : Clear the terminal screen
-  exit                   : Exit REPL
+  exit [-s <path>]       : Exit REPL (optionally save session history to named file)
 
 QUERY & PYTHON EXPRESSIONS:
   -sql "<query>"         : Run ANSI SQL on active table or across named tables
@@ -33757,6 +33765,42 @@ class PytaeRepl:
     def _record_history(self, entry: str) -> None:
         self.history.append(entry)
         self._log_session_line(entry)
+
+    def _export_session_history(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
+        """Export session history to a named file.
+
+        Expands '~' and resolves paths. Relative paths are resolved against current working directory.
+        """
+        if getattr(self, "session_cmd_count", 0) == 0:
+            output_fn(f"pytae: No commands were executed; '{target_path_str}' not created.")
+            return False
+
+        target_path = Path(os.path.expanduser(target_path_str)).resolve()
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+
+            if self.session_log_path.exists():
+                shutil.copyfile(self.session_log_path, target_path)
+            else:
+                lines = [
+                    f"# Pytae REPL Session History: {target_path.name}",
+                    f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+                    "# " + "-" * 76,
+                    "",
+                ]
+                for entry in self.history:
+                    clean = entry.strip()
+                    if clean.startswith("*checkpoint:") and clean.endswith("*"):
+                        lines.append(f"# {clean}")
+                    else:
+                        lines.append(clean)
+                target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            output_fn(f"Session history saved to {target_path}.")
+            return True
+        except Exception as exc:
+            output_fn(f"pytae: Error saving history to '{target_path_str}': {exc}")
+            return False
 
     def _set_initial_df(self, df: Any) -> None:
         from pytae.dataframe import DataFrame as PytaeDataFrame
@@ -34293,10 +34337,31 @@ class PytaeRepl:
                     output_fn(f"Pipe error: {exc}")
             return cont
 
-        # Check for exit (strictly 'exit', not 'quit' or 'q')
-        if line.lower() == "exit":
+        # Check for exit (supports 'exit' and 'exit -s <path>')
+        clean_line_lower = line.lower()
+        if clean_line_lower == "exit":
             output_fn("Exiting pytae REPL.")
             return False
+
+        try:
+            exit_tokens = shlex.split(line)
+        except Exception:
+            exit_tokens = line.split()
+
+        if exit_tokens and exit_tokens[0].lower() == "exit":
+            if len(exit_tokens) >= 3 and exit_tokens[1] in ("-s", "-save", "save"):
+                target = exit_tokens[2]
+                self._export_session_history(target, output_fn)
+                output_fn("Exiting pytae REPL.")
+                return False
+            elif len(exit_tokens) == 2 and (exit_tokens[1].startswith("-s=") or exit_tokens[1].startswith("-s:")):
+                target = exit_tokens[1][3:]
+                self._export_session_history(target, output_fn)
+                output_fn("Exiting pytae REPL.")
+                return False
+            else:
+                output_fn(f"Usage: exit [-s <path>] (unrecognized option: '{' '.join(exit_tokens[1:])}')")
+                return True
 
         # Help (strictly 'help', not '?')
         if line.lower() == "help":
@@ -35063,11 +35128,22 @@ class PytaeRepl:
                     f"'history' displays the session audit log, and all commands are automatically recorded in {log_dest}"
                 )
                 return
+            if clean_arg0 in ("s", "save"):
+                if len(args) < 2:
+                    output_fn("Usage: history -s <path>")
+                    return
+                target = args[1].strip("'\"")
+                self._export_session_history(target, output_fn)
+                return
+            if arg0.startswith("-s=") or arg0.startswith("-s:"):
+                target = arg0[3:].strip("'\"")
+                self._export_session_history(target, output_fn)
+                return
             if arg0.isdigit():
                 limit = int(arg0)
                 entries = self.history[-limit:]
             else:
-                output_fn(f"Usage: history [N] (unrecognized option: '{arg0}')")
+                output_fn(f"Usage: history [N] or history -s <path> (unrecognized option: '{arg0}')")
                 return
         else:
             entries = self.history
@@ -50623,6 +50699,74 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     # Simulate exit without commands
     r_empty.run(input_fn=lambda prompt: (_ for _ in ()).throw(EOFError), output_fn=lambda x: None)
     assert not empty_log.exists()
+
+
+def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
+    hist_dir = tmp_path / "custom_hist"
+    monkeypatch.setenv("PYTAE_HISTORY_DIR", str(hist_dir))
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    monkeypatch.chdir(work_dir)
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    outputs = []
+    r = PytaeRepl()
+
+    # Case 1: Saving when 0 commands were executed
+    res = r.execute_line("exit -s empty.txt", output_fn=outputs.append)
+    assert res is False  # Still exits
+    assert not (work_dir / "empty.txt").exists()
+    assert any("No commands were executed" in o for o in outputs)
+
+    outputs.clear()
+    res = r.execute_line("history -s empty.txt", output_fn=outputs.append)
+    assert res is True  # Does not exit
+    assert not (work_dir / "empty.txt").exists()
+    assert any("No commands were executed" in o for o in outputs)
+
+    # Case 2: Run commands and use history -s with relative and tilde paths
+    r2 = PytaeRepl()
+    r2.execute_line("df = sample:penguins", output_fn=outputs.append)
+    r2.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+
+    outputs.clear()
+    res = r2.execute_line("history -s rel_hist.txt", output_fn=outputs.append)
+    assert res is True  # Does not exit
+    saved_rel = work_dir / "rel_hist.txt"
+    assert saved_rel.exists()
+    assert "df = sample:penguins" in saved_rel.read_text(encoding="utf-8")
+    assert any("Session history saved to" in o for o in outputs)
+
+    # history -s with tilde path
+    outputs.clear()
+    res = r2.execute_line("history -s ~/export/custom.txt", output_fn=outputs.append)
+    assert res is True
+    saved_home = fake_home / "export" / "custom.txt"
+    assert saved_home.exists()
+    assert "df = sample:penguins" in saved_home.read_text(encoding="utf-8")
+
+    # Case 3: Invalid exit arguments
+    outputs.clear()
+    res = r2.execute_line("exit -invalid", output_fn=outputs.append)
+    assert res is True  # Does not exit
+    assert any("Usage: exit [-s <path>]" in o for o in outputs)
+
+    outputs.clear()
+    res = r2.execute_line("exit -s", output_fn=outputs.append)
+    assert res is True  # Missing target path -> does not exit
+    assert any("Usage: exit [-s <path>]" in o for o in outputs)
+
+    # Case 4: exit -s saves and terminates REPL
+    outputs.clear()
+    res = r2.execute_line("exit -s final_exit.txt", output_fn=outputs.append)
+    assert res is False  # Exits!
+    saved_exit = work_dir / "final_exit.txt"
+    assert saved_exit.exists()
+    assert "df = sample:penguins" in saved_exit.read_text(encoding="utf-8")
+    assert any("Session history saved to" in o for o in outputs)
+    assert any("Exiting pytae REPL." in o for o in outputs)
 
 ################################################################################
 # FILE: tests/test_select.py

@@ -587,7 +587,8 @@ STATE NAVIGATION (Undoable):
   redo                   : Re-apply the last undone transformation step
   reset                  : Revert to latest checkpoint (or initial read if no checkpoints)
   reset initial          : Strictly revert to initial read even if checkpoints exist
-  history                : Show numbered transformation log and milestone banners
+  history [N]            : Show numbered transformation log (auto-logged to ~/.pytae_history/)
+  history -s <path>      : Save current session history to named file
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
@@ -598,7 +599,7 @@ STATE NAVIGATION (Undoable):
   sessions               : List all saved persistent sessions on disk
   rm session <name>      : Remove a saved persistent session from disk
   clear                  : Clear the terminal screen
-  exit                   : Exit REPL
+  exit [-s <path>]       : Exit REPL (optionally save session history to named file)
 
 QUERY & PYTHON EXPRESSIONS:
   -sql "<query>"         : Run ANSI SQL on active table or across named tables
@@ -935,6 +936,42 @@ class PytaeRepl:
     def _record_history(self, entry: str) -> None:
         self.history.append(entry)
         self._log_session_line(entry)
+
+    def _export_session_history(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
+        """Export session history to a named file.
+
+        Expands '~' and resolves paths. Relative paths are resolved against current working directory.
+        """
+        if getattr(self, "session_cmd_count", 0) == 0:
+            output_fn(f"pytae: No commands were executed; '{target_path_str}' not created.")
+            return False
+
+        target_path = Path(os.path.expanduser(target_path_str)).resolve()
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+
+            if self.session_log_path.exists():
+                shutil.copyfile(self.session_log_path, target_path)
+            else:
+                lines = [
+                    f"# Pytae REPL Session History: {target_path.name}",
+                    f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+                    "# " + "-" * 76,
+                    "",
+                ]
+                for entry in self.history:
+                    clean = entry.strip()
+                    if clean.startswith("*checkpoint:") and clean.endswith("*"):
+                        lines.append(f"# {clean}")
+                    else:
+                        lines.append(clean)
+                target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            output_fn(f"Session history saved to {target_path}.")
+            return True
+        except Exception as exc:
+            output_fn(f"pytae: Error saving history to '{target_path_str}': {exc}")
+            return False
 
     def _set_initial_df(self, df: Any) -> None:
         from pytae.dataframe import DataFrame as PytaeDataFrame
@@ -1471,10 +1508,31 @@ class PytaeRepl:
                     output_fn(f"Pipe error: {exc}")
             return cont
 
-        # Check for exit (strictly 'exit', not 'quit' or 'q')
-        if line.lower() == "exit":
+        # Check for exit (supports 'exit' and 'exit -s <path>')
+        clean_line_lower = line.lower()
+        if clean_line_lower == "exit":
             output_fn("Exiting pytae REPL.")
             return False
+
+        try:
+            exit_tokens = shlex.split(line)
+        except Exception:
+            exit_tokens = line.split()
+
+        if exit_tokens and exit_tokens[0].lower() == "exit":
+            if len(exit_tokens) >= 3 and exit_tokens[1] in ("-s", "-save", "save"):
+                target = exit_tokens[2]
+                self._export_session_history(target, output_fn)
+                output_fn("Exiting pytae REPL.")
+                return False
+            elif len(exit_tokens) == 2 and (exit_tokens[1].startswith("-s=") or exit_tokens[1].startswith("-s:")):
+                target = exit_tokens[1][3:]
+                self._export_session_history(target, output_fn)
+                output_fn("Exiting pytae REPL.")
+                return False
+            else:
+                output_fn(f"Usage: exit [-s <path>] (unrecognized option: '{' '.join(exit_tokens[1:])}')")
+                return True
 
         # Help (strictly 'help', not '?')
         if line.lower() == "help":
@@ -2241,11 +2299,22 @@ class PytaeRepl:
                     f"'history' displays the session audit log, and all commands are automatically recorded in {log_dest}"
                 )
                 return
+            if clean_arg0 in ("s", "save"):
+                if len(args) < 2:
+                    output_fn("Usage: history -s <path>")
+                    return
+                target = args[1].strip("'\"")
+                self._export_session_history(target, output_fn)
+                return
+            if arg0.startswith("-s=") or arg0.startswith("-s:"):
+                target = arg0[3:].strip("'\"")
+                self._export_session_history(target, output_fn)
+                return
             if arg0.isdigit():
                 limit = int(arg0)
                 entries = self.history[-limit:]
             else:
-                output_fn(f"Usage: history [N] (unrecognized option: '{arg0}')")
+                output_fn(f"Usage: history [N] or history -s <path> (unrecognized option: '{arg0}')")
                 return
         else:
             entries = self.history

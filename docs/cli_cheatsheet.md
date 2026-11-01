@@ -390,6 +390,7 @@ reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show session audit log (all steps auto-logged to ~/.pytae_history/)
 history 5            # Show last 5 steps from current session audit log
+history -s <path>    # Export session history up to this point to named file
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
@@ -416,6 +417,7 @@ pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1"
 pytae> py df.shape
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard
+pytae> exit -s run.txt                                       # Exit and export session history to file
 # Up / Down arrow keys recall persistent command history (~/.pytae_history)
 ```
 

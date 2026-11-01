@@ -2302,3 +2302,72 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     assert not empty_log.exists()
 
 
+def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
+    hist_dir = tmp_path / "custom_hist"
+    monkeypatch.setenv("PYTAE_HISTORY_DIR", str(hist_dir))
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    monkeypatch.chdir(work_dir)
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    outputs = []
+    r = PytaeRepl()
+
+    # Case 1: Saving when 0 commands were executed
+    res = r.execute_line("exit -s empty.txt", output_fn=outputs.append)
+    assert res is False  # Still exits
+    assert not (work_dir / "empty.txt").exists()
+    assert any("No commands were executed" in o for o in outputs)
+
+    outputs.clear()
+    res = r.execute_line("history -s empty.txt", output_fn=outputs.append)
+    assert res is True  # Does not exit
+    assert not (work_dir / "empty.txt").exists()
+    assert any("No commands were executed" in o for o in outputs)
+
+    # Case 2: Run commands and use history -s with relative and tilde paths
+    r2 = PytaeRepl()
+    r2.execute_line("df = sample:penguins", output_fn=outputs.append)
+    r2.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+
+    outputs.clear()
+    res = r2.execute_line("history -s rel_hist.txt", output_fn=outputs.append)
+    assert res is True  # Does not exit
+    saved_rel = work_dir / "rel_hist.txt"
+    assert saved_rel.exists()
+    assert "df = sample:penguins" in saved_rel.read_text(encoding="utf-8")
+    assert any("Session history saved to" in o for o in outputs)
+
+    # history -s with tilde path
+    outputs.clear()
+    res = r2.execute_line("history -s ~/export/custom.txt", output_fn=outputs.append)
+    assert res is True
+    saved_home = fake_home / "export" / "custom.txt"
+    assert saved_home.exists()
+    assert "df = sample:penguins" in saved_home.read_text(encoding="utf-8")
+
+    # Case 3: Invalid exit arguments
+    outputs.clear()
+    res = r2.execute_line("exit -invalid", output_fn=outputs.append)
+    assert res is True  # Does not exit
+    assert any("Usage: exit [-s <path>]" in o for o in outputs)
+
+    outputs.clear()
+    res = r2.execute_line("exit -s", output_fn=outputs.append)
+    assert res is True  # Missing target path -> does not exit
+    assert any("Usage: exit [-s <path>]" in o for o in outputs)
+
+    # Case 4: exit -s saves and terminates REPL
+    outputs.clear()
+    res = r2.execute_line("exit -s final_exit.txt", output_fn=outputs.append)
+    assert res is False  # Exits!
+    saved_exit = work_dir / "final_exit.txt"
+    assert saved_exit.exists()
+    assert "df = sample:penguins" in saved_exit.read_text(encoding="utf-8")
+    assert any("Session history saved to" in o for o in outputs)
+    assert any("Exiting pytae REPL." in o for o in outputs)
+
+
+
