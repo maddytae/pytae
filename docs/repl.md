@@ -44,7 +44,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Saving Checkpoints (`checkpoint <name>`)](#saving-checkpoints-checkpoint-name)
   - [Listing & Deleting Checkpoints (`checkpoints`, `rm checkpoint`)](#listing--deleting-checkpoints-checkpoints-rm-checkpoint)
   - [Restoring Entire Workbench (`restore <name>`)](#restoring-entire-workbench-restore-name)
-  - [Reloading After `rm *` & Selective Checkpoint Assignment (`df = <cp>`)](#reloading-after-rm--selective-checkpoint-assignment-df--cp)
+  - [Reloading After `rm *` via `restore <name>`](#reloading-after-rm--via-restore-name)
   - [Configuring Format (`set checkpoint_format = parquet|ipc`)](#configuring-format-set-checkpoint_format--parquetipc)
 - [Persistent REPL Sessions](#persistent-repl-sessions)
   - [CLI Flags (`pytae -session <name>`, `pytae -sessions`)](#cli-flags-pytae--session-name-pytae--sessions)
@@ -470,7 +470,7 @@ Restored checkpoint 'baseline' (2 tables: orders, cust; active: cust).
 ```
 *All post-checkpoint scratch tables (`scratch_df`) are automatically dropped and garbage collected. Active RAM strictly matches the checkpoint state.*
 
-### Reloading After `rm *` & Selective Checkpoint Assignment (`df = <cp>`)
+### Reloading After `rm *` via `restore <name>`
 Because checkpoints live on **disk**, running `rm *` clears active RAM but leaves all checkpoints completely safe!
 
 ```text
@@ -480,20 +480,14 @@ Saved checkpoint 'abc' (2 tables: df1, df2).
 pytae [df1, df2]> rm *
 Removed all 2 loaded tables. No tables remain loaded.
 pytae> 
+
+# Restore entire workbench from checkpoint:
+pytae> restore abc
+Restored checkpoint 'abc' (2 tables: df1, df2; active: df1).
 ```
 
-You can reload from `abc` in two ways:
-1. **Restore entire workbench**:
-   ```text
-   pytae> restore abc
-   Restored checkpoint 'abc' (2 tables: df1, df2; active: df1).
-   ```
-2. **Selective table assignment from checkpoint**:
-   ```text
-   # Load a single table from the checkpoint into a new variable name
-   pytae> df = abc
-   Assigned 'df' from 'abc' (344 rows x 7 cols).
-   ```
+> [!NOTE]
+> Checkpoints are state milestones and are restored strictly via `restore <name>` (or `reset`). Variable assignment (`df = abc`) is reserved exclusively for file paths, table copies, and query results. Trying to assign a checkpoint directly (`df = abc`) is rejected with a helpful suggestion to use `restore abc`.
 
 ### Configuring Format (`set checkpoint_format = parquet|ipc`)
 By default, checkpoints are saved as uncompressed Arrow IPC (`.ipc`) for near-instant read/write speeds. You can configure your session to use compressed Parquet (`.parquet`) to minimize disk space:
@@ -677,7 +671,6 @@ pytae [df: 344x7]> -head 50 | wc -l
 | | `history` | `history [N]` | Display numbered audit log of session commands | No |
 | **Checkpoints** | `checkpoint` | `checkpoint <name>` | Save snapshot to disk (0 MB RAM, clears undo) | No |
 | | `restore` | `restore <name>` | Restore workbench to named checkpoint | Yes |
-| | Assign CP | `df = <cp_name>` | Assign table from checkpoint to variable | Yes |
 | | `checkpoints` | `checkpoints` | List all saved checkpoints on disk | No |
 | | `rm checkpoint` | `rm checkpoint <name>`, `rm checkpoint *` | Delete checkpoint(s) from disk | No |
 | | `set` | `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |

@@ -2850,7 +2850,12 @@ class PytaeRepl:
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(right_tokens)
         if cleaned_tokens:
             clean_path = cleaned_tokens[0].removeprefix("load ").strip("\"' ")
-            is_known_table = self._resolve_table_name(clean_path) is not None or clean_path in self.checkpoints
+            if clean_path in self.checkpoints:
+                output_fn(
+                    f"pytae: '{clean_path}' is a saved checkpoint, not a table or file. Use 'restore {clean_path}' to restore session workbench."
+                )
+                return
+            is_known_table = self._resolve_table_name(clean_path) is not None
             if not is_known_table:
                 p = Path(clean_path).expanduser()
                 is_sample = clean_path.startswith("sample:")
@@ -2924,16 +2929,8 @@ class PytaeRepl:
                     pipe_line = right_expr
             else:
                 resolved_src = self._resolve_table_name(first_tok)
-                if resolved_src is not None or first_tok in self.checkpoints:
-                    if resolved_src is not None:
-                        source_df = self.tables[resolved_src]
-                    else:
-                        source_df = self._get_checkpoint_df(first_tok)
-                        if source_df is None:
-                            output_fn(
-                                f"pytae: checkpoint '{first_tok}' contains multiple tables. Use 'restore {first_tok}' to restore entire workbench."
-                            )
-                            return
+                if resolved_src is not None:
+                    source_df = self.tables[resolved_src]
                     source_label = first_tok
                     pipe_tokens = right_tokens[1:]
                     pipe_line = right_expr[len(first_tok) :].strip()
@@ -3163,12 +3160,6 @@ class PytaeRepl:
             if left_res is not None:
                 left_df = self.tables[left_res]
                 left_name = left_res
-            elif left_name in self.checkpoints:
-                left_df = self._get_checkpoint_df(left_name)
-                if left_df is None:
-                    avail = ", ".join(self.tables.keys()) if self.tables else "none"
-                    output_fn(f"pytae: could not load left table from checkpoint '{left_name}'. Available: {avail}")
-                    return
             else:
                 try:
                     lp, left_df = self._read_file_to_df(left_name)
@@ -3188,12 +3179,6 @@ class PytaeRepl:
         if right_res is not None:
             right_df = self.tables[right_res]
             right_name = right_res
-        elif right_name in self.checkpoints:
-            right_df = self._get_checkpoint_df(right_name)
-            if right_df is None:
-                avail = ", ".join(self.tables.keys()) if self.tables else "none"
-                output_fn(f"pytae: could not load right table from checkpoint '{right_name}'. Available: {avail}")
-                return
         else:
             try:
                 rp, right_df = self._read_file_to_df(right_name)
