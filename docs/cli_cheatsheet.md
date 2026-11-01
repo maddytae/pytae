@@ -363,14 +363,11 @@ pytae customers.csv -mask "email=hash, ssn=encrypt, name=tokenize" -key "SecretK
 Stateful interactive data manipulation environment with in-memory execution and undo/redo history:
 
 ```bash
-# Launch interactive REPL with a dataset pre-loaded
-pytae data.parquet -i
-
-# Launch empty REPL workbench
+# Launch interactive REPL workbench
 pytae -i
 
-# Pre-filter dataset and drop directly into interactive REPL
-pytae data.parquet -filter "sales > 100" -i
+# Load dataset inside REPL:
+#   pytae> df = data.parquet
 
 # Resume or launch a named persistent session (default ~/.pytae/sessions/<name>)
 pytae -session analysis

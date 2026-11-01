@@ -135,13 +135,13 @@ CHEATSHEET_TEXT = """\
 
 13. 💬 INTERACTIVE REPL SHELL (-i)
 --------------------------------------------------------------------------------
-  pytae data.parquet -i                                           # Launch REPL with file loaded
-  pytae -i                                                        # Launch empty REPL workbench
-  pytae data.parquet -filter "sales > 100" -i                     # Pre-filter then enter REPL
+  pytae -i                                                        # Launch interactive REPL workbench
+  pytae -i -session my_session                                    # Launch persistent named session
   # Inside REPL session:
+  #   df = data.parquet       Load dataset into active table
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
-  #   history [-s <path>]     Show session audit log or export to named file
-  #   exit [-s <path>]        Exit REPL (optionally save session history to file)
+  #   history [-s [path]]     Show session audit log or export to named file
+  #   exit [-s [path]]        Exit REPL (optionally save session history to file)
   #   undo / redo             Revert / re-apply last transformation step
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables

@@ -81,7 +81,7 @@ TABLE OF CONTENTS
     5.5.  Quoting & Delimiter Standards (: vs =) and Shell Quoting Rules
     5.6.  Multi-File Operations (-file, -join, -concat, -sql)
     5.7.  Batch Processing, Conversions & Clipboard (-o)
-    5.8.  Interactive REPL Shell (pytae -i, pytae <file> -i)
+    5.8.  Interactive REPL Shell (pytae -i)
 6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
     6.1.  When should I use `-select` before `-agg`?
     6.2.  Why is `by` strictly standalone across all verbs?
@@ -184,7 +184,7 @@ RULE 4: CHAINED PIPELINES & SEQUENTIAL `-by` (TOP N RECIPE)
   "
   ```
 
-RULE 5: INTERACTIVE REPL (`pytae -i`, `pytae <file> -i`)
+RULE 5: INTERACTIVE REPL (`pytae -i`)
 - 1:1 CLI flag parity: Verbs in REPL must start with a leading hyphen: `-filter "..."`, `-mutate "..."`, `-head 5`, `-cols`.
 - Non-destructive previews: Inspection commands (`-head`, `-tail`, `-shape`, `-cols`, `-describe`, `-glimpse`) preview data WITHOUT truncating or mutating the dataset.
 - Clean confirmation: Transformations output concise shape confirmations (e.g. `-> penguins.parquet: 188 rows x 7 cols`) without dumping full tables.
@@ -1072,26 +1072,23 @@ pytae penguins.parquet -filter "body_mass_g > 4000" -o heavy_penguins.parquet
 pytae penguins.parquet -head -o clip
 
 
-5.8. Interactive REPL Shell (pytae -i, pytae <file> -i)
+5.8. Interactive REPL Shell (pytae -i)
 --------------------------------------------------------------------------------
 Launch the stateful interactive REPL shell from the command line:
-  pytae -i                              # Launch empty multi-table workbench
-  pytae penguins.parquet -i             # Focused exploration on a single table
-  pytae data.csv -encoding latin1 -i    # Preserves CLI reader options into REPL
+  pytae -i                              # Launch interactive multi-table workbench
   pytae -session analysis               # Launch or resume named persistent session
   pytae -sessions                       # List all saved persistent sessions on disk
 
-Two Dedicated Operation Modes:
-1. Mode 1: Single-Table Exploration (pytae [df: 344x7]>)
-   - Focused on manipulating, filtering, and mutating a single active table.
-   - Operations output concise confirmation headers (e.g. `-> df: 344 rows x 3 cols`).
-   - Use `-head`, `-tail`, `-sample`, `-shape`, `-cols`, `-describe`, `-glimpse` for previews.
+* Note: Passing input files to '-i' (e.g. 'pytae file.parquet -i') is disallowed.
+  Run 'pytae -i', then load datasets interactively with '<var> = <path>' (e.g. df = file.parquet).
+  This ensures that session history is always 100% self-contained and reproducible.
 
-2. Mode 2: Multi-Table Workbench (pytae [df1, df2]>)
-   - Load multiple datasets: `df1 = orders.parquet`, `df2 = customers.csv -dlim ";"`.
-   - Subject-first operations: `df1 -filter "amount > 100"`, `df2 -head 5`.
-   - Relational joins & assignments: `df3 = df1 -join df2 on=cust_id`.
-   - Polars ANSI SQL engine: `df4 = -sql "SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id"`.
+Dataset Ingest & Interactive Workbench:
+  - Load datasets               : `df = orders.parquet`, `df2 = customers.csv -dlim ";" -encoding latin1`.
+  - Operations on active table  : `-filter "amount > 100"`, `-head 5`, `-pivot "..."`.
+  - Subject-first operations    : `df1 -filter "amount > 100"`, `df2 -head 5`.
+  - Relational joins & assign   : `df3 = df1 -join df2 on=cust_id`.
+  - Polars ANSI SQL engine      : `df4 = -sql "SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id"`.
 
 State Management & Rollback Commands:
   - `undo`                    : Revert the last applied transformation.

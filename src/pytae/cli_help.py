@@ -895,7 +895,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "repl": KeywordHelp(
         name="repl",
         flag="-i",
-        syntax="pytae [<path>] -i",
+        syntax="pytae -i",
         summary="Launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration.",
         description=(
             "Starts an interactive Read-Eval-Print Loop (REPL) that loads dataset(s) into memory once.\n"
@@ -906,8 +906,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "undo : Revert the last applied transformation step.",
             "redo : Re-apply the last undone transformation step.",
             "reset : Restore the original dataset as loaded from disk.",
-            "history [N] : Show numbered session audit log (or export with 'history -s <path>').",
-            "exit [-s <path>] : Exit REPL (optionally save session history to named file).",
+            "history [N] : Show numbered session audit log (or export with 'history -s [path]').",
+            "exit [-s [path]] : Exit REPL (optionally save session history to ./history.txt or <path>).",
             "status : Show active table shape, columns, and memory usage.",
             "checkpoint <name> : Freeze and save current state with a name.",
             "restore <name> : Restore table to a saved checkpoint.",
@@ -917,9 +917,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "py <expr> : Evaluate arbitrary Python expressions on `df` / `pldf`.",
         ],
         examples=[
-            "pytae penguins.parquet -i",
             "pytae -i",
-            "pytae penguins.parquet -filter \"species == 'Gentoo'\" -i",
+            "pytae -i -session my_session",
         ],
         see_also=["-filter", "-mutate", "-agg", "-sql", "-cheatsheet"],
     ),

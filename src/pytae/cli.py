@@ -911,7 +911,7 @@ def main(argv: list[str] | None = None) -> int:
     # Legacy repl subcommand redirect
     if raw_argv and raw_argv[0] == "repl":
         parser = build_parser()
-        parser.error("'pytae repl' has been retired; use 'pytae -i' (or 'pytae <path> -i') instead")
+        parser.error("'pytae repl' has been retired; use 'pytae -i' instead")
 
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
@@ -1039,6 +1039,18 @@ def main(argv: list[str] | None = None) -> int:
 
     raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
 
+    if getattr(args, "repl", False):
+        if raw_paths or args.file is not None:
+            first_path = raw_paths[0] if raw_paths else "data.parquet"
+            parser.error(
+                f"'-i' cannot be combined with input files ({', '.join(raw_paths)}). "
+                f"Run 'pytae -i' to enter interactive mode, then load datasets with '<var> = <path>' (e.g. df = {first_path})."
+            )
+        from pytae.repl import repl
+
+        repl(session=getattr(args, "session", None))
+        return 0
+
     if args.meta and args.file is not None:
         parser.error("-meta cannot be used with -file")
     if args.join and args.file is None:
@@ -1053,14 +1065,9 @@ def main(argv: list[str] | None = None) -> int:
         if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
             parser.error(f"-o {out_target}: in -file/-join mode, an explicit output file path is required")
     elif not raw_paths:
-        if _is_stdin_piped() and not getattr(args, "repl", False):
+        if _is_stdin_piped():
             raw_paths = ["-"]
             args.path = ["-"]
-        elif getattr(args, "repl", False):
-            from pytae.repl import repl
-
-            repl(session=getattr(args, "session", None))
-            return 0
         else:
             parser.error("the following arguments are required: path")
 
@@ -1285,55 +1292,6 @@ def main(argv: list[str] | None = None) -> int:
             if failed:
                 code = 1
         return code
-
-    if getattr(args, "repl", False):
-        from pytae.repl import repl
-
-        reader_kwargs: dict[str, Any] = {}
-        if getattr(args, "encoding", None):
-            reader_kwargs["encoding"] = args.encoding
-        if getattr(args, "dlim", None):
-            reader_kwargs["sep"] = args.dlim
-        if getattr(args, "nrows", None):
-            reader_kwargs["nrows"] = args.nrows
-        if getattr(args, "chunk_size", None):
-            reader_kwargs["chunk_size"] = args.chunk_size
-
-        if show_all:
-            try:
-                repl(
-                    path=paths[0] if paths else None,
-                    paths=paths if len(paths) > 1 else None,
-                    session=getattr(args, "session", None),
-                    **reader_kwargs,
-                )
-                return 0
-            except UnicodeError as exc:
-                target_p = paths[0] if paths else Path("dataset")
-                return _fail(parser, False, _encoding_error_message(target_p, getattr(args, "encoding", None), exc))
-            except Exception as exc:
-                target_p = paths[0] if paths else Path("dataset")
-                if "utf-8" in str(exc).lower():
-                    return _fail(
-                        parser,
-                        False,
-                        _encoding_error_message(
-                            target_p,
-                            getattr(args, "encoding", None),
-                            UnicodeDecodeError("utf-8", b"", 0, 1, str(exc)),
-                        ),
-                    )
-                return _fail(parser, False, str(exc))
-        else:
-            _execute_once()
-            result_df = getattr(args, "_result_frame", None)
-            repl(
-                df=result_df,
-                path=paths[0] if paths else None,
-                session=getattr(args, "session", None),
-                **reader_kwargs,
-            )
-            return 0
 
     if args.time is None:
         return _execute_once()

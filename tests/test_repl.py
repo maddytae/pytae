@@ -322,9 +322,10 @@ def test_cli_repl_invocation(sample_parquet, monkeypatch):
         cli.main(["repl", str(sample_parquet)])
 
     invoked = False
-    # Test pytae <file> -i
-    cli.main([str(sample_parquet), "-i"])
-    assert invoked
+    # Test pytae <file> -i is disallowed with clear guidance
+    with pytest.raises(SystemExit) as exc:
+        cli.main([str(sample_parquet), "-i"])
+    assert exc.value.code == 2
 
     invoked = False
     # Test pytae -i
@@ -1251,19 +1252,12 @@ def test_cli_repl_launch_with_dlim_and_encoding(tmp_path, monkeypatch):
     p = tmp_path / "latin1_sample.csv"
     p.write_bytes("col1|col2\n1|Caf\xe9\n2|Na\xefve\n".encode("latin-1"))
 
-    captured_df = []
-
-    def mock_run(self, *args, **kwargs):
-        captured_df.append(self.current_df)
-        return self.current_df
-
-    monkeypatch.setattr(PytaeRepl, "run", mock_run)
-
-    cli.main([str(p), "-dlim", "|", "-encoding", "latin-1", "-i"])
-    assert len(captured_df) == 1
-    assert captured_df[0] is not None
-    assert captured_df[0].shape == (2, 2)
-    assert captured_df[0]["col2"].to_list() == ["Café", "Naïve"]
+    r = PytaeRepl()
+    outputs = []
+    r.execute_line(f'df = {p} -dlim "|" -encoding "latin-1"', output_fn=outputs.append)
+    assert "df" in r.tables
+    assert r.tables["df"].shape == (2, 2)
+    assert r.tables["df"]["col2"].to_list() == ["Café", "Naïve"]
 
 
 def test_cli_repl_missing_encoding_reports_clean_error(tmp_path):
@@ -1286,18 +1280,10 @@ def test_repl_and_cli_identical_schema_inference_and_fallback(tmp_path, monkeypa
     assert code == 0
     assert "(51, 2)" in capsys.readouterr().out
 
-    # 2. REPL initial launch via CLI (-i)
-    captured_repl_df = []
-
-    def mock_run(self, *args, **kwargs):
-        captured_repl_df.append(self.current_df)
-        return self.current_df
-
-    monkeypatch.setattr(PytaeRepl, "run", mock_run)
-    cli.main([str(p), "-dlim", "|", "-encoding", "latin-1", "-i"])
-    assert len(captured_repl_df) == 1
-    assert captured_repl_df[0].shape == (51, 2)
-    assert captured_repl_df[0]["val"].to_list()[-1] == "Montréal"
+    # 2. REPL disallows positional files with -i
+    with pytest.raises(SystemExit) as exc:
+        cli.main([str(p), "-dlim", "|", "-encoding", "latin-1", "-i"])
+    assert exc.value.code == 2
 
     # 3. REPL interactive command loading
     r = PytaeRepl()

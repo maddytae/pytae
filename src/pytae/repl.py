@@ -547,9 +547,15 @@ REPL_HELP = """\
 ================================================================================
                              PYTAE REPL COMMANDS                                
 ================================================================================
-MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
-  Commands apply directly to the loaded table without any prefix:
-  -filter <condition>    : Filter rows, e.g. -filter "species == 'Gentoo'"
+DATASET INGEST & MANAGEMENT:
+  <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet)
+  load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
+  tables                 : List all loaded datasets in memory with row/col counts
+  use <name>             : Switch active dataset (or type bare table name, e.g. df)
+  rm <table_name>        : Remove in-memory table (e.g. rm df1, rm df, or rm *)
+
+DATA TRANSFORMATION & PIPELINES:
+  -filter <condition>    : Filter active table, e.g. -filter "species == 'Gentoo'"
   -mutate <expr>         : Add/modify columns, e.g. -mutate "mass_kg = body_mass_g / 1000"
   -select <cols>         : Column projection, e.g. -select "species,island,!mass_kg"
   -arrange <specs>       : Sort rows, e.g. -arrange "mass_kg desc"
@@ -557,6 +563,12 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
   -distinct <cols>       : Deduplicate rows
   -dropna [cols]         : Drop missing values
   -fillna <specs>        : Impute missing values
+  <tbl> -<pipeline>      : Run pipeline on specific table (e.g. df1 -filter "amount > 100")
+  <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
+  <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
+  <var> = -sql "<query>" : Create table from ANSI SQL across loaded tables
+
+INSPECTION & EXPORT:
   -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
   -shape                 : Display row and column counts
   -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
@@ -564,23 +576,6 @@ MODE 1: SINGLE-TABLE EXPLORATION (pytae <file> -i):
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
-
-MODE 2: MULTI-TABLE WORKBENCH (pytae -i):
-  Load multiple datasets and operate with subject-first syntax (<tbl> -<cmd>):
-  <var> = <path> [options]: Ingest dataset (e.g. df1 = data.csv -encoding latin1 -dlim ";")
-  load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
-  <tbl> -head [N]        : Preview specific table (e.g. df1 -head 5, df2 -head 3)
-  <tbl> -shape / -cols   : Inspect table metadata (e.g. df1 -shape, df2 -cols asc)
-  <tbl> -time [N]        : Switch active dataset and measure elapsed time (e.g. df1 -time)
-  <tbl> -<pipeline>      : Run pipeline directly on table (e.g. df1 -filter "amount > 100")
-  <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
-  <tbl> -o <path>        : Export specific table (e.g. df1 -o clean_orders.parquet)
-  <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
-  <var> = <t1> -join <t2>: Assign join result (e.g. df3 = df1 -join df2 on=cust_id)
-  <var> = -sql "<query>" : Create table from ANSI SQL across loaded tables
-  rm <table_name>        : Remove in-memory table (e.g. rm df1, rm df, or rm *)
-  tables                 : List all loaded datasets in memory
-  use <name>             : Switch active dataset (or type bare table name e.g. df1)
 
 STATE NAVIGATION (Undoable):
   undo                   : Revert the last transformation step

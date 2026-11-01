@@ -7,15 +7,15 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
 ## Contents
 
 - [Overview and Why Use REPL](#overview-and-why-use-repl)
-- [Two Core Operation Modes](#two-core-operation-modes)
+- [Interactive Workbench Architecture](#interactive-workbench-architecture)
 - [Launching the REPL](#launching-the-repl)
-- [Mode 1: Single-Table Exploration Deep-Dive](#mode-1-single-table-exploration-deep-dive)
+- [Single-Table & Active Table Exploration](#single-table--active-table-exploration)
   - [In-Memory Pipeline Transformations](#in-memory-pipeline-transformations)
   - [Non-Destructive Inspection & Column Sorting](#non-destructive-inspection--column-sorting)
   - [Session State, Reset Hierarchy, and Rollback](#session-state-reset-hierarchy-and-rollback)
   - [Checkpoints and Snapshots](#checkpoints-and-snapshots-disk-backed--memory-isolated)
   - [Persistent REPL Sessions](#persistent-repl-sessions-session--s--sessions)
-- [Mode 2: Multi-Table Workbench Deep-Dive](#mode-2-multi-table-workbench-deep-dive)
+- [Multi-Table Workbench Operations](#multi-table-workbench-operations)
   - [Ingesting Datasets](#ingesting-datasets)
   - [Listing Loaded Tables](#listing-loaded-tables)
   - [Removing Tables (`rm <table_name>`)](#removing-in-memory-tables-rm-table_name)
@@ -46,52 +46,45 @@ The **Pytae REPL** loads your dataset into memory **once**. All subsequent filte
 
 ---
 
-## Two Core Operation Modes
+## Interactive Workbench Architecture
 
-The Pytae REPL is engineered around two distinct data analysis scenarios with zero syntax bloat:
-
-| Feature | Mode 1: Single-Table Exploration | Mode 2: Multi-Table Workbench |
-|---|---|---|
-| **Invocation** | `pytae penguins.parquet -i` | `pytae -i` |
-| **Primary Workflow** | Rapid, iterative analysis of a single file | Multi-table joins, comparative analysis, SQL |
-| **Command Syntax** | `-filter "..."`, `-head 5`, `-o clean.parquet` | `df1 -filter "..."`, `df2 -head 5`, `df1 -join df2` |
-| **Dataset Prefix** | Omitted (unambiguous, only 1 table exists) | Explicit subject-first (`df1`, `df2`, `df3`) |
-| **State Cursor** | Bound to the loaded file | Stateless workbench (subject specifies the table) |
+The Pytae REPL provides a unified, in-memory workbench launched with **`pytae -i`**:
+- **Zero Ambiguity**: To keep sessions clean, predictable, and 100% reproducible, the interactive REPL is launched cleanly via `pytae -i`. Input files are loaded explicitly inside the REPL (e.g. `df = penguins.parquet`).
+- **Self-Contained Session History**: Because dataset loading is performed explicitly (`df = file.parquet`), the generated session history is always 100% self-contained and reproducible. Replaying a saved session script (`pytae -i < history.txt`) always works seamlessly.
+- **Active Table & Multi-Table Workflow**: You can operate directly on the active dataset using standard pipeline flags (e.g. `-filter ...`, `-head 5`), or manage multiple tables simultaneously (`df1 = orders.parquet`, `df2 = customers.parquet`, `df1 -join df2`).
 
 ---
 
 ## Launching the REPL
 
-You can launch the REPL from the command line in multiple ways:
+Launch the REPL from the command line:
 
 ```bash
-# 1. Mode 1: Pre-load a single dataset into the interactive shell
-pytae penguins.parquet -i
-
-# 2. Mode 2: Launch an empty REPL workbench (load datasets via df1 = orders.parquet)
+# 1. Launch interactive REPL workbench
 pytae -i
 
-# 3. Pre-filter a dataset and drop directly into the interactive REPL
-pytae penguins.parquet -filter "body_mass_g > 4000" -i
-
-# 4. Resume or start a named persistent session
+# 2. Resume or start a named persistent session
 pytae -session analysis
 
-# 5. List all saved persistent sessions from the command line
+# 3. List all saved persistent sessions from the command line
 pytae -sessions
 ```
 
-Upon launching, the interactive prompt displays the current file name and live table shape (or session name if active):
+> [!NOTE]
+> Passing files directly to `-i` (e.g. `pytae file.parquet -i`) is disallowed. Simply run `pytae -i`, then load your dataset with `df = file.parquet`. This ensures your session history log is completely self-contained.
+
+Upon launching, load a dataset to begin exploring:
 ```text
-pytae [penguins.parquet: 344x7]> 
-pytae:analysis [orders.parquet: 10000x4]> 
+pytae> df = penguins.parquet
+Loaded penguins.parquet as 'df' (344 rows x 7 cols).
+pytae [df: 344x7]> 
 ```
 
 ---
 
-## Mode 1: Single-Table Exploration Deep-Dive
+## Single-Table & Active Table Exploration
 
-When launched with a single input file (`pytae penguins.parquet -i`), the REPL enters **Single-Table Exploration Mode**. Because only one dataset exists in memory, all operations execute directly on the active table without needing any table prefix.
+Once a dataset is loaded into the active cursor (`df = penguins.parquet`), all operations execute directly on the active table without needing any table prefix.
 
 ### In-Memory Pipeline Transformations
 
@@ -344,9 +337,9 @@ pytae:analysis [df1: 344x7]>
 
 ---
 
-## Mode 2: Multi-Table Workbench Deep-Dive
+## Multi-Table Workbench Operations
 
-When launched with `pytae -i`, the REPL enters **Multi-Table Workbench Mode**. You can load several datasets into memory simultaneously and manipulate them using clean, stateless **subject-first commands (`df -cmd`)**.
+In `pytae -i`, you can load multiple datasets into memory simultaneously and manipulate them using clean **subject-first commands (`df -cmd`)**.
 
 ### Ingesting Datasets
 
