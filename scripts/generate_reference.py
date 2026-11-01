@@ -1100,7 +1100,7 @@ State Management & Rollback Commands:
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
   - `history`                 : Display session audit log with sequential step numbers and *checkpoint: <name>* banners.
   - `history <N>`             : Display the last N transformation steps.
-  - `history -s <path>`       : Export session history up to this point to a named file (without exiting).
+  - `history -s [path]`       : Export session history up to this point to a file (defaults to ./history.txt without exiting).
   - Session Flight Recorder   : Sessions are automatically logged in real-time to ~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt.
 
 Session-Wide Checkpoints:
@@ -1130,7 +1130,7 @@ Terminal Control & Utilities:
   - `tables`                  : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
   - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
-  - `exit` / `exit -s <path>` : Exit REPL (optionally save session history to a named file).
+  - `exit` / `exit -s [path]` : Exit REPL (optionally save session history to ./history.txt or a named file).
 
 
 6. FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES

@@ -1060,7 +1060,7 @@ State Management & Rollback Commands:
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
   - `history`                 : Display session audit log with sequential step numbers and *checkpoint: <name>* banners.
   - `history <N>`             : Display the last N transformation steps.
-  - `history -s <path>`       : Export session history up to this point to a named file (without exiting).
+  - `history -s [path]`       : Export session history up to this point to a file (defaults to ./history.txt without exiting).
   - Session Flight Recorder   : Sessions are automatically logged in real-time to ~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt.
 
 Session-Wide Checkpoints:
@@ -1090,7 +1090,7 @@ Terminal Control & Utilities:
   - `tables`                  : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
   - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
-  - `exit` / `exit -s <path>` : Exit REPL (optionally save session history to a named file).
+  - `exit` / `exit -s [path]` : Exit REPL (optionally save session history to ./history.txt or a named file).
 
 
 6. FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
@@ -14093,8 +14093,8 @@ The REPL automatically preserves command history and logs full session flight re
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
 - **`history`**: Displays a numbered audit log of pipeline transformation steps and checkpoints applied during the current session, along with the active log file path.
 - **`history <N>`**: Displays only the last `N` history entries (e.g., `history 10`).
-- **`history -s <path>`**: Exports the current session history up to this point to a named file (e.g. `history -s my_pipeline.txt` or `history -s ~/scripts/run.txt`) without exiting the REPL.
-- **`exit [-s <path>]`**: Exits the REPL session. If `-s <path>` is provided (e.g. `exit -s my_pipeline.txt` or `exit -s ~/scripts/run.txt`), saves the session history to the specified file upon exit. Relative paths save to the current working directory.
+- **`history -s [path]`**: Exports the current session history up to this point to a file (defaults to `./history.txt` if path is omitted, e.g. `history -s` or `history -s my_pipeline.txt`) without exiting the REPL.
+- **`exit [-s [path]]`**: Exits the REPL session. If `-s` is provided without a path, saves the session history to `./history.txt` in the current working directory upon exit. If a path is specified (e.g. `exit -s my_pipeline.txt` or `exit -s ~/scripts/run.txt`), saves to that file.
 
 ---
 
@@ -14127,7 +14127,7 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history`, `history <N>`, `history -s <path>` | Display session audit log or export to a named file | No |
+| **`history`** | `history`, `history <N>`, `history -s [path]` | Display session audit log or export to a file (defaults to `./history.txt`) | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
@@ -14157,7 +14157,7 @@ pytae> -o clip
 | **`-nulls`** | `-nulls [asc\|desc]` | Display missing value counts (optional alphabetical sort) | No |
 | **`-glimpse`** | `-glimpse` | Display transposed schema and sample values | No |
 | **`-describe`**| `-describe` | Display statistical summary of numeric columns | No |
-| **`exit`** | `exit`, `exit -s <path>` | Exit the REPL session (optionally export session history to file) | — |
+| **`exit`** | `exit`, `exit -s [path]` | Exit the REPL session (optionally export session history to `./history.txt` or `<path>`) | — |
 
 ================================================================================
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)

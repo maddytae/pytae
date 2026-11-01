@@ -2327,10 +2327,19 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert not (work_dir / "empty.txt").exists()
     assert any("No commands were executed" in o for o in outputs)
 
-    # Case 2: Run commands and use history -s with relative and tilde paths
+    # Case 2: Run commands and use history -s with default and custom paths
     r2 = PytaeRepl()
     r2.execute_line("df = sample:penguins", output_fn=outputs.append)
     r2.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+
+    # Bare history -s defaults to ./history.txt
+    outputs.clear()
+    res = r2.execute_line("history -s", output_fn=outputs.append)
+    assert res is True  # Does not exit
+    default_hist = work_dir / "history.txt"
+    assert default_hist.exists()
+    assert "df = sample:penguins" in default_hist.read_text(encoding="utf-8")
+    assert any("Session history saved to" in o for o in outputs)
 
     outputs.clear()
     res = r2.execute_line("history -s rel_hist.txt", output_fn=outputs.append)
@@ -2352,16 +2361,23 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     outputs.clear()
     res = r2.execute_line("exit -invalid", output_fn=outputs.append)
     assert res is True  # Does not exit
-    assert any("Usage: exit [-s <path>]" in o for o in outputs)
+    assert any("Usage: exit [-s [path]]" in o for o in outputs)
 
+    # Case 4: Bare exit -s saves to ./history.txt and terminates REPL
     outputs.clear()
+    default_hist.unlink()
     res = r2.execute_line("exit -s", output_fn=outputs.append)
-    assert res is True  # Missing target path -> does not exit
-    assert any("Usage: exit [-s <path>]" in o for o in outputs)
+    assert res is False  # Exits!
+    assert default_hist.exists()
+    assert "df = sample:penguins" in default_hist.read_text(encoding="utf-8")
+    assert any("Session history saved to" in o for o in outputs)
+    assert any("Exiting pytae REPL." in o for o in outputs)
 
-    # Case 4: exit -s saves and terminates REPL
+    # Case 5: exit -s with named path saves and terminates REPL
+    r3 = PytaeRepl()
+    r3.execute_line("df = sample:penguins", output_fn=outputs.append)
     outputs.clear()
-    res = r2.execute_line("exit -s final_exit.txt", output_fn=outputs.append)
+    res = r3.execute_line("exit -s final_exit.txt", output_fn=outputs.append)
     assert res is False  # Exits!
     saved_exit = work_dir / "final_exit.txt"
     assert saved_exit.exists()
