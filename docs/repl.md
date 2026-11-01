@@ -49,7 +49,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
 - [Persistent REPL Sessions](#persistent-repl-sessions)
   - [CLI Flags (`pytae -session <name>`, `pytae -sessions`)](#cli-flags-pytae--session-name-pytae--sessions)
   - [In-REPL Session Commands (`session`, `session save`, `session load`)](#in-repl-session-commands-session-session-save-session-load)
-  - [Custom Directory (`PYTAE_SESSIONS_DIR`)](#custom-directory-pytae_sessions_dir)
+  - [Custom Directory (`set sessions_dir = <path>`)](#custom-directory-set-sessions_dir--path)
 - [Session Export & Replay Scripts](#session-export--replay-scripts)
   - [Upfront Auto-Save (`set save = <path>`)](#upfront-auto-save-set-save--path)
   - [Exit-Time Export (`exit -s [path]`)](#exit-time-export-exit--s-path)
@@ -546,11 +546,25 @@ pytae> rm session old_project
 Removed session 'old_project' from disk.
 ```
 
-### Custom Directory (`PYTAE_SESSIONS_DIR`)
-By default, persistent sessions are saved under `~/.pytae/sessions/`. Override this path to an external drive, network mount, or project directory by setting `PYTAE_SESSIONS_DIR`:
+### Custom Directory (`set sessions_dir = <path>`)
+By default, persistent sessions are saved under `~/.pytae/sessions/`. You can configure your session storage path to an external drive, network mount, or project folder directly inside the REPL with `set sessions_dir = <path>`:
 
+```text
+# Inspect current sessions directory
+pytae> set sessions_dir
+sessions_dir = /Users/username/.pytae/sessions (options: <path>, default)
+
+# Set custom directory
+pytae> set sessions_dir = /Volumes/ExternalSSD/pytae_sessions
+Set sessions_dir = '/Volumes/ExternalSSD/pytae_sessions'.
+
+# Reset back to default
+pytae> set sessions_dir = default
+Set sessions_dir = '/Users/username/.pytae/sessions'.
+```
+
+You can also set the startup default via the `PYTAE_SESSIONS_DIR` environment variable:
 ```bash
-# In Bash/Zsh:
 export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/pytae_sessions"
 pytae -session project_x
 ```
@@ -679,8 +693,11 @@ pytae [df: 344x7]> -head 50 | wc -l
 | | `session load` | `session load <name>` | Switch session and restore latest checkpoint | Yes |
 | | `sessions` | `sessions` | List all persistent sessions on disk | No |
 | | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
-| **Export & Exit**| `set save` | `set save = pipeline.txt` | Set target replay script path upfront | No |
-| | `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
+| **Settings** | `set` | `set` | Inspect all configuration settings | No |
+| | `set save` | `set save = pipeline.txt` | Set target replay script path upfront | No |
+| | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
+| | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
+| **Export & Exit**| `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
 | | `status` | `status` | Display active dataset, RAM, undo depth | No |
 | | `gc` | `gc` | Force garbage collection and OS memory trim | No |
 | | `clear` | `clear` | Clear terminal screen | No |

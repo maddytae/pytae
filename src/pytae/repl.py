@@ -219,16 +219,33 @@ def _get_process_rss_mb() -> float | None:
 
 
 _DEFAULT_SESSIONS_DIR = Path.home() / ".pytae" / "sessions"
+_CONFIGURED_SESSIONS_DIR: Path | None = None
 
 
 def get_sessions_dir() -> Path:
     """Return the base directory for persistent Pytae sessions."""
-    env_dir = os.environ.get("PYTAE_SESSIONS_DIR")
-    if env_dir:
-        p = Path(env_dir).expanduser().resolve()
+    global _CONFIGURED_SESSIONS_DIR
+    if _CONFIGURED_SESSIONS_DIR is not None:
+        p = _CONFIGURED_SESSIONS_DIR
     else:
-        p = _DEFAULT_SESSIONS_DIR
+        env_dir = os.environ.get("PYTAE_SESSIONS_DIR")
+        if env_dir:
+            p = Path(env_dir).expanduser().resolve()
+        else:
+            p = _DEFAULT_SESSIONS_DIR
     p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def set_sessions_dir(path: Path | str | None) -> Path:
+    """Configure the base directory for persistent Pytae sessions."""
+    global _CONFIGURED_SESSIONS_DIR
+    if path is None or str(path).lower() in ("default", "none", "reset"):
+        _CONFIGURED_SESSIONS_DIR = None
+        return get_sessions_dir()
+    p = Path(path).expanduser().resolve()
+    p.mkdir(parents=True, exist_ok=True)
+    _CONFIGURED_SESSIONS_DIR = p
     return p
 
 
@@ -670,9 +687,9 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
-  set [key [= value]]    : Configure session settings (e.g. set save = run.txt, set checkpoint_format = parquet)
+  set [key [= value]]    : Configure session settings (e.g. set save = run.txt, set sessions_dir = <path>)
   session                : Show persistent session status
-  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or $PYTAE_SESSIONS_DIR)
+  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
   session load <name>    : Load persistent session checkpoints from disk
   sessions               : List all saved persistent sessions on disk
   rm session <name>      : Remove a saved persistent session from disk
@@ -2521,11 +2538,13 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set save = history.txt)."""
+        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set save = history.txt, set sessions_dir = <path>)."""
         if not args:
             save_str = self.save_history_file or "none"
+            sess_dir = str(get_sessions_dir())
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
             output_fn(f"save              = {save_str} (options: <path>, none)")
+            output_fn(f"sessions_dir      = {sess_dir} (options: <path>, default)")
             return
 
         line = " ".join(args).strip()
@@ -2536,7 +2555,7 @@ class PytaeRepl:
         elif len(args) == 1:
             key, val = args[0].strip(), ""
         else:
-            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet, set save = history.txt)")
+            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet, set save = history.txt, set sessions_dir = <path>)")
             return
 
         key_lower = key.lower().replace("-", "_")
@@ -2576,8 +2595,18 @@ class PytaeRepl:
                 output_fn(f"Set save = '{clean_val}' (session commands will be auto-saved here on exit).")
             return
 
+        if key_lower in ("sessions_dir", "session_dir", "sessions_path", "session_path"):
+            if not val:
+                output_fn(f"sessions_dir = {get_sessions_dir()} (options: <path>, default)")
+                return
+            clean_val = val.strip("'\"")
+            new_dir = set_sessions_dir(clean_val)
+            self._record_history(f"set sessions_dir = {clean_val}")
+            output_fn(f"Set sessions_dir = '{new_dir}'.")
+            return
+
         output_fn(
-            f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet), save (<path>, none)."
+            f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet), save (<path>, none), sessions_dir (<path>, default)."
         )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
