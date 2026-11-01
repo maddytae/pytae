@@ -47,8 +47,8 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Reloading After `rm *` via `restore <name>`](#reloading-after-rm--via-restore-name)
   - [Configuring Format (`set checkpoint_format = parquet|ipc`)](#configuring-format-set-checkpoint_format--parquetipc)
 - [Persistent REPL Sessions](#persistent-repl-sessions)
-  - [CLI Flags (`pytae -session <name>`, `pytae -sessions`)](#cli-flags-pytae--session-name-pytae--sessions)
-  - [In-REPL Session Commands (`session`, `session save`, `session load`)](#in-repl-session-commands-session-session-save-session-load)
+  - [Named Sessions via `set session = <name>`](#named-sessions-via-set-session--name)
+  - [In-REPL Session Commands (`session`, `session load`, `sessions`)](#in-repl-session-commands-session-session-load-sessions)
   - [Custom Directory (`set sessions_dir = <path>`)](#custom-directory-set-sessions_dir--path)
 - [Session Export & Replay Scripts](#session-export--replay-scripts)
   - [Upfront Auto-Save (`set save = <path>`)](#upfront-auto-save-set-save--path)
@@ -87,21 +87,15 @@ The **Pytae REPL (`pytae -i`)** loads your dataset into memory **once**. All sub
 
 ## Launching the REPL
 
-Launch the REPL from the command line:
+Launch the REPL cleanly from the command line:
 
 ```bash
-# 1. Launch interactive REPL workbench
+# Launch interactive REPL workbench
 pytae -i
-
-# 2. Resume or start a named persistent session
-pytae -session analysis
-
-# 3. List all saved persistent sessions from the command line
-pytae -sessions
 ```
 
 > [!NOTE]
-> Passing positional files directly to `-i` (e.g. `pytae file.parquet -i`) is disallowed. Simply run `pytae -i`, then load your dataset with `df = file.parquet`. This guarantees that exported session history files contain the full ingestion command and run anywhere.
+> `pytae -i` is the dedicated entrypoint for the interactive workbench. Datasets are loaded explicitly inside the REPL with `df = file.parquet`, and persistent project sessions are configured inside via `set session = <name>`. This guarantees that exported session history files contain the full ingestion command and run anywhere.
 
 Upon launching, load a dataset to begin exploring:
 ```text
@@ -510,36 +504,40 @@ Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet
 
 Persistent sessions allow you to save your workbench checkpoints to disk and resume your analysis across terminal restarts or system reboots.
 
-### CLI Flags (`pytae -session <name>`, `pytae -sessions`)
-```bash
-# 1. Start or resume a named persistent session
-pytae -session my_project
+### Named Sessions via `set session = <name>`
+Promote your current workbench to a persistent named session anytime using `set session = <name>`:
 
-# 2. List all persistent sessions saved on disk
-pytae -sessions
-```
-
-Listing sessions displays checkpoint counts, total disk size, and timestamps:
 ```text
-$ pytae -sessions
-Saved Sessions:
-  - my_project       : 3 checkpoints (4.12 MB) [last modified: 2026-11-01 09:30]
-  - model_eval       : 1 checkpoint  (0.85 MB) [last modified: 2026-10-30 14:15]
+# Check active session status
+pytae [df1, df2]> set session
+session = none (options: <name>, none)
+
+# Promote to persistent named session
+pytae [df1, df2]> set session = my_project
+Session saved as 'my_project' (2 checkpoints saved).
+pytae:my_project [df1, df2]>
+
+# Revert to ephemeral session
+pytae:my_project [df1, df2]> set session = none
+Detached persistent session 'my_project' (session reverted to ephemeral).
+pytae [df1, df2]>
 ```
 
-### In-REPL Session Commands (`session`, `session save`, `session load`)
+### In-REPL Session Commands (`session`, `session load`, `sessions`)
 ```text
 # Inspect active session name and directory
 pytae:my_project [df1]> session
-Active session: 'my_project' (/Users/username/.pytae/sessions/my_project)
-
-# Promote an anonymous session to a persistent named session
-pytae [df1, df2]> session save analysis_q4
-Saved session 'analysis_q4' (/Users/username/.pytae/sessions/analysis_q4).
+Active session: 'my_project' (2 checkpoints; location: /Users/username/.pytae/sessions/my_project)
 
 # Switch to a different persistent session (restores its latest checkpoint)
-pytae [df1]> session load my_project
-Switched to session 'my_project'. Restored latest checkpoint 'v2'.
+pytae [df1]> session load sales_q3
+Switched to session 'sales_q3'. Restored latest checkpoint 'v2'.
+
+# List all persistent sessions saved on disk
+pytae> sessions
+Saved Sessions:
+  - my_project       : 2 checkpoints (0.05 MB)
+  - sales_q3         : 3 checkpoints (4.12 MB)
 
 # Remove a persistent session from disk
 pytae> rm session old_project

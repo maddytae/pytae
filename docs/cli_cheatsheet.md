@@ -373,15 +373,11 @@ pytae -i
 # Load dataset inside REPL:
 #   pytae> df = data.parquet
 
-# Resume or launch a named persistent session (default ~/.pytae/sessions/<name> or set sessions_dir)
-pytae -session analysis
+# Launch the interactive REPL shell (in-memory, undo/redo, SQL, checkpoints)
+pytae -i
 
-# Custom session storage directory (overrides default location via env or in-REPL 'set sessions_dir = <path>')
-export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/pytae_sessions"
-pytae -session analysis
-
-# List all saved persistent sessions on disk
-pytae -sessions
+# Inspect loaded sessions from inside the REPL
+pytae> sessions
 
 # Inside the REPL prompt:
 # 1. State Management & Undo
