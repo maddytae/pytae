@@ -958,11 +958,23 @@ def _parse_reader_options(tokens: list[str]) -> tuple[list[str], dict[str, Any],
 
 
 def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
-    """Parse key=value setting pairs from a command line."""
+    """Parse key=value setting pairs from a command line.
+
+    Supports:
+      - Comma-separated: set session = proj_x, save = run.txt
+      - Semicolon-separated: set session = proj_x; set save = run.txt
+      - Space-separated: set session = proj_x save = run.txt
+      - Multiple 'set' keywords on the same line
+    """
     pairs: list[tuple[str, str]] = []
-    if "," in line:
-        chunks = [c.strip() for c in line.split(",") if c.strip()]
+    import re
+
+    # If commas or semicolons present
+    if "," in line or ";" in line:
+        chunks = [c.strip() for c in re.split(r"[,;]", line) if c.strip()]
         for chunk in chunks:
+            if chunk.lower().startswith("set "):
+                chunk = chunk[4:].strip()
             if "=" in chunk:
                 k, v = chunk.split("=", 1)
                 pairs.append((k.strip(), v.strip()))
@@ -974,32 +986,41 @@ def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
                     pairs.append((tokens[0].strip(), ""))
         return pairs
 
-    if line.count("=") > 1:
-        import re
-
-        tokens = re.split(r"(\b[a-zA-Z0-9_\-]+\s*=)", line)
-        current_k = None
-        for item in tokens:
-            item_s = item.strip()
-            if not item_s:
-                continue
-            if item_s.endswith("="):
-                current_k = item_s[:-1].strip()
-            elif current_k is not None:
-                pairs.append((current_k, item_s))
-                current_k = None
-        if pairs:
-            return pairs
+    # Multiple assignments on one line without commas/semicolons
+    tokens = re.split(r"(\b(?:set\s+)?[a-zA-Z0-9_\-]+\s*=)", line)
+    current_k = None
+    for item in tokens:
+        item_s = item.strip()
+        if not item_s:
+            continue
+        if item_s.endswith("="):
+            k = item_s[:-1].strip()
+            if k.lower().startswith("set "):
+                k = k[4:].strip()
+            current_k = k
+        elif current_k is not None:
+            pairs.append((current_k, item_s))
+            current_k = None
+    if pairs:
+        return pairs
 
     if "=" in line:
         k, v = line.split("=", 1)
+        if k.lower().startswith("set "):
+            k = k[4:].strip()
         return [(k.strip(), v.strip())]
 
     tokens = line.split(None, 1)
     if len(tokens) == 2:
-        return [(tokens[0].strip(), tokens[1].strip())]
+        k = tokens[0].strip()
+        if k.lower().startswith("set "):
+            k = k[4:].strip()
+        return [(k, tokens[1].strip())]
     if len(tokens) == 1:
-        return [(tokens[0].strip(), "")]
+        k = tokens[0].strip()
+        if k.lower().startswith("set "):
+            k = k[4:].strip()
+        return [(k, "")]
     return []
 
 

@@ -2821,6 +2821,16 @@ def test_repl_set_load_session_and_sessions_dir(tmp_path):
         assert (custom_dir_2 / "project_alpha" / "checkpoints" / "cp1").exists()
         assert get_sessions_dir() == custom_dir_2.resolve()
         assert "cp1" in r2.checkpoints
+
+        # 6. Set multiple settings on a single line (commas, semicolons, spaces, repeated set)
+        r2.execute_line("set save = my_hist.txt, checkpoint_format = parquet")
+        assert r2.save_history_file == "my_hist.txt"
+        assert r2.checkpoint_format == "parquet"
+
+        r2.execute_line("set save = log1.txt; set checkpoint_format = ipc")
+        assert r2.save_history_file == "log1.txt"
+        assert r2.checkpoint_format == "ipc"
+
         r2.close()
     finally:
         set_sessions_dir(orig_dir)
