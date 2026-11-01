@@ -20,11 +20,12 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -cols asc                   # Column names (alphabetical)
   pytae data.parquet -dtype                      # Column data types
   pytae data.parquet -nulls                      # Missing count per column
+  pytae data.parquet -schema                     # Compact schema table (types, nulls %, unique)
   pytae data.parquet -glimpse                    # Transposed overview
   pytae data.parquet -describe                   # Statistical summary
   pytae data.parquet -meta                       # Parquet row groups/compression
   pytae data.parquet -sample 10 -seed 42         # Random sample with seed
-  pytae data.parquet -sample -frac 0.05          # Sample 5% fraction of rows
+  pytae data.parquet -sample 5%                  # Sample 5% fraction of rows (or -sample 0.05)
 
 2. 🔍 ROW FILTERING & SLICING (-filter)
 --------------------------------------------------------------------------------

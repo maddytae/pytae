@@ -947,15 +947,15 @@ Inspection & Summary Flags:
   -cols [ORDER]         Print column names (ORDER: asc, desc, file)
   -dtype [ORDER]        Print column data types (ORDER: asc, desc, file)
   -nulls [ORDER]        Print null value counts per column (ORDER: asc, desc, file)
+  -schema               Compact schema summary: columns, dtypes, null counts & %, cardinality
   -describe             Descriptive statistics for numeric columns
   -glimpse              Transposed column overview with dtypes and sample values
   -meta                 Display zero-scan Parquet metadata
   -diff PATH[,on=...]   Compare schema, shape, null counts against another file; optionally align by key (on=id) & set tolerance (tol=1e-4)
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
-  -sample [N]           Random sample of N rows (default 5)
+  -sample [SPEC]        Random sample of rows: count (e.g. 10), percentage (e.g. 5%), or fraction (e.g. 0.05)
   -seed N               Random seed for sampling
-  -frac P               Sample fraction P (0.0 < P <= 1.0)
   -nrows, -limit N      Limit reading to first N rows of file
   -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc" or -arrange "col1 desc"
 

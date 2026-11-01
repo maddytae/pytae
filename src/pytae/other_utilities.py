@@ -232,6 +232,48 @@ def format_glimpse(df: Any, width: int | None = None) -> str:
     return "\n".join(lines)
 
 
+def format_schema(df: Any, is_tty: bool | None = None) -> str:
+    """Format DataFrame as a concise schema summary table: Column, Type, Nulls (%), Unique."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame as PytaeDataFrame
+
+    underlying = df._df if isinstance(df, PytaeDataFrame) else df
+    if isinstance(underlying, pl.LazyFrame):
+        pldf = underlying.collect()
+    elif isinstance(underlying, pl.DataFrame):
+        pldf = underlying
+    else:
+        try:
+            pldf = pl.from_pandas(underlying) if hasattr(underlying, "to_pandas") else pl.DataFrame(underlying)
+        except Exception:
+            pldf = pl.DataFrame(underlying)
+
+    total = len(pldf)
+    if total == 0:
+        nulls = [0] * len(pldf.columns)
+        uniques = [0] * len(pldf.columns)
+    else:
+        nulls = pldf.null_count().row(0)
+        uniques = pldf.select(pl.all().n_unique()).row(0)
+
+    rows = []
+    for col, n_null, n_uniq in zip(pldf.columns, nulls, uniques):
+        pct = (n_null / total * 100) if total else 0.0
+        dtype_str = str(pldf.schema[col])
+        rows.append({
+            "Column": col,
+            "Type": dtype_str,
+            "Nulls": f"{n_null:,} ({pct:.1f}%)",
+            "Unique": f"{n_uniq:,}",
+        })
+    schema_df = pl.DataFrame(rows)
+    from pytae.cli_run import _format_table
+
+    header = f"Columns: {len(pldf.columns)} | Rows: {total:,}\n"
+    return header + _format_table(schema_df, tbl_rows=max(len(rows), 10), is_tty=is_tty)
+
+
 def glimpse(df: Any, width: int | None = None) -> Any:
     """Print a transposed overview of DataFrame columns, dtypes, and sample values.
 

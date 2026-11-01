@@ -909,15 +909,15 @@ Inspection & Summary Flags:
   -cols [ORDER]         Print column names (ORDER: asc, desc, file)
   -dtype [ORDER]        Print column data types (ORDER: asc, desc, file)
   -nulls [ORDER]        Print null value counts per column (ORDER: asc, desc, file)
+  -schema               Compact schema summary: columns, dtypes, null counts & %, cardinality
   -describe             Descriptive statistics for numeric columns
   -glimpse              Transposed column overview with dtypes and sample values
   -meta                 Display zero-scan Parquet metadata
   -diff PATH[,on=...]   Compare schema, shape, null counts against another file; optionally align by key (on=id) & set tolerance (tol=1e-4)
   -distinct [SPEC]      Drop duplicate rows across all or specified columns, with keep=first|last|false
   -count [SPEC]         Count occurrences of unique combinations of columns (or rows per group with -by)
-  -sample [N]           Random sample of N rows (default 5)
+  -sample [SPEC]        Random sample of rows: count (e.g. 10), percentage (e.g. 5%), or fraction (e.g. 0.05)
   -seed N               Random seed for sampling
-  -frac P               Sample fraction P (0.0 < P <= 1.0)
   -nrows, -limit N      Limit reading to first N rows of file
   -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc" or -arrange "col1 desc"
 
@@ -13125,12 +13125,16 @@ pytae data.parquet -glimpse
 # Statistical summary (count, mean, std, min, percentiles, max)
 pytae data.parquet -describe
 
+# Compact schema summary (dtypes, null count and %, cardinality)
+pytae data.parquet -schema
+
 # Inspect low-level Parquet metadata (row groups, compression, statistics)
 pytae data.parquet -meta
 
-# Random sampling (reproducible with -seed)
+# Random sampling (reproducible with -seed; supports count, fraction, or percentage)
 pytae data.parquet -sample 10 -seed 42
-pytae data.parquet -sample -frac 0.05
+pytae data.parquet -sample 5%
+pytae data.parquet -sample 0.05
 ```
 
 ---
@@ -17787,11 +17791,12 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -cols asc                   # Column names (alphabetical)
   pytae data.parquet -dtype                      # Column data types
   pytae data.parquet -nulls                      # Missing count per column
+  pytae data.parquet -schema                     # Compact schema table (types, nulls %, unique)
   pytae data.parquet -glimpse                    # Transposed overview
   pytae data.parquet -describe                   # Statistical summary
   pytae data.parquet -meta                       # Parquet row groups/compression
   pytae data.parquet -sample 10 -seed 42         # Random sample with seed
-  pytae data.parquet -sample -frac 0.05          # Sample 5% fraction of rows
+  pytae data.parquet -sample 5%                  # Sample 5% fraction of rows (or -sample 0.05)
 
 2. 🔍 ROW FILTERING & SLICING (-filter)
 --------------------------------------------------------------------------------
@@ -17966,6 +17971,7 @@ from pytae.cli_parsing import (
     parse_list_order,
     parse_positive_int,
     parse_rename,
+    parse_sample_arg,
     parse_select_spec,
 )
 from pytae.cli_pipeline import (
@@ -18034,6 +18040,7 @@ _CLI_FLAGS = {
     "-cols",
     "-dtype",
     "-nulls",
+    "-schema",
     "-describe",
     "-meta",
     "-diff",
@@ -18301,6 +18308,12 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="print null/NaN count per column; optional asc|desc sorts by name (default: file order)",
     )
     parser.add_argument(
+        "-schema",
+        dest="schema",
+        action=_OrderedFlag,
+        help="print concise schema summary: columns, dtypes, null counts/percentages, and cardinality",
+    )
+    parser.add_argument(
         "-describe",
         dest="describe",
         action=_OrderedFlag,
@@ -18399,12 +18412,12 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "-sample",
         nargs="?",
-        const=5,
-        type=parse_positive_int,
+        const=(5, None),
+        type=parse_sample_arg,
         default=None,
-        metavar="N",
+        metavar="SPEC",
         action=_OrderedValue,
-        help="print N randomly sampled rows (default 5)",
+        help="sample N rows (e.g. -sample 10), fraction (e.g. -sample 0.05), or percentage (e.g. -sample 5%%) (default: 5 rows)",
     )
     parser.add_argument(
         "-seed",
@@ -18420,8 +18433,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         type=parse_fraction,
         default=None,
         metavar="P",
-        help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
-        "requires -sample and overrides its N",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "-arrange",
@@ -18977,6 +18989,18 @@ def main(argv: list[str] | None = None) -> int:
 
     raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
 
+    if getattr(args, "repl", False):
+        if raw_paths or args.file is not None:
+            first_path = raw_paths[0] if raw_paths else "data.parquet"
+            parser.error(
+                f"'-i' cannot be combined with input files ({', '.join(raw_paths)}). "
+                f"Run 'pytae -i' to enter interactive mode, then load datasets with '<var> = <path>' (e.g. df = {first_path})."
+            )
+        from pytae.repl import repl
+
+        repl(session=getattr(args, "session", None))
+        return 0
+
     if args.meta and args.file is not None:
         parser.error("-meta cannot be used with -file")
     if args.join and args.file is None:
@@ -18990,19 +19014,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("-file requires -join, -concat, or -sql as its first operation")
         if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
             parser.error(f"-o {out_target}: in -file/-join mode, an explicit output file path is required")
-    if getattr(args, "repl", False):
-        if raw_paths or args.file is not None:
-            first_path = raw_paths[0] if raw_paths else "data.parquet"
-            parser.error(
-                f"'-i' cannot be combined with input files ({', '.join(raw_paths)}). "
-                f"Run 'pytae -i' to enter interactive mode, then load datasets with '<var> = <path>' (e.g. df = {first_path})."
-            )
-        from pytae.repl import repl
-
-        repl(session=getattr(args, "session", None))
-        return 0
-
-    if not raw_paths:
+    elif not raw_paths:
         if _is_stdin_piped():
             raw_paths = ["-"]
             args.path = ["-"]
@@ -19015,6 +19027,7 @@ def main(argv: list[str] | None = None) -> int:
             args.cols,
             args.dtype,
             args.nulls,
+            args.schema,
             args.describe,
             args.glimpse,
             args.distinct is not None,
@@ -19059,6 +19072,7 @@ def main(argv: list[str] | None = None) -> int:
             args.cols,
             args.dtype,
             args.nulls,
+            args.schema,
             args.describe,
             show_all,
             args.distinct is not None,
@@ -19103,8 +19117,8 @@ def main(argv: list[str] | None = None) -> int:
         and args.count is None
     ):
         parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
-    if args.frac is not None and args.sample is None:
-        parser.error("-frac requires -sample")
+    if args.frac is not None:
+        parser.error("-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)")
     if args.tol is not None and args.diff is None:
         parser.error("-tol requires -diff")
     if args.unmask is not None and not args.key and not args.vault:
@@ -19157,17 +19171,28 @@ def main(argv: list[str] | None = None) -> int:
         if args.file is not None:
             frames: dict[str, Any] = {}
             for entry in parse_file_arg(args.file):
-                entry_path = Path(entry["path"])
-                if not entry_path.exists() and not any(ch in str(entry_path) for ch in "*?["):
-                    from pytae import DATA_PATH
+                raw_entry = str(entry["path"]).strip()
+                if raw_entry.startswith("sample:"):
+                    from pytae import _DATASET_NAMES, DATA_PATH
 
-                    candidate = DATA_PATH / entry_path.name
-                    if not candidate.exists():
-                        candidate = DATA_PATH / f"{entry_path.stem}.parquet"
-                    if candidate.exists():
-                        entry_path = candidate
-                    else:
-                        parser.error(f"-file: file not found: {entry_path}")
+                    sample_name = raw_entry[7:].strip().removesuffix(".parquet")
+                    sample_file = DATA_PATH / f"{sample_name}.parquet"
+                    if not sample_file.exists():
+                        available = ", ".join(_DATASET_NAMES)
+                        parser.error(f"-file: unknown sample dataset '{sample_name}'. Available: {available}")
+                    entry_path = sample_file
+                else:
+                    entry_path = Path(entry["path"])
+                    if not entry_path.exists() and not any(ch in str(entry_path) for ch in "*?["):
+                        from pytae import DATA_PATH
+
+                        candidate = DATA_PATH / entry_path.name
+                        if not candidate.exists():
+                            candidate = DATA_PATH / f"{entry_path.stem}.parquet"
+                        if candidate.exists():
+                            entry_path = candidate
+                        else:
+                            parser.error(f"-file: file not found: {entry_path}")
                 try:
                     reader = get_reader(
                         entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000
@@ -19938,6 +19963,47 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -nulls desc",
         ],
         see_also=["-dropna", "-fillna"],
+    ),
+    "schema": KeywordHelp(
+        name="schema",
+        flag="-schema, --schema",
+        syntax="pytae <path> -schema",
+        summary="Print concise schema summary: columns, dtypes, null counts/percentages, and cardinality.",
+        description=(
+            "Renders a compact, complete tabular overview of the dataset schema, including column names, "
+            "data types, missing count and percentage, and distinct unique count per column."
+        ),
+        options=[],
+        examples=[
+            "pytae penguins.parquet -schema",
+            'pytae -file "a.parquet=a; b.parquet=b" -join "left=a,right=b,on=id" -schema',
+        ],
+        see_also=["-cols", "-dtype", "-nulls", "-glimpse", "-describe"],
+    ),
+    "sample": KeywordHelp(
+        name="sample",
+        flag="-sample, --sample [SPEC]",
+        syntax="pytae <path> -sample [N|P%|P] [-seed S]",
+        summary="Sample rows by count, fraction, or percentage with optional random seed.",
+        description=(
+            "Extracts a random sample of rows from the dataset.\n"
+            "Accepts an integer count (e.g. -sample 10), a decimal fraction (e.g. -sample 0.05), "
+            "or a percentage string (e.g. -sample 5%).\n"
+            "Use -seed for reproducible sampling."
+        ),
+        options=[
+            "N : Integer number of rows to sample (default: 5).",
+            "P% : Percentage of rows to sample (e.g. -sample 10% or -sample 5%).",
+            "P : Decimal fraction of rows to sample (e.g. -sample 0.1 for 10%).",
+            "-seed N : Random integer seed for deterministic, reproducible sampling.",
+        ],
+        examples=[
+            "pytae penguins.parquet -sample",
+            "pytae penguins.parquet -sample 10",
+            "pytae penguins.parquet -sample 5% -seed 42",
+            "pytae penguins.parquet -sample 0.1",
+        ],
+        see_also=["-head", "-tail", "-arrange"],
     ),
     "dropna": KeywordHelp(
         name="dropna",
@@ -20929,15 +20995,45 @@ def parse_positive_int(raw) -> int:
     return n
 
 
-def parse_fraction(raw) -> float:
-    """Parse -frac: a fraction of rows in (0, 1] (e.g. -frac 0.1 for 10%)."""
+def parse_sample_arg(raw: Any) -> tuple[int | None, float | None]:
+    """Parse -sample argument: integer count (e.g. 5, 100), float fraction (e.g. 0.05), or percentage (e.g. 5%).
+
+    Returns (count, frac) where exactly one is non-None.
+    """
+    if raw is None or raw == "" or raw == (5, None) or raw == 5:
+        return (5, None)
+    if isinstance(raw, tuple) and len(raw) == 2:
+        return raw  # already parsed tuple
+    raw_str = str(raw).strip()
+    if raw_str.endswith("%"):
+        try:
+            pct = float(raw_str[:-1].strip())
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"invalid percentage for -sample: {raw!r}") from None
+        if not (0 < pct <= 100):
+            raise argparse.ArgumentTypeError(f"percentage must be > 0 and <= 100, got {pct}%")
+        return (None, pct / 100.0)
     try:
-        frac = float(raw)
-    except (TypeError, ValueError):
-        raise argparse.ArgumentTypeError(f"invalid number: {raw!r}") from None
-    if not (0 < frac <= 1):
-        raise argparse.ArgumentTypeError(f"must be > 0 and <= 1, got {frac}")
-    return frac
+        val = float(raw_str)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid sample size or fraction: {raw!r}") from None
+
+    if "." in raw_str:
+        if not (0 < val <= 1):
+            raise argparse.ArgumentTypeError(f"fraction must be > 0 and <= 1, got {val}")
+        return (None, val)
+
+    n = int(val)
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f"sample count must be > 0, got {n}")
+    return (n, None)
+
+
+def parse_fraction(raw: Any) -> float:
+    """Parse -frac (deprecated)."""
+    raise argparse.ArgumentTypeError(
+        "-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)"
+    )
 
 
 def parse_list_order(raw: str) -> str:
@@ -23109,6 +23205,14 @@ def _process_path(
                 _output_text(nulls.to_string(), args)
             if is_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
+        elif op == "schema":
+            from pytae.other_utilities import format_schema
+
+            schema_str = format_schema(pipeline.polars_frame(), is_tty=getattr(args, "pretty", False) or None)
+            if should_print(idx):
+                _output_text(schema_str, args)
+            if is_clip:
+                clip_action = lambda s=schema_str: _copy_to_clipboard(s)
         elif op == "describe":
             described = pipeline.dataframe().describe()
             pipeline._df = described
@@ -23278,7 +23382,13 @@ def _process_path(
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "sample":
             sample_val = _next_op_val("sample", args.sample)
-            sampled = pipeline.sample(sample_val, seed=args.seed, frac=args.frac)
+            if isinstance(sample_val, tuple) and len(sample_val) == 2:
+                sample_n, sample_frac = sample_val
+            elif isinstance(sample_val, float):
+                sample_n, sample_frac = None, sample_val
+            else:
+                sample_n, sample_frac = (int(sample_val) if sample_val is not None else 5), None
+            sampled = pipeline.sample(sample_n or 5, seed=args.seed, frac=sample_frac)
             n = len(sampled)
             if should_print(idx):
                 _output_text(
@@ -26828,6 +26938,47 @@ def format_glimpse(df: Any, width: int | None = None) -> str:
         lines.append(prefix + vals_str)
 
     return "\n".join(lines)
+
+
+def format_schema(df: Any, is_tty: bool | None = None) -> str:
+    """Format DataFrame as a concise schema summary table: Column, Type, Nulls (%), Unique."""
+    import polars as pl
+    from pytae.dataframe import DataFrame as PytaeDataFrame
+
+    underlying = df._df if isinstance(df, PytaeDataFrame) else df
+    if isinstance(underlying, pl.LazyFrame):
+        pldf = underlying.collect()
+    elif isinstance(underlying, pl.DataFrame):
+        pldf = underlying
+    else:
+        try:
+            pldf = pl.from_pandas(underlying) if hasattr(underlying, "to_pandas") else pl.DataFrame(underlying)
+        except Exception:
+            pldf = pl.DataFrame(underlying)
+
+    total = len(pldf)
+    if total == 0:
+        nulls = [0] * len(pldf.columns)
+        uniques = [0] * len(pldf.columns)
+    else:
+        nulls = pldf.null_count().row(0)
+        uniques = pldf.select(pl.all().n_unique()).row(0)
+
+    rows = []
+    for col, n_null, n_uniq in zip(pldf.columns, nulls, uniques):
+        pct = (n_null / total * 100) if total else 0.0
+        dtype_str = str(pldf.schema[col])
+        rows.append({
+            "Column": col,
+            "Type": dtype_str,
+            "Nulls": f"{n_null:,} ({pct:.1f}%)",
+            "Unique": f"{n_uniq:,}",
+        })
+    schema_df = pl.DataFrame(rows)
+    from pytae.cli_run import _format_table
+
+    header = f"Columns: {len(pldf.columns)} | Rows: {total:,}\n"
+    return header + _format_table(schema_df, tbl_rows=max(len(rows), 10), is_tty=is_tty)
 
 
 def glimpse(df: Any, width: int | None = None) -> Any:
@@ -34755,7 +34906,7 @@ class PytaeRepl:
             return False
         first_lower = tokens[0].lower()
         is_inspect = (
-            first_lower in ("-shape", "-glimpse", "-describe", "-head", "-tail")
+            first_lower in ("-shape", "-schema", "-glimpse", "-describe", "-head", "-tail")
             or first_lower == "-cols"
             or first_lower.startswith("-cols=")
             or first_lower == "-dtype"
@@ -34763,14 +34914,22 @@ class PytaeRepl:
             or first_lower == "-nulls"
             or first_lower.startswith("-nulls=")
             or (allow_sample and first_lower == "-sample")
+            or first_lower == "-frac"
         )
         if not is_inspect:
             return False
+        if first_lower == "-frac":
+            output_fn("pytae: -frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%).")
+            return True
         if df is None:
             output_fn("No dataset loaded.")
             return True
         if first_lower == "-shape":
             output_fn(f"({df.shape[0]}, {df.shape[1]})")
+        elif first_lower == "-schema":
+            from pytae.other_utilities import format_schema
+
+            output_fn(format_schema(df))
         elif first_lower == "-cols" or first_lower.startswith("-cols="):
             order = "file"
             if "=" in first_lower:
@@ -34825,8 +34984,13 @@ class PytaeRepl:
             n = 5
             frac = None
             if len(tokens) > 1:
-                val = tokens[1]
-                if "." in val:
+                val = tokens[1].strip()
+                if val.endswith("%"):
+                    try:
+                        frac = float(val[:-1].strip()) / 100.0
+                    except ValueError:
+                        pass
+                elif "." in val:
                     try:
                         frac = float(val)
                     except ValueError:
@@ -35448,13 +35612,19 @@ class PytaeRepl:
             pipe_line = ""
 
             if first_tok.startswith("-"):
-                if self.current_df is None:
+                if first_tok == "-join" and "left=" in right_expr:
+                    source_df = pl.DataFrame()
+                    source_label = "join"
+                    pipe_tokens = right_tokens
+                    pipe_line = right_expr
+                elif self.current_df is None:
                     output_fn("pytae: no active dataset loaded to apply pipeline.")
                     return
-                source_df = self.current_df
-                source_label = self.path_str or "active"
-                pipe_tokens = right_tokens
-                pipe_line = right_expr
+                else:
+                    source_df = self.current_df
+                    source_label = self.path_str or "active"
+                    pipe_tokens = right_tokens
+                    pipe_line = right_expr
             else:
                 resolved_src = self._resolve_table_name(first_tok)
                 if resolved_src is not None or first_tok in self.checkpoints:
@@ -35623,11 +35793,8 @@ class PytaeRepl:
             output_fn(f"pytae: failed to load {p}: {exc}")
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        if self.current_df is None:
-            output_fn("pytae: no dataset loaded to join into. Load a dataset first with '<var> = <file.parquet>'.")
-            return
         if not args:
-            output_fn("Usage: -join <target> on=<key> [how=left|inner|outer|semi|anti] [-o <file>]")
+            output_fn("Usage: -join [left=<tbl>,]right=<tbl>,on=<key> [how=left|inner|outer|semi|anti|cross] [-o <file>]")
             return
 
         # 1. Extract any output destination: `-o <dest>` (reject -output / --output)
@@ -35680,11 +35847,11 @@ class PytaeRepl:
                 on_key = part_clean
 
         if right_name is None:
-            output_fn("pytae: -join requires a target table or file (e.g. -join df2 on=customer_id)")
+            output_fn("pytae: -join requires a target table or file (e.g. -join df2 on=customer_id or -join left=df1,right=df2,on=id)")
             return
 
-        if on_key is None:
-            output_fn("pytae: -join requires 'on=<key>' (e.g. -join df2 on=customer_id or on=cust_id:id)")
+        if on_key is None and how != "cross":
+            output_fn("pytae: -join requires 'on=<key>' (e.g. -join df2 on=customer_id or -join left=df1,right=df2,on=id)")
             return
 
         # 3. Resolve left table
@@ -35706,9 +35873,12 @@ class PytaeRepl:
                     avail = ", ".join(self.tables.keys()) if self.tables else "none"
                     output_fn(f"pytae: left table '{left_name}' not found. Available: {avail}")
                     return
-        else:
+        elif self.current_df is not None:
             left_df = self.current_df
             left_name = self.path_str or "active"
+        else:
+            output_fn("pytae: no dataset loaded to join into. Load a dataset first with '<var> = <file.parquet>' or specify left=<tbl>.")
+            return
 
         # 4. Resolve right table
         right_res = self._resolve_table_name(right_name)
@@ -35731,40 +35901,48 @@ class PytaeRepl:
                 )
                 return
 
-        # 5. Column matching
-        left_col = on_key
-        right_col = on_key
-        if ":" in on_key:
-            left_col, right_col = on_key.split(":", 1)
+        # 5. Column matching (skipped for cross joins)
+        if how != "cross":
+            assert on_key is not None
+            left_col = on_key
+            right_col = on_key
+            if ":" in on_key:
+                left_col, right_col = on_key.split(":", 1)
 
-        if left_col not in left_df.columns:
-            output_fn(
-                f"pytae: join key '{left_col}' not found in '{left_name}'. Available: {', '.join(left_df.columns)}"
-            )
-            return
-        if right_col not in right_df.columns:
-            output_fn(
-                f"pytae: join key '{right_col}' not found in '{right_name}'. Available: {', '.join(right_df.columns)}"
-            )
-            return
+            if left_col not in left_df.columns:
+                output_fn(
+                    f"pytae: join key '{left_col}' not found in '{left_name}'. Available: {', '.join(left_df.columns)}"
+                )
+                return
+            if right_col not in right_df.columns:
+                output_fn(
+                    f"pytae: join key '{right_col}' not found in '{right_name}'. Available: {', '.join(right_df.columns)}"
+                )
+                return
 
         # 6. Execute join
         try:
             how_polars = "full" if how in ("outer", "full") else how
-            joined = left_df.join(
-                right_df,
-                left_on=left_col,
-                right_on=right_col,
-                how=how_polars,  # type: ignore[arg-type]
-            )
-            self._push_undo(f"-join {right_name} on={on_key} (how={how})", self.current_df.clone())
+            if how == "cross":
+                joined = left_df.join(right_df, how="cross")
+            else:
+                joined = left_df.join(
+                    right_df,
+                    left_on=left_col,
+                    right_on=right_col,
+                    how=how_polars,  # type: ignore[arg-type]
+                )
+            undo_df = self.current_df.clone() if self.current_df is not None else joined.clone()
+            self._push_undo(f"-join {right_name} on={on_key} (how={how})", undo_df)
             self.current_df = joined
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = joined
             self.redo_stack.clear()
-            self._record_history(f"-join {right_name} on={on_key} how={how}")
+            rec_line = f"-join left={left_name},right={right_name}" + (f",on={on_key}" if on_key else "") + f",how={how}"
+            self._record_history(rec_line)
+            joined_desc = f"on '{on_key}' " if on_key else ""
             output_fn(
-                f"Joined '{left_name}' with '{right_name}' on '{on_key}' (how={how}): {joined.shape[0]:,} rows x {joined.shape[1]} cols"
+                f"Joined '{left_name}' with '{right_name}' {joined_desc}(how={how}): {joined.shape[0]:,} rows x {joined.shape[1]} cols"
             )
 
             # 7. If -o was passed, export immediately
@@ -39307,19 +39485,34 @@ def test_sample_with_seed_is_reproducible(tmp_path, capsys):
 def test_sample_frac_selects_expected_row_count(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(100), "b": range(100, 200)}))
 
-    exit_code = cli.main([path, "-sample", "-frac", "0.1", "-seed", "1", "-shape"])
-
+    exit_code = cli.main([path, "-sample", "0.1", "-seed", "1", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip() == "(10, 2)"
 
+    # Percentage string also works directly
+    exit_code2 = cli.main([path, "-sample", "10%", "-seed", "1", "-shape"])
+    out2 = capsys.readouterr().out
+    assert exit_code2 == 0
+    assert out2.strip() == "(10, 2)"
 
-def test_frac_requires_sample(tmp_path):
+
+def test_frac_deprecated(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10, 20)}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-frac", "0.5", "-head"])
     assert exc_info.value.code == 2
+    assert "-frac is deprecated and removed" in capsys.readouterr().err
+
+
+def test_schema_summary_output(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, None], "b": ["x", "y", "x"]}))
+    exit_code = cli.main([path, "-schema"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Columns: 2 | Rows: 3" in out
+    assert "Column" in out and "Type" in out and "Nulls" in out and "Unique" in out
 
 
 def test_shape_cannot_be_followed_by_another_flag(tmp_path):
@@ -40645,6 +40838,20 @@ def test_join_df_alias_rejected(tmp_path, capsys):
         )
     assert exc_info.value.code == 2
     assert "'df' is not a valid alias; use 'data' for the pipeline's current result" in capsys.readouterr().err
+
+
+def test_join_with_sample_datasets(capsys):
+    exit_code = cli.main(
+        [
+            "-file",
+            "sample:penguins=p; sample:tips=t",
+            "-join",
+            "left=p,right=t,how=cross",
+            "-shape",
+        ]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(83936, 14)"
 
 ################################################################################
 # FILE: tests/test_cli_mutate.py
@@ -42315,7 +42522,7 @@ def test_cli_exit_code_invalid_flag():
 def test_cli_exit_code_invalid_flag_combination():
     proc = _run_cli("dummy.csv", "-frac", "0.5")
     assert proc.returncode == 2
-    assert "-frac requires -sample" in proc.stderr
+    assert "-frac is deprecated and removed; use '-sample <val>'" in proc.stderr
 
 
 def test_cli_exit_code_nonexistent_file():
@@ -49598,8 +49805,6 @@ def test_cli_repl_launch_with_dlim_and_encoding(tmp_path, monkeypatch):
     p = tmp_path / "latin1_sample.csv"
     p.write_bytes("col1|col2\n1|Caf\xe9\n2|Na\xefve\n".encode("latin-1"))
 
-    captured_df = []
-
     r = PytaeRepl()
     outputs = []
     r.execute_line(f'df = {p} -dlim "|" -encoding "latin-1"', output_fn=outputs.append)
@@ -50722,6 +50927,38 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert "df = sample:penguins" in saved_exit.read_text(encoding="utf-8")
     assert any("Session history saved to" in o for o in outputs)
     assert any("Exiting pytae REPL." in o for o in outputs)
+
+
+def test_repl_schema_and_sample_and_keyword_join():
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    r.execute_line("p = sample:penguins", output_fn=outputs.append)
+    r.execute_line("t = sample:tips", output_fn=outputs.append)
+
+    # Test -schema
+    outputs.clear()
+    r.execute_line("-schema", output_fn=outputs.append)
+    assert any("Columns: 7 | Rows: 244" in o for o in outputs)
+    assert any("Nulls" in o and "Unique" in o for o in outputs)
+
+    # Test -sample percentage and fraction
+    outputs.clear()
+    r.execute_line("-sample 1%", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "total_bill" in outputs[0]
+
+    # Test keyword -join syntax
+    outputs.clear()
+    r.execute_line("res = -join 'left=p,right=t,how=cross'", output_fn=outputs.append)
+    assert "res" in r.tables
+    assert r.tables["res"].shape == (83936, 14)
+
+    # Test history records standard keyword join line
+    hist_lines: list[str] = []
+    r.execute_line("history", output_fn=hist_lines.append)
+    hist_text = "\n".join(hist_lines)
+    assert "-join left=p,right=t,how=cross" in hist_text
 
 ################################################################################
 # FILE: tests/test_select.py

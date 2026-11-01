@@ -35,19 +35,34 @@ def test_sample_with_seed_is_reproducible(tmp_path, capsys):
 def test_sample_frac_selects_expected_row_count(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(100), "b": range(100, 200)}))
 
-    exit_code = cli.main([path, "-sample", "-frac", "0.1", "-seed", "1", "-shape"])
-
+    exit_code = cli.main([path, "-sample", "0.1", "-seed", "1", "-shape"])
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip() == "(10, 2)"
 
+    # Percentage string also works directly
+    exit_code2 = cli.main([path, "-sample", "10%", "-seed", "1", "-shape"])
+    out2 = capsys.readouterr().out
+    assert exit_code2 == 0
+    assert out2.strip() == "(10, 2)"
 
-def test_frac_requires_sample(tmp_path):
+
+def test_frac_deprecated(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": range(10), "b": range(10, 20)}))
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main([path, "-frac", "0.5", "-head"])
     assert exc_info.value.code == 2
+    assert "-frac is deprecated and removed" in capsys.readouterr().err
+
+
+def test_schema_summary_output(tmp_path, capsys):
+    path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2, None], "b": ["x", "y", "x"]}))
+    exit_code = cli.main([path, "-schema"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Columns: 2 | Rows: 3" in out
+    assert "Column" in out and "Type" in out and "Nulls" in out and "Unique" in out
 
 
 def test_shape_cannot_be_followed_by_another_flag(tmp_path):

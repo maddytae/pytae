@@ -380,3 +380,17 @@ def test_join_df_alias_rejected(tmp_path, capsys):
         )
     assert exc_info.value.code == 2
     assert "'df' is not a valid alias; use 'data' for the pipeline's current result" in capsys.readouterr().err
+
+
+def test_join_with_sample_datasets(capsys):
+    exit_code = cli.main(
+        [
+            "-file",
+            "sample:penguins=p; sample:tips=t",
+            "-join",
+            "left=p,right=t,how=cross",
+            "-shape",
+        ]
+    )
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(83936, 14)"

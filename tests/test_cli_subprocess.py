@@ -157,7 +157,7 @@ def test_cli_exit_code_invalid_flag():
 def test_cli_exit_code_invalid_flag_combination():
     proc = _run_cli("dummy.csv", "-frac", "0.5")
     assert proc.returncode == 2
-    assert "-frac requires -sample" in proc.stderr
+    assert "-frac is deprecated and removed; use '-sample <val>'" in proc.stderr
 
 
 def test_cli_exit_code_nonexistent_file():

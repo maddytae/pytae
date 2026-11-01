@@ -1982,7 +1982,7 @@ class PytaeRepl:
             return False
         first_lower = tokens[0].lower()
         is_inspect = (
-            first_lower in ("-shape", "-glimpse", "-describe", "-head", "-tail")
+            first_lower in ("-shape", "-schema", "-glimpse", "-describe", "-head", "-tail")
             or first_lower == "-cols"
             or first_lower.startswith("-cols=")
             or first_lower == "-dtype"
@@ -1990,14 +1990,22 @@ class PytaeRepl:
             or first_lower == "-nulls"
             or first_lower.startswith("-nulls=")
             or (allow_sample and first_lower == "-sample")
+            or first_lower == "-frac"
         )
         if not is_inspect:
             return False
+        if first_lower == "-frac":
+            output_fn("pytae: -frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%).")
+            return True
         if df is None:
             output_fn("No dataset loaded.")
             return True
         if first_lower == "-shape":
             output_fn(f"({df.shape[0]}, {df.shape[1]})")
+        elif first_lower == "-schema":
+            from pytae.other_utilities import format_schema
+
+            output_fn(format_schema(df))
         elif first_lower == "-cols" or first_lower.startswith("-cols="):
             order = "file"
             if "=" in first_lower:
@@ -2052,8 +2060,13 @@ class PytaeRepl:
             n = 5
             frac = None
             if len(tokens) > 1:
-                val = tokens[1]
-                if "." in val:
+                val = tokens[1].strip()
+                if val.endswith("%"):
+                    try:
+                        frac = float(val[:-1].strip()) / 100.0
+                    except ValueError:
+                        pass
+                elif "." in val:
                     try:
                         frac = float(val)
                     except ValueError:
@@ -2675,13 +2688,19 @@ class PytaeRepl:
             pipe_line = ""
 
             if first_tok.startswith("-"):
-                if self.current_df is None:
+                if first_tok == "-join" and "left=" in right_expr:
+                    source_df = pl.DataFrame()
+                    source_label = "join"
+                    pipe_tokens = right_tokens
+                    pipe_line = right_expr
+                elif self.current_df is None:
                     output_fn("pytae: no active dataset loaded to apply pipeline.")
                     return
-                source_df = self.current_df
-                source_label = self.path_str or "active"
-                pipe_tokens = right_tokens
-                pipe_line = right_expr
+                else:
+                    source_df = self.current_df
+                    source_label = self.path_str or "active"
+                    pipe_tokens = right_tokens
+                    pipe_line = right_expr
             else:
                 resolved_src = self._resolve_table_name(first_tok)
                 if resolved_src is not None or first_tok in self.checkpoints:
@@ -2850,11 +2869,8 @@ class PytaeRepl:
             output_fn(f"pytae: failed to load {p}: {exc}")
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        if self.current_df is None:
-            output_fn("pytae: no dataset loaded to join into. Load a dataset first with '<var> = <file.parquet>'.")
-            return
         if not args:
-            output_fn("Usage: -join <target> on=<key> [how=left|inner|outer|semi|anti] [-o <file>]")
+            output_fn("Usage: -join [left=<tbl>,]right=<tbl>,on=<key> [how=left|inner|outer|semi|anti|cross] [-o <file>]")
             return
 
         # 1. Extract any output destination: `-o <dest>` (reject -output / --output)
@@ -2907,11 +2923,11 @@ class PytaeRepl:
                 on_key = part_clean
 
         if right_name is None:
-            output_fn("pytae: -join requires a target table or file (e.g. -join df2 on=customer_id)")
+            output_fn("pytae: -join requires a target table or file (e.g. -join df2 on=customer_id or -join left=df1,right=df2,on=id)")
             return
 
-        if on_key is None:
-            output_fn("pytae: -join requires 'on=<key>' (e.g. -join df2 on=customer_id or on=cust_id:id)")
+        if on_key is None and how != "cross":
+            output_fn("pytae: -join requires 'on=<key>' (e.g. -join df2 on=customer_id or -join left=df1,right=df2,on=id)")
             return
 
         # 3. Resolve left table
@@ -2933,9 +2949,12 @@ class PytaeRepl:
                     avail = ", ".join(self.tables.keys()) if self.tables else "none"
                     output_fn(f"pytae: left table '{left_name}' not found. Available: {avail}")
                     return
-        else:
+        elif self.current_df is not None:
             left_df = self.current_df
             left_name = self.path_str or "active"
+        else:
+            output_fn("pytae: no dataset loaded to join into. Load a dataset first with '<var> = <file.parquet>' or specify left=<tbl>.")
+            return
 
         # 4. Resolve right table
         right_res = self._resolve_table_name(right_name)
@@ -2958,40 +2977,48 @@ class PytaeRepl:
                 )
                 return
 
-        # 5. Column matching
-        left_col = on_key
-        right_col = on_key
-        if ":" in on_key:
-            left_col, right_col = on_key.split(":", 1)
+        # 5. Column matching (skipped for cross joins)
+        if how != "cross":
+            assert on_key is not None
+            left_col = on_key
+            right_col = on_key
+            if ":" in on_key:
+                left_col, right_col = on_key.split(":", 1)
 
-        if left_col not in left_df.columns:
-            output_fn(
-                f"pytae: join key '{left_col}' not found in '{left_name}'. Available: {', '.join(left_df.columns)}"
-            )
-            return
-        if right_col not in right_df.columns:
-            output_fn(
-                f"pytae: join key '{right_col}' not found in '{right_name}'. Available: {', '.join(right_df.columns)}"
-            )
-            return
+            if left_col not in left_df.columns:
+                output_fn(
+                    f"pytae: join key '{left_col}' not found in '{left_name}'. Available: {', '.join(left_df.columns)}"
+                )
+                return
+            if right_col not in right_df.columns:
+                output_fn(
+                    f"pytae: join key '{right_col}' not found in '{right_name}'. Available: {', '.join(right_df.columns)}"
+                )
+                return
 
         # 6. Execute join
         try:
             how_polars = "full" if how in ("outer", "full") else how
-            joined = left_df.join(
-                right_df,
-                left_on=left_col,
-                right_on=right_col,
-                how=how_polars,  # type: ignore[arg-type]
-            )
-            self._push_undo(f"-join {right_name} on={on_key} (how={how})", self.current_df.clone())
+            if how == "cross":
+                joined = left_df.join(right_df, how="cross")
+            else:
+                joined = left_df.join(
+                    right_df,
+                    left_on=left_col,
+                    right_on=right_col,
+                    how=how_polars,  # type: ignore[arg-type]
+                )
+            undo_df = self.current_df.clone() if self.current_df is not None else joined.clone()
+            self._push_undo(f"-join {right_name} on={on_key} (how={how})", undo_df)
             self.current_df = joined
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = joined
             self.redo_stack.clear()
-            self._record_history(f"-join {right_name} on={on_key} how={how}")
+            rec_line = f"-join left={left_name},right={right_name}" + (f",on={on_key}" if on_key else "") + f",how={how}"
+            self._record_history(rec_line)
+            joined_desc = f"on '{on_key}' " if on_key else ""
             output_fn(
-                f"Joined '{left_name}' with '{right_name}' on '{on_key}' (how={how}): {joined.shape[0]:,} rows x {joined.shape[1]} cols"
+                f"Joined '{left_name}' with '{right_name}' {joined_desc}(how={how}): {joined.shape[0]:,} rows x {joined.shape[1]} cols"
             )
 
             # 7. If -o was passed, export immediately

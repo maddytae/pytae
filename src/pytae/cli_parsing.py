@@ -607,15 +607,45 @@ def parse_positive_int(raw) -> int:
     return n
 
 
-def parse_fraction(raw) -> float:
-    """Parse -frac: a fraction of rows in (0, 1] (e.g. -frac 0.1 for 10%)."""
+def parse_sample_arg(raw: Any) -> tuple[int | None, float | None]:
+    """Parse -sample argument: integer count (e.g. 5, 100), float fraction (e.g. 0.05), or percentage (e.g. 5%).
+
+    Returns (count, frac) where exactly one is non-None.
+    """
+    if raw is None or raw == "" or raw == (5, None) or raw == 5:
+        return (5, None)
+    if isinstance(raw, tuple) and len(raw) == 2:
+        return raw  # already parsed tuple
+    raw_str = str(raw).strip()
+    if raw_str.endswith("%"):
+        try:
+            pct = float(raw_str[:-1].strip())
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"invalid percentage for -sample: {raw!r}") from None
+        if not (0 < pct <= 100):
+            raise argparse.ArgumentTypeError(f"percentage must be > 0 and <= 100, got {pct}%")
+        return (None, pct / 100.0)
     try:
-        frac = float(raw)
-    except (TypeError, ValueError):
-        raise argparse.ArgumentTypeError(f"invalid number: {raw!r}") from None
-    if not (0 < frac <= 1):
-        raise argparse.ArgumentTypeError(f"must be > 0 and <= 1, got {frac}")
-    return frac
+        val = float(raw_str)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid sample size or fraction: {raw!r}") from None
+
+    if "." in raw_str:
+        if not (0 < val <= 1):
+            raise argparse.ArgumentTypeError(f"fraction must be > 0 and <= 1, got {val}")
+        return (None, val)
+
+    n = int(val)
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f"sample count must be > 0, got {n}")
+    return (n, None)
+
+
+def parse_fraction(raw: Any) -> float:
+    """Parse -frac (deprecated)."""
+    raise argparse.ArgumentTypeError(
+        "-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)"
+    )
 
 
 def parse_list_order(raw: str) -> str:

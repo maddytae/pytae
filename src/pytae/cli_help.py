@@ -675,6 +675,47 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-dropna", "-fillna"],
     ),
+    "schema": KeywordHelp(
+        name="schema",
+        flag="-schema, --schema",
+        syntax="pytae <path> -schema",
+        summary="Print concise schema summary: columns, dtypes, null counts/percentages, and cardinality.",
+        description=(
+            "Renders a compact, complete tabular overview of the dataset schema, including column names, "
+            "data types, missing count and percentage, and distinct unique count per column."
+        ),
+        options=[],
+        examples=[
+            "pytae penguins.parquet -schema",
+            'pytae -file "a.parquet=a; b.parquet=b" -join "left=a,right=b,on=id" -schema',
+        ],
+        see_also=["-cols", "-dtype", "-nulls", "-glimpse", "-describe"],
+    ),
+    "sample": KeywordHelp(
+        name="sample",
+        flag="-sample, --sample [SPEC]",
+        syntax="pytae <path> -sample [N|P%|P] [-seed S]",
+        summary="Sample rows by count, fraction, or percentage with optional random seed.",
+        description=(
+            "Extracts a random sample of rows from the dataset.\n"
+            "Accepts an integer count (e.g. -sample 10), a decimal fraction (e.g. -sample 0.05), "
+            "or a percentage string (e.g. -sample 5%).\n"
+            "Use -seed for reproducible sampling."
+        ),
+        options=[
+            "N : Integer number of rows to sample (default: 5).",
+            "P% : Percentage of rows to sample (e.g. -sample 10% or -sample 5%).",
+            "P : Decimal fraction of rows to sample (e.g. -sample 0.1 for 10%).",
+            "-seed N : Random integer seed for deterministic, reproducible sampling.",
+        ],
+        examples=[
+            "pytae penguins.parquet -sample",
+            "pytae penguins.parquet -sample 10",
+            "pytae penguins.parquet -sample 5% -seed 42",
+            "pytae penguins.parquet -sample 0.1",
+        ],
+        see_also=["-head", "-tail", "-arrange"],
+    ),
     "dropna": KeywordHelp(
         name="dropna",
         flag="-dropna, --dropna [COLS]",

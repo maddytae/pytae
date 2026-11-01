@@ -2376,4 +2376,36 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert any("Exiting pytae REPL." in o for o in outputs)
 
 
+def test_repl_schema_and_sample_and_keyword_join():
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    r.execute_line("p = sample:penguins", output_fn=outputs.append)
+    r.execute_line("t = sample:tips", output_fn=outputs.append)
+
+    # Test -schema
+    outputs.clear()
+    r.execute_line("-schema", output_fn=outputs.append)
+    assert any("Columns: 7 | Rows: 244" in o for o in outputs)
+    assert any("Nulls" in o and "Unique" in o for o in outputs)
+
+    # Test -sample percentage and fraction
+    outputs.clear()
+    r.execute_line("-sample 1%", output_fn=outputs.append)
+    assert len(outputs) == 1
+    assert "total_bill" in outputs[0]
+
+    # Test keyword -join syntax
+    outputs.clear()
+    r.execute_line("res = -join 'left=p,right=t,how=cross'", output_fn=outputs.append)
+    assert "res" in r.tables
+    assert r.tables["res"].shape == (83936, 14)
+
+    # Test history records standard keyword join line
+    hist_lines: list[str] = []
+    r.execute_line("history", output_fn=hist_lines.append)
+    hist_text = "\n".join(hist_lines)
+    assert "-join left=p,right=t,how=cross" in hist_text
+
+
 

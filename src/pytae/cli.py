@@ -28,6 +28,7 @@ from pytae.cli_parsing import (
     parse_list_order,
     parse_positive_int,
     parse_rename,
+    parse_sample_arg,
     parse_select_spec,
 )
 from pytae.cli_pipeline import (
@@ -96,6 +97,7 @@ _CLI_FLAGS = {
     "-cols",
     "-dtype",
     "-nulls",
+    "-schema",
     "-describe",
     "-meta",
     "-diff",
@@ -363,6 +365,12 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="print null/NaN count per column; optional asc|desc sorts by name (default: file order)",
     )
     parser.add_argument(
+        "-schema",
+        dest="schema",
+        action=_OrderedFlag,
+        help="print concise schema summary: columns, dtypes, null counts/percentages, and cardinality",
+    )
+    parser.add_argument(
         "-describe",
         dest="describe",
         action=_OrderedFlag,
@@ -461,12 +469,12 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "-sample",
         nargs="?",
-        const=5,
-        type=parse_positive_int,
+        const=(5, None),
+        type=parse_sample_arg,
         default=None,
-        metavar="N",
+        metavar="SPEC",
         action=_OrderedValue,
-        help="print N randomly sampled rows (default 5)",
+        help="sample N rows (e.g. -sample 10), fraction (e.g. -sample 0.05), or percentage (e.g. -sample 5%%) (default: 5 rows)",
     )
     parser.add_argument(
         "-seed",
@@ -482,8 +490,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         type=parse_fraction,
         default=None,
         metavar="P",
-        help="sample a fraction of rows instead of a count (0 < P <= 1, e.g. 0.1 for 10 percent); "
-        "requires -sample and overrides its N",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "-arrange",
@@ -1077,6 +1084,7 @@ def main(argv: list[str] | None = None) -> int:
             args.cols,
             args.dtype,
             args.nulls,
+            args.schema,
             args.describe,
             args.glimpse,
             args.distinct is not None,
@@ -1121,6 +1129,7 @@ def main(argv: list[str] | None = None) -> int:
             args.cols,
             args.dtype,
             args.nulls,
+            args.schema,
             args.describe,
             show_all,
             args.distinct is not None,
@@ -1165,8 +1174,8 @@ def main(argv: list[str] | None = None) -> int:
         and args.count is None
     ):
         parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
-    if args.frac is not None and args.sample is None:
-        parser.error("-frac requires -sample")
+    if args.frac is not None:
+        parser.error("-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)")
     if args.tol is not None and args.diff is None:
         parser.error("-tol requires -diff")
     if args.unmask is not None and not args.key and not args.vault:
@@ -1219,17 +1228,28 @@ def main(argv: list[str] | None = None) -> int:
         if args.file is not None:
             frames: dict[str, Any] = {}
             for entry in parse_file_arg(args.file):
-                entry_path = Path(entry["path"])
-                if not entry_path.exists() and not any(ch in str(entry_path) for ch in "*?["):
-                    from pytae import DATA_PATH
+                raw_entry = str(entry["path"]).strip()
+                if raw_entry.startswith("sample:"):
+                    from pytae import _DATASET_NAMES, DATA_PATH
 
-                    candidate = DATA_PATH / entry_path.name
-                    if not candidate.exists():
-                        candidate = DATA_PATH / f"{entry_path.stem}.parquet"
-                    if candidate.exists():
-                        entry_path = candidate
-                    else:
-                        parser.error(f"-file: file not found: {entry_path}")
+                    sample_name = raw_entry[7:].strip().removesuffix(".parquet")
+                    sample_file = DATA_PATH / f"{sample_name}.parquet"
+                    if not sample_file.exists():
+                        available = ", ".join(_DATASET_NAMES)
+                        parser.error(f"-file: unknown sample dataset '{sample_name}'. Available: {available}")
+                    entry_path = sample_file
+                else:
+                    entry_path = Path(entry["path"])
+                    if not entry_path.exists() and not any(ch in str(entry_path) for ch in "*?["):
+                        from pytae import DATA_PATH
+
+                        candidate = DATA_PATH / entry_path.name
+                        if not candidate.exists():
+                            candidate = DATA_PATH / f"{entry_path.stem}.parquet"
+                        if candidate.exists():
+                            entry_path = candidate
+                        else:
+                            parser.error(f"-file: file not found: {entry_path}")
                 try:
                     reader = get_reader(
                         entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000

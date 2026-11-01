@@ -34,12 +34,16 @@ pytae data.parquet -glimpse
 # Statistical summary (count, mean, std, min, percentiles, max)
 pytae data.parquet -describe
 
+# Compact schema summary (dtypes, null count and %, cardinality)
+pytae data.parquet -schema
+
 # Inspect low-level Parquet metadata (row groups, compression, statistics)
 pytae data.parquet -meta
 
-# Random sampling (reproducible with -seed)
+# Random sampling (reproducible with -seed; supports count, fraction, or percentage)
 pytae data.parquet -sample 10 -seed 42
-pytae data.parquet -sample -frac 0.05
+pytae data.parquet -sample 5%
+pytae data.parquet -sample 0.05
 ```
 
 ---

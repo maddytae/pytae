@@ -1034,6 +1034,14 @@ def _process_path(
                 _output_text(nulls.to_string(), args)
             if is_clip:
                 clip_action = lambda s=nulls: s.to_clipboard()
+        elif op == "schema":
+            from pytae.other_utilities import format_schema
+
+            schema_str = format_schema(pipeline.polars_frame(), is_tty=getattr(args, "pretty", False) or None)
+            if should_print(idx):
+                _output_text(schema_str, args)
+            if is_clip:
+                clip_action = lambda s=schema_str: _copy_to_clipboard(s)
         elif op == "describe":
             described = pipeline.dataframe().describe()
             pipeline._df = described
@@ -1203,7 +1211,13 @@ def _process_path(
                 clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
         elif op == "sample":
             sample_val = _next_op_val("sample", args.sample)
-            sampled = pipeline.sample(sample_val, seed=args.seed, frac=args.frac)
+            if isinstance(sample_val, tuple) and len(sample_val) == 2:
+                sample_n, sample_frac = sample_val
+            elif isinstance(sample_val, float):
+                sample_n, sample_frac = None, sample_val
+            else:
+                sample_n, sample_frac = (int(sample_val) if sample_val is not None else 5), None
+            sampled = pipeline.sample(sample_n or 5, seed=args.seed, frac=sample_frac)
             n = len(sampled)
             if should_print(idx):
                 _output_text(
