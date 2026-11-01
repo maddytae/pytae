@@ -609,13 +609,12 @@ STATE NAVIGATION (Undoable):
   redo                   : Re-apply the last undone transformation step
   reset                  : Revert to latest checkpoint (or initial read if no checkpoints)
   reset initial          : Strictly revert to initial read even if checkpoints exist
-  history [N]            : Show numbered transformation log (auto-logged to ~/.pytae_history/)
-  history -s [path]      : Save session history to file (defaults to ./history.txt)
+  history [N]            : Show numbered audit log of all commands executed in session
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
-  set [key [= value]]    : Configure session settings (e.g. set checkpoint_format = parquet)
+  set [key [= value]]    : Configure session settings (e.g. set history = run.txt, set checkpoint_format = parquet)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or $PYTAE_SESSIONS_DIR)
   session load <name>    : Load persistent session checkpoints from disk
@@ -871,6 +870,7 @@ class PytaeRepl:
         self.initial_df: pl.DataFrame | None = None
         self.checkpoints: dict[str, Any] = {}
         self.checkpoint_format: str = "ipc"
+        self.history_file: str | None = None
         self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -937,11 +937,8 @@ class PytaeRepl:
 
         init_target = str(path) if path else (str(paths[0]) if paths else "(none)")
         header = [
-            "# Pytae REPL Session History",
-            f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"# Initial target: {init_target}",
-            "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted.",
-            "# " + "-" * 76,
+            f"# Pytae REPL Session History: started {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"# Target: {init_target}",
             "",
         ]
         try:
@@ -951,8 +948,12 @@ class PytaeRepl:
 
     def _log_session_line(self, entry: str) -> None:
         clean = entry.strip()
-        # Omit checkpoints from disk session history files
-        if clean.startswith("*checkpoint:") and clean.endswith("*"):
+        # Omit checkpoints and metadata comments from replayable disk session history files
+        if (
+            (clean.startswith("*checkpoint:") and clean.endswith("*"))
+            or clean.startswith("checkpoint ")
+            or clean.startswith("#")
+        ):
             return
         self.session_cmd_count += 1
         try:
@@ -986,13 +987,11 @@ class PytaeRepl:
                 lines = [
                     f"# Pytae REPL Session History: {target_path.name}",
                     f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
-                    "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted.",
-                    "# " + "-" * 76,
                     "",
                 ]
                 for entry in self.history:
                     clean = entry.strip()
-                    if clean.startswith("*checkpoint:") and clean.endswith("*"):
+                    if (clean.startswith("*checkpoint:") and clean.endswith("*")) or clean.startswith("#"):
                         continue
                     lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1552,6 +1551,8 @@ class PytaeRepl:
         # Check for exit (supports 'exit' and 'exit -s <path>')
         clean_line_lower = line.lower()
         if clean_line_lower == "exit":
+            if self.history_file:
+                self._export_session_history(self.history_file, output_fn)
             output_fn("Exiting pytae REPL.")
             return False
 
@@ -2012,6 +2013,7 @@ class PytaeRepl:
         # Non-destructive dataset inspection (-shape, -cols, -dtype, etc.)
         has_time = any(t == "-time" or t.startswith("-time=") for t in tokens)
         if not has_time and self._try_fast_inspection(self.current_df, tokens, output_fn):
+            self._record_history(line)
             return True
 
         # Otherwise, process as a pytae pipeline command
@@ -2172,7 +2174,7 @@ class PytaeRepl:
             if self.checkpoints:
                 latest_cp = list(self.checkpoints.keys())[-1]
                 self._cmd_restore(latest_cp, output_fn, record_history=False)
-                self._record_history(f"reset [reverted to checkpoint: {latest_cp}]")
+                self._record_history("reset")
                 output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
                 if self.session_name:
                     self._save_session_metadata()
@@ -2221,7 +2223,7 @@ class PytaeRepl:
                     self.orig_df = cp_df
                 self.undo_stack.clear()
                 self.redo_stack.clear()
-                self._record_history(f"reset {table_name} [reverted to checkpoint: {latest_cp}]")
+                self._record_history(f"reset {table_name}")
                 if self.session_name:
                     self._save_session_metadata()
                 _release_memory()
@@ -2252,7 +2254,7 @@ class PytaeRepl:
 
         self.undo_stack.clear()
         self.redo_stack.clear()
-        self._record_history(f"reset {table_name} [reverted to initial read]")
+        self._record_history(f"reset {table_name} initial" if is_explicit_initial else f"reset {table_name}")
         if self.session_name:
             self._save_session_metadata()
         _release_memory()
@@ -2302,10 +2304,10 @@ class PytaeRepl:
         _release_memory()
 
         if is_explicit_initial:
-            self._record_history("reset initial [reverted to initial read]")
+            self._record_history("reset initial")
             desc = "initial dataset"
         else:
-            self._record_history("reset [reverted to initial read]")
+            self._record_history("reset")
             desc = "initial dataset (no checkpoints exist)"
 
         if self.session_name:
@@ -2358,6 +2360,16 @@ class PytaeRepl:
         if args:
             arg0 = args[0].strip()
             clean_arg0 = arg0.lower().lstrip("-")
+            if clean_arg0 in ("s", "save"):
+                output_fn(
+                    "pytae: 'history -s' is not supported. Use 'set history = <path>' upfront or 'exit -s [path]' on exit."
+                )
+                return
+            if arg0.startswith("-s=") or arg0.startswith("-s:"):
+                output_fn(
+                    "pytae: 'history -s' is not supported. Use 'set history = <path>' upfront or 'exit -s [path]' on exit."
+                )
+                return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
                 log_dest = str(getattr(self, "session_log_path", "~/.pytae_history/"))
                 output_fn(
@@ -2365,42 +2377,25 @@ class PytaeRepl:
                     f"'history' displays the session audit log, and all commands are automatically recorded in {log_dest}"
                 )
                 return
-            if clean_arg0 in ("s", "save"):
-                target = args[1].strip("'\"") if len(args) >= 2 else "history.txt"
-                self._export_session_history(target, output_fn)
-                return
-            if arg0.startswith("-s=") or arg0.startswith("-s:"):
-                target = arg0[3:].strip("'\"")
-                self._export_session_history(target, output_fn)
-                return
             if arg0.isdigit():
                 limit = int(arg0)
                 entries = self.history[-limit:]
             else:
-                output_fn(f"Usage: history [N] or history -s [path] (unrecognized option: '{arg0}')")
+                output_fn(f"Usage: history [N] (unrecognized option: '{arg0}')")
                 return
         else:
             entries = self.history
 
-        if not entries:
-            output_fn("No transformations recorded in this session.")
+        # Filter out comments (# ...) to keep a clean verbatim command list
+        clean_entries = [e for e in entries if not e.startswith("#")]
+
+        if not clean_entries:
+            output_fn("No commands recorded in this session.")
             return
 
-        log_path_str = str(getattr(self, "session_log_path", ""))
-        if log_path_str:
-            output_fn(f"Session History (logged to {log_path_str}):")
-        else:
-            output_fn("Session History:")
-
-        step_num = 1
-        for entry in entries:
-            if entry.startswith("*checkpoint:") and entry.endswith("*"):
-                output_fn(f"  {entry}")
-            elif entry.startswith("#"):
-                output_fn(f"  {entry}")
-            else:
-                output_fn(f"  {step_num:2d}: {entry}")
-                step_num += 1
+        output_fn("Session History:")
+        for idx, entry in enumerate(clean_entries, start=1):
+            output_fn(f"  {idx:2d}: {entry}")
 
     def _capture_session_state(self) -> dict[str, Any]:
         return {
@@ -2438,9 +2433,11 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None]) -> None:
-        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet)."""
+        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set history = history.txt)."""
         if not args:
+            hist_str = self.history_file or "none"
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
+            output_fn(f"history           = {hist_str} (options: <path>, none)")
             return
 
         line = " ".join(args).strip()
@@ -2451,7 +2448,7 @@ class PytaeRepl:
         elif len(args) == 1:
             key, val = args[0].strip(), ""
         else:
-            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet)")
+            output_fn("Usage: set [key [= value]] (e.g. set checkpoint_format = parquet, set history = history.txt)")
             return
 
         key_lower = key.lower().replace("-", "_")
@@ -2472,7 +2469,28 @@ class PytaeRepl:
                 output_fn(f"pytae: unsupported checkpoint_format '{val}'. Supported formats: ipc, parquet.")
             return
 
-        output_fn(f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet).")
+        if key_lower in ("history", "history_file", "save_history"):
+            if not val:
+                hist_str = self.history_file or "none"
+                output_fn(f"history = {hist_str} (options: <path>, none)")
+                return
+            clean_val = val.strip("'\"")
+            if clean_val.lower() in ("none", "off", "false", "0", ""):
+                self.history_file = None
+                output_fn("Disabled auto-saving history on exit.")
+            elif clean_val.lower() in ("true", "on", "1"):
+                self.history_file = "history.txt"
+                self._record_history("set history = history.txt")
+                output_fn("Set history = 'history.txt' (session commands will be auto-saved here on exit).")
+            else:
+                self.history_file = clean_val
+                self._record_history(f"set history = {clean_val}")
+                output_fn(f"Set history = '{clean_val}' (session commands will be auto-saved here on exit).")
+            return
+
+        output_fn(
+            f"pytae: unknown setting '{key}'. Supported settings: checkpoint_format (ipc, parquet), history (<path>, none)."
+        )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
         if not self.tables and self.current_df is None:
@@ -2526,7 +2544,7 @@ class PytaeRepl:
         self.checkpoints[name] = meta
 
         # Record checkpoint banner in history
-        self._record_history(f"*checkpoint: {name}*")
+        self._record_history(f"checkpoint {name}")
         if self.session_name:
             self._save_session_metadata()
 
@@ -3428,6 +3446,8 @@ class PytaeRepl:
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
                     continue
                 except EOFError:
+                    if self.history_file:
+                        self._export_session_history(self.history_file, output_fn)
                     output_fn("\nExiting pytae REPL.")
                     break
 

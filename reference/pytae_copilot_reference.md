@@ -14091,10 +14091,10 @@ The REPL automatically preserves command history and logs full session flight re
   - Arrow key navigation history is persisted in `~/.pytae_history/.readline_history` (up to 1,000 commands).
 - **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Supported on Unix/macOS (`libedit`, GNU `readline`), Windows Terminal, and PowerShell.
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
-- **`history`**: Displays a numbered audit log of pipeline transformation steps and checkpoints applied during the current session, along with the active log file path.
+- **`history`**: Displays a numbered audit log of every command executed during the session (ingestions, transformations, inspection flags, checkpoints, settings), cleanly formatted without comment headers.
 - **`history <N>`**: Displays only the last `N` history entries (e.g., `history 10`).
-- **`history -s [path]`**: Exports the current session history up to this point to a file (defaults to `./history.txt` if path is omitted, e.g. `history -s` or `history -s my_pipeline.txt`) without exiting the REPL.
-- **`exit [-s [path]]`**: Exits the REPL session. If `-s` is provided without a path, saves the session history to `./history.txt` in the current working directory upon exit. If a path is specified (e.g. `exit -s my_pipeline.txt` or `exit -s ~/scripts/run.txt`), saves to that file.
+- **`set history = <path>`**: Configures the session history target file upfront (e.g. `set history = my_pipeline.txt`). When exiting the session via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically exports the session history to that file.
+- **`exit [-s [path]]`**: Exits the REPL session. If `set history` was configured, or if `-s` is provided (e.g. `exit -s` or `exit -s my_pipeline.txt`), saves the session history upon exit. Note that mid-session export (`history -s`) is not supported to keep file creation strictly at the beginning (`set history = ...`) or at the end (`exit -s`).
 
 ---
 
@@ -14127,12 +14127,12 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history`, `history <N>`, `history -s [path]` | Display session audit log or export to a file (defaults to `./history.txt`) | No |
+| **`history`** | `history`, `history <N>` | Display numbered audit log of all commands run in session | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |
 | **`checkpoints`**| `checkpoints` | List all saved checkpoints and their constituent tables | No |
-| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set checkpoint_format = parquet`) | No |
+| **`set`** | `set [key [= value]]` | Inspect or configure session settings (e.g. `set history = run.txt`, `set checkpoint_format = parquet`) | No |
 | **`session`** | `session` | Display active session name, disk path, and checkpoints | No |
 | **`session save`**| `session save <name>` | Save or promote session to persistent storage under `<name>` | No |
 | **`session load`**| `session load <name>` | Switch to persistent session and restore its latest checkpoint | **Yes** (undoable) |

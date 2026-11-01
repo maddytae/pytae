@@ -1585,12 +1585,12 @@ def test_repl_history_option_b_milestone_banners():
     r.execute_line("history", output_fn=outputs.append)
     hist_text = "\n".join(outputs)
 
-    # Verify banner is unnumbered and commands are sequentially numbered
-    assert "  *checkpoint: baseline*" in hist_text
+    # Verify all commands including checkpoints are sequentially numbered without comments
     assert "   1: df1 = sample:penguins" in hist_text
     assert "   2: -filter \"species == 'Gentoo'\"" in hist_text
-    assert '   3: -mutate "mass_kg = body_mass_g / 1000"' in hist_text
-    assert "   4: reset [reverted to checkpoint: baseline]" in hist_text
+    assert "   3: checkpoint baseline" in hist_text
+    assert '   4: -mutate "mass_kg = body_mass_g / 1000"' in hist_text
+    assert "   5: reset" in hist_text
 
     r.close()
 
@@ -1637,7 +1637,7 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     outputs.clear()
     r2.execute_line("history", output_fn=outputs.append)
     hist_text = "\n".join(outputs)
-    assert "*checkpoint: v1*" in hist_text
+    assert "checkpoint v1" in hist_text
     assert "species == 'Adelie'" in hist_text
     assert "scratch_col" not in hist_text
 
@@ -1679,8 +1679,8 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     outputs.clear()
     r3.execute_line("history", output_fn=outputs.append)
     hist3 = "\n".join(outputs)
-    assert "*checkpoint: v1*" in hist3
-    assert "*checkpoint: v2*" in hist3
+    assert "checkpoint v1" in hist3
+    assert "checkpoint v2" in hist3
     assert "is_heavy = body_mass_g > 3500" in hist3
     r3.close()
 
@@ -2250,24 +2250,22 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     r.execute_line("checkpoint v1", output_fn=outputs.append)
     r.execute_line("-mutate \"m = 1\"", output_fn=outputs.append)
 
-    # Check file content on disk in real time: checkpoints omitted, note present
+    # Check file content on disk in real time: checkpoints omitted
     content = r.session_log_path.read_text(encoding="utf-8")
     assert "# Pytae REPL Session History" in content
-    assert "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted." in content
-    assert "# my custom comment" in content
     assert "df = sample:penguins" in content
     assert "-filter \"species == 'Gentoo'\"" in content
     assert "*checkpoint: v1*" not in content
     assert '-mutate "m = 1"' in content
 
-    # Test in-REPL history command (displays checkpoint banner in live terminal view)
+    # Test in-REPL history command: clean sequential numbering without comments
     outputs.clear()
     r.execute_line("history", output_fn=outputs.append)
     h_out = "\n".join(outputs)
-    assert "Session History" in h_out
-    assert str(r.session_log_path) in h_out
+    assert "Session History:" in h_out
     assert "df = sample:penguins" in h_out
-    assert "*checkpoint: v1*" in h_out
+    assert "checkpoint v1" in h_out
+    assert "# my custom comment" not in h_out
 
     # Test history N
     outputs.clear()
@@ -2315,37 +2313,33 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     res = r.execute_line("history -s empty.txt", output_fn=outputs.append)
     assert res is True  # Does not exit
     assert not (work_dir / "empty.txt").exists()
-    assert any("No commands were executed" in o for o in outputs)
+    assert any("'history -s' is not supported" in o for o in outputs)
 
-    # Case 2: Run commands and use history -s with default and custom paths
+    # Case 2: Run commands and use 'set history = ...' upfront
     r2 = PytaeRepl()
     r2.execute_line("df = sample:penguins", output_fn=outputs.append)
     r2.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
 
-    # Bare history -s defaults to ./history.txt
+    # Verify 'history -s' is rejected
     outputs.clear()
     res = r2.execute_line("history -s", output_fn=outputs.append)
-    assert res is True  # Does not exit
-    default_hist = work_dir / "history.txt"
-    assert default_hist.exists()
-    assert "df = sample:penguins" in default_hist.read_text(encoding="utf-8")
-    assert any("Session history saved to" in o for o in outputs)
+    assert res is True
+    assert any("'history -s' is not supported" in o for o in outputs)
 
+    # Configure 'set history = rel_hist.txt' upfront
     outputs.clear()
-    res = r2.execute_line("history -s rel_hist.txt", output_fn=outputs.append)
-    assert res is True  # Does not exit
+    r2.execute_line("set history = rel_hist.txt", output_fn=outputs.append)
+    assert r2.history_file == "rel_hist.txt"
+    assert any("Set history = 'rel_hist.txt'" in o for o in outputs)
+
+    # Plain exit automatically saves to configured history file
+    outputs.clear()
+    res = r2.execute_line("exit", output_fn=outputs.append)
+    assert res is False  # Exits!
     saved_rel = work_dir / "rel_hist.txt"
     assert saved_rel.exists()
     assert "df = sample:penguins" in saved_rel.read_text(encoding="utf-8")
     assert any("Session history saved to" in o for o in outputs)
-
-    # history -s with tilde path
-    outputs.clear()
-    res = r2.execute_line("history -s ~/export/custom.txt", output_fn=outputs.append)
-    assert res is True
-    saved_home = fake_home / "export" / "custom.txt"
-    assert saved_home.exists()
-    assert "df = sample:penguins" in saved_home.read_text(encoding="utf-8")
 
     # Case 3: Invalid exit arguments
     outputs.clear()
@@ -2354,9 +2348,13 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert any("Usage: exit [-s [path]]" in o for o in outputs)
 
     # Case 4: Bare exit -s saves to ./history.txt and terminates REPL
+    r_exit = PytaeRepl()
+    r_exit.execute_line("df = sample:penguins", output_fn=outputs.append)
+    default_hist = work_dir / "history.txt"
+    if default_hist.exists():
+        default_hist.unlink()
     outputs.clear()
-    default_hist.unlink()
-    res = r2.execute_line("exit -s", output_fn=outputs.append)
+    res = r_exit.execute_line("exit -s", output_fn=outputs.append)
     assert res is False  # Exits!
     assert default_hist.exists()
     assert "df = sample:penguins" in default_hist.read_text(encoding="utf-8")
@@ -2419,7 +2417,8 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     # 1. Inspect default format
     outputs.clear()
     r.execute_line("set", output_fn=outputs.append)
-    assert "checkpoint_format = ipc" in outputs[0]
+    assert any("checkpoint_format = ipc" in o for o in outputs)
+    assert any("history           = none" in o for o in outputs)
 
     outputs.clear()
     r.execute_line("set checkpoint_format", output_fn=outputs.append)
