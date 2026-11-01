@@ -398,6 +398,8 @@ restore v1           # Restore workbench to snapshot (RAM strictly from v1, purg
 session              # Display active session name, disk path, and saved checkpoints
 session save v_done  # Save current session checkpoints under named directory
 session load my_lab  # Switch to persistent session and boot from its latest checkpoint
+set session = lab1   # Bind current workbench to persistent session via set
+set load_session = l1# Load persistent session by name via set
 sessions             # List all saved persistent sessions on disk
 rm session my_lab    # Delete a saved persistent session from disk
 rm orders            # Remove specific table from memory and free RAM (or rm *)
@@ -415,7 +417,7 @@ pytae> -cols asc                                             # Column names sort
 pytae> -cols | grep mass                                     # Pipe command output to shell utility
 
 # 3. Direct Query Engines & Export
-pytae> -sql "SELECT species, AVG(body_mass_g) FROM this GROUP BY 1" # 'this', 'data', 'self', 'df' auto-registered
+pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1" # Query loaded tables directly by name
 pytae> py df.shape
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard

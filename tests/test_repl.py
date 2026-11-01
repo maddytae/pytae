@@ -2684,33 +2684,32 @@ def test_repl_diff_command():
     r.close()
 
 
-def test_repl_sql_data_this_self_registration():
+def test_repl_sql_pure_explicit_registration():
     outputs = []
     r = PytaeRepl()
     r.execute_line("t1 = sample:penguins", output_fn=outputs.append)
 
-    # Query with 'data'
-    r.execute_line('res1 = -sql "SELECT COUNT(*) as cnt FROM data"', output_fn=outputs.append)
+    # Explicit table name query succeeds
+    outputs.clear()
+    r.execute_line('res1 = -sql "SELECT COUNT(*) as cnt FROM t1"', output_fn=outputs.append)
     assert "res1" in r.tables
     assert r.tables["res1"]["cnt"][0] == 344
 
-    # Switch back to t1 and query with 'this'
-    r.execute_line("use t1", output_fn=outputs.append)
-    r.execute_line('res2 = -sql "SELECT COUNT(*) as cnt FROM this"', output_fn=outputs.append)
+    # Assign from SQL with explicit table and group by
+    outputs.clear()
+    r.execute_line('res2 = -sql "SELECT species, COUNT(*) as cnt FROM t1 GROUP BY species"', output_fn=outputs.append)
     assert "res2" in r.tables
-    assert r.tables["res2"]["cnt"][0] == 344
+    assert r.tables["res2"].shape[0] == 3
 
-    # Switch back to t1 and query with 'self'
-    r.execute_line("use t1", output_fn=outputs.append)
-    r.execute_line('res3 = -sql "SELECT COUNT(*) as cnt FROM self"', output_fn=outputs.append)
-    assert "res3" in r.tables
-    assert r.tables["res3"]["cnt"][0] == 344
+    # Option A: No magic aliases ('this', 'self', 'data' fail when no table is named that)
+    outputs.clear()
+    r.execute_line('-sql "SELECT * FROM this"', output_fn=outputs.append)
+    assert "error" in outputs[-1].lower() or "not found" in outputs[-1].lower()
 
-    # Switch back to t1 and assign from SQL with 'this' and group by
-    r.execute_line("use t1", output_fn=outputs.append)
-    r.execute_line('res4 = -sql "SELECT species, COUNT(*) as cnt FROM this GROUP BY species"', output_fn=outputs.append)
-    assert "res4" in r.tables
-    assert r.tables["res4"].shape[0] == 3
+    outputs.clear()
+    r.execute_line('-sql "SELECT * FROM data"', output_fn=outputs.append)
+    assert "error" in outputs[-1].lower() or "not found" in outputs[-1].lower()
+
     r.close()
 
 
@@ -2749,19 +2748,19 @@ def test_repl_tab_autocompletions():
     assert "bill_length_mm" in matches
     assert "bill_depth_mm" in matches
 
-    # SQL context completion
+    # SQL context completion (Option A: explicit table names, no magic aliases)
+    matches = r._get_completions("cu", "-sql SELECT * FROM cu")
+    assert "customers" in matches
+
     matches = r._get_completions("th", "-sql SELECT * FROM th")
-    assert "this" in matches
-
-    matches = r._get_completions("da", "-sql SELECT * FROM da")
-    assert "data" in matches
-
-    matches = r._get_completions("se", "-sql SELECT * FROM se")
-    assert "self" in matches
+    assert "this" not in matches
 
     # Config completion after 'set '
     matches = r._get_completions("ch", "set ch")
     assert "checkpoint_format" in matches
+
+    matches = r._get_completions("load_", "set load_")
+    assert "load_session" in matches
 
     matches = r._get_completions("par", "set checkpoint_format = par")
     assert "parquet" in matches
@@ -2771,6 +2770,60 @@ def test_repl_tab_autocompletions():
     assert r._is_replayable_entry("use customers") is True
 
     r.close()
+
+
+def test_repl_set_load_session_and_sessions_dir(tmp_path):
+    outputs = []
+    from pytae.repl import get_sessions_dir, set_sessions_dir
+
+    orig_dir = get_sessions_dir()
+    custom_dir_1 = tmp_path / "sessions_1"
+    custom_dir_2 = tmp_path / "sessions_2"
+    custom_dir_1.mkdir(parents=True, exist_ok=True)
+    custom_dir_2.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # 1. sessions_dir alone with NO active session is rejected / not modified
+        r = PytaeRepl()
+        outputs.clear()
+        r.execute_line(f"set sessions_dir = {custom_dir_1}", output_fn=outputs.append)
+        assert "no active session" in outputs[-1].lower()
+        assert get_sessions_dir() == orig_dir
+
+        # 2. Bind active session
+        outputs.clear()
+        r.execute_line("set session = project_alpha", output_fn=outputs.append)
+        assert r.session_name == "project_alpha"
+        r.execute_line("df = sample:penguins")
+        r.execute_line("checkpoint cp1")
+
+        # 3. sessions_dir alone with active session -> relocates active session
+        outputs.clear()
+        r.execute_line(f"set sessions_dir = {custom_dir_1}", output_fn=outputs.append)
+        assert "relocated active session 'project_alpha'" in outputs[-1].lower()
+        assert (custom_dir_1 / "project_alpha" / "checkpoints" / "cp1").exists()
+        assert get_sessions_dir() == custom_dir_1.resolve()
+        r.close()
+
+        # 4. load_session must not contain path separators
+        r2 = PytaeRepl()
+        outputs.clear()
+        r2.execute_line("set load_session = bad/path/name", output_fn=outputs.append)
+        assert "invalid session name" in outputs[-1].lower()
+
+        # 5. load_session with session_dir relocates to new sessions_dir
+        outputs.clear()
+        r2.execute_line(
+            f"set load_session = project_alpha, sessions_dir = {custom_dir_2}",
+            output_fn=outputs.append,
+        )
+        assert r2.session_name == "project_alpha"
+        assert (custom_dir_2 / "project_alpha" / "checkpoints" / "cp1").exists()
+        assert get_sessions_dir() == custom_dir_2.resolve()
+        assert "cp1" in r2.checkpoints
+        r2.close()
+    finally:
+        set_sessions_dir(orig_dir)
 
 
 

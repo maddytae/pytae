@@ -32,7 +32,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Comparing Datasets (`diff <tbl1> <tbl2>`)](#comparing-datasets-diff-tbl1-tbl2)
 - [SQL & Python Interop](#sql--python-interop)
   - [ANSI SQL across Tables (`-sql`)](#ansi-sql-across-tables--sql)
-  - [Active Dataset Aliases (`data`, `this`, `self`, `df`)](#active-dataset-aliases-data-this-self-df)
+  - [Explicit Table Names in SQL](#explicit-table-names-in-sql)
   - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Fluent Python Execution (`py <expr>`)](#fluent-python-execution-py-expr)
 - [Tab Autocompletion & Navigation](#tab-autocompletion--navigation)
@@ -348,15 +348,15 @@ shape: (1,240, 3)
 └──────────┴─────────────┴────────┘
 ```
 
-### Active Dataset Aliases (`data`, `this`, `self`, `df`)
-In addition to explicit table names, the active dataset is automatically registered in Polars SQLContext under `data`, `this`, `self`, and `df`. This enables writing generic, table-agnostic SQL queries without hardcoding the variable name:
+### Explicit Table Names in SQL
+In the REPL, every dataset in memory is registered in Polars SQLContext under its exact user-assigned variable name (e.g. `df`, `df2`, `orders`, `cust`), alongside saved checkpoints. No synthetic aliases (`this`, `self`, `data`) are registered, guaranteeing pure ANSI SQL and eliminating variable shadowing:
 
 ```text
-# Query active table directly via 'this' or 'data'
-pytae [customers: 10,000x5]> -sql "SELECT country, COUNT(*) as n FROM this GROUP BY country"
+# Query loaded tables directly by their variable names
+pytae [orders, cust]> -sql "SELECT orders.order_id, cust.name FROM orders JOIN cust ON orders.cust_id = cust.id"
 
-# Join active table 'self' with a secondary table
-pytae [orders, cust]> -sql "SELECT self.*, cust.name FROM self JOIN cust ON self.cust_id = cust.id"
+# Self-contained single-table queries
+pytae [customers]> -sql "SELECT country, COUNT(*) as n FROM customers GROUP BY country"
 ```
 
 ### SQL Variable Assignment (`df3 = -sql "..."`)
@@ -547,18 +547,25 @@ Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet
 
 Persistent sessions allow you to save your workbench checkpoints to disk and resume your analysis across terminal restarts or system reboots.
 
-### Named Sessions via `set session = <name>`
-Promote your current workbench to a persistent named session anytime using `set session = <name>`:
+### Named Sessions via `set session` and `set load_session`
+Promote, bind, or switch persistent named sessions directly using `set`:
 
 ```text
 # Check active session status
 pytae [df1, df2]> set session
 session = none (options: <name>, none)
 
-# Promote to persistent named session
+# Promote/save current workbench to a persistent named session
 pytae [df1, df2]> set session = my_project
 Session saved as 'my_project' (2 checkpoints saved).
 pytae:my_project [df1, df2]>
+
+# Load a saved persistent session by name (strictly session identifier, no paths)
+pytae> set load_session = sales_q3
+Switched to session 'sales_q3'. Restored latest checkpoint 'v2'.
+
+# Load session and relocate/save to a new directory in one atomic step
+pytae> set load_session = sales_q3, sessions_dir = /Volumes/ExternalSSD/pytae_sessions
 
 # Revert to ephemeral session
 pytae:my_project [df1, df2]> set session = none
@@ -587,17 +594,20 @@ pytae> rm session old_project
 Removed session 'old_project' from disk.
 ```
 
-### Custom Directory (`set sessions_dir = <path>`)
-By default, persistent sessions are saved under `~/.pytae/sessions/`. You can configure your session storage path to an external drive, network mount, or project folder directly inside the REPL with `set sessions_dir = <path>`:
+### Session Directory & Relocation (`set sessions_dir = <path>`)
+`sessions_dir` qualifies the storage root for persistent sessions:
+- **With an active session**: If a session is already active (e.g. `project_x`), running `set sessions_dir = <path>` immediately relocates all checkpoints and session metadata to `<path>/project_x`.
+- **Without an active session**: Running `set sessions_dir = <path>` alone in ephemeral mode is ignored with a helpful hint to prevent orphan directory configuration.
 
 ```text
 # Inspect current sessions directory
 pytae> set sessions_dir
 sessions_dir = /Users/username/.pytae/sessions (options: <path>, default)
 
-# Set custom directory
-pytae> set sessions_dir = /Volumes/ExternalSSD/pytae_sessions
-Set sessions_dir = '/Volumes/ExternalSSD/pytae_sessions'.
+# Relocate active session to external drive
+pytae:project_x> set sessions_dir = /Volumes/ExternalSSD/pytae_sessions
+Relocated active session 'project_x' to '/Volumes/ExternalSSD/pytae_sessions/project_x' (2 checkpoints moved).
+```
 
 # Reset back to default
 pytae> set sessions_dir = default
@@ -730,7 +740,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `-glimpse` | `-glimpse` | Transposed schema and preview values | No |
 | | `-describe` | `-describe` | Statistical summary of numeric columns | No |
 | | `diff` | `diff df1 df2 [-tol 0.01]` | Compare two tables or active table against target | No |
-| **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across tables (`data`, `this`, `self`, `df`) | Yes (undoable) |
+| **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across loaded tables | Yes (undoable) |
 | | SQL Assign | `df4 = -sql "..."` | Create new table from SQL query | Yes |
 | | `py` | `py pldf.columns` | Evaluate Python/Polars expression | No |
 | **State & Undo** | `undo` | `undo` | Revert last transformation step (up to 10) | Yes (undoable) |
@@ -751,6 +761,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
 | | `set session` | `set session = <name>` | Bind REPL to persistent session | No |
+| | `set load_session` | `set load_session = <name>` | Switch session and restore latest checkpoint | Yes |
 | | `set save` | `set save = pipeline.txt` | Set target replay script path upfront | No |
 | | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
