@@ -912,6 +912,7 @@ class PytaeRepl:
             "# Pytae REPL Session History",
             f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
             f"# Initial target: {init_target}",
+            "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted.",
             "# " + "-" * 76,
             "",
         ]
@@ -921,14 +922,14 @@ class PytaeRepl:
             pass
 
     def _log_session_line(self, entry: str) -> None:
+        clean = entry.strip()
+        # Omit checkpoints from disk session history files
+        if clean.startswith("*checkpoint:") and clean.endswith("*"):
+            return
         self.session_cmd_count += 1
         try:
             with open(self.session_log_path, "a", encoding="utf-8") as f:
-                clean = entry.strip()
-                if clean.startswith("*checkpoint:") and clean.endswith("*"):
-                    f.write(f"# {clean}\n")
-                else:
-                    f.write(f"{clean}\n")
+                f.write(f"{clean}\n")
                 f.flush()
         except Exception:
             pass
@@ -957,15 +958,15 @@ class PytaeRepl:
                 lines = [
                     f"# Pytae REPL Session History: {target_path.name}",
                     f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+                    "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted.",
                     "# " + "-" * 76,
                     "",
                 ]
                 for entry in self.history:
                     clean = entry.strip()
                     if clean.startswith("*checkpoint:") and clean.endswith("*"):
-                        lines.append(f"# {clean}")
-                    else:
-                        lines.append(clean)
+                        continue
+                    lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             output_fn(f"Session history saved to {target_path}.")
             return True

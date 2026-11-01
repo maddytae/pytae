@@ -2264,22 +2264,24 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     r.execute_line("checkpoint v1", output_fn=outputs.append)
     r.execute_line("-mutate \"m = 1\"", output_fn=outputs.append)
 
-    # Check file content on disk in real time
+    # Check file content on disk in real time: checkpoints omitted, note present
     content = r.session_log_path.read_text(encoding="utf-8")
     assert "# Pytae REPL Session History" in content
+    assert "# Note: Inspection commands (-head, -tail, etc.) and checkpoints are omitted." in content
     assert "# my custom comment" in content
     assert "df = sample:penguins" in content
     assert "-filter \"species == 'Gentoo'\"" in content
-    assert "# *checkpoint: v1*" in content
+    assert "*checkpoint: v1*" not in content
     assert '-mutate "m = 1"' in content
 
-    # Test in-REPL history command
+    # Test in-REPL history command (displays checkpoint banner in live terminal view)
     outputs.clear()
     r.execute_line("history", output_fn=outputs.append)
     h_out = "\n".join(outputs)
     assert "Session History" in h_out
     assert str(r.session_log_path) in h_out
     assert "df = sample:penguins" in h_out
+    assert "*checkpoint: v1*" in h_out
 
     # Test history N
     outputs.clear()
