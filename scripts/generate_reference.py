@@ -1098,9 +1098,9 @@ State Management & Rollback Commands:
   - `redo`                    : Re-apply the last undone transformation.
   - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
-  - `history`                 : Display audit log with sequential step numbers and *checkpoint: <name>* banners.
-  - `history -cli`            : Export reproducible one-shot CLI command string reconstructing the session.
-  - `history -py`             : Export runnable Python script reconstructing the session with pt/DataFrame calls.
+  - `history`                 : Display session audit log with sequential step numbers and *checkpoint: <name>* banners.
+  - `history <N>`             : Display the last N transformation steps.
+  - Session Flight Recorder   : Sessions are automatically logged in real-time to ~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt.
 
 Session-Wide Checkpoints:
   - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).

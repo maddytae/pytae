@@ -686,19 +686,18 @@ def test_glob_reader_and_repl_glob_and_history_export(tmp_path):
     assert r.current_df.shape == (3, 3)
 
     outputs.clear()
+    r.execute_line("history", output_fn=outputs.append)
+    hist_out = "\n".join(outputs)
+    assert "Session History" in hist_out
+    assert '-assert "v > 0"' in hist_out
+    assert '-filter "v >= 20"' in hist_out
+
+    outputs.clear()
     r.execute_line("history -cli", output_fn=outputs.append)
-    cli_export = "\n".join(outputs)
-    assert "pytae" in cli_export
-    assert '-assert "v > 0"' in cli_export
-    assert '-filter "v >= 20"' in cli_export
+    assert any("not supported" in o for o in outputs)
 
     outputs.clear()
     r.execute_line("history -py", output_fn=outputs.append)
-    py_export = "\n".join(outputs)
-    assert "import pytae as pt" in py_export
-    assert "pt.read_parquet(" in py_export
-    assert ".assert_('v > 0')" in py_export
-    assert ".filter('v >= 20')" in py_export
-    assert ".mutate('v2 = v * 2')" in py_export
+    assert any("not supported" in o for o in outputs)
 
 

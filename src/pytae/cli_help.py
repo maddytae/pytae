@@ -906,7 +906,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "undo : Revert the last applied transformation step.",
             "redo : Re-apply the last undone transformation step.",
             "reset : Restore the original dataset as loaded from disk.",
-            "history [-cli|-py] : Show numbered history or export as reproducible CLI command / Python code.",
+            "history [N] : Show numbered session audit log (all commands are automatically recorded in ~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt).",
             "status : Show active table shape, columns, and memory usage.",
             "checkpoint <name> : Freeze and save current state with a name.",
             "restore <name> : Restore table to a saved checkpoint.",

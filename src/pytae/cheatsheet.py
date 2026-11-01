@@ -140,9 +140,7 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -filter "sales > 100" -i                     # Pre-filter then enter REPL
   # Inside REPL session:
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
-  #   history                 Show numbered audit log of transformations
-  #   history -cli            Export pipeline as reproducible CLI command
-  #   history -py             Export pipeline as runnable Python script
+  #   history                 Show numbered session audit log (~/.pytae_history/)
   #   undo / redo             Revert / re-apply last transformation step
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables

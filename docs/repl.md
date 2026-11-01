@@ -533,13 +533,17 @@ pytae [penguins.parquet: 344x7]> -head 50 | wc -l
 
 ## Command History & Arrow Key Navigation
 
-The REPL automatically preserves command history across sessions:
-- **`~/.pytae_history`**: History is persistently saved to your home directory (up to 1,000 commands).
+The REPL automatically preserves command history and logs full session flight recorders:
+- **`~/.pytae_history/`**: Pytae automatically initializes a session flight recorder directory in your home directory.
+  - Every session writes a timestamped log: `~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt`.
+  - Commands and checkpoint events are flushed to disk in real-time.
+  - Replayable format: The log file contains clean executable commands and `#` comment headers so you can inspect or replay sessions directly (`pytae -i < history_...txt`).
+  - Empty sessions (where no commands were executed) are automatically cleaned up on exit.
+  - Arrow key navigation history is persisted in `~/.pytae_history/.readline_history` (up to 1,000 commands).
 - **Up / Down Arrow Keys**: Press <kbd>↑</kbd> and <kbd>↓</kbd> to cycle backward and forward through prior commands. Supported on Unix/macOS (`libedit`, GNU `readline`), Windows Terminal, and PowerShell.
 - **Git Bash on Windows**: When launching Pytae in standard Git Bash (MinTTY), run with `winpty pytae -i` (or inside Windows Terminal) for full interactive line editing. If run without `winpty`, pressing <kbd>↑</kbd> and Enter automatically recalls and executes prior commands from history.
-- **`history`**: Displays a numbered log of pipeline transformation steps applied during the current session.
-- **`history -cli`**: Generates and prints an exact, reproducible one-shot CLI command string reconstructing the entire interactive session from scratch.
-- **`history -py`**: Generates and prints a complete, runnable Python script using `import pytae as pt` and DataFrame method chaining.
+- **`history`**: Displays a numbered audit log of pipeline transformation steps and checkpoints applied during the current session, along with the active log file path.
+- **`history <N>`**: Displays only the last `N` history entries (e.g., `history 10`).
 
 ---
 
@@ -572,7 +576,7 @@ pytae> -o clip
 | **`reset initial`** | `reset initial` | Revert all tables strictly to initial dataset read (bypassing checkpoints) | **Yes** (clears undo) |
 | **`undo`** | `undo` | Revert the last applied transformation step | **Yes** (undoable) |
 | **`redo`** | `redo` | Re-apply the last undone transformation step | **Yes** (undoable) |
-| **`history`** | `history`, `history -cli`, `history -py` | List numbered transformation steps, or export history as CLI command (`-cli`) or Python script (`-py`) | No |
+| **`history`** | `history`, `history <N>` | Display session audit log and checkpoint events (auto-logged to `~/.pytae_history/`) | No |
 | **`checkpoint`** | `checkpoint <name>` | Save snapshot of entire workbench (all tables in session) | No |
 | **`rm checkpoint`** | `rm checkpoint <name>`, `rm checkpoint *` | Delete a saved checkpoint (or all checkpoints) | No |
 | **`restore`** | `restore <name>` | Restore entire workbench to named checkpoint | **Yes** (undoable) |

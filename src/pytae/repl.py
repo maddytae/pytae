@@ -198,14 +198,48 @@ except ImportError:
             except ImportError:
                 readline = None
 
-_HIST_FILE = Path.home() / ".pytae_history"
+def _get_history_dir() -> Path:
+    custom = os.environ.get("PYTAE_HISTORY_DIR")
+    if custom:
+        d = Path(custom).expanduser()
+    else:
+        d = Path.home() / ".pytae_history"
+
+    if d.exists() and not d.is_dir():
+        try:
+            old_content = d.read_text(encoding="utf-8")
+        except Exception:
+            old_content = ""
+        try:
+            d.unlink()
+        except Exception:
+            pass
+        d.mkdir(parents=True, exist_ok=True)
+        if old_content:
+            try:
+                (d / ".readline_history").write_text(old_content, encoding="utf-8")
+            except Exception:
+                pass
+    else:
+        d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+_HIST_FILE: Path | None = None
+
+
+def _get_readline_hist_file() -> Path:
+    if _HIST_FILE is not None:
+        return Path(_HIST_FILE)
+    return _get_history_dir() / ".readline_history"
 
 
 def _load_history_from_file() -> list[str]:
     """Read saved command history lines from disk."""
-    if _HIST_FILE.exists():
+    hist_file = _get_readline_hist_file()
+    if hist_file.exists():
         try:
-            return [line.strip() for line in _HIST_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
+            return [line.strip() for line in hist_file.read_text(encoding="utf-8").splitlines() if line.strip()]
         except Exception:
             return []
     return []
@@ -215,7 +249,8 @@ def _save_raw_history(history: list[str]) -> None:
     """Save raw command history list to disk (used when readline is unavailable)."""
     try:
         lines = history[-1000:]
-        _HIST_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        hist_file = _get_readline_hist_file()
+        hist_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception:
         pass
 
@@ -450,9 +485,10 @@ def _init_readline() -> None:
             readline.parse_and_bind(r'"\e[F": end-of-line')
         except Exception:
             pass
-    if _HIST_FILE.exists():
+    hist_file = _get_readline_hist_file()
+    if hist_file.exists():
         try:
-            readline.read_history_file(str(_HIST_FILE))
+            readline.read_history_file(str(hist_file))
         except Exception:
             pass
     import atexit
@@ -465,7 +501,8 @@ def _save_readline_history() -> None:
     if readline is not None:
         try:
             readline.set_history_length(1000)
-            readline.write_history_file(str(_HIST_FILE))
+            hist_file = _get_readline_hist_file()
+            readline.write_history_file(str(hist_file))
         except Exception:
             pass
 
@@ -861,6 +898,43 @@ class PytaeRepl:
 
         if self.session_name:
             self._load_session_from_disk(self.session_name)
+
+        import datetime
+
+        self._session_start_time = datetime.datetime.now()
+        timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
+        self.session_log_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
+        self.session_cmd_count: int = 0
+
+        init_target = str(path) if path else (str(paths[0]) if paths else "(none)")
+        header = [
+            "# Pytae REPL Session History",
+            f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"# Initial target: {init_target}",
+            "# " + "-" * 76,
+            "",
+        ]
+        try:
+            self.session_log_path.write_text("\n".join(header), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _log_session_line(self, entry: str) -> None:
+        self.session_cmd_count += 1
+        try:
+            with open(self.session_log_path, "a", encoding="utf-8") as f:
+                clean = entry.strip()
+                if clean.startswith("*checkpoint:") and clean.endswith("*"):
+                    f.write(f"# {clean}\n")
+                else:
+                    f.write(f"{clean}\n")
+                f.flush()
+        except Exception:
+            pass
+
+    def _record_history(self, entry: str) -> None:
+        self.history.append(entry)
+        self._log_session_line(entry)
 
     def _set_initial_df(self, df: Any) -> None:
         from pytae.dataframe import DataFrame as PytaeDataFrame
@@ -1564,7 +1638,7 @@ class PytaeRepl:
                 self.orig_df = None
                 self.initial_df = None
                 self.path_str = None
-                self.history.append("rm *")
+                self._record_history("rm *")
                 _release_memory()
                 output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
                 return True
@@ -1609,7 +1683,7 @@ class PytaeRepl:
                         self.orig_df = None
                         self.initial_df = None
                     output_fn(f"Removed table '{resolved}'.")
-                self.history.append(f"rm {target}")
+                self._record_history(f"rm {target}")
                 _release_memory()
                 return True
 
@@ -1974,7 +2048,7 @@ class PytaeRepl:
             if self.checkpoints:
                 latest_cp = list(self.checkpoints.keys())[-1]
                 self._cmd_restore(latest_cp, output_fn, record_history=False)
-                self.history.append(f"reset [reverted to checkpoint: {latest_cp}]")
+                self._record_history(f"reset [reverted to checkpoint: {latest_cp}]")
                 output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
                 if self.session_name:
                     self._save_session_metadata()
@@ -2023,7 +2097,7 @@ class PytaeRepl:
                     self.orig_df = cp_df
                 self.undo_stack.clear()
                 self.redo_stack.clear()
-                self.history.append(f"reset {table_name} [reverted to checkpoint: {latest_cp}]")
+                self._record_history(f"reset {table_name} [reverted to checkpoint: {latest_cp}]")
                 if self.session_name:
                     self._save_session_metadata()
                 _release_memory()
@@ -2054,7 +2128,7 @@ class PytaeRepl:
 
         self.undo_stack.clear()
         self.redo_stack.clear()
-        self.history.append(f"reset {table_name} [reverted to initial read]")
+        self._record_history(f"reset {table_name} [reverted to initial read]")
         if self.session_name:
             self._save_session_metadata()
         _release_memory()
@@ -2104,10 +2178,10 @@ class PytaeRepl:
         _release_memory()
 
         if is_explicit_initial:
-            self.history.append("reset initial [reverted to initial read]")
+            self._record_history("reset initial [reverted to initial read]")
             desc = "initial dataset"
         else:
-            self.history.append("reset [reverted to initial read]")
+            self._record_history("reset [reverted to initial read]")
             desc = "initial dataset (no checkpoints exist)"
 
         if self.session_name:
@@ -2137,7 +2211,7 @@ class PytaeRepl:
         desc, prev_state = self.undo_stack.pop()
         self._push_redo(desc, self._capture_session_state())
         self._apply_session_state(prev_state)
-        self.history.append(f"undo [{desc}]")
+        self._record_history(f"undo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
         else:
@@ -2150,153 +2224,49 @@ class PytaeRepl:
         desc, next_state = self.redo_stack.pop()
         self._push_undo(desc, self._capture_session_state())
         self._apply_session_state(next_state)
-        self.history.append(f"redo [{desc}]")
+        self._record_history(f"redo [{desc}]")
         if self.current_df is not None:
             output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
         else:
             output_fn(f"Redid: {desc}.")
 
     def _cmd_history(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
-        if not self.history:
+        if args:
+            arg0 = args[0].strip()
+            clean_arg0 = arg0.lower().lstrip("-")
+            if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
+                log_dest = str(getattr(self, "session_log_path", "~/.pytae_history/"))
+                output_fn(
+                    f"pytae: 'history {arg0}' is not supported. "
+                    f"'history' displays the session audit log, and all commands are automatically recorded in {log_dest}"
+                )
+                return
+            if arg0.isdigit():
+                limit = int(arg0)
+                entries = self.history[-limit:]
+            else:
+                output_fn(f"Usage: history [N] (unrecognized option: '{arg0}')")
+                return
+        else:
+            entries = self.history
+
+        if not entries:
             output_fn("No transformations recorded in this session.")
             return
-        if args:
-            mode = args[0].lower().lstrip("-")
-            if mode in ("cli", "sh", "bash"):
-                output_fn(self._format_history_cli())
-                return
-            if mode in ("py", "python"):
-                output_fn(self._format_history_py())
-                return
-            output_fn(f"Usage: history [-cli | -py] (unrecognized option: '{args[0]}')")
-            return
-        output_fn("Pipeline History:")
+
+        log_path_str = str(getattr(self, "session_log_path", ""))
+        if log_path_str:
+            output_fn(f"Session History (logged to {log_path_str}):")
+        else:
+            output_fn("Session History:")
+
         step_num = 1
-        for entry in self.history:
+        for entry in entries:
             if entry.startswith("*checkpoint:") and entry.endswith("*"):
                 output_fn(f"  {entry}")
             else:
                 output_fn(f"  {step_num:2d}: {entry}")
                 step_num += 1
-
-    def _format_history_cli(self) -> str:
-        """Export recorded session transformations as a reproducible CLI command."""
-        source = str(self.path) if self.path else (self.table_sources.get(self.path_str or "", "") or "data.parquet")
-        cli_parts: list[str] = []
-        for entry in self.history:
-            if entry.startswith("*checkpoint:") or entry.startswith(("undo ", "redo ", "restore ", "reset")):
-                continue
-            if entry.startswith("load "):
-                toks = shlex.split(entry)
-                if len(toks) >= 2:
-                    source = toks[1]
-                continue
-            if "=" in entry and not entry.lstrip().startswith("-"):
-                _, rhs = entry.split("=", 1)
-                rhs = rhs.strip()
-                if rhs.startswith("-"):
-                    cli_parts.append(rhs)
-                else:
-                    toks = shlex.split(rhs)
-                    if toks and not toks[0].startswith("-"):
-                        if len(toks) == 1:
-                            source = toks[0]
-                        else:
-                            cli_parts.append(rhs[len(toks[0]) :].strip())
-                    else:
-                        cli_parts.append(rhs)
-            else:
-                cli_parts.append(entry.strip())
-
-        if not cli_parts:
-            return f"pytae {source}"
-        return f"pytae {source} " + " ".join(cli_parts)
-
-    def _format_history_py(self) -> str:
-        """Export recorded session transformations as a runnable Python script."""
-        lines: list[str] = ["import pytae as pt", ""]
-        source = str(self.path) if self.path else (self.table_sources.get(self.path_str or "", "") or "data.parquet")
-        active_var = self.path_str if (self.path_str and self.path_str.isidentifier()) else "df"
-
-        def _read_stmt(var: str, src: str) -> str:
-            if src.startswith("sample:"):
-                sname = src[7:].strip().removesuffix(".parquet")
-                return f'{var} = pt.sample("{sname}")'
-            low = src.lower()
-            if low.endswith(".csv") or low.endswith(".csv.gz"):
-                return f'{var} = pt.read_csv("{src}")'
-            if low.endswith((".jsonl", ".ndjson", ".jsonl.gz", ".ndjson.gz")):
-                return f'{var} = pt.read_ndjson("{src}")'
-            if low.endswith((".ipc", ".arrow", ".feather")):
-                return f'{var} = pt.read_ipc("{src}")'
-            return f'{var} = pt.read_parquet("{src}")'
-
-        def _flags_to_chain(raw_flags: str) -> list[str]:
-            calls: list[str] = []
-            try:
-                toks = shlex.split(raw_flags)
-            except ValueError:
-                toks = raw_flags.split()
-            i = 0
-            while i < len(toks):
-                t = toks[i]
-                if t.startswith("-"):
-                    verb = t.lstrip("-")
-                    val: str | None = None
-                    if "=" in verb:
-                        verb, val = verb.split("=", 1)
-                    elif i + 1 < len(toks) and not toks[i + 1].startswith("-"):
-                        val = toks[i + 1]
-                        i += 1
-                    verb_py = "assert_" if verb == "assert" else verb
-                    if val is None or val == "":
-                        calls.append(f".{verb_py}()")
-                    elif verb in ("head", "tail", "sample") and val.isdigit():
-                        calls.append(f".{verb_py}({val})")
-                    else:
-                        calls.append(f".{verb_py}({val!r})")
-                i += 1
-            return calls
-
-        if self.path:
-            lines.append(_read_stmt(active_var, source))
-
-        for entry in self.history:
-            if entry.startswith("*checkpoint:") or entry.startswith(("undo ", "redo ", "restore ", "reset")):
-                continue
-            if entry.startswith("load "):
-                toks = shlex.split(entry)
-                if len(toks) >= 4 and toks[2].lower() == "as":
-                    active_var = toks[3]
-                    lines.append(_read_stmt(active_var, toks[1]))
-                elif len(toks) >= 2:
-                    lines.append(_read_stmt(active_var, toks[1]))
-                continue
-            if "=" in entry and not entry.lstrip().startswith("-"):
-                lhs, rhs = entry.split("=", 1)
-                lhs = lhs.strip()
-                rhs = rhs.strip()
-                if rhs.startswith("-"):
-                    chain = "".join(_flags_to_chain(rhs))
-                    lines.append(f"{lhs} = {active_var}{chain}")
-                    active_var = lhs
-                else:
-                    toks = shlex.split(rhs)
-                    if len(toks) == 1 and not toks[0].startswith("-"):
-                        lines.append(_read_stmt(lhs, toks[0]))
-                        active_var = lhs
-                    elif toks:
-                        src_tbl = toks[0]
-                        rest = rhs[len(src_tbl) :].strip()
-                        chain = "".join(_flags_to_chain(rest))
-                        lines.append(f"{lhs} = {src_tbl}{chain}")
-                        active_var = lhs
-            elif entry.lstrip().startswith("-"):
-                chain = "".join(_flags_to_chain(entry.strip()))
-                if chain:
-                    lines.append(f"{active_var} = {active_var}{chain}")
-
-        return "\n".join(lines)
 
     def _capture_session_state(self) -> dict[str, Any]:
         return {
@@ -2373,7 +2343,7 @@ class PytaeRepl:
         self.checkpoints[name] = meta
 
         # Record checkpoint banner in history
-        self.history.append(f"*checkpoint: {name}*")
+        self._record_history(f"*checkpoint: {name}*")
         if self.session_name:
             self._save_session_metadata()
 
@@ -2451,7 +2421,7 @@ class PytaeRepl:
         self.undo_stack.clear()
         self.redo_stack.clear()
         if record_history:
-            self.history.append(f"restore {name}")
+            self._record_history(f"restore {name}")
         if self.session_name:
             self._save_session_metadata()
 
@@ -2562,7 +2532,7 @@ class PytaeRepl:
                 self.table_sources[var_name] = f"sql: {query[:30]}"
                 self.current_df = res
                 self.path_str = var_name
-                self.history.append(f'{var_name} = -sql "{query}"')
+                self._record_history(f'{var_name} = -sql "{query}"')
                 output_fn(f"Created '{var_name}' from SQL query ({res.shape[0]:,} rows x {res.shape[1]} cols).")
                 return
             except Exception as exc:
@@ -2601,7 +2571,7 @@ class PytaeRepl:
                         self.current_df = df
                         self.orig_df = df
                         self.path_str = var_name
-                        self.history.append(f"{var_name} = {right_expr}")
+                        self._record_history(f"{var_name} = {right_expr}")
                         opts_desc = ""
                         if reader_kwargs or nrows_val is not None:
                             opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
@@ -2691,7 +2661,7 @@ class PytaeRepl:
                 self.table_sources[var_name] = f"{source_label} {pipe_line[:20]}"
                 self.current_df = res_df
                 self.path_str = var_name
-                self.history.append(f"{var_name} = {right_expr}")
+                self._record_history(f"{var_name} = {right_expr}")
                 action = "Updated" if was_existing else "Created"
                 timing_str = ""
                 if durations:
@@ -2795,12 +2765,12 @@ class PytaeRepl:
                     opts_items.append(f"nrows={nrows_val}")
                 opts_desc = f" [{', '.join(opts_items)}]"
             if alias:
-                self.history.append(f"load {p.name} as {alias}")
+                self._record_history(f"load {p.name} as {alias}")
                 output_fn(
                     f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
             else:
-                self.history.append(f"load {p.name}")
+                self._record_history(f"load {p.name}")
                 output_fn(
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
@@ -2947,7 +2917,7 @@ class PytaeRepl:
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = joined
             self.redo_stack.clear()
-            self.history.append(f"-join {right_name} on={on_key} how={how}")
+            self._record_history(f"-join {right_name} on={on_key} how={how}")
             output_fn(
                 f"Joined '{left_name}' with '{right_name}' on '{on_key}' (how={how}): {joined.shape[0]:,} rows x {joined.shape[1]} cols"
             )
@@ -3003,7 +2973,7 @@ class PytaeRepl:
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = res
             self.redo_stack.clear()
-            self.history.append(f'-sql "{query}"')
+            self._record_history(f'-sql "{query}"')
         except Exception as exc:
             output_fn(f"pytae SQL Error: {exc}")
 
@@ -3304,7 +3274,7 @@ class PytaeRepl:
                     output_fn("pytae: command failed with errors.")
                     return
 
-            self.history.append(line)
+            self._record_history(line)
         except Exception as exc:
             output_fn(f"pytae error: {exc}")
 
@@ -3371,6 +3341,12 @@ class PytaeRepl:
                 except Exception as exc:
                     output_fn(f"pytae error: {exc}")
         finally:
+            if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_log_path", None) is not None:
+                if self.session_log_path.exists():
+                    try:
+                        self.session_log_path.unlink()
+                    except Exception:
+                        pass
             _save_readline_history()
             _save_raw_history(self._raw_history)
             self._cleanup_cp_dir()

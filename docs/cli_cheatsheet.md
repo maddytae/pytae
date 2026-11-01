@@ -388,9 +388,8 @@ undo                 # Revert last transformation
 redo                 # Re-apply last undone transformation
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
-history              # Show history of applied steps and checkpoint milestone banners
-history -cli         # Export session transformations as reproducible one-line CLI command
-history -py          # Export session transformations as runnable Python script (import pytae as pt...)
+history              # Show session audit log (all steps auto-logged to ~/.pytae_history/)
+history 5            # Show last 5 steps from current session audit log
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)

@@ -2247,3 +2247,58 @@ def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_d
     assert any("Active session reverted to ephemeral" in o for o in outputs)
     r.close()
 
+
+def test_repl_session_history_logging(tmp_path, monkeypatch):
+    hist_dir = tmp_path / "custom_hist"
+    monkeypatch.setenv("PYTAE_HISTORY_DIR", str(hist_dir))
+
+    outputs = []
+    r = PytaeRepl()
+    assert r.session_log_path.exists()
+    assert r.session_log_path.parent == hist_dir
+
+    # Execute commands and checkpoints
+    r.execute_line("df = sample:penguins", output_fn=outputs.append)
+    r.execute_line("-filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    r.execute_line("checkpoint v1", output_fn=outputs.append)
+    r.execute_line("-mutate \"m = 1\"", output_fn=outputs.append)
+
+    # Check file content on disk in real time
+    content = r.session_log_path.read_text(encoding="utf-8")
+    assert "# Pytae REPL Session History" in content
+    assert "df = sample:penguins" in content
+    assert "-filter \"species == 'Gentoo'\"" in content
+    assert "# *checkpoint: v1*" in content
+    assert '-mutate "m = 1"' in content
+
+    # Test in-REPL history command
+    outputs.clear()
+    r.execute_line("history", output_fn=outputs.append)
+    h_out = "\n".join(outputs)
+    assert "Session History" in h_out
+    assert str(r.session_log_path) in h_out
+    assert "df = sample:penguins" in h_out
+
+    # Test history N
+    outputs.clear()
+    r.execute_line("history 2", output_fn=outputs.append)
+    assert len(outputs) == 3  # Header + 2 entries
+
+    # Test history -cli and history -py rejected with helpful message
+    outputs.clear()
+    r.execute_line("history -cli", output_fn=outputs.append)
+    assert any("not supported" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("history -py", output_fn=outputs.append)
+    assert any("not supported" in o for o in outputs)
+
+    # Test empty session unlinking on exit
+    r_empty = PytaeRepl()
+    empty_log = r_empty.session_log_path
+    assert empty_log.exists()
+    # Simulate exit without commands
+    r_empty.run(input_fn=lambda prompt: (_ for _ in ()).throw(EOFError), output_fn=lambda x: None)
+    assert not empty_log.exists()
+
+
