@@ -2659,6 +2659,7 @@ class PytaeRepl:
             save_str = self.save_history_file or "none"
             sess_dir = str(get_sessions_dir())
             output_fn(f"session           = {sess_name} (options: <name>, none)")
+            output_fn("load_session      = (options: <name>)")
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
             output_fn(f"save              = {save_str} (options: <path>, none)")
             output_fn(f"sessions_dir      = {sess_dir} (options: <path>, default)")
@@ -2694,7 +2695,7 @@ class PytaeRepl:
         if load_session_val is not None:
             clean_name = load_session_val.strip("'\"")
             if not clean_name:
-                output_fn("Usage: set load_session = <name>")
+                output_fn("load_session      = (options: <name>) (e.g. set load_session = my_project)")
                 return
             if any(c in clean_name for c in ("/", "\\", "..", "\0")):
                 output_fn(f"pytae: invalid session name '{clean_name}'. Session name must not contain path separators.")
