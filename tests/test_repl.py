@@ -2546,6 +2546,53 @@ def test_repl_input_canonical_path_and_checkpoint_omission_in_save(tmp_path, mon
     assert "-describe" in h_out
 
 
+def test_repl_rm_memory_deallocation_weakref():
+    """Verify via weakref that 'rm <table>', 'rm *', and variable reassignment leave zero lingering DataFrame references."""
+    import gc
+    import weakref
 
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # 1. Load df1 and df2, capture weak references
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:iris", output_fn=outputs.append)
+    ref_df1_init = weakref.ref(r.tables["df1"])
+    ref_df2_init = weakref.ref(r.tables["df2"])
+
+    # 2. Mutate df1 (creates undo snapshot) and create derived table df3 (switches active table)
+    r.execute_line("df1 = df1 -filter \"species == 'Adelie'\"", output_fn=outputs.append)
+    ref_df1_mut = weakref.ref(r.tables["df1"])
+    r.execute_line("df3 = df2 -head 10", output_fn=outputs.append)
+    ref_df3 = weakref.ref(r.tables["df3"])
+
+    # 3. Remove non-active table df1 while df3 is active -> both initial and mutated df1 frames must be collected
+    r.execute_line("rm df1", output_fn=outputs.append)
+    gc.collect()
+    assert ref_df1_init() is None
+    assert ref_df1_mut() is None
+    assert ref_df2_init() is not None
+    assert ref_df3() is not None
+
+    # 4. Remove active table df3 -> df3 frame must be collected immediately
+    r.execute_line("rm df3", output_fn=outputs.append)
+    gc.collect()
+    assert ref_df3() is None
+    assert ref_df2_init() is not None
+
+    # 5. Reassign df2 to a new file load -> old df2 initial frame must be collected immediately
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    gc.collect()
+    assert ref_df2_init() is None
+    ref_df2_new = weakref.ref(r.tables["df2"])
+    assert ref_df2_new() is not None
+
+    # 6. Remove all with rm * -> remaining frame must be collected immediately
+    r.execute_line("rm *", output_fn=outputs.append)
+    gc.collect()
+    assert ref_df2_new() is None
+    assert r.current_df is None
+    assert r.orig_df is None
+    assert r.initial_df is None
 
 

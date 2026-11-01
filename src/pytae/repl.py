@@ -186,6 +186,29 @@ def _get_process_rss_mb() -> float | None:
             pass
     elif sys.platform == "darwin":
         try:
+            import ctypes
+
+            libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+
+            class _MachTaskBasicInfo(ctypes.Structure):
+                _fields_ = [
+                    ("virtual_size", ctypes.c_uint64),
+                    ("resident_size", ctypes.c_uint64),
+                    ("resident_size_max", ctypes.c_uint64),
+                    ("user_time", ctypes.c_uint64),
+                    ("system_time", ctypes.c_uint64),
+                    ("policy", ctypes.c_int32),
+                    ("suspend_count", ctypes.c_int32),
+                ]
+
+            info = _MachTaskBasicInfo()
+            count = ctypes.c_uint32(ctypes.sizeof(_MachTaskBasicInfo) // ctypes.sizeof(ctypes.c_uint32))
+            kr = libc.task_info(libc.mach_task_self(), 20, ctypes.byref(info), ctypes.byref(count))
+            if kr == 0 and info.resident_size > 0:
+                return info.resident_size / (1024 * 1024)
+        except Exception:
+            pass
+        try:
             import resource
 
             usage = resource.getrusage(resource.RUSAGE_SELF)
@@ -1014,8 +1037,10 @@ class PytaeRepl:
         if clean.startswith("set "):
             return True
 
-        # Explicit reset / restore of state
+        # Explicit reset / restore / table removal of state
         if clean.startswith("reset") or clean.startswith("restore "):
+            return True
+        if clean.startswith("rm ") and not clean.startswith(("rm checkpoint", "rm session", "rm cp", "rm tag")):
             return True
 
         # Otherwise, bare pipelines without assignment or -o (e.g. -pivot ..., -filter ..., -head 5) are exploratory previews
@@ -2809,9 +2834,12 @@ class PytaeRepl:
                         if cp_df is not None:
                             ctx.register(cp_name, cp_df)
                 res = ctx.execute(query).collect()
+                self._push_undo(f'{var_name} = -sql "{query}"', self._capture_session_state())
                 self.tables[var_name] = res
                 self.table_sources[var_name] = f"sql: {query[:30]}"
                 self.current_df = res
+                self.orig_df = self.orig_tables.get(var_name)
+                self.initial_df = self.initial_tables.get(var_name)
                 self.path_str = var_name
                 self._record_history(f'{var_name} = -sql "{query}"')
                 output_fn(f"Created '{var_name}' from SQL query ({res.shape[0]:,} rows x {res.shape[1]} cols).")
@@ -2843,10 +2871,11 @@ class PytaeRepl:
                         if nrows_val is not None:
                             load_opts["nrows"] = nrows_val
                         p, df = self._read_file_to_df(clean_path, **load_opts)
+                        self.undo_stack.clear()
+                        self.redo_stack.clear()
                         self.tables[var_name] = df
                         self.orig_tables[var_name] = df
-                        if var_name not in self.initial_tables:
-                            self.initial_tables[var_name] = df
+                        self.initial_tables[var_name] = df
                         self.initial_df = df
                         self.table_sources[var_name] = p.name
                         self.current_df = df
@@ -2916,10 +2945,14 @@ class PytaeRepl:
                     pipe_tokens = right_tokens[1:]
                     pipe_line = right_expr[len(first_tok) :].strip()
                     if not pipe_tokens:
+                        self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
                         self.tables[var_name] = source_df.clone()
                         self.table_sources[var_name] = f"copy of {first_tok}"
                         self.current_df = self.tables[var_name]
+                        self.orig_df = self.orig_tables.get(var_name)
+                        self.initial_df = self.initial_tables.get(var_name)
                         self.path_str = var_name
+                        self._record_history(f"{var_name} = {right_expr}")
                         output_fn(
                             f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols)."
                         )
@@ -2950,6 +2983,8 @@ class PytaeRepl:
                 self.tables[var_name] = res_df
                 self.table_sources[var_name] = f"{source_label} {pipe_line[:20]}"
                 self.current_df = res_df
+                self.orig_df = self.orig_tables.get(var_name)
+                self.initial_df = self.initial_tables.get(var_name)
                 self.path_str = var_name
                 self._record_history(f"{var_name} = {right_expr}")
                 action = "Updated" if was_existing else "Created"
@@ -3041,8 +3076,7 @@ class PytaeRepl:
             target_alias = alias or self.path_str or p.stem or p.name
             self.tables[target_alias] = loaded_df
             self.orig_tables[target_alias] = loaded_df
-            if target_alias not in self.initial_tables:
-                self.initial_tables[target_alias] = loaded_df
+            self.initial_tables[target_alias] = loaded_df
             self.initial_df = loaded_df
             self.table_sources[target_alias] = p.name
             self.current_df = loaded_df
