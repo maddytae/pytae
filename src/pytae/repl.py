@@ -3103,13 +3103,15 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
 
-    def _eval_pipeline_df(
+    def _run_pipeline_on_df(
         self,
         source_df: pl.DataFrame,
         tokens: list[str],
-        output_fn: Callable[[str], None] = print,
-    ) -> tuple[pl.DataFrame | None, list[float] | None]:
-        """Evaluate a pipeline on source_df without printing, returning (resulting_df, durations)."""
+        output_fn: Callable[[str], None],
+        *,
+        quiet: bool = False,
+    ) -> tuple[pl.DataFrame | None, list[float] | None, bool]:
+        """Parse and run a CLI pipeline on source_df. Returns (res_df, durations, failed)."""
         from pytae.cli import (
             _normalize_cli_args,
             build_parser,
@@ -3132,10 +3134,10 @@ class PytaeRepl:
                     )
                 else:
                     output_fn(f"pytae: unrecognized arguments: {' '.join(extras)}")
-                return None, None
+                return None, None, True
         except (argparse.ArgumentError, SystemExit) as exc:
             output_fn(f"pytae syntax error: {exc}")
-            return None, None
+            return None, None, True
 
         rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
         select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
@@ -3148,8 +3150,8 @@ class PytaeRepl:
 
         args._memory_df = source_df
         args.in_repl = True
-        args.quiet = True
-        args.output_fn = lambda s: None
+        args.quiet = quiet
+        args.output_fn = (lambda s: None) if quiet else output_fn
 
         has_action = bool(op_order) or any(
             [
@@ -3157,6 +3159,7 @@ class PytaeRepl:
                 args.cols,
                 args.dtype,
                 args.nulls,
+                getattr(args, "schema", False),
                 args.describe,
                 args.glimpse,
                 args.head is not None,
@@ -3181,14 +3184,18 @@ class PytaeRepl:
                 import time as _time
 
                 durations = []
-                for _ in range(runs):
+                failed = False
+                for run_idx in range(runs):
                     t0 = _time.perf_counter()
+                    curr_args = args if (run_idx == 0 and not quiet) else argparse.Namespace(**vars(args))
+                    if run_idx > 0 or quiet:
+                        curr_args.output_fn = lambda s: None
                     failed = _process_path(
                         Path("<memory>"),
-                        args,
+                        curr_args,
                         parser,
                         batch=True,
-                        show_all=show_all,
+                        show_all=show_all if (run_idx == 0 and not quiet) else False,
                         select_specs=select_specs,
                         filter_specs=filter_specs,
                         mutate_specs=mutate_specs,
@@ -3216,7 +3223,7 @@ class PytaeRepl:
                     concat_specs=concat_specs,
                 )
             if failed:
-                return None, None
+                return None, None, True
             res_frame = getattr(args, "_result_frame", None)
             res_pl: pl.DataFrame | None = None
             if res_frame is not None:
@@ -3228,154 +3235,39 @@ class PytaeRepl:
                     res_pl = pl.from_pandas(res_frame)
             else:
                 res_pl = source_df
-            return res_pl, durations
+            return res_pl, durations, False
         except Exception as exc:
             output_fn(f"pytae error: {exc}")
+            return None, None, True
+
+    def _eval_pipeline_df(
+        self,
+        source_df: pl.DataFrame,
+        tokens: list[str],
+        output_fn: Callable[[str], None] = print,
+    ) -> tuple[pl.DataFrame | None, list[float] | None]:
+        """Evaluate a pipeline on source_df without printing, returning (resulting_df, durations)."""
+        res_pl, durations, failed = self._run_pipeline_on_df(source_df, tokens, output_fn, quiet=True)
+        if failed:
             return None, None
+        return res_pl, durations
 
     def _cmd_pipeline(self, line: str, tokens: list[str], output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
             output_fn("pytae: no dataset loaded. Load a dataset first with '<var> = <path.parquet>'.")
             return
 
-        from pytae.cli import (
-            _format_timing_summary,
-            _normalize_cli_args,
-            build_parser,
-            parse_concat_arg,
-            parse_filter,
-            parse_join_arg,
-            parse_rename,
-            parse_select_spec,
-        )
-
-        exec_argv = _normalize_cli_args(["<memory>"] + tokens)
-        parser = build_parser(exit_on_error=False)
-        try:
-            args, extras = parser.parse_known_args(exec_argv)
-            if extras:
-                first_extra = extras[0].lower().lstrip("-")
-                if first_extra in _BARE_PIPELINE_VERBS:
-                    output_fn(
-                        f"pytae: bare '{extras[0]}' is not recognized; use '-{first_extra}' (matching CLI syntax)."
-                    )
-                else:
-                    output_fn(f"pytae: unrecognized arguments: {' '.join(extras)}")
-                return
-        except argparse.ArgumentError as exc:
-            output_fn(f"pytae: {exc}")
-            return
-        except SystemExit as exc:
-            output_fn(f"pytae: {exc}")
+        res_pl, durations, failed = self._run_pipeline_on_df(self.current_df, tokens, output_fn, quiet=False)
+        if failed:
+            output_fn("pytae: command failed with errors.")
             return
 
-        rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
-        select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-        filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
-        mutate_specs = list(args.mutate or [])
-        sql_specs = list(args.sql or [])
-        join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
-        concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
+        if durations:
+            from pytae.cli import _format_timing_summary
 
-        op_order = getattr(args, "op_order", [])
+            output_fn(_format_timing_summary(durations))
 
-        args._memory_df = self.current_df
-        args.in_repl = True
-        args.output_fn = output_fn
-
-        has_action = bool(op_order) or any(
-            [
-                args.shape,
-                args.cols,
-                args.dtype,
-                args.nulls,
-                args.describe,
-                args.glimpse,
-                args.head is not None,
-                args.tail is not None,
-                args.sample is not None,
-                args.stats,
-                getattr(args, "diff", None) is not None,
-                getattr(args, "meta", False),
-                getattr(args, "plot", None) is not None,
-                getattr(args, "hist", None) is not None,
-                getattr(args, "bar", None) is not None,
-                getattr(args, "scatter", None) is not None,
-                getattr(args, "corr", None) is not None,
-            ]
-        )
-        show_all = not has_action
-
-        runs = getattr(args, "time", None)
-        try:
-            if runs:
-                import time as _time
-
-                durations: list[float] = []
-                failed = False
-                for run_idx in range(runs):
-                    t0 = _time.perf_counter()
-                    if run_idx == 0:
-                        failed = _process_path(
-                            Path("<memory>"),
-                            args,
-                            parser,
-                            batch=True,
-                            show_all=show_all,
-                            select_specs=select_specs,
-                            filter_specs=filter_specs,
-                            mutate_specs=mutate_specs,
-                            sql_specs=sql_specs,
-                            rename_specs=rename_specs,
-                            join_specs=join_specs,
-                            concat_specs=concat_specs,
-                        )
-                    else:
-                        quiet_args = argparse.Namespace(**vars(args))
-                        quiet_args.output_fn = lambda s: None
-                        failed = _process_path(
-                            Path("<memory>"),
-                            quiet_args,
-                            parser,
-                            batch=True,
-                            show_all=False,
-                            select_specs=select_specs,
-                            filter_specs=filter_specs,
-                            mutate_specs=mutate_specs,
-                            sql_specs=sql_specs,
-                            rename_specs=rename_specs,
-                            join_specs=join_specs,
-                            concat_specs=concat_specs,
-                        )
-                    durations.append(_time.perf_counter() - t0)
-                    if failed:
-                        break
-                if failed:
-                    output_fn("pytae: command failed with errors.")
-                    return
-                output_fn(_format_timing_summary(durations))
-            else:
-                failed = _process_path(
-                    Path("<memory>"),
-                    args,
-                    parser,
-                    batch=True,
-                    show_all=show_all,
-                    select_specs=select_specs,
-                    filter_specs=filter_specs,
-                    mutate_specs=mutate_specs,
-                    sql_specs=sql_specs,
-                    rename_specs=rename_specs,
-                    join_specs=join_specs,
-                    concat_specs=concat_specs,
-                )
-                if failed:
-                    output_fn("pytae: command failed with errors.")
-                    return
-
-            self._record_history(line)
-        except Exception as exc:
-            output_fn(f"pytae error: {exc}")
+        self._record_history(line)
 
     def run(
         self,
