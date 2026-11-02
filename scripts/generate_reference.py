@@ -102,6 +102,10 @@ TABLE OF CONTENTS
     6.17. Why did my filter fail with unrecognized token / missing quote in terminal?
     6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
     6.19. Error Message Catalog & Troubleshooting Index
+    6.20. How do I query files located on Windows network share drives (UNC paths or mapped drives)?
+    6.21. How do I filter date intervals and ISO timestamp strings without date parsing errors?
+    6.22. How do I compare datasets across quarters with tolerances and key alignment?
+    6.23. How do I consolidate multiple Excel worksheets using -opts?
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -112,13 +116,15 @@ TABLE OF CONTENTS
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
     Recipe 8: Interactive REPL Multi-Table Exploration & Snapshots
     Recipe 9: Top N per Group across Chained Pipelines (CLI, Python & SQL)
+    Recipe 10: Enterprise & Network Share Workflows (Windows UNC, Mapped Drives, Backslashes)
+    Recipe 11: Quarter-Over-Quarter Portfolio Drift & Key-Aware Diffing
+    Recipe 12: Complex Date-Range & Multi-Condition Filtering
+    Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
 8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
-13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
-14. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
 
 
@@ -1346,6 +1352,76 @@ When encountering an error in Pytae, consult this catalog for the root cause and
 | `PolarsComputeError: duplicate column name` | Operation produced colliding column names | Explicitly rename output columns (e.g. `avg_val = col:mean`) |
 
 
+6.20. How do I query files located on Windows network share drives (UNC paths or mapped drives)?
+---------------------------------------------------------------------------------
+In Windows corporate environments, paths often start with double backslashes (UNC) or mapped drive letters:
+- UNC path: `\\\\server\\risk_share\\rwa\\deals_latest.parquet`
+- Mapped drive: `Z:\\rwa\\deals_latest.parquet`
+
+Rules for Windows share drive paths:
+1. ALWAYS wrap the path in double quotes `""`:
+   `pytae "\\\\server\\risk_share\\rwa\\deals_latest.parquet" -filter "ead > 1000000" -head 5`
+2. In PowerShell or CMD, double quotes ensure backslashes are passed literally to Pytae.
+3. In Python:
+   ```python
+   import pytae as pt
+   df = pt.read_parquet(r"\\\\server\\risk_share\\rwa\\deals_latest.parquet")
+   ```
+4. Minimizing network I/O:
+   Parquet reads only the requested columns and row groups across the network wire. Use `-select "col1,col2"` to avoid pulling hundreds of megabytes across your VPN or network share!
+
+
+6.21. How do I filter date intervals and ISO timestamp strings without date parsing errors?
+---------------------------------------------------------------------------------
+In pytae expressions, date strings formatted as ISO-8601 (`'YYYY-MM-DD'`) can be compared directly using standard operators (`>=`, `<=`, `==`, `in`):
+```bash
+# Direct ISO date comparison in string expressions:
+pytae data.parquet -filter "reporting_date >= '2026-01-01' and reporting_date <= '2026-09-30'"
+
+# Discrete list of reporting dates:
+pytae data.parquet -filter "reporting_date in ['2026-03-31', '2026-06-30', '2026-09-30']"
+```
+In Python dictionaries:
+```python
+df.filter({"reporting_date": ((">=", "2026-01-01"), ("<=", "2026-09-30"))})
+```
+
+
+6.22. How do I compare datasets across quarters with tolerances and key alignment?
+---------------------------------------------------------------------------------
+When checking portfolio drift or ETL migrations between Q3 and Q4, naive positional row matching will fail if rows were added or reordered. Use key-aware diffing with `on=`:
+```bash
+# Compare Q3 vs Q4 aligning by primary key:
+pytae q3.parquet -diff "q4.parquet,on=deal_id"
+
+# Key-aware with float tolerance (tol=1e-4) to ignore tiny rounding differences:
+pytae q3.parquet -diff "q4.parquet,on=deal_id,tol=1e-4"
+
+# Composite key alignment:
+pytae q3.parquet -diff "q4.parquet,on=portfolio_id:deal_id"
+```
+
+
+6.23. How do I consolidate multiple Excel worksheets using -opts?
+---------------------------------------------------------------------------------
+To ingest multiple worksheets from a single workbook or stack several workbooks:
+```bash
+# Load specific worksheet:
+pytae sales_2026.xlsx -opts "sheet=Feb"
+
+# Join two worksheets from different workbooks:
+pytae ord=orders.xlsx cust=customers.xlsx \
+  -opts "ord:sheet='Orders', cust:sheet='Customers'" \
+  -join "on=cust_id"
+
+# Stack multiple monthly worksheets:
+pytae m1=data.xlsx m2=data.xlsx m3=data.xlsx \
+  -opts "m1:sheet=Jan, m2:sheet=Feb, m3:sheet=Mar" \
+  -concat \
+  -o q1_combined.parquet
+```
+
+
 7. END-TO-END RECIPES & EXAMPLES
 --------------------------------------------------------------------------------
 
@@ -1623,6 +1699,55 @@ pytae sample:penguins -sql "
   )
   SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2
 "
+```
+
+Recipe 10: Enterprise & Network Share Workflows (Windows UNC, Mapped Drives, Backslashes)
+---------------------------------------------------------------------------------
+Querying a corporate network share drive or mapped drive with zero network scan waste:
+
+CLI Pipeline:
+```bash
+# 1. Inspect schema without reading data across the network wire:
+pytae "\\\\server\\risk_share\\rwa\\deals_latest.parquet" -schema
+
+# 2. Extract targeted metrics for high-risk deals:
+pytae "\\\\server\\risk_share\\rwa\\deals_latest.parquet" \
+  -filter "pd > 0.02 and ead > 5000000" \
+  -select "deal_id,counterparty_name,internal_rating,ead,pd,lgd,rwa_irba" \
+  -arrange "rwa_irba desc" \
+  -head 10 \
+  -o "Z:\\reports\\high_risk_deals.csv"
+```
+
+Recipe 11: Quarter-Over-Quarter Portfolio Drift & Key-Aware Diffing
+---------------------------------------------------------------------------------
+Compare risk model outputs between Q3 and Q4, detecting new deals, expired deals, and value shifts:
+
+```bash
+# Key-aware diff reporting row additions, deletions, and non-key cell drifts:
+pytae "\\\\server\\share\\rwa_q3.parquet" -diff "\\\\server\\share\\rwa_q4.parquet,on=deal_id,tol=1e-3"
+```
+
+Recipe 12: Complex Date-Range & Multi-Condition Filtering
+---------------------------------------------------------------------------------
+```bash
+# Complex boolean logic with ISO date ranges, string sets, and numeric thresholds:
+pytae data.parquet \
+  -filter "reporting_date >= '2026-06-30' and asset_class in ['Large Corporate', 'SME'] and (pd > 0.03 or lgd >= 0.50)" \
+  -by asset_class \
+  -agg "count=count, total_ead=sum(ead), avg_pd=mean(pd)" \
+  -arrange "total_ead desc"
+```
+
+Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
+---------------------------------------------------------------------------------
+```bash
+# Consolidate multiple sheets with custom header and skiprows:
+pytae a=portfolio.xlsx b=portfolio.xlsx \
+  -opts "a:sheet=Loans, a:skiprows=2, b:sheet=Derivatives, b:skiprows=2" \
+  -concat \
+  -filter "exposure > 0" \
+  -o "consolidated.parquet"
 ```
 
 ================================================================================
@@ -1915,10 +2040,7 @@ def generate_reference() -> None:
     copilot_parts.append("================================================================================\n")
     copilot_parts.append(pyproject_content)
 
-    copilot_ref_path = REPO_ROOT / "reference" / "pytae_copilot_reference.md"
     copilot_ref_text = "\n".join(copilot_parts)
-    copilot_ref_path.write_text(copilot_ref_text, encoding="utf-8")
-    print(f"Successfully generated {copilot_ref_path} ({len(copilot_ref_text.splitlines())} lines)")
 
     copilot_ref_txt_path = REPO_ROOT / "reference" / "pytae_copilot_reference.txt"
     copilot_ref_txt_path.write_text(copilot_ref_text, encoding="utf-8")
@@ -1944,7 +2066,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `agg(total="count")`.
    - Reshaping: Pure unmelting is `wide()` / `-wide`; 2D aggregation matrix is `pivot()` / `-pivot`.
 
-2. SHELL QUOTING STANDARD (BASH / ZSH / POWERSHELL):
+2. SHELL QUOTING STANDARD (BASH / ZSH / POWERSHELL / CMD):
    - In CLI commands, ALWAYS wrap expression arguments in double quotes `""` and wrap string values inside expressions in single quotes `''`:
      * Correct: pytae file.parquet -filter "species == 'Gentoo'"
      * Correct: pytae file.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
@@ -1983,11 +2105,10 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
      * It gives the user an instant, zero-setup dry run they can run in their terminal in 10ms to verify table outputs before touching production files.
    - For general questions with no specific dataset provided: Always demonstrate using built-in sample datasets (e.g. `sample:penguins`, `sample:tips`).
 
-7. DYNAMIC DOCUMENTATION LOOKUP & MCP TOOL:
-   - When in doubt about flag syntax, parameters, or edge cases, invoke documentation lookup on demand:
-     * CLI: `pytae -doc <keyword>` (e.g. `pytae -doc explode`, `pytae -doc "diff on key"`, `pytae -doc assert`)
-     * Python: `pt.doc("<keyword>")`
-     * MCP Tool: `pytae_doc(query="...")` via the built-in MCP server (`pytae -mcp`)
+7. GROUND REASONING IN ATTACHED KNOWLEDGE BASE:
+   - Ground all syntax, verbs, flags, options, and recipes in your attached Knowledge Base (`pytae_copilot_reference.txt`).
+   - If a user asks about Pytae capabilities, enterprise edge cases (Windows UNC paths, date filtering, tolerance diffing, multi-sheet Excel), retrieve the exact syntax and FAQ recipes from the Knowledge Base before answering.
+   - For users working in a local terminal or Python environment, note that documentation can also be inspected interactively via `pytae -doc <keyword>` or `pt.doc("<keyword>")`.
 
 8. MULTI-FILE RELATIONAL OPERATIONS & EXCEL INGESTION (DEPRECATION OF -file & STRICT -opts):
    - The '-file' flag has been completely removed and deprecated. NEVER use '-file'.
@@ -2000,12 +2121,20 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
      * Colon syntax ('file.xlsx:Sheet') is strictly NOT supported; all sheet selection must be inside '-opts'.
    - In REPL: `df = data.xlsx -opts "sheet=Feb, skiprows=2"`. Reader options apply strictly per-assignment and are NEVER persistent across REPL commands (no `set opts`).
 
-9. EXECUTION VERIFICATION & GRACEFUL FALLBACK:
-   - If execution tools are available (terminal, bash, or MCP), attempt to dry-run candidate commands on built-in sample datasets (e.g. `pytae sample:penguins ...` or `python -m pytae sample:penguins ...`).
-   - If Pytae is installed: Verify that the command succeeds and produces the expected output.
-   - If Pytae is not yet installed (e.g. `command not found` or `No module named 'pytae'`):
-     * Fall back immediately and answer authoritatively using the syntax rules and examples in these instructions without failing.
-     * Include a brief install note: "(Run `pip install pytae` to install)".
+9. PRODUCTION-READY CODE GENERATION & INTUITIVE EXPLANATION:
+   - Generate production-ready, syntax-validated CLI commands (`pytae ...`) and Python scripts (`df.<verb>()`) that the user can immediately copy and run in their terminal or corporate environment.
+   - Since you run as an AI reasoning agent without direct shell execution access to user data or network drives, verify logic through canonical syntax rules and the mandatory 'Twin Proof' on built-in sample datasets (e.g. `sample:penguins`).
+   - If Pytae is not yet installed in the user's environment, include a brief install note: `pip install pytae`.
+
+10. WINDOWS UNC PATHS, CORPORATE NETWORK SHARES & DATE FILTERING:
+   - Windows UNC share paths: When querying files on Windows network shares, wrap the full UNC path or drive letter in double quotes:
+     `pytae "\\\\\\\\server\\\\share\\\\data.parquet" -filter "status == 'active'"`
+     In Python, use raw string syntax: `df = pt.read(r"\\\\server\\share\\data.parquet")`.
+   - Date range filtering: Filter ISO dates as string comparisons:
+     `-filter "reporting_date >= '2026-01-01' and reporting_date <= '2026-09-30'"`
+   - Tolerances & Diffing: When comparing financial or quantitative metrics across reporting periods, use key-aware diff with tolerances:
+     `-diff "prior.parquet,on=deal_id,tol=1e-3"`
+   - Multi-sheet Excel: Ingest specific sheets using `-opts "sheet='Q3'"`.
 
 When answering questions:
 - Provide the tailored answer on the user's dataset, followed by the runnable "Twin Proof" on a sample dataset with column mapping.
@@ -2021,15 +2150,15 @@ Copy and paste the text block below directly into the **Instructions** (System P
 {copilot_raw_prompt}
 ```
 """
-    copilot_instr_path = REPO_ROOT / "reference" / "pytae_copilot_instructions.md"
-    copilot_instr_path.write_text(copilot_instructions_content, encoding="utf-8")
-    print(f"Successfully generated {copilot_instr_path}")
-
     copilot_instr_txt_path = REPO_ROOT / "reference" / "pytae_copilot_instructions.txt"
     copilot_instr_txt_path.write_text(copilot_raw_prompt, encoding="utf-8")
     print(f"Successfully generated {copilot_instr_txt_path}")
-    copilot_instr_path.write_text(copilot_instructions_content, encoding="utf-8")
-    print(f"Successfully generated {copilot_instr_path}")
+
+    github_dir = REPO_ROOT / ".github"
+    if github_dir.exists():
+        gh_copilot_path = github_dir / "copilot-instructions.md"
+        gh_copilot_path.write_text(copilot_instructions_content, encoding="utf-8")
+        print(f"Successfully generated {gh_copilot_path}")
 
     github_dir = REPO_ROOT / ".github"
     if github_dir.exists():

@@ -73,6 +73,10 @@ TABLE OF CONTENTS
     6.17. Why did my filter fail with unrecognized token / missing quote in terminal?
     6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
     6.19. Error Message Catalog & Troubleshooting Index
+    6.20. How do I query files located on Windows network share drives (UNC paths or mapped drives)?
+    6.21. How do I filter date intervals and ISO timestamp strings without date parsing errors?
+    6.22. How do I compare datasets across quarters with tolerances and key alignment?
+    6.23. How do I consolidate multiple Excel worksheets using -opts?
 7.  END-TO-END RECIPES & EXAMPLES (PYTHON & CLI)
     Recipe 1: Master Mutate Recipe (All 12 Features in One Pipeline)
     Recipe 2: Grouped Aggregation & 2D Pivots (Python & CLI)
@@ -83,13 +87,15 @@ TABLE OF CONTENTS
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
     Recipe 8: Interactive REPL Multi-Table Exploration & Snapshots
     Recipe 9: Top N per Group across Chained Pipelines (CLI, Python & SQL)
+    Recipe 10: Enterprise & Network Share Workflows (Windows UNC, Mapped Drives, Backslashes)
+    Recipe 11: Quarter-Over-Quarter Portfolio Drift & Key-Aware Diffing
+    Recipe 12: Complex Date-Range & Multi-Condition Filtering
+    Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
 8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 11. REPOSITORY DIRECTORY TREE
 12. BUILD & CONFIGURATION (pyproject.toml)
-13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)
-14. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)
 ================================================================================
 
 
@@ -1303,6 +1309,71 @@ When encountering an error in Pytae, consult this catalog for the root cause and
 | `PolarsComputeError: duplicate column name` | Operation produced colliding column names | Explicitly rename output columns (e.g. `avg_val = col:mean`) |
 
 
+6.20. How do I query files located on Windows network share drives (UNC paths or mapped drives)?
+---------------------------------------------------------------------------------
+In Windows corporate environments, paths often start with double backslashes (UNC) or mapped drive letters:
+- UNC path: `\\server\risk_share\rwa\deals_latest.parquet`
+- Mapped drive: `Z:\rwa\deals_latest.parquet`
+
+Rules for Windows share drive paths:
+1. ALWAYS wrap the path in double quotes `""`:
+   `pytae "\\server\risk_share\rwa\deals_latest.parquet" -filter "ead > 1000000" -head 5`
+2. In PowerShell or CMD, double quotes ensure backslashes are passed literally to Pytae.
+3. In Python:
+   ```python
+   import pytae as pt
+   df = pt.read_parquet(r"\\server\risk_share\rwa\deals_latest.parquet")
+   ```
+4. Minimizing network I/O:
+   Parquet reads only the requested columns and row groups across the network wire. Use `-select "col1,col2"` to avoid pulling hundreds of megabytes across your VPN or network share!
+
+
+6.21. How do I filter date intervals and ISO timestamp strings without date parsing errors?
+---------------------------------------------------------------------------------
+In pytae expressions, date strings formatted as ISO-8601 (`'YYYY-MM-DD'`) can be compared directly using standard operators (`>=`, `<=`, `==`, `in`):
+```bash
+# Direct ISO date comparison in string expressions:
+pytae data.parquet -filter "reporting_date >= '2026-01-01' and reporting_date <= '2026-09-30'"
+
+# Discrete list of reporting dates:
+pytae data.parquet -filter "reporting_date in ['2026-03-31', '2026-06-30', '2026-09-30']"
+```
+In Python dictionaries:
+```python
+df.filter({"reporting_date": ((">=", "2026-01-01"), ("<=", "2026-09-30"))})
+```
+
+
+6.22. How do I compare datasets across quarters with tolerances and key alignment?
+---------------------------------------------------------------------------------
+When checking portfolio drift or ETL migrations between Q3 and Q4, naive positional row matching will fail if rows were added or reordered. Use key-aware diffing with `on=`:
+```bash
+# Compare Q3 vs Q4 aligning by primary key:
+pytae q3.parquet -diff "q4.parquet,on=deal_id"
+
+# Key-aware with float tolerance (tol=1e-4) to ignore tiny rounding differences:
+pytae q3.parquet -diff "q4.parquet,on=deal_id,tol=1e-4"
+
+# Composite key alignment:
+pytae q3.parquet -diff "q4.parquet,on=portfolio_id:deal_id"
+```
+
+
+6.23. How do I consolidate multiple Excel worksheets using -opts?
+---------------------------------------------------------------------------------
+To ingest multiple worksheets from a single workbook or stack several workbooks:
+```bash
+# Load specific worksheet:
+pytae sales_2026.xlsx -opts "sheet=Feb"
+
+# Join two worksheets from different workbooks:
+pytae ord=orders.xlsx cust=customers.xlsx   -opts "ord:sheet='Orders', cust:sheet='Customers'"   -join "on=cust_id"
+
+# Stack multiple monthly worksheets:
+pytae m1=data.xlsx m2=data.xlsx m3=data.xlsx   -opts "m1:sheet=Jan, m2:sheet=Feb, m3:sheet=Mar"   -concat   -o q1_combined.parquet
+```
+
+
 7. END-TO-END RECIPES & EXAMPLES
 --------------------------------------------------------------------------------
 
@@ -1574,6 +1645,42 @@ pytae sample:penguins -sql "
   )
   SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2
 "
+```
+
+Recipe 10: Enterprise & Network Share Workflows (Windows UNC, Mapped Drives, Backslashes)
+---------------------------------------------------------------------------------
+Querying a corporate network share drive or mapped drive with zero network scan waste:
+
+CLI Pipeline:
+```bash
+# 1. Inspect schema without reading data across the network wire:
+pytae "\\server\risk_share\rwa\deals_latest.parquet" -schema
+
+# 2. Extract targeted metrics for high-risk deals:
+pytae "\\server\risk_share\rwa\deals_latest.parquet"   -filter "pd > 0.02 and ead > 5000000"   -select "deal_id,counterparty_name,internal_rating,ead,pd,lgd,rwa_irba"   -arrange "rwa_irba desc"   -head 10   -o "Z:\reports\high_risk_deals.csv"
+```
+
+Recipe 11: Quarter-Over-Quarter Portfolio Drift & Key-Aware Diffing
+---------------------------------------------------------------------------------
+Compare risk model outputs between Q3 and Q4, detecting new deals, expired deals, and value shifts:
+
+```bash
+# Key-aware diff reporting row additions, deletions, and non-key cell drifts:
+pytae "\\server\share\rwa_q3.parquet" -diff "\\server\share\rwa_q4.parquet,on=deal_id,tol=1e-3"
+```
+
+Recipe 12: Complex Date-Range & Multi-Condition Filtering
+---------------------------------------------------------------------------------
+```bash
+# Complex boolean logic with ISO date ranges, string sets, and numeric thresholds:
+pytae data.parquet   -filter "reporting_date >= '2026-06-30' and asset_class in ['Large Corporate', 'SME'] and (pd > 0.03 or lgd >= 0.50)"   -by asset_class   -agg "count=count, total_ead=sum(ead), avg_pd=mean(pd)"   -arrange "total_ead desc"
+```
+
+Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
+---------------------------------------------------------------------------------
+```bash
+# Consolidate multiple sheets with custom header and skiprows:
+pytae a=portfolio.xlsx b=portfolio.xlsx   -opts "a:sheet=Loans, a:skiprows=2, b:sheet=Derivatives, b:skiprows=2"   -concat   -filter "exposure > 0"   -o "consolidated.parquet"
 ```
 
 ================================================================================
