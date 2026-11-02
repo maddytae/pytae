@@ -2355,9 +2355,12 @@ class PytaeRepl:
 
         # Non-destructive dataset inspection (-shape, -cols, -dtype, etc.)
         has_time = any(t == "-time" or t.startswith("-time=") for t in tokens)
-        if not has_time and self._try_fast_inspection(self.current_df, tokens, output_fn):
-            self._record_history(line)
-            return True
+        if not has_time:
+            handled = self._try_fast_inspection(self.current_df, tokens, output_fn)
+            if handled:
+                if not any(t in ("-o", "-output", "--output") or t.startswith(("-o=", "-output=", "--output=")) for t in tokens):
+                    self._record_history(line)
+                return True
 
         # Otherwise, process as a pytae pipeline command
         self._cmd_pipeline(line, tokens, output_fn)
@@ -2388,6 +2391,20 @@ class PytaeRepl:
         )
         if not is_inspect:
             return False
+        has_output = any(
+            t in ("-o", "-output", "--output") or t.startswith(("-o=", "-output=", "--output="))
+            for t in tokens
+        )
+        if has_output:
+            tbl = getattr(self, "path_str", None) or "df"
+            cmd_example = f"{tbl} {first_lower}"
+            output_fn(
+                f"pytae: '{first_lower}' is an interactive screen preview and does not save with '-o' directly.\n"
+                f"To save this subset, assign it to a table first:\n"
+                f"  k = {cmd_example}\n"
+                f"  k -o <path>"
+            )
+            return True
         if first_lower == "-frac":
             output_fn("pytae: -frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%).")
             return True
@@ -3575,7 +3592,12 @@ class PytaeRepl:
             pass
         elif first_sub == "-o":
             dest = sub_tokens[1] if len(sub_tokens) > 1 else "output.parquet"
-            self._cmd_save(dest, output_fn)
+            if self._cmd_save(dest, output_fn):
+                self._record_history(f"{table_name} -o {dest}")
+        elif first_sub.startswith("-o="):
+            dest = first_sub[3:].strip("\"'")
+            if self._cmd_save(dest, output_fn):
+                self._record_history(f"{table_name} -o {dest}")
         elif first_sub.startswith(("-output", "--output")):
             output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
         elif first_sub == "-join":

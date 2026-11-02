@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **REPL Screen-Preview Protection Against Direct `-o`**:
+  - Prevented silent failures when attempting to combine interactive preview commands (`-head`, `-tail`, `-sample`, `-describe`, `-glimpse`, `-schema`, `-shape`, `-cols`, `-dtype`, `-nulls`) with `-o`.
+  - Displays clear educational guidance explaining that preview commands are for screen inspection, and guides users to assign to a table first (`k = df -head`) and then export (`k -o <target>`).
+  - Rejects without polluting session command history.
+  - Enabled targeted table exports (e.g. `k -o test.csv`) to be faithfully recorded in session command history.
 - **REPL Session History Bare Output Capture (`-o <path>`)**:
   - Standalone `-o <path>` commands executed in the REPL are now faithfully recorded into session history upon success, ensuring table exports appear in auto-saved command scripts (`set save_commands = ...`).
 - **Portable Forward Slash Canonicalization & Windows Backslash Protection**:

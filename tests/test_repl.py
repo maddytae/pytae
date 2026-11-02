@@ -2924,6 +2924,52 @@ def test_normalize_unquoted_windows_paths() -> None:
     )
 
 
+def test_repl_inspection_commands_reject_bare_output(tmp_path) -> None:
+    """Verify that exploratory inspection commands reject -o with educational guidance to assign a table first."""
+    import polars as pl
+
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl()
+    r.tables["df"] = pl.DataFrame({"a": list(range(20))})
+    r.current_df = r.tables["df"]
+    r.path_str = "df"
+
+    out_file = tmp_path / "test.csv"
+    outputs: list[str] = []
+
+    # 1. Bare active table -head -o
+    r.execute_line(f"-head -o {out_file}", output_fn=outputs.append)
+    assert not out_file.exists()
+    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
+    assert any("k = df -head" in o for o in outputs)
+    assert not r.history  # Not recorded in history
+
+    # 2. Targeted table df -head -o
+    outputs.clear()
+    r.execute_line(f"df -head 10 -o {out_file}", output_fn=outputs.append)
+    assert not out_file.exists()
+    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
+
+    # 3. Other inspection commands reject -o as well
+    outputs.clear()
+    r.execute_line(f"-tail -o {out_file}", output_fn=outputs.append)
+    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
+
+    # 4. Correct workflow: k = df -head then k -o <path>
+    outputs.clear()
+    r.execute_line("k = df -head", output_fn=outputs.append)
+    assert "k" in r.tables
+    assert r.tables["k"].shape == (5, 1)
+
+    r.execute_line(f"k -o {out_file}", output_fn=outputs.append)
+    assert out_file.exists()
+    assert any("Saved 5 rows to" in o for o in outputs)
+    assert "k = df -head" in r.history
+    assert f"k -o {out_file}" in r.history
+
+
+
 
 
 
