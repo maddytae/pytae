@@ -5,6 +5,9 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Clean Script Replay Without Prompt Clutter (`pytae -i < script.txt`)**:
+  - Automatically detects when REPL `stdin` is redirected from a file (`stat.S_ISREG`), suppressing interactive `pytae>` prompts so replaying session scripts runs cleanly without bunched prompts (`pytae> pytae> pytae>`).
+  - Suppresses interactive arrow navigation notices when running in script replay mode.
 - **REPL Screen-Preview Protection Against Direct `-o`**:
   - Prevented silent failures when attempting to combine interactive preview commands (`-head`, `-tail`, `-sample`, `-describe`, `-glimpse`, `-schema`, `-shape`, `-cols`, `-dtype`, `-nulls`) with `-o`.
   - Displays clear educational guidance explaining that preview commands are for screen inspection, and guides users to assign to a table first (`k = df -head`) and then export (`k -o <target>`).

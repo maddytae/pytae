@@ -2969,6 +2969,28 @@ def test_repl_inspection_commands_reject_bare_output(tmp_path) -> None:
     assert f"k -o {out_file}" in r.history
 
 
+def test_repl_redirected_file_input_suppresses_prompt(tmp_path, monkeypatch) -> None:
+    """Verify that piping/redirecting a script file into the REPL does not bunch up prompts."""
+    import sys
+
+    from pytae.repl import PytaeRepl
+
+    script_file = tmp_path / "script.txt"
+    script_file.write_text("# Comment line 1\n# Comment line 2\nexit\n", encoding="utf-8")
+
+    outputs: list[str] = []
+    with open(script_file, "r", encoding="utf-8") as f:
+        monkeypatch.setattr(sys, "stdin", f)
+        r = PytaeRepl()
+        r.run(output_fn=outputs.append)
+
+    # Banner is printed, but no repeated prompt lines
+    assert any("PYTAE INTERACTIVE REPL" in o for o in outputs)
+    assert any("Exiting pytae REPL" in o for o in outputs)
+    assert not any("winpty pytae" in o for o in outputs)
+
+
+
 
 
 

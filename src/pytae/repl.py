@@ -4236,31 +4236,40 @@ class PytaeRepl:
             output_fn(
                 "No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
             )
-        if sys.platform == "win32" and not sys.stdin.isatty():
+        is_file_input = False
+        try:
+            import stat
+
+            is_file_input = stat.S_ISREG(os.fstat(sys.stdin.fileno()).st_mode)
+        except Exception:
+            pass
+
+        if sys.platform == "win32" and not sys.stdin.isatty() and not is_file_input:
             output_fn(
                 "  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)"
             )
         output_fn("")
 
         def _get_input(prompt_text: str) -> str:
+            effective_prompt = "" if is_file_input else prompt_text
             if input_fn is not None:
                 try:
-                    return input_fn(prompt_text)
+                    return input_fn(effective_prompt)
                 except TypeError:
                     return input_fn()  # type: ignore[call-arg]
 
             if sys.platform == "win32":
                 if readline is not None:
                     try:
-                        return input(prompt_text)
+                        return input(effective_prompt)
                     except Exception:
                         pass
                 if sys.stdin.isatty():
                     try:
-                        return _win_console_input(prompt_text, self._raw_history)
+                        return _win_console_input(effective_prompt, self._raw_history)
                     except Exception:
                         pass
-            return input(prompt_text)
+            return input(effective_prompt)
 
         try:
             while True:
