@@ -239,26 +239,33 @@ pytae orders.parquet -explode "items,quantities"
 
 ---
 
-## 8. 🔗 Multi-File Relational Operations (`-file`, `-join`, `-sql`)
+## 8. 🔗 Multi-File Relational Operations (`-join`, `-concat`, `-sql`, `-opts`)
 
-Combine multiple datasets without touching Python:
+Combine multiple datasets seamlessly with natural positional syntax (`alias=path` or bare paths):
 
 ```bash
-# Inner, left, right, or outer joins
-pytae -file "orders.parquet=ord; customers.csv=cust" \
-  -join "left=ord, right=cust, on=customer_id, how=left" \
+# Inner, left, right, or outer joins (left & right default to first two frames)
+pytae ord=orders.parquet cust=customers.csv \
+  -join "on=customer_id, how=left" \
   -head 10
 
-# Stack datasets vertically (concat / union)
-pytae -file "q1.parquet=a; q2.parquet=b; q3.parquet=c" \
-  -concat "frames=a,b,c" -shape
+# Stack datasets vertically (concat / union — frames default to all inputs)
+pytae a=q1.parquet b=q2.parquet c=q3.parquet -concat -shape
 
-# Run analytical ANSI SQL across files
-pytae -file "sales.parquet=s; stores.csv=st" \
+# Stack multiple Excel sheets via targeted -opts
+pytae jan=sales.xlsx feb=sales.xlsx -concat -opts "jan:sheet=Jan, feb:sheet=Feb" -shape
+
+# Pass reader options globally or target specific tables
+pytae ord=orders.xlsx cust=customers.csv \
+  -join "on=cust_id" \
+  -opts "ord:sheet=Q1, skiprows=1, cust:skiprows=3"
+
+# Run analytical ANSI SQL directly across named table aliases
+pytae s=sales.parquet st=stores.csv \
   -sql "SELECT st.region, SUM(s.amount) as total FROM s JOIN st ON s.store_id = st.id GROUP BY 1 ORDER BY 2 DESC"
 
-# Load globbed multi-file partitions into -file
-pytae -file "parts/*.parquet=all_parts; stores.csv=st" \
+# Load globbed multi-file partitions into a named alias
+pytae all_parts="parts/*.parquet" st=stores.csv \
   -join "left=all_parts, right=st, on=store_id, how=left"
 ```
 
@@ -266,9 +273,12 @@ pytae -file "parts/*.parquet=all_parts; stores.csv=st" \
 
 ## 9. 💾 Format Conversions & Sinks (`-o`)
 
-Convert effortlessly between `.parquet`, `.csv`, `.tsv`, `.dat`, `.jsonl`, and `.sas7bdat`:
+Convert effortlessly between `.parquet`, `.csv`, `.tsv`, `.dat`, `.jsonl`, `.xlsx`, and `.sas7bdat`:
 
 ```bash
+# Convert specific Excel sheet to snappy compressed Parquet
+pytae sales.xlsx -opts "sheet=Jan" -o jan.parquet
+
 # Convert SAS7BDAT to snappy compressed Parquet
 pytae legacy.sas7bdat -o clean.parquet
 
@@ -433,17 +443,17 @@ Search documentation, CLI flags, Python API verbs, and syntax rules instantly fr
 
 ```bash
 # Search by keyword or verb
-pytae doc explode
-pytae doc assert
-pytae doc "diff on key"
+pytae -doc explode
+pytae -doc assert
+pytae -doc "diff on key"
 
 # Search by concept or natural language (BM25 full-text ranking)
-pytae doc "flatten list"
-pytae doc "schema drift"
-pytae doc "grouped percentiles"
+pytae -doc "flatten list"
+pytae -doc "schema drift"
+pytae -doc "grouped percentiles"
 
 # Launch Model Context Protocol (MCP) server for Copilot, Cursor, or VS Code
-pytae mcp
+pytae -mcp
 ```
 
 ---

@@ -121,14 +121,29 @@ Loaded orders.parquet as 'orders' (100,000 rows x 6 cols).
 pytae [orders: 100,000x6]> 
 ```
 
-### Reader Options (`-encoding`, `-dlim`, `-nrows`)
-Pass inline format parameters directly during assignment:
+### Reader Options (`-opts`, `-encoding`, `-dlim`, `-nrows`)
+Pass inline format parameters or full reader options directly during assignment:
 
 ```text
 # Specify Latin-1 encoding, custom semicolon delimiter, and load only the first 5,000 rows
 pytae> raw = export.csv -encoding latin1 -dlim ";" -nrows 5000
 Loaded export.csv as 'raw' (5,000 rows x 12 cols) [encoding=latin1, sep=;, nrows=5000].
+
+# Load Excel workbooks with default (first) sheet
+pytae> sales = sales_2024.xlsx
+Loaded sales_2024.xlsx as 'sales' (3,500 rows x 8 cols).
+
+# Specify target sheet name directly inside -opts
+pytae> feb = sales_2024.xlsx -opts "sheet=Feb"
+Loaded 'feb' from sales_2024.xlsx (3,500 rows x 8 cols).
+
+# Pass multiple reader kwargs using -opts (e.g. sheet, skiprows, header, usecols)
+pytae> notes = sales_2024.xlsx -opts "sheet=CustomNotes, skiprows=2, header=0"
+Loaded 'notes' from sales_2024.xlsx (1,200 rows x 5 cols).
 ```
+> [!NOTE]
+> - Sheet names must strictly be specified via `-opts "sheet=..."`. Colon sheet syntax (`file.xlsx:Sheet`) is not supported to ensure path integrity and eliminate ambiguity.
+> - In the REPL, reader options (`-opts`) apply strictly to the specific assignment command on that line. Options do not persist across future assignments, ensuring clean, predictable data loading.
 
 ### The `load` Command
 Alternatively, use the `load` keyword with optional aliases:

@@ -15,8 +15,8 @@ def test_join_on_differing_column_names(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-join",
             "left=df1,right=df2,on=col a:cola",
         ]
@@ -32,8 +32,8 @@ def test_join_on_pair_quoting_is_optional(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-join",
             "left=df1,right=df2,on=col a:'cola'",
         ]
@@ -52,8 +52,8 @@ def test_join_shared_column_name_outer_join(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{left}=a;{right}=b",
+            f"a={left}",
+            f"b={right}",
             "-join",
             "left=a,right=b,on=id,how=outer",
             "-shape",
@@ -63,7 +63,7 @@ def test_join_shared_column_name_outer_join(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(4, 3)"
 
 
-def test_join_requires_file(tmp_path):
+def test_join_requires_multiple_tables(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
@@ -71,27 +71,11 @@ def test_join_requires_file(tmp_path):
     assert exc_info.value.code == 2
 
 
-def test_file_requires_join(tmp_path):
-    left, right = _write_two_csvs(tmp_path)
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{left}=df1;{right}=df2", "-shape"])
-    assert exc_info.value.code == 2
-
-
-def test_file_cannot_combine_with_positional_path(tmp_path):
-    left, right = _write_two_csvs(tmp_path)
-
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([left, "-file", f"{left}=df1;{right}=df2", "-join", "left=df1,right=df2,on=col a:cola"])
-    assert exc_info.value.code == 2
-
-
 def test_join_unknown_alias_errors(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{left}=df1;{right}=df2", "-join", "left=df1,right=bogus,on=col a:cola"])
+        cli.main([f"df1={left}", f"df2={right}", "-join", "left=df1,right=bogus,on=col a:cola"])
     assert exc_info.value.code == 2
 
 
@@ -99,18 +83,18 @@ def test_join_output_format_requires_concrete_path(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{left}=df1;{right}=df2", "-join", "left=df1,right=df2,on=col a:cola", "-o", "csv"])
+        cli.main([f"df1={left}", f"df2={right}", "-join", "left=df1,right=df2,on=col a:cola", "-o", "csv"])
     assert exc_info.value.code == 2
 
 
-def test_join_must_be_first_op_with_file(tmp_path):
+def test_join_must_be_first_op_in_multi_table(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main(
             [
-                "-file",
-                f"{left}=df1;{right}=df2",
+                f"df1={left}",
+                f"df2={right}",
                 "-shape",
                 "-join",
                 "left=df1,right=df2,on=col a:cola",
@@ -124,8 +108,9 @@ def test_join_chained_via_data_alias(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{a}=a;{b}=b;{c}=c",
+            f"a={a}",
+            f"b={b}",
+            f"c={c}",
             "-join",
             "left=a,right=b,on=id",
             "-join",
@@ -141,7 +126,7 @@ def test_join_data_not_available_before_anything_produced(tmp_path, capsys):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{a}=a;{b}=b", "-join", "left=data,right=b,on=id"])
+        cli.main([f"a={a}", f"b={b}", "-join", "left=data,right=b,on=id"])
     assert exc_info.value.code == 2
     assert "'data' isn't available yet" in capsys.readouterr().err
 
@@ -149,7 +134,7 @@ def test_join_data_not_available_before_anything_produced(tmp_path, capsys):
 def test_concat_stacks_three_frames_with_reset_index(tmp_path, capsys):
     a, b, c = _write_three_id_csvs(tmp_path)
 
-    cli.main(["-file", f"{a}=a;{b}=b;{c}=c", "-concat", "frames='a,b,c'"])
+    cli.main([f"a={a}", f"b={b}", f"c={c}", "-concat", "a,b,c"])
 
     lines = capsys.readouterr().out.strip().splitlines()
     assert len(lines) == 1 + 3 + 3 + 2  # header + 3 rows from each of a, b, c
@@ -164,7 +149,7 @@ def test_concat_resets_index(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,b'", "-o", "clip"])
+    cli.main([f"a={a}", f"b={b}", "-concat", "a,b", "-o", "clip"])
 
     result = copied["frame"]
     assert list(result.index) == list(range(len(result)))
@@ -175,12 +160,13 @@ def test_concat_chained_via_data_alias(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{a}=a;{b}=b;{c}=c",
+            f"a={a}",
+            f"b={b}",
+            f"c={c}",
             "-concat",
-            "frames='a,b'",
+            "a,b",
             "-concat",
-            "frames='data,c'",
+            "data,c",
             "-shape",
         ]
     )
@@ -188,11 +174,11 @@ def test_concat_chained_via_data_alias(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(8, 4)"
 
 
-def test_concat_requires_file(tmp_path):
+def test_concat_requires_multiple_tables(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main([path, "-concat", "frames='a,b'"])
+        cli.main([path, "-concat", "a,b"])
     assert exc_info.value.code == 2
 
 
@@ -200,12 +186,12 @@ def test_concat_unknown_alias_errors(tmp_path, capsys):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames='a,bogus'"])
+        cli.main([f"a={a}", f"b={b}", "-concat", "a,bogus"])
     assert exc_info.value.code == 2
-    assert "unknown -file alias" in capsys.readouterr().err
+    assert "unknown alias 'bogus'" in capsys.readouterr().err
 
 
-def test_file_dlim_and_encoding_overrides_applied(tmp_path, capsys):
+def test_opts_dlim_and_encoding_overrides_applied(tmp_path, capsys):
     pipe_path = tmp_path / "pipe.csv"
     pipe_path.write_bytes("id|name\n1|caf\xe9\n".encode("latin-1"))
     plain_path = tmp_path / "plain.csv"
@@ -213,10 +199,11 @@ def test_file_dlim_and_encoding_overrides_applied(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{pipe_path}=p,dlim=|,encoding=latin-1; {plain_path}=q",
+            f"p={pipe_path}",
+            f"q={plain_path}",
             "-concat",
-            "frames='p,q'",
+            "-opts",
+            "p:sep='|', p:encoding='latin-1'",
         ]
     )
 
@@ -225,45 +212,40 @@ def test_file_dlim_and_encoding_overrides_applied(tmp_path, capsys):
     assert "bravo" in out
 
 
-def test_file_requires_at_least_two_entries(tmp_path):
-    path = _write_csv(tmp_path, pd.DataFrame({"a": [1]}))
-
-    with pytest.raises(SystemExit, match="at least two"):
-        cli.main(["-file", f"{path}=a", "-concat", "frames='a,a'"])
-
-
 def test_concat_requires_at_least_two_frame_names(tmp_path):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
-    with pytest.raises(SystemExit, match="frames= needs at least two names"):
-        cli.main(["-file", f"{a}=a;{b}=b", "-concat", "frames=a"])
+    with pytest.raises(SystemExit, match="frames needs at least two names"):
+        cli.main([f"a={a}", f"b={b}", "-concat", "frames=a"])
 
 
-def test_file_duplicate_alias_errors(tmp_path):
+def test_duplicate_alias_errors(tmp_path, capsys):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
-    with pytest.raises(SystemExit, match="duplicate alias"):
-        cli.main(["-file", f"{a}=x;{b}=x", "-concat", "frames='x,x'"])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([f"x={a}", f"x={b}", "-concat"])
+    assert exc_info.value.code == 2
+    assert "duplicate alias 'x'" in capsys.readouterr().err
 
 
 def test_join_on_mixed_style_errors(tmp_path):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit, match="mixes plain columns and left:right pairs"):
-        cli.main(["-file", f"{a}=a;{b}=b", "-join", "left=a,right=b,on='id:id,x'"])
+        cli.main([f"a={a}", f"b={b}", "-join", "left=a,right=b,on='id:id,x'"])
 
 
 def test_join_missing_required_keys_errors(tmp_path):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit, match="missing required key"):
-        cli.main(["-file", f"{a}=a;{b}=b", "-join", "left=a"])
+        cli.main([f"a={a}", f"b={b}", "-join", "left=a"])
 
 
 def test_join_how_cross_does_not_require_on(tmp_path, capsys):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
-    cli.main(["-file", f"{a}=a;{b}=b", "-join", "left=a,right=b,how=cross"])
+    cli.main([f"a={a}", f"b={b}", "-join", "left=a,right=b,how=cross"])
     out = capsys.readouterr().out.strip()
     assert len(out.splitlines()) == 1 + 3 * 3  # header + 3x3 cross join rows
 
@@ -272,7 +254,7 @@ def test_join_how_cross_rejects_on(tmp_path):
     a, b, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit, match="on= cannot be used with how=cross"):
-        cli.main(["-file", f"{a}=a;{b}=b", "-join", "left=a,right=b,how=cross,on=id"])
+        cli.main([f"a={a}", f"b={b}", "-join", "left=a,right=b,how=cross,on=id"])
 
 
 def test_join_validate_failure_errors(tmp_path, capsys):
@@ -284,8 +266,8 @@ def test_join_validate_failure_errors(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main(
             [
-                "-file",
-                f"{left}=l;{right}=r",
+                f"l={left}",
+                f"r={right}",
                 "-join",
                 "left=l,right=r,on=id,validate=one_to_one",
             ]
@@ -300,8 +282,8 @@ def test_output_succeeds_after_join(tmp_path):
 
     exit_code = cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-join",
             "left=df1,right=df2,on=col a:cola",
             "-o",
@@ -320,7 +302,7 @@ def test_file_nonexistent_path_errors(tmp_path, capsys):
     a, _, _ = _write_three_id_csvs(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{a}=a;{tmp_path / 'missing.csv'}=b", "-concat", "frames='a,b'"])
+        cli.main([f"a={a}", f"b={tmp_path / 'missing.csv'}", "-concat"])
     assert exc_info.value.code == 2
     assert "file not found" in capsys.readouterr().err
 
@@ -332,7 +314,7 @@ def test_file_bad_encoding_errors(tmp_path, capsys):
     pd.DataFrame({"id": [2], "name": ["bravo"]}).to_csv(ok_path, index=False)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{bad_path}=a;{ok_path}=b", "-concat", "frames='a,b'"])
+        cli.main([f"a={bad_path}", f"b={ok_path}", "-concat"])
     assert exc_info.value.code == 2
     assert "try -encoding" in capsys.readouterr().err
 
@@ -341,7 +323,7 @@ def test_concat_unquoted_frames(tmp_path, capsys):
     a, b, c = _write_three_id_csvs(tmp_path)
 
     # unquoted frames=a,b,c without inner quotes
-    exit_code = cli.main(["-file", f"{a}=a;{b}=b;{c}=c", "-concat", "frames=a,b,c", "-shape"])
+    exit_code = cli.main([f"a={a}", f"b={b}", f"c={c}", "-concat", "frames=a,b,c", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(8, 4)"
 
@@ -354,8 +336,8 @@ def test_join_unquoted_on_pairs(tmp_path, capsys):
 
     exit_code = cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-join",
             "left=df1,right=df2,on=id:id,code:code",
             "-shape",
@@ -370,8 +352,8 @@ def test_join_df_alias_rejected(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.main(
             [
-                "-file",
-                f"{a}=a;{b}=b",
+                f"a={a}",
+                f"b={b}",
                 "-join",
                 "left=a,right=b,on=id",
                 "-join",
@@ -385,8 +367,8 @@ def test_join_df_alias_rejected(tmp_path, capsys):
 def test_join_with_sample_datasets(capsys):
     exit_code = cli.main(
         [
-            "-file",
-            "sample:penguins=p; sample:tips=t",
+            "p=sample:penguins",
+            "t=sample:tips",
             "-join",
             "left=p,right=t,how=cross",
             "-shape",

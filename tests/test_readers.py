@@ -171,7 +171,7 @@ def test_write_dataframe_dat_defaults_to_latin1(tmp_path):
 
 
 def test_unsupported_reader_and_writer(tmp_path):
-    bad = tmp_path / "x.xlsx"
+    bad = tmp_path / "x.unsupported"
     bad.write_text("nope")
     with pytest.raises(ValueError, match="unsupported"):
         get_reader(bad)
@@ -659,14 +659,14 @@ def test_glob_reader_and_repl_glob_and_history_export(tmp_path):
     r_dir = get_reader(part_dir)
     assert r_dir.shape() == (4, 2)
 
-    # 2. CLI -file with glob pattern
+    # 2. CLI multi-table positional with glob pattern
     out_file = tmp_path / "combined.parquet"
     ref_file = tmp_path / "ref.parquet"
     pt.DataFrame({"id": [2, 3, 4], "label": ["b", "c", "d"]}).write_parquet(ref_file)
     rc = cli.main(
         [
-            "-file",
-            f"{glob_pat}=all_parts; {ref_file}=ref",
+            f"all_parts={glob_pat}",
+            f"ref={ref_file}",
             "-sql",
             "SELECT all_parts.id, all_parts.v, ref.label FROM all_parts JOIN ref ON all_parts.id = ref.id",
             "-o",

@@ -169,7 +169,7 @@ df = df.mutate('val = x + 1')
 """
     )
 
-    exit_code = cli.main(["check", str(test_file)])
+    exit_code = cli.main(["-check", str(test_file)])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "passed validation" in out
@@ -184,7 +184,7 @@ df = df.select(exclude='val')
 """
     )
 
-    exit_code = cli.main(["check", str(bad_file)])
+    exit_code = cli.main(["-check", str(bad_file)])
     assert exit_code == 1
     out = capsys.readouterr().out
     assert "Found 1 DSL syntax error" in out

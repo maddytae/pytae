@@ -336,61 +336,85 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-select", "-clean_columns"],
     ),
-    "file": KeywordHelp(
-        name="file",
-        flag="-file, --file PATH=ALIAS;...",
-        syntax='pytae -file "path1=alias1; path2=alias2" [operation]',
-        summary="Load multiple tabular datasets for multi-file joins (-join, -concat, or -sql).",
+    "opts": KeywordHelp(
+        name="opts",
+        flag="-opts, --opts OPTS",
+        syntax='pytae <path> -opts "key=value, ..."',
+        summary="Pass reader-specific options (Excel sheet name, skiprows, headers, encodings).",
         description=(
-            "Replaces the positional path to enable multi-dataset pipelines.\n"
-            "Each file is assigned an alias and can be joined via -join, stacked via -concat, or queried via -sql."
+            "Configures reader parsing options for data ingestion. For Excel files (.xlsx, .xls, .xlsm, .xlsb), "
+            "sheet selection MUST be passed via -opts (e.g. -opts \"sheet=Feb\"). Options can be global or targeted "
+            "to specific table aliases (e.g. -opts \"skiprows=1, cust:skiprows=3\")."
         ),
         options=[
-            "path=alias : Assign an in-memory alias to a file.",
-            "; (semicolon) : Delimiter between file entries.",
-            ",dlim=CHAR : Override field delimiter per file.",
-            ",encoding=ENC : Override text encoding per file.",
+            'sheet=<name_or_index> : Select Excel worksheet (e.g. "sheet=Feb" or "sheet=0").',
+            "skiprows=<N> : Number of rows to skip at start of file.",
+            "header=<row> : Row index (0-based) to use for column headers, or None for no header.",
+            "<alias>:<opt>=<val> : Targeted option for a specific table alias in multi-file pipelines.",
         ],
         examples=[
-            'pytae -file "orders.parquet=o; cust.csv=c" -join "left=o,right=c,on=cust_id" -head 5',
-            'pytae -file "2023.parquet=df1; 2024.parquet=df2" -concat "frames=\'df1,df2\'" -o combined.parquet',
-            'pytae -file "orders.parquet=o; items.parquet=i" -sql "select o.*, i.name from o join i using (item_id)"',
+            'pytae sales_2024.xlsx -opts "sheet=Feb"',
+            'pytae data.xlsx -opts "sheet=RawData, skiprows=2, header=0"',
+            'pytae ord=orders.xlsx cust=customers.xlsx -opts "ord:sheet=Q1, cust:skiprows=1" -join "on=cust_id"',
         ],
-        see_also=["-join", "-concat", "-sql"],
+        see_also=["-dlim", "-encoding", "-fmt"],
+    ),
+    "file": KeywordHelp(
+        name="file",
+        flag="-file (Deprecated)",
+        syntax="pytae alias1=path1 alias2=path2 [operation]",
+        summary="[Deprecated] Multi-file inputs are now declared purely positionally as alias=source.",
+        description=(
+            "The -file flag has been retired and removed. Multi-dataset pipelines are now declared "
+            "directly using natural positional inputs: pytae o=orders.parquet c=customers.csv -join \"on=cust_id\"."
+        ),
+        options=[],
+        examples=[
+            'pytae o=orders.parquet c=cust.csv -join "on=cust_id"',
+            "pytae q1=jan.parquet q2=feb.parquet -concat",
+        ],
+        see_also=["-join", "-concat", "-sql", "-opts"],
     ),
     "join": KeywordHelp(
         name="join",
         flag="-join, --join KEY=VALUE,...",
-        syntax='pytae -file "..." -join "left=alias1,right=alias2,on=key[,how=inner]"',
+        syntax='pytae alias1=file1 alias2=file2 -join "on=key[,how=inner]"',
         summary="Join two datasets in the pipeline using Polars SIMD multithreading.",
-        description=("Combines two datasets by key columns. Repeatable to join additional files sequentially."),
+        description=(
+            "Combines two datasets by key columns. When left= and right= are omitted, defaults "
+            "to the first two positional input tables. Repeatable to fold in additional files sequentially."
+        ),
         options=[
+            'on=col : Shared join key column (or \'on="col1,col2"\').',
+            'left_on=col, right_on=col : Join keys with differing names (or \'on="left_col:right_col"\').',
+            "how=inner|left|right|full|semi|anti|cross : Join method (default: 'inner').",
             "left=alias : Left dataset alias (or 'data' for current pipeline state).",
             "right=alias : Right dataset alias.",
-            "on=col : Shared join key column (or 'on=\"col1,col2\"').",
-            "left_on=col, right_on=col : Join keys with differing names (or 'on=\"left_col:right_col\"').",
-            "how=inner|left|right|full|semi|anti|cross : Join method (default: 'inner').",
             "validate=1:1|1:m|m:1|m:m : Join cardinality assertion.",
         ],
         examples=[
-            'pytae -file "orders.parquet=o; users.csv=u" -join "left=o,right=u,on=user_id"',
-            'pytae -file "a.csv=a; b.csv=b" -join "left=a,right=b,on=\'id:user_id\',how=left"',
+            'pytae o=orders.parquet u=users.csv -join "on=user_id"',
+            'pytae a=a.csv b=b.csv -join "on=\'id:user_id\',how=left"',
         ],
-        see_also=["-file", "-concat", "-sql"],
+        see_also=["-concat", "-sql", "-opts"],
     ),
     "concat": KeywordHelp(
         name="concat",
-        flag="-concat, --concat KEY=VALUE,...",
-        syntax='pytae -file "..." -concat "frames=\'alias1,alias2,...\'"',
+        flag="-concat, --concat [KEY=VALUE,...]",
+        syntax="pytae f1=jan.csv f2=feb.csv -concat",
         summary="Stack multiple datasets vertically row-wise into one pipeline DataFrame.",
-        description=("Concatenates two or more datasets along rows using Polars."),
+        description=(
+            "Concatenates two or more datasets along rows using Polars. When called with no arguments, "
+            "stacks all positional input tables in order."
+        ),
         options=[
-            "frames='alias1,alias2,...' : Comma-separated list of dataset aliases to stack.",
+            "frames='alias1,alias2,...' : Optional comma-separated list of dataset aliases to stack.",
         ],
         examples=[
-            'pytae -file "jan.csv=m1; feb.csv=m2; mar.csv=m3" -concat "frames=\'m1,m2,m3\'" -o q1.parquet',
+            "pytae m1=jan.csv m2=feb.csv m3=mar.csv -concat -o q1.parquet",
+            'pytae m1=jan.csv m2=feb.csv m3=mar.csv -concat "frames=\'m1,m2\'"',
         ],
-        see_also=["-file", "-join"],
+        see_also=["-join", "-opts"],
     ),
     "output": KeywordHelp(
         name="output",
@@ -535,23 +559,29 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "diff": KeywordHelp(
         name="diff",
-        flag="-diff, --diff PATH [-tol N]",
-        syntax="pytae <file1> -diff <file2> [-tol N]",
+        flag="-diff, --diff SPEC [-tol N]",
+        syntax='pytae <file1> -diff <file2> [-tol N]  OR  pytae <file1> -diff "<file2>,on=<key>[,tol=N]"',
         summary="Compare schema and values between two tabular datasets.",
         description=(
             "Compares column lists, types, row counts, null counts, and value differences "
-            "between two datasets. Use -tol to set an absolute numeric threshold."
+            "between two datasets. By default, rows are compared positionally (0 vs 0, 1 vs 1). "
+            "When rows may be inserted, deleted, or reordered, use 'on=key' to align rows by "
+            "primary or composite keys before comparing non-key cells."
         ),
         options=[
-            "PATH : Target file path to compare against.",
-            "-tol N : Numeric tolerance threshold for floating-point comparisons (e.g. -tol 0.001).",
+            "PATH : Target file path to compare against (positional row comparison).",
+            '"PATH,on=key" : Key-aware alignment on a primary key column (detects added/removed keys).',
+            '"PATH,on=k1:k2" : Composite key alignment on multiple columns separated by colons.',
+            '"PATH,tol=N" or -tol N : Numeric absolute tolerance threshold (e.g. tol=0.001 or tol=1e-4).',
+            '"PATH,rtol=N" : Relative numeric tolerance threshold for floating-point comparisons.',
         ],
         examples=[
             "pytae current.parquet -diff previous.parquet",
             "pytae current.parquet -diff previous.parquet -tol 0.001",
-            "pytae current.parquet -diff previous.parquet -tol 1e-4",
+            'pytae current.parquet -diff "previous.parquet,on=customer_id"',
+            'pytae current.parquet -diff "previous.parquet,on=store_id:product_id,tol=1e-4"',
         ],
-        see_also=["-meta", "-cols", "-dtype"],
+        see_also=["-tol", "-meta", "-cols", "-dtype"],
     ),
     "tol": KeywordHelp(
         name="tol",
@@ -866,24 +896,58 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "check": KeywordHelp(
         name="check",
-        flag="check, -check [PATHS...]",
-        syntax="pytae check [PATH...]",
+        flag="-check, --check [PATHS...]",
+        syntax="pytae -check [PATH...]",
         summary="Statically inspect Python files and check pytae DSL expressions for syntax errors.",
         description=(
             "Statically parses Python scripts (using ast.parse) and validates all pytae DSL expressions\n"
             "passed to .mutate(), .filter(), .select(), .arrange(), and .agg().\n"
-            "Catches unclosed parentheses, malformed case_when() tuples, retired syntax (like exclude=),\n"
+            "Catches unclosed parentheses, malformed case_when() tuples, retired syntax,\n"
             "and invalid operators before running code. Perfect for CI and git pre-commit hooks."
         ),
         options=[
             "PATHS : One or more Python files or directories to recursively inspect (default: current directory).",
         ],
         examples=[
-            "pytae check pipeline.py",
-            "pytae check src/ tests/",
-            "pytae check",
+            "pytae -check pipeline.py",
+            "pytae -check src/ tests/",
+            "pytae -check",
         ],
         see_also=["-mutate", "-filter", "-select"],
+    ),
+    "doc": KeywordHelp(
+        name="doc",
+        flag="-doc, --doc QUERY",
+        syntax="pytae -doc <keyword or query>",
+        summary="Search documentation, guides, and Python API using SQLite FTS5 (BM25).",
+        description=(
+            "Searches full-text documentation index across CLI flags, Python API verbs, recipes, "
+            "and detailed guides. Supports natural language queries, multi-word phrases, and synonyms."
+        ),
+        options=[
+            "QUERY : Keyword, topic, or phrase (e.g. 'explode', 'diff on key', 'grouped percentiles').",
+        ],
+        examples=[
+            "pytae -doc explode",
+            'pytae -doc "diff on key"',
+            'pytae -doc "case when"',
+        ],
+        see_also=["-help", "-cheatsheet", "-mcp"],
+    ),
+    "mcp": KeywordHelp(
+        name="mcp",
+        flag="-mcp, --mcp",
+        syntax="pytae -mcp",
+        summary="Launch Model Context Protocol (MCP) stdio server for AI agents.",
+        description=(
+            "Starts an in-memory JSON-RPC 2.0 stdio Model Context Protocol (MCP) server exposing "
+            "pytae documentation search and cheatsheet tools directly to Cursor, VS Code, and Copilot."
+        ),
+        options=[],
+        examples=[
+            "pytae -mcp",
+        ],
+        see_also=["-doc", "-help"],
     ),
     "mask": KeywordHelp(
         name="mask",
@@ -1003,10 +1067,169 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-long", "-wide", "-mutate"],
     ),
+    "describe": KeywordHelp(
+        name="describe",
+        flag="-describe, --describe",
+        syntax="pytae <path> [operations] -describe",
+        summary="Compute summary statistics for all numeric and categorical columns.",
+        description=(
+            "Calculates descriptive statistics including count, nulls, mean, std, min, "
+            "25%, 50% (median), 75%, and max across DataFrame columns."
+        ),
+        options=[],
+        examples=[
+            "pytae sample:penguins -describe",
+            "pytae sample:tips -describe",
+        ],
+        see_also=["-shape", "-cols", "-nulls", "-glimpse"],
+    ),
+    "glimpse": KeywordHelp(
+        name="glimpse",
+        flag="-glimpse, --glimpse",
+        syntax="pytae <path> [operations] -glimpse",
+        summary="Transposed overview of columns, data types, and sample head values.",
+        description=(
+            "Provides an ergonomic vertical transposed view of the table schema, similar to "
+            "dplyr's glimpse() or tibble inspection. Useful for wide tables with dozens of columns."
+        ),
+        options=[],
+        examples=[
+            "pytae sample:penguins -glimpse",
+            "pytae sample:titanic -glimpse",
+        ],
+        see_also=["-describe", "-cols", "-dtype", "-shape"],
+    ),
+    "nrows": KeywordHelp(
+        name="nrows",
+        flag="-nrows, --nrows N",
+        syntax="pytae <path> -nrows <N>",
+        summary="Limit the number of rows read from the source dataset file.",
+        description=(
+            "Reads only the first N rows at ingestion time. For large files (CSV, Parquet), "
+            "this accelerates preview and exploration without parsing the entire file into memory."
+        ),
+        options=[
+            "N : Integer row limit to ingest (e.g. -nrows 1000).",
+        ],
+        examples=[
+            "pytae penguins.parquet -nrows 50 -describe",
+            "pytae large.csv -nrows 100 -cols",
+        ],
+        see_also=["-head", "-sample", "-shape"],
+    ),
+    "dlim": KeywordHelp(
+        name="dlim",
+        flag="-dlim, --dlim CHAR",
+        syntax="pytae <path> -dlim <CHAR>",
+        summary="Specify custom column delimiter character for delimited text files.",
+        description=(
+            "Sets the separator character for CSV/TSV/DAT files. Supports escaped sequences like '\\t' "
+            "for tabs or '|' for pipe-delimited files."
+        ),
+        options=[
+            "CHAR : Field delimiter character (e.g. ',' or '\\t' or '|').",
+        ],
+        examples=[
+            'pytae data.tsv -dlim "\\t" -head 5',
+            'pytae export.dat -dlim "|" -shape',
+        ],
+        see_also=["-encoding", "-fmt", "-opts"],
+    ),
+    "encoding": KeywordHelp(
+        name="encoding",
+        flag="-encoding, --encoding CODEC",
+        syntax="pytae <path> -encoding <CODEC>",
+        summary="Specify text character encoding for reading or writing text files.",
+        description=(
+            "Configures text character encoding (e.g. 'utf-8', 'latin-1', 'cp1252', 'iso-8859-1'). "
+            "Useful when ingesting legacy European or Windows text files with special characters."
+        ),
+        options=[
+            "CODEC : Encoding name (e.g. 'utf-8', 'latin-1', 'cp1252').",
+        ],
+        examples=[
+            "pytae legacy.csv -encoding latin-1 -head 5",
+            "pytae windows.txt -encoding cp1252 -o clean.parquet",
+        ],
+        see_also=["-dlim", "-fmt", "-opts"],
+    ),
+    "fmt": KeywordHelp(
+        name="fmt",
+        flag="-fmt, --fmt FORMAT",
+        syntax="pytae <path> -fmt <FORMAT>",
+        summary="Explicitly specify input file format when piping from stdin or using extensionless files.",
+        description=(
+            "Overrides format autodetection. Supports 'parquet', 'csv', 'tsv', 'jsonl', 'ndjson', 'arrow', 'excel'."
+        ),
+        options=[
+            "FORMAT : File format identifier (e.g. 'csv', 'parquet', 'jsonl').",
+        ],
+        examples=[
+            "cat stream.csv | pytae - -fmt csv -shape",
+            "pytae raw_blob -fmt parquet -head 5",
+        ],
+        see_also=["-o", "-dlim", "-encoding"],
+    ),
+    "plot": KeywordHelp(
+        name="plot",
+        flag="-plot, --plot SPEC",
+        syntax='pytae <path> -plot "kind=<type>, x=<col>[, y=<col>]"',
+        summary="Generate terminal-rendered or graphical plots (histogram, bar, scatter, line, box, etc.).",
+        description=(
+            "Creates visual data charts. Supports terminal ASCII/ANSI plots or graphical popups/exports. "
+            "Kinds include: hist, bar, scatter, line, box, kde, heatmap, corr."
+        ),
+        options=[
+            "kind=<type> : Chart type (hist, bar, scatter, line, box, kde, heatmap, corr).",
+            "x=<col> : X-axis column name.",
+            "y=<col> : Y-axis column name (optional for 1D distributions).",
+            "color=<col> : Grouping / hue categorical column.",
+            "save=<path> : Save image directly to file (e.g. plot.png).",
+        ],
+        examples=[
+            'pytae sample:penguins -plot "kind=scatter, x=bill_length_mm, y=body_mass_g, color=species"',
+            'pytae sample:penguins -plot "kind=hist, x=body_mass_g"',
+            'pytae sample:tips -plot "kind=bar, x=day, y=total_bill"',
+        ],
+        see_also=["-hist", "-bar", "-scatter", "-corr"],
+    ),
+    "session": KeywordHelp(
+        name="session",
+        flag="-session, --session NAME",
+        syntax="pytae -i -session <NAME>",
+        summary="Name or resume an isolated persistent REPL interactive session.",
+        description=(
+            "Loads or creates a persistent named REPL session stored in ~/.pytae/sessions/<name>/. "
+            "Preserves history, in-memory tables, and checkpoints across terminal restarts."
+        ),
+        options=[
+            "NAME : Session directory name (e.g. 'analytics', 'experiment_1').",
+        ],
+        examples=[
+            "pytae -i -session my_project",
+            "pytae -sessions  # List all existing saved sessions",
+        ],
+        see_also=["-i", "-sessions"],
+    ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries
 KEYWORD_ALIASES: dict[str, str] = {
+    "seed": "sample",
+    "-seed": "sample",
+    "--seed": "sample",
+    "frac": "sample",
+    "-frac": "sample",
+    "--frac": "sample",
+    "progress": "output",
+    "-progress": "output",
+    "--progress": "output",
+    "finalize": "output",
+    "-finalize": "output",
+    "--finalize": "output",
+    "sessions": "session",
+    "-sessions": "session",
+    "--sessions": "session",
     "i": "repl",
     "-i": "repl",
     "--interactive": "repl",
@@ -1046,21 +1269,38 @@ KEYWORD_ALIASES: dict[str, str] = {
 }
 
 
-def get_keyword_help(query: str) -> str | None:
-    """Look up keyword-specific help for a CLI flag or keyword name."""
+def get_keyword_help(query: str) -> str:
+    """Look up keyword-specific help for a CLI flag or keyword name.
+
+    If the query matches an exact CLI flag or alias, returns its detailed reference card.
+    If not, automatically falls back to full-text documentation search (FTS5 / BM25).
+    """
     clean = query.strip().lstrip("-").lower()
     canonical = KEYWORD_ALIASES.get(clean, clean)
     doc = KEYWORD_DOCS.get(canonical)
 
     if doc is None:
-        # Check closest matches
+        # 1. Try full-text documentation search (FTS5 BM25)
+        try:
+            from pytae.doc_search import format_search_results, search_docs
+
+            results = search_docs(query, limit=3)
+            if results:
+                return (
+                    f"No exact flag match for '{query}'. Showing documentation search results:\n\n"
+                    f"{format_search_results(results)}"
+                )
+        except Exception:
+            pass
+
+        # 2. Fallback to closest flag suggestions
         available = sorted(list(KEYWORD_DOCS.keys()))
         matches = difflib.get_close_matches(clean, available, n=2, cutoff=0.6)
         hint = f" (did you mean: {', '.join('-' + m for m in matches)}?)" if matches else ""
         return (
             f"No dedicated help topic for keyword '{query}'{hint}.\n"
             f"Available keywords with help: {', '.join('-' + k for k in available)}\n"
-            f"Run 'pytae -help' to see the full reference manual."
+            f"Run 'pytae -doc <phrase>' to search documentation, or 'pytae -help' to see all flags."
         )
 
     lines: list[str] = [

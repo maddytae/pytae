@@ -23,7 +23,7 @@ Execute full analytical SQL queries directly against tabular files and in-memory
 
 Pytae integrates the native Polars SQL engine (`SQLContext`) to provide zero-copy, vectorized SQL execution directly against your data without external dependencies:
 - In single-file pipelines, the current dataset view is queryable as table **`data`**.
-- In multi-file mode (`-file`), each file alias (e.g. `df1`, `df2`) is queryable directly by name.
+- In multi-file mode (`alias=path ...`), each table alias (e.g. `c`, `o` or `df1`, `df2`) is queryable directly by name.
 - SQL can be inserted at any point in the pipeline and chained with other pytae flags.
 
 ---
@@ -163,10 +163,10 @@ pytae penguins.parquet -sql @analysis.sql
 
 ## Multi-File SQL Joins
 
-In `-file` mode, combine disparate datasets using standard SQL `JOIN`:
+Combine disparate datasets using standard SQL `JOIN` across positional table inputs:
 
 ```bash
-pytae -file "customers.csv=c; orders.parquet=o" \
+pytae c=customers.csv o=orders.parquet \
   -sql "select c.customer_id, c.name, count(o.order_id) as num_orders, sum(o.amount) as total_spent from c left join o on c.customer_id = o.customer_id group by c.customer_id, c.name order by c.customer_id"
 ```
 

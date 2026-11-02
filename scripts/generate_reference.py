@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Generate and update reference/pytae_reference.txt with latest documentation and code."""
+"""Generate and update reference/ artifacts (Copilot manual, instructions, and FTS database)."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ TABLE OF CONTENTS
     5.3.  All CLI Flags & Syntax Rules
     5.4.  In-Terminal Visualizations (-freq, -hist, -bar, -scatter, -corr)
     5.5.  Quoting & Delimiter Standards (: vs =) and Shell Quoting Rules
-    5.6.  Multi-File Operations (-file, -join, -concat, -sql)
+    5.6.  Multi-File Relational Operations (Positional Inputs, -join, -concat, -sql, -opts)
     5.7.  Batch Processing, Conversions & Clipboard (-o)
     5.8.  Interactive REPL Shell (pytae -i)
 6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
@@ -990,10 +990,11 @@ Aggregation & Reshaping Flags:
   -explode COLS         Unnest/flatten list or array columns into rows (e.g. -explode tags or -explode "items,qty")
 
 SQL & Multi-File Flags:
-  -sql QUERY            Run Polars SQL on table 'data' (or @query.sql)
-  -file SPECS           Multi-file mode: "file1.parquet=df1; file2.csv=df2"
-  -join SPECS           Join files: "left=df1, right=df2, on=id, how=inner"
-  -concat SPECS         Stack files: "frames='df1,df2'"
+  -sql QUERY            Run Polars SQL on table 'data' (or across named inputs)
+  -opts SPECS           Reader options for file ingestion (e.g. -opts "sheet=Feb, skiprows=2" or "cust:skiprows=3")
+  -join SPECS           Join files: "on=id, how=inner" (left/right default to first 2 inputs)
+  -concat [FRAMES]      Stack files (defaults to all input frames in order)
+  NOTE: '-file' is completely removed and deprecated. Pass inputs positionally: 'alias=path' or 'path'.
 
 Data Masking, Encryption & Privacy Flags:
   -mask SPECS           Mask sensitive columns: e.g. "email=hash, ssn=encrypt, user=tokenize"
@@ -1056,11 +1057,14 @@ DSL Validation & Linting:
    - If a column name has spaces, use square brackets: `[body mass g] > 4000` or `[total bill] = mean`.
 
 
-5.6. Multi-File Operations (-file, -join, -concat, -sql)
+5.6. Multi-File Relational Operations (Positional Inputs, -join, -concat, -sql, -opts)
 --------------------------------------------------------------------------------
-pytae -file "orders.parquet=ord; customers.csv=cust" \
-      -join "left=ord, right=cust, on=cust_id, how=inner" \
+pytae ord=orders.parquet cust=customers.csv \
+      -join "on=cust_id, how=inner" \
       -select "order_id,cust_name,amount" -head 10
+
+# Multi-sheet Excel concat:
+pytae a=data.xlsx b=data.xlsx -concat -opts "a:sheet=Jan, b:sheet=Feb"
 
 
 5.7. Batch Processing, Conversions & Clipboard (-o)
@@ -1483,23 +1487,23 @@ group by day, time
 order by avg_bill desc
 "
 
-# Cross-file analytical join in -file mode
-pytae -file "customers.csv=c; orders.parquet=o" \
+# Cross-file analytical join across positional table inputs
+pytae c=customers.csv o=orders.parquet \
       -sql "select c.name, sum(o.amount) as total from c join o on c.cust_id = o.cust_id group by c.name"
 ```
 
 Recipe 5: Multi-File Join, Concat, and Export
 --------------------------------------------------------------------------------
 ```bash
-# 1. Join files on shared key and filter
-pytae -file "orders.parquet=ord; customers.csv=cust" \
-      -join "left=ord, right=cust, on=cust_id, how=inner" \
+# 1. Join files on shared key and filter (left & right default to first two frames)
+pytae ord=orders.parquet cust=customers.csv \
+      -join "on=cust_id, how=inner" \
       -filter "amount > 50" \
       -o filtered_orders.parquet
 
 # 2. Concatenate monthly files and check row count
-pytae -file "jan.parquet=m1; feb.parquet=m2; mar.parquet=m3" \
-      -concat "frames='m1,m2,m3'" \
+pytae m1=jan.parquet m2=feb.parquet m3=mar.parquet \
+      -concat \
       -shape
 ```
 
@@ -1682,7 +1686,9 @@ pytae sample:penguins -sql "
 ├── pyproject.toml
 ├── readme.md
 ├── reference
-│   └── pytae_reference.txt
+│   ├── pytae_copilot_instructions.txt
+│   ├── pytae_copilot_reference.txt
+│   └── pytae_docs.db
 ├── scripts
 │   ├── generate_reference.py
 │   ├── run_notebooks.py
@@ -1815,149 +1821,26 @@ def _format_notebook(nb_path: Path) -> str:
 
 
 def generate_reference() -> None:
-    parts: list[str] = []
     version = get_version()
     rendered_manual = MANUAL_TEXT.replace("__PYTAE_VERSION__", version)
 
-    # rendered_manual contains sections 1 to 7 and section 11 (directory tree)
-    # Split rendered_manual so sections 8, 9, 10 sit before the directory tree
+    # rendered_manual contains sections 0 to 7 and section 11 (directory tree)
     tree_marker = "================================================================================\n11. REPOSITORY DIRECTORY TREE"
     if tree_marker in rendered_manual:
-        manual_pre, manual_tree = rendered_manual.split(tree_marker, 1)
-        parts.append(manual_pre.strip())
+        manual_pre, _ = rendered_manual.split(tree_marker, 1)
     else:
         manual_pre = rendered_manual
-        manual_tree = ""
-        parts.append(manual_pre.strip())
 
-    # Section 8: Detailed Feature Documentation Guides (docs/detailed_docs/)
-    parts.append("\n================================================================================")
-    parts.append("8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)")
-    parts.append("================================================================================\n")
     detailed_docs = sorted(
         list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.md"))
         + list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.ipynb")),
         key=lambda p: str(p.relative_to(REPO_ROOT)),
     )
-    for doc_path in detailed_docs:
-        rel_path = doc_path.relative_to(REPO_ROOT)
-        parts.append("################################################################################")
-        if doc_path.suffix == ".ipynb":
-            parts.append(f"# NOTEBOOK: {rel_path}")
-            parts.append("################################################################################")
-            parts.append(_format_notebook(doc_path).rstrip() + "\n")
-        else:
-            parts.append(f"# FILE: {rel_path}")
-            parts.append("################################################################################")
-            parts.append(doc_path.read_text(encoding="utf-8").rstrip() + "\n")
-
-    # Section 9: Master Documentation & Architecture Guide (docs/pytae.md)
     pytae_md = REPO_ROOT / "docs" / "pytae.md"
-    if pytae_md.exists():
-        parts.append("================================================================================")
-        parts.append("9. MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)")
-        parts.append("================================================================================\n")
-        parts.append("################################################################################")
-        parts.append(f"# FILE: {pytae_md.relative_to(REPO_ROOT)}")
-        parts.append("################################################################################")
-        parts.append(pytae_md.read_text(encoding="utf-8").rstrip() + "\n")
-
     cheatsheet_md = REPO_ROOT / "docs" / "cli_cheatsheet.md"
-    if cheatsheet_md.exists():
-        parts.append("================================================================================")
-        parts.append("CLI CHEATSHEET & COOKBOOK (docs/cli_cheatsheet.md)")
-        parts.append("================================================================================\n")
-        parts.append("################################################################################")
-        parts.append(f"# FILE: {cheatsheet_md.relative_to(REPO_ROOT)}")
-        parts.append("################################################################################")
-        parts.append(cheatsheet_md.read_text(encoding="utf-8").rstrip() + "\n")
-
     repl_md = REPO_ROOT / "docs" / "repl.md"
-    if repl_md.exists():
-        parts.append("================================================================================")
-        parts.append("INTERACTIVE REPL SHELL GUIDE (docs/repl.md)")
-        parts.append("================================================================================\n")
-        parts.append("################################################################################")
-        parts.append(f"# FILE: {repl_md.relative_to(REPO_ROOT)}")
-        parts.append("################################################################################")
-        parts.append(repl_md.read_text(encoding="utf-8").rstrip() + "\n")
-
-    # Section 10: Ecosystem Comparisons & Migration Guides (Pandas, dplyr, SAS)
-    parts.append("================================================================================")
-    parts.append("10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)")
-    parts.append("================================================================================\n")
-    for comp_name in ["comparison_to_pandas.md", "comparison_to_dplyr.md", "comparison_to_sas.md"]:
-        comp_md = REPO_ROOT / "docs" / comp_name
-        if comp_md.exists():
-            parts.append("################################################################################")
-            parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
-            parts.append("################################################################################")
-            parts.append(comp_md.read_text(encoding="utf-8").rstrip() + "\n\n")
-
-    benchmarks_dir = REPO_ROOT / "docs" / "benchmarks"
-    if benchmarks_dir.exists():
-        bench_readme = benchmarks_dir / "README.md"
-        if bench_readme.exists():
-            parts.append("################################################################################")
-            parts.append(f"# FILE: {bench_readme.relative_to(REPO_ROOT)}")
-            parts.append("################################################################################")
-            parts.append(bench_readme.read_text(encoding="utf-8").rstrip() + "\n\n")
-        bench_py = benchmarks_dir / "run_benchmarks.py"
-        if bench_py.exists():
-            parts.append("################################################################################")
-            parts.append(f"# FILE: {bench_py.relative_to(REPO_ROOT)}")
-            parts.append("################################################################################")
-            parts.append(bench_py.read_text(encoding="utf-8").rstrip() + "\n\n")
-
-    # Section 11: Repository Directory Tree (from manual_tree)
-    if manual_tree:
-        parts.append("================================================================================")
-        parts.append("11. REPOSITORY DIRECTORY TREE")
-        parts.append(manual_tree.strip())
-
-    # Section 12: pyproject.toml
     pyproject_path = REPO_ROOT / "pyproject.toml"
     pyproject_content = pyproject_path.read_text(encoding="utf-8").strip()
-
-    parts.append("\n================================================================================")
-    parts.append("12. BUILD & CONFIGURATION (pyproject.toml)")
-    parts.append("================================================================================\n")
-    parts.append("File: pyproject.toml")
-    parts.append("----------------------------------------")
-    parts.append(pyproject_content)
-
-    # Section 13: Underlying Python Implementation Source Code (src/pytae/)
-    parts.append("\n================================================================================")
-    parts.append("13. UNDERLYING PYTHON IMPLEMENTATION SOURCE CODE (src/pytae/)")
-    parts.append("================================================================================\n")
-
-    src_dir = REPO_ROOT / "src" / "pytae"
-    src_files = sorted(src_dir.glob("*.py"))
-    for f in src_files:
-        rel_path = f.relative_to(REPO_ROOT)
-        parts.append("################################################################################")
-        parts.append(f"# FILE: {rel_path}")
-        parts.append("################################################################################")
-        parts.append(f.read_text(encoding="utf-8").rstrip() + "\n")
-
-    # Section 14: Test Suite Implementation Source Code (tests/)
-    parts.append("================================================================================")
-    parts.append("14. TEST SUITE IMPLEMENTATION SOURCE CODE (tests/)")
-    parts.append("================================================================================\n")
-
-    test_dir = REPO_ROOT / "tests"
-    test_files = sorted(test_dir.glob("*.py"))
-    for f in test_files:
-        rel_path = f.relative_to(REPO_ROOT)
-        parts.append("################################################################################")
-        parts.append(f"# FILE: {rel_path}")
-        parts.append("################################################################################")
-        parts.append(f.read_text(encoding="utf-8").rstrip() + "\n")
-
-    output_path = REPO_ROOT / "reference" / "pytae_reference.txt"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(parts), encoding="utf-8")
-    print(f"Successfully generated {output_path} ({len(output_path.read_text(encoding='utf-8').splitlines())} lines)")
 
     # --------------------------------------------------------------------------
     # Generate Copilot-optimized Knowledge Base (Docs, Recipes, Guides, FAQs)
@@ -1972,6 +1855,14 @@ def generate_reference() -> None:
     for doc_path in detailed_docs:
         rel_path = doc_path.relative_to(REPO_ROOT)
         copilot_parts.append("################################################################################")
+        if doc_path.suffix == ".ipynb":
+            copilot_parts.append(f"# NOTEBOOK: {rel_path}")
+            copilot_parts.append("################################################################################")
+            copilot_parts.append(_format_notebook(doc_path).rstrip() + "\n")
+        else:
+            copilot_parts.append(f"# FILE: {rel_path}")
+            copilot_parts.append("################################################################################")
+            copilot_parts.append(doc_path.read_text(encoding="utf-8").rstrip() + "\n")
         if doc_path.suffix == ".ipynb":
             copilot_parts.append(f"# NOTEBOOK: {rel_path}")
             copilot_parts.append("################################################################################")
@@ -2025,19 +1916,19 @@ def generate_reference() -> None:
     copilot_parts.append(pyproject_content)
 
     copilot_ref_path = REPO_ROOT / "reference" / "pytae_copilot_reference.md"
-    copilot_ref_path.write_text("\n".join(copilot_parts), encoding="utf-8")
-    print(f"Successfully generated {copilot_ref_path} ({len(copilot_ref_path.read_text(encoding='utf-8').splitlines())} lines)")
+    copilot_ref_text = "\n".join(copilot_parts)
+    copilot_ref_path.write_text(copilot_ref_text, encoding="utf-8")
+    print(f"Successfully generated {copilot_ref_path} ({len(copilot_ref_text.splitlines())} lines)")
+
+    copilot_ref_txt_path = REPO_ROOT / "reference" / "pytae_copilot_reference.txt"
+    copilot_ref_txt_path.write_text(copilot_ref_text, encoding="utf-8")
+    print(f"Successfully generated {copilot_ref_txt_path} ({len(copilot_ref_text.splitlines())} lines)")
 
     # --------------------------------------------------------------------------
     # Generate Copilot Agent System Instructions Prompt Card
     # Ready to paste directly into Copilot Studio's System Prompt
     # --------------------------------------------------------------------------
-    copilot_instructions_content = f"""# Pytae Microsoft Copilot Agent System Instructions
-
-Copy and paste the text block below directly into the **Instructions** (System Prompt) field of your Microsoft Copilot Studio Custom Agent:
-
-```text
-You are the official expert AI assistant for Pytae (v{version}), a high-performance tabular data manipulation framework powered natively by Polars SIMD with seamless Pandas and Matplotlib integration.
+    copilot_raw_prompt = f"""You are the official expert AI assistant for Pytae (v{version}), a high-performance tabular data manipulation framework powered natively by Polars SIMD with seamless Pandas and Matplotlib integration.
 
 You provide accurate, idiomatic, and concise Pytae commands (CLI `-flag`), Python method chains (`df.<verb>()`), and interactive REPL commands (`pytae -i`).
 
@@ -2094,11 +1985,22 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 7. DYNAMIC DOCUMENTATION LOOKUP & MCP TOOL:
    - When in doubt about flag syntax, parameters, or edge cases, invoke documentation lookup on demand:
-     * CLI: `pytae doc <keyword>` (e.g. `pytae doc explode`, `pytae doc "diff on key"`, `pytae doc assert`)
+     * CLI: `pytae -doc <keyword>` (e.g. `pytae -doc explode`, `pytae -doc "diff on key"`, `pytae -doc assert`)
      * Python: `pt.doc("<keyword>")`
-     * MCP Tool: `pytae_doc(query="...")` via the built-in MCP server (`pytae mcp`)
+     * MCP Tool: `pytae_doc(query="...")` via the built-in MCP server (`pytae -mcp`)
 
-8. EXECUTION VERIFICATION & GRACEFUL FALLBACK:
+8. MULTI-FILE RELATIONAL OPERATIONS & EXCEL INGESTION (DEPRECATION OF -file & STRICT -opts):
+   - The '-file' flag has been completely removed and deprecated. NEVER use '-file'.
+   - Multi-file inputs are declared purely positionally using natural 'alias=source' (e.g. `pytae ord=orders.parquet cust=customers.csv -join "on=cust_id"`).
+   - In '-join', 'left=' and 'right=' are optional and default to the first two input tables.
+   - In '-concat', all positional input tables are concatenated in order by default (e.g. `pytae q1=q1.parquet q2=q2.parquet -concat`).
+   - The reader options flag is strictly '-opts' (NEVER use '-opt').
+   - Excel workbooks (.xlsx, .xls, .xlsm, .xlsb):
+     * Sheet names must STRICTLY be passed via '-opts' (e.g. `-opts "sheet=Feb"`, `-opts "sheet='Jan', skiprows=2"`, `-opts "a:sheet=Jan, b:sheet=Feb"`).
+     * Colon syntax ('file.xlsx:Sheet') is strictly NOT supported; all sheet selection must be inside '-opts'.
+   - In REPL: `df = data.xlsx -opts "sheet=Feb, skiprows=2"`. Reader options apply strictly per-assignment and are NEVER persistent across REPL commands (no `set opts`).
+
+9. EXECUTION VERIFICATION & GRACEFUL FALLBACK:
    - If execution tools are available (terminal, bash, or MCP), attempt to dry-run candidate commands on built-in sample datasets (e.g. `pytae sample:penguins ...` or `python -m pytae sample:penguins ...`).
    - If Pytae is installed: Verify that the command succeeds and produces the expected output.
    - If Pytae is not yet installed (e.g. `command not found` or `No module named 'pytae'`):
@@ -2109,10 +2011,23 @@ When answering questions:
 - Provide the tailored answer on the user's dataset, followed by the runnable "Twin Proof" on a sample dataset with column mapping.
 - Provide both the CLI command and Python equivalent when appropriate.
 - Explain the pipeline step-by-step.
-- Ensure all string values in shell commands are properly quoted with single quotes inside double quotes.
+- Ensure all string values in shell commands are properly quoted with single quotes inside double quotes."""
+
+    copilot_instructions_content = f"""# Pytae Microsoft Copilot Agent System Instructions
+
+Copy and paste the text block below directly into the **Instructions** (System Prompt) field of your Microsoft Copilot Studio Custom Agent:
+
+```text
+{copilot_raw_prompt}
 ```
 """
     copilot_instr_path = REPO_ROOT / "reference" / "pytae_copilot_instructions.md"
+    copilot_instr_path.write_text(copilot_instructions_content, encoding="utf-8")
+    print(f"Successfully generated {copilot_instr_path}")
+
+    copilot_instr_txt_path = REPO_ROOT / "reference" / "pytae_copilot_instructions.txt"
+    copilot_instr_txt_path.write_text(copilot_raw_prompt, encoding="utf-8")
+    print(f"Successfully generated {copilot_instr_txt_path}")
     copilot_instr_path.write_text(copilot_instructions_content, encoding="utf-8")
     print(f"Successfully generated {copilot_instr_path}")
 

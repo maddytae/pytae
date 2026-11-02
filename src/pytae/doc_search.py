@@ -480,14 +480,14 @@ def format_search_results(results: list[DocResult], query: str = "") -> str:
 
 
 def cli_doc_search(argv: list[str]) -> int:
-    """Handle `pytae doc <query>` CLI command."""
+    """Handle `pytae -doc <query>` CLI command."""
     if not argv:
-        print("Usage: pytae doc <keyword or query>")
+        print("Usage: pytae -doc <keyword or query>")
         print("Examples:")
-        print("  pytae doc explode")
-        print("  pytae doc 'key-aware diff'")
-        print("  pytae doc assert")
-        print("  pytae doc 'grouped percentiles'")
+        print("  pytae -doc explode")
+        print("  pytae -doc 'key-aware diff'")
+        print("  pytae -doc assert")
+        print("  pytae -doc 'grouped percentiles'")
         return 0
 
     query = " ".join(argv).strip().strip("\"'")

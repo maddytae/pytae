@@ -60,9 +60,10 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 | `-fillna [VAL]` | Cleaning | Scalar or `col:val,...` | Imputes missing values (`null` and `NaN`) |
 | `-dropna [COLS]` | Cleaning | Optional comma-separated list | Drops rows containing NaN (across all columns or specified subset) |
 | `-rename SPEC` | Cleaning | `old:new,...` | Explicitly renames column headers |
-| `-file SPEC` | Multi-File | `path=alias;...` | Loads multiple input files into named aliases |
-| `-join SPEC` | Multi-File | `left=a,right=b,on=k,...` | Joins datasets on keys with join validation |
-| `-concat SPEC` | Multi-File | `a,b` or `how=outer` | Stacks multiple datasets row-wise |
+| `alias=path` | Multi-File | Positional inputs | Declares input files and table aliases (`alias=source`) |
+| `-opts` | Multi-File / I/O | `key=val,...` | Passes global or targeted reader kwargs |
+| `-join SPEC` | Multi-File | `on=k,...` | Joins datasets on keys with join validation |
+| `-concat` | Multi-File | Optional `how=outer` | Stacks multiple datasets row-wise |
 | `-nrows N` | Input I/O | Integer | Caps rows loaded from disk during read |
 | `-dlim STR` | Input I/O | Character (`","`, `"\t"`, `"|"`) | Delimiter for CSV / text files |
 | `-encoding ENC` | Input I/O | Encoding name (`utf-8`, `latin1`) | Character encoding for text files |
@@ -176,24 +177,24 @@ pytae penguins.parquet -rename "body_mass_g:mass,flipper_length_mm:flipper" -hea
 
 ## Multi-File Pipelines & Operations
 
-### Named Inputs (`-file`)
-Loads multiple files simultaneously into named aliases:
+### Named Positional Inputs (`alias=path`)
+Loads multiple files simultaneously into named table aliases:
 ```bash
-pytae -file "emp.parquet=emp; dept.csv=dept" -join "left=emp,right=dept,on=dept_id" -head 5
+pytae emp=emp.parquet dept=dept.csv -join "on=dept_id" -head 5
 ```
 
 ### Multi-File Joins (`-join`)
 Performs joins with optional relationship validation:
 ```bash
-pytae -file "sales.parquet=s; stores.parquet=st" \
-  -join "left=s,right=st,on=store_id,how=left,validate=many_to_one" \
+pytae s=sales.parquet st=stores.parquet \
+  -join "on=store_id,how=left,validate=many_to_one" \
   -head 5
 ```
 
 ### Row Stacking (`-concat`)
 Stacks two or more datasets vertically:
 ```bash
-pytae -file "q1.parquet=a; q2.parquet=b; q3.parquet=c" -concat "a,b,c" -shape
+pytae a=q1.parquet b=q2.parquet c=q3.parquet -concat -shape
 ```
 
 ---

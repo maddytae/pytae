@@ -125,8 +125,8 @@ def test_sql_can_join_file_aliases_directly(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-sql",
             'select * from df1 inner join df2 on df1."col a" = df2.cola',
         ]
@@ -141,8 +141,8 @@ def test_sql_after_join_can_query_data(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-join",
             "left=df1,right=df2,on=col a:cola",
             "-sql",
@@ -153,14 +153,14 @@ def test_sql_after_join_can_query_data(tmp_path, capsys):
     assert capsys.readouterr().out.strip().splitlines()[-1].strip() == "2"
 
 
-def test_sql_as_first_op_satisfies_file_requirement(tmp_path):
+def test_sql_as_first_op_satisfies_multi_table_requirement(tmp_path):
     left, right = _write_two_csvs(tmp_path)
 
     # no -join at all — -sql alone should be accepted as the founding op
     exit_code = cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-sql",
             "select * from df1",
         ]

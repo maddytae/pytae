@@ -665,9 +665,9 @@ def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError)
 
 
 def _resolve_alias(
-    alias: str, frames: dict[str, pd.DataFrame], pipeline: _Pipeline, flag: str
-) -> tuple[pd.DataFrame | None, str | None]:
-    """Look up a -join/-concat alias: a -file alias, or 'data' for the pipeline's current
+    alias: str, frames: dict[str, Any], pipeline: _Pipeline, flag: str
+) -> tuple[Any | None, str | None]:
+    """Look up a -join/-concat alias: an input table alias, or 'data' for the pipeline's current
     result so far (lets repeated -join/-concat calls fold in one more file at a time).
     Returns (frame, error_message)."""
     if alias == "data":
@@ -677,7 +677,7 @@ def _resolve_alias(
     if alias == "df":
         return None, f"{flag}: 'df' is not a valid alias; use 'data' for the pipeline's current result"
     if alias not in frames:
-        return None, f"{flag}: unknown -file alias '{alias}'"
+        return None, f"{flag}: unknown alias '{alias}'"
     return frames[alias], None
 
 
@@ -693,10 +693,11 @@ def _process_path(
     mutate_specs: list[str] | None = None,
     sql_specs: list[str] | None = None,
     rename_specs: list[dict[str, str]] | None = None,
-    frames: dict[str, pd.DataFrame] | None = None,
+    frames: dict[str, Any] | None = None,
     join_specs: list[dict] | None = None,
     concat_specs: list[dict] | None = None,
     qry_specs: list[list[tuple[str, Any]]] | None = None,
+    reader_opts: dict[str, Any] | None = None,
 ) -> bool:
     """Run every requested display/export/-agg action against one file, or (when frames
     is given, i.e. -file/-join mode) against named in-memory frames instead. Returns True
@@ -756,8 +757,20 @@ def _process_path(
                 available = ", ".join(_DATASET_NAMES)
                 return _fail(parser, batch, f"unknown sample dataset '{sample_name}'. Available: {available}")
 
+            opts = dict(reader_opts or {})
+            sep_val = opts.pop("sep", None) or opts.pop("delimiter", None) or args.dlim
+            enc_val = opts.pop("encoding", None) or args.encoding
+            chunk_val = opts.pop("chunk_size", None) or chunk_size
+            sheet_name_val = opts.pop("sheet_name", None)
             try:
-                reader = get_reader(sample_file, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+                reader = get_reader(
+                    sample_file,
+                    sep=sep_val,
+                    encoding=enc_val,
+                    chunk_size=chunk_val,
+                    sheet_name=sheet_name_val,
+                    **opts,
+                )
             except (ValueError, ImportError) as exc:
                 return _fail(parser, batch, str(exc))
 
@@ -774,8 +787,20 @@ def _process_path(
             if candidate is None or not candidate.exists():
                 candidate = DATA_PATH / f"{path.stem}.parquet" if path is not None else None
             if candidate is not None and candidate.exists():
+                opts = dict(reader_opts or {})
+                sep_val = opts.pop("sep", None) or opts.pop("delimiter", None) or args.dlim
+                enc_val = opts.pop("encoding", None) or args.encoding
+                chunk_val = opts.pop("chunk_size", None) or chunk_size
+                sheet_name_val = opts.pop("sheet_name", None)
                 try:
-                    reader = get_reader(candidate, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+                    reader = get_reader(
+                        candidate,
+                        sep=sep_val,
+                        encoding=enc_val,
+                        chunk_size=chunk_val,
+                        sheet_name=sheet_name_val,
+                        **opts,
+                    )
                 except (ValueError, ImportError) as exc:
                     return _fail(parser, batch, str(exc))
 
@@ -788,8 +813,20 @@ def _process_path(
             else:
                 return _fail(parser, batch, f"file not found: {path}")
         else:
+            opts = dict(reader_opts or {})
+            sep_val = opts.pop("sep", None) or opts.pop("delimiter", None) or args.dlim
+            enc_val = opts.pop("encoding", None) or args.encoding
+            chunk_val = opts.pop("chunk_size", None) or chunk_size
+            sheet_name_val = opts.pop("sheet_name", None)
             try:
-                reader = get_reader(path, sep=args.dlim, encoding=args.encoding, chunk_size=chunk_size)
+                reader = get_reader(
+                    path,
+                    sep=sep_val,
+                    encoding=enc_val,
+                    chunk_size=chunk_val,
+                    sheet_name=sheet_name_val,
+                    **opts,
+                )
             except (ValueError, ImportError) as exc:
                 return _fail(parser, batch, str(exc))
 
@@ -920,11 +957,20 @@ def _process_path(
         elif op == "join":
             spec = next(join_iter)
             if frames is None:
-                return _fail(parser, batch, "-join requires -file")
-            left_df, err = _resolve_alias(spec["left"], frames, pipeline, "-join")
+                return _fail(parser, batch, "-join requires multiple input tables (e.g. pytae t1 t2 -join ...)")
+            left_name = spec.get("left")
+            right_name = spec.get("right")
+            if not left_name or not right_name:
+                frame_keys = list(frames.keys())
+                if len(frame_keys) >= 2:
+                    left_name = left_name or frame_keys[0]
+                    right_name = right_name or frame_keys[1]
+                else:
+                    return _fail(parser, batch, "-join: expected at least two input tables")
+            left_df, err = _resolve_alias(left_name, frames, pipeline, "-join")
             if err or left_df is None:
                 return _fail(parser, batch, err or "-join: missing left frame")
-            right_df, err = _resolve_alias(spec["right"], frames, pipeline, "-join")
+            right_df, err = _resolve_alias(right_name, frames, pipeline, "-join")
             if err or right_df is None:
                 return _fail(parser, batch, err or "-join: missing right frame")
             if spec["how"] == "cross":
@@ -988,9 +1034,10 @@ def _process_path(
         elif op == "concat":
             spec = next(concat_iter)
             if frames is None:
-                return _fail(parser, batch, "-concat requires -file")
+                return _fail(parser, batch, "-concat requires multiple input tables (e.g. pytae t1 t2 -concat ...)")
+            concat_frames = spec.get("frames") or list(frames.keys())
             dfs = []
-            for alias in spec["frames"]:
+            for alias in concat_frames:
                 df, err = _resolve_alias(alias, frames, pipeline, "-concat")
                 if err or df is None:
                     return _fail(parser, batch, err or f"-concat: missing frame '{alias}'")

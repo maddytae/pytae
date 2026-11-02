@@ -20,13 +20,14 @@ from typing import Any
 from pytae.cli_parsing import (
     expand_paths,
     parse_concat_arg,
-    parse_file_arg,
     parse_filter,
     parse_fraction,
     parse_head_limit,
+    parse_input_target,
     parse_join_arg,
     parse_list_order,
     parse_positive_int,
+    parse_reader_opts,
     parse_rename,
     parse_sample_arg,
     parse_select_spec,
@@ -51,7 +52,23 @@ except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
 _DATA_SUFFIXES = frozenset(
-    (".parquet", ".pq", ".csv", ".txt", ".dat", ".sas7bdat", ".jsonl", ".ndjson", ".gz", ".yaml", ".yml")
+    (
+        ".parquet",
+        ".pq",
+        ".csv",
+        ".txt",
+        ".dat",
+        ".sas7bdat",
+        ".jsonl",
+        ".ndjson",
+        ".gz",
+        ".yaml",
+        ".yml",
+        ".xlsx",
+        ".xls",
+        ".xlsm",
+        ".xlsb",
+    )
 )
 _FORMAT_SHORTHANDS = frozenset(
     (
@@ -76,6 +93,15 @@ def _is_path_like(token: str) -> bool:
         return True
     if token.startswith("-"):
         return False
+    if "=" in token:
+        _, _, rhs = token.partition("=")
+        return _is_path_like(rhs.strip())
+    if ":" in token and not token.startswith("sample:"):
+        p_part, _, _ = token.rpartition(":")
+        if len(p_part) > 1 or not p_part.isalpha():
+            return _is_path_like(p_part.strip())
+    if token.startswith("sample:"):
+        return True
     if any(ch in token for ch in "*?[]"):
         return True
     if "/" in token or "\\" in token:
@@ -128,7 +154,7 @@ _CLI_FLAGS = {
     "-dlim",
     "-encoding",
     "-rename",
-    "-file",
+    "-opts",
     "-filter",
     "-assert",
     "-explode",
@@ -157,6 +183,7 @@ _CLI_FLAGS = {
     "-sessions",
     "-doc",
     "-mcp",
+    "-check",
 }
 
 
@@ -392,9 +419,9 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         "-diff",
         dest="diff",
         default=None,
-        metavar="PATH",
+        metavar="SPEC",
         action=_OrderedStore,
-        help="compare schema and contents against another dataset file (use -tol to set a numeric threshold)",
+        help="compare schema and contents against another dataset file (supports 'PATH,on=key', 'PATH,tol=N'; or use -tol)",
     )
     parser.add_argument(
         "-freq",
@@ -696,16 +723,11 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help='rename columns at this point in the pipeline (or during conversion), e.g. "old_a:new_a,old_b:new_b"',
     )
     parser.add_argument(
-        "-file",
-        dest="file",
+        "-opts",
+        dest="opts",
         default=None,
-        metavar="PATH=ALIAS;...",
-        help="load multiple named files for -join/-concat/-sql, instead of the positional path; "
-        "';'-separated entries, each PATH=ALIAS optionally followed by "
-        ",dlim=/,encoding= overrides for that file, e.g. "
-        "\"data1.parquet=df1; data2.parquet=df2,encoding='latin-1'\"; "
-        "requires -join, -concat, or -sql as the first operation, and can't be "
-        "combined with the positional path",
+        metavar="SPEC",
+        help="reader options for file ingestion as key=value pairs, e.g. -opts 'skiprows=2, usecols=\"A:E\"' or targeted 'cust:skiprows=3'",
     )
     parser.add_argument(
         "-filter",
@@ -750,14 +772,9 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         default=None,
         metavar="QUERY",
         help="run a SQL query (via Polars SQLContext) against the current view at this point in "
-        "the pipeline; the view is queryable as table `data`; standard SQL identifier "
-        'quoting applies (double quotes for names with spaces, e.g. "col a"; single '
-        "quotes are string literals, not identifiers), e.g. "
-        '"select \\"col a\\" from data where \\"col a\\" > 10"; '
-        "in -file/-join mode, may be used instead of -join as the first op, with "
-        'every -file alias queryable by its own name (e.g. "select * from df1 '
-        'inner join df2 on df1.\\"col a\\" = df2.cola") — `data` becomes queryable '
-        "too once something later in the pipeline has produced a current view",
+        "the pipeline; in single-file mode the view is queryable as table `data`; "
+        "in multi-table mode (e.g. pytae ord=orders.xlsx cust=customers.csv -sql '...'), "
+        "each input table is queryable directly by its alias",
     )
     parser.add_argument(
         "-join",
@@ -766,9 +783,8 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         default=None,
         metavar="KEY=VALUE,...",
         help="join two frames into the pipeline (Polars join()); repeatable, to fold in "
-        "one more file at a time; must be the first op when using -file (unless -sql/"
-        "-concat starts it instead); key=value tokens: left=/right= (required — -file "
-        "aliases, or 'data' for the pipeline's current result so far), "
+        "one more file at a time; key=value tokens: left=/right= (optional — defaults to first two input "
+        "tables, or 'data' for the pipeline's current result so far), "
         "on= (required; shared column name(s), or 'left:right' pairs if they "
         "differ between sides — quote on= if it has more than one column/pair, e.g. "
         "\"on='col a:cola,colb:colb'\"), how= (optional, default 'inner': "
@@ -777,14 +793,13 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "-concat",
         dest="concat",
+        nargs="?",
+        const="",
         action=_OrderedAppend,
         default=None,
-        metavar="KEY=VALUE,...",
-        help="stack frames row-wise into the pipeline (Polars concat()); repeatable; must be the first op when using -file "
-        "(unless -sql/-join starts it instead); key=value tokens: frames= (required) "
-        "an ordered comma-separated list of -file aliases (or 'data' for the pipeline's "
-        "current result so far), quoted since it has internal commas, e.g. "
-        "\"frames='df1,df2,df3'\"",
+        metavar="FRAMES",
+        help="stack frames row-wise into the pipeline (Polars concat()); repeatable; optional comma-separated list of table aliases "
+        "(or 'data' for current result); defaults to all positional input tables in order, e.g. -concat or -concat 'Jan,Feb,Mar'",
     )
     parser.add_argument(
         "-plot",
@@ -897,34 +912,46 @@ def _format_timing_summary(durations: list[float]) -> str:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else list(argv)
 
-    # Check for static DSL syntax check subcommand: `pytae check [paths...]` or `pytae -check [paths...]`
-    if raw_argv and raw_argv[0] in ("check", "-check", "--check"):
+    # Legacy bare subcommand redirects (strictly retired in favor of single-hyphen flags)
+    if raw_argv and raw_argv[0] == "doc":
+        parser = build_parser()
+        parser.error("'pytae doc' has been retired; use 'pytae -doc' instead (e.g. pytae -doc explode)")
+
+    if raw_argv and raw_argv[0] == "mcp":
+        parser = build_parser()
+        parser.error("'pytae mcp' has been retired; use 'pytae -mcp' instead")
+
+    if raw_argv and raw_argv[0] == "check":
+        parser = build_parser()
+        parser.error("'pytae check' has been retired; use 'pytae -check' instead")
+
+    if raw_argv and raw_argv[0] == "repl":
+        parser = build_parser()
+        parser.error("'pytae repl' has been retired; use 'pytae -i' instead")
+
+    # Static DSL syntax check flag: `pytae -check [paths...]`
+    if raw_argv and raw_argv[0] in ("-check", "--check"):
         from pytae.validation import run_cli_check
 
         return run_cli_check(raw_argv[1:])
 
-    # Check for documentation search subcommand: `pytae doc [query...]` or `pytae -doc [query...]`
-    if raw_argv and raw_argv[0] in ("doc", "-doc", "--doc"):
+    # Documentation search flag: `pytae -doc [query...]`
+    if raw_argv and raw_argv[0] in ("-doc", "--doc"):
         from pytae.doc_search import cli_doc_search
 
         return cli_doc_search(raw_argv[1:])
 
-    # Check for MCP server subcommand: `pytae mcp` or `pytae -mcp` or `pytae --mcp`
-    if raw_argv and raw_argv[0] in ("mcp", "-mcp", "--mcp"):
+    # MCP server flag: `pytae -mcp`
+    if raw_argv and raw_argv[0] in ("-mcp", "--mcp"):
         from pytae.doc_search import run_mcp_server
 
         return run_mcp_server()
-
-    # Legacy repl subcommand redirect
-    if raw_argv and raw_argv[0] == "repl":
-        parser = build_parser()
-        parser.error("'pytae repl' has been retired; use 'pytae -i' instead")
 
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
         from pytae.cli_help import get_keyword_help
 
-        topic = raw_argv[1]
+        topic = " ".join(raw_argv[1:])
         msg = get_keyword_help(topic)
         print(msg)
         return 0
@@ -971,6 +998,7 @@ def main(argv: list[str] | None = None) -> int:
             "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead",
         ),
         (("-s",), "'-s' is not recognized; use '-session <name>' instead"),
+        (("-opt",), "'-opt' is not recognized; use '-opts' instead"),
     ]
     for aliases, msg in retired_redirects:
         if any(arg in aliases for arg in raw_argv):
@@ -978,15 +1006,14 @@ def main(argv: list[str] | None = None) -> int:
 
     args, extras = parser.parse_known_args(argv)
     if extras:
-        if args.file is None:
-            path_extras = [e for e in extras if _is_path_like(e)]
-            if path_extras:
-                if args.path is None:
-                    args.path = []
-                elif not isinstance(args.path, list):
-                    args.path = [args.path]
-                args.path.extend(path_extras)
-                extras = [e for e in extras if not _is_path_like(e)]
+        path_extras = [e for e in extras if _is_path_like(e)]
+        if path_extras:
+            if args.path is None:
+                args.path = []
+            elif not isinstance(args.path, list):
+                args.path = [args.path]
+            args.path.extend(path_extras)
+            extras = [e for e in extras if not _is_path_like(e)]
 
         if extras:
             msg = f"unrecognized arguments: {' '.join(extras)}"
@@ -1047,7 +1074,7 @@ def main(argv: list[str] | None = None) -> int:
     raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
 
     if getattr(args, "repl", False):
-        if raw_paths or args.file is not None:
+        if raw_paths:
             first_path = raw_paths[0] if raw_paths else "data.parquet"
             parser.error(
                 f"'-i' cannot be combined with input files ({', '.join(raw_paths)}). "
@@ -1058,25 +1085,26 @@ def main(argv: list[str] | None = None) -> int:
         repl(session=getattr(args, "session", None))
         return 0
 
-    if args.meta and args.file is not None:
-        parser.error("-meta cannot be used with -file")
-    if args.join and args.file is None:
-        parser.error("-join requires -file")
-    if args.concat and args.file is None:
-        parser.error("-concat requires -file")
-    if args.file is not None:
-        if raw_paths:
-            parser.error("-file/-join can't be combined with a positional path; list every input via -file instead")
-        if not op_order or op_order[0] not in ("join", "sql", "concat"):
-            parser.error("-file requires -join, -concat, or -sql as its first operation")
-        if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
-            parser.error(f"-o {out_target}: in -file/-join mode, an explicit output file path is required")
-    elif not raw_paths:
+    if not raw_paths:
         if _is_stdin_piped():
             raw_paths = ["-"]
             args.path = ["-"]
         else:
             parser.error("the following arguments are required: path")
+
+    is_relational = bool(args.join or args.concat or (args.sql and len(raw_paths) > 1))
+
+    if args.meta and (is_relational or len(raw_paths) > 1):
+        parser.error("-meta cannot be used with multiple files")
+    if args.join and len(raw_paths) < 2:
+        parser.error("-join requires at least two input tables")
+    if args.concat and len(raw_paths) < 2 and not any(ch in str(raw_paths[0]) for ch in "*?["):
+        parser.error("-concat requires at least two input tables")
+    if is_relational:
+        if not op_order or op_order[0] not in ("join", "sql", "concat"):
+            parser.error("multi-table mode requires -join, -concat, or -sql as its first operation")
+        if is_file and out_target is not None and out_target.lower() in _FORMAT_SHORTHANDS:
+            parser.error(f"-o {out_target}: in multi-table mode, an explicit output file path is required")
 
     show_all = not any(
         [
@@ -1191,10 +1219,11 @@ def main(argv: list[str] | None = None) -> int:
 
     paths: list[Path] = []
     batch = False
-    if args.file is None:
-        if not raw_paths:
-            parser.error("the following arguments are required: path")
-        paths = expand_paths(raw_paths)
+    if not is_relational:
+        try:
+            paths = expand_paths(raw_paths)
+        except ValueError as exc:
+            parser.error(str(exc))
         batch = len(paths) > 1
 
         if batch and args.output is not None:
@@ -1225,10 +1254,20 @@ def main(argv: list[str] | None = None) -> int:
                 dest_map[dest] = p
 
     def _execute_once() -> int:
-        if args.file is not None:
+        if is_relational:
+            global_opts, targeted_opts = parse_reader_opts(getattr(args, "opts", None))
             frames: dict[str, Any] = {}
-            for entry in parse_file_arg(args.file):
-                raw_entry = str(entry["path"]).strip()
+            aliases_seen: set[str] = set()
+            for raw_tok in raw_paths:
+                try:
+                    entry = parse_input_target(raw_tok)
+                except ValueError as exc:
+                    parser.error(str(exc))
+                alias = entry["alias"]
+                if alias in aliases_seen:
+                    parser.error(f"duplicate alias '{alias}'; assign explicit aliases like 'a={raw_tok}'")
+                aliases_seen.add(alias)
+                raw_entry = entry["path"].strip()
                 if raw_entry.startswith("sample:"):
                     from pytae import _DATASET_NAMES, DATA_PATH
 
@@ -1236,7 +1275,7 @@ def main(argv: list[str] | None = None) -> int:
                     sample_file = DATA_PATH / f"{sample_name}.parquet"
                     if not sample_file.exists():
                         available = ", ".join(_DATASET_NAMES)
-                        parser.error(f"-file: unknown sample dataset '{sample_name}'. Available: {available}")
+                        parser.error(f"unknown sample dataset '{sample_name}'. Available: {available}")
                     entry_path = sample_file
                 else:
                     entry_path = Path(entry["path"])
@@ -1249,30 +1288,41 @@ def main(argv: list[str] | None = None) -> int:
                         if candidate.exists():
                             entry_path = candidate
                         else:
-                            parser.error(f"-file: file not found: {entry_path}")
+                            parser.error(f"file not found: {entry_path}")
+                opts = dict(global_opts)
+                opts.update(targeted_opts.get(alias, {}))
+                sep_val = opts.pop("sep", None) or opts.pop("delimiter", None) or args.dlim
+                enc_val = opts.pop("encoding", None) or args.encoding
+                chunk_val = opts.pop("chunk_size", None) or args.chunk_size or 200_000
+                sheet_name_val = opts.pop("sheet_name", None)
                 try:
                     reader = get_reader(
-                        entry_path, sep=entry["dlim"], encoding=entry["encoding"], chunk_size=args.chunk_size or 200_000
+                        entry_path,
+                        sep=sep_val,
+                        encoding=enc_val,
+                        chunk_size=chunk_val,
+                        sheet_name=sheet_name_val,
+                        **opts,
                     )
                 except ValueError as exc:
-                    parser.error(f"-file: {exc}")
+                    parser.error(str(exc))
                 try:
                     if args.progress:
-                        frames[entry["alias"]] = reader.to_dataframe(
+                        frames[alias] = reader.to_dataframe(
                             nrows=args.nrows, progress=args.progress, chunk_size=args.chunk_size or 200_000
                         )
                     else:
-                        frames[entry["alias"]] = reader.to_polars(nrows=args.nrows)
+                        frames[alias] = reader.to_polars(nrows=args.nrows)
                 except UnicodeError as exc:
-                    parser.error(_encoding_error_message(entry_path, entry["encoding"], exc))
+                    parser.error(_encoding_error_message(entry_path, args.encoding, exc))
                 except Exception as exc:
                     if "utf-8" in str(exc).lower():
                         parser.error(
                             _encoding_error_message(
-                                entry_path, entry["encoding"], UnicodeDecodeError("utf-8", b"", 0, 1, str(exc))
+                                entry_path, args.encoding, UnicodeDecodeError("utf-8", b"", 0, 1, str(exc))
                             )
                         )
-                    parser.error(f"-file: {exc}")
+                    parser.error(str(exc))
             failed = _process_path(
                 None,
                 args,
@@ -1291,9 +1341,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if failed else 0
 
         code = 0
-        for path in paths:
+        global_opts, targeted_opts = parse_reader_opts(getattr(args, "opts", None))
+        for idx_p, path in enumerate(paths):
             if batch:
                 print(f"== {path} ==")
+            opts = dict(global_opts)
+            if idx_p < len(raw_paths):
+                try:
+                    t = parse_input_target(raw_paths[idx_p])
+                    opts.update(targeted_opts.get(t["alias"], {}))
+                except ValueError as exc:
+                    parser.error(str(exc))
             try:
                 failed = _process_path(
                     path,
@@ -1306,6 +1364,7 @@ def main(argv: list[str] | None = None) -> int:
                     mutate_specs=mutate_specs,
                     sql_specs=sql_specs,
                     rename_specs=rename_specs,
+                    reader_opts=opts,
                 )
             except UnicodeError as exc:
                 failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))

@@ -94,7 +94,7 @@ def test_pt_doc_function() -> None:
 
 def test_mcp_server_protocol() -> None:
     proc = subprocess.Popen(
-        [sys.executable, "-m", "pytae", "mcp"],
+        [sys.executable, "-m", "pytae", "-mcp"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

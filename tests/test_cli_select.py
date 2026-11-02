@@ -228,8 +228,8 @@ def test_select_runs_after_join(tmp_path, capsys):
 
     cli.main(
         [
-            "-file",
-            f"{left}=df1;{right}=df2",
+            f"df1={left}",
+            f"df2={right}",
             "-join",
             "left=df1,right=df2,on=col a:cola",
             "-select",

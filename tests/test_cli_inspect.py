@@ -565,9 +565,9 @@ def test_cli_positional_with_file_errors(tmp_path, capsys):
     pd.DataFrame({"id": [2]}).to_csv(f2, index=False)
 
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["-file", f"{f1}=a", str(f2), "-join", "how=inner"])
+        cli.main([f"a={f1}", f"a={f2}", "-join", "how=cross"])
     assert exc_info.value.code == 2
-    assert "can't be combined with a positional path" in capsys.readouterr().err
+    assert "duplicate alias 'a'" in capsys.readouterr().err
 
 
 def test_cli_progress_custom_chunk_size(tmp_path, capsys):

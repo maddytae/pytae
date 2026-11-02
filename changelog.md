@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.1] - 2026-11-02
+
+### Added
+- **Unified Single-Hyphen Commands (`-doc`, `-mcp`, `-check`)**:
+  - Enforced radical single-hyphen flag consistency across the entire CLI: `pytae -doc <query>`, `pytae -mcp`, and `pytae -check [paths...]`.
+  - Retired bare subcommands (`doc`, `mcp`, `check`) with instant, educational redirect errors.
+- **Unified Help & Search Routing (`pytae -help` + `pytae -doc`)**:
+  - When querying exact flags (`pytae -help diff`, `pytae -help opts`), displays the authoritative parameter card with syntax and copy-paste examples.
+  - When querying concepts, synonyms, or free-text phrases (`pytae -help unnest`, `pytae -help "diff on key"`), seamlessly falls back to full-text documentation search (SQLite FTS5 / BM25).
+- **Automated Documentation Parity & Freshness Guard (`tests/test_docs_parity.py`)**:
+  - Added automated test suite asserting 100% flag parity between the CLI argument parser and `KEYWORD_DOCS`.
+  - Validates all documentation card attributes, syntax examples, and reference manual freshness on every test run.
+- **Strict Reader Options Flag (`-opts`) & Excel Sheet Selection**:
+  - Reader options flag is strictly `-opts` (rejects `-opt`).
+  - Excel sheet selection is strictly passed via `-opts "sheet=..."` or targeted `alias:sheet=...`. Colon syntax (`file.xlsx:Sheet`) is cleanly rejected with guidance.
+  - REPL reader options apply strictly per-assignment without cross-command pollution (removed persistent `set opts`).
+- **Streamlined Reference Artifacts**:
+  - Replaced the 2.1 MB monolithic raw dump (`pytae_reference.txt`) with curated, high-density reference manuals ready for Microsoft Copilot Studio: `pytae_copilot_reference.txt`, `pytae_copilot_reference.md`, `pytae_copilot_instructions.txt`.
+
 ## [3.13.0] - 2026-11-01
 
 ### Added

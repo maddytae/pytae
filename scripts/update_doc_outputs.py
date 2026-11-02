@@ -7,7 +7,7 @@ Features:
 3. Automatically executes code blocks marked with <!-- eval --> or tagged commands.
 4. Converts DataFrame outputs to clean, scrollable GitHub-Flavored Markdown tables.
 5. Verifies existing outputs or automatically refreshes them.
-6. Regenerates reference/pytae_reference.txt upon completion.
+6. Regenerates reference artifacts upon completion.
 
 Usage:
     python scripts/update_doc_outputs.py           # Update all docs
@@ -115,7 +115,7 @@ def audit_docs() -> dict[Path, dict[str, int]]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Audit and update pytae doc outputs.")
     parser.add_argument("--check", action="store_true", help="Check doc outputs without modifying files.")
-    parser.add_argument("--regen-ref", action="store_true", help="Regenerate pytae_reference.txt.")
+    parser.add_argument("--regen-ref", action="store_true", help="Regenerate reference artifacts.")
     args = parser.parse_args()
 
     print(f"Auditing documentation files in {DOCS_DIR}...")
@@ -138,7 +138,7 @@ def main() -> int:
             return 1
 
     if args.regen_ref or not args.check:
-        print("Regenerating reference/pytae_reference.txt...")
+        print("Regenerating reference artifacts...")
         ref_script = REPO_ROOT / "scripts" / "generate_reference.py"
         res = subprocess.run([sys.executable, str(ref_script)], capture_output=True, text=True)
         if res.returncode == 0:

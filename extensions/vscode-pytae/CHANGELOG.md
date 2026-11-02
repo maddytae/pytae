@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.13.1
+
+- Unified single-hyphen commands (`pytae -doc`, `pytae -mcp`, `pytae -check`) with bare subcommand retirement redirects.
+- In-terminal help and documentation search unification with automated parity testing.
+- Strict `-opts` reader options flag and Excel sheet configuration via `-opts "sheet=..."`.
+- Streamlined Copilot reference manuals and agent instruction cards.
+
 ## 3.12.9
 
 - Interactive REPL continuous flight recorder (`~/.pytae_history/`).

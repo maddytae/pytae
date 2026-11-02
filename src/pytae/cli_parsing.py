@@ -424,15 +424,17 @@ def expand_paths(patterns: str | list[str]) -> list[Path]:
     results: list[Path] = []
     seen: set[Path] = set()
     for item in items:
-        p_literal = Path(item)
+        target = parse_input_target(str(item))
+        clean_path_str = target["path"]
+        p_literal = Path(clean_path_str)
         if p_literal.exists():
             if p_literal not in seen:
                 results.append(p_literal)
                 seen.add(p_literal)
-        elif any(ch in item for ch in "*?["):
-            matches = sorted(Path(p) for p in glob.glob(item))
+        elif any(ch in clean_path_str for ch in "*?["):
+            matches = sorted(Path(p) for p in glob.glob(clean_path_str))
             if not matches:
-                raise SystemExit(f"no files matched pattern: {item}")
+                raise SystemExit(f"no files matched pattern: {clean_path_str}")
             for m in matches:
                 if m not in seen:
                     results.append(m)
@@ -699,43 +701,101 @@ def parse_clean_columns_arg(raw: str) -> dict:
     return kwargs
 
 
-_FILE_ENTRY_KEYS = ("dlim", "encoding")
+def parse_input_target(token: str) -> dict[str, Any]:
+    """Parse a positional input target into (alias, path_str).
 
+    Supported forms:
+      - 'alias=path.ext' -> alias='alias', path='path.ext'
+      - 'path.ext'       -> alias=stem,    path='path.ext'
 
-def parse_file_arg(raw: str) -> list[dict]:
-    """Parse -file as ';'-separated entries (at least two), each PATH=ALIAS optionally
-    followed by ,dlim=/,encoding= overrides for reading that file, e.g.
-    "data1.parquet=df1,dlim='|'; data2.parquet=df2,encoding='latin-1'".
-    Returns a list of {'path', 'alias', 'dlim', 'encoding'} dicts (dlim/encoding are
-    None when not given).
+    Note:
+      Colon sheet syntax (e.g. 'path.xlsx:Sheet1') is strictly not supported.
+      Sheet names must be specified via -opts (e.g. -opts "sheet=Sheet1").
     """
-    raw = (raw or "").strip()
-    if not raw:
-        raise SystemExit("-file: expected at least one PATH=ALIAS entry")
-    entries: list[dict] = []
-    aliases_seen: set[str] = set()
-    for group in _split_groups(raw, ";"):
-        tokens = _split_tokens(group, ",")
-        if not tokens:
-            raise SystemExit("-file: expected PATH=ALIAS")
-        head, has_value, alias = tokens[0].partition("=")
-        if not has_value or not alias.strip():
-            raise SystemExit(f"-file: expected PATH=ALIAS, got {tokens[0]!r}")
-        alias = alias.strip()
-        if alias in aliases_seen:
-            raise SystemExit(f"-file: duplicate alias '{alias}'")
-        aliases_seen.add(alias)
-        entry = {"path": head.strip(), "alias": alias, "dlim": None, "encoding": None}
-        for token in tokens[1:]:
-            key, has_kv, value = token.partition("=")
-            key = key.strip()
-            if not has_kv or key not in _FILE_ENTRY_KEYS:
-                raise SystemExit(f"-file: unknown option {token!r}; expected dlim= or encoding=")
-            entry[key] = _unquote_name(value)
-        entries.append(entry)
-    if len(entries) < 2:
-        raise SystemExit("-file: need at least two PATH=ALIAS entries")
-    return entries
+    token = token.strip()
+    alias: str | None = None
+    rest = token
+
+    if "=" in token:
+        lhs, _, rhs = token.partition("=")
+        alias = lhs.strip()
+        rest = rhs.strip()
+
+    # Guard against mistaken colon sheet syntax (e.g. data.xlsx:Sheet1)
+    if ":" in rest and not rest.startswith("sample:"):
+        p_part, _, s_part = rest.rpartition(":")
+        # Check if p_part is not just a Windows drive letter (e.g. 'C' or 'D')
+        if not (len(p_part) == 1 and p_part.isalpha()):
+            low_p = p_part.lower()
+            if any(low_p.endswith(ext) for ext in (".xlsx", ".xls", ".xlsm", ".xlsb")):
+                suggest_alias = f"{alias}:" if alias else ""
+                raise ValueError(
+                    f"colon sheet syntax '{token}' is not supported; specify sheet via -opts "
+                    f'(e.g. -opts "{suggest_alias}sheet={s_part}")'
+                )
+
+    path_str = rest
+    if not alias:
+        if path_str.startswith("sample:"):
+            alias = path_str[7:].removesuffix(".parquet")
+        else:
+            alias = Path(path_str).stem
+
+    return {"alias": alias, "path": path_str}
+
+
+def parse_reader_opts(raw: str | None) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """Parse -opts string into global options and per-alias targeted overrides.
+
+    Example:
+      'skiprows=1, cust:skiprows=3, usecols="A:E"'
+      Returns:
+        global_opts: {'skiprows': 1, 'usecols': 'A:E'}
+        targeted_opts: {'cust': {'skiprows': 3}}
+    """
+    if not raw or not raw.strip():
+        return {}, {}
+    global_opts: dict[str, Any] = {}
+    targeted_opts: dict[str, dict[str, Any]] = {}
+
+    import ast
+
+    def _eval(val: str) -> Any:
+        v = val.strip()
+        if not v:
+            return ""
+        try:
+            return ast.literal_eval(v)
+        except Exception:
+            low = v.lower()
+            if low == "true":
+                return True
+            if low == "false":
+                return False
+            if low in ("none", "null"):
+                return None
+            return v.strip("\"'")
+
+    tokens = _split_tokens(raw, ",")
+    for tok in tokens:
+        if "=" not in tok:
+            continue
+        key, _, val = tok.partition("=")
+        key = key.strip()
+        parsed_val = _eval(val)
+        if ":" in key:
+            alias, _, opt_name = key.partition(":")
+            alias = alias.strip()
+            opt_name = opt_name.strip()
+            if opt_name == "sheet":
+                opt_name = "sheet_name"
+            targeted_opts.setdefault(alias, {})[opt_name] = parsed_val
+        else:
+            if key == "sheet":
+                key = "sheet_name"
+            global_opts[key] = parsed_val
+
+    return global_opts, targeted_opts
 
 
 _JOIN_KEYS = ("left", "right", "on", "how", "validate")
@@ -765,19 +825,17 @@ def parse_join_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[st
 
 
 def parse_join_arg(raw: str) -> dict:
-    """Parse -join as key=value tokens: left=/right= (required -file aliases, or the
-    literal 'data' to reference the pipeline's current result so far — lets repeated
-    -join calls fold in one more file at a time), on= (required; shared column
+    """Parse -join as key=value tokens: left=/right= (optional table aliases, or the
+    literal 'data' to reference the pipeline's current result so far; when omitted,
+    left/right default to the first two input tables), on= (required; shared column
     name(s), or left:right pairs if they differ between sides), how= (optional,
     default 'inner', passed to Polars join()), validate= (optional, passed
     to Polars join()).
     """
     kwargs = parse_reshape_kwargs(raw, keys=_JOIN_KEYS, flag="-join")
     how = kwargs.get("how", "inner")
-    required = ["left", "right"] if how == "cross" else ["left", "right", "on"]
-    missing = [k for k in required if k not in kwargs]
-    if missing:
-        raise SystemExit(f"-join: missing required key(s): {', '.join(missing)}")
+    if how != "cross" and "on" not in kwargs:
+        raise SystemExit("-join: missing required key 'on'")
     if how == "cross":
         if "on" in kwargs:
             raise SystemExit("-join: on= cannot be used with how=cross (cross joins don't take on=)")
@@ -785,8 +843,8 @@ def parse_join_arg(raw: str) -> dict:
     else:
         on_cols, left_cols, right_cols = parse_join_on(kwargs["on"])
     return {
-        "left": kwargs["left"],
-        "right": kwargs["right"],
+        "left": kwargs.get("left"),
+        "right": kwargs.get("right"),
         "on": on_cols,
         "left_on": left_cols,
         "right_on": right_cols,
@@ -798,19 +856,22 @@ def parse_join_arg(raw: str) -> dict:
 _CONCAT_KEYS = ("frames",)
 
 
-def parse_concat_arg(raw: str) -> dict:
-    """Parse -concat as key=value tokens: frames= (required) — an ordered,
-    comma-separated list of -file aliases (or 'data' for the pipeline's current
-    result, to stack more files onto something already produced), e.g.
-    frames='df1,df2,df3'. Quote the whole value — it has internal commas.
+def parse_concat_arg(raw: str | None) -> dict:
+    """Parse -concat as optional comma-separated list of table aliases (or 'data' for
+    the pipeline's current result). When omitted, concatenates all input tables in order.
     """
-    kwargs = parse_reshape_kwargs(raw, keys=_CONCAT_KEYS, flag="-concat")
-    if "frames" not in kwargs:
-        raise SystemExit("-concat: expected frames='alias1,alias2,...'")
-    names = [n.strip() for n in kwargs["frames"].split(",") if n.strip()]
-    if len(names) < 2:
-        raise SystemExit("-concat: frames= needs at least two names")
-    return {"frames": names}
+    if not raw or not raw.strip():
+        return {"frames": None}
+    raw = raw.strip()
+    if raw.startswith("frames="):
+        kwargs = parse_reshape_kwargs(raw, keys=_CONCAT_KEYS, flag="-concat")
+        val = kwargs.get("frames", "")
+    else:
+        val = raw.strip("\"' ")
+    names = [n.strip() for n in val.split(",") if n.strip()]
+    if names and len(names) < 2:
+        raise SystemExit("-concat: frames needs at least two names")
+    return {"frames": names if names else None}
 
 
 def parse_kv_spec(raw: str | None, *, flag: str) -> dict[str, Any]:

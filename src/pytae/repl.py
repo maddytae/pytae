@@ -47,6 +47,7 @@ def _resolve_to_canonical_path(path_str: str) -> str:
     except Exception:
         return raw
 
+    canon_str = str(p)
     if sys.platform == "win32":
         drive = p.drive  # e.g. "Z:"
         if drive and len(drive) == 2 and drive[1] == ":":
@@ -62,11 +63,11 @@ def _resolve_to_canonical_path(path_str: str) -> str:
                 if res == 0:  # NO_ERROR
                     unc_remote = buffer.value.rstrip("\\/")
                     sub_path = str(p)[len(drive) :].lstrip("\\/")
-                    return f"{unc_remote}\\{sub_path}"
+                    canon_str = f"{unc_remote}\\{sub_path}"
             except Exception:
                 pass
 
-    return str(p)
+    return canon_str
 
 
 def _read_checkpoint_file(path: Path) -> pl.DataFrame:
@@ -950,11 +951,79 @@ def _parse_reader_options(tokens: list[str]) -> tuple[list[str], dict[str, Any],
             i += 2
         elif tok in ("-fmt", "--fmt") and i + 1 < len(tokens):
             i += 2
+        elif tok in ("-opts", "--opts") and i + 1 < len(tokens):
+            from pytae.cli_parsing import parse_reader_opts
+
+            global_opts, _ = parse_reader_opts(tokens[i + 1])
+            reader_kwargs.update(global_opts)
+            i += 2
         else:
             cleaned.append(tok)
             i += 1
 
+    truly_cleaned: list[str] = []
+    for idx_c, c_tok in enumerate(cleaned):
+        if idx_c == 0:
+            truly_cleaned.append(c_tok.rstrip(","))
+        elif "=" in c_tok:
+            from pytae.cli_parsing import parse_reader_opts
+
+            opts_part, _ = parse_reader_opts(c_tok.strip(","))
+            reader_kwargs.update(opts_part)
+        else:
+            truly_cleaned.append(c_tok)
+    cleaned = truly_cleaned
+
     return cleaned, reader_kwargs, nrows_val
+
+
+def _split_respecting_quotes(s: str, seps: str = ",;") -> list[str]:
+    chunks: list[str] = []
+    current: list[str] = []
+    in_quote: str | None = None
+    escaped = False
+    for ch in s:
+        if escaped:
+            current.append(ch)
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            current.append(ch)
+            continue
+        if ch in ('"', "'"):
+            if in_quote is None:
+                in_quote = ch
+            elif in_quote == ch:
+                in_quote = None
+            current.append(ch)
+        elif ch in seps and in_quote is None:
+            chunk = "".join(current).strip()
+            if chunk:
+                chunks.append(chunk)
+            current = []
+        else:
+            current.append(ch)
+    chunk = "".join(current).strip()
+    if chunk:
+        chunks.append(chunk)
+    return chunks
+
+
+_SET_KNOWN_KEYS = {
+    "session",
+    "session_name",
+    "load_session",
+    "checkpoint_format",
+    "checkpoint_fmt",
+    "cp_format",
+    "cp_fmt",
+    "save",
+    "save_history",
+    "history",
+    "history_file",
+    "sessions_dir",
+}
 
 
 def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
@@ -969,9 +1038,9 @@ def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     import re
 
-    # If commas or semicolons present
-    if "," in line or ";" in line:
-        chunks = [c.strip() for c in re.split(r"[,;]", line) if c.strip()]
+    # If commas or semicolons present outside of quotes
+    chunks = _split_respecting_quotes(line, ",;")
+    if len(chunks) > 1 or (len(chunks) == 1 and ("," in line or ";" in line)):
         for chunk in chunks:
             if chunk.lower().startswith("set "):
                 chunk = chunk[4:].strip()
@@ -1113,7 +1182,7 @@ class PytaeRepl:
             self.table_sources[initial_name] = str(self.path) if self.path else "<memory>"
         elif path is not None:
             self.path = Path(path)
-            self._load_file(self.path)
+            self._load_file(self.path, **self.reader_kwargs)
             initial_name = self.path_str or self.path.stem or "df"
             self.tables[initial_name] = self.current_df
             self.orig_tables[initial_name] = self.current_df
@@ -1413,7 +1482,11 @@ class PytaeRepl:
 
     def _read_file_to_df(self, path: Path | str, **reader_opts: Any) -> tuple[Path, pl.DataFrame]:
         """Resolve a dataset path and load it into a Polars DataFrame using reader kwargs with schema fallback."""
-        p = Path(path).expanduser()
+        from pytae.cli_parsing import parse_input_target
+
+        target = parse_input_target(str(path))
+        raw_path = target["path"]
+        p = Path(raw_path).expanduser()
         if str(p).startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
 
@@ -1436,13 +1509,22 @@ class PytaeRepl:
                     p = candidate
                 else:
                     raise FileNotFoundError(f"File not found: {p}")
-        opts = dict(self.reader_kwargs)
-        opts.update(reader_opts)
-        sep_val = opts.get("sep") or opts.get("delimiter")
-        enc_val = opts.get("encoding")
-        chunk_val = opts.get("chunk_size", 200_000)
-        nrows_val = opts.get("nrows")
-        reader = get_reader(p, sep=sep_val, encoding=enc_val, chunk_size=chunk_val)
+        opts = dict(reader_opts)
+        if "sheet" in opts and "sheet_name" not in opts:
+            opts["sheet_name"] = opts.pop("sheet")
+        sep_val = opts.pop("sep", None) or opts.pop("delimiter", None)
+        enc_val = opts.pop("encoding", None)
+        chunk_val = opts.pop("chunk_size", 200_000)
+        nrows_val = opts.pop("nrows", None)
+        sheet_name_val = opts.pop("sheet_name", None)
+        reader = get_reader(
+            p,
+            sep=sep_val,
+            encoding=enc_val,
+            chunk_size=chunk_val,
+            sheet_name=sheet_name_val,
+            **opts,
+        )
         df = reader.to_polars(nrows=nrows_val)
         return p, df
 
@@ -1877,7 +1959,8 @@ class PytaeRepl:
 
         # Session configuration settings: 'set [key [= value]]'
         if first_lower == "set":
-            self._cmd_set(tokens[1:], output_fn)
+            raw_args = line.strip()[3:].strip() if line.strip().lower().startswith("set") else ""
+            self._cmd_set(tokens[1:], output_fn, raw_line=raw_args)
             return True
 
         # Persistent REPL sessions
@@ -2673,7 +2756,7 @@ class PytaeRepl:
                 self.orig_df = None
                 self.initial_df = None
 
-    def _cmd_set(self, args: list[str], output_fn: Callable[[str], None]) -> None:
+    def _cmd_set(self, args: list[str], output_fn: Callable[[str], None], raw_line: str = "") -> None:
         """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set save = history.txt, set sessions_dir = <path>, set session = <name>, set load_session = <name>)."""
         if not args:
             sess_name = self.session_name or "none"
@@ -2686,7 +2769,7 @@ class PytaeRepl:
             output_fn(f"sessions_dir      = {sess_dir} (options: <path>, default)")
             return
 
-        line = " ".join(args).strip()
+        line = raw_line if raw_line else " ".join(args).strip()
         pairs = _parse_set_pairs(line)
         if not pairs:
             output_fn("Usage: set [key [= value]] (e.g. set session = my_project, set load_session = my_project, set checkpoint_format = parquet, set save = history.txt)")
@@ -3291,18 +3374,27 @@ class PytaeRepl:
                 return
             is_known_table = self._resolve_table_name(clean_path) is not None
             if not is_known_table:
-                p = Path(clean_path).expanduser()
-                is_sample = clean_path.startswith("sample:")
+                from pytae.cli_parsing import parse_input_target
+
+                try:
+                    target = parse_input_target(clean_path)
+                except ValueError as exc:
+                    output_fn(f"pytae: {exc}")
+                    return
+
+                target_path = target["path"]
+                p = Path(target_path).expanduser()
+                is_sample = target_path.startswith("sample:")
                 from pytae import DATA_PATH
 
-                is_file = (p.exists() and not p.is_dir()) or (p.exists() and p.is_dir()) or any(ch in clean_path for ch in "*?[")
+                is_file = (p.exists() and not p.is_dir()) or (p.exists() and p.is_dir()) or any(ch in target_path for ch in "*?[")
                 is_data_cand = (DATA_PATH / p.name).exists() or (DATA_PATH / f"{p.stem}.parquet").exists()
                 if is_sample or is_file or is_data_cand:
                     try:
                         load_opts = dict(reader_kwargs)
                         if nrows_val is not None:
                             load_opts["nrows"] = nrows_val
-                        p, df = self._read_file_to_df(clean_path, **load_opts)
+                        p, df = self._read_file_to_df(target_path, **load_opts)
                         self.undo_stack.clear()
                         self.redo_stack.clear()
                         self.tables[var_name] = df
@@ -3951,7 +4043,7 @@ class PytaeRepl:
         # Case: 'set ' configuration keys and values
         if first_token == "set":
             if last_token == "set":
-                configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save"]
+                configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save", "opts"]
                 return [c for c in configs if c.startswith(text)]
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
@@ -4027,7 +4119,7 @@ class PytaeRepl:
                 "-head", "-tail", "-sample", "-describe", "-glimpse", "-schema",
                 "-columns", "-cols", "-info", "-shape", "-print", "-o", "-sort", "-where",
                 "-drop", "-rename", "-relocate", "-tol", "-save", "-restore", "-time",
-                "-dropna", "-fillna", "-sql",
+                "-dropna", "-fillna", "-sql", "-opts",
             ]
             return [f for f in flags if f.startswith(text)]
 

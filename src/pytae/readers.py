@@ -155,16 +155,23 @@ class CsvReader:
         encoding: str | None = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         compression: str | None = None,
+        **reader_kwargs: Any,
     ) -> None:
         self.path = path
         self.sep = sep
         self.encoding = encoding
         self.chunk_size = chunk_size
         self.compression = compression
+        self.reader_kwargs = reader_kwargs
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
         total = 0
+        pd_kwargs = {}
+        if "skiprows" in self.reader_kwargs:
+            pd_kwargs["skiprows"] = self.reader_kwargs["skiprows"]
+        elif "skip_rows" in self.reader_kwargs:
+            pd_kwargs["skiprows"] = self.reader_kwargs["skip_rows"]
         for chunk in pd.read_csv(
             self.path,
             sep=self.sep,
@@ -173,12 +180,18 @@ class CsvReader:
             chunksize=self.chunk_size,
             low_memory=False,
             compression=self.compression,
+            **pd_kwargs,
         ):
             total += len(chunk)
         return (total, n_cols)
 
     def columns(self) -> list[str]:
         try:
+            pd_kwargs = {}
+            if "skiprows" in self.reader_kwargs:
+                pd_kwargs["skiprows"] = self.reader_kwargs["skiprows"]
+            elif "skip_rows" in self.reader_kwargs:
+                pd_kwargs["skiprows"] = self.reader_kwargs["skip_rows"]
             return pd.read_csv(
                 self.path,
                 sep=self.sep,
@@ -186,6 +199,7 @@ class CsvReader:
                 nrows=0,
                 low_memory=False,
                 compression=self.compression,
+                **pd_kwargs,
             ).columns.tolist()
         except pd.errors.EmptyDataError as exc:
             raise ValueError(f"'{self.path.name}' is empty or not a valid {self._file_kind} file") from exc
@@ -194,6 +208,11 @@ class CsvReader:
         return _delimited_dtypes(self.path, sep=self.sep, encoding=self.encoding, compression=self.compression)
 
     def head(self, n: int) -> pd.DataFrame:
+        pd_kwargs = {}
+        if "skiprows" in self.reader_kwargs:
+            pd_kwargs["skiprows"] = self.reader_kwargs["skiprows"]
+        elif "skip_rows" in self.reader_kwargs:
+            pd_kwargs["skiprows"] = self.reader_kwargs["skip_rows"]
         return pd.read_csv(
             self.path,
             sep=self.sep,
@@ -201,6 +220,7 @@ class CsvReader:
             nrows=n,
             low_memory=False,
             compression=self.compression,
+            **pd_kwargs,
         )
 
     def tail(self, n: int) -> pd.DataFrame:
@@ -223,11 +243,12 @@ class CsvReader:
         chunk_size: int | None = None,
     ) -> pd.DataFrame:
         if not progress:
-            if self.encoding is None or self.encoding.lower() in ("utf-8", "utf8"):
+            if not self.reader_kwargs and (self.encoding is None or self.encoding.lower() in ("utf-8", "utf8")):
                 try:
                     return self.to_polars(columns=columns, nrows=nrows).to_pandas()
                 except Exception:
                     pass
+            pd_kwargs = dict(self.reader_kwargs)
             return pd.read_csv(
                 self.path,
                 sep=self.sep,
@@ -236,10 +257,12 @@ class CsvReader:
                 nrows=nrows,
                 low_memory=False,
                 compression=self.compression,
+                **pd_kwargs,
             )
         total = self.shape()[0] if nrows is None else min(nrows, self.shape()[0])
         chunks, done = [], 0
         csize = chunk_size or self.chunk_size
+        pd_kwargs = dict(self.reader_kwargs)
         reader = pd.read_csv(
             self.path,
             sep=self.sep,
@@ -249,6 +272,7 @@ class CsvReader:
             nrows=nrows,
             low_memory=False,
             compression=self.compression,
+            **pd_kwargs,
         )
         for chunk in reader:
             chunks.append(chunk)
@@ -266,50 +290,61 @@ class CsvReader:
         import polars as pl
 
         null_vals = ["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"]
-        try:
-            return pl.read_csv(
-                self.path,
-                separator=self.sep,
-                columns=columns,
-                n_rows=nrows,
-                encoding=self.encoding or "utf8",
-                null_values=null_vals,
-                truncate_ragged_lines=True,
-                infer_schema_length=infer_schema_length,
-            )
-        except pl.exceptions.ComputeError:
-            if infer_schema_length is not None:
-                try:
-                    return pl.read_csv(
-                        self.path,
-                        separator=self.sep,
-                        columns=columns,
-                        n_rows=nrows,
-                        encoding=self.encoding or "utf8",
-                        null_values=null_vals,
-                        truncate_ragged_lines=True,
-                        infer_schema_length=None,
-                    )
-                except Exception:
-                    pass
-            return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
-        except Exception:
-            return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+        skip_rows = self.reader_kwargs.get("skip_rows", self.reader_kwargs.get("skiprows", 0))
+        if isinstance(skip_rows, int):
+            try:
+                return pl.read_csv(
+                    self.path,
+                    separator=self.sep,
+                    columns=columns,
+                    n_rows=nrows,
+                    encoding=self.encoding or "utf8",
+                    null_values=null_vals,
+                    truncate_ragged_lines=True,
+                    infer_schema_length=infer_schema_length,
+                    skip_rows=skip_rows,
+                )
+            except pl.exceptions.ComputeError:
+                if infer_schema_length is not None:
+                    try:
+                        return pl.read_csv(
+                            self.path,
+                            separator=self.sep,
+                            columns=columns,
+                            n_rows=nrows,
+                            encoding=self.encoding or "utf8",
+                            null_values=null_vals,
+                            truncate_ragged_lines=True,
+                            infer_schema_length=None,
+                            skip_rows=skip_rows,
+                        )
+                    except Exception:
+                        pass
+                return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+            except Exception:
+                return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+        return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
 
     def to_polars_lazy(self, columns: list[str] | None = None, infer_schema_length: int | None = 10000):
         import polars as pl
 
-        lf = pl.scan_csv(
-            self.path,
-            separator=self.sep,
-            encoding=self.encoding or "utf8",
-            null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
-            truncate_ragged_lines=True,
-            infer_schema_length=infer_schema_length,
-        )
-        if columns is not None:
-            lf = lf.select(columns)
-        return lf
+        skip_rows = self.reader_kwargs.get("skip_rows", self.reader_kwargs.get("skiprows", 0))
+        skip_kw = {"skip_rows": skip_rows} if isinstance(skip_rows, int) else {}
+        try:
+            lf = pl.scan_csv(
+                self.path,
+                separator=self.sep,
+                encoding=self.encoding or "utf8",
+                null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
+                truncate_ragged_lines=True,
+                infer_schema_length=infer_schema_length,
+                **skip_kw,
+            )
+            if columns is not None:
+                lf = lf.select(columns)
+            return lf
+        except Exception:
+            return self.to_polars(columns=columns, infer_schema_length=infer_schema_length).lazy()
 
 
 class TxtReader(CsvReader):
@@ -324,8 +359,9 @@ class TxtReader(CsvReader):
         encoding: str | None = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         compression: str | None = None,
+        **reader_kwargs: Any,
     ) -> None:
-        super().__init__(path, sep=sep, encoding=encoding, chunk_size=chunk_size, compression=compression)
+        super().__init__(path, sep=sep, encoding=encoding, chunk_size=chunk_size, compression=compression, **reader_kwargs)
 
 
 class SasReader:
@@ -396,6 +432,93 @@ class SasReader:
         import polars as pl
 
         return pl.from_pandas(self.to_dataframe(columns=columns, nrows=nrows))
+
+
+class ExcelReader:
+    """Reads Excel (.xlsx, .xls, .xlsm, .xlsb) files via pandas and converts to Polars."""
+
+    def __init__(
+        self,
+        path: Path,
+        sheet_name: str | int = 0,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        **reader_kwargs: Any,
+    ) -> None:
+        self.path = Path(path)
+        kwargs = dict(reader_kwargs)
+        if "sheet" in kwargs and "sheet_name" not in kwargs:
+            sheet_name = kwargs.pop("sheet")
+        elif "sheet_name" in kwargs:
+            sheet_name = kwargs.pop("sheet_name")
+        self.sheet_name = sheet_name
+        self.chunk_size = chunk_size
+        self.reader_kwargs = kwargs
+        self._cached_df: Any = None
+
+    def _load(self) -> Any:
+        if self._cached_df is None:
+            import pandas as pd
+
+            opts = dict(self.reader_kwargs)
+            opts.setdefault("sheet_name", self.sheet_name)
+            self._cached_df = pd.read_excel(self.path, **opts)
+        return self._cached_df
+
+    def shape(self) -> tuple[int, int]:
+        df = self._load()
+        return (len(df), len(df.columns))
+
+    def columns(self) -> list[str]:
+        df = self._load()
+        return [str(c) for c in df.columns]
+
+    def dtypes(self) -> Any:
+        df = self._load()
+        return df.dtypes
+
+    def sheet_names(self) -> list[str]:
+        import pandas as pd
+
+        excel = pd.ExcelFile(self.path)
+        return list(excel.sheet_names)
+
+    def head(self, n: int) -> Any:
+        df = self._load()
+        return df.head(n)
+
+    def tail(self, n: int) -> Any:
+        df = self._load()
+        return df.tail(n)
+
+    def to_dataframe(
+        self,
+        columns: list[str] | None = None,
+        progress: bool = False,
+        nrows: int | None = None,
+        chunk_size: int | None = None,
+    ) -> Any:
+        df = self._load()
+        if nrows is not None:
+            df = df.iloc[:nrows]
+        if columns is not None:
+            df = df[columns]
+        return df
+
+    def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
+        import polars as pl
+
+        df = self.to_dataframe(columns=columns, nrows=nrows)
+        try:
+            return pl.from_pandas(df)
+        except Exception:
+            df_c = df.copy()
+            for col in df_c.columns:
+                if df_c[col].dtype == object:
+                    df_c[col] = df_c[col].astype(str)
+            return pl.from_pandas(df_c)
+
+    def to_polars_lazy(self, columns: list[str] | None = None):
+        return self.to_polars(columns=columns).lazy()
 
 
 class JsonlReader:
@@ -734,6 +857,8 @@ class GlobReader:
         sep: str | None = None,
         encoding: str | None = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
+        sheet_name: str | int | None = None,
+        **reader_kwargs: Any,
     ) -> None:
         import glob as _glob
 
@@ -741,11 +866,28 @@ class GlobReader:
         self.sep = sep
         self.encoding = encoding
         self.chunk_size = chunk_size
+        self.sheet_name = sheet_name
+        self.reader_kwargs = dict(reader_kwargs)
 
         raw_str = str(path.expanduser())
         if path.exists() and path.is_dir():
             candidates: list[Path] = []
-            for ext in (".parquet", ".pq", ".ipc", ".arrow", ".feather", ".csv", ".jsonl", ".ndjson", ".txt", ".dat"):
+            for ext in (
+                ".parquet",
+                ".pq",
+                ".ipc",
+                ".arrow",
+                ".feather",
+                ".csv",
+                ".jsonl",
+                ".ndjson",
+                ".txt",
+                ".dat",
+                ".xlsx",
+                ".xls",
+                ".xlsm",
+                ".xlsb",
+            ):
                 found = sorted(path.glob(f"*{ext}"))
                 if found:
                     candidates = found
@@ -760,7 +902,12 @@ class GlobReader:
             self.files = matches
 
         self._first_reader = get_reader(
-            self.files[0], sep=sep, encoding=encoding, chunk_size=chunk_size
+            self.files[0],
+            sep=sep,
+            encoding=encoding,
+            chunk_size=chunk_size,
+            sheet_name=sheet_name,
+            **self.reader_kwargs,
         )
 
     def shape(self) -> tuple[int, int]:
@@ -825,7 +972,14 @@ class GlobReader:
                 pass
 
         frames = [
-            get_reader(f, sep=self.sep, encoding=self.encoding, chunk_size=self.chunk_size).to_polars(columns=columns)
+            get_reader(
+                f,
+                sep=self.sep,
+                encoding=self.encoding,
+                chunk_size=self.chunk_size,
+                sheet_name=self.sheet_name,
+                **self.reader_kwargs,
+            ).to_polars(columns=columns)
             for f in self.files
         ]
         combined = pl.concat(frames, how="diagonal_relaxed")
@@ -844,6 +998,10 @@ _READERS = {
     ".sas7bdat": SasReader,
     ".jsonl": JsonlReader,
     ".ndjson": JsonlReader,
+    ".xlsx": ExcelReader,
+    ".xls": ExcelReader,
+    ".xlsm": ExcelReader,
+    ".xlsb": ExcelReader,
 }
 
 # YAML connection configs (Databricks / SSH) are handled by the isolated pytae.connections
@@ -860,11 +1018,24 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
 def get_reader(
-    path: Path, *, sep: str | None = None, encoding: str | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE
+    path: Path,
+    *,
+    sep: str | None = None,
+    encoding: str | None = None,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    sheet_name: str | int | None = None,
+    **reader_kwargs: Any,
 ):
     path = Path(path)
     if (path.exists() and path.is_dir()) or (not path.exists() and any(ch in str(path) for ch in "*?[")):
-        return GlobReader(path, sep=sep, encoding=encoding, chunk_size=chunk_size)
+        return GlobReader(
+            path,
+            sep=sep,
+            encoding=encoding,
+            chunk_size=chunk_size,
+            sheet_name=sheet_name,
+            **reader_kwargs,
+        )
     suffix, compression = _split_path_suffixes(path)
     if suffix in _YAML_SUFFIXES:
         global _EXTERNAL_CONNECTIONS_MODULE
@@ -895,7 +1066,14 @@ def get_reader(
         )
         raise ValueError(f"unsupported file type '{path.suffix or path.name}'; supported: {supported}") from None
     if cls is CsvReader:
-        return CsvReader(path, sep=sep or ",", encoding=encoding, chunk_size=chunk_size, compression=compression)
+        return CsvReader(
+            path,
+            sep=sep or ",",
+            encoding=encoding,
+            chunk_size=chunk_size,
+            compression=compression,
+            **reader_kwargs,
+        )
     if cls is TxtReader:
         return TxtReader(
             path,
@@ -903,11 +1081,17 @@ def get_reader(
             encoding=encoding or _TXT_DEFAULT_ENCODING.get(suffix),
             chunk_size=chunk_size,
             compression=compression,
+            **reader_kwargs,
         )
     if cls is JsonlReader:
         return JsonlReader(path, chunk_size=chunk_size, compression=compression)
     if cls is SasReader:
         return SasReader(path, encoding=encoding, chunk_size=chunk_size)
+    if cls is ExcelReader:
+        sheet = reader_kwargs.pop("sheet_name", sheet_name)
+        if sheet is None and "sheet" in reader_kwargs:
+            sheet = reader_kwargs.pop("sheet")
+        return ExcelReader(path, sheet_name=sheet or 0, chunk_size=chunk_size, **reader_kwargs)
     return cls(path, chunk_size=chunk_size)
 
 
@@ -1233,17 +1417,12 @@ def read_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
 
 
 def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read an Excel file into a pytae.DataFrame (wraps polars.read_excel)."""
-    import polars as pl
+    """Read an Excel file into a pytae.DataFrame using pandas."""
+    import pandas as pd
 
     from pytae.dataframe import DataFrame
 
-    try:
-        return DataFrame(pl.read_excel(source, *args, **kwargs))
-    except Exception:
-        import pandas as pd
-
-        return DataFrame(pd.read_excel(source, *args, **kwargs))
+    return DataFrame(pd.read_excel(source, *args, **kwargs))
 
 
 def read_database(query: Any, connection: Any, *args: Any, **kwargs: Any) -> Any:

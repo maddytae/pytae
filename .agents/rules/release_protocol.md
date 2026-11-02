@@ -10,10 +10,12 @@ Whenever the user requests to publish, release, bump the version, or cut a relea
 
 2. **Mandatory Reference Regeneration**:
    - **ALWAYS** run `python scripts/generate_reference.py`.
-   - Verify that all three reference files are regenerated with the updated release version:
-     - `reference/pytae_reference.txt`
+   - Verify that reference files are regenerated with the updated release version:
+     - `reference/pytae_copilot_reference.txt`
      - `reference/pytae_copilot_reference.md`
+     - `reference/pytae_copilot_instructions.txt`
      - `reference/pytae_copilot_instructions.md`
+     - `reference/pytae_docs.db`
    - Never finalize a release without staging and committing these three regenerated files.
 
 3. **Changelog Updates**:

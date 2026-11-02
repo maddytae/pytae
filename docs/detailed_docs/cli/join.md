@@ -1,13 +1,13 @@
 # CLI Feature Guide: Relational Joins & Stacking (`-join` & `-concat`)
 
-Join multiple datasets or append rows across tables directly from the command line using `-file`, `-join`, and `-concat`, powered natively by Polars' multithreaded SIMD execution engine.
+Join multiple datasets or append rows across tables directly from the command line using positional file inputs, `-join`, `-concat`, and `-opts`, powered natively by Polars' multithreaded SIMD execution engine.
 
 ---
 
 ## Contents
 
 - [Overview & Rules](#overview--rules)
-- [Multi-File Declaration (`-file`)](#multi-file-declaration--file)
+- [Positional File Declaration (`alias=source`)](#positional-file-declaration-aliassource)
 - [Relational Joins (`-join`)](#relational-joins--join)
   - [Join Strategies (`how=`)](#join-strategies-how)
   - [Differing Key Names](#differing-key-names)
@@ -15,35 +15,38 @@ Join multiple datasets or append rows across tables directly from the command li
   - [Cardinality Validation](#cardinality-validation)
   - [Chaining Multiple Joins with `data`](#chaining-multiple-joins-with-data)
 - [Row-Wise Stacking (`-concat`)](#row-wise-stacking--concat)
+- [Reader Options (`-opts`)](#reader-options--opts)
 - [Downstream Verbs After Joins](#downstream-verbs-after-joins)
 
 ---
 
 ## Overview & Rules
 
-While standard `pytae` commands process a single positional dataset, multi-table operations use `-file` to declare named input aliases:
-- Aliases are semicolon-separated: `PATH=ALIAS; PATH=ALIAS`.
+Multi-table operations declare positional datasets using the natural `alias=source` convention:
+- Inputs are passed positionally: `o=orders.parquet c=customers.csv`.
 - Pipelines begin with `-join`, `-concat`, or `-sql`.
-- Subsequent flags (`-filter`, `-mutate`, `-select`, `-by`, `-agg`, `-o`) operate on the combined result.
+- When `left=` and `right=` are omitted from `-join`, they default to the first two input tables.
+- When `frames=` is omitted from `-concat`, all input tables are stacked in order.
+- Subsequent flags (`-filter`, `-mutate`, `-select`, `-by`, `-agg`, `-o`) operate directly on the combined result.
 
 ```bash
-pytae -file "orders.parquet=o; customers.csv=c" \
-  -join "left=o, right=c, on=customer_id, how=left" \
+pytae o=orders.parquet c=customers.csv \
+  -join "on=customer_id, how=left" \
   -head 5
 ```
 
 ---
 
-## Multi-File Declaration (`-file`)
+## Positional File Declaration (`alias=source`)
 
-Declare inputs using `PATH=ALIAS` separated by semicolons `;`:
+Declare inputs using `alias=source` directly as command-line arguments:
 
 ```bash
-# Two files
-pytae -file "orders.parquet=o; customers.csv=c" ...
+# Two files (left=o, right=c inferred automatically)
+pytae o=orders.parquet c=customers.csv -join "on=customer_id"
 
 # Three files (different formats supported)
-pytae -file "sales.parquet=s; stores.csv=st; targets.jsonl=t" ...
+pytae s=sales.parquet st=stores.csv t=targets.jsonl ...
 ```
 
 ---
@@ -52,6 +55,8 @@ pytae -file "sales.parquet=s; stores.csv=st; targets.jsonl=t" ...
 
 Syntax:
 ```bash
+-join "on=KEYS, how=STRATEGY"
+# Or explicitly:
 -join "left=LEFT_ALIAS, right=RIGHT_ALIAS, on=KEYS, how=STRATEGY"
 ```
 
@@ -69,13 +74,13 @@ Syntax:
 
 ```bash
 # Left outer join
-pytae -file "orders.parquet=o; customers.csv=c" \
-  -join "left=o, right=c, on=customer_id, how=left" \
+pytae o=orders.parquet c=customers.csv \
+  -join "on=customer_id, how=left" \
   -head 10
 
 # Anti join: find customers who have NEVER placed an order
-pytae -file "customers.csv=c; orders.parquet=o" \
-  -join "left=c, right=o, on=customer_id, how=anti" \
+pytae c=customers.csv o=orders.parquet \
+  -join "on=customer_id, how=anti" \
   -cols id,name,signup_date
 ```
 
@@ -87,8 +92,8 @@ When join keys have different names across datasets, use the colon syntax `on="l
 
 ```bash
 # Join orders.client_id with customers.id
-pytae -file "orders.parquet=o; customers.csv=c" \
-  -join "left=o, right=c, on=client_id:id, how=inner" \
+pytae o=orders.parquet c=customers.csv \
+  -join "on=client_id:id, how=inner" \
   -head 5
 ```
 
@@ -99,8 +104,8 @@ pytae -file "orders.parquet=o; customers.csv=c" \
 Separate composite keys with commas or plus signs:
 
 ```bash
-pytae -file "sales.parquet=s; inventory.parquet=i" \
-  -join "left=s, right=i, on=store_id:store_id, sku:sku, how=left" \
+pytae s=sales.parquet i=inventory.parquet \
+  -join "on=store_id:store_id, sku:sku, how=left" \
   -head 5
 ```
 
@@ -115,8 +120,8 @@ Catch accidental row multiplication or duplicate keys before they corrupt aggreg
 - `validate=m:m`: Default, allows many-to-many matches.
 
 ```bash
-pytae -file "orders.parquet=o; users.csv=u" \
-  -join "left=o, right=u, on=user_id:id, how=inner, validate=m:1" \
+pytae o=orders.parquet u=users.csv \
+  -join "on=user_id:id, how=inner, validate=m:1" \
   -head 5
 ```
 *(If `users.csv` contains duplicate IDs, `pytae` immediately aborts with a descriptive error).*
@@ -128,7 +133,7 @@ pytae -file "orders.parquet=o; users.csv=u" \
 Chain 3 or more datasets by referencing the running pipeline result `data`:
 
 ```bash
-pytae -file "orders.parquet=o; customers.csv=c; products.parquet=p" \
+pytae o=orders.parquet c=customers.csv p=products.parquet \
   -join "left=o, right=c, on=customer_id, how=left" \
   -join "left=data, right=p, on=product_id, how=left" \
   -select order_id, customer_name, product_name, price, quantity \
@@ -139,14 +144,31 @@ pytae -file "orders.parquet=o; customers.csv=c; products.parquet=p" \
 
 ## Row-Wise Stacking (`-concat`)
 
-Stack multiple files sharing identical schemas into a single view:
+Stack multiple files or sheets sharing identical schemas into a single view:
 
 ```bash
-pytae -file "q1.parquet=q1; q2.parquet=q2; q3.parquet=q3; q4.parquet=q4" \
-  -concat "q1, q2, q3, q4" \
+# Concat all positional inputs in order
+pytae q1=q1.parquet q2=q2.parquet q3=q3.parquet q4=q4.parquet \
+  -concat \
   -by quarter \
   -agg "total_revenue = amount:sum, order_count = count" \
   -o annual_summary.csv
+
+# Stack multiple Excel sheets via targeted -opts
+pytae jan=sales.xlsx feb=sales.xlsx -concat -opts "jan:sheet=Jan, feb:sheet=Feb" -shape
+```
+
+---
+
+## Reader Options (`-opts`)
+
+Fine-tune ingestion options for one or all inputs:
+
+```bash
+# Pass global or targeted options (select Excel sheets, skip rows, specify headers)
+pytae ord=orders.xlsx cust=customers.csv \
+  -join "on=cust_id" \
+  -opts "ord:sheet=Q1, skiprows=1, cust:skiprows=3"
 ```
 
 ---
@@ -156,8 +178,8 @@ pytae -file "q1.parquet=q1; q2.parquet=q2; q3.parquet=q3; q4.parquet=q4" \
 Once joined or stacked, all standard `pytae` verbs apply seamlessly:
 
 ```bash
-pytae -file "orders.parquet=o; customers.csv=c" \
-  -join "left=o, right=c, on=customer_id, how=inner" \
+pytae o=orders.parquet c=customers.csv \
+  -join "on=customer_id, how=inner" \
   -filter "region == 'West' and amount > 100" \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
@@ -166,4 +188,3 @@ pytae -file "orders.parquet=o; customers.csv=c" \
   -head 10 \
   -o top_west_customers.parquet
 ```
-
