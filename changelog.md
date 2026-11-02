@@ -19,10 +19,10 @@ All notable changes to this project are documented in this file.
   - Session command history resolves file paths using portable forward slashes (`p.as_posix()`), preventing Python's POSIX `shlex` from swallowing Windows backslashes upon script replay.
   - REPL commands containing unquoted Windows backslash paths (e.g. `df = C:\Users\...`, `-o C:\Users\...`, or `load C:\Users\...`) are automatically pre-normalized before `shlex` tokenization, eliminating errors where paths were mangled into `C:UsersTAF3842...`.
   - Canonical paths with spaces are cleanly wrapped in double quotes without generating redundant nested quotes.
-- **Renamed `set save` to `set save_commands` with Zero Output Pollution**:
+- **Renamed `set save` to `set save_commands` with Total `set` Command Exclusion**:
   - Renamed REPL configuration setting `save` to `save_commands` to explicitly communicate that it auto-saves the session command script on exit.
   - Retired legacy `set save` without backward compatibility to prevent ambiguity with table/data saving operations.
-  - Prevented `set save_commands` from polluting the exported command file, ensuring the generated script contains strictly executable data manipulation commands.
+  - Excluded all `set` configuration commands (`set save_commands`, `set session`, `set checkpoint_format`, `set sessions_dir`, `set load_session`) from the exported script, guaranteeing that the generated script contains strictly pure, executable data pipeline commands.
 - **Git Bash / MSYS POSIX Path Normalization on Windows**:
   - Automatically translates Git Bash MSYS virtual root mounts (e.g. `/c/Users/...`, `/d/...`) returned by `pwd` into native Windows paths (`C:/Users/...`, `D:/...`).
   - Works seamlessly across REPL table assignments (`df = /c/Users/...`), CLI positional inputs (`pytae /c/Users/...`), output redirection (`-o /c/Users/...`), relational verbs (`-join`, `-diff`), and Python API readers (`pt.read_parquet`).

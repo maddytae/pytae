@@ -1256,12 +1256,9 @@ class PytaeRepl:
         if any(t == "-o" or t.startswith("-o=") for t in tokens):
             return True
 
-        # Session configuration commands (e.g. set checkpoint_format = parquet)
-        if clean.startswith("set "):
-            sub = clean[4:].strip().lower()
-            if any(sub.startswith(k) for k in ("save_commands", "save", "save_history", "history")):
-                return False
-            return True
+        # Session configuration commands ('set ...') are REPL environment settings and are excluded from exported scripts
+        if clean == "set" or clean.startswith("set "):
+            return False
 
         # Explicit reset / restore / table removal or mutation of state
         if clean.startswith("reset") or clean.startswith("restore "):

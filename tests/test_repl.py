@@ -2864,8 +2864,9 @@ def test_repl_save_commands_captures_bare_output_and_canonical_posix_paths(tmp_p
     r = PytaeRepl()
     outputs: list[str] = []
 
-    # Configure save_commands
+    # Configure save_commands and another REPL setting
     r.execute_line(f"set save_commands = {script_file}", output_fn=outputs.append)
+    r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
     assert r.save_history_file == str(script_file)
 
     # Load dataset
@@ -2889,8 +2890,9 @@ def test_repl_save_commands_captures_bare_output_and_canonical_posix_paths(tmp_p
     assert f"df = {data_file.as_posix()}" in script_text
     # 2. The -o command
     assert f"-o {out_csv}" in script_text
-    # 3. Must NOT contain the meta 'set save_commands' command
-    assert "set save_commands" not in script_text
+    # 3. Must NOT contain any 'set ' configuration commands
+    assert "set " not in script_text
+    assert "checkpoint_format" not in script_text
 
 
 def test_normalize_unquoted_windows_paths() -> None:
