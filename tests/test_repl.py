@@ -2332,11 +2332,17 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert res is True
     assert any("'history -s' is not supported" in o for o in outputs)
 
-    # Configure 'set save = rel_hist.txt' upfront
+    # Verify legacy 'set save' is cleanly rejected without backward compatibility
     outputs.clear()
-    r2.execute_line("set save = rel_hist.txt", output_fn=outputs.append)
+    r2.execute_line("set save = legacy.txt", output_fn=outputs.append)
+    assert any("unknown setting 'save'" in o for o in outputs)
+    assert r2.save_history_file is None
+
+    # Configure 'set save_commands = rel_hist.txt' upfront
+    outputs.clear()
+    r2.execute_line("set save_commands = rel_hist.txt", output_fn=outputs.append)
     assert r2.save_history_file == "rel_hist.txt"
-    assert any("Set save = 'rel_hist.txt'" in o for o in outputs)
+    assert any("Set save_commands = 'rel_hist.txt'" in o for o in outputs)
 
     # Plain exit automatically saves to configured history file
     outputs.clear()
@@ -2344,7 +2350,10 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert res is False  # Exits!
     saved_rel = work_dir / "rel_hist.txt"
     assert saved_rel.exists()
-    assert "df = sample:penguins" in saved_rel.read_text(encoding="utf-8")
+    saved_content = saved_rel.read_text(encoding="utf-8")
+    assert "df = sample:penguins" in saved_content
+    # The 'set save_commands' command itself must not pollute the exported commands script
+    assert "save_commands" not in saved_content
     assert any("Session history saved to" in o for o in outputs)
 
     # Case 3: Invalid exit arguments
@@ -2424,7 +2433,7 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     outputs.clear()
     r.execute_line("set", output_fn=outputs.append)
     assert any("checkpoint_format = ipc" in o for o in outputs)
-    assert any("save              = none" in o for o in outputs)
+    assert any("save_commands     = none" in o for o in outputs)
 
     outputs.clear()
     r.execute_line("set checkpoint_format", output_fn=outputs.append)
@@ -2823,11 +2832,11 @@ def test_repl_set_load_session_and_sessions_dir(tmp_path):
         assert "cp1" in r2.checkpoints
 
         # 6. Set multiple settings on a single line (commas, semicolons, spaces, repeated set)
-        r2.execute_line("set save = my_hist.txt, checkpoint_format = parquet")
+        r2.execute_line("set save_commands = my_hist.txt, checkpoint_format = parquet")
         assert r2.save_history_file == "my_hist.txt"
         assert r2.checkpoint_format == "parquet"
 
-        r2.execute_line("set save = log1.txt; set checkpoint_format = ipc")
+        r2.execute_line("set save_commands = log1.txt; set checkpoint_format = ipc")
         assert r2.save_history_file == "log1.txt"
         assert r2.checkpoint_format == "ipc"
 

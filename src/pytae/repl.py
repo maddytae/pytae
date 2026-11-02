@@ -1021,10 +1021,7 @@ _SET_KNOWN_KEYS = {
     "checkpoint_fmt",
     "cp_format",
     "cp_fmt",
-    "save",
-    "save_history",
-    "history",
-    "history_file",
+    "save_commands",
     "sessions_dir",
 }
 
@@ -1033,9 +1030,9 @@ def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
     """Parse key=value setting pairs from a command line.
 
     Supports:
-      - Comma-separated: set session = proj_x, save = run.txt
-      - Semicolon-separated: set session = proj_x; set save = run.txt
-      - Space-separated: set session = proj_x save = run.txt
+      - Comma-separated: set session = proj_x, save_commands = run.txt
+      - Semicolon-separated: set session = proj_x; set save_commands = run.txt
+      - Space-separated: set session = proj_x save_commands = run.txt
       - Multiple 'set' keywords on the same line
     """
     pairs: list[tuple[str, str]] = []
@@ -1248,6 +1245,9 @@ class PytaeRepl:
 
         # Session configuration commands (e.g. set checkpoint_format = parquet)
         if clean.startswith("set "):
+            sub = clean[4:].strip().lower()
+            if any(sub.startswith(k) for k in ("save_commands", "save", "save_history", "history")):
+                return False
             return True
 
         # Explicit reset / restore / table removal or mutation of state
@@ -2689,12 +2689,12 @@ class PytaeRepl:
             clean_arg0 = arg0.lower().lstrip("-")
             if clean_arg0 in ("s", "save"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set save = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save_commands = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set save = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save_commands = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
@@ -2763,19 +2763,19 @@ class PytaeRepl:
         """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set save = history.txt, set sessions_dir = <path>, set session = <name>, set load_session = <name>)."""
         if not args:
             sess_name = self.session_name or "none"
-            save_str = self.save_history_file or "none"
+            save_cmd_str = self.save_history_file or "none"
             sess_dir = str(get_sessions_dir())
             output_fn(f"session           = {sess_name} (options: <name>, none)")
             output_fn("load_session      = (options: <name>)")
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
-            output_fn(f"save              = {save_str} (options: <path>, none)")
+            output_fn(f"save_commands     = {save_cmd_str} (options: <path>, none)")
             output_fn(f"sessions_dir      = {sess_dir} (options: <path>, default)")
             return
 
         line = raw_line if raw_line else " ".join(args).strip()
         pairs = _parse_set_pairs(line)
         if not pairs:
-            output_fn("Usage: set [key [= value]] (e.g. set session = my_project, set load_session = my_project, set checkpoint_format = parquet, set save = history.txt)")
+            output_fn("Usage: set [key [= value]] (e.g. set session = my_project, set load_session = my_project, set checkpoint_format = parquet, set save_commands = history.txt)")
             return
 
         pair_map: dict[str, str] = {}
@@ -2933,26 +2933,24 @@ class PytaeRepl:
                     output_fn("Set checkpoint_format = ipc (checkpoints will be saved as fast uncompressed Arrow IPC).")
                 else:
                     output_fn(f"pytae: unsupported checkpoint_format '{val}'. Supported formats: ipc, parquet.")
-            elif k in ("save", "save_history", "history", "history_file"):
+            elif k == "save_commands":
                 if not val:
                     save_str = self.save_history_file or "none"
-                    output_fn(f"save = {save_str} (options: <path>, none)")
+                    output_fn(f"save_commands     = {save_str} (options: <path>, none)")
                     continue
                 clean_val = val.strip("'\"")
                 if clean_val.lower() in ("none", "off", "false", "0", ""):
                     self.save_history_file = None
-                    output_fn("Disabled auto-saving history on exit.")
+                    output_fn("Disabled auto-saving commands on exit.")
                 elif clean_val.lower() in ("true", "on", "1"):
                     self.save_history_file = "history.txt"
-                    self._record_history("set save = history.txt")
-                    output_fn("Set save = 'history.txt' (session commands will be auto-saved here on exit).")
+                    output_fn("Set save_commands = 'history.txt' (session commands will be auto-saved here on exit).")
                 else:
                     self.save_history_file = clean_val
-                    self._record_history(f"set save = {clean_val}")
-                    output_fn(f"Set save = '{clean_val}' (session commands will be auto-saved here on exit).")
+                    output_fn(f"Set save_commands = '{clean_val}' (session commands will be auto-saved here on exit).")
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: session, load_session, checkpoint_format, save, sessions_dir."
+                    f"pytae: unknown setting '{k}'. Supported settings: session, load_session, checkpoint_format, save_commands, sessions_dir."
                 )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -4046,7 +4044,7 @@ class PytaeRepl:
         # Case: 'set ' configuration keys and values
         if first_token == "set":
             if last_token == "set":
-                configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save", "opts"]
+                configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save_commands"]
                 return [c for c in configs if c.startswith(text)]
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
@@ -4055,7 +4053,7 @@ class PytaeRepl:
             if "session" in [t.lower() for t in prefix_tokens]:
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
-            if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save" in [t.lower() for t in prefix_tokens]:
+            if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
                 return _complete_paths(text)
 
         # Case 1: Ingestion / Export / Path completion
@@ -4093,7 +4091,7 @@ class PytaeRepl:
 
         # Case 7: 'set ' -> complete configuration keys
         if last_token == "set":
-            configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save"]
+            configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save_commands"]
             return [c for c in configs if c.startswith(text)]
         if "set" in [t.lower() for t in prefix_tokens]:
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
@@ -4103,7 +4101,7 @@ class PytaeRepl:
             if "session" in [t.lower() for t in prefix_tokens]:
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
-            if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save" in [t.lower() for t in prefix_tokens]:
+            if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
                 return _complete_paths(text)
 
         # Case 8: 'session ' -> complete subcommands

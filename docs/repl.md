@@ -55,7 +55,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [In-REPL Session Commands (`session`, `session load`, `sessions`)](#in-repl-session-commands-session-session-load-sessions)
   - [Custom Directory (`set sessions_dir = <path>`)](#custom-directory-set-sessions_dir--path)
 - [Session Export & Replay Scripts](#session-export--replay-scripts)
-  - [Upfront Auto-Save (`set save = <path>`)](#upfront-auto-save-set-save--path)
+  - [Upfront Auto-Save (`set save_commands = <path>`)](#upfront-auto-save-set-save_commands--path)
   - [Exit-Time Export (`exit -s [path]`)](#exit-time-export-exit--s-path)
   - [Automatic Replay Script Filtering (`_is_replayable_entry`)](#automatic-replay-script-filtering-_is_replayable_entry)
   - [Path Canonicalization & Windows UNC Resolution](#path-canonicalization--windows-unc-resolution)
@@ -641,12 +641,12 @@ pytae -session project_x
 
 Pytae provides a powerful workflow to turn interactive exploration into portable, automated pipeline scripts that run anywhere.
 
-### Upfront Auto-Save (`set save = <path>`)
+### Upfront Auto-Save (`set save_commands = <path>`)
 Configure where your session script should be saved upon exit:
 
 ```text
-pytae> set save = pipeline.txt
-Set save = 'pipeline.txt' (session commands will be auto-saved here on exit).
+pytae> set save_commands = pipeline.txt
+Set save_commands = 'pipeline.txt' (session commands will be auto-saved here on exit).
 ```
 When you quit the REPL via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically generates the script.
 
@@ -777,7 +777,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
 | | `set session` | `set session = <name>` | Bind REPL to persistent session | No |
 | | `set load_session` | `set load_session = <name>` | Switch session and restore latest checkpoint | Yes |
-| | `set save` | `set save = pipeline.txt` | Set target replay script path upfront | No |
+| | `set save_commands` | `set save_commands = pipeline.txt` | Set target replay script path upfront | No |
 | | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
 | **Export & Exit**| `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
