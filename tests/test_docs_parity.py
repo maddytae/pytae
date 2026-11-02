@@ -142,6 +142,7 @@ def test_reference_artifacts_exist_and_non_empty() -> None:
     assert "CRITICAL SYNTAX & USAGE RULES" in instr_text
     assert "-opts" in instr_text
     assert "-file" in instr_text  # Mentions deprecation of -file
+    assert len(instr_text) <= 8000, f"Instructions card exceeds Copilot Studio 8000 char limit ({len(instr_text)} chars)"
 
     # SQLite FTS5 search database
     db_path = ref_dir / "pytae_docs.db"
