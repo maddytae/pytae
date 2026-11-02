@@ -2845,4 +2845,85 @@ def test_repl_set_load_session_and_sessions_dir(tmp_path):
         set_sessions_dir(orig_dir)
 
 
+def test_repl_save_commands_captures_bare_output_and_canonical_posix_paths(tmp_path) -> None:
+    """Verify that bare '-o <path>' is recorded in session history and canonical paths use portable forward slashes."""
+    import polars as pl
+
+    from pytae.repl import PytaeRepl, _resolve_to_canonical_path
+
+    # Verify _resolve_to_canonical_path uses forward slashes
+    canon = _resolve_to_canonical_path("sample:penguins")
+    assert canon == "sample:penguins"
+
+    # Create dummy parquet file
+    data_file = tmp_path / "test_data.parquet"
+    pl.DataFrame({"x": [1, 2, 3]}).write_parquet(data_file)
+    out_csv = tmp_path / "exported.csv"
+    script_file = tmp_path / "commands.txt"
+
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Configure save_commands
+    r.execute_line(f"set save_commands = {script_file}", output_fn=outputs.append)
+    assert r.save_history_file == str(script_file)
+
+    # Load dataset
+    r.execute_line(f"df = {data_file}", output_fn=outputs.append)
+    assert "df" in r.tables
+
+    # Run bare -o
+    r.execute_line(f"-o {out_csv}", output_fn=outputs.append)
+    assert out_csv.exists()
+    assert any("Saved 3 rows to" in o for o in outputs)
+
+    # Exit and verify script file contents
+    outputs.clear()
+    res = r.execute_line("exit", output_fn=outputs.append)
+    assert res is False
+    assert script_file.exists()
+    script_text = script_file.read_text(encoding="utf-8")
+
+    # Script file must have captured:
+    # 1. The data assignment with forward slashes
+    assert f"df = {data_file.as_posix()}" in script_text
+    # 2. The -o command
+    assert f"-o {out_csv}" in script_text
+    # 3. Must NOT contain the meta 'set save_commands' command
+    assert "set save_commands" not in script_text
+
+
+def test_normalize_unquoted_windows_paths() -> None:
+    """Verify that unquoted Windows drive paths with backslashes are normalized to forward slashes to protect against shlex escaping."""
+    from pytae.repl import _normalize_unquoted_windows_paths
+
+    assert (
+        _normalize_unquoted_windows_paths(r"df = C:\Users\TAF3842\Downloads\final_output.parquet")
+        == "df = C:/Users/TAF3842/Downloads/final_output.parquet"
+    )
+    assert (
+        _normalize_unquoted_windows_paths(r"df=C:\Users\TAF3842\Downloads\final_output.parquet")
+        == "df=C:/Users/TAF3842/Downloads/final_output.parquet"
+    )
+    assert (
+        _normalize_unquoted_windows_paths(r"-o C:\Users\TAF3842\Downloads\test.csv")
+        == "-o C:/Users/TAF3842/Downloads/test.csv"
+    )
+    assert (
+        _normalize_unquoted_windows_paths(r"load C:\Users\TAF3842\Downloads\final_output.parquet as df")
+        == "load C:/Users/TAF3842/Downloads/final_output.parquet as df"
+    )
+    # Quoted strings must remain untouched
+    assert (
+        _normalize_unquoted_windows_paths(r'df = "C:\Users\TAF3842\Downloads\final_output.parquet"')
+        == r'df = "C:\Users\TAF3842\Downloads\final_output.parquet"'
+    )
+    assert (
+        _normalize_unquoted_windows_paths(r"df = 'C:\Users\TAF3842\Downloads\final_output.parquet'")
+        == r"df = 'C:\Users\TAF3842\Downloads\final_output.parquet'"
+    )
+
+
+
+
 

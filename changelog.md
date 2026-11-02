@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **REPL Session History Bare Output Capture (`-o <path>`)**:
+  - Standalone `-o <path>` commands executed in the REPL are now faithfully recorded into session history upon success, ensuring table exports appear in auto-saved command scripts (`set save_commands = ...`).
+- **Portable Forward Slash Canonicalization & Windows Backslash Protection**:
+  - Session command history resolves file paths using portable forward slashes (`p.as_posix()`), preventing Python's POSIX `shlex` from swallowing Windows backslashes upon script replay.
+  - REPL commands containing unquoted Windows backslash paths (e.g. `df = C:\Users\...`, `-o C:\Users\...`, or `load C:\Users\...`) are automatically pre-normalized before `shlex` tokenization, eliminating errors where paths were mangled into `C:UsersTAF3842...`.
+  - Canonical paths with spaces are cleanly wrapped in double quotes without generating redundant nested quotes.
 - **Renamed `set save` to `set save_commands` with Zero Output Pollution**:
   - Renamed REPL configuration setting `save` to `save_commands` to explicitly communicate that it auto-saves the session command script on exit.
   - Retired legacy `set save` without backward compatibility to prevent ambiguity with table/data saving operations.

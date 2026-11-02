@@ -11,6 +11,7 @@ import datetime
 import gc
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -36,8 +37,17 @@ def _safe_ipc_filename(name: str) -> str:
     return _safe_table_filename(name, ".ipc")
 
 
+def _normalize_unquoted_windows_paths(text: str) -> str:
+    """Normalize unquoted Windows drive paths with backslashes (e.g. C:\\Users\\... -> C:/Users/...) so shlex does not eat backslashes."""
+    return re.sub(
+        r'(?<!["\'])\b([a-zA-Z]):\\([^\s"\'=]+)',
+        lambda m: f"{m.group(1)}:/{m.group(2).replace(chr(92), '/')}",
+        text,
+    )
+
+
 def _resolve_to_canonical_path(path_str: str) -> str:
-    """Resolve a file path to its canonical absolute path, converting Windows mapped network drives to UNC."""
+    """Resolve a file path to its canonical absolute path, converting Windows mapped network drives to UNC and using portable forward slashes."""
     from pytae.cli_parsing import normalize_git_bash_path
 
     raw = path_str.strip().strip("'\"")
@@ -50,7 +60,7 @@ def _resolve_to_canonical_path(path_str: str) -> str:
     except Exception:
         return raw
 
-    canon_str = str(p)
+    canon_str = p.as_posix()
     if sys.platform == "win32":
         drive = p.drive  # e.g. "Z:"
         if drive and len(drive) == 2 and drive[1] == ":":
@@ -64,11 +74,14 @@ def _resolve_to_canonical_path(path_str: str) -> str:
                 # WNetGetConnectionW resolves drive letter to UNC path (e.g. \\server\share)
                 res = mpr.WNetGetConnectionW(ctypes.c_wchar_p(drive), buffer, ctypes.byref(buf_len))
                 if res == 0:  # NO_ERROR
-                    unc_remote = buffer.value.rstrip("\\/")
-                    sub_path = str(p)[len(drive) :].lstrip("\\/")
-                    canon_str = f"{unc_remote}\\{sub_path}"
+                    unc_remote = buffer.value.rstrip("\\/").replace("\\", "/")
+                    sub_path = str(p)[len(drive) :].lstrip("\\/").replace("\\", "/")
+                    canon_str = f"{unc_remote}/{sub_path}"
             except Exception:
                 pass
+
+    if " " in canon_str and not (canon_str.startswith('"') and canon_str.endswith('"')):
+        canon_str = f'"{canon_str}"'
 
     return canon_str
 
@@ -1941,7 +1954,8 @@ class PytaeRepl:
             return True
 
         # Tokenize line
-        tokens = shlex.split(line)
+        norm_line = _normalize_unquoted_windows_paths(line)
+        tokens = shlex.split(norm_line)
         first_lower = tokens[0].lower()
 
         # History
@@ -2311,11 +2325,13 @@ class PytaeRepl:
                 output_fn("Usage: -o <path.parquet|csv|ndjson|clip>")
                 return True
             target = tokens[1]
-            self._cmd_save(target, output_fn)
+            if self._cmd_save(target, output_fn):
+                self._record_history(f"-o {target}")
             return True
         elif first_lower.startswith("-o="):
             target = first_lower[3:].strip("\"'")
-            self._cmd_save(target, output_fn)
+            if self._cmd_save(target, output_fn):
+                self._record_history(f"-o {target}")
             return True
         elif first_lower.startswith(("-output", "--output")):
             output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
@@ -2938,7 +2954,9 @@ class PytaeRepl:
                     save_str = self.save_history_file or "none"
                     output_fn(f"save_commands     = {save_str} (options: <path>, none)")
                     continue
-                clean_val = val.strip("'\"")
+                from pytae.cli_parsing import normalize_git_bash_path
+
+                clean_val = normalize_git_bash_path(val.strip("'\""))
                 if clean_val.lower() in ("none", "off", "false", "0", ""):
                     self.save_history_file = None
                     output_fn("Disabled auto-saving commands on exit.")
@@ -3364,7 +3382,9 @@ class PytaeRepl:
             return
 
         # 2. File path assignment: `df1 = orders.parquet` or `df1 = data.csv -encoding latin1 -dlim ";"`
-        right_tokens = shlex.split(right_expr)
+        # Normalize unquoted Windows backslash paths (e.g. C:\Users\... -> C:/Users/...) so shlex does not eat backslashes
+        norm_expr = _normalize_unquoted_windows_paths(right_expr)
+        right_tokens = shlex.split(norm_expr)
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(right_tokens)
         if cleaned_tokens:
             clean_path = cleaned_tokens[0].removeprefix("load ").strip("\"' ")
@@ -3408,7 +3428,14 @@ class PytaeRepl:
                         self.path_str = var_name
                         canonical_target = _resolve_to_canonical_path(clean_path)
                         # Reconstruct right_expr with canonical path for replay portability
-                        canonical_right = right_expr.replace(clean_path, canonical_target, 1)
+                        unquoted_canon = canonical_target.strip("\"'")
+                        quoted_canon = f'"{unquoted_canon}"' if " " in unquoted_canon else unquoted_canon
+                        if f'"{clean_path}"' in norm_expr:
+                            canonical_right = norm_expr.replace(f'"{clean_path}"', quoted_canon, 1)
+                        elif f"'{clean_path}'" in norm_expr:
+                            canonical_right = norm_expr.replace(f"'{clean_path}'", quoted_canon, 1)
+                        else:
+                            canonical_right = norm_expr.replace(clean_path, quoted_canon, 1)
                         self._record_history(f"{var_name} = {canonical_right}")
                         opts_desc = ""
                         if reader_kwargs or nrows_val is not None:
@@ -3766,22 +3793,27 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae join error: {exc}")
 
-    def _cmd_save(self, target: str, output_fn: Callable[[str], None]) -> None:
+    def _cmd_save(self, target: str, output_fn: Callable[[str], None]) -> bool:
         if self.current_df is None:
             output_fn("pytae: no dataset loaded to save.")
-            return
+            return False
         if target.lower() in ("clip", "clipboard"):
             self.current_df.to_pandas().to_clipboard(index=False)
             output_fn(f"Copied {self.current_df.shape[0]:,} rows to system clipboard.")
-            return
-        out_path = Path(target)
+            return True
+        from pytae.cli_parsing import normalize_git_bash_path
+
+        clean_target = normalize_git_bash_path(target.strip("'\""))
+        out_path = Path(clean_target)
         try:
             from pytae.readers import write_dataframe
 
             write_dataframe(self.current_df, out_path)
             output_fn(f"Saved {self.current_df.shape[0]:,} rows to {out_path}.")
+            return True
         except Exception as exc:
             output_fn(f"pytae: failed to save to {out_path}: {exc}")
+            return False
 
     def _cmd_sql(self, query: str, output_fn: Callable[[str], None]) -> None:
         if self.current_df is None:
