@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 
 from pytae.cli_parsing import (
+    normalize_git_bash_path,
     parse_agg,
     parse_clean_columns_arg,
     parse_columns,
@@ -318,7 +319,7 @@ def _parse_diff_arg(
     if not parts:
         return raw_diff, None, default_tol, 0.0
 
-    target_str = parts[0]
+    target_str = normalize_git_bash_path(parts[0])
     on_cols: list[str] | None = None
     tol = default_tol
     rtol = 0.0

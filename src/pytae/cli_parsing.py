@@ -701,6 +701,39 @@ def parse_clean_columns_arg(raw: str) -> dict:
     return kwargs
 
 
+def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
+    """Normalize Git Bash / MSYS POSIX-style drive mounts (e.g. '/c/Users/...') to Windows paths ('C:/Users/...').
+
+    On Windows (os.name == 'nt') or when _force_nt is True:
+    If the path begins with '/<drive>/' and does not exist as-is, translate '/c/...' -> 'C:/...'.
+    On non-Windows platforms (Linux/macOS), the path is returned untouched unless forced for testing.
+    Surrounding quotes are preserved.
+    """
+    import os
+
+    if not path or not isinstance(path, str):
+        return path
+
+    quote_char = ""
+    stripped = path.strip()
+    if len(stripped) >= 2 and stripped[0] in ('"', "'") and stripped[-1] == stripped[0]:
+        quote_char = stripped[0]
+        unquoted = stripped[1:-1]
+    else:
+        unquoted = stripped
+
+    if os.name == "nt" or _force_nt:
+        m = re.match(r"^/([a-zA-Z])(/.*)$", unquoted)
+        if m:
+            if not _force_nt and Path(unquoted).exists():
+                return path
+            drive = m.group(1).upper()
+            converted = f"{drive}:{m.group(2)}"
+            return f"{quote_char}{converted}{quote_char}" if quote_char else converted
+
+    return path
+
+
 def parse_input_target(token: str) -> dict[str, Any]:
     """Parse a positional input target into (alias, path_str).
 
@@ -721,6 +754,8 @@ def parse_input_target(token: str) -> dict[str, Any]:
         alias = lhs.strip()
         rest = rhs.strip()
 
+    rest = normalize_git_bash_path(rest)
+
     # Guard against mistaken colon sheet syntax (e.g. data.xlsx:Sheet1)
     if ":" in rest and not rest.startswith("sample:"):
         p_part, _, s_part = rest.rpartition(":")
@@ -734,7 +769,7 @@ def parse_input_target(token: str) -> dict[str, Any]:
                     f'(e.g. -opts "{suggest_alias}sheet={s_part}")'
                 )
 
-    path_str = rest
+    path_str = rest.strip().strip("\"'")
     if not alias:
         if path_str.startswith("sample:"):
             alias = path_str[7:].removesuffix(".parquet")

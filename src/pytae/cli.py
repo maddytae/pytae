@@ -19,6 +19,7 @@ from typing import Any
 
 from pytae.cli_parsing import (
     expand_paths,
+    normalize_git_bash_path,
     parse_concat_arg,
     parse_filter,
     parse_fraction,
@@ -1051,6 +1052,8 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     out_target = str(args.output).strip() if args.output is not None else None
+    if out_target is not None:
+        out_target = normalize_git_bash_path(out_target)
     if out_target is not None and out_target.lower() == "clipboard":
         parser.error("'-o clipboard' is not supported; use '-o clip' instead")
     args.output = out_target

@@ -38,7 +38,10 @@ def _safe_ipc_filename(name: str) -> str:
 
 def _resolve_to_canonical_path(path_str: str) -> str:
     """Resolve a file path to its canonical absolute path, converting Windows mapped network drives to UNC."""
+    from pytae.cli_parsing import normalize_git_bash_path
+
     raw = path_str.strip().strip("'\"")
+    raw = normalize_git_bash_path(raw)
     if not raw or raw.startswith("sample:") or raw.startswith("http://") or raw.startswith("https://"):
         return raw
 

@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Git Bash / MSYS POSIX Path Normalization on Windows**:
+  - Automatically translates Git Bash MSYS virtual root mounts (e.g. `/c/Users/...`, `/d/...`) returned by `pwd` into native Windows paths (`C:/Users/...`, `D:/...`).
+  - Works seamlessly across REPL table assignments (`df = /c/Users/...`), CLI positional inputs (`pytae /c/Users/...`), output redirection (`-o /c/Users/...`), relational verbs (`-join`, `-diff`), and Python API readers (`pt.read_parquet`).
+  - Quotes `""` are required strictly when paths contain spaces (standard shell conventions); paths without spaces work directly unquoted.
+  - Zero behavioral change on Linux/macOS (`os.name == 'posix'`) or standard Windows CMD/PowerShell paths.
+
 ## [3.13.1] - 2026-11-02
 
 ### Added

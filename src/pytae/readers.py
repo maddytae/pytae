@@ -1017,6 +1017,15 @@ _TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
 _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
+def _normalize_source(source: Any) -> Any:
+    """Normalize Git Bash / MSYS paths on Windows when source is a path string or Path."""
+    if isinstance(source, (str, Path)):
+        from pytae.cli_parsing import normalize_git_bash_path
+
+        return normalize_git_bash_path(str(source))
+    return source
+
+
 def get_reader(
     path: Path,
     *,
@@ -1026,7 +1035,7 @@ def get_reader(
     sheet_name: str | int | None = None,
     **reader_kwargs: Any,
 ):
-    path = Path(path)
+    path = Path(_normalize_source(path))
     if (path.exists() and path.is_dir()) or (not path.exists() and any(ch in str(path) for ch in "*?[")):
         return GlobReader(
             path,
@@ -1369,6 +1378,7 @@ def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
+    source = _normalize_source(source)
     kwargs.setdefault("infer_schema_length", 10000)
     try:
         return DataFrame(pl.read_csv(source, *args, **kwargs))
@@ -1385,6 +1395,7 @@ def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
+    source = _normalize_source(source)
     kwargs.setdefault("memory_map", False)
     return DataFrame(pl.read_parquet(source, *args, **kwargs))
 
@@ -1395,7 +1406,7 @@ def read_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pl.read_ndjson(source, *args, **kwargs))
+    return DataFrame(pl.read_ndjson(_normalize_source(source), *args, **kwargs))
 
 
 def read_json(source: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1404,7 +1415,7 @@ def read_json(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pl.read_json(source, *args, **kwargs))
+    return DataFrame(pl.read_json(_normalize_source(source), *args, **kwargs))
 
 
 def read_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1413,7 +1424,7 @@ def read_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pl.read_ipc(source, *args, **kwargs))
+    return DataFrame(pl.read_ipc(_normalize_source(source), *args, **kwargs))
 
 
 def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1422,7 +1433,7 @@ def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pd.read_excel(source, *args, **kwargs))
+    return DataFrame(pd.read_excel(_normalize_source(source), *args, **kwargs))
 
 
 def read_database(query: Any, connection: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1441,7 +1452,7 @@ def scan_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
     from pytae.dataframe import DataFrame
 
     kwargs.setdefault("infer_schema_length", 10000)
-    return DataFrame(pl.scan_csv(source, *args, **kwargs))
+    return DataFrame(pl.scan_csv(_normalize_source(source), *args, **kwargs))
 
 
 def scan_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1450,7 +1461,7 @@ def scan_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pl.scan_parquet(source, *args, **kwargs))
+    return DataFrame(pl.scan_parquet(_normalize_source(source), *args, **kwargs))
 
 
 def scan_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1459,7 +1470,7 @@ def scan_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pl.scan_ndjson(source, *args, **kwargs))
+    return DataFrame(pl.scan_ndjson(_normalize_source(source), *args, **kwargs))
 
 
 def scan_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1468,7 +1479,7 @@ def scan_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     from pytae.dataframe import DataFrame
 
-    return DataFrame(pl.scan_ipc(source, *args, **kwargs))
+    return DataFrame(pl.scan_ipc(_normalize_source(source), *args, **kwargs))
 
 
 def read(*args: Any, **kwargs: Any) -> None:
