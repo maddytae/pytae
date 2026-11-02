@@ -2992,6 +2992,67 @@ def test_repl_redirected_file_input_suppresses_prompt(tmp_path, monkeypatch) -> 
     assert not any("winpty pytae" in o for o in outputs)
 
 
+def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> None:
+    """Verify that list_saved_sessions shows directory path, exact locations, and offline status safely."""
+    from pytae.repl import (
+        _get_history_dir,
+        get_commands_dir,
+        get_sessions_dir,
+        list_saved_sessions,
+        set_sessions_dir,
+    )
+
+    # 1. Verify directory paths under ~/.pytae
+    monkeypatch.delenv("PYTAE_HISTORY_DIR", raising=False)
+    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
+    hist_dir = _get_history_dir()
+    assert hist_dir.name == "history"
+    assert hist_dir.parent.name == ".pytae"
+
+    cmd_dir = get_commands_dir()
+    assert cmd_dir.name == "commands"
+    assert cmd_dir.parent.name == ".pytae"
+
+    # 2. Test list_saved_sessions with dummy sessions in custom temp dir
+    orig_sess_dir = get_sessions_dir()
+    custom_sess_dir = tmp_path / "sessions"
+    custom_sess_dir.mkdir(parents=True, exist_ok=True)
+    set_sessions_dir(custom_sess_dir)
+
+    try:
+        # Empty sessions directory
+        outputs: list[str] = []
+        list_saved_sessions(outputs.append)
+        assert any(f"Sessions Directory: {custom_sess_dir}" in o for o in outputs)
+        assert any("No saved sessions found" in o for o in outputs)
+
+        # Create a valid session
+        valid_sess = custom_sess_dir / "proj_alpha"
+        cp_dir = valid_sess / "checkpoints" / "cp1"
+        cp_dir.mkdir(parents=True, exist_ok=True)
+        (cp_dir / "data.parquet").write_bytes(b"12345")
+        (valid_sess / "session.json").write_text('{"updated_at": "2026-11-01 12:00:00"}', encoding="utf-8")
+
+        outputs.clear()
+        list_saved_sessions(outputs.append)
+        assert any(f"Sessions Directory: {custom_sess_dir}" in o for o in outputs)
+        assert any("proj_alpha" in o for o in outputs)
+        assert any(str(valid_sess) in o for o in outputs)
+        assert any("Ready (1 checkpoints (cp1)" in o for o in outputs)
+
+        # Create an unreadable / file entry (simulating offline / inaccessible share)
+        offline_sess = custom_sess_dir / "offline_share"
+        offline_sess.write_text("not_a_dir", encoding="utf-8")
+
+        outputs.clear()
+        list_saved_sessions(outputs.append)
+        assert any("offline_share" in o for o in outputs)
+        assert any("[Offline / Unreachable]" in o for o in outputs)
+    finally:
+        set_sessions_dir(orig_sess_dir)
+
+
+
 
 
 

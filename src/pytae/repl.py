@@ -236,7 +236,15 @@ def _get_process_rss_mb() -> float | None:
 
 
 _DEFAULT_SESSIONS_DIR = Path.home() / ".pytae" / "sessions"
+_DEFAULT_COMMANDS_DIR = Path.home() / ".pytae" / "commands"
 _CONFIGURED_SESSIONS_DIR: Path | None = None
+
+
+def get_commands_dir() -> Path:
+    """Return default directory for saved Pytae command scripts (~/.pytae/commands)."""
+    p = _DEFAULT_COMMANDS_DIR
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def get_sessions_dir() -> Path:
@@ -280,35 +288,52 @@ def _get_saved_session_names() -> list[str]:
 def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
     """List all saved persistent Pytae sessions stored on disk."""
     s_dir = get_sessions_dir()
+    output_fn(f"Sessions Directory: {s_dir}")
     if not s_dir.exists():
-        output_fn("No saved sessions found. Use 'session save <name>' or 'set session = <name>' to create one.")
+        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session = <name>' in REPL to persist one.)")
         return
-    sessions = sorted([p for p in s_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+    try:
+        sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".")])
+    except (OSError, PermissionError) as exc:
+        output_fn(f"pytae: could not access sessions directory: {exc}")
+        return
+
     if not sessions:
-        output_fn("No saved sessions found. Use 'session save <name>' or 'set session = <name>' to create one.")
+        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session = <name>' in REPL to persist one.)")
         return
-    output_fn("Saved Sessions:")
+
+    output_fn("")
+    output_fn(f"Saved Sessions ({len(sessions)} found):")
     for s_path in sessions:
-        meta_file = s_path / "session.json"
-        meta: dict[str, Any] = {}
-        if meta_file.exists():
-            try:
-                meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            except Exception:
-                meta = {}
-        cp_dir = s_path / "checkpoints"
-        cps = [p.name for p in cp_dir.iterdir() if p.is_dir()] if cp_dir.exists() else []
-        total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
-        if total_bytes >= 1024 * 1024:
-            size_str = f"~{total_bytes / (1024 * 1024):.1f} MB"
-        elif total_bytes >= 1024:
-            size_str = f"~{total_bytes / 1024:.1f} KB"
-        else:
-            size_str = f"{total_bytes} B"
-        up_date = meta.get("updated_at") or meta.get("created_at") or ""
-        date_str = f"; updated {up_date}" if up_date else ""
-        cp_str = f"{len(cps)} checkpoints: {', '.join(cps)}" if cps else "0 checkpoints"
-        output_fn(f"  - {s_path.name:<15} ({cp_str}; {size_str}{date_str})")
+        output_fn(f"  - {s_path.name}")
+        output_fn(f"    Path:        {s_path}")
+        try:
+            if not s_path.is_dir():
+                output_fn("    Status:      [Offline / Unreachable] (path is not accessible or not a directory)")
+                continue
+
+            meta_file = s_path / "session.json"
+            meta: dict[str, Any] = {}
+            if meta_file.exists():
+                try:
+                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                except Exception:
+                    meta = {}
+            cp_dir = s_path / "checkpoints"
+            cps = [p.name for p in cp_dir.iterdir() if p.is_dir()] if cp_dir.exists() else []
+            total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
+            if total_bytes >= 1024 * 1024:
+                size_str = f"~{total_bytes / (1024 * 1024):.1f} MB"
+            elif total_bytes >= 1024:
+                size_str = f"~{total_bytes / 1024:.1f} KB"
+            else:
+                size_str = f"{total_bytes} B"
+            up_date = meta.get("updated_at") or meta.get("created_at") or ""
+            date_str = f" | Updated: {up_date}" if up_date else ""
+            cp_str = f"{len(cps)} checkpoints ({', '.join(cps)})" if cps else "0 checkpoints"
+            output_fn(f"    Status:      Ready ({cp_str} | {size_str}{date_str})")
+        except (OSError, PermissionError):
+            output_fn("    Status:      [Offline / Unreachable] (network share or path not accessible)")
 
 
 try:
@@ -328,27 +353,10 @@ except ImportError:
 def _get_history_dir() -> Path:
     custom = os.environ.get("PYTAE_HISTORY_DIR")
     if custom:
-        d = Path(custom).expanduser()
+        d = Path(custom).expanduser().resolve()
     else:
-        d = Path.home() / ".pytae_history"
-
-    if d.exists() and not d.is_dir():
-        try:
-            old_content = d.read_text(encoding="utf-8")
-        except Exception:
-            old_content = ""
-        try:
-            d.unlink()
-        except Exception:
-            pass
-        d.mkdir(parents=True, exist_ok=True)
-        if old_content:
-            try:
-                (d / ".readline_history").write_text(old_content, encoding="utf-8")
-            except Exception:
-                pass
-    else:
-        d.mkdir(parents=True, exist_ok=True)
+        d = Path.home() / ".pytae" / "history"
+    d.mkdir(parents=True, exist_ok=True)
     return d
 
 
@@ -2728,7 +2736,7 @@ class PytaeRepl:
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
-                log_dest = str(getattr(self, "session_log_path", "~/.pytae_history/"))
+                log_dest = str(getattr(self, "session_log_path", "~/.pytae/history/"))
                 output_fn(
                     f"pytae: 'history {arg0}' is not supported. "
                     f"'history' displays the session audit log, and all commands are automatically recorded in {log_dest}"

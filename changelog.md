@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Unified `~/.pytae/` Directory Architecture & Resilient Session Inspection (`pytae -sessions`)**:
+  - Unified all Pytae user state under a single root directory `~/.pytae/` with dedicated subdirectories:
+    - `~/.pytae/sessions/` for persistent named sessions and checkpoints.
+    - `~/.pytae/commands/` for saved command scripts.
+    - `~/.pytae/history/` for readline history and interactive session flight recordings.
+  - Enhanced `pytae -sessions` and REPL `sessions` command to prominently display the active sessions directory path, individual session filesystem locations, checkpoint names, sizes, and timestamps.
+  - Implemented safe network share inspection: disconnected network drives or inaccessible session directories are cleanly marked as `[Offline / Unreachable]` without mutating or deleting records.
 - **Clean Script Replay Without Prompt Clutter (`pytae -i < script.txt`)**:
   - Automatically detects when REPL `stdin` is redirected from a file (`stat.S_ISREG`), suppressing interactive `pytae>` prompts so replaying session scripts runs cleanly without bunched prompts (`pytae> pytae> pytae>`).
   - Suppresses interactive arrow navigation notices when running in script replay mode.
