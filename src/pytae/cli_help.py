@@ -1215,10 +1215,273 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-i", "-sessions", "-ready"],
     ),
+    "checkpoint": KeywordHelp(
+        name="checkpoint",
+        flag="checkpoint <name>",
+        syntax="checkpoint <name>",
+        summary="Freeze in-memory workbench state into an immutable snapshot.",
+        description=(
+            "Takes an in-memory snapshot of all active tables and pipeline history.\n"
+            "If an active persistent session is enabled, the snapshot is also flushed\n"
+            "to disk in the configured format (IPC or Parquet) under checkpoints/<name>/.\n"
+            "If running in ephemeral mode (no active session), checkpoints are held in temporary memory/disk\n"
+            "and automatically cleaned up on exit unless promoted with 'session save <name>'."
+        ),
+        options=[
+            "<name> : Unique checkpoint identifier (alphanumeric, dashes, underscores).",
+            "restore <name> : Restore entire workbench to this checkpoint snapshot.",
+            "status checkpoints [-v] : List all saved checkpoints with timestamp and format.",
+            "rm checkpoint <name> : Delete an individual checkpoint (or 'rm checkpoint *').",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: checkpoint base_clean",
+            "pytae -i -session my_project  # Inside REPL: checkpoint model_v1",
+        ],
+        see_also=["restore", "reset", "status", "session"],
+    ),
+    "restore": KeywordHelp(
+        name="restore",
+        flag="restore <name>",
+        syntax="restore <name>",
+        summary="Restore the interactive workbench to a previously frozen checkpoint snapshot.",
+        description=(
+            "Reverts all tables and pipeline state to the exact condition recorded when\n"
+            "'checkpoint <name>' was created. Any intermediate uncheckpointed modifications\n"
+            "are cleared, and memory from abandoned steps is trimmed immediately."
+        ),
+        options=[
+            "<name> : Name of an existing checkpoint snapshot to restore.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: restore base_clean",
+            "pytae -i -session my_project  # Inside REPL: restore model_v1",
+        ],
+        see_also=["checkpoint", "reset", "status", "session"],
+    ),
+    "reset": KeywordHelp(
+        name="reset",
+        flag="reset [initial | <table_name>]",
+        syntax="reset [initial | <table_name>]",
+        summary="Revert workbench or individual table to the latest checkpoint or initial file read.",
+        description=(
+            "Reverts state without terminating the REPL session.\n"
+            "- Bare 'reset': Reverts to the latest checkpoint (or initial file read if no checkpoints exist).\n"
+            "- 'reset initial': Strictly reverts to the original file read state even if checkpoints exist.\n"
+            "- 'reset <table_name>': Resets only the specified table while preserving other tables."
+        ),
+        options=[
+            "(bare) : Revert to latest checkpoint (or initial state if no checkpoints).",
+            "initial : Revert strictly to original dataset as loaded from disk.",
+            "<table_name> : Revert only the named table.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: reset",
+            "pytae -i data.parquet  # Inside REPL: reset initial",
+        ],
+        see_also=["checkpoint", "restore", "status"],
+    ),
+    "status": KeywordHelp(
+        name="status",
+        flag="status [tables | checkpoints] [-v]",
+        syntax="status [tables | table <name> | checkpoints | checkpoint <name>] [-v]",
+        summary="Inspect active table shape, process RAM, memory tables, and saved checkpoints.",
+        description=(
+            "Central inspection command for REPL workbench state:\n"
+            "- Bare 'status': Shows active table, shape, active RAM, process RSS RAM, and checkpoint counts.\n"
+            "- 'status -v': Adds column schema details and full data type breakdown.\n"
+            "- 'status tables [-v]': Displays inventory of all in-memory tables and their memory footprint.\n"
+            "- 'status checkpoints [-v]': Lists saved snapshots, formats, and table breakdowns."
+        ),
+        options=[
+            "status [-v] : Overall workbench health and memory diagnostics.",
+            "status tables [-v] : Table inventory and per-table RAM consumption.",
+            "status table <name> [-v] : Diagnostics for a specific in-memory table.",
+            "status checkpoints [-v] : Checkpoint history and format breakdown.",
+            "status checkpoint <name> [-v] : Details for a specific checkpoint snapshot.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: status",
+            "pytae -i data.parquet  # Inside REPL: status tables -v",
+        ],
+        see_also=["checkpoint", "restore", "tables", "diff"],
+    ),
+    "quick_start": KeywordHelp(
+        name="quick_start",
+        flag="-quick_start, quick_start",
+        syntax="pytae -quick_start (or 'quick_start' inside REPL)",
+        summary="Interactive quick-start tutorial and essential cheat sheet recipes.",
+        description=(
+            "Provides an instant cheat sheet of core Pytae verbs, REPL workflows,\n"
+            "pipeline shortcuts, and built-in sample dataset commands.\n"
+            "Can be invoked from the shell CLI as 'pytae -quick_start' or from within\n"
+            "the REPL as '-quick_start', 'quick_start', or 'quickstart'."
+        ),
+        options=[
+            "df = sample:penguins : Load built-in sample dataset.",
+            "-filter, -mutate, -select, -arrange, -by -agg : Core verb pipelines.",
+            "-sql <query> : Run ANSI SQL queries across in-memory tables.",
+            "checkpoint <name> / restore <name> : Stateful snapshot management.",
+        ],
+        examples=[
+            "pytae -quick_start",
+            "pytae -help restore",
+        ],
+        see_also=["-help", "-cheatsheet", "-i"],
+    ),
+    "set": KeywordHelp(
+        name="set",
+        flag="set [key [= value]]",
+        syntax="set [key [= value]]",
+        summary="Configure or inspect interactive REPL workbench display and session settings.",
+        description=(
+            "Inspects or updates runtime settings in the interactive workbench:\n"
+            "- Bare 'set': Displays all current settings and choices.\n"
+            "- 'set <key>': Shows current value and permitted choices for <key>.\n"
+            "- 'set <key> = <val>': Updates setting (supports multiple comma- or space-separated pairs)."
+        ),
+        options=[
+            "session_name : Set active persistent session (saves checkpoints to ~/.pytae/sessions/<name>).",
+            "session_load : Load persistent session from disk.",
+            "sessions_dir : Override session storage directory path.",
+            "checkpoint_format : Checkpoint serialization ('ipc' default, or 'parquet').",
+            "save_commands : Auto-append executed pipeline commands to a script file.",
+            "max_rows, max_cols, float_precision, comma : Display format controls.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: set session_name = my_lab",
+            "pytae -i  # Inside REPL: set checkpoint_format = parquet",
+        ],
+        see_also=["session", "sessions", "status"],
+    ),
+    "history": KeywordHelp(
+        name="history",
+        flag="history [N] [-cli | -py | -s [path]]",
+        syntax="history [N] [-cli | -py | -s [path]]",
+        summary="Audit and export executed REPL commands.",
+        description=(
+            "Audits commands executed in the current session:\n"
+            "- Bare 'history': Displays numbered session command log.\n"
+            "- 'history -cli': Reconstructs session as a reproducible single-line CLI pipeline.\n"
+            "- 'history -py': Generates an executable Python script using pt/DataFrame verbs.\n"
+            "- 'history -s [path]': Exports clean replayable commands script to disk."
+        ),
+        options=[
+            "[N] : Limit display to last N commands.",
+            "-cli : Generate reproducible one-shot CLI command.",
+            "-py : Generate executable Python script.",
+            "-s [path] : Export replayable script (default: ~/.pytae/commands/<timestamp>.txt).",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: history",
+            "pytae -i  # Inside REPL: history -cli",
+        ],
+        see_also=["status", "session", "exit"],
+    ),
+    "rm": KeywordHelp(
+        name="rm",
+        flag="rm <table | checkpoint> <name>",
+        syntax="rm table <name> | rm checkpoint <name>",
+        summary="Explicitly delete in-memory tables or frozen checkpoints.",
+        description=(
+            "Strictly requires the explicit category ('table' or 'checkpoint') to prevent accidental deletions:\n"
+            "- 'rm table <name>': Unloads table from memory and immediately trims RAM (or 'rm table *').\n"
+            "- 'rm checkpoint <name>': Deletes snapshot from memory and disk (or 'rm checkpoint *')."
+        ),
+        options=[
+            "rm table <name> : Delete an in-memory table alias (or 'rm table *').",
+            "rm checkpoint <name> : Delete a saved checkpoint (or 'rm checkpoint *').",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: rm table df1",
+            "pytae -i  # Inside REPL: rm checkpoint cp1",
+        ],
+        see_also=["status", "checkpoint", "tables"],
+    ),
+    "use": KeywordHelp(
+        name="use",
+        flag="use <table_name>",
+        syntax="use <table_name>",
+        summary="Switch the active in-memory table cursor.",
+        description=(
+            "Switches the active default table without reloading files.\n"
+            "All subsequent verb commands (-filter, -head, -select, etc.) execute on this table."
+        ),
+        options=[
+            "<table_name> : Name of an existing loaded table.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: use df2",
+            "pytae -i  # Inside REPL: status tables",
+        ],
+        see_also=["status", "load", "tables"],
+    ),
+    "load": KeywordHelp(
+        name="load",
+        flag="load <path> [as <alias>] [options]",
+        syntax="load <path> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]",
+        summary="Load a dataset file into memory as a named table.",
+        description=(
+            "Loads a Parquet, CSV, IPC/Feather, or Excel dataset into the workbench.\n"
+            "Can also be written with shorthand assignment: `<alias> = <path>`."
+        ),
+        options=[
+            "as <alias> : Assign loaded dataset to named table variable.",
+            "-encoding <enc> : File text encoding (e.g. latin1, utf-8).",
+            "-dlim <char> : Delimiter character for text files (e.g. ';', '|').",
+            "-nrows <N> : Read only first N rows.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: load orders.parquet as orders",
+            "pytae -i  # Inside REPL: df = sample:penguins",
+        ],
+        see_also=["use", "status", "rm"],
+    ),
+    "exit": KeywordHelp(
+        name="exit",
+        flag="exit [-s [path]]",
+        syntax="exit [-s [path]]",
+        summary="Exit the interactive REPL workbench.",
+        description=(
+            "Terminates the interactive session and releases resources.\n"
+            "Using '-s' automatically saves all commands from the session into a replayable script."
+        ),
+        options=[
+            "-s : Save session commands to ./history.txt.",
+            "-s <path> : Save session commands to specified file path.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: exit",
+            "pytae -i  # Inside REPL: exit -s",
+        ],
+        see_also=["history", "session"],
+    ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries
 KEYWORD_ALIASES: dict[str, str] = {
+    "quickstart": "quick_start",
+    "-quickstart": "quick_start",
+    "--quickstart": "quick_start",
+    "quick_start": "quick_start",
+    "-quick_start": "quick_start",
+    "--quick_start": "quick_start",
+    "cheatsheet": "quick_start",
+    "-cheatsheet": "quick_start",
+    "--cheatsheet": "quick_start",
+    "checkpoints": "checkpoint",
+    "-checkpoints": "checkpoint",
+    "--checkpoints": "checkpoint",
+    "-checkpoint": "checkpoint",
+    "--checkpoint": "checkpoint",
+    "-restore": "restore",
+    "--restore": "restore",
+    "-reset": "reset",
+    "--reset": "reset",
+    "-status": "status",
+    "--status": "status",
+    "tables": "status",
+    "-tables": "status",
+    "--tables": "status",
     "ready": "session",
     "-ready": "session",
     "--ready": "session",

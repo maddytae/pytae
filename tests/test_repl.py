@@ -564,6 +564,30 @@ def test_repl_help_and_exit_strictly_enforced():
     assert cont is True
     assert any("PYTAE REPL COMMANDS" in o for o in outputs)
 
+    # 1b. '-help', 'help <topic>', and '-help <topic>'
+    outputs.clear()
+    cont = r.execute_line("-help", output_fn=outputs.append)
+    assert cont is True
+    assert any("PYTAE REPL COMMANDS" in o for o in outputs)
+
+    outputs.clear()
+    cont = r.execute_line("-help restore", output_fn=outputs.append)
+    assert cont is True
+    assert any("PYTAE CLI KEYWORD HELP: -restore" in o for o in outputs)
+    assert any("restore <name>" in o for o in outputs)
+
+    outputs.clear()
+    cont = r.execute_line("help checkpoint", output_fn=outputs.append)
+    assert cont is True
+    assert any("PYTAE CLI KEYWORD HELP: -checkpoint" in o for o in outputs)
+    assert any("checkpoint <name>" in o for o in outputs)
+
+    # 1c. '-quick_start' and 'quick_start'
+    outputs.clear()
+    cont = r.execute_line("-quick_start", output_fn=outputs.append)
+    assert cont is True
+    assert any("PYTAE CLI CHEAT SHEET & COOKBOOK" in o for o in outputs)
+
     # 2. '?' is rejected and guides to 'help'
     outputs.clear()
     cont = r.execute_line("?", output_fn=outputs.append)

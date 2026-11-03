@@ -121,6 +121,8 @@ _CLI_FLAGS = {
     "-verbose",
     "--verbose",
     "-cheatsheet",
+    "-quick_start",
+    "-quickstart",
     "-head",
     "-tail",
     "-shape",
@@ -342,6 +344,8 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument("-version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "-cheatsheet",
+        "-quick_start",
+        "-quickstart",
         action=_CheatsheetAction,
         help="print CLI quick-reference cheat sheet and cookbook recipes",
     )

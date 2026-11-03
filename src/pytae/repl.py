@@ -856,20 +856,16 @@ REPL_BANNER = """\
 ================================================================================
                     PYTAE INTERACTIVE WORKBENCH (v{version})
 ================================================================================
-  Quick Start:
-    df = sample:penguins           Load built-in sample (penguins, tips, titanic)
-    df = orders.parquet            Load local dataset (Parquet, CSV, IPC, Excel)
-    help                           Full command reference and pipeline cheat sheet
+Type '-help' (or 'help') for full commands reference, or '-quick_start' for cheat sheet recipes.
+To inspect specific commands or flags, type '-help <topic>' (e.g. -help restore, -help filter).
 
-  Key Interactions:
-    Pipelines : -filter "age > 30" | -select name,age | -arrange "age desc"
-    SQL       : -sql "SELECT species, COUNT(*) as n FROM df GROUP BY species"
-    Inspect   : -head 5 | -schema | -cols | status tables | status
-    State     : checkpoint cp1 | restore cp1 | reset | session save <name>
-    Shell     : !<cmd> (e.g. !ls -la) or pipe pipeline output: -cols | grep mass
-    Exit      : exit (or 'exit -s' to save session commands to history.txt)
+Quick Start:
+  df = sample:penguins           Load built-in sample (penguins, tips, titanic)
+  df = orders.parquet            Load local dataset (Parquet, CSV, IPC, Excel)
+  status tables                  List all loaded tables in memory and RAM footprint
+  exit                           Exit REPL (or 'exit -s' to save session commands)
 
-  Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
+Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
 ================================================================================\
 """
 
@@ -877,20 +873,15 @@ REPL_BANNER_LOADED = """\
 ================================================================================
                     PYTAE INTERACTIVE WORKBENCH (v{version})
 ================================================================================
-  Quick Start:
-    help                           Full command reference and pipeline cheat sheet
-    -head 10                       Preview active dataset
-    status tables                  List all tables in memory and RAM footprint
+Type '-help' (or 'help') for full commands reference, or '-quick_start' for cheat sheet recipes.
+To inspect specific commands or flags, type '-help <topic>' (e.g. -help restore, -help filter).
 
-  Key Interactions:
-    Pipelines : -filter "<cond>" | -select <cols> | -arrange "<cols>"
-    SQL       : -sql "SELECT * FROM df LIMIT 10"
-    Inspect   : -schema | -cols | -dtype | status | diff
-    State     : checkpoint cp1 | restore cp1 | reset | session save <name>
-    Shell     : !<cmd> (e.g. !ls -la) or pipe pipeline output: -cols | grep mass
-    Exit      : exit (or 'exit -s' to save session commands to history.txt)
+Quick Start:
+  -head 10                       Preview active dataset
+  status tables                  List all loaded tables in memory and RAM footprint
+  exit                           Exit REPL (or 'exit -s' to save session commands)
 
-  Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
+Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
 ================================================================================\
 """
 
@@ -959,8 +950,6 @@ AUTOCOMPLETION & SHORTCUTS:
 
 _DISALLOWED_ALIASES: dict[str, str] = {
     # Session controls hyphenated forms (must be bare words)
-    "-help": "help",
-    "--help": "help",
     "-exit": "exit",
     "--exit": "exit",
     "cls": "clear",
@@ -2135,11 +2124,6 @@ class PytaeRepl:
                 output_fn(f"Usage: exit [-s [path]] (unrecognized option: '{' '.join(exit_tokens[1:])}')")
                 return True
 
-        # Help (strictly 'help', not '?')
-        if line.lower() == "help":
-            output_fn(REPL_HELP)
-            return True
-
         # Shell command execution: !<command> (e.g. !ls, !dir)
         if line.startswith("!"):
             shell_cmd = line[1:].strip()
@@ -2167,6 +2151,24 @@ class PytaeRepl:
         norm_line = _normalize_unquoted_windows_paths(line)
         tokens = shlex.split(norm_line)
         first_lower = tokens[0].lower()
+
+        # Quick start cheat sheet (e.g. -quick_start, quick_start, -cheatsheet)
+        if first_lower in ("quick_start", "-quick_start", "--quick_start", "quickstart", "-quickstart", "--quickstart", "-cheatsheet", "cheatsheet"):
+            from pytae.cheatsheet import CHEATSHEET_TEXT
+            output_fn(CHEATSHEET_TEXT)
+            return True
+
+        # Help commands: 'help', '-help', '--help', 'help <topic>', '-help <topic>'
+        if first_lower in ("help", "-help", "--help"):
+            topic_tokens = tokens[1:]
+            if not topic_tokens:
+                output_fn(REPL_HELP)
+                return True
+            from pytae.cli_help import get_keyword_help
+            topic = " ".join(topic_tokens)
+            help_out = get_keyword_help(topic)
+            output_fn(help_out)
+            return True
 
         # Status: `status`, `status tables` / `status table [name]`, `status checkpoints` / `status checkpoint [name]`
         if first_lower == "status":
@@ -4913,6 +4915,12 @@ class PytaeRepl:
             if len(prefix_tokens) >= 2 and prefix_tokens[1].lower() in ("list", "ls"):
                 opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
                 return [opt for opt in opts if opt.startswith(text)]
+
+        # Case 0b: 'help ' or '-help ' -> complete available topics and keywords
+        if first_token in ("help", "-help"):
+            from pytae.cli_help import KEYWORD_DOCS
+            topics = sorted(list(KEYWORD_DOCS.keys()))
+            return [t for t in topics if t.startswith(text)]
 
         # Case 1: Ingestion / Export / Path completion
         if last_token in ("load", "-o") or last_token.startswith("-o=") or prefix.rstrip().endswith("="):
