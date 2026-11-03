@@ -5,7 +5,6 @@ Whenever the user requests to publish, release, bump the version, or cut a relea
 1. **Version Synchronization**:
    - Update `version = "X.Y.Z"` in `pyproject.toml`.
    - Update `__version__ = "X.Y.Z"` in `src/pytae/__init__.py`.
-   - Update `"version": "X.Y.Z"` in `extensions/vscode-pytae/package.json`.
    - Run `uv lock` to update `uv.lock`.
 
 2. **Mandatory Reference Regeneration**:
@@ -17,7 +16,7 @@ Whenever the user requests to publish, release, bump the version, or cut a relea
    - Never finalize a release without staging and committing these three regenerated files.
 
 3. **Changelog Updates**:
-   - Add release notes in `changelog.md` and `extensions/vscode-pytae/CHANGELOG.md`.
+   - Add release notes in `changelog.md`.
 
 4. **Testing & Validation**:
    - Run `uv run --with pytest --with matplotlib --with scipy pytest`

@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Removed
+- **VS Code Extension (`extensions/vscode-pytae`)**:
+  - Removed the standalone VS Code extension, themes, and syntaxes to streamline repository maintenance and focus exclusively on the core Python package, CLI, REPL, and MCP integrations.
+  - Updated release and contribution protocols accordingly.
+
 ### Added
 - **Full Active Session Migration Without Duplicates (`set sessions_dir = <path>`)**:
   - Relocating an active session now performs a complete, atomic migration from the default or existing directory to the new target directory.

@@ -112,7 +112,6 @@ Whenever publishing a new release to PyPI or creating a new version tag:
 1. **Version Bump**: Update the version string across all manifests:
    - `pyproject.toml` (`version = "X.Y.Z"`)
    - `src/pytae/__init__.py` (`__version__ = "X.Y.Z"`)
-   - `extensions/vscode-pytae/package.json` (`"version": "X.Y.Z"`)
    - Run `uv lock` to update `uv.lock`.
 
 2. **Regenerate Reference Files (MANDATORY)**:
@@ -126,7 +125,7 @@ Whenever publishing a new release to PyPI or creating a new version tag:
    - `reference/pytae_docs.db` (SQLite search database for CLI doc and MCP)
 
 3. **Changelog Updates**:
-   Document changes under the new version header in `changelog.md` and `extensions/vscode-pytae/CHANGELOG.md`.
+   Document changes under the new version header in `changelog.md`.
 
 4. **Testing & Quality Assurance**:
    Ensure all checks pass cleanly before publishing:
