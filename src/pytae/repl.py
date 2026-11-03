@@ -274,6 +274,20 @@ def set_sessions_dir(path: Path | str | None) -> Path:
     return p
 
 
+def _format_friendly_path(p: Path | str) -> str:
+    """Format path with ~ for user home directory if applicable."""
+    path_obj = Path(p).resolve()
+    try:
+        home = Path.home().resolve()
+        if path_obj == home or home in path_obj.parents:
+            rel = path_obj.relative_to(home)
+            rel_str = str(rel).replace("\\", "/")
+            return "~" if rel_str == "." else f"~/{rel_str}"
+    except Exception:
+        pass
+    return str(path_obj).replace("\\", "/")
+
+
 def is_session_dir(path: Path | str) -> bool:
     """Check if a path is a valid Pytae session directory via standard session markers.
 
@@ -2870,6 +2884,56 @@ class PytaeRepl:
         else:
             output_fn("\033[H\033[2J")
 
+    def _show_single_table_status(
+        self, resolved: str, output_fn: Callable[[str], None], verbose: bool = False
+    ) -> None:
+        tbl_df = self.tables[resolved]
+        n_rows, n_cols = tbl_df.shape
+        tbl_mem_mb = tbl_df.estimated_size() / (1024 * 1024)
+        src = self.table_sources.get(resolved, "")
+        src_str = f" ({src})" if src else ""
+        is_active = self.path_str == resolved or (self.current_df is not None and self.current_df is tbl_df)
+        act_str = " [active]" if is_active else ""
+        output_fn(f"Table          : {resolved}{src_str}{act_str}")
+        output_fn(f"Shape          : {n_rows:,} rows x {n_cols} columns")
+        output_fn(f"Table memory   : ~{tbl_mem_mb:.2f} MB")
+        status_desc = "active" if is_active else "inactive (tip: 'use " + resolved + "' to switch active cursor)"
+        output_fn(f"Status         : {status_desc}")
+        if verbose:
+            output_fn(f"Columns ({n_cols}):")
+            for col_name, dtype in zip(tbl_df.columns, tbl_df.dtypes, strict=False):
+                output_fn(f"  {col_name:<20}: {dtype}")
+
+    def _show_single_checkpoint_status(
+        self, cp_name: str, output_fn: Callable[[str], None], verbose: bool = False
+    ) -> None:
+        snap = self.checkpoints[cp_name]
+        cp_path = Path(snap["dir"]) if "dir" in snap else (self._get_cp_dir() / cp_name)
+        created_at = snap.get("created_at", "unknown")
+        fmt = snap.get("format", "ipc")
+        output_fn(f"Checkpoint     : {cp_name}")
+        output_fn(f"Created        : {created_at}")
+        output_fn(f"Format         : {fmt}")
+        if cp_path.exists():
+            try:
+                total_b = sum(f.stat().st_size for f in cp_path.rglob("*") if f.is_file())
+                output_fn(f"Disk size      : {_format_bytes(total_b)}")
+            except Exception:
+                pass
+        tbls = snap.get("tables", {})
+        if isinstance(tbls, dict) and tbls:
+            output_fn(f"Tables ({len(tbls)}):")
+            for t_name, val in tbls.items():
+                s = val.get("shape", []) if isinstance(val, dict) else getattr(val, "shape", [])
+                shape_str = f"{s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
+                if verbose and isinstance(val, dict):
+                    f_name = val.get("file", "")
+                    f_path = cp_path / f_name if f_name else None
+                    f_sz = f" ({_format_bytes(f_path.stat().st_size)})" if f_path and f_path.exists() else ""
+                    output_fn(f"  - {t_name:<14}: {shape_str} [{f_name}]{f_sz}")
+                else:
+                    output_fn(f"  - {t_name:<14}: {shape_str}")
+
     def _cmd_status(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
         args = args or []
         verbose = any(a in ("-v", "-verbose", "--verbose", "verbose", "v") for a in args)
@@ -2880,6 +2944,11 @@ class PytaeRepl:
             cat = target_args[0].lower()
             if cat in ("tables", "table"):
                 if len(target_args) == 1:
+                    if cat == "table" and (self.current_df is not None or self.tables):
+                        target_tbl = self.path_str or (next(iter(self.tables.keys())) if self.tables else None)
+                        if target_tbl and target_tbl in self.tables:
+                            self._show_single_table_status(target_tbl, output_fn, verbose=verbose)
+                            return
                     self._cmd_list_tables(output_fn, verbose=verbose)
                     return
                 # Specific table: `status table <name>`
@@ -2889,26 +2958,15 @@ class PytaeRepl:
                     avail = ", ".join(self.tables.keys()) if self.tables else "none"
                     output_fn(f"pytae: table '{tbl_name}' not found. Available tables: {avail}")
                     return
-                tbl_df = self.tables[resolved]
-                n_rows, n_cols = tbl_df.shape
-                tbl_mem_mb = tbl_df.estimated_size() / (1024 * 1024)
-                src = self.table_sources.get(resolved, "")
-                src_str = f" ({src})" if src else ""
-                is_active = self.path_str == resolved or (self.current_df is not None and self.current_df is tbl_df)
-                act_str = " [active]" if is_active else ""
-                output_fn(f"Table          : {resolved}{src_str}{act_str}")
-                output_fn(f"Shape          : {n_rows:,} rows x {n_cols} columns")
-                output_fn(f"Table memory   : ~{tbl_mem_mb:.2f} MB")
-                status_desc = "active" if is_active else "inactive (tip: 'use " + resolved + "' to switch active cursor)"
-                output_fn(f"Status         : {status_desc}")
-                if verbose:
-                    output_fn(f"Columns ({n_cols}):")
-                    for col_name, dtype in zip(tbl_df.columns, tbl_df.dtypes, strict=False):
-                        output_fn(f"  {col_name:<20}: {dtype}")
+                self._show_single_table_status(resolved, output_fn, verbose=verbose)
                 return
 
             if cat in ("checkpoints", "checkpoint"):
                 if len(target_args) == 1:
+                    if cat == "checkpoint" and len(self.checkpoints) == 1:
+                        cp_name = next(iter(self.checkpoints.keys()))
+                        self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
+                        return
                     self._cmd_list_checkpoints(output_fn, verbose=verbose)
                     return
                 # Specific checkpoint: `status checkpoint <name>`
@@ -2917,67 +2975,93 @@ class PytaeRepl:
                     avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
                     output_fn(f"pytae: checkpoint '{cp_name}' not found. Available checkpoints: {avail}")
                     return
-                snap = self.checkpoints[cp_name]
-                cp_path = Path(snap["dir"]) if "dir" in snap else (self._get_cp_dir() / cp_name)
-                created_at = snap.get("created_at", "unknown")
-                fmt = snap.get("format", "ipc")
-                output_fn(f"Checkpoint     : {cp_name}")
-                output_fn(f"Created        : {created_at}")
-                output_fn(f"Format         : {fmt}")
-                if cp_path.exists():
-                    try:
-                        total_b = sum(f.stat().st_size for f in cp_path.rglob("*") if f.is_file())
-                        output_fn(f"Disk size      : {_format_bytes(total_b)}")
-                    except Exception:
-                        pass
-                tbls = snap.get("tables", {})
-                if isinstance(tbls, dict) and tbls:
-                    output_fn(f"Tables ({len(tbls)}):")
-                    for t_name, val in tbls.items():
-                        s = val.get("shape", []) if isinstance(val, dict) else getattr(val, "shape", [])
-                        shape_str = f"{s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
-                        if verbose and isinstance(val, dict):
-                            f_name = val.get("file", "")
-                            f_path = cp_path / f_name if f_name else None
-                            f_sz = f" ({_format_bytes(f_path.stat().st_size)})" if f_path and f_path.exists() else ""
-                            output_fn(f"  - {t_name:<14}: {shape_str} [{f_name}]{f_sz}")
-                        else:
-                            output_fn(f"  - {t_name:<14}: {shape_str}")
+                self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
                 return
 
             output_fn(
                 f"pytae: unrecognized status category '{target_args[0]}'. "
-                "Use 'status', 'status tables [-v]', or 'status checkpoints [-v]'."
+                "Use 'status', 'status table [name] [-v]', 'status tables [-v]', or 'status checkpoints [-v]'."
             )
             return
 
-        # Overall workbench status: `status` or `status -v`
+        # Overall REPL session status: `status` or `status -v`
         rss = _get_process_rss_mb()
         rss_str = f"~{rss:.1f} MB (PID {os.getpid()})" if rss is not None else f"PID {os.getpid()}"
-        if self.current_df is None:
-            output_fn("No dataset loaded. Use '<var> = <path.parquet>' to load a table.")
-            output_fn(f"Process RAM   : {rss_str}")
-            if self.checkpoints:
-                output_fn(f"Checkpoints   : {len(self.checkpoints)} saved ({', '.join(self.checkpoints.keys())})")
-            return
 
-        n_rows, n_cols = self.current_df.shape
-        mem_mb = self.current_df.estimated_size() / (1024 * 1024)
-        output_fn(f"Active dataset: {self.path_str or '<memory>'}")
-        output_fn(f"Shape         : {n_rows:,} rows x {n_cols} columns")
-        output_fn(f"Active table  : ~{mem_mb:.2f} MB")
-        if len(self.tables) > 1:
-            total_tables_mb = sum(t.estimated_size() / (1024 * 1024) for t in self.tables.values())
-            tbl_names = ", ".join(self.tables.keys())
-            output_fn(f"Loaded tables : {len(self.tables)} loaded ({tbl_names}) [~{total_tables_mb:.2f} MB total]")
+        output_fn("=== REPL Session Status ===")
+        if self.session_name:
+            sess_dir = get_sessions_dir() / self.session_name
+            storage_str = _format_friendly_path(sess_dir)
+            output_fn(f"Session Name  : {self.session_name} (storage: {storage_str})")
         else:
-            output_fn(f"Loaded tables : 1 loaded ({self.path_str or 'df'})")
-        output_fn(f"Process RAM   : {rss_str}")
-        output_fn(f"Checkpoints   : {len(self.checkpoints)} saved")
+            storage_str = _format_friendly_path(get_sessions_dir())
+            output_fn(f"Session Name  : <none> (storage: {storage_str})")
+
+        # Active Table
+        if self.current_df is not None:
+            active_name = self.path_str or "df"
+            n_rows, n_cols = self.current_df.shape
+            mem_mb = self.current_df.estimated_size() / (1024 * 1024)
+            output_fn(f"Active Table  : {active_name} ({n_rows:,} rows x {n_cols} cols, ~{mem_mb:.2f} MB)")
+        else:
+            output_fn("Active Table  : (none)")
+
+        # Loaded Tables
+        if not self.tables:
+            output_fn("Loaded Tables : 0 tables loaded (use '<var> = <path>' to load)")
+        elif len(self.tables) == 1:
+            t_name = next(iter(self.tables.keys()))
+            t_df = self.tables[t_name]
+            t_mb = t_df.estimated_size() / (1024 * 1024)
+            output_fn(f"Loaded Tables : 1 table [{t_name}*] (~{t_mb:.2f} MB in memory)")
+        else:
+            total_mb = sum(t.estimated_size() / (1024 * 1024) for t in self.tables.values())
+            t_list = [f"{t}*" if t == self.path_str else t for t in self.tables.keys()]
+            output_fn(f"Loaded Tables : {len(self.tables)} tables [{', '.join(t_list)}] (~{total_mb:.2f} MB in memory)")
+
+        if verbose and self.tables:
+            for t_name, t_df in self.tables.items():
+                is_act = " [active]" if t_name == self.path_str else ""
+                r_c, c_c = t_df.shape
+                mb = t_df.estimated_size() / (1024 * 1024)
+                src = self.table_sources.get(t_name, "")
+                src_info = f" (source: {src})" if src else ""
+                output_fn(f"  - {t_name}{is_act:<9}: {r_c:,} rows x {c_c} cols (~{mb:.2f} MB){src_info}")
+
+        # Checkpoints
+        if not self.checkpoints:
+            output_fn("Checkpoints   : 0 saved")
+        else:
+            latest_cp = list(self.checkpoints.keys())[-1]
+            output_fn(f"Checkpoints   : {len(self.checkpoints)} saved (latest: {latest_cp})")
+
+        if verbose and self.checkpoints:
+            for cp_name, cp_meta in self.checkpoints.items():
+                fmt = cp_meta.get("format", "ipc")
+                created = cp_meta.get("created_at", "")
+                t_count = len(cp_meta.get("tables", {}))
+                output_fn(f"  - {cp_name:<12}: [{fmt}] created {created} ({t_count} tables)")
+
+        # Session Logs & Settings in verbose mode
         if verbose:
-            output_fn(f"Columns ({n_cols}):")
-            for col_name, dtype in zip(self.current_df.columns, self.current_df.dtypes, strict=False):
-                output_fn(f"  {col_name:<20}: {dtype}")
+            if getattr(self, "session_history_path", None) and self.session_history_path.exists():
+                hist_str = _format_friendly_path(self.session_history_path)
+                output_fn(f"Session Logs  : {hist_str}")
+            fmt = getattr(self, "checkpoint_format", "ipc")
+            sc = "on" if getattr(self, "save_commands", True) else "off"
+            mr = getattr(self, "max_rows", "default")
+            mc = getattr(self, "max_cols", "all")
+            fp = getattr(self, "float_precision", "auto")
+            output_fn(
+                f"Settings      : checkpoint_format={fmt}, save_commands={sc}, max_rows={mr}, max_cols={mc}, float_precision={fp}"
+            )
+
+        # Process RAM
+        output_fn(f"Process RAM   : {rss_str}")
+
+        # Footer tip
+        output_fn("-" * 60)
+        output_fn("(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints)")
 
     def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         if not args:

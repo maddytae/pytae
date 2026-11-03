@@ -1838,7 +1838,8 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     outputs.clear()
     r.execute_line("status", output_fn=outputs.append)
     status_text = "\n".join(outputs)
-    assert "No dataset loaded." in status_text
+    assert "=== REPL Session Status ===" in status_text
+    assert "Active Table  : (none)" in status_text
     assert "Process RAM" in status_text
 
     r.close()
@@ -3748,34 +3749,49 @@ def test_repl_status_subcommands_and_verbose():
     # 1. Status with no dataset loaded
     r.execute_line("status", output_fn=outputs.append)
     st_none = "\n".join(outputs)
-    assert "No dataset loaded." in st_none
+    assert "=== REPL Session Status ===" in st_none
+    assert "Session Name  : <none>" in st_none
+    assert "Active Table  : (none)" in st_none
+    assert "Loaded Tables : 0 tables loaded" in st_none
 
     # 2. Load two tables
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
     r.execute_line("checkpoint cp1", output_fn=outputs.append)
 
-    # 3. Bare status (active table, shape, active RAM, process RAM, checkpoints count)
-    # MUST NOT show column names (reserved for -v)
+    # 3. Bare status (session status: session name, active table, tables overview, checkpoints, process RAM)
+    # MUST NOT show column names (reserved for 'status table <name> -v') and MUST NOT have Commands Run
     outputs.clear()
     r.execute_line("status", output_fn=outputs.append)
     st = "\n".join(outputs)
-    assert "Active dataset: df2" in st
-    assert "Shape         : 244 rows x 7 columns" in st
-    assert "Active table  : ~0.01 MB" in st
-    assert "Loaded tables : 2 loaded (df1, df2)" in st
+    assert "=== REPL Session Status ===" in st
+    assert "Session Name  : <none>" in st
+    assert "Active Table  : df2 (244 rows x 7 cols" in st
+    assert "Loaded Tables : 2 tables" in st
     assert "Process RAM   :" in st
-    assert "Checkpoints   : 1 saved" in st
+    assert "Checkpoints   : 1 saved (latest: cp1)" in st
     assert "Columns (" not in st
+    assert "Commands Run" not in st
 
-    # 4. status -v (shows schema and column types)
+    # 4. status -v (shows session verbose breakdown: per-table inventory, checkpoints list, settings)
     outputs.clear()
     r.execute_line("status -v", output_fn=outputs.append)
     st_v = "\n".join(outputs)
-    assert "Active dataset: df2" in st_v
-    assert "Columns (7):" in st_v
-    assert "total_bill" in st_v
-    assert "tip" in st_v
+    assert "=== REPL Session Status ===" in st_v
+    assert "Loaded Tables : 2 tables" in st_v
+    assert "df1" in st_v
+    assert "df2 [active]" in st_v
+    assert "cp1" in st_v
+    assert "Settings      :" in st_v
+    assert "Columns (" not in st_v  # Table columns belong to 'status table [name] -v'
+
+    # 4b. status table (with no name: shows active table df2 details)
+    outputs.clear()
+    r.execute_line("status table", output_fn=outputs.append)
+    st_act_tbl = "\n".join(outputs)
+    assert "Table          : df2" in st_act_tbl
+    assert "Shape          : 244 rows x 7 columns" in st_act_tbl
+    assert "Status         : active" in st_act_tbl
 
     # 5. status tables (shows table names, shapes, sources) - no column names
     outputs.clear()
@@ -4151,6 +4167,24 @@ def test_init_readline_binds_tab_complete(monkeypatch):
     assert "Tab: complete" in bound_commands
     assert '"\\t": complete' in bound_commands
     assert "bind ^I rl_complete" in bound_commands
+
+
+def test_repl_named_session_status(tmp_path):
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    orig = set_sessions_dir(tmp_path / "sessions")
+    try:
+        r = PytaeRepl(session="alpha_proj")
+        outputs: list[str] = []
+        r.execute_line("status", output_fn=outputs.append)
+        st = "\n".join(outputs)
+        assert "=== REPL Session Status ===" in st
+        assert "Session Name  : alpha_proj (storage:" in st
+        assert "alpha_proj" in st
+        assert "Commands Run" not in st
+        r.close()
+    finally:
+        set_sessions_dir(orig)
 
 
 
