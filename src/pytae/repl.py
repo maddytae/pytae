@@ -2934,57 +2934,8 @@ class PytaeRepl:
                 else:
                     output_fn(f"  - {t_name:<14}: {shape_str}")
 
-    def _cmd_status(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
-        args = args or []
-        verbose = any(a in ("-v", "-verbose", "--verbose", "verbose", "v") for a in args)
-        target_args = [a for a in args if a not in ("-v", "-verbose", "--verbose", "verbose", "v")]
-
-        # Subcommand routing: `status tables`, `status table [name]`, `status checkpoints`, `status checkpoint [name]`
-        if target_args:
-            cat = target_args[0].lower()
-            if cat in ("tables", "table"):
-                if len(target_args) == 1:
-                    if cat == "table" and (self.current_df is not None or self.tables):
-                        target_tbl = self.path_str or (next(iter(self.tables.keys())) if self.tables else None)
-                        if target_tbl and target_tbl in self.tables:
-                            self._show_single_table_status(target_tbl, output_fn, verbose=verbose)
-                            return
-                    self._cmd_list_tables(output_fn, verbose=verbose)
-                    return
-                # Specific table: `status table <name>`
-                tbl_name = target_args[1]
-                resolved = self._resolve_table_name(tbl_name)
-                if resolved is None:
-                    avail = ", ".join(self.tables.keys()) if self.tables else "none"
-                    output_fn(f"pytae: table '{tbl_name}' not found. Available tables: {avail}")
-                    return
-                self._show_single_table_status(resolved, output_fn, verbose=verbose)
-                return
-
-            if cat in ("checkpoints", "checkpoint"):
-                if len(target_args) == 1:
-                    if cat == "checkpoint" and len(self.checkpoints) == 1:
-                        cp_name = next(iter(self.checkpoints.keys()))
-                        self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
-                        return
-                    self._cmd_list_checkpoints(output_fn, verbose=verbose)
-                    return
-                # Specific checkpoint: `status checkpoint <name>`
-                cp_name = target_args[1]
-                if cp_name not in self.checkpoints:
-                    avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
-                    output_fn(f"pytae: checkpoint '{cp_name}' not found. Available checkpoints: {avail}")
-                    return
-                self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
-                return
-
-            output_fn(
-                f"pytae: unrecognized status category '{target_args[0]}'. "
-                "Use 'status', 'status table [name] [-v]', 'status tables [-v]', or 'status checkpoints [-v]'."
-            )
-            return
-
-        # Overall REPL session status: `status` or `status -v`
+    def _show_session_status(self, output_fn: Callable[[str], None], verbose: bool = False) -> None:
+        """Display REPL session status, storage directory, tables overview, and resource health."""
         rss = _get_process_rss_mb()
         rss_str = f"~{rss:.1f} MB (PID {os.getpid()})" if rss is not None else f"PID {os.getpid()}"
 
@@ -3062,6 +3013,67 @@ class PytaeRepl:
         # Footer tip
         output_fn("-" * 60)
         output_fn("(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints)")
+
+    def _cmd_status(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
+        args = args or []
+        verbose = any(a in ("-v", "-verbose", "--verbose", "verbose", "v") for a in args)
+        target_args = [a for a in args if a not in ("-v", "-verbose", "--verbose", "verbose", "v")]
+
+        # Direct user to specific subcommands if bare 'status' or 'status -v' is typed
+        if not target_args:
+            output_fn("pytae: please specify a status category to inspect:")
+            output_fn("  - status session [-v]      : Inspect current REPL session state and storage directory")
+            output_fn("  - status table [name] [-v] : Inspect active table or a specific table schema")
+            output_fn("  - status tables [-v]       : View inventory of all loaded in-memory tables")
+            output_fn("  - status checkpoint [name] : Inspect checkpoint snapshot and frozen tables")
+            output_fn("  - status checkpoints [-v]  : View inventory of all saved checkpoints")
+            return
+
+        cat = target_args[0].lower()
+        if cat in ("session", "sessions"):
+            self._show_session_status(output_fn, verbose=verbose)
+            return
+
+        if cat in ("tables", "table"):
+            if len(target_args) == 1:
+                if cat == "table" and (self.current_df is not None or self.tables):
+                    target_tbl = self.path_str or (next(iter(self.tables.keys())) if self.tables else None)
+                    if target_tbl and target_tbl in self.tables:
+                        self._show_single_table_status(target_tbl, output_fn, verbose=verbose)
+                        return
+                self._cmd_list_tables(output_fn, verbose=verbose)
+                return
+            # Specific table: `status table <name>`
+            tbl_name = target_args[1]
+            resolved = self._resolve_table_name(tbl_name)
+            if resolved is None:
+                avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                output_fn(f"pytae: table '{tbl_name}' not found. Available tables: {avail}")
+                return
+            self._show_single_table_status(resolved, output_fn, verbose=verbose)
+            return
+
+        if cat in ("checkpoints", "checkpoint"):
+            if len(target_args) == 1:
+                if cat == "checkpoint" and len(self.checkpoints) == 1:
+                    cp_name = next(iter(self.checkpoints.keys()))
+                    self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
+                    return
+                self._cmd_list_checkpoints(output_fn, verbose=verbose)
+                return
+            # Specific checkpoint: `status checkpoint <name>`
+            cp_name = target_args[1]
+            if cp_name not in self.checkpoints:
+                avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+                output_fn(f"pytae: checkpoint '{cp_name}' not found. Available checkpoints: {avail}")
+                return
+            self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
+            return
+
+        output_fn(
+            f"pytae: unrecognized status category '{target_args[0]}'. "
+            "Use 'status session [-v]', 'status table [name] [-v]', 'status tables [-v]', or 'status checkpoints [-v]'."
+        )
 
     def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         if not args:
@@ -5120,9 +5132,11 @@ class PytaeRepl:
             options = ["*"] + list(self.checkpoints.keys())
             return [c for c in options if c.startswith(text)]
 
-        # Case 5b: 'status ' -> complete subcommands: tables, table, checkpoints, checkpoint, -v
+        # Case 5b: 'status ' -> complete subcommands: session, tables, table, checkpoints, checkpoint, -v
         if last_token == "status":
-            return [opt for opt in ("tables", "table", "checkpoints", "checkpoint", "-v") if opt.startswith(text)]
+            return [opt for opt in ("session", "table", "tables", "checkpoint", "checkpoints", "-v") if opt.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("session", "sessions"):
+            return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("table", "tables"):
             options = list(self.tables.keys()) + ["-v"]
             return [t for t in options if t.startswith(text)]

@@ -1838,9 +1838,15 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     outputs.clear()
     r.execute_line("status", output_fn=outputs.append)
     status_text = "\n".join(outputs)
-    assert "=== REPL Session Status ===" in status_text
-    assert "Active Table  : (none)" in status_text
-    assert "Process RAM" in status_text
+    assert "please specify a status category to inspect" in status_text
+    assert "status session" in status_text
+
+    outputs.clear()
+    r.execute_line("status session", output_fn=outputs.append)
+    sess_text = "\n".join(outputs)
+    assert "=== REPL Session Status ===" in sess_text
+    assert "Active Table  : (none)" in sess_text
+    assert "Process RAM" in sess_text
 
     r.close()
 
@@ -3746,23 +3752,42 @@ def test_repl_status_subcommands_and_verbose():
     outputs: list[str] = []
     r = PytaeRepl()
 
-    # 1. Status with no dataset loaded
+    # 1. Bare status directs to specific subcommands (session, table, checkpoints)
     r.execute_line("status", output_fn=outputs.append)
     st_none = "\n".join(outputs)
-    assert "=== REPL Session Status ===" in st_none
-    assert "Session Name  : <none>" in st_none
-    assert "Active Table  : (none)" in st_none
-    assert "Loaded Tables : 0 tables loaded" in st_none
+    assert "please specify a status category to inspect" in st_none
+    assert "status session" in st_none
+    assert "status table" in st_none
+    assert "status checkpoint" in st_none
+
+    # 1b. status session with no dataset loaded
+    outputs.clear()
+    r.execute_line("status session", output_fn=outputs.append)
+    st_sess_none = "\n".join(outputs)
+    assert "=== REPL Session Status ===" in st_sess_none
+    assert "Session Name  : <none>" in st_sess_none
+    assert "Active Table  : (none)" in st_sess_none
+    assert "Loaded Tables : 0 tables loaded" in st_sess_none
 
     # 2. Load two tables
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
     r.execute_line("checkpoint cp1", output_fn=outputs.append)
 
-    # 3. Bare status (session status: session name, active table, tables overview, checkpoints, process RAM)
-    # MUST NOT show column names (reserved for 'status table <name> -v') and MUST NOT have Commands Run
+    # 3. Bare status and status -v direct the user to specific categories
     outputs.clear()
     r.execute_line("status", output_fn=outputs.append)
+    st_dir = "\n".join(outputs)
+    assert "please specify a status category to inspect" in st_dir
+
+    outputs.clear()
+    r.execute_line("status -v", output_fn=outputs.append)
+    st_v_dir = "\n".join(outputs)
+    assert "please specify a status category to inspect" in st_v_dir
+
+    # 3b. status session (session status: session name, active table, tables overview, checkpoints, process RAM)
+    outputs.clear()
+    r.execute_line("status session", output_fn=outputs.append)
     st = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st
     assert "Session Name  : <none>" in st
@@ -3773,9 +3798,9 @@ def test_repl_status_subcommands_and_verbose():
     assert "Columns (" not in st
     assert "Commands Run" not in st
 
-    # 4. status -v (shows session verbose breakdown: per-table inventory, checkpoints list, settings)
+    # 4. status session -v (shows session verbose breakdown: per-table inventory, checkpoints list, settings)
     outputs.clear()
-    r.execute_line("status -v", output_fn=outputs.append)
+    r.execute_line("status session -v", output_fn=outputs.append)
     st_v = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st_v
     assert "Loaded Tables : 2 tables" in st_v
@@ -4176,7 +4201,7 @@ def test_repl_named_session_status(tmp_path):
     try:
         r = PytaeRepl(session="alpha_proj")
         outputs: list[str] = []
-        r.execute_line("status", output_fn=outputs.append)
+        r.execute_line("status session", output_fn=outputs.append)
         st = "\n".join(outputs)
         assert "=== REPL Session Status ===" in st
         assert "Session Name  : alpha_proj (storage:" in st
