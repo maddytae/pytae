@@ -797,7 +797,7 @@ INSPECTION & EXPORT:
   -schema                : Display structured schema breakdown (columns, dtypes, nulls, cardinality)
   -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
   -dtype / -nulls        : Inspect schema dtypes and missing value counts
-  diff [<tbl1>] <tbl2> [on=<key>] : Compare two tables or active table against <tbl2> (or checkpoint)
+  -diff [<tbl1>] <tbl2> [on=<key>] : Compare two tables or active table against <tbl2> (or checkpoint)
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
@@ -972,6 +972,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "dropna",
         "fillna",
         "clean_columns",
+        "diff",
         "mask",
         "unmask",
         "long",
@@ -2101,8 +2102,8 @@ class PytaeRepl:
             self._cmd_rename(tokens[1:], output_fn)
             return True
 
-        # Compare two datasets (`diff <tbl1> <tbl2>` or `diff <tbl>` or `-diff ...`)
-        if first_lower in ("diff", "-diff"):
+        # Compare two datasets (`-diff <tbl1> <tbl2>` or `-diff <tbl>`)
+        if first_lower == "-diff":
             self._cmd_diff(tokens[1:], output_fn)
             return True
 
@@ -2364,7 +2365,7 @@ class PytaeRepl:
                 "py",
             )
         ):
-            if len(tokens) > 1 and tokens[1].lower() in ("diff", "-diff"):
+            if len(tokens) > 1 and tokens[1].lower() == "-diff":
                 self._cmd_diff([resolved_table] + tokens[2:], output_fn)
                 return True
             self._cmd_targeted_pipeline(resolved_table, line[len(tokens[0]) :].strip(), output_fn)
@@ -3683,7 +3684,7 @@ class PytaeRepl:
     def _cmd_diff(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         """Compare two tables or compare active table against another table / checkpoint."""
         if not args:
-            output_fn("Usage: diff <tbl1> <tbl2> [on=<key>] [-tol N] or diff <tbl2> [on=<key>] [-tol N]")
+            output_fn("Usage: -diff <tbl1> <tbl2> [on=<key>] [-tol N] or -diff <tbl2> [on=<key>] [-tol N]")
             return
 
         left_tbl_name: str | None = None
@@ -3805,7 +3806,7 @@ class PytaeRepl:
                     output_fn(f"pytae: right comparison table '{right_target}' not found. Available: {avail}")
                     return
         else:
-            output_fn("Usage: diff <tbl1> <tbl2> [on=<key>] [-tol N] or diff <tbl2> [on=<key>] [-tol N]")
+            output_fn("Usage: -diff <tbl1> <tbl2> [on=<key>] [-tol N] or -diff <tbl2> [on=<key>] [-tol N]")
             return
 
         from pytae import diff as pt_diff
@@ -4640,8 +4641,8 @@ class PytaeRepl:
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "session":
             return [s for s in _get_saved_session_names() if s.startswith(text)]
 
-        # Case 6: 'diff ' or '-diff ' -> complete table names, checkpoint names, flags, or on= columns
-        if first_token in ("diff", "-diff"):
+        # Case 6: '-diff ' -> complete table names, checkpoint names, flags, or on= columns
+        if first_token == "-diff":
             if prefix.rstrip().endswith("on=") or last_token in ("-on", "--on"):
                 target_df = self.current_df
                 if target_df is not None:

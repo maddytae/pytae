@@ -2676,61 +2676,67 @@ def test_repl_diff_command():
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("df2 = df1 -head 50", output_fn=outputs.append)
 
-    # diff <tbl1> <tbl2>
+    # Bare 'diff' is strictly rejected with educational instruction pointing to -diff
     outputs.clear()
     r.execute_line("diff df1 df2", output_fn=outputs.append)
+    assert any("bare 'diff' is not recognized; use '-diff'" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("df1 diff df2", output_fn=outputs.append)
+    assert any("bare 'diff' is not recognized; use '-diff'" in o for o in outputs)
+
+    # -diff <tbl1> <tbl2>
+    outputs.clear()
+    r.execute_line("-diff df1 df2", output_fn=outputs.append)
     combined = "\n".join(outputs)
     assert "Comparing 'df1' vs 'df2':" in combined
     assert "Rows:" in combined
 
-    # diff <tbl2> with active table
+    # -diff <tbl2> with active table
     outputs.clear()
-    r.execute_line("diff df2", output_fn=outputs.append)
+    r.execute_line("-diff df2", output_fn=outputs.append)
     combined = "\n".join(outputs)
     assert "Comparing 'df2' vs 'df2':" in combined or "Comparing 'df1' vs 'df2':" in combined
 
-    # diff with tolerance
+    # -diff with tolerance
     outputs.clear()
-    r.execute_line("diff df1 df2 -tol 0.01", output_fn=outputs.append)
+    r.execute_line("-diff df1 df2 -tol 0.01", output_fn=outputs.append)
     combined = "\n".join(outputs)
     assert "Rows:" in combined
 
-    # diff with checkpoint
+    # -diff with checkpoint
     r.execute_line("checkpoint snap1", output_fn=outputs.append)
     r.execute_line("df2 -mutate \"x = 1\"", output_fn=outputs.append)
     outputs.clear()
-    r.execute_line("diff df2 snap1", output_fn=outputs.append)
+    r.execute_line("-diff df2 snap1", output_fn=outputs.append)
     combined = "\n".join(outputs)
     assert "checkpoint:snap1" in combined
 
-    # diff with key alignment (on=<key>)
+    # -diff with key alignment (on=<key>)
     outputs.clear()
-    r.execute_line("diff df1 df2 on=species", output_fn=outputs.append)
+    r.execute_line("-diff df1 df2 on=species", output_fn=outputs.append)
     combined_on = "\n".join(outputs)
     assert "Key Alignment (on species):" in combined_on
 
-    # -diff alias with on=<key>
+    # -diff on active table with on=<key>
     outputs.clear()
     r.execute_line("-diff df2 on=species", output_fn=outputs.append)
     combined_dash = "\n".join(outputs)
     assert "Key Alignment (on species):" in combined_dash
 
-    # targeted table diff: df1 diff df2 on=species and df1 -diff df2 on=species
-    outputs.clear()
-    r.execute_line("df1 diff df2 on=species", output_fn=outputs.append)
-    assert "Key Alignment (on species):" in "\n".join(outputs)
-
+    # targeted table diff: df1 -diff df2 on=species
     outputs.clear()
     r.execute_line("df1 -diff df2 on=species", output_fn=outputs.append)
     assert "Key Alignment (on species):" in "\n".join(outputs)
 
+    # embedded spec: -diff df1 "df2,on=species"
     outputs.clear()
-    r.execute_line('diff df1 "df2,on=species"', output_fn=outputs.append)
+    r.execute_line('-diff df1 "df2,on=species"', output_fn=outputs.append)
     assert "Key Alignment (on species):" in "\n".join(outputs)
 
-    # diff non-existent target
+    # -diff non-existent target
     outputs.clear()
-    r.execute_line("diff nonexistent_target", output_fn=outputs.append)
+    r.execute_line("-diff nonexistent_target", output_fn=outputs.append)
     assert "not found" in outputs[0]
     r.close()
 
@@ -2782,8 +2788,8 @@ def test_repl_tab_autocompletions():
     matches = r._get_completions("cp", "restore cp")
     assert matches == ["cp_v1"]
 
-    # Tables & checkpoints after 'diff '
-    matches = r._get_completions("c", "diff c")
+    # Tables & checkpoints after '-diff '
+    matches = r._get_completions("c", "-diff c")
     assert "customers" in matches and "cp_v1" in matches
 
     # Flags completion

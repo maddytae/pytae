@@ -5,6 +5,9 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Removed
+- **Retired Bare `diff` in REPL in Favor of Uniform `-diff`**:
+  - Added `diff` to `_BARE_PIPELINE_VERBS`, strictly enforcing `-diff` (e.g. `-diff df1 df2 on=id` or `df1 -diff df2 on=id`) to maintain 100% syntactic uniformity where all dataset inspection and transformation operations use a leading single hyphen.
+  - Bare `diff` is rejected with standard educational guidance pointing to `-diff`.
 - **REPL Settings Pruning (`set null_repr`, `timing`, `color`, `echo`)**:
   - Removed `null_repr`, `timing`, `color`, and `echo` from REPL `set` configuration to eliminate visual clutter, reduce cognitive overhead, and focus the interactive settings surface strictly on session state, storage, and core tabular display.
 - **VS Code Extension (`extensions/vscode-pytae`)**:
@@ -17,10 +20,10 @@ All notable changes to this project are documented in this file.
   - Guarantees that only persistent disk file artifacts (`.parquet`, `.csv`, `.feather`, `.jsonl`) and state transformations are written to automated batch scripts, preventing failures or clipboard pollution during headless/CI batch replay while faithfully preserving all inputs in `~/.pytae/history/`.
 
 ### Added
-- **Key-Aligned Table Differences in REPL (`diff [tbl1] tbl2 on=<key>`)**:
-  - Enhanced the in-REPL `diff` (and `-diff`) command with full primary and composite key alignment support via `on=<key>` or `-on <key>` (e.g. `diff df1 df2 on=id` or `diff df2 on="store_id, product_id"`).
+- **Key-Aligned Table Differences in REPL (`-diff [tbl1] tbl2 on=<key>`)**:
+  - Enhanced the in-REPL `-diff` command with full primary and composite key alignment support via `on=<key>` or `-on <key>` (e.g. `-diff df1 df2 on=id`, `df1 -diff df2 on=id`, or `-diff "df2,on=id"`).
   - Aligns rows by key prior to cell-by-cell comparison, reporting matched, added, and removed keys alongside schema drift and value differences.
-  - Seamlessly accepts both bare `diff` and hyphenated `-diff`, targeted table diffs (`df1 diff df2 on=id`), and embedded target formats (`diff df1 "df2,on=id"`).
+  - Fully synchronized with CLI `-diff` syntax and options (`-tol <N>`, `on=key1:key2`).
 - **Non-Verbose vs. Verbose Session Listing (`pytae -sessions` & `sessions [-v]`)**:
   - Implemented clean dual-mode session inspection across CLI and REPL:
     - **Non-verbose mode** (default `pytae -sessions`, `sessions`, `session list`): Cleanly displays session name, filesystem path, and health status (`Ready` or `[Offline / Unreachable]`) without overwhelming checkpoint clutter.
