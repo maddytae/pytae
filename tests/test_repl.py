@@ -3942,6 +3942,217 @@ def test_session_markers_and_directory_exploration(tmp_path):
         set_sessions_dir(orig_sess)
 
 
+def test_win_console_input_tab_completion_single_match():
+    from pytae.repl import _win_console_input
+
+    # Type: "df = sample:pen<TAB>\n"
+    keys = list("df = sample:pen\t\r")
+    key_idx = 0
+
+    def mock_read_char():
+        nonlocal key_idx
+        if key_idx < len(keys):
+            ch = keys[key_idx]
+            key_idx += 1
+            return ch
+        return "\r"
+
+    def mock_completions(word, line_buf, begidx, endidx):
+        if word == "sample:pen":
+            return ["sample:penguins"]
+        return []
+
+    result = _win_console_input(
+        prompt_text="pytae> ",
+        history=[],
+        completions_fn=mock_completions,
+        read_char_fn=mock_read_char,
+    )
+    # A single completed token adds trailing space
+    assert result == "df = sample:penguins "
+
+
+def test_win_console_input_tab_completion_directory_match():
+    import os
+
+    from pytae.repl import _win_console_input
+
+    sep = os.sep
+    keys = list("load data" + sep + "sub\t\r")
+    key_idx = 0
+
+    def mock_read_char():
+        nonlocal key_idx
+        if key_idx < len(keys):
+            ch = keys[key_idx]
+            key_idx += 1
+            return ch
+        return "\r"
+
+    def mock_completions(word, line_buf, begidx, endidx):
+        return ["data" + sep + "subdir" + sep]
+
+    result = _win_console_input(
+        prompt_text="pytae> ",
+        history=[],
+        completions_fn=mock_completions,
+        read_char_fn=mock_read_char,
+    )
+    # Directories ending with separator should NOT add trailing space
+    assert result == f"load data{sep}subdir{sep}"
+
+
+def test_win_console_input_tab_completion_common_prefix():
+    from pytae.repl import _win_console_input
+
+    # Type: "set sess<TAB>\n"
+    # Matches: ["session_name", "session_load", "sessions_dir"] -> Common prefix is "session"
+    keys = list("set sess\t\r")
+    key_idx = 0
+
+    def mock_read_char():
+        nonlocal key_idx
+        if key_idx < len(keys):
+            ch = keys[key_idx]
+            key_idx += 1
+            return ch
+        return "\r"
+
+    def mock_completions(word, line_buf, begidx, endidx):
+        if word.startswith("sess"):
+            return ["session_name", "session_load", "sessions_dir"]
+        return []
+
+    result = _win_console_input(
+        prompt_text="pytae> ",
+        history=[],
+        completions_fn=mock_completions,
+        read_char_fn=mock_read_char,
+    )
+    assert result == "set session"
+
+
+def test_win_console_input_tab_completion_candidates_display(capsys):
+    from pytae.repl import _win_console_input
+
+    # Type: "set session_<TAB>n<TAB>\r"
+    # First TAB at common prefix displays candidates. Second TAB on "session_n" completes.
+    keys = list("set session_\tn\t\r")
+    key_idx = 0
+
+    def mock_read_char():
+        nonlocal key_idx
+        if key_idx < len(keys):
+            ch = keys[key_idx]
+            key_idx += 1
+            return ch
+        return "\r"
+
+    def mock_completions(word, line_buf, begidx, endidx):
+        if word == "session_":
+            return ["session_name", "session_load"]
+        if word == "session_n":
+            return ["session_name"]
+        return []
+
+    result = _win_console_input(
+        prompt_text="pytae> ",
+        history=[],
+        completions_fn=mock_completions,
+        read_char_fn=mock_read_char,
+    )
+    captured = capsys.readouterr()
+    assert "session_name" in captured.out
+    assert "session_load" in captured.out
+    assert result == "set session_name "
+
+
+def test_win_console_input_backspace_and_navigation():
+    from pytae.repl import _win_console_input
+
+    # Test backspace with both \x08 (CMD) and \x7f (MinTTY/Git Bash)
+    # Type "abc\x08d\x7fe\r" -> "a" + "b" + ("c" backspaced) + "d" + ("d" backspaced via \x7f) + "e" -> "abe"
+    keys = list("abc\x08d\x7fe\r")
+    key_idx = 0
+
+    def mock_read_char():
+        nonlocal key_idx
+        if key_idx < len(keys):
+            ch = keys[key_idx]
+            key_idx += 1
+            return ch
+        return "\r"
+
+    result = _win_console_input(
+        prompt_text="pytae> ",
+        history=[],
+        read_char_fn=mock_read_char,
+    )
+    assert result == "abe"
+
+
+def test_repl_complete_handles_none_begidx(monkeypatch):
+    import sys
+
+    from pytae.repl import PytaeRepl
+
+    repl_mod = sys.modules["pytae.repl"]
+
+    class MockReadline:
+        @staticmethod
+        def get_line_buffer():
+            return "set "
+
+        @staticmethod
+        def get_begidx():
+            return None  # Pyreadline3 / buggy readline returning None
+
+        @staticmethod
+        def get_endidx():
+            return None
+
+    monkeypatch.setattr(repl_mod, "readline", MockReadline)
+
+    r = PytaeRepl()
+    # Should not raise TypeError and successfully compute completions
+    first_match = r._complete("", 0)
+    assert first_match is not None
+    assert first_match == "session_name"
+    r.close()
+
+
+def test_init_readline_binds_tab_complete(monkeypatch):
+    import sys
+
+    from pytae.repl import _init_readline
+
+    repl_mod = sys.modules["pytae.repl"]
+    bound_commands = []
+
+    class MockReadline:
+        __doc__ = "GNU readline"
+
+        @staticmethod
+        def parse_and_bind(cmd):
+            bound_commands.append(cmd)
+
+        @staticmethod
+        def set_completer(fn):
+            pass
+
+        @staticmethod
+        def set_completer_delims(delims):
+            pass
+
+    monkeypatch.setattr(repl_mod, "readline", MockReadline)
+    _init_readline(lambda text, state: None)
+
+    assert "tab: complete" in bound_commands
+    assert "Tab: complete" in bound_commands
+    assert '"\\t": complete' in bound_commands
+    assert "bind ^I rl_complete" in bound_commands
+
+
 
 
 

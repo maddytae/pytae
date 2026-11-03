@@ -530,12 +530,23 @@ def _save_raw_history(history: list[str]) -> None:
         pass
 
 
-def _win_console_input(prompt_text: str, history: list[str]) -> str:
-    """Read console input on Windows with arrow key history navigation and line editing."""
-    try:
-        import msvcrt
-    except ImportError:
-        return input(prompt_text)
+def _win_console_input(
+    prompt_text: str,
+    history: list[str],
+    completer: Callable[[str, int], str | None] | None = None,
+    completions_fn: Callable[[str, str, int, int], list[str]] | None = None,
+    read_char_fn: Callable[[], str] | None = None,
+    has_input_fn: Callable[[], bool] | None = None,
+) -> str:
+    """Read console input on Windows with arrow key history navigation, line editing, and Tab autocompletion."""
+    if read_char_fn is None:
+        try:
+            import msvcrt
+
+            read_char_fn = msvcrt.getwch
+            has_input_fn = getattr(msvcrt, "kbhit", None)
+        except ImportError:
+            return input(prompt_text)
 
     sys.stdout.write(prompt_text)
     sys.stdout.flush()
@@ -559,7 +570,7 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
 
     while True:
         try:
-            ch = msvcrt.getwch()
+            ch = read_char_fn()
         except (KeyboardInterrupt, EOFError):
             raise
         except Exception:
@@ -568,7 +579,7 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
         code: str | None = None
         if ch in ("\x00", "\xe0"):
             try:
-                code = msvcrt.getwch()
+                code = read_char_fn()
             except Exception:
                 continue
         elif ch == "\x1b":
@@ -577,11 +588,10 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
             try:
                 import time
 
-                kbhit_fn = getattr(msvcrt, "kbhit", None)
-                if kbhit_fn is not None:
+                if has_input_fn is not None:
                     for _ in range(8):
-                        if kbhit_fn():
-                            seq += msvcrt.getwch()
+                        if has_input_fn():
+                            seq += read_char_fn()
                             if seq in (
                                 "[A",
                                 "OA",
@@ -604,14 +614,14 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
                                 break
                         else:
                             time.sleep(0.002)
-                            if kbhit_fn():
-                                seq += msvcrt.getwch()
+                            if has_input_fn():
+                                seq += read_char_fn()
                             else:
                                 break
                 else:
                     for _ in range(4):
                         try:
-                            seq += msvcrt.getwch()
+                            seq += read_char_fn()
                             if seq in (
                                 "[A",
                                 "OA",
@@ -712,7 +722,7 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
             sys.stdout.write("\n")
             sys.stdout.flush()
             return "".join(line_chars)
-        elif ch == "\x08":  # Backspace
+        elif ch in ("\x08", "\x7f"):  # Backspace (0x08 on CMD/conhost, 0x7f on MinTTY/xterm)
             if cursor_pos > 0:
                 cursor_pos -= 1
                 line_chars.pop(cursor_pos)
@@ -726,6 +736,72 @@ def _win_console_input(prompt_text: str, history: list[str]) -> str:
             sys.stdout.flush()
             if not line_chars:
                 raise EOFError
+        elif ch == "\t":
+            # Tab autocompletion
+            delims = " \t\n\"'=(),;[]"
+            begidx = cursor_pos
+            while begidx > 0 and line_chars[begidx - 1] not in delims:
+                begidx -= 1
+            endidx = cursor_pos
+            word = "".join(line_chars[begidx:endidx])
+            line_buf = "".join(line_chars)
+
+            matches: list[str] = []
+            if completions_fn is not None:
+                try:
+                    matches = completions_fn(word, line_buf, begidx, endidx)
+                except Exception:
+                    matches = []
+            elif completer is not None:
+                try:
+                    state = 0
+                    while True:
+                        m = completer(word, state)
+                        if m is None:
+                            break
+                        matches.append(m)
+                        state += 1
+                        if state > 500:
+                            break
+                except Exception:
+                    matches = []
+
+            if not matches:
+                continue
+
+            if len(matches) == 1:
+                match = matches[0]
+                line_chars[begidx:endidx] = list(match)
+                cursor_pos = begidx + len(match)
+                if not match.endswith(("/", "\\", "=", os.sep)):
+                    line_chars.insert(cursor_pos, " ")
+                    cursor_pos += 1
+                render()
+            else:
+                common = os.path.commonprefix(matches)
+                if len(common) > len(word):
+                    line_chars[begidx:endidx] = list(common)
+                    cursor_pos = begidx + len(common)
+                    render()
+                else:
+                    sys.stdout.write("\n")
+                    col_width = min(40, max(len(m) for m in matches) + 2)
+                    term_cols = 80
+                    try:
+                        import shutil
+
+                        term_cols = shutil.get_terminal_size((80, 20)).columns
+                    except Exception:
+                        pass
+                    num_cols = max(1, term_cols // col_width)
+                    disp_matches = matches[:40]
+                    for i in range(0, len(disp_matches), num_cols):
+                        row_items = disp_matches[i : i + num_cols]
+                        sys.stdout.write("  " + "".join(m.ljust(col_width) for m in row_items).rstrip() + "\n")
+                    if len(matches) > 40:
+                        sys.stdout.write(f"  ... and {len(matches) - 40} more\n")
+                    last_rendered_len = 0
+                    render()
         elif ch >= " ":  # Printable character
             line_chars.insert(cursor_pos, ch)
             cursor_pos += 1
@@ -791,6 +867,9 @@ def _init_readline(completer_fn: Callable[[str, int], str | None] | None = None)
             readline.parse_and_bind(r'"\e[H": beginning-of-line')
             readline.parse_and_bind(r'"\e[F": end-of-line')
             readline.parse_and_bind("tab: complete")
+            readline.parse_and_bind("Tab: complete")
+            readline.parse_and_bind(r'"\t": complete')
+            readline.parse_and_bind("bind ^I rl_complete")
         except Exception:
             pass
     if completer_fn is not None and hasattr(readline, "set_completer"):
@@ -4834,9 +4913,15 @@ class PytaeRepl:
             endidx = -1
             if readline is not None:
                 try:
-                    line_buf = readline.get_line_buffer()
-                    begidx = readline.get_begidx()
-                    endidx = readline.get_endidx()
+                    buf = readline.get_line_buffer()
+                    if buf is not None:
+                        line_buf = buf
+                    b = readline.get_begidx()
+                    if b is not None and isinstance(b, int):
+                        begidx = b
+                    e = readline.get_endidx()
+                    if e is not None and isinstance(e, int):
+                        endidx = e
                 except Exception:
                     pass
             self._completion_matches = self._get_completions(text, line_buf, begidx, endidx)
@@ -4852,7 +4937,7 @@ class PytaeRepl:
         endidx: int = -1,
     ) -> list[str]:
         """Compute candidate autocompletions based on context."""
-        if begidx >= 0:
+        if begidx is not None and begidx >= 0:
             prefix = line_buf[:begidx]
         elif text and line_buf.endswith(text):
             prefix = line_buf[:-len(text)]
@@ -5068,6 +5153,7 @@ class PytaeRepl:
                 "No initial dataset loaded. Use '<var> = <path>' or 'df = sample:penguins' to start."
             )
         is_redirected_input = False
+        is_pty = False
         try:
             import stat
 
@@ -5078,7 +5164,6 @@ class PytaeRepl:
                 is_redirected_input = not sys.stdin.isatty()
             elif stat.S_ISFIFO(mode):
                 # On Windows: check if FIFO is an interactive mintty / msys pty pipe
-                is_pty = False
                 try:
                     import ctypes
                     import msvcrt
@@ -5096,11 +5181,62 @@ class PytaeRepl:
         except Exception:
             pass
 
-        if sys.platform == "win32" and not sys.stdin.isatty() and not is_redirected_input:
+        git_bash_raw_active = False
+        git_bash_orig_stty: str | None = None
+        if sys.platform == "win32" and is_pty and not is_redirected_input:
+            import shutil
+            import subprocess
+
+            stty_exe = shutil.which("stty")
+            if stty_exe:
+                try:
+                    git_bash_orig_stty = subprocess.check_output([stty_exe, "-g"], text=True).strip()
+                    subprocess.run(
+                        [stty_exe, "-icanon", "-echo", "min", "1"],
+                        check=True,
+                        capture_output=True,
+                    )
+                    git_bash_raw_active = True
+                except Exception:
+                    git_bash_raw_active = False
+
+        def _restore_git_bash() -> None:
+            nonlocal git_bash_raw_active
+            if git_bash_raw_active and git_bash_orig_stty:
+                try:
+                    import shutil
+                    import subprocess
+
+                    stty_exe = shutil.which("stty")
+                    if stty_exe:
+                        subprocess.run([stty_exe, git_bash_orig_stty], capture_output=True)
+                except Exception:
+                    pass
+                git_bash_raw_active = False
+
+        if git_bash_raw_active:
+            import atexit
+
+            atexit.register(_restore_git_bash)
+
+        if sys.platform == "win32" and not sys.stdin.isatty() and not is_redirected_input and not git_bash_raw_active:
             output_fn(
                 "  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)"
             )
         output_fn("")
+
+        def _pipe_has_input() -> bool:
+            try:
+                import ctypes
+                import msvcrt
+
+                handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+                avail = ctypes.c_ulong()
+                if ctypes.windll.kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(avail), None):
+                    return avail.value > 0
+            except Exception:
+                pass
+            return False
 
         def _get_input(prompt_text: str) -> str:
             effective_prompt = "" if is_redirected_input else prompt_text
@@ -5111,14 +5247,31 @@ class PytaeRepl:
                     return input_fn()  # type: ignore[call-arg]
 
             if sys.platform == "win32":
+                if sys.stdin.isatty():
+                    try:
+                        return _win_console_input(
+                            effective_prompt,
+                            self._raw_history,
+                            completer=self._complete,
+                            completions_fn=self._get_completions,
+                        )
+                    except Exception:
+                        pass
+                elif git_bash_raw_active:
+                    try:
+                        return _win_console_input(
+                            effective_prompt,
+                            self._raw_history,
+                            completer=self._complete,
+                            completions_fn=self._get_completions,
+                            read_char_fn=lambda: sys.stdin.read(1),
+                            has_input_fn=_pipe_has_input,
+                        )
+                    except Exception:
+                        pass
                 if readline is not None:
                     try:
                         return input(effective_prompt)
-                    except Exception:
-                        pass
-                if sys.stdin.isatty():
-                    try:
-                        return _win_console_input(effective_prompt, self._raw_history)
                     except Exception:
                         pass
             return input(effective_prompt)
@@ -5153,6 +5306,7 @@ class PytaeRepl:
                         else:
                             output_fn(f"pytae error: {msg}")
         finally:
+            _restore_git_bash()
             if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_commands_path", None) is not None:
                 if self.session_commands_path.exists():
                     try:
