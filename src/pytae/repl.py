@@ -2903,9 +2903,23 @@ class PytaeRepl:
                                     shutil.copytree(src_sub, dst_sub)
                                     if isinstance(cp_meta, dict):
                                         cp_meta["dir"] = str(dst_sub)
+                                    m_json = dst_sub / "meta.json"
+                                    if m_json.exists():
+                                        try:
+                                            m_data = json.loads(m_json.read_text(encoding="utf-8"))
+                                            m_data["dir"] = str(dst_sub)
+                                            m_json.write_text(json.dumps(m_data), encoding="utf-8")
+                                        except Exception:
+                                            pass
+                        if src_sess_dir.exists():
+                            for item in src_sess_dir.iterdir():
+                                if item.is_file():
+                                    shutil.copy2(item, dst_sess_dir / item.name)
                         set_sessions_dir(target_dir)
                         self._save_session_metadata()
-                        output_fn(f"Loaded session '{clean_name}' from {orig_dir} and saved to {target_dir}.")
+                        if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
+                            shutil.rmtree(src_sess_dir, ignore_errors=True)
+                        output_fn(f"Loaded session '{clean_name}' from {orig_dir} and relocated to {target_dir}.")
                     self._record_history(f"set load_session = {clean_name}, sessions_dir = {target_dir}")
                 else:
                     output_fn(f"pytae: session '{clean_name}' not found in '{orig_dir}' or '{target_dir}'.")
@@ -2941,7 +2955,46 @@ class PytaeRepl:
                     return
                 if session_dir_val is not None:
                     clean_dir = session_dir_val.strip("'\"")
-                    set_sessions_dir(clean_dir)
+                    new_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
+                    orig_dir = get_sessions_dir().resolve()
+                    if self.session_name and new_dir != orig_dir:
+                        src_sess_dir = orig_dir / self.session_name
+                        dst_sess_dir = new_dir / clean_val
+                        dst_cp_dir = dst_sess_dir / "checkpoints"
+                        dst_cp_dir.mkdir(parents=True, exist_ok=True)
+                        src_cp_dir = src_sess_dir / "checkpoints"
+                        if src_cp_dir.exists():
+                            for cp_name, cp_meta in list(self.checkpoints.items()):
+                                src_sub = src_cp_dir / cp_name
+                                dst_sub = dst_cp_dir / cp_name
+                                if src_sub.exists() and src_sub != dst_sub:
+                                    if dst_sub.exists():
+                                        shutil.rmtree(dst_sub, ignore_errors=True)
+                                    shutil.copytree(src_sub, dst_sub)
+                                    if isinstance(cp_meta, dict):
+                                        cp_meta["dir"] = str(dst_sub)
+                                    m_json = dst_sub / "meta.json"
+                                    if m_json.exists():
+                                        try:
+                                            m_data = json.loads(m_json.read_text(encoding="utf-8"))
+                                            m_data["dir"] = str(dst_sub)
+                                            m_json.write_text(json.dumps(m_data), encoding="utf-8")
+                                        except Exception:
+                                            pass
+                        if src_sess_dir.exists():
+                            for item in src_sess_dir.iterdir():
+                                if item.is_file():
+                                    shutil.copy2(item, dst_sess_dir / item.name)
+                        set_sessions_dir(new_dir)
+                        self.session_name = clean_val
+                        self._save_session_metadata()
+                        if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
+                            shutil.rmtree(src_sess_dir, ignore_errors=True)
+                        self._record_history(f"set session = {clean_val}, sessions_dir = {clean_dir}")
+                        output_fn(f"Relocated active session '{clean_val}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved).")
+                        return
+                    else:
+                        set_sessions_dir(new_dir)
                 self._cmd_session_save(clean_val, output_fn)
                 self._record_history(f"set session = {clean_val}")
 
@@ -2970,8 +3023,22 @@ class PytaeRepl:
                                 shutil.copytree(src_sub, dst_sub)
                                 if isinstance(cp_meta, dict):
                                     cp_meta["dir"] = str(dst_sub)
+                                m_json = dst_sub / "meta.json"
+                                if m_json.exists():
+                                    try:
+                                        m_data = json.loads(m_json.read_text(encoding="utf-8"))
+                                        m_data["dir"] = str(dst_sub)
+                                        m_json.write_text(json.dumps(m_data), encoding="utf-8")
+                                    except Exception:
+                                        pass
+                    if src_sess_dir.exists():
+                        for item in src_sess_dir.iterdir():
+                            if item.is_file():
+                                shutil.copy2(item, dst_sess_dir / item.name)
                     set_sessions_dir(new_dir)
                     self._save_session_metadata()
+                    if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
+                        shutil.rmtree(src_sess_dir, ignore_errors=True)
                     self._record_history(f"set sessions_dir = {clean_dir}")
                     output_fn(f"Relocated active session '{self.session_name}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved).")
                 else:

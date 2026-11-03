@@ -2819,6 +2819,7 @@ def test_repl_set_load_session_and_sessions_dir(tmp_path):
         r.execute_line(f"set sessions_dir = {custom_dir_1}", output_fn=outputs.append)
         assert "relocated active session 'project_alpha'" in outputs[-1].lower()
         assert (custom_dir_1 / "project_alpha" / "checkpoints" / "cp1").exists()
+        assert not (orig_dir / "project_alpha").exists(), "Old session directory in orig_dir should be removed after migration"
         assert get_sessions_dir() == custom_dir_1.resolve()
         r.close()
 
@@ -2836,6 +2837,7 @@ def test_repl_set_load_session_and_sessions_dir(tmp_path):
         )
         assert r2.session_name == "project_alpha"
         assert (custom_dir_2 / "project_alpha" / "checkpoints" / "cp1").exists()
+        assert not (custom_dir_1 / "project_alpha").exists(), "Old session directory in custom_dir_1 should be removed after migration"
         assert get_sessions_dir() == custom_dir_2.resolve()
         assert "cp1" in r2.checkpoints
 
@@ -3109,10 +3111,47 @@ def test_faithful_history_vs_commands_script(tmp_path) -> None:
     assert "# A descriptive comment" not in cmd_text
 
 
+def test_repl_relocate_active_session_full_migration(tmp_path) -> None:
+    """Verify that relocating an active session cleanly moves all data and removes the old directory without duplicates."""
+    import polars as pl
 
+    from pytae.repl import PytaeRepl, get_sessions_dir, set_sessions_dir
 
+    orig_dir = get_sessions_dir()
+    dir_a = tmp_path / "sessions_a"
+    dir_b = tmp_path / "sessions_b"
+    dir_a.mkdir(parents=True, exist_ok=True)
+    dir_b.mkdir(parents=True, exist_ok=True)
 
+    set_sessions_dir(dir_a)
+    try:
+        r = PytaeRepl()
+        outputs: list[str] = []
+        r.execute_line("set session = analytics_v1", output_fn=outputs.append)
+        r.tables["df"] = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+        r.current_df = r.tables["df"]
+        r.path_str = "df"
+        r.execute_line("checkpoint baseline", output_fn=outputs.append)
 
+        assert (dir_a / "analytics_v1" / "checkpoints" / "baseline").exists()
 
+        # Relocate active session to dir_b
+        outputs.clear()
+        r.execute_line(f"set sessions_dir = {dir_b}", output_fn=outputs.append)
+        assert any("relocated active session 'analytics_v1'" in o.lower() for o in outputs)
+        assert get_sessions_dir() == dir_b.resolve()
 
+        # Destination contains all checkpoints and metadata
+        assert (dir_b / "analytics_v1" / "checkpoints" / "baseline").exists()
+        assert (dir_b / "analytics_v1" / "session.json").exists()
+
+        # Source session directory in dir_a MUST be completely removed (no duplicates)
+        assert not (dir_a / "analytics_v1").exists()
+
+        # Session can restore checkpoint in new location
+        r.execute_line("restore baseline", output_fn=outputs.append)
+        assert "df" in r.tables
+        r.close()
+    finally:
+        set_sessions_dir(orig_dir)
 

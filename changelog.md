@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Full Active Session Migration Without Duplicates (`set sessions_dir = <path>`)**:
+  - Relocating an active session now performs a complete, atomic migration from the default or existing directory to the new target directory.
+  - Copies all checkpoints, disk IPC/Parquet files, and session metadata (`session.json`), updating in-memory pointers and filesystem references to the new destination.
+  - Automatically unlinks and removes the previous session directory upon successful copy, preventing duplicate or ghost sessions from lingering in `~/.pytae/sessions/` or `pytae -sessions`.
 - **Faithful Flight Recorder (`~/.pytae/history/`) vs Pure Replayable Scripts (`~/.pytae/commands/`)**:
   - Separated session tracking into two purpose-built logs:
     - `~/.pytae/history/history_<timestamp>.txt`: Unadulterated flight recorder capturing every input typed by the user, including previews (`-head`, `-tail`), status checks (`status`, `tables`), help queries, `# comments`, and exports.
